@@ -2,7 +2,11 @@
 name = "starknet"
 version = "0.1.0"
 edition = "2018"
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = "2.33.3"
+home = "0.5.3"
+lazy_static = "1.4.0"
+serde = { version = "1.0.130", features = ["derive"] }
+toml = "0.5.8"
