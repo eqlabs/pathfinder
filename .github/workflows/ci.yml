@@ -37,7 +37,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-targets -- -D warnings
+          args: --all-targets -- -D warnings -A dead-code
 
   rustfmt:
     runs-on: ubuntu-latest
