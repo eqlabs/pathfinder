@@ -1,5 +1,6 @@
 mod config;
 mod ethereum;
+mod sequencer;
 
 #[tokio::main]
 async fn main() {
