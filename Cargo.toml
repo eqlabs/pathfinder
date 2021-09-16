@@ -9,4 +9,6 @@ clap = "2.33.3"
 home = "0.5.3"
 lazy_static = "1.4.0"
 serde = { version = "1.0.130", features = ["derive"] }
+tokio = "1.11.0"
 toml = "0.5.8"
+web3 = "0.17.0"
