@@ -12,6 +12,8 @@ use enum_iterator::IntoEnumIterator;
 use reqwest::Url;
 
 /// Possible configuration options.
+// TODO: remove this once more variants with other prefixes have been added.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Clone, Copy, Hash, Eq, IntoEnumIterator)]
 pub enum ConfigOption {
     /// The Ethereum URL.
