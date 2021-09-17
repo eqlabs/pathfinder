@@ -16,6 +16,7 @@ lazy_static::lazy_static! {
 struct EthereumConfig {
     url: Option<String>,
     user: Option<String>,
+    password: Option<String>,
 }
 
 #[derive(Deserialize, Debug, PartialEq)]
@@ -29,7 +30,8 @@ impl FileConfig {
         match self.ethereum {
             Some(eth) => ConfigBuilder::default()
                 .with(ConfigOption::EthereumUrl, eth.url)
-                .with(ConfigOption::EthereumUser, eth.user),
+                .with(ConfigOption::EthereumUser, eth.user)
+                .with(ConfigOption::EthereumPassword, eth.password),
             None => ConfigBuilder::default(),
         }
     }
@@ -72,20 +74,31 @@ mod tests {
     }
 
     #[test]
+    fn ethereum_password() {
+        let value = "value".to_owned();
+        let toml = format!(r#"ethereum.password = "{}""#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(value));
+    }
+
+    #[test]
     fn ethereum_section() {
         let user = "user".to_owned();
         let url = "url".to_owned();
+        let password = "password".to_owned();
 
         let toml = format!(
             r#"[ethereum]
 user = "{}"
-url = "{}""#,
-            user, url
+url = "{}"
+password = "{}""#,
+            user, url, password
         );
 
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(user));
         assert_eq!(cfg.take(ConfigOption::EthereumUrl), Some(url));
+        assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(password));
     }
 
     #[test]

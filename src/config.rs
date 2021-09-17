@@ -18,6 +18,8 @@ pub enum ConfigOption {
     EthereumUrl,
     /// The Ethereum user.
     EthereumUser,
+    /// The Ethereum password.
+    EthereumPassword,
 }
 
 impl Display for ConfigOption {
@@ -25,6 +27,7 @@ impl Display for ConfigOption {
         match self {
             ConfigOption::EthereumUrl => f.write_str("Ethereum URL"),
             ConfigOption::EthereumUser => f.write_str("Ethereum user"),
+            ConfigOption::EthereumPassword => f.write_str("Ethereum password"),
         }
     }
 }
@@ -36,6 +39,8 @@ pub struct EthereumConfig {
     pub url: Url,
     /// The optional Ethereum user.
     pub user: Option<String>,
+    /// The optional Ethereum password.
+    pub password: Option<String>,
 }
 
 /// Node configuration options.

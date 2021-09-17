@@ -52,11 +52,13 @@ impl ConfigBuilder {
 
         // Optional parameters.
         let eth_user = self.take(ConfigOption::EthereumUser);
+        let eth_password = self.take(ConfigOption::EthereumPassword);
 
         Ok(Configuration {
             ethereum: EthereumConfig {
                 url: eth_url,
                 user: eth_user,
+                password: eth_password,
             },
         })
     }

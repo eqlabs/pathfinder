@@ -8,6 +8,7 @@ use super::ConfigOption;
 
 const ETH_URL_KEY: &str = "ethereum.url";
 const ETH_USER_KEY: &str = "ethereum.user";
+const ETH_PASS_KEY: &str = "ethereum.password";
 const CONFIG_KEY: &str = "config";
 
 /// Parses the cmd line arguments and returns the optional
@@ -36,10 +37,12 @@ where
     let config_filepath = args.value_of(CONFIG_KEY).map(|s| s.to_owned());
     let ethereum_url = args.value_of(ETH_URL_KEY).map(|s| s.to_owned());
     let ethereum_user = args.value_of(ETH_USER_KEY).map(|s| s.to_owned());
+    let ethereum_password = args.value_of(ETH_PASS_KEY).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumUrl, ethereum_url)
-        .with(ConfigOption::EthereumUser, ethereum_user);
+        .with(ConfigOption::EthereumUser, ethereum_user)
+        .with(ConfigOption::EthereumPassword, ethereum_password);
 
     Ok((config_filepath, cfg))
 }
@@ -68,16 +71,20 @@ fn clap_app() -> clap::App<'static, 'static> {
         )
         .arg(
             Arg::with_name(ETH_USER_KEY)
-                .short("u")
                 .long(ETH_USER_KEY)
                 .help("Ethereum API user")
                 .takes_value(true)
-                .value_name("URL")
                 .long_help("The optional user to use for the Ethereum API"),
         )
         .arg(
+            Arg::with_name(ETH_PASS_KEY)
+                .long(ETH_PASS_KEY)
+                .help("Ethereum API password")
+                .takes_value(true)
+                .long_help("The optional password to use for the Ethereum API"),
+        )
+        .arg(
             Arg::with_name(ETH_URL_KEY)
-                .short("e")
                 .long(ETH_URL_KEY)
                 .help("Ethereum API URL")
                 .takes_value(true)
@@ -93,13 +100,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ethereum_url_short() {
-        let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "-e", &value]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUrl), Some(value));
-    }
-
-    #[test]
     fn ethereum_url_long() {
         let value = "value".to_owned();
         let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.url", &value]).unwrap();
@@ -107,17 +107,17 @@ mod tests {
     }
 
     #[test]
-    fn ethereum_user_short() {
-        let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "-u", &value]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(value));
-    }
-
-    #[test]
     fn ethereum_user_long() {
         let value = "value".to_owned();
         let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.user", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(value));
+    }
+
+    #[test]
+    fn ethereum_password_long() {
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.password", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(value));
     }
 
     #[test]

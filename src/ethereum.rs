@@ -28,6 +28,7 @@ impl Client {
         let contract_address =
             H160::from_str("0x5e6229F2D4d977d20A50219E521dE6Dd694d45cc").unwrap();
 
+        // Create HTTP client with optional user-agent
         let http_client = match cfg.user {
             Some(user) => reqwest::Client::builder().user_agent(user),
             None => reqwest::Client::builder(),
@@ -37,7 +38,19 @@ impl Client {
             web3::Error::Transport(format!("failed to build Ethereum HTTP client: {}", err))
         })?;
 
-        let transport = web3::transports::Http::with_client(http_client, cfg.url);
+        // Set the password on the URL.
+        let url = match cfg.password {
+            Some(password) => {
+                let mut url = cfg.url;
+                url.set_password(Some(&password)).map_err(|_| {
+                    web3::Error::Transport("failed to apply Ethereum password".to_owned())
+                })?;
+                url
+            }
+            None => cfg.url,
+        };
+
+        let transport = web3::transports::Http::with_client(http_client, url);
         let w3 = web3::Web3::new(transport);
 
         let contract = match Contract::from_json(w3.eth(), contract_address, CONTRACT_ABI) {
