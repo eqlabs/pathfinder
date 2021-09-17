@@ -45,6 +45,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
+          toolchain: stable
           override: true
           components: rustfmt
       - uses: Swatinem/rust-cache@v1
@@ -52,3 +53,17 @@ jobs:
         with:
           command: fmt
           args: --all -- --check
+
+  dep-sort:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: Swatinem/rust-cache@v1
+      - run: |
+          cargo install cargo-sort
+          cargo sort --check
