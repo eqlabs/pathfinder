@@ -9,6 +9,7 @@ use std::{fmt::Display, path::PathBuf, str::FromStr};
 const REQUIRED: &[ConfigOption] = &[ConfigOption::EthereumUrl];
 
 use enum_iterator::IntoEnumIterator;
+use reqwest::Url;
 
 /// Possible configuration options.
 #[derive(Debug, PartialEq, Clone, Copy, Hash, Eq, IntoEnumIterator)]
@@ -32,7 +33,7 @@ impl Display for ConfigOption {
 #[derive(Debug, PartialEq)]
 pub struct EthereumConfig {
     /// The Ethereum URL.
-    pub url: String,
+    pub url: Url,
     /// The optional Ethereum user.
     pub user: Option<String>,
 }

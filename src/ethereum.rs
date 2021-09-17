@@ -8,6 +8,8 @@ use web3::{
     types::{BlockId, BlockNumber, H160, H256, U256},
 };
 
+use crate::config::EthereumConfig;
+
 /// The StarkNet L1 contract's ABI's file contents.
 const CONTRACT_ABI: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -21,12 +23,21 @@ pub struct Client {
 
 impl Client {
     /// Creates a new L1 Ethereum client using the given Ethereum entry-point.
-    pub fn new(l1_endpoint: &str) -> web3::Result<Self> {
+    pub fn new(cfg: EthereumConfig) -> web3::Result<Self> {
         // The current StarkNet L1 contract address on Goerli.
         let contract_address =
             H160::from_str("0x5e6229F2D4d977d20A50219E521dE6Dd694d45cc").unwrap();
 
-        let transport = web3::transports::Http::new(l1_endpoint)?;
+        let http_client = match cfg.user {
+            Some(user) => reqwest::Client::builder().user_agent(user),
+            None => reqwest::Client::builder(),
+        }
+        .build()
+        .map_err(|err| {
+            web3::Error::Transport(format!("failed to build Ethereum HTTP client: {}", err))
+        })?;
+
+        let transport = web3::transports::Http::with_client(http_client, cfg.url);
         let w3 = web3::Web3::new(transport);
 
         let contract = match Contract::from_json(w3.eth(), contract_address, CONTRACT_ABI) {

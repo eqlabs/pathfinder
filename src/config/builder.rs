@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 
+use reqwest::Url;
+
 use crate::config::{ConfigOption, Configuration, EthereumConfig};
 
 /// A convenient way of collecting and merging configuration options.
@@ -33,11 +35,20 @@ impl ConfigBuilder {
         self
     }
 
-    /// Attempts to generate a [Configuration] from the options. Ensures that
-    /// all [REQUIRED] options are set.
+    /// Attempts to generate a [Configuration] from the options. Performs type checking
+    /// and parsing as required by [Configuration] types. Also ensures that all
+    /// [REQUIRED] options are set.
     pub fn try_build(mut self) -> std::io::Result<Configuration> {
         // Required parameters.
         let eth_url = self.take_required(ConfigOption::EthereumUrl)?;
+
+        // Parse the Ethereum URL.
+        let eth_url = eth_url.parse::<Url>().map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid Ethereum URL ({}): {}", eth_url, err.to_string()),
+            )
+        })?;
 
         // Optional parameters.
         let eth_user = self.take(ConfigOption::EthereumUser);
@@ -170,11 +181,20 @@ mod tests {
 
         use super::*;
 
-        /// Creates a builder with only the required fields set to some value.
+        /// Some options expect a specific type of value.
+        fn get_valid_value(option: ConfigOption) -> String {
+            match option {
+                ConfigOption::EthereumUrl => "http://localhost",
+                _ => "value",
+            }
+            .to_owned()
+        }
+
+        /// Creates a builder with only the required fields set to some valid value.
         fn builder_with_all_required() -> ConfigBuilder {
             let mut builder = ConfigBuilder::default();
             for option in REQUIRED {
-                builder = builder.with(*option, Some("value".to_owned()));
+                builder = builder.with(*option, Some(get_valid_value(*option)));
             }
             builder
         }

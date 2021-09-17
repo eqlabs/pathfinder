@@ -85,7 +85,7 @@ fn clap_app() -> clap::App<'static, 'static> {
                 .long_help(r#"This should point to the RPC endpoint of your Ethereum entry-point, typically a local Ethereum light client or a hosted gateway service such as Infura or Cloudflare.
 Examples:
     infura: https://goerli.infura.io/v3/<PROJECT_ID>
-    geth:   127.0.0.1:8545"#))
+    geth:   http://localhost:8545"#))
 }
 
 #[cfg(test)]
