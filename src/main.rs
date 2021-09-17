@@ -8,7 +8,7 @@ async fn main() {
         config::Configuration::parse_cmd_line_and_cfg_file().expect("Configuration failed");
 
     let l1_client =
-        ethereum::Client::new(&config.ethereum_rpc_url).expect("Failed to create Ethereum client");
+        ethereum::Client::new(&config.ethereum.url).expect("Failed to create Ethereum client");
 
     let state_root = l1_client
         .latest_state_root()
