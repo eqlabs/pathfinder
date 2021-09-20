@@ -9,8 +9,7 @@ use crate::config::{ConfigOption, Configuration, EthereumConfig};
 
 /// A convenient way of collecting and merging configuration options.
 ///
-/// Once finalised, can be converted to [Configuration] using `try_build`, which
-/// will check for [REQUIRED] options.
+/// Once finalised, can be converted to [Configuration] using `try_build`.
 #[derive(Default, PartialEq, Debug)]
 pub struct ConfigBuilder(HashMap<ConfigOption, String>);
 
@@ -37,7 +36,7 @@ impl ConfigBuilder {
 
     /// Attempts to generate a [Configuration] from the options. Performs type checking
     /// and parsing as required by [Configuration] types. Also ensures that all
-    /// [REQUIRED] options are set.
+    /// required options are set.
     pub fn try_build(mut self) -> std::io::Result<Configuration> {
         // Required parameters.
         let eth_url = self.take_required(ConfigOption::EthereumUrl)?;
@@ -179,7 +178,8 @@ mod tests {
     }
 
     mod try_build {
-        use crate::config::REQUIRED;
+        /// List of [ConfigOption]'s required by a [Configuration].
+        const REQUIRED: &[ConfigOption] = &[ConfigOption::EthereumUrl];
 
         use super::*;
 

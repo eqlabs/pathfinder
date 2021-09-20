@@ -5,9 +5,6 @@ mod file;
 
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 
-/// List of [ConfigOption]'s required by a [Configuration].
-const REQUIRED: &[ConfigOption] = &[ConfigOption::EthereumUrl];
-
 use enum_iterator::IntoEnumIterator;
 use reqwest::Url;
 
