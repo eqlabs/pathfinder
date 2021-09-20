@@ -14,7 +14,7 @@ use crate::config::{ConfigOption, Configuration, EthereumConfig};
 pub struct ConfigBuilder(HashMap<ConfigOption, String>);
 
 impl ConfigBuilder {
-    /// Sets the [ConfigOption] to value.
+    /// Sets the [ConfigOption] to value; if the value is [None] it gets removed.
     pub fn with(mut self, option: ConfigOption, value: Option<String>) -> Self {
         match value {
             Some(v) => self.0.insert(option, v),
