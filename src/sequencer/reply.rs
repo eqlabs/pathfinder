@@ -1,9 +1,8 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 //! __Warning!__Prone to change as the structures are solely based on reverse
-//! engineering raw API replies!   
+//! engineering raw API replies!
 use crate::sequencer::deserialize::{
-    from_decimal, from_decimal_array, from_decimal_str_array, from_decimal_str_keyed_map,
-    from_hex_str, from_optional_decimal_str_array, from_optional_hex_str,
+    from_decimal, from_decimal_array, from_decimal_str_keyed_map, from_hex_str,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -104,7 +103,7 @@ pub struct TransactionStatus {
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    use super::{
+    use crate::sequencer::deserialize::{
         from_decimal, from_decimal_str_array, from_hex_str, from_optional_decimal_str_array,
         from_optional_hex_str,
     };

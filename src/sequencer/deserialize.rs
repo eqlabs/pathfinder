@@ -1,3 +1,4 @@
+//! Deserialiation helpers for L2 sequencer REST API replies.
 use bigdecimal::BigDecimal;
 use serde::{
     de::{Error, MapAccess, SeqAccess, Visitor},
@@ -17,7 +18,7 @@ use web3::{
 
 /// Large uint deserialization helper function.
 ///
-/// The default [`web3::types::U256::deserialize`] implementation requires a hex string,
+/// The default [`web3::types::U256::deserialize`] implementation requires a fixed length hex string,
 /// while the API serves decimal strings.
 pub(super) fn from_decimal<'de, D, U>(deserializer: D) -> Result<U, D::Error>
 where
@@ -197,6 +198,7 @@ where
         formatter.write_str(self.expected)
     }
 
+    /// Deserialize the sequence using the mapping function passed in contructor.
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
     where
         A: SeqAccess<'de>,
@@ -235,6 +237,7 @@ where
         formatter.write_str(r#"Expected map, where keys are decimal strings, for example: {"1": {...}, "1234567890": {...}}."#)
     }
 
+    /// Deserialize the map one (key, value) pair at at time.
     fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
     where
         A: MapAccess<'de>,
