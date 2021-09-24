@@ -8,6 +8,7 @@ use web3::types::{H256, U256};
 /// [Client::latest_block](crate::sequencer::Client::latest_block).
 #[serde_with::serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Block {
     #[serde_as(as = "U256AsBigDecimal")]
     pub block_id: U256,
@@ -33,6 +34,7 @@ pub mod block {
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
 #[serde_with::serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Call {
     #[serde_as(as = "Vec<U256AsBigDecimal>")]
     pub result: Vec<U256>,
@@ -41,6 +43,7 @@ pub struct Call {
 /// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
 #[serde_with::serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Code {
     pub abi: Vec<code::Abi>,
     #[serde_as(as = "Vec<U256AsBigDecimal>")]
@@ -53,6 +56,7 @@ pub mod code {
 
     /// Represents deserialized L2 contract Application Blockchain Interface element.
     #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct Abi {
         pub inputs: Vec<abi::Input>,
         pub name: String,
@@ -69,6 +73,7 @@ pub mod code {
 
         /// Represents deserialized L2 contract ABI input element.
         #[derive(Clone, Debug, Deserialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
         pub struct Input {
             pub name: String,
             pub r#type: String,
@@ -76,6 +81,7 @@ pub mod code {
 
         /// Represents deserialized L2 contract ABI output element.
         #[derive(Clone, Debug, Deserialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
         pub struct Output {
             pub name: String,
             pub r#type: String,
@@ -84,17 +90,26 @@ pub mod code {
 }
 
 /// Used to deserialize a reply from [Client::transaction](crate::sequencer::Client::transaction).
+#[serde_with::serde_as]
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Transaction {
-    #[serde(flatten)]
-    pub common: transaction::Common,
+    #[serde_as(as = "U256AsBigDecimal")]
+    pub block_id: U256,
+    #[serde_as(as = "U256AsBigDecimal")]
+    pub block_number: U256,
+    pub status: transaction::Status,
     #[serde(rename = "transaction")]
     pub source: transaction::Source,
+    #[serde_as(as = "U256AsBigDecimal")]
+    pub transaction_id: U256,
+    pub transaction_index: u64,
 }
 
 /// Used to deserialize a reply from [Client::transaction_status](crate::sequencer::Client::transaction_status).
 #[serde_with::serde_as]
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct TransactionStatus {
     #[serde_as(as = "U256AsBigDecimal")]
     pub block_id: U256,
@@ -109,22 +124,9 @@ pub mod transaction {
     use serde::Deserialize;
     use web3::types::{H160, H256, U256};
 
-    /// Represents deserialized common L2 transaction data used in more than one transaction related struct.
-    #[serde_with::serde_as]
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
-    pub struct Common {
-        #[serde_as(as = "U256AsBigDecimal")]
-        pub block_id: U256,
-        #[serde_as(as = "U256AsBigDecimal")]
-        pub block_number: U256,
-        pub status: Status,
-        #[serde_as(as = "U256AsBigDecimal")]
-        pub transaction_id: U256,
-        pub transaction_index: u64,
-    }
-
     /// Represents deserialized L2 transaction entry point values.
     #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
         External,
@@ -133,6 +135,7 @@ pub mod transaction {
     /// Represents deserialized L2 to L1 message.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub from_address: H256,
@@ -143,16 +146,25 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction receipt data.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct Receipt {
-        #[serde(flatten)]
-        pub common: Common,
+        #[serde_as(as = "U256AsBigDecimal")]
+        pub block_id: U256,
+        #[serde_as(as = "U256AsBigDecimal")]
+        pub block_number: U256,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
+        pub status: Status,
+        #[serde_as(as = "U256AsBigDecimal")]
+        pub transaction_id: U256,
+        pub transaction_index: u64,
     }
 
     /// Represents deserialized object containing L2 contract address and transaction type.
     #[serde_with::serde_as]
     #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct Source {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub contract_address: H256,
@@ -161,6 +173,7 @@ pub mod transaction {
 
     /// L2 transaction status values.
     #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub enum Status {
         #[serde(rename = "NOT_RECEIVED")]
         NotReceived,
@@ -177,12 +190,11 @@ pub mod transaction {
     /// Represents deserialized L2 transaction data.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct Transaction {
         #[serde(default)]
         #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
         pub calldata: Option<Vec<U256>>,
-
-        // #[serde(deserialize_with = "from_hex_str")]
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub contract_address: H256,
         #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
@@ -195,6 +207,7 @@ pub mod transaction {
 
     /// Describes L2 transaction types.
     #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub enum Type {
         #[serde(rename = "DEPLOY")]
         Deploy,
