@@ -24,7 +24,7 @@ impl FileConfig {
         Self::from_str(&file_contents)
     }
 
-    /// Parses the file at the [default filepath](DEFAULT_FILEPATH).
+    /// Parses the file at the [default filepath](static@DEFAULT_FILEPATH).
     pub fn from_default_filepath() -> std::io::Result<Self> {
         Self::from_filepath(&DEFAULT_FILEPATH)
     }

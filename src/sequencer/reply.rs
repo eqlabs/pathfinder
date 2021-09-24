@@ -1,30 +1,27 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-//! __Warning!__Prone to change as the structures are solely based on reverse
-//! engineering raw API replies!
-use crate::sequencer::deserialize::{
-    from_decimal, from_decimal_array, from_decimal_str_keyed_map, from_hex_str,
-};
+use crate::sequencer::serde::{H256AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr};
 use serde::Deserialize;
 use std::collections::HashMap;
 use web3::types::{H256, U256};
 
 /// Used to deserialize replies to [Client::block](crate::sequencer::Client::block) and
 /// [Client::latest_block](crate::sequencer::Client::latest_block).
+#[serde_with::serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct Block {
-    #[serde(deserialize_with = "from_decimal")]
+    #[serde_as(as = "U256AsBigDecimal")]
     pub block_id: U256,
-    #[serde(deserialize_with = "from_decimal")]
+    #[serde_as(as = "U256AsBigDecimal")]
     pub previous_block_id: U256,
-    #[serde(deserialize_with = "from_decimal")]
+    #[serde_as(as = "U256AsBigDecimal")]
     pub sequence_number: U256,
-    #[serde(deserialize_with = "from_hex_str")]
+    #[serde_as(as = "H256AsRelaxedHexStr")]
     pub state_root: H256,
     pub status: block::Status,
     pub timestamp: u64,
-    #[serde(deserialize_with = "from_decimal_str_keyed_map")]
+    #[serde_as(as = "HashMap<U256AsDecimalStr, _>")]
     pub transaction_receipts: HashMap<U256, transaction::Receipt>,
-    #[serde(deserialize_with = "from_decimal_str_keyed_map")]
+    #[serde_as(as = "HashMap<U256AsDecimalStr, _>")]
     pub transactions: HashMap<U256, transaction::Transaction>,
 }
 
@@ -34,17 +31,19 @@ pub mod block {
 }
 
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
+#[serde_with::serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct Call {
-    #[serde(deserialize_with = "from_decimal_array")]
+    #[serde_as(as = "Vec<U256AsBigDecimal>")]
     pub result: Vec<U256>,
 }
 
 /// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
+#[serde_with::serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct Code {
     pub abi: Vec<code::Abi>,
-    #[serde(deserialize_with = "from_decimal_array")]
+    #[serde_as(as = "Vec<U256AsBigDecimal>")]
     pub bytecode: Vec<U256>,
 }
 
@@ -94,31 +93,32 @@ pub struct Transaction {
 }
 
 /// Used to deserialize a reply from [Client::transaction_status](crate::sequencer::Client::transaction_status).
+#[serde_with::serde_as]
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 pub struct TransactionStatus {
-    #[serde(deserialize_with = "from_decimal")]
+    #[serde_as(as = "U256AsBigDecimal")]
     pub block_id: U256,
     pub tx_status: transaction::Status,
 }
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    use crate::sequencer::deserialize::{
-        from_decimal, from_decimal_str_array, from_hex_str, from_optional_decimal_str_array,
-        from_optional_hex_str,
+    use crate::sequencer::serde::{
+        H160AsRelaxedHexStr, H256AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr,
     };
     use serde::Deserialize;
     use web3::types::{H160, H256, U256};
 
     /// Represents deserialized common L2 transaction data used in more than one transaction related struct.
+    #[serde_with::serde_as]
     #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
     pub struct Common {
-        #[serde(deserialize_with = "from_decimal")]
+        #[serde_as(as = "U256AsBigDecimal")]
         pub block_id: U256,
-        #[serde(deserialize_with = "from_decimal")]
+        #[serde_as(as = "U256AsBigDecimal")]
         pub block_number: U256,
         pub status: Status,
-        #[serde(deserialize_with = "from_decimal")]
+        #[serde_as(as = "U256AsBigDecimal")]
         pub transaction_id: U256,
         pub transaction_index: u64,
     }
@@ -131,13 +131,14 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 to L1 message.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq)]
     pub struct L2ToL1Message {
-        #[serde(deserialize_with = "from_hex_str")]
+        #[serde_as(as = "H256AsRelaxedHexStr")]
         pub from_address: H256,
-        #[serde(deserialize_with = "from_decimal_str_array")]
+        #[serde_as(as = "Vec<U256AsDecimalStr>")]
         pub payload: Vec<U256>,
-        #[serde(deserialize_with = "from_hex_str")]
+        #[serde_as(as = "H160AsRelaxedHexStr")]
         pub to_address: H160,
     }
 
@@ -150,9 +151,10 @@ pub mod transaction {
     }
 
     /// Represents deserialized object containing L2 contract address and transaction type.
+    #[serde_with::serde_as]
     #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
     pub struct Source {
-        #[serde(deserialize_with = "from_hex_str")]
+        #[serde_as(as = "H256AsRelaxedHexStr")]
         pub contract_address: H256,
         pub r#type: Type,
     }
@@ -172,15 +174,18 @@ pub mod transaction {
         AcceptedOnChain,
     }
 
-    /// Represents deserialized L2 transaction data.  
+    /// Represents deserialized L2 transaction data.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq)]
     pub struct Transaction {
-        #[serde(deserialize_with = "from_optional_decimal_str_array")]
         #[serde(default)]
+        #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
         pub calldata: Option<Vec<U256>>,
-        #[serde(deserialize_with = "from_hex_str")]
+
+        // #[serde(deserialize_with = "from_hex_str")]
+        #[serde_as(as = "H256AsRelaxedHexStr")]
         pub contract_address: H256,
-        #[serde(deserialize_with = "from_optional_hex_str")]
+        #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
         #[serde(default)]
         pub entry_point_selector: Option<H256>,
         #[serde(default)]

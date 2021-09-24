@@ -1,7 +1,7 @@
 //! StarkNet L2 sequencer client.
-mod deserialize;
 pub mod reply;
 pub mod request;
+mod serde;
 
 use anyhow::Result;
 use reqwest::Url;
@@ -71,7 +71,7 @@ impl Client {
         Ok(resp_struct)
     }
 
-    /// Gets storage value associated with a `key` for a prticular contract.  
+    /// Gets storage value associated with a `key` for a prticular contract.
     pub async fn storage(&self, contract_addr: H256, key: U256) -> Result<U256> {
         let resp = reqwest::get(self.build_query(
             "get_storage_at",
