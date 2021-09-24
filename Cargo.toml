@@ -17,6 +17,3 @@ serde_with = "1.9.4"
 tokio = "1.11.0"
 toml = "0.5.8"
 web3 = "0.17.0"
-
-[dev-dependencies]
-pretty_assertions = "0.7.2"

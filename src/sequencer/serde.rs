@@ -25,14 +25,14 @@ serde_with::serde_conv!(
     pub H256AsRelaxedHexStr,
     H256,
     |h: &H256| *h,
-    |s: &str| -> anyhow::Result<H256> { from_relaxed_hex_str::<H256, {H256::len_bytes()}>(s) }
+    from_relaxed_hex_str::<H256, {H256::len_bytes()}>
 );
 
 serde_with::serde_conv!(
     pub H160AsRelaxedHexStr,
     H160,
     |h: &H160| *h,
-    |s: &str| -> anyhow::Result<H160> { from_relaxed_hex_str::<H160, {H160::len_bytes()}>(s) }
+    from_relaxed_hex_str::<H160, {H160::len_bytes()}>
 );
 
 /// Fixed-size unspecified hash deserialization helper function.

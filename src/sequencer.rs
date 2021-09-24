@@ -129,9 +129,8 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
     use std::str::FromStr;
-    use web3::types::{H160, U256};
+    use web3::types::U256;
 
     fn client() -> Client {
         const URL: &str = "https://alpha2.starknet.io/";
@@ -141,42 +140,19 @@ mod tests {
     #[tokio::test]
     async fn block_by_id_and_latest() {
         let client = client();
-        let result = client.block(U256::from(17187)).await.unwrap();
-        assert_eq!(result.status, reply::transaction::Status::AcceptedOnChain);
-        assert_eq!(result.timestamp, 1631895149);
-        assert_eq!(
-            result.transaction_receipts[&U256::from(161202)],
-            reply::transaction::Receipt {
-                common: reply::transaction::Common {
-                    block_id: U256::from(17187),
-                    block_number: U256::from(17187),
-                    status: reply::transaction::Status::AcceptedOnChain,
-                    transaction_id: U256::from(161202),
-                    transaction_index: 0
-                },
-                l2_to_l1_messages: vec![reply::transaction::L2ToL1Message {
-                    from_address: H256::from_str(
-                        "0x05cd364aae22ede8706f6952ddf22126a31cea3a22250fe7a799eb56ff7b3022"
-                    )
-                    .unwrap(),
-                    payload: vec![U256::from(12), U256::from(34)],
-                    to_address: H160::from_str("0xdae8e8de8d2382af5fdfad4b3daeb623bfe1e7af")
-                        .unwrap()
-                }]
-            }
-        );
-        assert_eq!(
-            result.state_root,
-            H256::from_str("00e49982d00a200d840bb0799506ba6085074aa18fe8a103cfe80276b0a6a7c1")
-                .unwrap()
-        );
-        let result = client.latest_block().await;
-        assert!(result.is_ok());
+        client
+            .block(U256::from(17187))
+            .await
+            .expect("Correctly deserialized reply.");
+        client
+            .latest_block()
+            .await
+            .expect("Correctly deserialized reply.");
     }
 
     #[tokio::test]
     async fn call() {
-        let reply = client()
+        client()
             .call(request::Call {
                 calldata: vec![],
                 contract_address: H256::from_str(
@@ -189,18 +165,12 @@ mod tests {
                 .unwrap(),
             })
             .await
-            .unwrap();
-        assert_eq!(
-            reply,
-            reply::Call {
-                result: vec![U256::from(9999)]
-            }
-        );
+            .expect("Correctly deserialized reply.");
     }
 
     #[tokio::test]
     async fn code() {
-        let reply = client()
+        client()
             .code(
                 H256::from_str(
                     "0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc",
@@ -208,38 +178,12 @@ mod tests {
                 .unwrap(),
             )
             .await
-            .unwrap();
-        assert_eq!(
-            reply.abi,
-            vec![
-                reply::code::Abi {
-                    inputs: vec![reply::code::abi::Input {
-                        name: "amount".to_owned(),
-                        r#type: "felt".to_owned()
-                    }],
-                    outputs: vec![],
-                    name: "increase_balance".to_owned(),
-                    state_mutability: None,
-                    r#type: "function".to_owned(),
-                },
-                reply::code::Abi {
-                    inputs: vec![],
-                    outputs: vec![reply::code::abi::Output {
-                        name: "res".to_owned(),
-                        r#type: "felt".to_owned()
-                    }],
-                    name: "get_balance".to_owned(),
-                    state_mutability: Some("view".to_owned()),
-                    r#type: "function".to_owned(),
-                }
-            ]
-        );
-        assert_eq!(reply.bytecode[0], U256::from(4612671182993063932u64));
+            .expect("Correctly deserialized reply.");
     }
 
     #[tokio::test]
     async fn storage() {
-        let reply = client()
+        client()
             .storage(
                 H256::from_str(
                     "0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc",
@@ -252,46 +196,22 @@ mod tests {
                 .unwrap(),
             )
             .await
-            .unwrap();
-        assert_eq!(reply, U256::from(19752));
+            .expect("Correctly deserialized reply.");
     }
 
     #[tokio::test]
     async fn transaction() {
-        let reply = client().transaction(U256::from(146566)).await.unwrap();
-        assert_eq!(
-            reply,
-            reply::Transaction {
-                source: reply::transaction::Source {
-                    contract_address: H256::from_str(
-                        "0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc"
-                    )
-                    .unwrap(),
-                    r#type: reply::transaction::Type::Deploy
-                },
-                common: reply::transaction::Common {
-                    block_id: U256::from(15946),
-                    transaction_index: 7,
-                    block_number: U256::from(15946),
-                    status: reply::transaction::Status::AcceptedOnChain,
-                    transaction_id: U256::from(146566),
-                }
-            }
-        );
+        client()
+            .transaction(U256::from(146566))
+            .await
+            .expect("Correctly deserialized reply.");
     }
 
     #[tokio::test]
     async fn transaction_status() {
-        let reply = client()
+        client()
             .transaction_status(U256::from(146566))
             .await
-            .unwrap();
-        assert_eq!(
-            reply,
-            reply::TransactionStatus {
-                block_id: U256::from(15946),
-                tx_status: reply::transaction::Status::AcceptedOnChain,
-            }
-        );
+            .expect("Correctly deserialized reply.");
     }
 }
