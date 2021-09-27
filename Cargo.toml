@@ -8,6 +8,7 @@ edition = "2018"
 anyhow = "1.0.44"
 bigdecimal = { version = "0.2.0", features = ["serde"] }
 clap = "2.33.3"
+enum-iterator = "0.7.0"
 hex = "0.4.3"
 home = "0.5.3"
 lazy_static = "1.4.0"
