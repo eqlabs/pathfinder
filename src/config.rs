@@ -2,15 +2,14 @@
 mod builder;
 mod cli;
 mod file;
+mod value;
 
-use std::{fmt::Display, path::PathBuf, str::FromStr};
-
+use anyhow::Result;
 use enum_iterator::IntoEnumIterator;
 use reqwest::Url;
+use std::{fmt::Display, net::IpAddr, path::PathBuf, str::FromStr};
 
 /// Possible configuration options.
-// TODO: remove this once more variants with other prefixes have been added.
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Clone, Copy, Hash, Eq, IntoEnumIterator)]
 pub enum ConfigOption {
     /// The Ethereum URL.
@@ -19,6 +18,12 @@ pub enum ConfigOption {
     EthereumUser,
     /// The Ethereum password.
     EthereumPassword,
+    /// Enable HTTP-RPC server.
+    HttpRpcEnable,
+    /// The HTTP-RPC server listening interface.
+    HttpRpcAddress,
+    /// The HTTP-RPC server listening port.
+    HttpRpcPort,
 }
 
 impl Display for ConfigOption {
@@ -27,6 +32,9 @@ impl Display for ConfigOption {
             ConfigOption::EthereumUrl => f.write_str("Ethereum URL"),
             ConfigOption::EthereumUser => f.write_str("Ethereum user"),
             ConfigOption::EthereumPassword => f.write_str("Ethereum password"),
+            ConfigOption::HttpRpcEnable => f.write_str("Enable HTTP-RPC"),
+            ConfigOption::HttpRpcAddress => f.write_str("HTTP-RPC interface"),
+            ConfigOption::HttpRpcPort => f.write_str("HTTP-RPC port"),
         }
     }
 }
@@ -42,11 +50,24 @@ pub struct EthereumConfig {
     pub password: Option<String>,
 }
 
+/// HTTP-RPC server parameters.
+#[derive(Debug, PartialEq)]
+pub struct HttpRpcConfig {
+    /// Enable HTTP-RPC server.
+    pub enable: bool,
+    /// The HTTP-RPC server listening interface.
+    pub address: Option<IpAddr>,
+    /// The HTTP-RPC server listening port.
+    pub port: Option<u16>,
+}
+
 /// Node configuration options.
 #[derive(Debug, PartialEq)]
 pub struct Configuration {
     /// The Ethereum settings.
     pub ethereum: EthereumConfig,
+    /// The HTTP-RPC server settings.
+    pub http_rpc: HttpRpcConfig,
 }
 
 impl Configuration {
@@ -65,7 +86,7 @@ impl Configuration {
     ///
     /// Note: This will terminate the program if invalid command-line arguments are supplied.
     ///       This is intended, as [clap] will show the program usage / help.
-    pub fn parse_cmd_line_and_cfg_file() -> std::io::Result<Self> {
+    pub fn parse_cmd_line_and_cfg_file() -> Result<Self> {
         // Parse command-line arguments. This must be first in order to use
         // users config filepath (if supplied).
         let (cfg_filepath, cli_cfg) = cli::parse_cmd_line();
@@ -74,15 +95,13 @@ impl Configuration {
         // Default path is allowed to not exist.
         let file_cfg = match cfg_filepath {
             Some(filepath) => {
-                let filepath = PathBuf::from_str(&filepath).map_err(|err| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidInput, err.to_string())
-                })?;
+                let filepath = PathBuf::from_str(&filepath)?;
                 Some(file::config_from_filepath(&filepath)?)
             }
             None => match file::config_from_default_filepath() {
                 Ok(config) => Some(config),
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-                Err(err) => return Err(err),
+                Err(err) => return Err(err.into()),
             },
         };
 

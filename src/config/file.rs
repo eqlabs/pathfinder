@@ -1,9 +1,11 @@
 //! TOML configuration file parsing
-use std::{path::PathBuf, str::FromStr};
-
+use crate::config::{
+    builder::ConfigBuilder,
+    value::{IpAddrAsString, UrlAsString},
+};
+use reqwest::Url;
 use serde::Deserialize;
-
-use crate::config::builder::ConfigBuilder;
+use std::{net::IpAddr, path::PathBuf, str::FromStr};
 
 lazy_static::lazy_static! {
     pub static ref DEFAULT_FILEPATH: PathBuf = home::home_dir()
@@ -12,27 +14,54 @@ lazy_static::lazy_static! {
             .join("config.toml");
 }
 
+#[serde_with::serde_as]
 #[derive(Deserialize, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct EthereumConfig {
-    url: Option<String>,
+    #[serde(default)]
+    #[serde_as(as = "Option<UrlAsString>")]
+    url: Option<Url>,
     user: Option<String>,
     password: Option<String>,
 }
 
+#[serde_with::serde_as]
 #[derive(Deserialize, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HttpRpcConfig {
+    enable: Option<bool>,
+    #[serde(default)]
+    #[serde_as(as = "Option<IpAddrAsString>")]
+    address: Option<IpAddr>,
+    port: Option<u16>,
+}
+
+#[derive(Deserialize, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct FileConfig {
     ethereum: Option<EthereumConfig>,
+    #[serde(rename = "http-rpc")]
+    http_rpc: Option<HttpRpcConfig>,
 }
 
 impl FileConfig {
+    /// Consumes a [FileConfig] to produce a [ConfigBuilder].
     fn into_config_options(self) -> ConfigBuilder {
         use crate::config::ConfigOption;
-        match self.ethereum {
+        let builder = match self.ethereum {
             Some(eth) => ConfigBuilder::default()
                 .with(ConfigOption::EthereumUrl, eth.url)
                 .with(ConfigOption::EthereumUser, eth.user)
                 .with(ConfigOption::EthereumPassword, eth.password),
             None => ConfigBuilder::default(),
+        };
+
+        match self.http_rpc {
+            Some(http) => builder
+                .with(ConfigOption::HttpRpcEnable, http.enable)
+                .with(ConfigOption::HttpRpcAddress, http.address)
+                .with(ConfigOption::HttpRpcPort, http.port),
+            None => builder,
         }
     }
 }
@@ -48,6 +77,7 @@ pub fn config_from_default_filepath() -> std::io::Result<ConfigBuilder> {
     config_from_filepath(&DEFAULT_FILEPATH)
 }
 
+/// Deserializes a [ConfigBuilder] from a toml formatted str.
 fn config_from_str(s: &str) -> std::io::Result<ConfigBuilder> {
     toml::from_str::<FileConfig>(s)
         .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string()))
@@ -61,46 +91,70 @@ mod tests {
 
     #[test]
     fn ethereum_url() {
-        let value = "value".to_owned();
+        let value = "http://localhost";
         let toml = format!(r#"ethereum.url = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUrl), Some(value));
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::EthereumUrl)
+                .expect("Take works fine."),
+            Some(Url::from_str(value).expect("Valid URL."))
+        );
     }
 
     #[test]
     fn ethereum_user() {
-        let value = "value".to_owned();
+        let value = "value";
         let toml = format!(r#"ethereum.user = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(value));
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::EthereumUrl)
+                .expect("Take works fine."),
+            Some(value.to_owned())
+        );
     }
 
     #[test]
     fn ethereum_password() {
-        let value = "value".to_owned();
+        let value = "value";
         let toml = format!(r#"ethereum.password = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(value));
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::EthereumUrl)
+                .expect("Take works fine."),
+            Some(value.to_owned())
+        );
     }
 
     #[test]
     fn ethereum_section() {
         let user = "user".to_owned();
-        let url = "url".to_owned();
+        let url = "http://localhost";
         let password = "password".to_owned();
 
         let toml = format!(
             r#"[ethereum]
-user = "{}"
-url = "{}"
-password = "{}""#,
+    user = "{}"
+    url = "{}"
+    password = "{}""#,
             user, url, password
         );
 
         let mut cfg = config_from_str(&toml).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(user));
-        assert_eq!(cfg.take(ConfigOption::EthereumUrl), Some(url));
-        assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(password));
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::EthereumUser)
+                .expect("Take works fine."),
+            Some(user)
+        );
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::EthereumUrl)
+                .expect("Take works fine."),
+            Some(Url::from_str(url).expect("Valid URL."))
+        );
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::EthereumPassword)
+                .expect("Take works fine."),
+            Some(password)
+        );
     }
 
     #[test]

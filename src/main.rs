@@ -1,5 +1,6 @@
 mod config;
 mod ethereum;
+mod rpc;
 mod sequencer;
 
 #[tokio::main]
@@ -7,13 +8,21 @@ async fn main() {
     let config =
         config::Configuration::parse_cmd_line_and_cfg_file().expect("Configuration failed");
 
-    let l1_client =
-        ethereum::Client::new(config.ethereum).expect("Failed to create Ethereum client");
+    eprintln!("CFG: {:#?}", config);
 
-    let state_root = l1_client
-        .latest_state_root()
-        .await
-        .expect("Failed to query L1 state root");
+    // let l1_client =
+    //     ethereum::Client::new(config.ethereum).expect("Failed to create Ethereum client");
 
-    println!("The latest state root hash is: {:#16x}", state_root);
+    // let state_root = l1_client
+    //     .latest_state_root()
+    //     .await
+    //     .expect("Failed to query L1 state root");
+
+    // println!("The latest state root hash is: {:#16x}", state_root);
+
+    // let addr = rpc::rpc_server::run_server()
+    //     .await
+    //     .expect("Should not fail.");
+
+    // eprintln!("END RPC server on address: {}", addr);
 }

@@ -1,4 +1,5 @@
 [package]
+authors = ["Mirko von Leipzig <joonas.koivunen@gmail.com>"]
 name = "starknet"
 version = "0.1.0"
 edition = "2018"
@@ -6,11 +7,14 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.44"
-bigdecimal = { version = "0.2.0", features = ["serde"] }
+bigdecimal = { version = "0.3.0", features = ["serde"] }
 clap = "2.33.3"
+derive_more = "0.99.16"
 enum-iterator = "0.7.0"
+from_variants = "0.6.0"
 hex = "0.4.3"
 home = "0.5.3"
+jsonrpsee = { version = "0.3.1", features = ["macros", "types", "server"] }
 lazy_static = "1.4.0"
 reqwest = { version = "0.11.4", features = ["json"] }
 serde = { version = "1.0.130", features = ["derive"] }
