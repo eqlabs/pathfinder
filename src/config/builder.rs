@@ -131,7 +131,7 @@ mod tests {
 
         if expected.is_some() {
             assert_eq!(
-                b.take_into_optional(input).expect(msg.as_str()),
+                b.take_into_optional(input).expect(&msg),
                 *expected,
                 "see line: {}",
                 line
@@ -139,7 +139,7 @@ mod tests {
         }
 
         assert_eq!(
-            b.take_into_optional::<T>(input).expect(msg.as_str()),
+            b.take_into_optional::<T>(input).expect(&msg),
             None,
             "see line: {}",
             line
@@ -169,9 +169,9 @@ mod tests {
         b = b.with(ConfigOption::EthereumPassword, strval.clone());
         b = b.with(ConfigOption::EthereumUrl, urlval.clone());
         b = b.with(ConfigOption::EthereumUser, strval.clone());
-        b = b.with(ConfigOption::HttpRpcAddress, ipval.clone());
-        b = b.with(ConfigOption::HttpRpcEnable, bval.clone());
-        b = b.with(ConfigOption::HttpRpcPort, u16val.clone());
+        b = b.with(ConfigOption::HttpRpcAddress, ipval);
+        b = b.with(ConfigOption::HttpRpcEnable, bval);
+        b = b.with(ConfigOption::HttpRpcPort, u16val);
         assert_take_into_optional_returns!(b, ConfigOption::EthereumPassword, &strval);
         assert_take_into_optional_returns!(b, ConfigOption::EthereumUrl, &urlval);
         assert_take_into_optional_returns!(b, ConfigOption::EthereumUser, &strval);
@@ -217,14 +217,14 @@ mod tests {
             builder = builder.with(ConfigOption::EthereumPassword, strval.clone());
             values.insert(ConfigOption::EthereumPassword, strval.clone().into());
             builder = builder.with(ConfigOption::EthereumUrl, urlval.clone());
-            values.insert(ConfigOption::EthereumUrl, urlval.clone().into());
+            values.insert(ConfigOption::EthereumUrl, urlval.into());
             builder = builder.with(ConfigOption::EthereumUser, strval.clone());
-            values.insert(ConfigOption::EthereumUser, strval.clone().into());
-            builder = builder.with(ConfigOption::HttpRpcAddress, ipval.clone());
+            values.insert(ConfigOption::EthereumUser, strval.into());
+            builder = builder.with(ConfigOption::HttpRpcAddress, ipval);
             values.insert(ConfigOption::HttpRpcAddress, ipval.into());
-            builder = builder.with(ConfigOption::HttpRpcEnable, bval.clone());
+            builder = builder.with(ConfigOption::HttpRpcEnable, bval);
             values.insert(ConfigOption::HttpRpcEnable, bval.into());
-            builder = builder.with(ConfigOption::HttpRpcPort, u16val.clone());
+            builder = builder.with(ConfigOption::HttpRpcPort, u16val);
             values.insert(ConfigOption::HttpRpcPort, u16val.into());
 
             (builder, values)

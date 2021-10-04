@@ -29,8 +29,7 @@ pub fn parse_cmd_line() -> (Option<String>, ConfigBuilder) {
     }
 }
 
-/// A wrapper around [clap::App]'s `get_matches_from_safe()` which returns
-/// a [ConfigOptions].
+/// A wrapper around [clap::App]'s `get_matches_from_safe()`.
 fn parse_args<I, T>(args: I) -> clap::Result<(Option<String>, ConfigBuilder)>
 where
     I: IntoIterator<Item = T>,
@@ -197,7 +196,7 @@ mod tests {
     #[test]
     fn http_rpc_addr_long() {
         let value = "127.0.0.1";
-        let (_, mut cfg) = parse_args(vec!["bin name", "--http.address", &value]).unwrap();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--http.address", value]).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::HttpRpcAddress)
                 .expect("Take works"),
