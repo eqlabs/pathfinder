@@ -83,14 +83,14 @@ mod tests {
         fn odd() {
             assert_eq!(
                 from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>("0")
-                    .expect("Odd number of hex digits is fine."),
+                    .expect("Odd number of hex digits is fine"),
                 H128::zero()
             );
             assert_eq!(
                 from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                     "1234567890123456789012345678901"
                 )
-                .expect("The max number of hex digits less 1 is also fine."),
+                .expect("The max number of hex digits less 1 is also fine"),
                 H128::from_str("0x01234567890123456789012345678901").unwrap()
             );
         }
@@ -101,14 +101,14 @@ mod tests {
                 from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                     "0x0"
                 )
-                .expect("Odd number of 0x-prefixed hex digits is fine."),
+                .expect("Odd number of 0x-prefixed hex digits is fine"),
                 H128::zero()
             );
             assert_eq!(
                 from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                     "0x1234567890123456789012345678901"
                 )
-                .expect("The max number of hex digits less 1 with a 0x-prefix is also fine."),
+                .expect("The max number of hex digits less 1 with a 0x-prefix is also fine"),
                 H128::from_str("0x01234567890123456789012345678901").unwrap()
             );
         }
@@ -119,7 +119,7 @@ mod tests {
                 from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                     "00"
                 )
-                .expect("Even number of hex digits but less than the max is ok."),
+                .expect("Even number of hex digits but less than the max is ok"),
                 H128::zero()
             );
         }
@@ -130,7 +130,7 @@ mod tests {
                 from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                     "0x00"
                 )
-                .expect("The same as above but 0x-prefixed is ok too."),
+                .expect("The same as above but 0x-prefixed is ok too"),
                 H128::zero()
             );
         }
@@ -141,7 +141,7 @@ mod tests {
                 from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                     "12345678901234567890123456789012"
                 )
-                .expect("32 hex digits, just as the target type would expect is perfectly ok."),
+                .expect("32 hex digits, just as the target type would expect is perfectly ok"),
                 H128::from_str("0x12345678901234567890123456789012").unwrap()
             );
         }
@@ -152,7 +152,7 @@ mod tests {
                 from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                     "0x12345678901234567890123456789012"
                 )
-                .expect("The same as above but 0x-prefixed is ok too."),
+                .expect("The same as above but 0x-prefixed is ok too"),
                 H128::from_str("0x12345678901234567890123456789012").unwrap()
             );
         }
@@ -160,13 +160,13 @@ mod tests {
         #[test]
         fn empty() {
             from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>("")
-                .expect_err("Empty string doesn't make sense.");
+                .expect_err("Empty string doesn't make sense");
         }
 
         #[test]
         fn prefix_only() {
             from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>("0x")
-                .expect_err("The prefix alone is treated like an empty string too.");
+                .expect_err("The prefix alone is treated like an empty string too");
         }
 
         #[test]
@@ -174,7 +174,7 @@ mod tests {
             from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                 "0x12xy",
             )
-            .expect_err("Contains invalid characters.");
+            .expect_err("Contains invalid characters");
         }
 
         #[test]
@@ -182,7 +182,7 @@ mod tests {
             from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                 "123456789012345678901234567890123",
             )
-            .expect_err("Hex string is too long, this one has 33 digits.");
+            .expect_err("Hex string is too long, this one has 33 digits");
         }
 
         #[test]
@@ -190,7 +190,7 @@ mod tests {
             from_relaxed_hex_str::<H128, { H128::len_bytes() }, { H128::len_bytes() * 2 }>(
                 "0x123456789012345678901234567890123",
             )
-            .expect_err("The same as above but with a 0x-prefix.");
+            .expect_err("The same as above but with a 0x-prefix");
         }
     }
 }

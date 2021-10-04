@@ -162,8 +162,8 @@ mod tests {
     fn with_take_into_optional() {
         let mut b = ConfigBuilder::default();
         let strval = Some("Value".to_owned());
-        let urlval = Some(Url::from_str("https://any.com").expect("Valid URL."));
-        let ipval = Some(IpAddr::from_str("127.0.0.1").expect("Valid IP."));
+        let urlval = Some(Url::from_str("https://any.com").expect("Valid URL"));
+        let ipval = Some(IpAddr::from_str("127.0.0.1").expect("Valid IP"));
         let bval = Some(true);
         let u16val = Some(1234);
         b = b.with(ConfigOption::EthereumPassword, strval.clone());
@@ -210,8 +210,8 @@ mod tests {
             let mut values = HashMap::new();
 
             let strval = Some(string.to_owned());
-            let urlval = Some(Url::from_str(url).expect("Valid URL."));
-            let ipval = Some(IpAddr::from_str(ip).expect("Valid IP."));
+            let urlval = Some(Url::from_str(url).expect("Valid URL"));
+            let ipval = Some(IpAddr::from_str(ip).expect("Valid IP"));
             let bval = Some(boolean);
             let u16val = Some(uint16);
             builder = builder.with(ConfigOption::EthereumPassword, strval.clone());
@@ -247,7 +247,7 @@ mod tests {
 
             for option in ConfigOption::into_enum_iter() {
                 assert_eq!(
-                    merged.take_into_optional(option).expect("No fail."),
+                    merged.take_into_optional(option).expect("Take works"),
                     values_1.remove(&option).unwrap().into()
                 );
             }
@@ -262,7 +262,7 @@ mod tests {
 
             for option in ConfigOption::into_enum_iter() {
                 assert_eq!(
-                    merged.take_into_optional(option).expect("No fail."),
+                    merged.take_into_optional(option).expect("Take works"),
                     values.remove(&option).unwrap().into()
                 );
             }
@@ -277,7 +277,7 @@ mod tests {
 
             for option in ConfigOption::into_enum_iter() {
                 assert_eq!(
-                    merged.take_into_optional(option).expect("No fail."),
+                    merged.take_into_optional(option).expect("Take works"),
                     values.remove(&option).unwrap().into()
                 );
             }
@@ -302,7 +302,7 @@ mod tests {
             ConfigBuilder::default()
                 .with(
                     ConfigOption::EthereumUrl,
-                    Some(Url::from_str("http://localhost").expect("Valid URL.")),
+                    Some(Url::from_str("http://localhost").expect("Valid URL")),
                 )
                 .with(ConfigOption::HttpRpcEnable, Some(true))
         }
@@ -312,7 +312,7 @@ mod tests {
             let builder = builder_with_all_required();
             builder
                 .try_build()
-                .expect("Succeeds with all required options.");
+                .expect("Succeeds with all required options");
         }
 
         #[test]
@@ -321,11 +321,11 @@ mod tests {
             let mut builder = builder_with_all_required();
             builder
                 .take_into::<Url>(ConfigOption::EthereumUrl)
-                .expect("Take works fine.");
+                .expect("Take works");
             builder
                 .take_into::<bool>(ConfigOption::HttpRpcEnable)
-                .expect("Take works fine.");
-            builder.try_build().expect_err("");
+                .expect("Take works");
+            builder.try_build().expect_err("Build fails");
         }
     }
 }

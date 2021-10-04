@@ -36,8 +36,8 @@ pub mod block {
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Call {
-    #[serde_as(as = "Vec<U256AsBigDecimal>")]
-    pub result: Vec<U256>,
+    #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+    pub result: Vec<H256>,
 }
 
 /// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
@@ -46,8 +46,8 @@ pub struct Call {
 #[serde(deny_unknown_fields)]
 pub struct Code {
     pub abi: Vec<code::Abi>,
-    #[serde_as(as = "Vec<U256AsBigDecimal>")]
-    pub bytecode: Vec<U256>,
+    #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+    pub bytecode: Vec<H256>,
 }
 
 /// Types used when deserializing L2 contract related data.

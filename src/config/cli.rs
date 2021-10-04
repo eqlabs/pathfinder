@@ -167,8 +167,8 @@ mod tests {
         let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.url", value]).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::EthereumUrl)
-                .expect("Take works fine."),
-            Some(Url::from_str(value).expect("Valid URL."))
+                .expect("Take works"),
+            Some(Url::from_str(value).expect("Valid URL"))
         );
     }
 
@@ -178,7 +178,7 @@ mod tests {
         let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.user", &value]).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::EthereumUser)
-                .expect("Take works fine."),
+                .expect("Take works"),
             Some(value)
         );
     }
@@ -189,7 +189,7 @@ mod tests {
         let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.password", &value]).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::EthereumPassword)
-                .expect("Take works fine."),
+                .expect("Take works"),
             Some(value)
         );
     }
@@ -200,8 +200,8 @@ mod tests {
         let (_, mut cfg) = parse_args(vec!["bin name", "--http.address", &value]).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::HttpRpcAddress)
-                .expect("Take works fine."),
-            Some(IpAddr::from_str(value).expect("Valid IP."))
+                .expect("Take works"),
+            Some(IpAddr::from_str(value).expect("Valid IP"))
         );
     }
 
@@ -210,7 +210,7 @@ mod tests {
         let (_, mut cfg) = parse_args(vec!["bin name", "--http"]).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::HttpRpcEnable)
-                .expect("Take works fine."),
+                .expect("Take works"),
             Some(true)
         );
     }
@@ -220,7 +220,7 @@ mod tests {
         let (_, mut cfg) = parse_args(vec!["bin name", "--http.port", "1234"]).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::HttpRpcPort)
-                .expect("Take works fine."),
+                .expect("Take works"),
             Some(1234_u16)
         );
     }

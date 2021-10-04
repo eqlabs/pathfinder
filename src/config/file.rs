@@ -96,8 +96,8 @@ mod tests {
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::EthereumUrl)
-                .expect("Take works fine."),
-            Some(Url::from_str(value).expect("Valid URL."))
+                .expect("Take works"),
+            Some(Url::from_str(value).expect("Valid URL"))
         );
     }
 
@@ -108,7 +108,7 @@ mod tests {
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::EthereumUrl)
-                .expect("Take works fine."),
+                .expect("Take works"),
             Some(value.to_owned())
         );
     }
@@ -120,7 +120,7 @@ mod tests {
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::EthereumUrl)
-                .expect("Take works fine."),
+                .expect("Take works"),
             Some(value.to_owned())
         );
     }
@@ -142,17 +142,17 @@ mod tests {
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(
             cfg.take_into_optional(ConfigOption::EthereumUser)
-                .expect("Take works fine."),
+                .expect("Take works"),
             Some(user)
         );
         assert_eq!(
             cfg.take_into_optional(ConfigOption::EthereumUrl)
-                .expect("Take works fine."),
-            Some(Url::from_str(url).expect("Valid URL."))
+                .expect("Take works"),
+            Some(Url::from_str(url).expect("Valid URL"))
         );
         assert_eq!(
             cfg.take_into_optional(ConfigOption::EthereumPassword)
-                .expect("Take works fine."),
+                .expect("Take works"),
             Some(password)
         );
     }
