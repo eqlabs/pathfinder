@@ -72,7 +72,7 @@ impl Client {
     }
 
     /// Gets storage value associated with a `key` for a prticular contract.
-    pub async fn storage(&self, contract_addr: H256, key: U256) -> Result<U256> {
+    pub async fn storage(&self, contract_addr: H256, key: U256) -> Result<H256> {
         let resp = reqwest::get(self.build_query(
             "get_storage_at",
             &[
@@ -83,7 +83,11 @@ impl Client {
         ))
         .await?;
         let resp_txt = resp.text().await?;
-        let value = U256::from_dec_str(resp_txt.as_str())?;
+        let resp_str = resp_txt.as_str();
+        let value =
+            serde::from_relaxed_hex_str::<H256, { H256::len_bytes() }, { H256::len_bytes() * 2 }>(
+                &resp_str[1..resp_str.len() - 1],
+            )?;
         Ok(value)
     }
 
@@ -119,7 +123,7 @@ impl Client {
         let mut query_url = self.sequencer_url.clone();
         query_url
             .path_segments_mut()
-            .expect("Base URL is valid.")
+            .expect("Base URL is valid")
             .extend(&["feeder_gateway", path_segment]);
         query_url.query_pairs_mut().extend_pairs(params);
         query_url
@@ -143,11 +147,11 @@ mod tests {
         client
             .block(U256::from(17187))
             .await
-            .expect("Correctly deserialized reply.");
+            .expect("Correctly deserialized reply");
         client
             .latest_block()
             .await
-            .expect("Correctly deserialized reply.");
+            .expect("Correctly deserialized reply");
     }
 
     #[tokio::test]
@@ -165,7 +169,7 @@ mod tests {
                 .unwrap(),
             })
             .await
-            .expect("Correctly deserialized reply.");
+            .expect("Correctly deserialized reply");
     }
 
     #[tokio::test]
@@ -178,7 +182,7 @@ mod tests {
                 .unwrap(),
             )
             .await
-            .expect("Correctly deserialized reply.");
+            .expect("Correctly deserialized reply");
     }
 
     #[tokio::test]
@@ -196,7 +200,7 @@ mod tests {
                 .unwrap(),
             )
             .await
-            .expect("Correctly deserialized reply.");
+            .expect("Correctly deserialized reply");
     }
 
     #[tokio::test]
@@ -204,7 +208,7 @@ mod tests {
         client()
             .transaction(U256::from(146566))
             .await
-            .expect("Correctly deserialized reply.");
+            .expect("Correctly deserialized reply");
     }
 
     #[tokio::test]
@@ -212,6 +216,6 @@ mod tests {
         client()
             .transaction_status(U256::from(146566))
             .await
-            .expect("Correctly deserialized reply.");
+            .expect("Correctly deserialized reply");
     }
 }
