@@ -1,9 +1,14 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
 mod config;
 mod ethereum;
+mod rpc;
 mod sequencer;
 
 #[tokio::main]
 async fn main() {
+    println!("🏁 Starting node.");
+
     let config =
         config::Configuration::parse_cmd_line_and_cfg_file().expect("Configuration failed");
 
@@ -16,4 +21,13 @@ async fn main() {
         .expect("Failed to query L1 state root");
 
     println!("The latest state root hash is: {:#16x}", state_root);
+
+    rpc::rpc_server::run_server(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        9545,
+    ))
+    .await
+    .expect("⚠️ Failed to start HTTP-RPC server");
+
+    println!("🛑 Node stopped.");
 }

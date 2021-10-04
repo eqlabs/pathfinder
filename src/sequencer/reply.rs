@@ -1,13 +1,13 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use crate::sequencer::serde::{H256AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use web3::types::{H256, U256};
 
 /// Used to deserialize replies to [Client::block](crate::sequencer::Client::block) and
 /// [Client::latest_block](crate::sequencer::Client::latest_block).
 #[serde_with::serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     #[serde_as(as = "U256AsBigDecimal")]
@@ -33,7 +33,7 @@ pub mod block {
 
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
 #[serde_with::serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Call {
     #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
@@ -42,7 +42,7 @@ pub struct Call {
 
 /// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
 #[serde_with::serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Code {
     pub abi: Vec<code::Abi>,
@@ -52,10 +52,10 @@ pub struct Code {
 
 /// Types used when deserializing L2 contract related data.
 pub mod code {
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
 
     /// Represents deserialized L2 contract Application Blockchain Interface element.
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Abi {
         pub inputs: Vec<abi::Input>,
@@ -69,10 +69,10 @@ pub mod code {
 
     /// Types used when deserializing L2 contract ABI related data.
     pub mod abi {
-        use serde::Deserialize;
+        use serde::{Deserialize, Serialize};
 
         /// Represents deserialized L2 contract ABI input element.
-        #[derive(Clone, Debug, Deserialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Input {
             pub name: String,
@@ -80,7 +80,7 @@ pub mod code {
         }
 
         /// Represents deserialized L2 contract ABI output element.
-        #[derive(Clone, Debug, Deserialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Output {
             pub name: String,
@@ -91,7 +91,7 @@ pub mod code {
 
 /// Used to deserialize a reply from [Client::transaction](crate::sequencer::Client::transaction).
 #[serde_with::serde_as]
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Transaction {
     #[serde_as(as = "U256AsBigDecimal")]
@@ -108,7 +108,7 @@ pub struct Transaction {
 
 /// Used to deserialize a reply from [Client::transaction_status](crate::sequencer::Client::transaction_status).
 #[serde_with::serde_as]
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionStatus {
     #[serde_as(as = "U256AsBigDecimal")]
@@ -121,11 +121,11 @@ pub mod transaction {
     use crate::sequencer::serde::{
         H160AsRelaxedHexStr, H256AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr,
     };
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     use web3::types::{H160, H256, U256};
 
     /// Represents deserialized L2 transaction entry point values.
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
@@ -134,7 +134,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 to L1 message.
     #[serde_with::serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         #[serde_as(as = "H256AsRelaxedHexStr")]
@@ -147,7 +147,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 transaction receipt data.
     #[serde_with::serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
         #[serde_as(as = "U256AsBigDecimal")]
@@ -163,7 +163,7 @@ pub mod transaction {
 
     /// Represents deserialized object containing L2 contract address and transaction type.
     #[serde_with::serde_as]
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Source {
         #[serde_as(as = "H256AsRelaxedHexStr")]
@@ -172,7 +172,7 @@ pub mod transaction {
     }
 
     /// L2 transaction status values.
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub enum Status {
         #[serde(rename = "NOT_RECEIVED")]
@@ -189,7 +189,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 transaction data.
     #[serde_with::serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Transaction {
         #[serde(default)]
@@ -206,7 +206,7 @@ pub mod transaction {
     }
 
     /// Describes L2 transaction types.
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub enum Type {
         #[serde(rename = "DEPLOY")]
