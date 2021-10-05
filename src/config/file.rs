@@ -107,7 +107,7 @@ mod tests {
         let toml = format!(r#"ethereum.user = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(
-            cfg.take_into_optional(ConfigOption::EthereumUrl)
+            cfg.take_into_optional(ConfigOption::EthereumUser)
                 .expect("Take works"),
             Some(value.to_owned())
         );
@@ -119,7 +119,7 @@ mod tests {
         let toml = format!(r#"ethereum.password = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(
-            cfg.take_into_optional(ConfigOption::EthereumUrl)
+            cfg.take_into_optional(ConfigOption::EthereumPassword)
                 .expect("Take works"),
             Some(value.to_owned())
         );
@@ -154,6 +154,74 @@ mod tests {
             cfg.take_into_optional(ConfigOption::EthereumPassword)
                 .expect("Take works"),
             Some(password)
+        );
+    }
+
+    #[test]
+    fn http_rpc_addr() {
+        let value = "127.0.0.1";
+        let toml = format!(r#"http-rpc.address = "{}""#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::HttpRpcAddress)
+                .expect("Take works"),
+            Some(IpAddr::from_str(value).expect("Valid IP"))
+        );
+    }
+
+    #[test]
+    fn http_rpc_port() {
+        let value = 1234_u16;
+        let toml = format!(r#"http-rpc.port = {}"#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::HttpRpcPort)
+                .expect("Take works"),
+            Some(value)
+        );
+    }
+
+    #[test]
+    fn http_rpc_enable() {
+        let value = true;
+        let toml = format!(r#"http-rpc.enable = {}"#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::HttpRpcEnable)
+                .expect("Take works"),
+            Some(value)
+        );
+    }
+
+    #[test]
+    fn http_rpc_section() {
+        let enable = true;
+        let address = "127.0.0.1";
+        let port = 1234_u16;
+
+        let toml = format!(
+            r#"[http-rpc]
+    enable = {}
+    address = "{}"
+    port = {}"#,
+            enable, address, port
+        );
+
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::HttpRpcEnable)
+                .expect("Take works"),
+            Some(enable)
+        );
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::HttpRpcAddress)
+                .expect("Take works"),
+            Some(IpAddr::from_str(address).expect("Valid IP"))
+        );
+        assert_eq!(
+            cfg.take_into_optional(ConfigOption::HttpRpcPort)
+                .expect("Take works"),
+            Some(port)
         );
     }
 

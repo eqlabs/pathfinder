@@ -5,10 +5,10 @@ mod sequencer;
 
 #[tokio::main]
 async fn main() {
+    println!("🏁 Starting node.");
+
     let config =
         config::Configuration::parse_cmd_line_and_cfg_file().expect("Configuration failed");
-
-    eprintln!("CFG: {:#?}", config);
 
     // let l1_client =
     //     ethereum::Client::new(config.ethereum).expect("Failed to create Ethereum client");
@@ -20,9 +20,9 @@ async fn main() {
 
     // println!("The latest state root hash is: {:#16x}", state_root);
 
-    // let addr = rpc::rpc_server::run_server()
-    //     .await
-    //     .expect("Should not fail.");
+    rpc::rpc_server::run_server(&config.http_rpc)
+        .await
+        .expect("Running HTTP-RPC server failed");
 
-    // eprintln!("END RPC server on address: {}", addr);
+    println!("🛑 Node stopped.");
 }

@@ -142,13 +142,13 @@ Examples:
         ).arg(
             Arg::with_name(HTTP_RPC_ADDR_KEY)
                 .long(HTTP_RPC_ADDR_KEY)
-                .help("HTTP-RPC server listening interface")
+                .help("HTTP-RPC server listening interface [default: 127.0.0.1]")
                 .takes_value(true)
                 .long_help("Used to specify a custom HTTP-RPC server listening interface"),
         ).arg(
             Arg::with_name(HTTP_RPC_PORT_KEY)
                 .long(HTTP_RPC_PORT_KEY)
-                .help("HTTP-RPC server listening port")
+                .help("HTTP-RPC server listening port [default: 9545]")
                 .takes_value(true)
                 .long_help("Used to specify a custom HTTP-RPC server listening port"),
         )

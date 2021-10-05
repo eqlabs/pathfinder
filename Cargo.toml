@@ -1,5 +1,8 @@
 [package]
-authors = ["Mirko von Leipzig <joonas.koivunen@gmail.com>"]
+authors = [
+    "Mirko von Leipzig <mirko.vonleipzig@gmail.com>",
+    "Krzysztof Lis <klis33@gmail.com>",
+]
 name = "starknet"
 version = "0.1.0"
 edition = "2018"
@@ -14,8 +17,14 @@ enum-iterator = "0.7.0"
 from_variants = "0.6.0"
 hex = "0.4.3"
 home = "0.5.3"
-jsonrpsee = { version = "0.3.1", features = ["macros", "types", "server"] }
+itertools = "0.10.1"
+# The latest stable revision on master for which jsonrpsee::proc_macros worked fine.
+# Unfortunately 0.3.1 has still some issues with jsonrpsee::proc_macros.
+jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", rev = "94c881b83c8fd5a3facba17a90c5a386467c44eb", features = [
+    "full",
+] }
 lazy_static = "1.4.0"
+log = "0.4.14"
 reqwest = { version = "0.11.4", features = ["json"] }
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = "1.0.68"

@@ -3,7 +3,12 @@
 
 use crate::config::{value::Value, ConfigOption, Configuration, EthereumConfig, HttpRpcConfig};
 use anyhow::{Context, Result};
-use std::{collections::HashMap, convert::TryInto, fmt::Display, net::IpAddr};
+use std::{
+    collections::HashMap,
+    convert::TryInto,
+    fmt::Display,
+    net::{IpAddr, Ipv4Addr},
+};
 
 /// A convenient way of collecting and merging configuration options.
 ///
@@ -48,16 +53,22 @@ impl ConfigBuilder {
         let eth_password = self.take_into_optional(ConfigOption::EthereumPassword)?;
 
         // HTTP-RPC server enable flag
-        let http_enable = self.take_into(ConfigOption::HttpRpcEnable)?;
+        let http_enable = self
+            .take_into_optional(ConfigOption::HttpRpcEnable)?
+            .unwrap_or_default();
         let http_address = if http_enable {
+            #[allow(clippy::unnecessary_lazy_evaluations)]
             self.take_into_optional::<IpAddr>(ConfigOption::HttpRpcAddress)
                 .with_context(|| "Invalid HTTP-RPC listening interface")?
+                .or_else(|| Some(Ipv4Addr::new(127, 0, 0, 1).into()))
         } else {
             None
         };
         let http_port = if http_enable {
+            #[allow(clippy::unnecessary_lazy_evaluations)]
             self.take_into_optional(ConfigOption::HttpRpcPort)
                 .with_context(|| "Invalid HTTP-RPC listening port")?
+                .or_else(|| Some(9545))
         } else {
             None
         };
@@ -299,12 +310,10 @@ mod tests {
 
         /// Creates a builder with only the required fields set to some valid value.
         fn builder_with_all_required() -> ConfigBuilder {
-            ConfigBuilder::default()
-                .with(
-                    ConfigOption::EthereumUrl,
-                    Some(Url::from_str("http://localhost").expect("Valid URL")),
-                )
-                .with(ConfigOption::HttpRpcEnable, Some(true))
+            ConfigBuilder::default().with(
+                ConfigOption::EthereumUrl,
+                Some(Url::from_str("http://localhost").expect("Valid URL")),
+            )
         }
 
         #[test]
@@ -321,9 +330,6 @@ mod tests {
             let mut builder = builder_with_all_required();
             builder
                 .take_into::<Url>(ConfigOption::EthereumUrl)
-                .expect("Take works");
-            builder
-                .take_into::<bool>(ConfigOption::HttpRpcEnable)
                 .expect("Take works");
             builder.try_build().expect_err("Build fails");
         }
