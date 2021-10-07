@@ -1,6 +1,4 @@
 //! Implementation of JSON-RPC endpoints.
-use std::collections::BTreeMap;
-
 use crate::{
     rpc::{
         rpc_trait::RpcApiServer,
