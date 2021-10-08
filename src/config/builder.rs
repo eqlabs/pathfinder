@@ -57,7 +57,6 @@ impl ConfigBuilder {
             .take_into_optional(ConfigOption::HttpRpcEnable)?
             .unwrap_or_default();
         let http_address = if http_enable {
-            #[allow(clippy::unnecessary_lazy_evaluations)]
             self.take_into_optional::<IpAddr>(ConfigOption::HttpRpcAddress)
                 .with_context(|| "Invalid HTTP-RPC listening interface")?
                 .or_else(|| Some(Ipv4Addr::new(127, 0, 0, 1).into()))
@@ -65,10 +64,9 @@ impl ConfigBuilder {
             None
         };
         let http_port = if http_enable {
-            #[allow(clippy::unnecessary_lazy_evaluations)]
             self.take_into_optional(ConfigOption::HttpRpcPort)
                 .with_context(|| "Invalid HTTP-RPC listening port")?
-                .or_else(|| Some(9545))
+                .or(Some(9545))
         } else {
             None
         };
