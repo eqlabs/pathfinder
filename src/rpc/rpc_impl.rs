@@ -1,10 +1,7 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
-    rpc::{
-        rpc_trait::RpcApiServer,
-        rpc_types::{reply, tags},
-    },
-    sequencer::{request, Client},
+    rpc::rpc_trait::RpcApiServer,
+    sequencer::{reply, request, Client},
 };
 use itertools::Itertools;
 use jsonrpsee::types::{
@@ -13,6 +10,12 @@ use jsonrpsee::types::{
 };
 use reqwest::Url;
 use web3::types::{H256, U256};
+
+/// Special tag values used in the RPC API.
+mod tags {
+    pub const LATEST: &str = "latest";
+    pub const EARLIEST: &str = "earliest";
+}
 
 /// Implements JSON-RPC endpoints.
 ///

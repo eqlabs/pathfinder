@@ -22,6 +22,7 @@ jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", rev = "94c881b83c
     "full",
 ] }
 lazy_static = "1.4.0"
+# Explicitly required for jsonrpsee::proc_macros until the next release fixes this.
 log = "0.4.14"
 reqwest = { version = "0.11.4", features = ["json"] }
 serde = { version = "1.0.130", features = ["derive"] }

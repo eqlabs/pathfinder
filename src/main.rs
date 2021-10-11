@@ -22,7 +22,7 @@ async fn main() {
 
     println!("The latest state root hash is: {:#16x}", state_root);
 
-    rpc::rpc_server::run_server(SocketAddr::new(
+    rpc::run_server(SocketAddr::new(
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         9545,
     ))

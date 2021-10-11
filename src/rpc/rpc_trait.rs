@@ -7,7 +7,7 @@
 //!
 //! __TODO__ At the moment the `latest` special tag value means the most recent pending,
 //! while later on we should make a distinction between most recent accepted on chain and most recent pending.
-use crate::rpc::rpc_types::reply;
+use crate::sequencer::reply;
 use jsonrpsee::{proc_macros::rpc, types::error::Error};
 use web3::types::{H256, U256};
 #[rpc(server, namespace = "starknet")]
