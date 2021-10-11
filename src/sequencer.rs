@@ -84,9 +84,14 @@ impl Client {
         .await?;
         let resp_txt = resp.text().await?;
         let resp_str = resp_txt.as_str();
+        // API returns a quoted string literal, ie. "\"0x123\"".
+        let msg = "Expected a double-quoted, 0x-prefixed hex string";
+        let no_prefix = resp_str.strip_prefix('"').ok_or(anyhow::anyhow!(msg))?;
+        let unquoted = no_prefix.strip_suffix('"').ok_or(anyhow::anyhow!(msg))?;
+
         let value =
             serde::from_relaxed_hex_str::<H256, { H256::len_bytes() }, { H256::len_bytes() * 2 }>(
-                &resp_str[1..resp_str.len() - 1],
+                unquoted,
             )?;
         Ok(value)
     }
