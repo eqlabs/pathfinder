@@ -15,7 +15,6 @@ clap = "2.33.3"
 enum-iterator = "0.7.0"
 hex = "0.4.3"
 home = "0.5.3"
-itertools = "0.10.1"
 # The latest stable revision on master for which jsonrpsee::proc_macros worked fine.
 # Unfortunately 0.3.1 has still some issues with jsonrpsee::proc_macros.
 jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", rev = "94c881b83c8fd5a3facba17a90c5a386467c44eb", features = [

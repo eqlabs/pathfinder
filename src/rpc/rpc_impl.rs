@@ -3,7 +3,6 @@ use crate::{
     rpc::rpc_trait::RpcApiServer,
     sequencer::{reply, request, Client},
 };
-use itertools::Itertools;
 use jsonrpsee::types::{
     async_trait,
     error::{CallError, Error},
@@ -113,10 +112,10 @@ impl RpcApiServer for RpcImpl {
         // TODO get this from storage
         // TODO how do we calculate block_hash
         let block = self.get_block_by_hash(block_hash).await?;
-        let key = block
-            .transactions
-            .keys()
-            .sorted()
+        let mut keys: Vec<&U256> = block.transactions.keys().collect();
+        keys.sort();
+        let key = keys
+            .into_iter()
             .nth(transaction_index as usize)
             .ok_or_else(|| {
                 Error::Call(CallError::InvalidParams(anyhow::anyhow!(
@@ -142,10 +141,10 @@ impl RpcApiServer for RpcImpl {
         // TODO get this from storage
         // TODO earliest, latest, block_number
         let block = self.get_block_by_number(block_number).await?;
-        let key = block
-            .transactions
-            .keys()
-            .sorted()
+        let mut keys: Vec<&U256> = block.transactions.keys().collect();
+        keys.sort();
+        let key = keys
+            .into_iter()
             .nth(transaction_index as usize)
             .ok_or_else(|| {
                 Error::Call(CallError::InvalidParams(anyhow::anyhow!(
