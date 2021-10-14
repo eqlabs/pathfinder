@@ -1,11 +1,9 @@
 //! Provides [ConfigBuilder] which is a convenient and safe way of collecting
 //! configuration parameters from various sources and combining them into one.
 
-use std::{collections::HashMap, net::SocketAddr};
-
-use reqwest::Url;
-
 use crate::config::{ConfigOption, Configuration, EthereumConfig};
+use reqwest::Url;
+use std::{collections::HashMap, net::SocketAddr};
 
 /// A convenient way of collecting and merging configuration options.
 ///
@@ -38,11 +36,13 @@ impl ConfigBuilder {
     /// and parsing as required by [Configuration] types. Also ensures that all
     /// required options are set.
     pub fn try_build(mut self) -> std::io::Result<Configuration> {
+        use super::DEFAULT_HTTP_RPC_ADDR;
+
         // Required parameters.
         let eth_url = self.take_required(ConfigOption::EthereumUrl)?;
         let http_rpc_addr = self
             .take_required(ConfigOption::HttpRpcAddress)
-            .unwrap_or_else(|_| "127.0.0.1:9545".to_owned());
+            .unwrap_or_else(|_| DEFAULT_HTTP_RPC_ADDR.to_owned());
 
         // Parse the Ethereum URL.
         let eth_url = eth_url.parse::<Url>().map_err(|err| {
@@ -194,10 +194,7 @@ mod tests {
     }
 
     mod try_build {
-        /// List of [ConfigOption]'s required by a [Configuration].
-        ///
-        /// [ConfigOption::HttpRpcAddress] is a required option but also provides a default value,
-        /// hence it is not listed here.
+        /// List of [ConfigOption]'s that must be set for [ConfigBuilder] to produce a [Configuration].
         const REQUIRED: &[ConfigOption] = &[ConfigOption::EthereumUrl];
 
         use super::*;

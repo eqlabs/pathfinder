@@ -54,10 +54,12 @@ where
 ///
 /// Sets the argument names, help strings etc.
 fn clap_app() -> clap::App<'static, 'static> {
-    use super::file::DEFAULT_FILEPATH;
+    use super::{file::DEFAULT_FILEPATH, DEFAULT_HTTP_RPC_ADDR};
     lazy_static::lazy_static! {
         static ref CFG_LONG_HELP: String =
             format!("Path to the toml configuration file. Defaults to {}", DEFAULT_FILEPATH.to_string_lossy());
+        static ref HTTP_RPC_HELP: String =
+            format!("HTTP-RPC listening address [default: {}]", DEFAULT_HTTP_RPC_ADDR);
     }
 
     clap::App::new("Equilibrium StarkNet Node")
@@ -99,7 +101,7 @@ Examples:
         .arg(
             Arg::with_name(HTTP_RPC_ADDR_KEY)
                 .long(HTTP_RPC_ADDR_KEY)
-                .help("HTTP-RPC listening interface and port [default: 127.0.0.1:9545]")
+                .help(&HTTP_RPC_HELP)
                 .takes_value(true)
                 .value_name("IP:PORT")
                 .long_help(r#"This should point to a valid network interface address and selected port.

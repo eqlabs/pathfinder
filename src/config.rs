@@ -8,6 +8,8 @@ use std::{fmt::Display, net::SocketAddr, path::PathBuf, str::FromStr};
 use enum_iterator::IntoEnumIterator;
 use reqwest::Url;
 
+const DEFAULT_HTTP_RPC_ADDR: &str = "127.0.0.1:9545";
+
 /// Possible configuration options.
 #[derive(Debug, PartialEq, Clone, Copy, Hash, Eq, IntoEnumIterator)]
 pub enum ConfigOption {
