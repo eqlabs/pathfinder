@@ -22,18 +22,21 @@ struct EthereumConfig {
 #[derive(Deserialize, Debug, PartialEq)]
 struct FileConfig {
     ethereum: Option<EthereumConfig>,
+    #[serde(rename = "http-rpc")]
+    http_rpc: Option<String>,
 }
 
 impl FileConfig {
     fn into_config_options(self) -> ConfigBuilder {
         use crate::config::ConfigOption;
-        match self.ethereum {
+        let builder = match self.ethereum {
             Some(eth) => ConfigBuilder::default()
                 .with(ConfigOption::EthereumUrl, eth.url)
                 .with(ConfigOption::EthereumUser, eth.user)
                 .with(ConfigOption::EthereumPassword, eth.password),
             None => ConfigBuilder::default(),
-        }
+        };
+        builder.with(ConfigOption::HttpRpcAddress, self.http_rpc)
     }
 }
 
@@ -101,6 +104,14 @@ password = "{}""#,
         assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(user));
         assert_eq!(cfg.take(ConfigOption::EthereumUrl), Some(url));
         assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(password));
+    }
+
+    #[test]
+    fn http_rpc() {
+        let value = "value".to_owned();
+        let toml = format!(r#"http-rpc = "{}""#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
     }
 
     #[test]

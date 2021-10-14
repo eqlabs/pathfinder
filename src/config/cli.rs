@@ -6,10 +6,11 @@ use crate::config::builder::ConfigBuilder;
 
 use super::ConfigOption;
 
+const CONFIG_KEY: &str = "config";
 const ETH_URL_KEY: &str = "ethereum.url";
 const ETH_USER_KEY: &str = "ethereum.user";
 const ETH_PASS_KEY: &str = "ethereum.password";
-const CONFIG_KEY: &str = "config";
+const HTTP_RPC_ADDR_KEY: &str = "http-rpc";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -38,11 +39,13 @@ where
     let ethereum_url = args.value_of(ETH_URL_KEY).map(|s| s.to_owned());
     let ethereum_user = args.value_of(ETH_USER_KEY).map(|s| s.to_owned());
     let ethereum_password = args.value_of(ETH_PASS_KEY).map(|s| s.to_owned());
+    let http_rpc_addr = args.value_of(HTTP_RPC_ADDR_KEY).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumUrl, ethereum_url)
         .with(ConfigOption::EthereumUser, ethereum_user)
-        .with(ConfigOption::EthereumPassword, ethereum_password);
+        .with(ConfigOption::EthereumPassword, ethereum_password)
+        .with(ConfigOption::HttpRpcAddress, http_rpc_addr);
 
     Ok((config_filepath, cfg))
 }
@@ -93,6 +96,17 @@ fn clap_app() -> clap::App<'static, 'static> {
 Examples:
     infura: https://goerli.infura.io/v3/<PROJECT_ID>
     geth:   http://localhost:8545"#))
+        .arg(
+            Arg::with_name(HTTP_RPC_ADDR_KEY)
+                .long(HTTP_RPC_ADDR_KEY)
+                .help("HTTP-RPC listening interface and port [default: 127.0.0.1:9545]")
+                .takes_value(true)
+                .value_name("IP:PORT")
+                .long_help(r#"This should point to a valid network interface address and selected port.
+Example:
+    Specific interface and port:    192.168.0.1:1234
+    All interfaces and random port: 0.0.0.0:0"#),
+        )
 }
 
 #[cfg(test)]
@@ -132,6 +146,13 @@ mod tests {
         let value = "value".to_owned();
         let (filepath, _) = parse_args(vec!["bin name", "--config", &value]).unwrap();
         assert_eq!(filepath, Some(value));
+    }
+
+    #[test]
+    fn http_rpc_address_long() {
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--http-rpc", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
     }
 
     #[test]

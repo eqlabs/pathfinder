@@ -1,7 +1,7 @@
 //! Provides [ConfigBuilder] which is a convenient and safe way of collecting
 //! configuration parameters from various sources and combining them into one.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, net::SocketAddr};
 
 use reqwest::Url;
 
@@ -40,12 +40,27 @@ impl ConfigBuilder {
     pub fn try_build(mut self) -> std::io::Result<Configuration> {
         // Required parameters.
         let eth_url = self.take_required(ConfigOption::EthereumUrl)?;
+        let http_rpc_addr = self
+            .take_required(ConfigOption::HttpRpcAddress)
+            .unwrap_or_else(|_| "127.0.0.1:9545".to_owned());
 
         // Parse the Ethereum URL.
         let eth_url = eth_url.parse::<Url>().map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!("Invalid Ethereum URL ({}): {}", eth_url, err.to_string()),
+            )
+        })?;
+
+        // Parse the HTTP-RPC listening address and port.
+        let http_rpc_addr = http_rpc_addr.parse::<SocketAddr>().map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid HTTP-RPC listening interface and port ({}): {}",
+                    http_rpc_addr,
+                    err.to_string()
+                ),
             )
         })?;
 
@@ -59,6 +74,7 @@ impl ConfigBuilder {
                 user: eth_user,
                 password: eth_password,
             },
+            http_rpc_addr,
         })
     }
 
@@ -179,6 +195,9 @@ mod tests {
 
     mod try_build {
         /// List of [ConfigOption]'s required by a [Configuration].
+        ///
+        /// [ConfigOption::HttpRpcAddress] is a required option but also provides a default value,
+        /// hence it is not listed here.
         const REQUIRED: &[ConfigOption] = &[ConfigOption::EthereumUrl];
 
         use super::*;

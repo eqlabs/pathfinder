@@ -1,5 +1,3 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-
 mod config;
 mod ethereum;
 mod rpc;
@@ -22,7 +20,7 @@ async fn main() {
 
     println!("The latest state root hash is: {:#16x}", state_root);
 
-    rpc::run_server(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9545))
+    rpc::run_server(config.http_rpc_addr)
         .await
         .expect("⚠️ Failed to start HTTP-RPC server");
 
