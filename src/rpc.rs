@@ -56,17 +56,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_block_by_hash() {
+    async fn get_block_by_hash_latest() {
         let (srv, addr) = build_server();
         spawn_server(srv).await;
         client(addr)
             .get_block_by_hash("latest".to_owned())
             .await
             .expect("Call failed");
-        client(addr)
-            .get_block_by_hash("0x1000".to_owned())
-            .await
-            .expect("Call failed");
+    }
+
+    #[tokio::test]
+    #[should_panic]
+    async fn get_block_by_hash() {
+        let (srv, addr) = build_server();
+        spawn_server(srv).await;
         client(addr)
             .get_block_by_hash("0xa38e".to_owned())
             .await
@@ -92,11 +95,12 @@ mod tests {
     }
 
     #[tokio::test]
+    #[should_panic]
     async fn get_transaction_by_hash() {
         let (srv, addr) = build_server();
         spawn_server(srv).await;
         client(addr)
-            .get_transaction_by_number("0x23c86".to_owned())
+            .get_transaction_by_hash("0x23c86".to_owned())
             .await
             .expect("Call failed");
     }
@@ -112,13 +116,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_transaction_by_block_hash_and_index() {
+    async fn get_transaction_by_latest_block_hash_and_index() {
         let (srv, addr) = build_server();
         spawn_server(srv).await;
         client(addr)
             .get_transaction_by_block_hash_and_index("latest".to_owned(), 0)
             .await
             .expect("Call failed");
+    }
+
+    #[tokio::test]
+    #[should_panic]
+    async fn get_transaction_by_block_hash_and_index() {
+        let (srv, addr) = build_server();
+        spawn_server(srv).await;
         client(addr)
             .get_transaction_by_block_hash_and_index("0x3e4a".to_owned(), 7)
             .await

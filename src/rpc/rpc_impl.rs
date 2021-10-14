@@ -43,14 +43,7 @@ impl RpcApiServer for RpcImpl {
         let block = match block_hash.as_str() {
             tags::LATEST => self.0.latest_block().await,
             tags::EARLIEST => self.0.block(U256::zero()).await,
-            _ => {
-                self.0
-                    .block(
-                        U256::from_str_radix(block_hash.as_str(), 16)
-                            .map_err(anyhow::Error::new)?,
-                    )
-                    .await
-            }
+            _ => todo!("Determine the type of hash required here."),
         }?;
         Ok(block)
     }
@@ -75,17 +68,11 @@ impl RpcApiServer for RpcImpl {
 
     async fn get_transaction_by_hash(
         &self,
-        transaction_hash: String,
+        _transaction_hash: String,
     ) -> Result<reply::Transaction, Error> {
         // TODO get this from storage
         // TODO how do we calculate transaction_hash
-        let txn = self
-            .0
-            .transaction(
-                U256::from_str_radix(transaction_hash.as_str(), 16).map_err(anyhow::Error::new)?,
-            )
-            .await?;
-        Ok(txn)
+        todo!("Determine the type of hash required here.");
     }
 
     async fn get_transaction_by_number(
