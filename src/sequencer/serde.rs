@@ -9,14 +9,14 @@ use web3::{
 serde_with::serde_conv!(
     pub U256AsBigDecimal,
     U256,
-    |u: &U256| *u,
+    |u: &U256| u.to_string(),
     |b: BigDecimal| -> Result<_, FromDecStrErr> { U256::from_dec_str(b.to_string().as_str()) }
 );
 
 serde_with::serde_conv!(
     pub U256AsDecimalStr,
     U256,
-    |u: &U256| *u,
+    |u: &U256| u.to_string(),
     U256::from_dec_str
 );
 

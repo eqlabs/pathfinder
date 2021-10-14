@@ -10,7 +10,7 @@
 use crate::sequencer::reply;
 use jsonrpsee::{proc_macros::rpc, types::error::Error};
 use web3::types::{H256, U256};
-#[rpc(server, namespace = "starknet")]
+#[rpc(client, server, namespace = "starknet")]
 pub trait RpcApi {
     /// Returns the number of the most recent block.
     ///
