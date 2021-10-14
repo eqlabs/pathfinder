@@ -1,11 +1,9 @@
 //! Provides [ConfigBuilder] which is a convenient and safe way of collecting
 //! configuration parameters from various sources and combining them into one.
 
-use std::collections::HashMap;
-
-use reqwest::Url;
-
 use crate::config::{ConfigOption, Configuration, EthereumConfig};
+use reqwest::Url;
+use std::{collections::HashMap, net::SocketAddr};
 
 /// A convenient way of collecting and merging configuration options.
 ///
@@ -38,14 +36,31 @@ impl ConfigBuilder {
     /// and parsing as required by [Configuration] types. Also ensures that all
     /// required options are set.
     pub fn try_build(mut self) -> std::io::Result<Configuration> {
+        use super::DEFAULT_HTTP_RPC_ADDR;
+
         // Required parameters.
         let eth_url = self.take_required(ConfigOption::EthereumUrl)?;
+        let http_rpc_addr = self
+            .take_required(ConfigOption::HttpRpcAddress)
+            .unwrap_or_else(|_| DEFAULT_HTTP_RPC_ADDR.to_owned());
 
         // Parse the Ethereum URL.
         let eth_url = eth_url.parse::<Url>().map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!("Invalid Ethereum URL ({}): {}", eth_url, err.to_string()),
+            )
+        })?;
+
+        // Parse the HTTP-RPC listening address and port.
+        let http_rpc_addr = http_rpc_addr.parse::<SocketAddr>().map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid HTTP-RPC listening interface and port ({}): {}",
+                    http_rpc_addr,
+                    err.to_string()
+                ),
             )
         })?;
 
@@ -59,6 +74,7 @@ impl ConfigBuilder {
                 user: eth_user,
                 password: eth_password,
             },
+            http_rpc_addr,
         })
     }
 
@@ -178,7 +194,7 @@ mod tests {
     }
 
     mod try_build {
-        /// List of [ConfigOption]'s required by a [Configuration].
+        /// List of [ConfigOption]'s that must be set for [ConfigBuilder] to produce a [Configuration].
         const REQUIRED: &[ConfigOption] = &[ConfigOption::EthereumUrl];
 
         use super::*;

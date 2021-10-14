@@ -3,14 +3,14 @@ mod builder;
 mod cli;
 mod file;
 
-use std::{fmt::Display, path::PathBuf, str::FromStr};
+use std::{fmt::Display, net::SocketAddr, path::PathBuf, str::FromStr};
 
 use enum_iterator::IntoEnumIterator;
 use reqwest::Url;
 
+const DEFAULT_HTTP_RPC_ADDR: &str = "127.0.0.1:9545";
+
 /// Possible configuration options.
-// TODO: remove this once more variants with other prefixes have been added.
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Clone, Copy, Hash, Eq, IntoEnumIterator)]
 pub enum ConfigOption {
     /// The Ethereum URL.
@@ -19,6 +19,8 @@ pub enum ConfigOption {
     EthereumUser,
     /// The Ethereum password.
     EthereumPassword,
+    /// The HTTP-RPC listening socket address.
+    HttpRpcAddress,
 }
 
 impl Display for ConfigOption {
@@ -27,6 +29,7 @@ impl Display for ConfigOption {
             ConfigOption::EthereumUrl => f.write_str("Ethereum URL"),
             ConfigOption::EthereumUser => f.write_str("Ethereum user"),
             ConfigOption::EthereumPassword => f.write_str("Ethereum password"),
+            ConfigOption::HttpRpcAddress => f.write_str("HTTP-RPC socket address"),
         }
     }
 }
@@ -47,6 +50,8 @@ pub struct EthereumConfig {
 pub struct Configuration {
     /// The Ethereum settings.
     pub ethereum: EthereumConfig,
+    /// The HTTP-RPC listening address and port.
+    pub http_rpc_addr: SocketAddr,
 }
 
 impl Configuration {
