@@ -1,6 +1,7 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use crate::sequencer::serde::{H256AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr};
 use serde::{Deserialize, Serialize};
+use serde_with::DefaultOnError;
 use std::collections::HashMap;
 use web3::types::{H256, U256};
 
@@ -12,8 +13,9 @@ use web3::types::{H256, U256};
 pub struct Block {
     #[serde_as(as = "U256AsBigDecimal")]
     pub block_id: U256,
-    #[serde_as(as = "U256AsBigDecimal")]
-    pub previous_block_id: U256,
+    #[serde_as(as = "DefaultOnError<Option<U256AsBigDecimal>>")]
+    #[serde(default)]
+    pub previous_block_id: Option<U256>,
     #[serde_as(as = "U256AsBigDecimal")]
     pub sequence_number: U256,
     #[serde_as(as = "H256AsRelaxedHexStr")]
@@ -91,29 +93,37 @@ pub mod code {
 
 /// Used to deserialize a reply from [Client::transaction](crate::sequencer::Client::transaction).
 #[serde_with::serde_as]
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Transaction {
-    #[serde_as(as = "U256AsBigDecimal")]
-    pub block_id: U256,
-    #[serde_as(as = "U256AsBigDecimal")]
-    pub block_number: U256,
+    #[serde_as(as = "Option<U256AsBigDecimal>")]
+    #[serde(default)]
+    pub block_id: Option<U256>,
+    #[serde_as(as = "Option<U256AsBigDecimal>")]
+    #[serde(default)]
+    pub block_number: Option<U256>,
     pub status: transaction::Status,
-    #[serde(rename = "transaction")]
-    pub source: transaction::Source,
+    pub transaction: transaction::Transaction,
+    #[serde(default)]
+    pub transaction_failure_reason: Option<transaction::Failure>,
     #[serde_as(as = "U256AsBigDecimal")]
     pub transaction_id: U256,
-    pub transaction_index: u64,
+    #[serde(default)]
+    pub transaction_index: Option<u64>,
 }
 
 /// Used to deserialize a reply from [Client::transaction_status](crate::sequencer::Client::transaction_status).
 #[serde_with::serde_as]
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionStatus {
-    #[serde_as(as = "U256AsBigDecimal")]
-    pub block_id: U256,
-    pub tx_status: transaction::Status,
+    #[serde_as(as = "Option<U256AsBigDecimal>")]
+    #[serde(default)]
+    pub block_id: Option<U256>,
+    #[serde(default)]
+    pub tx_status: Option<transaction::Status>,
+    #[serde(default)]
+    pub tx_failure_reason: Option<transaction::Failure>,
 }
 
 /// Types used when deserializing L2 transaction related data.
@@ -130,6 +140,23 @@ pub mod transaction {
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
         External,
+        #[serde(rename = "L1_HANDLER")]
+        L1Handler,
+    }
+
+    /// Represents deserialized L1 to L2 message.
+    #[serde_with::serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct L1ToL2Message {
+        #[serde_as(as = "H160AsRelaxedHexStr")]
+        pub from_address: H160,
+        #[serde_as(as = "Vec<U256AsDecimalStr>")]
+        pub payload: Vec<U256>,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        pub selector: H256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        pub to_address: H256,
     }
 
     /// Represents deserialized L2 to L1 message.
@@ -154,6 +181,8 @@ pub mod transaction {
         pub block_id: U256,
         #[serde_as(as = "U256AsBigDecimal")]
         pub block_number: U256,
+        #[serde(default)]
+        pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub status: Status,
         #[serde_as(as = "U256AsBigDecimal")]
@@ -213,5 +242,16 @@ pub mod transaction {
         Deploy,
         #[serde(rename = "INVOKE_FUNCTION")]
         InvokeFunction,
+    }
+
+    /// Describes L2 transaction failure details.
+    #[serde_with::serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Failure {
+        pub code: String,
+        pub error_message: String,
+        #[serde_as(as = "U256AsBigDecimal")]
+        pub tx_id: U256,
     }
 }

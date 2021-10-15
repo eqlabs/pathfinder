@@ -27,7 +27,7 @@ pub fn parse_cmd_line() -> (Option<String>, ConfigBuilder) {
 }
 
 /// A wrapper around [clap::App]'s `get_matches_from_safe()` which returns
-/// a [ConfigOptions].
+/// a [ConfigOption].
 fn parse_args<I, T>(args: I) -> clap::Result<(Option<String>, ConfigBuilder)>
 where
     I: IntoIterator<Item = T>,
