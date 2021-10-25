@@ -147,14 +147,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn block_by_id_and_latest() {
-        let client = client();
-        client
-            .block(U256::from(17187))
+    async fn latest_block() {
+        client()
+            .latest_block()
             .await
             .expect("Correctly deserialized reply");
-        client
-            .latest_block()
+    }
+
+    #[tokio::test]
+    async fn block() {
+        // The genesis block, previous_block_id is -1
+        client()
+            .block(U256::zero())
+            .await
+            .expect("Correctly deserialized reply");
+        // This block contains a txn which includes a L1 to L2 message
+        client()
+            .block(U256::from(20056))
+            .await
+            .expect("Correctly deserialized reply");
+        // A quite recent block
+        client()
+            .block(U256::from(43740))
             .await
             .expect("Correctly deserialized reply");
     }
@@ -210,16 +224,48 @@ mod tests {
 
     #[tokio::test]
     async fn transaction() {
+        // The first txn
         client()
-            .transaction(U256::from(146566))
+            .transaction(U256::zero())
+            .await
+            .expect("Correctly deserialized reply");
+        // An example of a rejected txn
+        client()
+            .transaction(U256::from(162531))
+            .await
+            .expect("Correctly deserialized reply");
+        // Txn containing a L1 to L2 message
+        client()
+            .transaction(U256::from(186764))
+            .await
+            .expect("Correctly deserialized reply");
+        // A quite recent txn
+        client()
+            .transaction(U256::from(276839))
             .await
             .expect("Correctly deserialized reply");
     }
 
     #[tokio::test]
     async fn transaction_status() {
+        // The first txn
         client()
-            .transaction_status(U256::from(146566))
+            .transaction_status(U256::zero())
+            .await
+            .expect("Correctly deserialized reply");
+        // An example of a rejected txn
+        client()
+            .transaction_status(U256::from(162531))
+            .await
+            .expect("Correctly deserialized reply");
+        // Txn containing a L1 to L2 message
+        client()
+            .transaction_status(U256::from(186764))
+            .await
+            .expect("Correctly deserialized reply");
+        // A quite recent txn
+        client()
+            .transaction_status(U256::from(276839))
             .await
             .expect("Correctly deserialized reply");
     }

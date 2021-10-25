@@ -56,9 +56,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_block_by_hash_latest() {
+    async fn get_block_by_hash_earliest_latest() {
         let (srv, addr) = build_server();
         spawn_server(srv).await;
+        client(addr)
+            .get_block_by_hash("earliest".to_owned())
+            .await
+            .expect("Call failed");
         client(addr)
             .get_block_by_hash("latest".to_owned())
             .await
@@ -81,15 +85,19 @@ mod tests {
         let (srv, addr) = build_server();
         spawn_server(srv).await;
         client(addr)
+            .get_block_by_number("earliest".to_owned())
+            .await
+            .expect("Call failed");
+        client(addr)
             .get_block_by_number("latest".to_owned())
             .await
             .expect("Call failed");
         client(addr)
-            .get_block_by_number("0x1000".to_owned())
+            .get_block_by_number("0x4e58".to_owned())
             .await
             .expect("Call failed");
         client(addr)
-            .get_block_by_number("0xa38e".to_owned())
+            .get_block_by_number("0xaadc".to_owned())
             .await
             .expect("Call failed");
     }
@@ -109,16 +117,31 @@ mod tests {
     async fn get_transaction_by_number() {
         let (srv, addr) = build_server();
         spawn_server(srv).await;
+        // An example of a rejected txn
         client(addr)
-            .get_transaction_by_number("0x23c86".to_owned())
+            .get_transaction_by_number("0x27ae3".to_owned())
+            .await
+            .expect("Call failed");
+        // Txn containing a L1 to L2 message
+        client(addr)
+            .get_transaction_by_number("0x2d98c".to_owned())
+            .await
+            .expect("Call failed");
+        // A quite recent txn
+        client(addr)
+            .get_transaction_by_number("0x43967".to_owned())
             .await
             .expect("Call failed");
     }
 
     #[tokio::test]
-    async fn get_transaction_by_latest_block_hash_and_index() {
+    async fn get_transaction_by_earliest_latest_block_hash_and_index() {
         let (srv, addr) = build_server();
         spawn_server(srv).await;
+        client(addr)
+            .get_transaction_by_block_hash_and_index("earliest".to_owned(), 0)
+            .await
+            .expect("Call failed");
         client(addr)
             .get_transaction_by_block_hash_and_index("latest".to_owned(), 0)
             .await
@@ -140,6 +163,10 @@ mod tests {
     async fn get_transaction_by_block_number_and_index() {
         let (srv, addr) = build_server();
         spawn_server(srv).await;
+        client(addr)
+            .get_transaction_by_block_number_and_index("earliest".to_owned(), 0)
+            .await
+            .expect("Call failed");
         client(addr)
             .get_transaction_by_block_number_and_index("latest".to_owned(), 0)
             .await
