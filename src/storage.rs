@@ -16,11 +16,17 @@ impl Storage {
     pub fn new(mut connection: Connection) -> Result<Self> {
         let mut database = Self { connection };
 
-        // Apply schema migrations.
+        database.enable_foreign_keys()?;
         let existing_version = database.schema_version()?;
         database.migrate(existing_version)?;
 
         Ok(database)
+    }
+
+    fn enable_foreign_keys(&mut self) -> Result<()> {
+        use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
+        self.connection.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
+        Ok(())
     }
 
     /// Returns the current schema version of the existing database,
@@ -77,25 +83,60 @@ impl Storage {
 mod tests {
     use super::*;
 
+    fn mem_storage() -> Storage {
+        Storage {
+            connection: Connection::open_in_memory().unwrap(),
+        }
+    }
+
     #[test]
     fn schema_version_defaults_to_zero() {
-        let connection = Connection::open_in_memory().unwrap();
-        let mut db = Storage { connection };
+        let mut db = mem_storage();
         assert_eq!(db.schema_version().unwrap(), 0);
     }
 
     #[test]
     fn full_migration() {
-        let connection = Connection::open_in_memory().unwrap();
-        let mut db = Storage { connection };
+        let mut db = mem_storage();
         assert!(db.migrate(0).is_ok());
         assert_eq!(db.schema_version().unwrap(), Storage::SCHEMA_VERSION);
     }
 
     #[test]
     fn migration_should_fail_for_bad_version() {
-        let connection = Connection::open_in_memory().unwrap();
-        let mut db = Storage { connection };
+        let mut db = mem_storage();
         assert!(db.migrate(Storage::SCHEMA_VERSION + 1).is_err());
+    }
+
+    #[test]
+    fn foreign_keys_are_enforced() {
+        let mut db = mem_storage();
+
+        // We first disable foreign key support. Sqlite currently enables this by default,
+        // but this may change. So we disable to check that our enable function works
+        // regardless of what Sqlite's default is.
+        use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
+        db.connection.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, false).unwrap();
+
+        // Enable foreign key support.
+        db.enable_foreign_keys().unwrap();
+
+        // Create tables with a parent-child foreign key requirement.
+        db.connection.execute_batch(r"
+            CREATE TABLE parent(
+                id INTEGER PRIMARY KEY
+            );
+
+            CREATE TABLE child(
+                id INTEGER PRIMARY KEY,
+                parent_id INTEGER,
+                FOREIGN KEY(parent_id) REFERENCES parent(id)
+            );
+        ").unwrap();
+
+        // Check that foreign keys are enforced.
+        db.connection.execute("INSERT INTO parent (id) VALUES (2)", []).unwrap();
+        assert!(db.connection.execute("INSERT INTO child (id, parent_id) VALUES (0, 2)", []).is_ok());
+        assert!(db.connection.execute("INSERT INTO child (id, parent_id) VALUES (1, 1)", []).is_err());
     }
 }
