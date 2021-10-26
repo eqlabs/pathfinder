@@ -24,6 +24,7 @@ lazy_static = "1.4.0"
 # Explicitly required for jsonrpsee::proc_macros until the next release fixes this.
 log = "0.4.14"
 reqwest = { version = "0.11.4", features = ["json"] }
+rusqlite = { version = "0.26.1", features = ["bundled"] }
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = "1.0.68"
 serde_with = "1.9.4"
