@@ -13,7 +13,8 @@ impl Storage {
     /// Current schema version, used to drive schema migration.
     const SCHEMA_VERSION: u32 = 1;
 
-    pub fn new(mut connection: Connection) -> Result<Self> {
+    /// Creates a [Storage] from a [Sqlite Connection](Connection).
+    pub fn new(connection: Connection) -> Result<Self> {
         let mut database = Self { connection };
 
         database.enable_foreign_keys()?;
@@ -25,7 +26,8 @@ impl Storage {
 
     fn enable_foreign_keys(&mut self) -> Result<()> {
         use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
-        self.connection.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
+        self.connection
+            .set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
         Ok(())
     }
 
@@ -60,7 +62,50 @@ impl Storage {
 
             match version {
                 0 => {
-                    // Todo..
+                    tx.execute_batch(r"
+                        CREATE TABLE l1_blocks(
+                            l1_id INTEGER PRIMARY KEY,
+                            hash  BLOB    UNIQUE NOT NULL
+                        );
+
+                        CREATE TABLE l2_blocks(
+                            l2_id INTEGER PRIMARY KEY,
+                            hash  BLOB    UNIQUE NOT NULL,
+
+                            l1_id INTEGER NOT NULL REFERENCES l1_blocks(l1_id) ON DELETE CASCADE
+                        );
+
+                        CREATE TABLE transactions(
+                            tx_id INTEGER PRIMARY KEY,
+                            hash  BLOB UNIQUE NOT NULL,
+
+                            l2_id INTEGER NOT NULL REFERENCES l2_blocks(l2_id) ON DELETE CASCADE
+                        );
+
+                        CREATE TABLE contracts(
+                            contract_id INTEGER PRIMARY KEY,
+                            hash        BLOB UNIQUE NOT NULL,
+                            code        BLOB,
+                            abi         BLOB,
+
+                            tx_id INTEGER NOT NULL REFERENCES transactions(tx_id) ON DELETE CASCADE
+                        );
+
+                        CREATE TABLE variables(
+                            variable_id INTEGER PRIMARY KEY,
+                            hash        BLOB NOT NULL,
+
+                            contract_id INTEGER REFERENCES contracts(contract_id) ON DELETE CASCADE
+                        );
+
+                        CREATE TABLE variable_updates(
+                            update_id INTEGER PRIMARY KEY,
+                            value     BLOB,
+
+                            variable_id INTEGER NOT NULL REFERENCES variables(variable_id) ON DELETE CASCADE,
+                            tx_id       INTEGER NOT NULL REFERENCES transactions(tx_id)    ON DELETE CASCADE
+                        );
+                    ")?;
                 }
                 other => {
                     return Err(anyhow::anyhow!(
@@ -98,7 +143,7 @@ mod tests {
     #[test]
     fn full_migration() {
         let mut db = mem_storage();
-        assert!(db.migrate(0).is_ok());
+        db.migrate(0).unwrap();
         assert_eq!(db.schema_version().unwrap(), Storage::SCHEMA_VERSION);
     }
 
@@ -116,27 +161,40 @@ mod tests {
         // but this may change. So we disable to check that our enable function works
         // regardless of what Sqlite's default is.
         use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
-        db.connection.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, false).unwrap();
+        db.connection
+            .set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, false)
+            .unwrap();
 
         // Enable foreign key support.
         db.enable_foreign_keys().unwrap();
 
         // Create tables with a parent-child foreign key requirement.
-        db.connection.execute_batch(r"
+        db.connection
+            .execute_batch(
+                r"
             CREATE TABLE parent(
                 id INTEGER PRIMARY KEY
             );
 
             CREATE TABLE child(
                 id INTEGER PRIMARY KEY,
-                parent_id INTEGER,
-                FOREIGN KEY(parent_id) REFERENCES parent(id)
+                parent_id INTEGER NOT NULL REFERENCES parent(id)
             );
-        ").unwrap();
+        ",
+            )
+            .unwrap();
 
         // Check that foreign keys are enforced.
-        db.connection.execute("INSERT INTO parent (id) VALUES (2)", []).unwrap();
-        assert!(db.connection.execute("INSERT INTO child (id, parent_id) VALUES (0, 2)", []).is_ok());
-        assert!(db.connection.execute("INSERT INTO child (id, parent_id) VALUES (1, 1)", []).is_err());
+        db.connection
+            .execute("INSERT INTO parent (id) VALUES (2)", [])
+            .unwrap();
+        assert!(db
+            .connection
+            .execute("INSERT INTO child (id, parent_id) VALUES (0, 2)", [])
+            .is_ok());
+        assert!(db
+            .connection
+            .execute("INSERT INTO child (id, parent_id) VALUES (1, 1)", [])
+            .is_err());
     }
 }
