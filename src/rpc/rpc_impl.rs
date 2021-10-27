@@ -168,7 +168,7 @@ impl RpcApiServer for RpcImpl {
         contract_address: H256,
         call_data: Vec<U256>,
         entry_point: H256,
-    ) -> Result<Vec<H256>, Error> {
+    ) -> Result<reply::Call, Error> {
         // TODO calculate entry point?
         let call = self
             .0

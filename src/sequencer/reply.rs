@@ -2,62 +2,35 @@
 use crate::sequencer::serde::{H256AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryFrom};
 use web3::types::{H256, U256};
-
-/// Convenience trait used to seperate fields responsible for error reporting
-/// from the true data.
-pub trait IntoResult
-where
-    Self: Sized,
-{
-    type Inner;
-
-    fn into_tuple(self) -> (Option<Self::Inner>, Option<StarknetError>);
-
-    fn into_result(self) -> Result<Self::Inner, anyhow::Error> {
-        let (i, e) = self.into_tuple();
-
-        if let Some(error) = e {
-            Err(anyhow::Error::new(error))
-        } else if let Some(inner) = i {
-            Ok(inner)
-        } else {
-            Err(anyhow::anyhow!(
-                "unknown sequencer error: no reply data nor error code was provided"
-            ))
-        }
-    }
-}
-
-/// Convenience macro that provides implementation of IntoResult.
-macro_rules! impl_into_result {
-    ($outer_type:ty, $inner_type:ty) => {
-        impl IntoResult for $outer_type {
-            type Inner = $inner_type;
-
-            fn into_tuple(self) -> (Option<Self::Inner>, Option<StarknetError>) {
-                (self.inner, self.error)
-            }
-        }
-    };
-}
 
 /// Used to deserialize replies to [Client::block](crate::sequencer::Client::block) and
 /// [Client::latest_block](crate::sequencer::Client::latest_block).
-#[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct BlockReply {
-    #[serde(flatten)]
-    pub error: Option<StarknetError>,
-    #[serde(flatten)]
-    pub inner: Option<Block>,
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[serde(deny_unknown_fields)]
+pub enum BlockReply {
+    Block(Block),
+    Error(starknet::Error),
+}
+
+impl TryFrom<BlockReply> for Block {
+    type Error = anyhow::Error;
+
+    fn try_from(value: BlockReply) -> Result<Self, Self::Error> {
+        match value {
+            BlockReply::Block(b) => Ok(b),
+            BlockReply::Error(e) => Err(anyhow::Error::new(e)),
+        }
+    }
 }
 
 /// Actual block data from [BlockReply].
 #[serde_as]
 #[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Block {
     #[serde_as(as = "U256AsBigDecimal")]
     pub block_id: U256,
@@ -76,27 +49,68 @@ pub struct Block {
     pub transactions: HashMap<U256, transaction::Transaction>,
 }
 
-impl_into_result!(BlockReply, Block);
-
 /// Types used when deserializing L2 block related data.
 pub mod block {
     pub type Status = super::transaction::Status;
 }
 
+// /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
+// #[serde_as]
+// #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+// #[serde(untagged)]
+// #[serde(deny_unknown_fields)]
+// pub enum CallReply {
+//     Call(#[serde_as(as = "Vec<H256AsRelaxedHexStr>")] Vec<H256>),
+//     Error(starknet::Error),
+// }
+
+// impl TryFrom<CallReply> for Vec<H256> {
+//     type Error = anyhow::Error;
+
+//     fn try_from(value: CallReply) -> Result<Self, Self::Error> {
+//         match value {
+//             CallReply::Call(c) => Ok(c),
+//             CallReply::Error(e) => Err(anyhow::Error::new(e)),
+//         }
+//     }
+// }
+
+// /// Actual call data from [CallReply].
+// #[serde_as]
+// #[skip_serializing_none]
+// #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+// #[serde(deny_unknown_fields)]
+// pub struct Call(#[serde_as(as = "Vec<H256AsRelaxedHexStr>")] Vec<H256>);
+
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[serde(deny_unknown_fields)]
+pub enum CallReply {
+    Call(Call),
+    Error(starknet::Error),
+}
+
+impl TryFrom<CallReply> for Call {
+    type Error = anyhow::Error;
+
+    fn try_from(value: CallReply) -> Result<Self, Self::Error> {
+        match value {
+            CallReply::Call(c) => Ok(c),
+            CallReply::Error(e) => Err(anyhow::Error::new(e)),
+        }
+    }
+}
+
+/// Actual call data from [CallReply].
 #[serde_as]
 #[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct CallReply {
-    #[serde(flatten)]
-    pub error: Option<StarknetError>,
-    #[serde_as(as = "Option<Vec<H256AsRelaxedHexStr>>")]
-    #[serde(default)]
-    #[serde(rename = "result")]
-    pub inner: Option<Vec<H256>>,
+#[serde(deny_unknown_fields)]
+pub struct Call {
+    #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+    result: Vec<H256>,
 }
-
-impl_into_result!(CallReply, Vec<H256>);
 
 /// Types used when deserializing L2 call related data.
 pub mod call {
@@ -115,13 +129,24 @@ pub mod call {
 }
 
 /// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
-#[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct CodeReply {
-    #[serde(flatten)]
-    pub error: Option<StarknetError>,
-    #[serde(flatten)]
-    pub inner: Option<Code>,
+#[serde_as]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[serde(deny_unknown_fields)]
+pub enum CodeReply {
+    Code(Code),
+    Error(starknet::Error),
+}
+
+impl TryFrom<CodeReply> for Code {
+    type Error = anyhow::Error;
+
+    fn try_from(value: CodeReply) -> Result<Self, Self::Error> {
+        match value {
+            CodeReply::Code(c) => Ok(c),
+            CodeReply::Error(e) => Err(anyhow::Error::new(e)),
+        }
+    }
 }
 
 /// Actual code data from [CodeReply].
@@ -133,8 +158,6 @@ pub struct Code {
     #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
     pub bytecode: Vec<H256>,
 }
-
-impl_into_result!(CodeReply, Code);
 
 /// Types used when deserializing L2 contract related data.
 pub mod code {
@@ -177,30 +200,31 @@ pub mod code {
     }
 }
 
-/// Used for deserializing specific Starknet sequencer error data.
-#[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct StarknetError {
-    pub code: starknet_error::Code,
-    pub message: String,
-    pub problems: Option<call::Problems>,
-}
-
-impl std::error::Error for StarknetError {}
-
-impl std::fmt::Display for StarknetError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-pub mod starknet_error {
+pub mod starknet {
     use serde::{Deserialize, Serialize};
+    use serde_with::skip_serializing_none;
+
+    /// Used for deserializing specific Starknet sequencer error data.
+    #[skip_serializing_none]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    pub struct Error {
+        pub code: ErrorCode,
+        pub message: String,
+        pub problems: Option<super::call::Problems>,
+    }
+
+    impl std::error::Error for Error {}
+
+    impl std::fmt::Display for Error {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{:?}", self)
+        }
+    }
 
     /// Represents error codes reported by the sequencer.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
-    pub enum Code {
+    pub enum ErrorCode {
         #[serde(rename = "StarknetErrorCode.BLOCK_NOT_FOUND")]
         BlockNotFound,
         #[serde(rename = "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT")]

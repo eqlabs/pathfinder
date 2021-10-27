@@ -32,4 +32,4 @@ toml = "0.5.8"
 web3 = "0.17.0"
 
 [dev-dependencies]
-pretty_assertions = "0.7.2"
+pretty_assertions = "1.0.0"

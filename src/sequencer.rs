@@ -3,11 +3,11 @@ pub mod reply;
 pub mod request;
 mod serde;
 
-use self::reply::IntoResult;
+use self::reply::BlockReply;
 use anyhow::Result;
 use reqwest::Url;
 use serde_json::{from_value, Value};
-use std::fmt::Debug;
+use std::{convert::TryInto, fmt::Debug};
 use web3::types::{H256, U256};
 
 /// StarkNet sequencer client using REST API.
@@ -17,27 +17,11 @@ pub struct Client {
     sequencer_url: Url,
 }
 
-/// Helper enum which simplifies the handling of optional block IDs in queries.
-enum BlockId {
-    Valid(String),
-    Null,
-}
-
-impl BlockId {
-    /// Constructor, internally converts `block_id` to String if it is `Some()`.
-    fn new(block_id: Option<U256>) -> Self {
-        match block_id {
-            Some(value) => Self::Valid(value.to_string()),
-            None => Self::Null,
-        }
-    }
-    /// Returns string slice representing block id or `"null"` if there was none specified.
-    fn as_str(&self) -> &str {
-        match self {
-            Self::Valid(s) => s.as_str(),
-            Self::Null => "null",
-        }
-    }
+/// Helper function which simplifies the handling of optional block IDs in queries.
+fn block_id_str(block: Option<U256>) -> String {
+    block
+        .map(|b| b.to_string())
+        .unwrap_or_else(|| "null".to_string())
 }
 
 impl Client {
@@ -59,30 +43,30 @@ impl Client {
 
     /// Helper function to wrap block query. `None` as `block_id` means latest block available.
     async fn get_block(&self, block_id: Option<U256>) -> Result<reply::Block> {
-        let block_id = BlockId::new(block_id);
+        let block_id = block_id_str(block_id);
         let resp =
             reqwest::get(self.build_query("get_block", &[("blockId", block_id.as_str())])).await?;
-        let resp_txt = resp.text().await?;
-        let resp_struct = serde_json::from_str::<reply::BlockReply>(resp_txt.as_str())?;
-        let resp_inner = resp_struct.into_result()?;
-        Ok(resp_inner)
+        let resp = resp.text().await?;
+        serde_json::from_str::<BlockReply>(resp.as_str())?.try_into()
     }
 
     /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
-    pub async fn call(&self, payload: request::Call, block_id: Option<U256>) -> Result<Vec<H256>> {
-        let block_id = BlockId::new(block_id);
+    pub async fn call(
+        &self,
+        payload: request::Call,
+        block_id: Option<U256>,
+    ) -> Result<reply::Call> {
+        let block_id = block_id_str(block_id);
         let url = self.build_query("call_contract", &[("blockId", block_id.as_str())]);
         let client = reqwest::Client::new();
         let resp = client.post(url).json(&payload).send().await?;
-        let resp_txt = resp.text().await?;
-        let resp_struct = serde_json::from_str::<reply::CallReply>(resp_txt.as_str())?;
-        let resp_inner = resp_struct.into_result()?;
-        Ok(resp_inner)
+        let resp = resp.text().await?;
+        serde_json::from_str::<reply::CallReply>(resp.as_str())?.try_into()
     }
 
     /// Gets contract's code and ABI.
     pub async fn code(&self, contract_addr: H256, block_id: Option<U256>) -> Result<reply::Code> {
-        let block_id = BlockId::new(block_id);
+        let block_id = block_id_str(block_id);
         let resp = reqwest::get(self.build_query(
             "get_code",
             &[
@@ -91,10 +75,8 @@ impl Client {
             ],
         ))
         .await?;
-        let resp_txt = resp.text().await?;
-        let resp_struct = serde_json::from_str::<reply::CodeReply>(resp_txt.as_str())?;
-        let resp_inner = resp_struct.into_result()?;
-        Ok(resp_inner)
+        let resp = resp.text().await?;
+        serde_json::from_str::<reply::CodeReply>(resp.as_str())?.try_into()
     }
 
     /// Gets storage value associated with a `key` for a prticular contract.
@@ -104,7 +86,7 @@ impl Client {
         key: U256,
         block_id: Option<U256>,
     ) -> Result<H256> {
-        let block_id = BlockId::new(block_id);
+        let block_id = block_id_str(block_id);
         let resp = reqwest::get(self.build_query(
             "get_storage_at",
             &[
@@ -114,8 +96,8 @@ impl Client {
             ],
         ))
         .await?;
-        let resp_txt = resp.text().await?;
-        let json_val: Value = serde_json::from_str(resp_txt.as_str())?;
+        let resp = resp.text().await?;
+        let json_val: Value = serde_json::from_str(resp.as_str())?;
 
         if let Value::String(s) = json_val {
             let value = serde::from_relaxed_hex_str::<
@@ -125,7 +107,7 @@ impl Client {
             >(s.as_str())?;
             Ok(value)
         } else {
-            let error = from_value::<reply::StarknetError>(json_val)?;
+            let error = from_value::<reply::starknet::Error>(json_val)?;
             Err(anyhow::Error::new(error))
         }
     }
@@ -137,9 +119,9 @@ impl Client {
             &[("transactionId", transaction_id.to_string().as_str())],
         ))
         .await?;
-        let resp_txt = resp.text().await?;
-        let resp_struct = serde_json::from_str(resp_txt.as_str())?;
-        Ok(resp_struct)
+        let resp = resp.text().await?;
+        let resp = serde_json::from_str(resp.as_str())?;
+        Ok(resp)
     }
 
     /// Gets transaction status by transaction id.
@@ -152,9 +134,9 @@ impl Client {
             &[("transactionId", transaction_id.to_string().as_str())],
         ))
         .await?;
-        let resp_txt = resp.text().await?;
-        let resp_struct = serde_json::from_str(resp_txt.as_str())?;
-        Ok(resp_struct)
+        let resp = resp.text().await?;
+        let resp = serde_json::from_str(resp.as_str())?;
+        Ok(resp)
     }
 
     /// Helper function that constructs a URL for particular query.
@@ -174,7 +156,10 @@ impl Client {
 #[allow(clippy::expect_fun_call)]
 mod tests {
     use super::{
-        reply::{starknet_error::Code, transaction::Status, StarknetError},
+        reply::{
+            starknet::{Error, ErrorCode},
+            transaction::Status,
+        },
         *,
     };
     use pretty_assertions::assert_eq;
@@ -220,11 +205,14 @@ mod tests {
             let actual = client
                 .block(input)
                 .await
-                .map_err(|e| e.downcast::<StarknetError>().unwrap().code);
+                .map_err(|e| e.downcast::<Error>().unwrap().code);
             if expect_ok {
                 actual.expect(failed_in!(line));
             } else {
-                assert_eq!(actual.expect_err(failed_in!(line)), Code::BlockNotFound);
+                assert_eq!(
+                    actual.expect_err(failed_in!(line)),
+                    ErrorCode::BlockNotFound
+                );
             }
         }
     }
@@ -242,28 +230,28 @@ mod tests {
                 None,
                 invalid_entry_point,
                 vec![],
-                Some(Code::EntryPointNotFound),
+                Some(ErrorCode::EntryPointNotFound),
                 line!(),
             ),
             (
                 Some(U256::from(15947)),
                 invalid_entry_point,
                 vec![U256::from(12)],
-                Some(Code::EntryPointNotFound),
+                Some(ErrorCode::EntryPointNotFound),
                 line!(),
             ),
             (
                 Some(U256::from(15947)),
                 valid_entry_point,
                 vec![],
-                Some(Code::TransactionFailed),
+                Some(ErrorCode::TransactionFailed),
                 line!(),
             ),
             (
                 Some(U256::from(10000)),
                 valid_entry_point,
                 vec![U256::from(34)],
-                Some(Code::UninitializedContract),
+                Some(ErrorCode::UninitializedContract),
                 line!(),
             ),
             (
@@ -290,7 +278,7 @@ mod tests {
                     block_id,
                 )
                 .await
-                .map_err(|e| e.downcast::<StarknetError>().unwrap().code);
+                .map_err(|e| e.downcast::<Error>().unwrap().code);
             if let Some(expected_error) = exp_error {
                 assert_eq!(actual.expect_err(failed_in!(line)), expected_error);
             } else {
@@ -312,13 +300,13 @@ mod tests {
             (
                 invalid_contract,
                 None,
-                Some(Code::OutOfRangeContractAddress),
+                Some(ErrorCode::OutOfRangeContractAddress),
                 line!(),
             ),
             (
                 valid_contract,
                 Some(U256::max_value()),
-                Some(Code::BlockNotFound),
+                Some(ErrorCode::BlockNotFound),
                 line!(),
             ),
             // Success
@@ -330,7 +318,7 @@ mod tests {
             let actual = client
                 .code(contract_addr, block_id)
                 .await
-                .map_err(|e| e.downcast::<StarknetError>().unwrap().code);
+                .map_err(|e| e.downcast::<Error>().unwrap().code);
             if let Some(expected_error) = exp_error {
                 assert_eq!(actual.expect_err(failed_in!(line)), expected_error);
             } else {
@@ -359,21 +347,21 @@ mod tests {
                 invalid_contract,
                 valid_key,
                 None,
-                Some(Code::OutOfRangeContractAddress),
+                Some(ErrorCode::OutOfRangeContractAddress),
                 line!(),
             ),
             (
                 valid_contract,
                 U256::max_value(),
                 None,
-                Some(Code::OutOfRangeStorageKey),
+                Some(ErrorCode::OutOfRangeStorageKey),
                 line!(),
             ),
             (
                 valid_contract,
                 valid_key,
                 Some(U256::max_value()),
-                Some(Code::BlockNotFound),
+                Some(ErrorCode::BlockNotFound),
                 line!(),
             ),
             (
@@ -391,7 +379,7 @@ mod tests {
             let actual = client
                 .storage(contract_addr, key, block_id)
                 .await
-                .map_err(|e| e.downcast::<StarknetError>().unwrap().code);
+                .map_err(|e| e.downcast::<Error>().unwrap().code);
             if let Some(expected_error) = exp_error {
                 assert_eq!(actual.expect_err(failed_in!(line)), expected_error);
             } else {
