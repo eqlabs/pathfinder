@@ -53,9 +53,11 @@ impl Storage {
     fn migrate(&mut self, from: u32) -> Result<()> {
         // todo: logs will be important here. Maybe emit a log per schema update,
         //       and one if already up-to-date.
-        if from > Self::SCHEMA_VERSION {
-            anyhow::bail!("Unknown database schema version: {}", from);
-        }
+        anyhow::ensure!(
+            from <= Self::SCHEMA_VERSION,
+            "Unknown database schema version: {}",
+            from
+        );
 
         // Perform all migrations required from `from` to the current version.
         for version in from..Self::SCHEMA_VERSION {
@@ -79,8 +81,8 @@ impl Storage {
                         );
 
                         CREATE TABLE transactions(
-                            id   INTEGER PRIMARY KEY,
-                            hash BLOB UNIQUE NOT NULL,
+                            number INTEGER PRIMARY KEY,
+                            hash   BLOB UNIQUE NOT NULL,
 
                             l2_number INTEGER NOT NULL REFERENCES l2_blocks(number) ON DELETE CASCADE
                         );
@@ -91,7 +93,7 @@ impl Storage {
                             code BLOB,
                             abi  BLOB,
 
-                            tx_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE
+                            tx_id INTEGER NOT NULL REFERENCES transactions(number) ON DELETE CASCADE
                         );
 
                         CREATE TABLE variables(
@@ -170,15 +172,15 @@ mod tests {
         db.connection
             .execute_batch(
                 r"
-            CREATE TABLE parent(
-                id INTEGER PRIMARY KEY
-            );
+                    CREATE TABLE parent(
+                        id INTEGER PRIMARY KEY
+                    );
 
-            CREATE TABLE child(
-                id INTEGER PRIMARY KEY,
-                parent_id INTEGER NOT NULL REFERENCES parent(id)
-            );
-        ",
+                    CREATE TABLE child(
+                        id INTEGER PRIMARY KEY,
+                        parent_id INTEGER NOT NULL REFERENCES parent(id)
+                    );
+                ",
             )
             .unwrap();
 
