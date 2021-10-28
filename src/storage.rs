@@ -5,6 +5,9 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+/// A Sqlite storage backend.
+///
+/// todo: elaborate when more established.
 pub struct Storage {
     connection: Connection,
 }
@@ -12,6 +15,8 @@ pub struct Storage {
 impl Storage {
     /// Current schema version, used to drive schema migration.
     const SCHEMA_VERSION: u32 = 1;
+    /// Sqlite key used for the PRAGMA user version.
+    const VERSION_KEY: &'static str = "user_version";
 
     /// Creates a [Storage] from a [Sqlite Connection](Connection).
     pub fn new(connection: Connection) -> Result<Self> {
@@ -36,22 +41,20 @@ impl Storage {
     fn schema_version(&mut self) -> Result<u32> {
         // We store the schema version in the Sqlite provided PRAGMA "user_version",
         // which stores an INTEGER and defaults to 0.
-        self.connection
-            .query_row("SELECT user_version FROM pragma_user_version;", [], |row| {
-                row.get::<_, u32>(0)
-            })
-            .map_err(|err| {
-                anyhow::anyhow!(
-                    "Failed to read database schema version: {}",
-                    err.to_string()
-                )
-            })
+        let version = self.connection.query_row(
+            &format!("SELECT {} FROM pragma_user_version;", Self::VERSION_KEY),
+            [],
+            |row| row.get::<_, u32>(0),
+        )?;
+        Ok(version)
     }
 
     /// Updates the database schema to the current version.
     fn migrate(&mut self, from: u32) -> Result<()> {
+        // todo: logs will be important here. Maybe emit a log per schema update,
+        //       and one if already up-to-date.
         if from > Self::SCHEMA_VERSION {
-            return Err(anyhow::anyhow!("Unknown database schema version: {}", from));
+            anyhow::bail!("Unknown database schema version: {}", from);
         }
 
         // Perform all migrations required from `from` to the current version.
@@ -64,59 +67,54 @@ impl Storage {
                 0 => {
                     tx.execute_batch(r"
                         CREATE TABLE l1_blocks(
-                            l1_id INTEGER PRIMARY KEY,
-                            hash  BLOB    UNIQUE NOT NULL
+                            number INTEGER PRIMARY KEY,
+                            hash   BLOB    UNIQUE NOT NULL
                         );
 
                         CREATE TABLE l2_blocks(
-                            l2_id INTEGER PRIMARY KEY,
-                            hash  BLOB    UNIQUE NOT NULL,
+                            number INTEGER PRIMARY KEY,
+                            hash   BLOB    UNIQUE NOT NULL,
 
-                            l1_id INTEGER NOT NULL REFERENCES l1_blocks(l1_id) ON DELETE CASCADE
+                            l1_number INTEGER NOT NULL REFERENCES l1_blocks(number) ON DELETE CASCADE
                         );
 
                         CREATE TABLE transactions(
-                            tx_id INTEGER PRIMARY KEY,
-                            hash  BLOB UNIQUE NOT NULL,
+                            id   INTEGER PRIMARY KEY,
+                            hash BLOB UNIQUE NOT NULL,
 
-                            l2_id INTEGER NOT NULL REFERENCES l2_blocks(l2_id) ON DELETE CASCADE
+                            l2_number INTEGER NOT NULL REFERENCES l2_blocks(number) ON DELETE CASCADE
                         );
 
                         CREATE TABLE contracts(
-                            contract_id INTEGER PRIMARY KEY,
-                            hash        BLOB UNIQUE NOT NULL,
-                            code        BLOB,
-                            abi         BLOB,
+                            id   INTEGER PRIMARY KEY,
+                            hash BLOB UNIQUE NOT NULL,
+                            code BLOB,
+                            abi  BLOB,
 
-                            tx_id INTEGER NOT NULL REFERENCES transactions(tx_id) ON DELETE CASCADE
+                            tx_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE
                         );
 
                         CREATE TABLE variables(
-                            variable_id INTEGER PRIMARY KEY,
-                            hash        BLOB NOT NULL,
+                            key  INTEGER PRIMARY KEY,
+                            hash BLOB NOT NULL,
 
-                            contract_id INTEGER REFERENCES contracts(contract_id) ON DELETE CASCADE
+                            contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE
                         );
 
                         CREATE TABLE variable_updates(
-                            update_id INTEGER PRIMARY KEY,
-                            value     BLOB,
+                            id    INTEGER PRIMARY KEY,
+                            value BLOB,
 
-                            variable_id INTEGER NOT NULL REFERENCES variables(variable_id) ON DELETE CASCADE,
-                            tx_id       INTEGER NOT NULL REFERENCES transactions(tx_id)    ON DELETE CASCADE
+                            variable_key INTEGER NOT NULL REFERENCES variables(key)   ON DELETE CASCADE,
+                            tx_id        INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE
                         );
                     ")?;
                 }
-                other => {
-                    return Err(anyhow::anyhow!(
-                        "Unhandled database migration verion: {}",
-                        other
-                    ))
-                }
+                other => anyhow::bail!("Unhandled database migration version: {}", other),
             }
 
             // Update the schema version and commit the transaction.
-            tx.pragma_update(None, "user_version", version + 1)?;
+            tx.pragma_update(None, Self::VERSION_KEY, version + 1)?;
             tx.commit()?;
         }
 
@@ -150,7 +148,7 @@ mod tests {
     #[test]
     fn migration_should_fail_for_bad_version() {
         let mut db = mem_storage();
-        assert!(db.migrate(Storage::SCHEMA_VERSION + 1).is_err());
+        db.migrate(Storage::SCHEMA_VERSION + 1).unwrap_err();
     }
 
     #[test]
@@ -188,13 +186,11 @@ mod tests {
         db.connection
             .execute("INSERT INTO parent (id) VALUES (2)", [])
             .unwrap();
-        assert!(db
-            .connection
+        db.connection
             .execute("INSERT INTO child (id, parent_id) VALUES (0, 2)", [])
-            .is_ok());
-        assert!(db
-            .connection
+            .unwrap();
+        db.connection
             .execute("INSERT INTO child (id, parent_id) VALUES (1, 1)", [])
-            .is_err());
+            .unwrap_err();
     }
 }
