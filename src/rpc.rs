@@ -127,7 +127,7 @@ mod tests {
             .get_transaction_by_number("0x2d98c".to_owned())
             .await
             .expect("Call failed");
-        // A quite recent txn
+        // Txn which does not contain a L1 to L2 message
         client(addr)
             .get_transaction_by_number("0x43967".to_owned())
             .await

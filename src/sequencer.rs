@@ -3,9 +3,11 @@ pub mod reply;
 pub mod request;
 mod serde;
 
+use self::reply::BlockReply;
 use anyhow::Result;
 use reqwest::Url;
-use std::fmt::Debug;
+use serde_json::{from_value, Value};
+use std::{convert::TryInto, fmt::Debug};
 use web3::types::{H256, U256};
 
 /// StarkNet sequencer client using REST API.
@@ -13,6 +15,13 @@ use web3::types::{H256, U256};
 pub struct Client {
     /// StarkNet sequencer URL.
     sequencer_url: Url,
+}
+
+/// Helper function which simplifies the handling of optional block IDs in queries.
+fn block_id_str(block: Option<U256>) -> String {
+    block
+        .map(|b| b.to_string())
+        .unwrap_or_else(|| "null".to_string())
 }
 
 impl Client {
@@ -34,66 +43,73 @@ impl Client {
 
     /// Helper function to wrap block query. `None` as `block_id` means latest block available.
     async fn get_block(&self, block_id: Option<U256>) -> Result<reply::Block> {
-        let id_string = if let Some(id) = block_id {
-            id.to_string()
-        } else {
-            "null".to_owned()
-        };
+        let block_id = block_id_str(block_id);
         let resp =
-            reqwest::get(self.build_query("get_block", &[("blockId", id_string.as_str())])).await?;
-        let resp_txt = resp.text().await?;
-        let block = serde_json::from_str(resp_txt.as_str())?;
-        Ok(block)
+            reqwest::get(self.build_query("get_block", &[("blockId", block_id.as_str())])).await?;
+        let resp = resp.text().await?;
+        serde_json::from_str::<BlockReply>(resp.as_str())?.try_into()
     }
 
     /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
-    pub async fn call(&self, payload: request::Call) -> Result<reply::Call> {
-        let url = self.build_query("call_contract", &[("blockId", "null")]);
+    pub async fn call(
+        &self,
+        payload: request::Call,
+        block_id: Option<U256>,
+    ) -> Result<reply::Call> {
+        let block_id = block_id_str(block_id);
+        let url = self.build_query("call_contract", &[("blockId", block_id.as_str())]);
         let client = reqwest::Client::new();
         let resp = client.post(url).json(&payload).send().await?;
-        let resp_txt = resp.text().await?;
-        let resp_struct = serde_json::from_str(resp_txt.as_str())?;
-        Ok(resp_struct)
+        let resp = resp.text().await?;
+        serde_json::from_str::<reply::CallReply>(resp.as_str())?.try_into()
     }
 
     /// Gets contract's code and ABI.
-    pub async fn code(&self, contract_addr: H256) -> Result<reply::Code> {
+    pub async fn code(&self, contract_addr: H256, block_id: Option<U256>) -> Result<reply::Code> {
+        let block_id = block_id_str(block_id);
         let resp = reqwest::get(self.build_query(
             "get_code",
             &[
                 ("contractAddress", format!("{:x}", contract_addr).as_str()),
-                ("blockId", "null"),
+                ("blockId", block_id.as_str()),
             ],
         ))
         .await?;
-        let resp_txt = resp.text().await?;
-        let resp_struct = serde_json::from_str(resp_txt.as_str())?;
-        Ok(resp_struct)
+        let resp = resp.text().await?;
+        serde_json::from_str::<reply::CodeReply>(resp.as_str())?.try_into()
     }
 
     /// Gets storage value associated with a `key` for a prticular contract.
-    pub async fn storage(&self, contract_addr: H256, key: U256) -> Result<H256> {
+    pub async fn storage(
+        &self,
+        contract_addr: H256,
+        key: U256,
+        block_id: Option<U256>,
+    ) -> Result<H256> {
+        let block_id = block_id_str(block_id);
         let resp = reqwest::get(self.build_query(
             "get_storage_at",
             &[
                 ("contractAddress", format!("{:x}", contract_addr).as_str()),
                 ("key", key.to_string().as_str()),
-                ("blockId", "null"),
+                ("blockId", block_id.as_str()),
             ],
         ))
         .await?;
-        let resp_txt = resp.text().await?;
-        let resp_str = resp_txt.as_str();
-        // API returns a quoted string literal, ie. "\"0x123\"".
-        let msg = "Expected a double-quoted, 0x-prefixed hex string";
-        let no_prefix = resp_str.strip_prefix('"').ok_or(anyhow::anyhow!(msg))?;
-        let unquoted = no_prefix.strip_suffix('"').ok_or(anyhow::anyhow!(msg))?;
+        let resp = resp.text().await?;
+        let json_val: Value = serde_json::from_str(resp.as_str())?;
 
-        let value =
-            serde::from_relaxed_hex_str::<H256, { H256::len_bytes() }, { H256::len_bytes() * 2 }>(
-                unquoted,
-            )?;
-        Ok(value)
+        if let Value::String(s) = json_val {
+            let value = serde::from_relaxed_hex_str::<
+                H256,
+                { H256::len_bytes() },
+                { H256::len_bytes() * 2 },
+            >(s.as_str())?;
+            Ok(value)
+        } else {
+            let error = from_value::<reply::starknet::Error>(json_val)?;
+            Err(anyhow::Error::new(error))
+        }
     }
 
     /// Gets transaction by id.
@@ -103,9 +119,9 @@ impl Client {
             &[("transactionId", transaction_id.to_string().as_str())],
         ))
         .await?;
-        let resp_txt = resp.text().await?;
-        let resp_struct = serde_json::from_str(resp_txt.as_str())?;
-        Ok(resp_struct)
+        let resp = resp.text().await?;
+        let resp = serde_json::from_str(resp.as_str())?;
+        Ok(resp)
     }
 
     /// Gets transaction status by transaction id.
@@ -118,9 +134,9 @@ impl Client {
             &[("transactionId", transaction_id.to_string().as_str())],
         ))
         .await?;
-        let resp_txt = resp.text().await?;
-        let resp_struct = serde_json::from_str(resp_txt.as_str())?;
-        Ok(resp_struct)
+        let resp = resp.text().await?;
+        let resp = serde_json::from_str(resp.as_str())?;
+        Ok(resp)
     }
 
     /// Helper function that constructs a URL for particular query.
@@ -136,137 +152,338 @@ impl Client {
 }
 
 #[cfg(test)]
+// Suppress `unwrap_or_else(|_| panic!("failed...")` when using `failed_in!()`
+#[allow(clippy::expect_fun_call)]
 mod tests {
-    use super::*;
+    use super::{
+        reply::{
+            starknet::{Error, ErrorCode},
+            transaction::Status,
+        },
+        *,
+    };
     use std::str::FromStr;
     use web3::types::U256;
 
+    lazy_static::lazy_static! {
+        static ref VALID_CONTRACT_ADDR: H256 = H256::from_str("0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc").unwrap();
+        static ref INVALID_CONTRACT_ADDR: H256 = H256::from_str("0x14eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc").unwrap();
+    }
+
+    // Alpha2 network client factory helper
     fn client() -> Client {
         const URL: &str = "https://alpha2.starknet.io/";
         Client::new(Url::parse(URL).unwrap())
     }
 
-    #[tokio::test]
-    async fn latest_block() {
-        client()
-            .latest_block()
-            .await
-            .expect("Correctly deserialized reply");
+    mod block {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn genesis() {
+            client().block(U256::zero()).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest() {
+            client().latest_block().await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn contains_l1_l2_msg() {
+            client().block(U256::from(20056)).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn without_l1_l2_msg() {
+            client().block(U256::from(43740)).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn not_found() {
+            assert_eq!(
+                client()
+                    .block(U256::max_value())
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::BlockNotFound
+            );
+        }
     }
 
-    #[tokio::test]
-    async fn block() {
-        // The genesis block, previous_block_id is -1
-        client()
-            .block(U256::zero())
-            .await
-            .expect("Correctly deserialized reply");
-        // This block contains a txn which includes a L1 to L2 message
-        client()
-            .block(U256::from(20056))
-            .await
-            .expect("Correctly deserialized reply");
-        // A quite recent block
-        client()
-            .block(U256::from(43740))
-            .await
-            .expect("Correctly deserialized reply");
-    }
+    mod call {
+        use super::*;
+        use pretty_assertions::assert_eq;
 
-    #[tokio::test]
-    async fn call() {
-        client()
-            .call(request::Call {
-                calldata: vec![],
-                contract_address: H256::from_str(
-                    "0x0399d3cf2405e997b1cda8c45f5ba919a6499f3d3b00998d5a91d6d9bcbc9128",
+        lazy_static::lazy_static! {
+            static ref VALID_ENTRY_POINT: H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
+        }
+
+        #[tokio::test]
+        async fn invalid_entry_point() {
+            assert_eq!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: H256::zero(),
+                        },
+                        None,
+                    )
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::EntryPointNotFound
+            );
+        }
+
+        #[tokio::test]
+        async fn transaction_failed() {
+            assert_eq!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                        },
+                        Some(U256::from(15947)),
+                    )
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::TransactionFailed
+            );
+        }
+
+        #[tokio::test]
+        async fn uninitialized_contract() {
+            assert_eq!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                        },
+                        Some(U256::from(10000)),
+                    )
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::UninitializedContract
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            client()
+                .call(
+                    request::Call {
+                        calldata: vec![U256::from(1234)],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                    },
+                    Some(U256::from(15947)),
                 )
-                .unwrap(),
-                entry_point_selector: H256::from_str(
-                    "0x039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695",
-                )
-                .unwrap(),
-            })
-            .await
-            .expect("Correctly deserialized reply");
+                .await
+                .unwrap();
+        }
     }
 
-    #[tokio::test]
-    async fn code() {
-        client()
-            .code(
-                H256::from_str(
-                    "0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc",
-                )
-                .unwrap(),
-            )
-            .await
-            .expect("Correctly deserialized reply");
+    mod code {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn invalid_contract() {
+            assert_eq!(
+                client()
+                    .code(*INVALID_CONTRACT_ADDR, None)
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeContractAddress
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_block() {
+            assert_eq!(
+                client()
+                    .code(*VALID_CONTRACT_ADDR, Some(U256::max_value()))
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::BlockNotFound
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            client()
+                .code(*VALID_CONTRACT_ADDR, Some(U256::from(15947)))
+                .await
+                .map_err(|e| e.downcast::<Error>().unwrap().code)
+                .unwrap();
+        }
     }
 
-    #[tokio::test]
-    async fn storage() {
-        client()
-            .storage(
-                H256::from_str(
-                    "0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc",
-                )
-                .unwrap(),
-                U256::from_str_radix(
-                    "916907772491729262376534102982219947830828984996257231353398618781993312401",
-                    10,
-                )
-                .unwrap(),
-            )
-            .await
-            .expect("Correctly deserialized reply");
+    mod storage {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        lazy_static::lazy_static! {
+            static ref VALID_KEY: U256 = U256::from_str_radix("916907772491729262376534102982219947830828984996257231353398618781993312401", 10).unwrap();
+        }
+
+        #[tokio::test]
+        async fn invalid_contract() {
+            assert_eq!(
+                client()
+                    .storage(*INVALID_CONTRACT_ADDR, *VALID_KEY, None)
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeContractAddress
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_key() {
+            assert_eq!(
+                client()
+                    .storage(*VALID_CONTRACT_ADDR, U256::max_value(), None)
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeStorageKey
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_block() {
+            assert_eq!(
+                client()
+                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(U256::max_value()))
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::BlockNotFound
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            client()
+                .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(U256::from(15947)))
+                .await
+                .unwrap();
+        }
     }
 
-    #[tokio::test]
-    async fn transaction() {
-        // The first txn
-        client()
-            .transaction(U256::zero())
-            .await
-            .expect("Correctly deserialized reply");
-        // An example of a rejected txn
-        client()
-            .transaction(U256::from(162531))
-            .await
-            .expect("Correctly deserialized reply");
-        // Txn containing a L1 to L2 message
-        client()
-            .transaction(U256::from(186764))
-            .await
-            .expect("Correctly deserialized reply");
-        // A quite recent txn
-        client()
-            .transaction(U256::from(276839))
-            .await
-            .expect("Correctly deserialized reply");
+    mod transaction {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn first() {
+            assert_eq!(
+                client().transaction(U256::zero()).await.unwrap().status,
+                Status::AcceptedOnChain
+            );
+        }
+
+        #[tokio::test]
+        async fn rejected() {
+            assert_eq!(
+                client()
+                    .transaction(U256::from(162531))
+                    .await
+                    .unwrap()
+                    .status,
+                Status::Rejected
+            );
+        }
+
+        #[tokio::test]
+        async fn contains_l1_l2_msg() {
+            assert_eq!(
+                client()
+                    .transaction(U256::from(162531))
+                    .await
+                    .unwrap()
+                    .status,
+                Status::Rejected
+            );
+        }
+
+        #[tokio::test]
+        async fn not_received() {
+            assert_eq!(
+                client().transaction(u128::MAX.into()).await.unwrap().status,
+                Status::NotReceived
+            );
+        }
     }
 
-    #[tokio::test]
-    async fn transaction_status() {
-        // The first txn
-        client()
-            .transaction_status(U256::zero())
-            .await
-            .expect("Correctly deserialized reply");
-        // An example of a rejected txn
-        client()
-            .transaction_status(U256::from(162531))
-            .await
-            .expect("Correctly deserialized reply");
-        // Txn containing a L1 to L2 message
-        client()
-            .transaction_status(U256::from(186764))
-            .await
-            .expect("Correctly deserialized reply");
-        // A quite recent txn
-        client()
-            .transaction_status(U256::from(276839))
-            .await
-            .expect("Correctly deserialized reply");
+    mod transaction_status {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn first() {
+            assert_eq!(
+                client()
+                    .transaction_status(U256::zero())
+                    .await
+                    .unwrap()
+                    .tx_status
+                    .unwrap(),
+                Status::AcceptedOnChain
+            );
+        }
+
+        #[tokio::test]
+        async fn rejected() {
+            assert_eq!(
+                client()
+                    .transaction_status(U256::from(162531))
+                    .await
+                    .unwrap()
+                    .tx_status
+                    .unwrap(),
+                Status::Rejected
+            );
+        }
+
+        #[tokio::test]
+        async fn contains_l1_l2_msg() {
+            assert_eq!(
+                client()
+                    .transaction_status(U256::from(162531))
+                    .await
+                    .unwrap()
+                    .tx_status
+                    .unwrap(),
+                Status::Rejected
+            );
+        }
+
+        #[tokio::test]
+        async fn not_received() {
+            assert_eq!(
+                client()
+                    .transaction_status(U256::max_value())
+                    .await
+                    .unwrap()
+                    .tx_status
+                    .unwrap(),
+                Status::NotReceived
+            );
+        }
     }
 }

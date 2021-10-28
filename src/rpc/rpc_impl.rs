@@ -152,14 +152,14 @@ impl RpcApiServer for RpcImpl {
     async fn get_storage(&self, contract_address: H256, key: U256) -> Result<H256, Error> {
         // TODO get this from storage
         // TODO calculate key
-        let storage = self.0.storage(contract_address, key).await?;
+        let storage = self.0.storage(contract_address, key, None).await?;
         let x: [u8; 32] = storage.into();
         Ok(H256::from(x))
     }
 
     async fn get_code(&self, contract_address: H256) -> Result<reply::Code, Error> {
         // TODO get this from storage
-        let storage = self.0.code(contract_address).await?;
+        let storage = self.0.code(contract_address, None).await?;
         Ok(storage)
     }
 
@@ -172,11 +172,14 @@ impl RpcApiServer for RpcImpl {
         // TODO calculate entry point?
         let call = self
             .0
-            .call(request::Call {
-                calldata: call_data,
-                contract_address,
-                entry_point_selector: entry_point,
-            })
+            .call(
+                request::Call {
+                    calldata: call_data,
+                    contract_address,
+                    entry_point_selector: entry_point,
+                },
+                None,
+            )
             .await?;
         Ok(call)
     }
