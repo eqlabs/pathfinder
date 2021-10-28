@@ -54,34 +54,6 @@ pub mod block {
     pub type Status = super::transaction::Status;
 }
 
-// /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
-// #[serde_as]
-// #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-// #[serde(untagged)]
-// #[serde(deny_unknown_fields)]
-// pub enum CallReply {
-//     Call(#[serde_as(as = "Vec<H256AsRelaxedHexStr>")] Vec<H256>),
-//     Error(starknet::Error),
-// }
-
-// impl TryFrom<CallReply> for Vec<H256> {
-//     type Error = anyhow::Error;
-
-//     fn try_from(value: CallReply) -> Result<Self, Self::Error> {
-//         match value {
-//             CallReply::Call(c) => Ok(c),
-//             CallReply::Error(e) => Err(anyhow::Error::new(e)),
-//         }
-//     }
-// }
-
-// /// Actual call data from [CallReply].
-// #[serde_as]
-// #[skip_serializing_none]
-// #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-// #[serde(deny_unknown_fields)]
-// pub struct Call(#[serde_as(as = "Vec<H256AsRelaxedHexStr>")] Vec<H256>);
-
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
