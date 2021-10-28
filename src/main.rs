@@ -2,6 +2,7 @@ mod config;
 mod ethereum;
 mod rpc;
 mod sequencer;
+mod storage;
 
 #[tokio::main]
 async fn main() {
