@@ -162,15 +162,12 @@ mod tests {
         },
         *,
     };
-    use pretty_assertions::assert_eq;
     use std::str::FromStr;
     use web3::types::U256;
 
-    // Helper macro for meaningful `expect()`s
-    macro_rules! failed_in {
-        ($line:ident) => {
-            format!("failed in line {}", $line).as_str()
-        };
+    lazy_static::lazy_static! {
+        static ref VALID_CONTRACT_ADDR: H256 = H256::from_str("0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc").unwrap();
+        static ref INVALID_CONTRACT_ADDR: H256 = H256::from_str("0x14eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc").unwrap();
     }
 
     // Alpha2 network client factory helper
@@ -179,243 +176,313 @@ mod tests {
         Client::new(Url::parse(URL).unwrap())
     }
 
-    #[tokio::test]
-    async fn latest_block() {
-        client()
-            .latest_block()
-            .await
-            .expect("Correctly deserialized reply");
-    }
+    mod block {
+        use super::*;
+        use pretty_assertions::assert_eq;
 
-    #[tokio::test]
-    async fn block() {
-        let input_vs_expect_ok = [
-            // The genesis block, previous_block_id is -1
-            (U256::zero(), true, line!()),
-            // This block contains a txn which includes a L1 to L2 message
-            (U256::from(20056), true, line!()),
-            // This block does not contain any txns which include a L1 to L2 message
-            (U256::from(43740), true, line!()),
-            // Causes BlockNotFound
-            (U256::max_value(), false, line!()),
-        ];
-        let client = client();
+        #[tokio::test]
+        async fn genesis() {
+            client().block(U256::zero()).await.unwrap();
+        }
 
-        for (input, expect_ok, line) in input_vs_expect_ok {
-            let actual = client
-                .block(input)
-                .await
-                .map_err(|e| e.downcast::<Error>().unwrap().code);
-            if expect_ok {
-                actual.expect(failed_in!(line));
-            } else {
-                assert_eq!(
-                    actual.expect_err(failed_in!(line)),
-                    ErrorCode::BlockNotFound
-                );
-            }
+        #[tokio::test]
+        async fn latest() {
+            client().latest_block().await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn contains_l1_l2_msg() {
+            client().block(U256::from(20056)).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn without_l1_l2_msg() {
+            client().block(U256::from(43740)).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn not_found() {
+            assert_eq!(
+                client()
+                    .block(U256::max_value())
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::BlockNotFound
+            );
         }
     }
 
-    #[tokio::test]
-    async fn call() {
-        let invalid_entry_point = H256::zero();
-        let valid_entry_point =
-            H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")
-                .unwrap();
+    mod call {
+        use super::*;
+        use pretty_assertions::assert_eq;
 
-        let inputs_vs_exp_error = [
-            // (block_id, entry_point, calldata, expected_error, line)
-            (
-                None,
-                invalid_entry_point,
-                vec![],
-                Some(ErrorCode::EntryPointNotFound),
-                line!(),
-            ),
-            (
-                Some(U256::from(15947)),
-                invalid_entry_point,
-                vec![U256::from(12)],
-                Some(ErrorCode::EntryPointNotFound),
-                line!(),
-            ),
-            (
-                Some(U256::from(15947)),
-                valid_entry_point,
-                vec![],
-                Some(ErrorCode::TransactionFailed),
-                line!(),
-            ),
-            (
-                Some(U256::from(10000)),
-                valid_entry_point,
-                vec![U256::from(34)],
-                Some(ErrorCode::UninitializedContract),
-                line!(),
-            ),
-            (
-                Some(U256::from(15947)),
-                valid_entry_point,
-                vec![U256::from(56)],
-                None, // Success
-                line!(),
-            ),
-        ];
-        let client = client();
+        lazy_static::lazy_static! {
+            static ref VALID_ENTRY_POINT: H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
+        }
 
-        for (block_id, entry_point_selector, calldata, exp_error, line) in inputs_vs_exp_error {
-            let actual = client
+        #[tokio::test]
+        async fn invalid_entry_point() {
+            assert_eq!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: H256::zero(),
+                        },
+                        None,
+                    )
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::EntryPointNotFound
+            );
+        }
+
+        #[tokio::test]
+        async fn transaction_failed() {
+            assert_eq!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                        },
+                        Some(U256::from(15947)),
+                    )
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::TransactionFailed
+            );
+        }
+
+        #[tokio::test]
+        async fn uninitialized_contract() {
+            assert_eq!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                        },
+                        Some(U256::from(10000)),
+                    )
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::UninitializedContract
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            client()
                 .call(
                     request::Call {
-                        calldata,
-                        contract_address: H256::from_str(
-                            "0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc",
-                        )
-                        .unwrap(),
-                        entry_point_selector,
+                        calldata: vec![U256::from(1234)],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
                     },
-                    block_id,
+                    Some(U256::from(15947)),
                 )
                 .await
-                .map_err(|e| e.downcast::<Error>().unwrap().code);
-            if let Some(expected_error) = exp_error {
-                assert_eq!(actual.expect_err(failed_in!(line)), expected_error);
-            } else {
-                actual.expect(failed_in!(line));
-            }
+                .unwrap();
         }
     }
 
-    #[tokio::test]
-    async fn code() {
-        let valid_contract =
-            H256::from_str("0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc")
-                .unwrap();
-        let invalid_contract =
-            H256::from_str("0x14eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc")
-                .unwrap();
-        let inputs_vs_exp_error = [
-            // (contract_addr, block_id, expected_error, line)
-            (
-                invalid_contract,
-                None,
-                Some(ErrorCode::OutOfRangeContractAddress),
-                line!(),
-            ),
-            (
-                valid_contract,
-                Some(U256::max_value()),
-                Some(ErrorCode::BlockNotFound),
-                line!(),
-            ),
-            // Success
-            (valid_contract, Some(U256::from(15947)), None, line!()),
-        ];
-        let client = client();
+    mod code {
+        use super::*;
+        use pretty_assertions::assert_eq;
 
-        for (contract_addr, block_id, exp_error, line) in inputs_vs_exp_error {
-            let actual = client
-                .code(contract_addr, block_id)
-                .await
-                .map_err(|e| e.downcast::<Error>().unwrap().code);
-            if let Some(expected_error) = exp_error {
-                assert_eq!(actual.expect_err(failed_in!(line)), expected_error);
-            } else {
-                actual.expect(failed_in!(line));
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn storage() {
-        let valid_contract =
-            H256::from_str("0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc")
-                .unwrap();
-        let invalid_contract =
-            H256::from_str("0x14eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc")
-                .unwrap();
-        let valid_key = U256::from_str_radix(
-            "916907772491729262376534102982219947830828984996257231353398618781993312401",
-            10,
-        )
-        .unwrap();
-        let inputs_vs_exp_error = [
-            // (contract_addr, key, block_id, expected_error, line)
-            (valid_contract, valid_key, None, None, line!()),
-            (
-                invalid_contract,
-                valid_key,
-                None,
-                Some(ErrorCode::OutOfRangeContractAddress),
-                line!(),
-            ),
-            (
-                valid_contract,
-                U256::max_value(),
-                None,
-                Some(ErrorCode::OutOfRangeStorageKey),
-                line!(),
-            ),
-            (
-                valid_contract,
-                valid_key,
-                Some(U256::max_value()),
-                Some(ErrorCode::BlockNotFound),
-                line!(),
-            ),
-            (
-                // Success
-                valid_contract,
-                valid_key,
-                Some(U256::from(15946)),
-                None,
-                line!(),
-            ),
-        ];
-        let client = client();
-
-        for (contract_addr, key, block_id, exp_error, line) in inputs_vs_exp_error {
-            let actual = client
-                .storage(contract_addr, key, block_id)
-                .await
-                .map_err(|e| e.downcast::<Error>().unwrap().code);
-            if let Some(expected_error) = exp_error {
-                assert_eq!(actual.expect_err(failed_in!(line)), expected_error);
-            } else {
-                actual.expect(failed_in!(line));
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn transaction_and_transaction_status() {
-        let input_vs_txn_status = [
-            (U256::zero(), Status::AcceptedOnChain, line!()),
-            (U256::from(162531), Status::Rejected, line!()),
-            // Txn containing a L1 to L2 message
-            (U256::from(186764), Status::AcceptedOnChain, line!()),
-            (u128::MAX.into(), Status::NotReceived, line!()),
-        ];
-        let client = client();
-
-        for (txn_id, txn_status, line) in input_vs_txn_status {
+        #[tokio::test]
+        async fn invalid_contract() {
             assert_eq!(
-                client
-                    .transaction(txn_id)
+                client()
+                    .code(*INVALID_CONTRACT_ADDR, None)
                     .await
-                    .expect(failed_in!(line))
-                    .status,
-                txn_status
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeContractAddress
             );
+        }
+
+        #[tokio::test]
+        async fn invalid_block() {
             assert_eq!(
-                client
-                    .transaction_status(txn_id)
+                client()
+                    .code(*VALID_CONTRACT_ADDR, Some(U256::max_value()))
                     .await
-                    .expect(failed_in!(line))
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::BlockNotFound
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            client()
+                .code(*VALID_CONTRACT_ADDR, Some(U256::from(15947)))
+                .await
+                .map_err(|e| e.downcast::<Error>().unwrap().code)
+                .unwrap();
+        }
+    }
+
+    mod storage {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        lazy_static::lazy_static! {
+            static ref VALID_KEY: U256 = U256::from_str_radix("916907772491729262376534102982219947830828984996257231353398618781993312401", 10).unwrap();
+        }
+
+        #[tokio::test]
+        async fn invalid_contract() {
+            assert_eq!(
+                client()
+                    .storage(*INVALID_CONTRACT_ADDR, *VALID_KEY, None)
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeContractAddress
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_key() {
+            assert_eq!(
+                client()
+                    .storage(*VALID_CONTRACT_ADDR, U256::max_value(), None)
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeStorageKey
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_block() {
+            assert_eq!(
+                client()
+                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(U256::max_value()))
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::BlockNotFound
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            client()
+                .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(U256::from(15947)))
+                .await
+                .unwrap();
+        }
+    }
+
+    mod transaction {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn first() {
+            assert_eq!(
+                client().transaction(U256::zero()).await.unwrap().status,
+                Status::AcceptedOnChain
+            );
+        }
+
+        #[tokio::test]
+        async fn rejected() {
+            assert_eq!(
+                client()
+                    .transaction(U256::from(162531))
+                    .await
+                    .unwrap()
+                    .status,
+                Status::Rejected
+            );
+        }
+
+        #[tokio::test]
+        async fn contains_l1_l2_msg() {
+            assert_eq!(
+                client()
+                    .transaction(U256::from(162531))
+                    .await
+                    .unwrap()
+                    .status,
+                Status::Rejected
+            );
+        }
+
+        #[tokio::test]
+        async fn not_received() {
+            assert_eq!(
+                client().transaction(u128::MAX.into()).await.unwrap().status,
+                Status::NotReceived
+            );
+        }
+    }
+
+    mod transaction_status {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn first() {
+            assert_eq!(
+                client()
+                    .transaction_status(U256::zero())
+                    .await
+                    .unwrap()
                     .tx_status
-                    .expect(failed_in!(line)),
-                txn_status
+                    .unwrap(),
+                Status::AcceptedOnChain
+            );
+        }
+
+        #[tokio::test]
+        async fn rejected() {
+            assert_eq!(
+                client()
+                    .transaction_status(U256::from(162531))
+                    .await
+                    .unwrap()
+                    .tx_status
+                    .unwrap(),
+                Status::Rejected
+            );
+        }
+
+        #[tokio::test]
+        async fn contains_l1_l2_msg() {
+            assert_eq!(
+                client()
+                    .transaction_status(U256::from(162531))
+                    .await
+                    .unwrap()
+                    .tx_status
+                    .unwrap(),
+                Status::Rejected
+            );
+        }
+
+        #[tokio::test]
+        async fn not_received() {
+            assert_eq!(
+                client()
+                    .transaction_status(U256::max_value())
+                    .await
+                    .unwrap()
+                    .tx_status
+                    .unwrap(),
+                Status::NotReceived
             );
         }
     }
