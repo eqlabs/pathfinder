@@ -2,14 +2,87 @@
 //!
 //! Currently this consists of a Sqlite backend implementation.
 
+use std::collections::HashSet;
+
 use anyhow::Result;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
+use web3::types::H256;
 
 /// A Sqlite storage backend.
 ///
 /// todo: elaborate when more established.
 pub struct Storage {
     connection: Connection,
+}
+
+// Todo: move this someplace more sensible.
+#[derive(PartialEq, Eq, Debug, Hash, Clone)]
+pub struct Block {
+    pub number: u64,
+    pub hash: H256,
+}
+
+#[derive(PartialEq, Eq, Debug, Hash)]
+pub struct Transaction {
+    pub number: u64,
+    pub hash: H256,
+    pub block_number: u64,
+}
+
+pub struct ContractDeployed {
+    pub block_number: u64,
+    pub block_hash: H256,
+
+    pub address: H256,
+    pub hash: H256,
+    pub call_data: Vec<u8>,
+}
+
+pub struct VariableUpdate {
+    pub block_number: u64,
+    pub block_hash: H256,
+
+    pub contract_address: H256,
+    pub variable_address: H256,
+    pub value: H256,
+}
+
+pub enum StateUpdate {
+    Contract(ContractDeployed),
+    Variable(VariableUpdate),
+}
+
+impl StateUpdate {
+    fn block(&self) -> Block {
+        match self {
+            StateUpdate::Contract(contract) => Block {
+                number: contract.block_number,
+                hash: contract.block_hash,
+            },
+            StateUpdate::Variable(variable) => Block {
+                number: variable.block_number,
+                hash: variable.block_hash,
+            },
+        }
+    }
+}
+
+impl From<web3::types::BlockHeader> for Block {
+    fn from(block: web3::types::BlockHeader) -> Self {
+        Block {
+            number: block.number.unwrap().as_u64(),
+            hash: block.hash.unwrap(),
+        }
+    }
+}
+
+impl From<web3::types::Block<H256>> for Block {
+    fn from(block: web3::types::Block<H256>) -> Self {
+        Block {
+            number: block.number.unwrap().as_u64(),
+            hash: block.hash.unwrap(),
+        }
+    }
 }
 
 impl Storage {
@@ -27,6 +100,84 @@ impl Storage {
         database.migrate(existing_version)?;
 
         Ok(database)
+    }
+
+    pub fn latest_block(&self, index: usize) -> anyhow::Result<Option<Block>> {
+        let r = self
+            .connection
+            .query_row(
+                &format!(
+                    r"SELECT * FROM l1_blocks
+                            ORDER BY number DESC
+                            LIMIT 1
+                            OFFSET {}",
+                    index
+                ),
+                [],
+                |row| {
+                    let number: u64 = row.get(0).unwrap();
+
+                    let hash: Vec<u8> = row.get(1).unwrap();
+                    let hash = H256::from_slice(&hash);
+
+                    let block = Block { number, hash };
+
+                    Ok(block)
+                },
+            )
+            .optional()?;
+
+        Ok(r)
+    }
+
+    pub fn insert_updates(&mut self, updates: Vec<StateUpdate>) -> anyhow::Result<()> {
+        // These should be committed as a single transaction. All go or no go..
+        let tx = self.connection.transaction()?;
+        // Order of insertion should match table order of depedence, so
+        //      blocks, transactions, and then actual state diffs which should be in order..
+
+        // Pull out all unique blocks and transactions.
+        let blocks = updates
+            .iter()
+            .map(|update| update.block())
+            .collect::<HashSet<_>>();
+
+        // Insert the blocks.
+        for block in blocks {
+            tx.execute(
+                "INSERT INTO l1_blocks (number, hash) VALUES (?, ?)",
+                rusqlite::params![block.number, block.hash.as_bytes()],
+            )?;
+        }
+
+        // Insert the updates
+        // for update in updates {
+        //     match update {
+        //         StateUpdate::Contract(contract) => {
+        //             tx.execute("INSERT", params)
+        //         },
+        //         StateUpdate::Variable(variable) => todo!(),
+        //     }
+
+        // }
+
+        todo!();
+    }
+
+    pub fn insert_block(&self, block: &Block) -> anyhow::Result<()> {
+        let hash = block.hash.as_bytes().to_vec();
+
+        self.connection.execute(
+            "INSERT INTO l1_blocks (number, hash) VALUES (?,?)",
+            rusqlite::params![block.number, hash],
+        )?;
+        Ok(())
+    }
+
+    pub fn purge_all_from_block(&self, number: u64) -> anyhow::Result<()> {
+        self.connection
+            .execute("DELETE FROM l1_blocks WHERE number >= ?", [number])?;
+        Ok(())
     }
 
     fn enable_foreign_keys(&mut self) -> Result<()> {
@@ -107,8 +258,8 @@ impl Storage {
                             id    INTEGER PRIMARY KEY,
                             value BLOB,
 
-                            variable_key INTEGER NOT NULL REFERENCES variables(key)   ON DELETE CASCADE,
-                            tx_id        INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE
+                            variable_key INTEGER NOT NULL REFERENCES variables(key)       ON DELETE CASCADE,
+                            tx_id        INTEGER NOT NULL REFERENCES transactions(number) ON DELETE CASCADE
                         );
                     ")?;
                 }
