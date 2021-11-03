@@ -112,11 +112,14 @@ impl Client {
         }
     }
 
-    /// Gets transaction by id.
-    pub async fn transaction(&self, transaction_id: U256) -> Result<reply::Transaction> {
+    /// Gets transaction by hash.
+    pub async fn transaction(&self, transaction_hash: H256) -> Result<reply::Transaction> {
         let resp = reqwest::get(self.build_query(
             "get_transaction",
-            &[("transactionId", transaction_id.to_string().as_str())],
+            &[(
+                "transactionHash",
+                format!("{:#x}", transaction_hash).as_str(),
+            )],
         ))
         .await?;
         let resp = resp.text().await?;
@@ -124,14 +127,17 @@ impl Client {
         Ok(resp)
     }
 
-    /// Gets transaction status by transaction id.
+    /// Gets transaction status by transaction hash.
     pub async fn transaction_status(
         &self,
-        transaction_id: U256,
+        transaction_hash: H256,
     ) -> Result<reply::TransactionStatus> {
         let resp = reqwest::get(self.build_query(
             "get_transaction_status",
-            &[("transactionId", transaction_id.to_string().as_str())],
+            &[(
+                "transactionHash",
+                format!("{:#x}", transaction_hash).as_str(),
+            )],
         ))
         .await?;
         let resp = resp.text().await?;
@@ -152,8 +158,6 @@ impl Client {
 }
 
 #[cfg(test)]
-// Suppress `unwrap_or_else(|_| panic!("failed...")` when using `failed_in!()`
-#[allow(clippy::expect_fun_call)]
 mod tests {
     use super::{
         reply::{
@@ -166,13 +170,13 @@ mod tests {
     use web3::types::U256;
 
     lazy_static::lazy_static! {
-        static ref VALID_CONTRACT_ADDR: H256 = H256::from_str("0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc").unwrap();
-        static ref INVALID_CONTRACT_ADDR: H256 = H256::from_str("0x14eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc").unwrap();
+        static ref VALID_CONTRACT_ADDR: H256 = H256::from_str("0x04c988a22c691166946fdcfcd1608518333065e6deb1519d5d5f8def8b6c3e78").unwrap();
+        static ref INVALID_CONTRACT_ADDR: H256 = H256::from_str("0x14c988a22c691166946fdcfcd1608518333065e6deb1519d5d5f8def8b6c3e78").unwrap();
     }
 
-    // Alpha2 network client factory helper
+    // Alpha3 network client factory helper
     fn client() -> Client {
-        const URL: &str = "https://alpha2.starknet.io/";
+        const URL: &str = "https://alpha3.starknet.io/";
         Client::new(Url::parse(URL).unwrap())
     }
 
@@ -191,13 +195,8 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn contains_l1_l2_msg() {
-            client().block(U256::from(20056)).await.unwrap();
-        }
-
-        #[tokio::test]
-        async fn without_l1_l2_msg() {
-            client().block(U256::from(43740)).await.unwrap();
+        async fn has_txn_with_empty_builtin_instance_counter() {
+            client().block(U256::from(6032)).await.unwrap();
         }
 
         #[tokio::test]
@@ -230,6 +229,7 @@ mod tests {
                             calldata: vec![],
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: H256::zero(),
+                            signature: vec![],
                         },
                         None,
                     )
@@ -249,8 +249,9 @@ mod tests {
                             calldata: vec![],
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
                         },
-                        Some(U256::from(15947)),
+                        Some(U256::from(5272)),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
@@ -268,8 +269,9 @@ mod tests {
                             calldata: vec![],
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
                         },
-                        Some(U256::from(10000)),
+                        Some(U256::from(5000)),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
@@ -286,8 +288,9 @@ mod tests {
                         calldata: vec![U256::from(1234)],
                         contract_address: *VALID_CONTRACT_ADDR,
                         entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
                     },
-                    Some(U256::from(15947)),
+                    Some(U256::from(5272)),
                 )
                 .await
                 .unwrap();
@@ -325,7 +328,7 @@ mod tests {
         #[tokio::test]
         async fn success() {
             client()
-                .code(*VALID_CONTRACT_ADDR, Some(U256::from(15947)))
+                .code(*VALID_CONTRACT_ADDR, Some(U256::from(5268)))
                 .await
                 .map_err(|e| e.downcast::<Error>().unwrap().code)
                 .unwrap();
@@ -379,7 +382,7 @@ mod tests {
         #[tokio::test]
         async fn success() {
             client()
-                .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(U256::from(15947)))
+                .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(U256::from(5272)))
                 .await
                 .unwrap();
         }
@@ -390,18 +393,15 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn first() {
-            assert_eq!(
-                client().transaction(U256::zero()).await.unwrap().status,
-                Status::AcceptedOnChain
-            );
-        }
-
-        #[tokio::test]
         async fn rejected() {
             assert_eq!(
                 client()
-                    .transaction(U256::from(162531))
+                    .transaction(
+                        H256::from_str(
+                            "0x057b73bb15b9a1481deb6027c205dea3efb2ecb75c121a794302f84988ad3a56"
+                        )
+                        .unwrap()
+                    )
                     .await
                     .unwrap()
                     .status,
@@ -410,21 +410,26 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn contains_l1_l2_msg() {
+        async fn accepted() {
             assert_eq!(
                 client()
-                    .transaction(U256::from(162531))
+                    .transaction(
+                        H256::from_str(
+                            "0x0285b9a272dd72769789d06400bf0da86ed80555b98ca8a6df0cc888c694e3f1"
+                        )
+                        .unwrap()
+                    )
                     .await
                     .unwrap()
                     .status,
-                Status::Rejected
+                Status::AcceptedOnChain
             );
         }
 
         #[tokio::test]
         async fn not_received() {
             assert_eq!(
-                client().transaction(u128::MAX.into()).await.unwrap().status,
+                client().transaction(H256::zero()).await.unwrap().status,
                 Status::NotReceived
             );
         }
@@ -435,10 +440,33 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn first() {
+        async fn rejected() {
             assert_eq!(
                 client()
-                    .transaction_status(U256::zero())
+                    .transaction_status(
+                        H256::from_str(
+                            "0x057b73bb15b9a1481deb6027c205dea3efb2ecb75c121a794302f84988ad3a56"
+                        )
+                        .unwrap()
+                    )
+                    .await
+                    .unwrap()
+                    .tx_status
+                    .unwrap(),
+                Status::Rejected
+            );
+        }
+
+        #[tokio::test]
+        async fn accepted() {
+            assert_eq!(
+                client()
+                    .transaction_status(
+                        H256::from_str(
+                            "0x0285b9a272dd72769789d06400bf0da86ed80555b98ca8a6df0cc888c694e3f1"
+                        )
+                        .unwrap()
+                    )
                     .await
                     .unwrap()
                     .tx_status
@@ -448,36 +476,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn rejected() {
-            assert_eq!(
-                client()
-                    .transaction_status(U256::from(162531))
-                    .await
-                    .unwrap()
-                    .tx_status
-                    .unwrap(),
-                Status::Rejected
-            );
-        }
-
-        #[tokio::test]
-        async fn contains_l1_l2_msg() {
-            assert_eq!(
-                client()
-                    .transaction_status(U256::from(162531))
-                    .await
-                    .unwrap()
-                    .tx_status
-                    .unwrap(),
-                Status::Rejected
-            );
-        }
-
-        #[tokio::test]
         async fn not_received() {
             assert_eq!(
                 client()
-                    .transaction_status(U256::max_value())
+                    .transaction_status(H256::zero())
                     .await
                     .unwrap()
                     .tx_status

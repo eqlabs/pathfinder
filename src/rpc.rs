@@ -93,43 +93,22 @@ mod tests {
             .await
             .expect("Call failed");
         client(addr)
-            .get_block_by_number("0x4e58".to_owned())
-            .await
-            .expect("Call failed");
-        client(addr)
-            .get_block_by_number("0xaadc".to_owned())
+            .get_block_by_number("0x1000".to_owned())
             .await
             .expect("Call failed");
     }
 
     #[tokio::test]
-    #[should_panic]
     async fn get_transaction_by_hash() {
         let (srv, addr) = build_server();
         spawn_server(srv).await;
         client(addr)
-            .get_transaction_by_hash("0x23c86".to_owned())
-            .await
-            .expect("Call failed");
-    }
-
-    #[tokio::test]
-    async fn get_transaction_by_number() {
-        let (srv, addr) = build_server();
-        spawn_server(srv).await;
-        // An example of a rejected txn
-        client(addr)
-            .get_transaction_by_number("0x27ae3".to_owned())
-            .await
-            .expect("Call failed");
-        // Txn containing a L1 to L2 message
-        client(addr)
-            .get_transaction_by_number("0x2d98c".to_owned())
-            .await
-            .expect("Call failed");
-        // Txn which does not contain a L1 to L2 message
-        client(addr)
-            .get_transaction_by_number("0x43967".to_owned())
+            .get_transaction_by_hash(
+                H256::from_str(
+                    "0x057b73bb15b9a1481deb6027c205dea3efb2ecb75c121a794302f84988ad3a56",
+                )
+                .unwrap(),
+            )
             .await
             .expect("Call failed");
     }
@@ -172,7 +151,7 @@ mod tests {
             .await
             .expect("Call failed");
         client(addr)
-            .get_transaction_by_block_number_and_index("0x3e4a".to_owned(), 7)
+            .get_transaction_by_block_number_and_index("0x1000".to_owned(), 3)
             .await
             .expect("Call failed");
     }
@@ -184,14 +163,15 @@ mod tests {
         client(addr)
             .get_storage(
                 H256::from_str(
-                    "0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc",
+                    "0x04c988a22c691166946fdcfcd1608518333065e6deb1519d5d5f8def8b6c3e78",
                 )
                 .unwrap(),
                 U256::from_str_radix(
-                    "0x206f38f7e4f15e87567361213c28f235cccdaa1d7fd34c9db1dfe9489c6a091",
-                    16,
+                    "916907772491729262376534102982219947830828984996257231353398618781993312401",
+                    10,
                 )
                 .unwrap(),
+                Some(U256::from(5272)),
             )
             .await
             .expect("Call failed");
@@ -204,9 +184,10 @@ mod tests {
         client(addr)
             .get_code(
                 H256::from_str(
-                    "0x04eab694d0c8dbcccf5b9e661ce97d6c37793014ecab873dcbe68cb452b3dffc",
+                    "0x04c988a22c691166946fdcfcd1608518333065e6deb1519d5d5f8def8b6c3e78",
                 )
                 .unwrap(),
+                Some(U256::from(5268)),
             )
             .await
             .expect("Call failed");
@@ -219,14 +200,16 @@ mod tests {
         client(addr)
             .call(
                 H256::from_str(
-                    "0x0399d3cf2405e997b1cda8c45f5ba919a6499f3d3b00998d5a91d6d9bcbc9128",
+                    "0x04c988a22c691166946fdcfcd1608518333065e6deb1519d5d5f8def8b6c3e78",
+                )
+                .unwrap(),
+                vec![U256::from(1234)],
+                H256::from_str(
+                    "0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
                 )
                 .unwrap(),
                 vec![],
-                H256::from_str(
-                    "0x039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695",
-                )
-                .unwrap(),
+                Some(U256::from(5272)),
             )
             .await
             .expect("Call failed");
