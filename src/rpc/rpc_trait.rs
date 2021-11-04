@@ -43,17 +43,7 @@ pub trait RpcApi {
     #[method(name = "getTransactionByHash")]
     async fn get_transaction_by_hash(
         &self,
-        transaction_hash: String,
-    ) -> Result<reply::Transaction, Error>;
-
-    /// Returns the information about a transaction requested by transaction number.
-    /// `transaction_number` should be a 0x-prefixed hex-encoded unsigned integer.
-    ///
-    /// This call is the equivalent of `eth_getTransactionByHash` in eth1.0 API.
-    #[method(name = "getTransactionByNumber")]
-    async fn get_transaction_by_number(
-        &self,
-        transaction_hash: String,
+        transaction_hash: H256,
     ) -> Result<reply::Transaction, Error>;
 
     /// Returns information about a transaction by block hash and transaction index position.
@@ -68,7 +58,7 @@ pub trait RpcApi {
     async fn get_transaction_by_block_hash_and_index(
         &self,
         block_hash: String,
-        transaction_index: u32,
+        transaction_index: usize,
     ) -> Result<reply::transaction::Transaction, Error>;
 
     /// Returns information about a transaction by block number and transaction index position.
@@ -83,7 +73,7 @@ pub trait RpcApi {
     async fn get_transaction_by_block_number_and_index(
         &self,
         block_number: String,
-        transaction_index: u32,
+        transaction_index: usize,
     ) -> Result<reply::transaction::Transaction, Error>;
 
     /// Returns the value from a storage position at a given address.
@@ -91,14 +81,23 @@ pub trait RpcApi {
     ///
     /// This call is the equivalent of `eth_getStorage` in eth1.0 API.
     #[method(name = "getStorage")]
-    async fn get_storage(&self, contract_address: H256, key: U256) -> Result<H256, Error>;
+    async fn get_storage(
+        &self,
+        contract_address: H256,
+        key: U256,
+        block_id: Option<U256>,
+    ) -> Result<H256, Error>;
 
     /// Returns code at a given address.
     /// `contract_address` should be a 32 byte value encoded as 0x-prefixed hex string.
     ///
     /// This call is the equivalent of `eth_getCode` in eth1.0 API.
     #[method(name = "getCode")]
-    async fn get_code(&self, contract_address: H256) -> Result<reply::Code, Error>;
+    async fn get_code(
+        &self,
+        contract_address: H256,
+        block_id: Option<U256>,
+    ) -> Result<reply::Code, Error>;
 
     /// Executes a new call immediately without creating a transaction on the block chain.
     /// `contract_address` and `entry_point` should be a 32 byte value encoded as 0x-prefixed hex string.
@@ -111,5 +110,7 @@ pub trait RpcApi {
         contract_address: H256,
         call_data: Vec<U256>,
         entry_point: H256,
+        signature: Vec<U256>,
+        block_id: Option<U256>,
     ) -> Result<reply::Call, Error>;
 }

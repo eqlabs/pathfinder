@@ -11,4 +11,5 @@ pub struct Call {
     #[serde_as(as = "Vec<U256AsBigDecimal>")]
     pub calldata: Vec<U256>,
     pub entry_point_selector: H256,
+    pub signature: Vec<U256>,
 }
