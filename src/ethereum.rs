@@ -11,9 +11,9 @@ use web3::{
 use crate::config::EthereumConfig;
 
 /// The StarkNet L1 contract's ABI's file contents.
-const CONTRACT_ABI: &[u8] = include_bytes!(concat!(
+const CORE_ABI: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/resources/starknet.abi"
+    "/resources/contracts/starknet.json"
 ));
 
 /// A client for interacting with StarkNet's L1 Ethereum contract.

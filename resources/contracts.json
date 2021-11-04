@@ -1,0 +1,122 @@
+{
+    "GpsStatementVerifier": {
+        "abi": [
+            {
+                "anonymous": false,
+                "inputs": [
+                    {
+                        "indexed": false,
+                        "internalType": "bytes32",
+                        "name": "factHash",
+                        "type": "bytes32"
+                    },
+                    {
+                        "indexed": false,
+                        "internalType": "bytes32[]",
+                        "name": "pagesHashes",
+                        "type": "bytes32[]"
+                    }
+                ],
+                "name": "LogMemoryPagesHashes",
+                "type": "event"
+            },
+            {
+                "constant": true,
+                "inputs": [],
+                "name": "identify",
+                "outputs": [
+                    {
+                        "internalType": "string",
+                        "name": "",
+                        "type": "string"
+                    }
+                ],
+                "payable": false,
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ],
+        "address": "0xB02D49C4d89f0CeA504C4C93934E7fC66e20A257"
+    },
+    "MemoryPageFactRegistry": {
+        "abi": [
+            {
+                "anonymous": false,
+                "inputs": [
+                    {
+                        "indexed": false,
+                        "internalType": "bytes32",
+                        "name": "factHash",
+                        "type": "bytes32"
+                    },
+                    {
+                        "indexed": false,
+                        "internalType": "uint256",
+                        "name": "memoryHash",
+                        "type": "uint256"
+                    },
+                    {
+                        "indexed": false,
+                        "internalType": "uint256",
+                        "name": "prod",
+                        "type": "uint256"
+                    }
+                ],
+                "name": "LogMemoryPageFactContinuous",
+                "type": "event"
+            },
+            {
+                "constant": false,
+                "inputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "startAddr",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256[]",
+                        "name": "values",
+                        "type": "uint256[]"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "z",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "alpha",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "prime",
+                        "type": "uint256"
+                    }
+                ],
+                "name": "registerContinuousMemoryPage",
+                "outputs": [
+                    {
+                        "internalType": "bytes32",
+                        "name": "factHash",
+                        "type": "bytes32"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "memoryHash",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "prod",
+                        "type": "uint256"
+                    }
+                ],
+                "payable": false,
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }
+        ],
+        "address": "0xb609Eba1DC0298A984Fa8a34528966E997C5BB13"
+    }
+}
