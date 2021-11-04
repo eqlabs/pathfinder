@@ -1,5 +1,5 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::sequencer::serde::{H256AsRelaxedHexStr, U256AsBigDecimal};
+use crate::serde::{H256AsRelaxedHexStr, U256AsBigDecimal};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
 use std::convert::TryFrom;
@@ -267,7 +267,7 @@ pub struct TransactionStatus {
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    use crate::sequencer::serde::{
+    use crate::serde::{
         H160AsRelaxedHexStr, H256AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr,
     };
     use serde::{Deserialize, Serialize};
