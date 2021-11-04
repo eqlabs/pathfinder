@@ -26,7 +26,7 @@ impl Client {
     pub fn new(cfg: EthereumConfig) -> web3::Result<Self> {
         // The current StarkNet L1 contract address on Goerli.
         let contract_address =
-            H160::from_str("0x5e6229F2D4d977d20A50219E521dE6Dd694d45cc").unwrap();
+            H160::from_str("0x67D629978274b4E1e07256Ec2ef39185bb3d4D0d").unwrap();
 
         // Create HTTP client with optional user-agent
         let http_client = match cfg.user {
@@ -53,7 +53,7 @@ impl Client {
         let transport = web3::transports::Http::with_client(http_client, url);
         let w3 = web3::Web3::new(transport);
 
-        let contract = match Contract::from_json(w3.eth(), contract_address, CONTRACT_ABI) {
+        let contract = match Contract::from_json(w3.eth(), contract_address, CORE_ABI) {
             Ok(contract) => contract,
             Err(err) => todo!("errors need handling: {:?}", err),
         };

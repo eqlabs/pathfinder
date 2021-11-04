@@ -1,0 +1,36 @@
+[
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "bytes32",
+                "name": "factHash",
+                "type": "bytes32"
+            },
+            {
+                "indexed": false,
+                "internalType": "bytes32[]",
+                "name": "pagesHashes",
+                "type": "bytes32[]"
+            }
+        ],
+        "name": "LogMemoryPagesHashes",
+        "type": "event"
+    },
+    {
+        "constant": true,
+        "inputs": [],
+        "name": "identify",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
