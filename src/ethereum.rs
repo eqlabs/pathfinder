@@ -139,15 +139,15 @@ mod tests {
     ///     (hash, root, sequence number)
     fn known_state() -> (H256, U256, U256) {
         let hash =
-            H256::from_str("4de373d45a29e0d6fe702f1d8c1d1bda81edc18a6409146af2dc6f9ea2f6503b")
+            H256::from_str("dc606648c02787540d9f070bef74951459df948c8ec23132332fd02871dc4d3b")
                 .unwrap();
 
         let root = U256::from_dec_str(
-            "1451723332915230892027004852411811409047732733786127578001959737407326381523",
+            "1194395144515386971194655741030214920878284719644053834908120284839489231429",
         )
         .unwrap();
 
-        let sequence_number = U256::from_dec_str("19872").unwrap();
+        let sequence_number = U256::from_dec_str("8012").unwrap();
 
         (hash, root, sequence_number)
     }
@@ -155,13 +155,13 @@ mod tests {
     #[tokio::test]
     async fn latest_state_root() {
         let client = Client::new(eth_config_from_env()).unwrap();
-        assert!(client.latest_state_root().await.is_ok());
+        client.latest_state_root().await.unwrap();
     }
 
     #[tokio::test]
     async fn latest_state_sequence_number() {
         let client = Client::new(eth_config_from_env()).unwrap();
-        assert!(client.latest_state_sequence_number().await.is_ok());
+        client.latest_state_sequence_number().await.unwrap();
     }
 
     #[tokio::test]
