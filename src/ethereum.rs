@@ -1,4 +1,7 @@
 //! StarkNet L1 interactions.
+mod mempage;
+mod starknet;
+
 use std::str::FromStr;
 
 use web3::{
