@@ -76,19 +76,22 @@ where
     H: AsRef<[u8]>,
 {
     let bytes = h.as_ref();
+    let mut iter = bytes.iter().skip_while(|&&b| b == 0);
 
-    if bytes.iter().all(|b| *b == 0) {
-        return "0x0".to_owned();
-    }
-
-    let mut s = String::with_capacity(bytes.len() + 2);
-    let mut skipped = bytes.iter().skip_while(|&&b| b == 0);
-    // All unwraps are safe here:
-    // - skipped.next() will succeed because at least one nonzero byte must be left
+    // All unwraps below are safe:
     // - write! is performed into a preallocated string that accommodates worst case scenario
-    write!(s, "0x{:x}", skipped.next().unwrap()).unwrap();
-    skipped.for_each(|b| write!(s, "{:02x}", b).unwrap());
-    s
+    let mut str = match iter.next() {
+        Some(b) => {
+            let max_len = bytes.len() * 2 + 2;
+            let mut str = String::with_capacity(max_len);
+            write!(str, "0x{:x}", b).unwrap();
+            str
+        }
+        None => return "0x0".to_owned(),
+    };
+
+    iter.for_each(|b| write!(str, "{:02x}", b).unwrap());
+    str
 }
 
 #[cfg(test)]
