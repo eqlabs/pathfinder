@@ -6,6 +6,7 @@ mod config;
 mod ethereum;
 mod rpc;
 mod sequencer;
+mod serde;
 mod storage;
 
 #[tokio::main]

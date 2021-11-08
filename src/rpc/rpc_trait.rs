@@ -1,116 +1,167 @@
 //! Definition of JSON-RPC endpoints.
 //!
 //! The trait [RpcApiServer] describes the RPC API methods served by the node.
-//! The methods are trying to follow the eth1.0 API covention. For comparison:
-//! - [eth1.0 API spec repo](https://github.com/ethereum/execution-apis)
-//! - [eth1.0 API spec viewer on openrpc playground](https://playground.open-rpc.org/?schemaUrl=https://raw.githubusercontent.com/ethereum/eth1.0-apis/assembled-spec/openrpc.json&uiSchema%5BappBar%5D%5Bui:splitView%5D=true&uiSchema%5BappBar%5D%5Bui:input%5D=false&uiSchema%5BappBar%5D%5Bui:examplesDropdown%5D=false)
-//!
-//! __TODO__ At the moment the `latest` special tag value means the most recent pending,
-//! while later on we should make a distinction between most recent accepted on chain and most recent pending.
-use crate::sequencer::reply;
+//! The methods are taken from [the Starknet operator API spec](https://github.com/starkware-libs/starknet-adrs/blob/master/api/starknet_operator_api_openrpc.json).
+//! Any extensions to the above spec are explicitly marked in the documentation.
+use crate::{
+    rpc::types::{relaxed, BlockHashOrTag, BlockNumberOrTag, Syncing},
+    sequencer::{reply, request::Call},
+};
 use jsonrpsee::{proc_macros::rpc, types::error::Error};
-use web3::types::{H256, U256};
+use web3::types::U256;
+
+/// TODO
+/// Add proper output structs as per spec.
+/// Add proper error code handling as per spec.
 #[rpc(client, server, namespace = "starknet")]
 pub trait RpcApi {
-    /// Returns the number of the most recent block.
-    ///
-    /// This call is the equivalent of `eth_blockNumber` in eth1.0 API.
-    #[method(name = "blockNumber")]
-    async fn block_number(&self) -> Result<U256, Error>;
-
-    /// Returns information about a block by hash. `block_hash` should either be
-    /// a 32 byte value encoded as 0x-prefixed hex string or one of special tag values
-    /// - `latest`, which means the most recent block,
-    /// - `earliest`, which means the genesis block.
-    ///
-    /// This call is the equivalent of `eth_getBlockByHash` in eth1.0 API.
+    /// Get block information given the block id.
+    /// `block_hash` is the hash (id) of the requested block, represented as up to 64 0x-prefixed
+    /// hex digits, or a block tag:
+    /// - `latest`, which means the most recent block.
     #[method(name = "getBlockByHash")]
-    async fn get_block_by_hash(&self, block_hash: String) -> Result<reply::Block, Error>;
+    async fn get_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<reply::Block, Error>;
 
-    /// Returns information about a block by number. `block_number` should either be
-    /// a 0x-prefixed hex-encoded unsigned integer or one of special tag values
-    /// - `latest`, which means the most recent block,
-    /// - `earliest`, which means the genesis block.
-    ///
-    /// This call is the equivalent of `eth_getBlockByHash` in eth1.0 API.
+    /// Get block information given the block number (its height).
+    /// `block_number` is the number (height) of the requested block, represented as an integer, or a block tag:
+    /// - `latest`, which means the most recent block.
     #[method(name = "getBlockByNumber")]
-    async fn get_block_by_number(&self, block_number: String) -> Result<reply::Block, Error>;
+    async fn get_block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<reply::Block, Error>;
 
-    /// Returns the information about a transaction requested by transaction hash.
-    /// `transaction_hash` should be a 32 byte value encoded as 0x-prefixed hex string.
-    ///
-    /// This call is the equivalent of `eth_getTransactionByHash` in eth1.0 API.
+    /// Get the information about the result of executing the requested block.
+    /// `block_hash` is the hash (id) of the requested block, represented as up to 64 0x-prefixed
+    /// hex digits, or a block tag:
+    /// - `latest`, which means the most recent block,
+    #[method(name = "getStateUpdateByHash")]
+    async fn get_state_update_by_hash(&self, block_hash: BlockHashOrTag) -> Result<(), Error>;
+
+    /// Get the value of the storage at the given address and key.
+    /// `contract_address` is the address of the contract to read from, `key` is the key to the storage value for the given contract,
+    /// both represented as up to 64 0x-prefixed hex digits.
+    /// `block_hash` is the hash (id) of the requested block, represented as up to 64 0x-prefixed
+    /// hex digits, or a block tag:
+    /// - `latest`, which means the most recent block.
+    #[method(name = "getStorageAt")]
+    async fn get_storage_at(
+        &self,
+        contract_address: relaxed::H256,
+        key: relaxed::H256,
+        block_hash: BlockHashOrTag,
+    ) -> Result<relaxed::H256, Error>;
+
+    /// Get the value of the storage at the given address and key.
+    /// A __temporary replacement__ for [get_storage_at](RpcApiServer::get_storage_at) until we know how to calculate block hash.
+    #[method(name = "getStorageAtByBlockNumber")]
+    async fn get_storage_at_by_block_number(
+        &self,
+        contract_address: relaxed::H256,
+        key: relaxed::H256,
+        block_number: BlockNumberOrTag,
+    ) -> Result<relaxed::H256, Error>;
+
+    /// Get the details and status of a submitted transaction.
+    /// `transaction_hash` is the hash of the requested transaction, represented as up to 64 0x-prefixed
+    /// hex digits.
     #[method(name = "getTransactionByHash")]
     async fn get_transaction_by_hash(
         &self,
-        transaction_hash: H256,
+        transaction_hash: relaxed::H256,
     ) -> Result<reply::Transaction, Error>;
 
-    /// Returns information about a transaction by block hash and transaction index position.
-    /// `block_hash` should either be a 32 byte value encoded as 0x-prefixed hex string or
-    /// one of special tag values:
-    /// - `latest`, which means the most recent block,
-    /// - `earliest`, which means the genesis block.
-    /// `transaction_index` should either be a 0x-prefixed hex-encoded unsigned integer.
+    /// Get the details of a transaction by a given block hash and index.
+    /// `block_hash` is the hash (id) of the requested block, represented as up to 64 0x-prefixed
+    /// hex digits, or a block tag:
+    /// - `latest`, which means the most recent block.
     ///
-    /// This call is the equivalent of `eth_getTransactionByBlockHashAndIndex` in eth1.0 API.
+    /// Get the details of the transaction given by the identified block and index in that block.
+    /// If no transaction is found, null is returned.
     #[method(name = "getTransactionByBlockHashAndIndex")]
     async fn get_transaction_by_block_hash_and_index(
         &self,
-        block_hash: String,
-        transaction_index: usize,
+        block_hash: BlockHashOrTag,
+        index: u64,
     ) -> Result<reply::transaction::Transaction, Error>;
 
-    /// Returns information about a transaction by block number and transaction index position.
-    /// `block_number` should either be a 0x-prefixed hex-encoded unsigned integer or
-    /// one of special tag values:
-    /// - `latest`, which means the most recent block,
-    /// - `earliest`, which means the genesis block.
-    /// `transaction_index` should either be a 0x-prefixed hex-encoded unsigned integer.
+    /// Get the details of a transaction by a given block hash and index.
+    /// `block_number` is the number (height) of the requested block, represented as an integer, or a block tag:
+    /// - `latest`, which means the most recent block.
     ///
-    /// This call is the equivalent of `eth_getTransactionByBlockNumberAndIndex` in eth1.0 API.
+    /// Get the details of the transaction given by the identified block and index in that block.
+    /// If no transaction is found, null is returned.
     #[method(name = "getTransactionByBlockNumberAndIndex")]
     async fn get_transaction_by_block_number_and_index(
         &self,
-        block_number: String,
-        transaction_index: usize,
+        block_number: BlockNumberOrTag,
+        index: u64,
     ) -> Result<reply::transaction::Transaction, Error>;
 
-    /// Returns the value from a storage position at a given address.
-    /// Both `contract_address` and `key` should be a 32 byte value encoded as 0x-prefixed hex string.
-    ///
-    /// This call is the equivalent of `eth_getStorage` in eth1.0 API.
-    #[method(name = "getStorage")]
-    async fn get_storage(
+    /// Get the transaction receipt by the transaction hash.
+    /// `transaction_hash` is the hash of the requested transaction, represented as up to 64 0x-prefixed
+    /// hex digits.
+    #[method(name = "getTransactionReceipt")]
+    async fn get_transaction_receipt(
         &self,
-        contract_address: H256,
-        key: U256,
-        block_id: Option<U256>,
-    ) -> Result<H256, Error>;
+        transaction_hash: relaxed::H256,
+    ) -> Result<reply::TransactionStatus, Error>;
 
-    /// Returns code at a given address.
-    /// `contract_address` should be a 32 byte value encoded as 0x-prefixed hex string.
-    ///
-    /// This call is the equivalent of `eth_getCode` in eth1.0 API.
+    /// Get the code of a specific contract.
+    /// `contract_address` is the address of the contract to read from, represented as up to 64 0x-prefixed hex digits.
     #[method(name = "getCode")]
-    async fn get_code(
-        &self,
-        contract_address: H256,
-        block_id: Option<U256>,
-    ) -> Result<reply::Code, Error>;
+    async fn get_code(&self, contract_address: relaxed::H256) -> Result<reply::Code, Error>;
 
-    /// Executes a new call immediately without creating a transaction on the block chain.
-    /// `contract_address` and `entry_point` should be a 32 byte value encoded as 0x-prefixed hex string.
-    /// `call_data` should be an array of 32 byte values encoded as 0x-prefixed hex strings.
+    /// Get the number of transactions in a block given a block hash.
+    /// `block_hash` is the hash (id) of the requested block, represented as up to 64 0x-prefixed
+    /// hex digits, or a block tag:
+    /// - `latest`, which means the most recent block.
     ///
-    /// This call is the equivalent of `eth_call` in eth1.0 API.
-    #[method(name = "call")]
-    async fn call(
+    /// Returns the number of transactions in the designated block.
+    #[method(name = "getBlockTransactionCountByHash")]
+    async fn get_block_transaction_count_by_hash(
         &self,
-        contract_address: H256,
-        call_data: Vec<U256>,
-        entry_point: H256,
-        signature: Vec<U256>,
-        block_id: Option<U256>,
-    ) -> Result<reply::Call, Error>;
+        block_hash: BlockHashOrTag,
+    ) -> Result<u64, Error>;
+
+    /// Get the number of transactions in a block given a block hash.
+    /// `block_number` is the number (height) of the requested block, represented as an integer, or a block tag:
+    /// - `latest`, which means the most recent block.
+    ///
+    /// Returns the number of transactions in the designated block.
+    #[method(name = "getBlockTransactionCountByNumber")]
+    async fn get_block_transaction_count_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<u64, Error>;
+
+    /// Call a starknet function without creating a StarkNet transaction.
+    /// `block_hash` is the hash (id) of the requested block, represented as up to 64 0x-prefixed
+    /// hex digits, or a block tag:
+    /// - `latest`, which means the most recent block.
+    ///
+    /// Calls a function in a contract and returns the return value.
+    /// Using this call will not create a transaction. Hence, will not change the state.
+    #[method(name = "call")]
+    async fn call(&self, request: Call, block_hash: BlockHashOrTag) -> Result<reply::Call, Error>;
+
+    /// Get the most recent accepted block number.
+    #[method(name = "blockNumber")]
+    async fn block_number(&self) -> Result<U256, Error>;
+
+    /// Return the currently configured StarkNet chain id.
+    #[method(name = "chainId")]
+    async fn chain_id(&self) -> Result<relaxed::H256, Error>;
+
+    /// Returns the transactions in the transaction pool, recognized by this sequencer.
+    #[method(name = "pendingTransactions")]
+    async fn pending_transactions(&self) -> Result<(), Error>;
+
+    /// Returns the current starknet protocol version identifier, as supported by this node.
+    #[method(name = "protocolVersion")]
+    async fn protocol_version(&self) -> Result<relaxed::H256, Error>;
+
+    /// Returns an object about the sync status, or false if the node is not synching.
+    #[method(name = "syncing")]
+    async fn syncing(&self) -> Result<Syncing, Error>;
 }

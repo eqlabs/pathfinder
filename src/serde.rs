@@ -1,6 +1,6 @@
 //! Serialization and deserialiation helpers for L2 sequencer REST API replies.
 use bigdecimal::BigDecimal;
-use std::fmt::Display;
+use std::fmt::{Display, Write};
 use web3::{
     ethabi::ethereum_types::FromDecStrErr,
     types::{H160, H256, U256},
@@ -23,14 +23,14 @@ serde_with::serde_conv!(
 serde_with::serde_conv!(
     pub H256AsRelaxedHexStr,
     H256,
-    |h: &H256| *h,
+    |h: &H256| into_relaxed_hex_str::<H256>(h),
     from_relaxed_hex_str::<H256, {H256::len_bytes()}, {H256::len_bytes() * 2}>
 );
 
 serde_with::serde_conv!(
     pub H160AsRelaxedHexStr,
     H160,
-    |h: &H160| *h,
+    |h: &H160| into_relaxed_hex_str::<H160>(h),
     from_relaxed_hex_str::<H160, {H160::len_bytes()}, {H160::len_bytes() * 2}>
 );
 
@@ -68,6 +68,30 @@ where
     }
 
     Ok(H::from(bytes))
+}
+
+/// Fixed-size unspecified hash serialization helper function which removes leading zeros.
+fn into_relaxed_hex_str<H>(h: &H) -> String
+where
+    H: AsRef<[u8]>,
+{
+    let bytes = h.as_ref();
+    let mut iter = bytes.iter().skip_while(|&&b| b == 0);
+
+    // All unwraps below are safe:
+    // - write! is performed into a preallocated string that accommodates worst case scenario
+    let mut str = match iter.next() {
+        Some(b) => {
+            let max_len = bytes.len() * 2 + 2;
+            let mut str = String::with_capacity(max_len);
+            write!(str, "0x{:x}", b).unwrap();
+            str
+        }
+        None => return "0x0".to_owned(),
+    };
+
+    iter.for_each(|b| write!(str, "{:02x}", b).unwrap());
+    str
 }
 
 #[cfg(test)]
@@ -191,6 +215,57 @@ mod tests {
                 "0x123456789012345678901234567890123",
             )
             .expect_err("The same as above but with a 0x-prefix.");
+        }
+    }
+
+    mod test_into_relaxed_hex_str {
+        use super::*;
+        use std::str::FromStr;
+        use web3::types::H128;
+
+        #[test]
+        fn zero() {
+            assert_eq!(into_relaxed_hex_str::<H128>(&H128::zero()), "0x0")
+        }
+
+        #[test]
+        fn one_digit() {
+            assert_eq!(
+                into_relaxed_hex_str::<H128>(
+                    &H128::from_str("0x0000000000000000000000000000000a").unwrap()
+                ),
+                "0xa"
+            )
+        }
+
+        #[test]
+        fn odd() {
+            assert_eq!(
+                into_relaxed_hex_str::<H128>(
+                    &H128::from_str("0x00000000000000000000000000012345").unwrap()
+                ),
+                "0x12345"
+            )
+        }
+
+        #[test]
+        fn even() {
+            assert_eq!(
+                into_relaxed_hex_str::<H128>(
+                    &H128::from_str("0x00000000000000000000000000001234").unwrap()
+                ),
+                "0x1234"
+            )
+        }
+
+        #[test]
+        fn max_len() {
+            assert_eq!(
+                into_relaxed_hex_str::<H128>(
+                    &H128::from_str("0x12345678901234567890123456789012").unwrap()
+                ),
+                "0x12345678901234567890123456789012"
+            )
         }
     }
 }

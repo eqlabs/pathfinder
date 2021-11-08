@@ -1,9 +1,9 @@
 //! StarkNet L2 sequencer client.
 pub mod reply;
 pub mod request;
-mod serde;
 
 use self::reply::BlockReply;
+use crate::serde::from_relaxed_hex_str;
 use anyhow::Result;
 use reqwest::Url;
 use serde_json::{from_value, Value};
@@ -100,11 +100,10 @@ impl Client {
         let json_val: Value = serde_json::from_str(resp.as_str())?;
 
         if let Value::String(s) = json_val {
-            let value = serde::from_relaxed_hex_str::<
-                H256,
-                { H256::len_bytes() },
-                { H256::len_bytes() * 2 },
-            >(s.as_str())?;
+            let value =
+                from_relaxed_hex_str::<H256, { H256::len_bytes() }, { H256::len_bytes() * 2 }>(
+                    s.as_str(),
+                )?;
             Ok(value)
         } else {
             let error = from_value::<reply::starknet::Error>(json_val)?;
