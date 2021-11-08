@@ -14,7 +14,7 @@ jobs:
       # An Ethereum access point is required for some L1 StarkNet contract tests.
       # This sets it to secret values stored in the repository, which prevents
       # leaking it in code.
-      STARTNET_ETHEREUM_WEBSOCKET_URL: ${{ secrets.STARTNET_ETHEREUM_WEBSOCKET_URL }}
+      STARKNET_ETHEREUM_WEBSOCKET_URL: ${{ secrets.STARKNET_ETHEREUM_WEBSOCKET_URL }}
       STARKNET_ETHEREUM_PASSWORD: ${{ secrets.STARKNET_ETHEREUM_PASSWORD }}
     steps:
       - uses: actions/checkout@v2

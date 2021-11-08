@@ -92,8 +92,8 @@ mod tests {
     use super::*;
 
     async fn test_web_socket() -> Web3<WebSocket> {
-        let url = std::env::var("STARTNET_ETHEREUM_WEBSOCKET_URL").expect(
-            "Ethereum websocket URL environment var not set (STARTNET_ETHEREUM_WEBSOCKET_URL)",
+        let url = std::env::var("STARKNET_ETHEREUM_WEBSOCKET_URL").expect(
+            "Ethereum websocket URL environment var not set (STARKNET_ETHEREUM_WEBSOCKET_URL)",
         );
         let ws = WebSocket::new(&url).await.unwrap();
         web3::Web3::new(ws)
