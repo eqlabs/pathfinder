@@ -31,7 +31,7 @@ impl FileConfig {
         use crate::config::ConfigOption;
         let builder = match self.ethereum {
             Some(eth) => ConfigBuilder::default()
-                .with(ConfigOption::EthereumUrl, eth.url)
+                .with(ConfigOption::EthereumWebsocketUrl, eth.url)
                 .with(ConfigOption::EthereumUser, eth.user)
                 .with(ConfigOption::EthereumPassword, eth.password),
             None => ConfigBuilder::default(),
@@ -67,7 +67,7 @@ mod tests {
         let value = "value".to_owned();
         let toml = format!(r#"ethereum.url = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUrl), Some(value));
+        assert_eq!(cfg.take(ConfigOption::EthereumWebsocketUrl), Some(value));
     }
 
     #[test]
@@ -102,7 +102,7 @@ password = "{}""#,
 
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(user));
-        assert_eq!(cfg.take(ConfigOption::EthereumUrl), Some(url));
+        assert_eq!(cfg.take(ConfigOption::EthereumWebsocketUrl), Some(url));
         assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(password));
     }
 
