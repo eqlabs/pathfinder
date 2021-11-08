@@ -23,14 +23,14 @@ serde_with::serde_conv!(
 serde_with::serde_conv!(
     pub H256AsRelaxedHexStr,
     H256,
-    |h: &H256| into_relaxed_hex_str::<H256, {H256::len_bytes() * 2}>(h),
+    |h: &H256| into_relaxed_hex_str::<H256>(h),
     from_relaxed_hex_str::<H256, {H256::len_bytes()}, {H256::len_bytes() * 2}>
 );
 
 serde_with::serde_conv!(
     pub H160AsRelaxedHexStr,
     H160,
-    |h: &H160| into_relaxed_hex_str::<H160, {H160::len_bytes() * 2}>(h),
+    |h: &H160| into_relaxed_hex_str::<H160>(h),
     from_relaxed_hex_str::<H160, {H160::len_bytes()}, {H160::len_bytes() * 2}>
 );
 
@@ -71,7 +71,7 @@ where
 }
 
 /// Fixed-size unspecified hash serialization helper function which removes leading zeros.
-fn into_relaxed_hex_str<H, const NUM_CHARS: usize>(h: &H) -> String
+fn into_relaxed_hex_str<H>(h: &H) -> String
 where
     H: AsRef<[u8]>,
 {
@@ -81,9 +81,11 @@ where
         return "0x0".to_owned();
     }
 
-    let mut s = String::with_capacity(NUM_CHARS + 2);
+    let mut s = String::with_capacity(bytes.len() + 2);
     let mut skipped = bytes.iter().skip_while(|&&b| b == 0);
-    // All unwraps are safe here
+    // All unwraps are safe here:
+    // - skipped.next() will succeed because at least one nonzero byte must be left
+    // - write! is performed into a preallocated string that accommodates worst case scenario
     write!(s, "0x{:x}", skipped.next().unwrap()).unwrap();
     skipped.for_each(|b| write!(s, "{:02x}", b).unwrap());
     s
@@ -220,16 +222,13 @@ mod tests {
 
         #[test]
         fn zero() {
-            assert_eq!(
-                into_relaxed_hex_str::<H128, { H128::len_bytes() * 2 }>(&H128::zero()),
-                "0x0"
-            )
+            assert_eq!(into_relaxed_hex_str::<H128>(&H128::zero()), "0x0")
         }
 
         #[test]
         fn one_digit() {
             assert_eq!(
-                into_relaxed_hex_str::<H128, { H128::len_bytes() * 2 }>(
+                into_relaxed_hex_str::<H128>(
                     &H128::from_str("0x0000000000000000000000000000000a").unwrap()
                 ),
                 "0xa"
@@ -239,7 +238,7 @@ mod tests {
         #[test]
         fn odd() {
             assert_eq!(
-                into_relaxed_hex_str::<H128, { H128::len_bytes() * 2 }>(
+                into_relaxed_hex_str::<H128>(
                     &H128::from_str("0x00000000000000000000000000012345").unwrap()
                 ),
                 "0x12345"
@@ -249,7 +248,7 @@ mod tests {
         #[test]
         fn even() {
             assert_eq!(
-                into_relaxed_hex_str::<H128, { H128::len_bytes() * 2 }>(
+                into_relaxed_hex_str::<H128>(
                     &H128::from_str("0x00000000000000000000000000001234").unwrap()
                 ),
                 "0x1234"
@@ -259,7 +258,7 @@ mod tests {
         #[test]
         fn max_len() {
             assert_eq!(
-                into_relaxed_hex_str::<H128, { H128::len_bytes() * 2 }>(
+                into_relaxed_hex_str::<H128>(
                     &H128::from_str("0x12345678901234567890123456789012").unwrap()
                 ),
                 "0x12345678901234567890123456789012"
