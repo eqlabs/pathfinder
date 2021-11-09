@@ -1,3 +1,6 @@
+use std::convert::TryFrom;
+
+use anyhow::Context;
 use web3::types::{BlockNumber, H256};
 pub mod contract;
 
@@ -6,6 +9,15 @@ pub enum BlockId {
     Earliest,
     Number(u64),
     Hash(H256),
+}
+
+/// An Ethereum origin point.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EthOrigin {
+    pub block_hash: H256,
+    pub block_number: u64,
+    pub transaction_hash: H256,
+    pub transaction_index: u64,
 }
 
 impl From<BlockId> for web3::types::BlockId {
@@ -17,6 +29,27 @@ impl From<BlockId> for web3::types::BlockId {
             BlockId::Number(x) => W3::Number(BlockNumber::Number(x.into())),
             BlockId::Hash(x) => W3::Hash(x),
         }
+    }
+}
+
+impl TryFrom<&web3::types::Log> for EthOrigin {
+    type Error = anyhow::Error;
+
+    fn try_from(log: &web3::types::Log) -> Result<Self, Self::Error> {
+        let block_hash = log.block_hash.context("missing block hash")?;
+        let block_number = log.block_number.context("missing block hash")?.as_u64();
+        let transaction_hash = log.transaction_hash.context("missing transaction hash")?;
+        let transaction_index = log
+            .transaction_index
+            .context("missing transaction index")?
+            .as_u64();
+
+        Ok(EthOrigin {
+            block_hash,
+            block_number,
+            transaction_hash,
+            transaction_index,
+        })
     }
 }
 
