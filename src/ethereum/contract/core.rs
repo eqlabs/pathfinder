@@ -87,24 +87,17 @@ impl CoreContract {
 
 #[cfg(test)]
 mod tests {
-    use web3::{contract::Options, types::Address, Web3};
+    use crate::ethereum::test::create_test_websocket;
+    use web3::{contract::Options, types::Address};
 
     use super::*;
-
-    async fn test_web_socket() -> Web3<WebSocket> {
-        let url = std::env::var("STARKNET_ETHEREUM_WEBSOCKET_URL").expect(
-            "Ethereum websocket URL environment var not set (STARKNET_ETHEREUM_WEBSOCKET_URL)",
-        );
-        let ws = WebSocket::new(&url).await.unwrap();
-        web3::Web3::new(ws)
-    }
 
     /// The StarkNet core contract uses the proxy pattern. This test checks that the
     /// implementation address is still the same. If it isn't, then we may need to
     /// update our [CORE_IMPL_ABI].
     #[tokio::test]
     async fn proxy_impl_addr() {
-        let ws = test_web_socket().await;
+        let ws = create_test_websocket().await;
 
         let addr = H160::from_str(CORE_PROXY_ADDR).unwrap();
         let contract = Contract::from_json(ws.eth(), addr, CORE_PROXY_ABI).unwrap();
@@ -130,7 +123,7 @@ mod tests {
         let block = BlockId::Number(5812351);
         let expected = U256::from(10712);
 
-        let ws = test_web_socket().await;
+        let ws = create_test_websocket().await;
         let contract = CoreContract::load(ws);
 
         let sequence_number = contract.sequence_number(block).await.unwrap();
@@ -146,7 +139,7 @@ mod tests {
         )
         .unwrap();
 
-        let ws = test_web_socket().await;
+        let ws = create_test_websocket().await;
         let contract = CoreContract::load(ws);
 
         let state_root = contract.state_root(block).await.unwrap();

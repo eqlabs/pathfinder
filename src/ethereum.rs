@@ -19,3 +19,18 @@ impl From<BlockId> for web3::types::BlockId {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use web3::transports::WebSocket;
+    use web3::Web3;
+    /// A test helper utility.
+    pub async fn create_test_websocket() -> Web3<WebSocket> {
+        let url = std::env::var("STARKNET_ETHEREUM_WEBSOCKET_URL").expect(
+            "Ethereum websocket URL environment var not set (STARKNET_ETHEREUM_WEBSOCKET_URL)",
+        );
+
+        let ws = WebSocket::new(&url).await.unwrap();
+        web3::Web3::new(ws)
+    }
+}
