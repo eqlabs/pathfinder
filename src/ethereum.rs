@@ -3,6 +3,7 @@ use std::convert::TryFrom;
 use anyhow::Context;
 use web3::types::{BlockNumber, H256};
 pub mod contract;
+pub mod starknet;
 
 pub enum BlockId {
     Latest,
