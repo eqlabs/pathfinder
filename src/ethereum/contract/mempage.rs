@@ -97,7 +97,8 @@ impl MempageEvent {
 
 #[cfg(test)]
 mod tests {
-    use crate::ethereum::test::create_test_websocket_transport;
+
+    use crate::ethereum::test::{create_test_websocket_transport, mempage_test_tx, retrieve_log};
 
     use super::*;
 
@@ -117,37 +118,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn parse_log() {
         let ws = create_test_websocket_transport().await;
         let contract = MempageContract::load(ws.clone());
+        let mempage_tx = mempage_test_tx();
 
-        // Transaction with a known Mempage log (the only log).
-        //
-        // This was identified using https://goerli.etherscan.io by checking events emitted by the Mempage contract.
-        let eth_origin = EthOrigin {
-            block_hash: H256::from_str(
-                "0x17c7105d8d2c9e0b8e6a8ce9ba845889146a69443d90850d14d809af89009b82",
-            )
-            .unwrap(),
-            block_number: 5806884,
-            transaction_hash: H256::from_str(
-                "0x93f9609808869a6360cd734fae6cd1792fed0b79e45b2e05836f5353ab4a2ce3",
-            )
-            .unwrap(),
-            transaction_index: 10,
-        };
-        // Get the log from Ethereum.
-        let tx = ws
-            .eth()
-            .transaction_receipt(eth_origin.transaction_hash)
-            .await
-            .unwrap()
-            .unwrap();
-        let log = &tx.logs[0];
+        let log = retrieve_log(&mempage_tx).await;
 
         let signature = *log.topics.first().unwrap();
         assert_eq!(contract.mempage_event.signature(), signature);
 
-        let mempage_log = contract.mempage_event.parse_log(log).unwrap();
-        assert_eq!(mempage_log.origin, eth_origin);
+        let mempage_log = contract.mempage_event.parse_log(&log).unwrap();
+        assert_eq!(mempage_log.origin, mempage_tx.origin);
     }
 }

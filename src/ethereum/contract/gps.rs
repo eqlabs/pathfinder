@@ -110,7 +110,7 @@ impl FactEvent {
 
 #[cfg(test)]
 mod tests {
-    use crate::ethereum::test::create_test_websocket_transport;
+    use crate::ethereum::test::{create_test_websocket_transport, fact_test_tx, retrieve_log};
 
     use super::*;
 
@@ -130,37 +130,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn parse_log() {
         let ws = create_test_websocket_transport().await;
         let contract = GpsContract::load(ws.clone());
 
-        // Transaction with a known Fact log (the second log).
-        //
-        // This was identified using https://goerli.etherscan.io by checking events emitted by the GPS contract.
-        let eth_origin = EthOrigin {
-            block_hash: H256::from_str(
-                "0x17c7105d8d2c9e0b8e6a8ce9ba845889146a69443d90850d14d809af89009b82",
-            )
-            .unwrap(),
-            block_number: 5806884,
-            transaction_hash: H256::from_str(
-                "0x573354d51d28514519b8fe8604e1ef5152a608aa6bfc8fb59fe5dbb89a5a9cd1",
-            )
-            .unwrap(),
-            transaction_index: 11,
-        };
-        // Get the log from Ethereum.
-        let tx = ws
-            .eth()
-            .transaction_receipt(eth_origin.transaction_hash)
-            .await
-            .unwrap()
-            .unwrap();
-        let log = &tx.logs[1];
+        let fact_tx = fact_test_tx();
+        let log = retrieve_log(&fact_tx).await;
 
         let signature = *log.topics.first().unwrap();
         assert_eq!(contract.fact_event.signature(), signature);
 
-        let fact_log = contract.fact_event.parse_log(log).unwrap();
-        assert_eq!(fact_log.origin, eth_origin);
+        let fact_log = contract.fact_event.parse_log(&log).unwrap();
+        assert_eq!(fact_log.origin, fact_tx.origin);
     }
 }
