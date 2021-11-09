@@ -110,19 +110,19 @@ impl FactEvent {
 
 #[cfg(test)]
 mod tests {
-    use crate::ethereum::test::create_test_websocket;
+    use crate::ethereum::test::create_test_websocket_transport;
 
     use super::*;
 
     #[tokio::test]
     async fn load() {
-        let ws = create_test_websocket().await;
+        let ws = create_test_websocket_transport().await;
         GpsContract::load(ws);
     }
 
     #[tokio::test]
     async fn address() {
-        let ws = create_test_websocket().await;
+        let ws = create_test_websocket_transport().await;
         let address = GpsContract::load(ws).address();
         let expected = H160::from_str(GPS_ADDR).unwrap();
 
@@ -130,8 +130,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parse_fact_log() {
-        let ws = create_test_websocket().await;
+        let ws = create_test_websocket_transport().await;
         let contract = GpsContract::load(ws.clone());
 
         // Transaction with a known Fact log (the second log).

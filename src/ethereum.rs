@@ -57,13 +57,18 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
 mod test {
     use web3::transports::WebSocket;
     use web3::Web3;
-    /// A test helper utility.
-    pub async fn create_test_websocket() -> Web3<WebSocket> {
+    /// Creates a [Web3<WebSocket>] as specified by [create_test_websocket].
+    pub async fn create_test_websocket_transport() -> Web3<WebSocket> {
+        web3::Web3::new(create_test_websocket().await)
+    }
+
+    /// Creates a [WebSocket] which connects to the Ethereum node specified by
+    /// the `STARKNET_ETHEREUM_WEBSOCKET_URL` environment variable.
+    pub async fn create_test_websocket() -> WebSocket {
         let url = std::env::var("STARKNET_ETHEREUM_WEBSOCKET_URL").expect(
             "Ethereum websocket URL environment var not set (STARKNET_ETHEREUM_WEBSOCKET_URL)",
         );
 
-        let ws = WebSocket::new(&url).await.unwrap();
-        web3::Web3::new(ws)
+        WebSocket::new(&url).await.unwrap()
     }
 }

@@ -97,19 +97,19 @@ impl MempageEvent {
 
 #[cfg(test)]
 mod tests {
-    use crate::ethereum::test::create_test_websocket;
+    use crate::ethereum::test::create_test_websocket_transport;
 
     use super::*;
 
     #[tokio::test]
     async fn load() {
-        let ws = create_test_websocket().await;
+        let ws = create_test_websocket_transport().await;
         MempageContract::load(ws);
     }
 
     #[tokio::test]
     async fn address() {
-        let ws = create_test_websocket().await;
+        let ws = create_test_websocket_transport().await;
         let address = MempageContract::load(ws).address();
         let expected = H160::from_str(MEMPAGE_ADDR).unwrap();
 
@@ -117,8 +117,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parse_fact_log() {
-        let ws = create_test_websocket().await;
+        let ws = create_test_websocket_transport().await;
         let contract = MempageContract::load(ws.clone());
 
         // Transaction with a known Mempage log (the only log).
