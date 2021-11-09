@@ -6,9 +6,9 @@ use std::{convert::TryFrom, str::FromStr};
 use anyhow::{Context, Result};
 use web3::{
     contract::Contract,
-    ethabi::{Event, RawLog},
+    ethabi::{Event, Function, RawLog},
     transports::WebSocket,
-    types::{H160, H256},
+    types::{Transaction, H160, H256, U256},
     Web3,
 };
 
@@ -25,6 +25,7 @@ const MEMPAGE_ABI: &[u8] = include_bytes!(concat!(
 /// using its [MempageEvent].
 pub struct MempageContract {
     contract: Contract<WebSocket>,
+    mempage_register_function: Function,
     pub mempage_event: MempageEvent,
 }
 
@@ -53,16 +54,53 @@ impl MempageContract {
             .event("LogMemoryPageFactContinuous")
             .unwrap()
             .clone();
+        let function = contract
+            .abi()
+            .function("registerContinuousMemoryPage")
+            .unwrap()
+            .clone();
 
         MempageContract {
             contract,
             mempage_event: MempageEvent { event },
+            mempage_register_function: function,
         }
     }
 
     /// The [MempageContract's](MempageContract) address.
     pub fn address(&self) -> H160 {
         self.contract.address()
+    }
+
+    pub fn decode_mempage(&self, transaction: &Transaction) -> Result<Vec<U256>> {
+        // The first 4 bytes of data represent the short-signature of the function.
+        // These must exist in order to be valid. We should compare the signature as
+        // well, but this requires web3 to bump ethabi to v15.
+        anyhow::ensure!(
+            transaction.input.0.len() >= 4,
+            "transaction input contained no data"
+        );
+
+        // The mempage data is stored in 'values' (2nd token), which is an array of U256.
+        //
+        // The complete structure is defined in the mempage json ABI.
+        self.mempage_register_function
+            // `decode_input` wants the raw data, excluding the short-signature.
+            // The indexing is safe due to the `ensure` above.
+            .decode_input(&transaction.input.0[4..])
+            .context("mempage input decoding failed")?
+            .get(1)
+            .cloned()
+            .context("missing values array field")?
+            .into_array()
+            .context("values field could not be cast to an array")?
+            .iter()
+            .map(|t| {
+                t.clone()
+                    .into_uint()
+                    .context("values element could not be cast to U256")
+            })
+            .collect()
     }
 }
 
@@ -97,6 +135,7 @@ impl MempageEvent {
 
 #[cfg(test)]
 mod tests {
+    use web3::types::TransactionId;
 
     use crate::ethereum::test::{create_test_websocket_transport, mempage_test_tx, retrieve_log};
 
@@ -130,5 +169,16 @@ mod tests {
 
         let mempage_log = contract.mempage_event.parse_log(&log).unwrap();
         assert_eq!(mempage_log.origin, mempage_tx.origin);
+    }
+
+    #[tokio::test]
+    async fn decode_mempage() {
+        let ws = create_test_websocket_transport().await;
+        let contract = MempageContract::load(ws.clone());
+
+        let tx_hash = TransactionId::Hash(mempage_test_tx().origin.transaction_hash);
+
+        let tx = ws.eth().transaction(tx_hash).await.unwrap().unwrap();
+        contract.decode_mempage(&tx).unwrap();
     }
 }
