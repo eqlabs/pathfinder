@@ -1,0 +1,78 @@
+[
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "bytes32",
+                "name": "factHash",
+                "type": "bytes32"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "memoryHash",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "prod",
+                "type": "uint256"
+            }
+        ],
+        "name": "LogMemoryPageFactContinuous",
+        "type": "event"
+    },
+    {
+        "constant": false,
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "startAddr",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256[]",
+                "name": "values",
+                "type": "uint256[]"
+            },
+            {
+                "internalType": "uint256",
+                "name": "z",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "alpha",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "prime",
+                "type": "uint256"
+            }
+        ],
+        "name": "registerContinuousMemoryPage",
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "factHash",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "uint256",
+                "name": "memoryHash",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "prod",
+                "type": "uint256"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]
