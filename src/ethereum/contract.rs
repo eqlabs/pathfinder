@@ -1,11 +1,13 @@
 mod core;
 mod gps;
+mod mempage;
 
 use anyhow::{Context, Result};
 use web3::ethabi::LogParam;
 
 pub use self::core::CoreContract;
 pub use self::gps::*;
+pub use self::mempage::*;
 
 /// Utility function to retrieve a named parameter from a log.
 ///
