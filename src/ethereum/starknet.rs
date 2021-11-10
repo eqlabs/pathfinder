@@ -7,7 +7,10 @@ use web3::{
 
 use anyhow::{Context, Result};
 
-use crate::ethereum::contract::{FactLog, GpsContract, MempageContract, MempageLog};
+use crate::ethereum::{
+    contract::{FactLog, GpsContract, MempageContract, MempageLog},
+    RpcErrorCode,
+};
 
 /// Provides abstractions for interacting with StarkNet contracts on Ethereum.
 pub struct Starknet {
@@ -28,10 +31,8 @@ pub enum Log {
 /// Currently only contains errors specific to the Infura RPC API.
 #[derive(Debug)]
 pub enum GetLogsError {
-    /// Infura query timed out, should reduce the query scope.
-    InfuraQueryTimeout,
-    /// Infura is limited to 10 000 log results, should reduce the query scope.
-    InfuraResultLimit,
+    /// Query exceeded limits (time or result length).
+    QueryLimit,
     Other(anyhow::Error),
 }
 
@@ -39,11 +40,9 @@ impl From<web3::Error> for GetLogsError {
     fn from(err: web3::Error) -> Self {
         use GetLogsError::*;
         match err {
-            web3::Error::Rpc(err) => match err.message.as_str() {
-                "query timeout exceeded" => InfuraQueryTimeout,
-                "query returned more than 10000 results" => InfuraResultLimit,
-                other => Other(anyhow::anyhow!("Unexpected RPC error: {}", other)),
-            },
+            web3::Error::Rpc(err) if err.code.code() == RpcErrorCode::LimitExceeded.code() => {
+                GetLogsError::QueryLimit
+            }
             other => Other(anyhow::anyhow!("Unexpected error: {}", other)),
         }
     }
@@ -226,7 +225,7 @@ mod tests {
                 .retrieve_logs(BlockNumber::Earliest, BlockNumber::Latest)
                 .await;
 
-            assert_matches!(result, Err(GetLogsError::InfuraResultLimit));
+            assert_matches!(result, Err(GetLogsError::QueryLimit));
         }
     }
 }
