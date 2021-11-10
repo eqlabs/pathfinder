@@ -1,7 +1,7 @@
 //! Provides abstractions to interface with StarkNet's Ethereum contracts and events.
 use web3::{
     transports::WebSocket,
-    types::{TransactionId, U256},
+    types::{BlockNumber, TransactionId, U256},
     Web3,
 };
 
@@ -66,6 +66,44 @@ impl Starknet {
             mempage_contract,
             ws: Web3::new(web_socket),
         }
+    }
+
+    /// Retrieves all StarkNet [logs](Log) from L1.
+    ///
+    /// Query may exceed the [time](GetLogsError::InfuraQueryTimeout) or
+    /// [result size](GetLogsError::InfuraResultLimit) limit, in which case
+    /// the query range should be reduced.
+    pub async fn retrieve_logs(
+        &self,
+        from: BlockNumber,
+        to: BlockNumber,
+    ) -> std::result::Result<Vec<Log>, GetLogsError> {
+        let log_filter = web3::types::FilterBuilder::default()
+            .address(vec![
+                self.mempage_contract.address(),
+                self.gps_contract.address(),
+            ])
+            .topics(
+                Some(vec![
+                    self.mempage_contract.mempage_event.signature(),
+                    self.gps_contract.fact_event.signature(),
+                ]),
+                None,
+                None,
+                None,
+            )
+            .from_block(from)
+            .to_block(to)
+            .build();
+
+        Ok(self
+            .ws
+            .eth()
+            .logs(log_filter)
+            .await?
+            .iter()
+            .map(|log| self.parse_log(log))
+            .collect::<Result<Vec<_>>>()?)
     }
 
     /// Retrieve's the transaction from L1 and interprets it's data as a StarkNet memory page.
@@ -152,5 +190,43 @@ mod tests {
         let fact_log = starknet.parse_log(&log).unwrap();
 
         assert_matches!(fact_log, Log::Fact(..));
+    }
+
+    #[cfg(test)]
+    mod retrieve_logs {
+        use super::*;
+
+        #[tokio::test]
+        async fn ok() {
+            let ws = create_test_websocket().await;
+            let starknet = Starknet::load(ws);
+            // The block the StarkNet core contract was deployed with.
+            // Use this to retrieve a small set of logs.
+            let to = 5745469;
+            let from = to + 10;
+
+            let result = starknet
+                .retrieve_logs(
+                    BlockNumber::Number(to.into()),
+                    BlockNumber::Number(from.into()),
+                )
+                .await;
+
+            let logs = result.unwrap();
+            assert_eq!(logs.len(), 12);
+        }
+
+        #[tokio::test]
+        async fn query_limit_exceeded() {
+            let ws = create_test_websocket().await;
+            let starknet = Starknet::load(ws);
+            // Query the full range of blocks available. This should exceed the result
+            // limit unless the StarkNet network is very young.
+            let result = starknet
+                .retrieve_logs(BlockNumber::Earliest, BlockNumber::Latest)
+                .await;
+
+            assert_matches!(result, Err(GetLogsError::InfuraResultLimit));
+        }
     }
 }
