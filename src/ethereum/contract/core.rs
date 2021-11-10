@@ -87,7 +87,7 @@ impl CoreContract {
 
 #[cfg(test)]
 mod tests {
-    use crate::ethereum::test::create_test_websocket;
+    use crate::ethereum::test::create_test_websocket_transport;
     use web3::{contract::Options, types::Address};
 
     use super::*;
@@ -97,7 +97,7 @@ mod tests {
     /// update our [CORE_IMPL_ABI].
     #[tokio::test]
     async fn proxy_impl_addr() {
-        let ws = create_test_websocket().await;
+        let ws = create_test_websocket_transport().await;
 
         let addr = H160::from_str(CORE_PROXY_ADDR).unwrap();
         let contract = Contract::from_json(ws.eth(), addr, CORE_PROXY_ABI).unwrap();
@@ -123,7 +123,7 @@ mod tests {
         let block = BlockId::Number(5812351);
         let expected = U256::from(10712);
 
-        let ws = create_test_websocket().await;
+        let ws = create_test_websocket_transport().await;
         let contract = CoreContract::load(ws);
 
         let sequence_number = contract.sequence_number(block).await.unwrap();
@@ -139,7 +139,7 @@ mod tests {
         )
         .unwrap();
 
-        let ws = create_test_websocket().await;
+        let ws = create_test_websocket_transport().await;
         let contract = CoreContract::load(ws);
 
         let state_root = contract.state_root(block).await.unwrap();
