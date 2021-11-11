@@ -12,7 +12,7 @@ use web3::{
     Web3,
 };
 
-use crate::ethereum::{contract::get_log_param, EthOrigin};
+use crate::ethereum::{get_log_param, EthOrigin};
 
 const MEMPAGE_ADDR: &str = "0xb609Eba1DC0298A984Fa8a34528966E997C5BB13";
 const MEMPAGE_ABI: &[u8] = include_bytes!(concat!(
