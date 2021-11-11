@@ -1,4 +1,7 @@
 //! Provides abstractions to interface with StarkNet's Ethereum contracts and events.
+mod contract;
+pub use contract::*;
+
 use web3::{
     transports::WebSocket,
     types::{BlockNumber, TransactionId, U256},
@@ -8,7 +11,7 @@ use web3::{
 use anyhow::{Context, Result};
 
 use crate::ethereum::{
-    contract::{FactLog, GpsContract, MempageContract, MempageLog},
+    starknet::contract::{FactLog, GpsContract, MempageContract, MempageLog},
     RpcErrorCode,
 };
 

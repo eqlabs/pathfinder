@@ -6,7 +6,6 @@ use web3::{
     types::{BlockNumber, H256},
 };
 pub mod starknet;
-pub mod contract;
 
 /// List of semi-official Ethereum RPC errors taken from EIP-1474 (which is stagnant).
 ///
