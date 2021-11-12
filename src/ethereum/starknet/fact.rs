@@ -183,19 +183,17 @@ where
 mod tests {
     use super::*;
 
-    #[allow(clippy::from_over_into)]
-    impl Into<Vec<U256>> for StorageUpdate {
-        fn into(self) -> Vec<U256> {
-            vec![self.address, self.value]
+    impl From<StorageUpdate> for Vec<U256> {
+        fn from(val: StorageUpdate) -> Self {
+            vec![val.address, val.value]
         }
     }
 
-    #[allow(clippy::from_over_into)]
-    impl Into<Vec<U256>> for ContractUpdate {
-        fn into(self) -> Vec<U256> {
-            let mut data = vec![self.address, U256::from(self.storage_updates.len())];
+    impl From<ContractUpdate> for Vec<U256> {
+        fn from(val: ContractUpdate) -> Self {
+            let mut data = vec![val.address, U256::from(val.storage_updates.len())];
             data.extend(
-                self.storage_updates
+                val.storage_updates
                     .into_iter()
                     .flat_map(|u| Into::<Vec<U256>>::into(u).into_iter()),
             );
@@ -207,12 +205,11 @@ mod tests {
     #[derive(Debug, PartialEq, Clone)]
     struct ContractUpdates(Vec<ContractUpdate>);
 
-    #[allow(clippy::from_over_into)]
-    impl Into<Vec<U256>> for ContractUpdates {
-        fn into(self) -> Vec<U256> {
-            let mut data = vec![U256::from(self.0.len())];
+    impl From<ContractUpdates> for Vec<U256> {
+        fn from(val: ContractUpdates) -> Self {
+            let mut data = vec![U256::from(val.0.len())];
             data.extend(
-                self.0
+                val.0
                     .into_iter()
                     .flat_map(|u| Into::<Vec<U256>>::into(u).into_iter()),
             );
@@ -220,11 +217,10 @@ mod tests {
         }
     }
 
-    #[allow(clippy::from_over_into)]
-    impl Into<Vec<U256>> for DeployedContract {
-        fn into(self) -> Vec<U256> {
-            let mut data = vec![self.address, self.hash, U256::from(self.call_data.len())];
-            data.extend(self.call_data.into_iter());
+    impl From<DeployedContract> for Vec<U256> {
+        fn from(val: DeployedContract) -> Self {
+            let mut data = vec![val.address, val.hash, U256::from(val.call_data.len())];
+            data.extend(val.call_data.into_iter());
             data
         }
     }
@@ -233,10 +229,9 @@ mod tests {
     #[derive(Debug, PartialEq, Clone)]
     struct DeploymentUpdates(Vec<DeployedContract>);
 
-    #[allow(clippy::from_over_into)]
-    impl Into<Vec<U256>> for DeploymentUpdates {
-        fn into(self) -> Vec<U256> {
-            let mut data = self
+    impl From<DeploymentUpdates> for Vec<U256> {
+        fn from(val: DeploymentUpdates) -> Self {
+            let mut data = val
                 .0
                 .into_iter()
                 .flat_map(|u| Into::<Vec<U256>>::into(u).into_iter())
@@ -247,11 +242,10 @@ mod tests {
         }
     }
 
-    #[allow(clippy::from_over_into)]
-    impl Into<Vec<U256>> for Fact {
-        fn into(self) -> Vec<U256> {
-            let deployed: Vec<U256> = DeploymentUpdates(self.deployed_contracts).into();
-            let updates: Vec<U256> = ContractUpdates(self.contract_updates).into();
+    impl From<Fact> for Vec<U256> {
+        fn from(val: Fact) -> Self {
+            let deployed: Vec<U256> = DeploymentUpdates(val.deployed_contracts).into();
+            let updates: Vec<U256> = ContractUpdates(val.contract_updates).into();
 
             deployed.into_iter().chain(updates.into_iter()).collect()
         }
