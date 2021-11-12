@@ -1,8 +1,10 @@
 use std::convert::TryFrom;
 
-use anyhow::Context;
-use web3::types::{BlockNumber, H256};
-pub mod contract;
+use anyhow::{Context, Result};
+use web3::{
+    ethabi::LogParam,
+    types::{BlockNumber, H256},
+};
 pub mod starknet;
 
 /// List of semi-official Ethereum RPC errors taken from EIP-1474 (which is stagnant).
@@ -111,6 +113,17 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
             transaction_index,
         })
     }
+}
+
+/// Utility function to retrieve a named parameter from a log.
+///
+/// Useful for parsing logs.
+fn get_log_param(log: &web3::ethabi::Log, param: &str) -> Result<LogParam> {
+    log.params
+        .iter()
+        .find(|p| p.name == param)
+        .cloned()
+        .with_context(|| format!("parameter {} not found", param))
 }
 
 #[cfg(test)]

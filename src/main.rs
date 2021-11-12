@@ -1,6 +1,6 @@
 use web3::{transports::WebSocket, Web3};
 
-use crate::ethereum::{contract::CoreContract, BlockId};
+use crate::ethereum::{starknet::CoreContract, BlockId};
 
 mod config;
 mod ethereum;
