@@ -1,4 +1,4 @@
-# StarkNet
+# Introduction
 
 A StarkNet full node written in Rust.
 
@@ -6,7 +6,15 @@ This project is a work-in-progress and is not yet usable.
 
 A first release will be made with the completion of [Milestone I](#milestone-i).
 
-## Roadmap
+# Table of Contents
+- [Roadmap](#roadmap)
+  - [Milestone I](#milestone-i)
+  - [Milestone II](#milestone-ii)
+  - [Milestone III](#milestone-iii)
+- [Developers](#developers)
+  - [Testing](#testing)
+
+# Roadmap
 
 The end goal is to have a node which
 
@@ -20,7 +28,7 @@ The end goal is to have a node which
 
 The roadmap has been split into milestones, with goals in the later milestones being less certain and well-defined.
 
-### Milestone I
+## Milestone I
 
 A node which has no p2p capabilities. It synchronises network state using L1 and L2 (StarkNet gateway), and provides an HTTP RPC API.
 
@@ -45,14 +53,25 @@ A node which has no p2p capabilities. It synchronises network state using L1 and
 - [ ] integrate various components
 - [ ] documentation
 
-### Milestone II
+## Milestone II
 
 Establish p2p network, state is now propagated between nodes.
 
 Add support for syncing completely from L1.
 
-### Milestone III
+## Milestone III
 
 Create a transaction mempool, transactions are now propagated between nodes.
 
 Add contract calls to RPC API: `invoke` and `deploy`.
+
+# Developers
+
+## Testing
+
+Some of our tests require access to an archive Ethereum node. If you want to run these tests you will require setting the environment variable `STARKNET_ETHEREUM_WEBSOCKET_URL` to the websocket address of a Goerli full node. Infura provides such nodes for free (on Goerli testnet), and is what we currently use for our own CI.
+
+Example with an Infura node:
+```bash
+export STARKNET_ETHEREUM_WEBSOCKET_URL=wss://goerli.infura.io/ws/v3/<project-id>
+```
