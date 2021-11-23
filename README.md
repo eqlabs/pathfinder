@@ -1,6 +1,6 @@
-# Introduction
+# Welcome to Pathfinder
 
-A StarkNet full node written in Rust.
+A [StarkNet](https://starkware.co/starknet/) full node written in Rust.
 
 This project is a work-in-progress and is not yet usable.
 
@@ -12,6 +12,8 @@ A first release will be made with the completion of [Milestone I](#milestone-i).
   - [Milestone II](#milestone-ii)
   - [Milestone III](#milestone-iii)
 - [Developers](#developers)
+  - [Getting started](#getting-started)
+  - [Building](#building)
   - [Testing](#testing)
 
 # Roadmap
@@ -21,7 +23,7 @@ The end goal is to have a node which
 - holds the full StarkNet state
 - synchronises StarkNet state from both L1 and L2 (p2p)
 - verifies L2 state against L1
-- provides an API for interacting with StarkNet state
+- provides an RPC API for interacting with StarkNet state
 - participates in the L2 StarkNet network
   - propagating state
   - propagating transactions
@@ -67,11 +69,28 @@ Add contract calls to RPC API: `invoke` and `deploy`.
 
 # Developers
 
+Note that this project is currently only built on linux; but we do plan on supporting MacOs and Windows in the future.
+
+## Getting started
+
+Install Rust, by following the [official Rust instructions](https://www.rust-lang.org/tools/install).
+
+`git clone` this project and you should be good to go.
+
+## Building
+
+Invoke `cargo build` from the project root.
+
 ## Testing
 
 Some of our tests require access to an archive Ethereum node. If you want to run these tests you will require setting the environment variable `STARKNET_ETHEREUM_WEBSOCKET_URL` to the websocket address of a Goerli full node. Infura provides such nodes for free (on Goerli testnet), and is what we currently use for our own CI.
 
 Example with an Infura node:
-```bash
+```
 export STARKNET_ETHEREUM_WEBSOCKET_URL=wss://goerli.infura.io/ws/v3/<project-id>
+```
+
+Run the tests (invoke from project root):
+```
+cargo test
 ```
