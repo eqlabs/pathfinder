@@ -13,6 +13,10 @@ license = "MIT OR Apache-2.0"
 name = "pathfinder_lib"
 path = "src/lib.rs"
 
+[[example]]
+name = "fact-retrieval"
+path = "examples/fact_retrieval.rs"
+
 [dependencies]
 anyhow = "1.0.44"
 bigdecimal = { version = "0.3.0", features = ["serde"] }
