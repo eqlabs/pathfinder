@@ -19,9 +19,8 @@ use web3::types::{H256, U256};
 /// __TODO__ directly calls [sequencer::Client](crate::sequencer::Client) until storage is implemented.
 pub struct RpcImpl(Client);
 
-impl RpcImpl {
-    /// Constructs a sequencer client for the __alpha2__ network.
-    pub fn new() -> Self {
+impl Default for RpcImpl {
+    fn default() -> Self {
         let module = Client::new(Url::parse("https://alpha3.starknet.io/").expect("Valid URL."));
         Self(module)
     }

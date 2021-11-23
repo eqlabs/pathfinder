@@ -11,7 +11,7 @@ use std::{net::SocketAddr, result::Result};
 pub async fn run_server(addr: SocketAddr) -> Result<(), Error> {
     let server = HttpServerBuilder::default().build(addr)?;
     println!("📡 HTTP-RPC server started on: {}", server.local_addr()?);
-    server.start(RpcImpl::new().into_rpc()).await
+    server.start(RpcImpl::default().into_rpc()).await
 }
 
 #[cfg(test)]
@@ -46,7 +46,7 @@ mod tests {
 
     /// Server spawn wrapper
     async fn spawn_server(srv: HttpServer) {
-        tokio::spawn(srv.start(RpcImpl::new().into_rpc()));
+        tokio::spawn(srv.start(RpcImpl::default().into_rpc()));
     }
 
     mod get_block_by_hash {
