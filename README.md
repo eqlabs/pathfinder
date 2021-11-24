@@ -15,8 +15,8 @@ A first release will be made with the completion of [Milestone I](#milestone-i).
   - [Getting started](#getting-started)
   - [Building](#building)
   - [Testing](#testing)
-  - [License](#license)
-  - [Contribution](#contribution)
+- [License](#license)
+- [Contribution](#contribution)
 
 ## Roadmap
 
