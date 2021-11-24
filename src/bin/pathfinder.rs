@@ -1,13 +1,10 @@
 use web3::{transports::WebSocket, Web3};
 
-use crate::ethereum::{starknet::CoreContract, BlockId};
-
-mod config;
-mod ethereum;
-mod rpc;
-mod sequencer;
-mod serde;
-mod storage;
+use pathfinder_lib::{
+    config,
+    ethereum::{starknet::CoreContract, BlockId},
+    rpc,
+};
 
 #[tokio::main]
 async fn main() {
