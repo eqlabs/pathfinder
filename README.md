@@ -1,83 +1,115 @@
-# StarkNet
+# Welcome to Pathfinder
 
-A StarkNet full node written in Rust.
+A [StarkNet](https://starkware.co/starknet/) full node written in Rust.
 
-This project is in its infancy.
+This project is a work-in-progress and is not yet usable.
 
-## Network Architecture
+A first release will be made with the completion of [Milestone I](#milestone-i).
 
-The StarkNet network consists of three entities with distinct responsibilities
-
-1. L1 core contract
-2. Sequencer nodes
-3. L2 full nodes
-
-### L1 Core Contract
-
-It is the sole arbitrator of truth. It receives state updates from sequencer nodes along with ZK-SNARKS proofs of these updates. The contract verifies the proofs before storing the updated state on L1.
-
-Since L1 is the only source of truth in the network, nodes must query L1 if they wish to verify any state updates.
-
-### Sequencer nodes
-
-These nodes are responsible for ordering and batching transactions in the network. They compute ZK-SNARKS proofs for these transaction rollups (ZK-rollup) and submit them to L1 for verification.
-
-Currently, sequencer nodes are fully centralised and provided by StarkWare. This will eventually be changed to a decentralised model once development stabilises.
-
-### L2 full nodes
-
-This is what this project is implementing. These nodes act as StarkNet access points for users, providing an HTTP RPC interface to interact with StarkNet.
-
-They form a p2p decentralised network, propagating network state and transactions between nodes.
-
-Network state updates can be received from other L2 nodes, sequencer nodes or even queried from L1. Note, that only L1 can confirm the validity of a state update.
+## Table of Contents
+- [Roadmap](#roadmap)
+  - [Milestone I](#milestone-i)
+  - [Milestone II](#milestone-ii)
+  - [Milestone III](#milestone-iii)
+- [Developers](#developers)
+  - [Getting started](#getting-started)
+  - [Building](#building)
+  - [Testing](#testing)
+  - [License](#license)
+  - [Contribution](#contribution)
 
 ## Roadmap
 
-The end goal is to have a node which can
+The end goal is to have a node which
 
-- hold the full StarkNet state
-- synchronise StarkNet state
-- provides an API for interacting with StarkNet state
+- holds the full StarkNet state
+- synchronises StarkNet state from both L1 and L2 (p2p)
+- verifies L2 state against L1
+- provides an RPC API for interacting with StarkNet state
 - participates in the L2 StarkNet network
   - propagating state
   - propagating transactions
 
-The roadmap has been split into stages, with goals in the later stages being less certain and well-defined. This gives us a target to aim at while accommodating the evolving StarkNet requirements.
+The roadmap has been split into milestones, with goals in the later milestones being less certain and well-defined.
 
-### Stage I
+### Milestone I
 
-A simplistic node which has no p2p capabilities. It synchronises network state using L1 and the StarkNet gateway, and provides an HTTP RPC API.
+A node which has no p2p capabilities. It synchronises network state using L1 and L2 (StarkNet gateway), and provides an HTTP RPC API.
 
-#### Network State Sync
+- [x] retrieve state updates from L1
+  - [x] state root
+  - [x] contract deployments
+  - [x] contract updates
+- [x] retrieve state from StarkNet sequencer gateway
+  - [x] blocks
+  - [x] transactions
+  - [x] contract code
+- [x] serve RPC API
+- [ ] storage
+  - [ ] global state
+  - [x] contract definitions
+  - [x] transactions
+  - [x] blocks
+- [x] basic user configuration
+- [ ] sync state from L1 and L2
+- [ ] run `starknet_call` locally
+- [ ] validate contract code against L1
+- [ ] integrate various components
+- [ ] documentation
 
-- [ ] get state root from L1
-- [ ] get state updates from Starkware gateway
-
-#### HTTP RPC API
-
-Serve and implement the following API endpoints:
-
-- [ ] `get_storage_at`
-- [ ] `get_code`
-- [ ] `call_transaction`
-- [ ] `get_block`
-- [ ] `get_tx`
-
-#### State Storage
-
-- [ ] store all StarkNet contracts (including code)
-- [ ] store all StarkNet transactions
-- [ ] store the ABI
-
-### Stage II
+### Milestone II
 
 Establish p2p network, state is now propagated between nodes.
 
 Add support for syncing completely from L1.
 
-### Stage III
+### Milestone III
 
 Create a transaction mempool, transactions are now propagated between nodes.
 
 Add contract calls to RPC API: `invoke` and `deploy`.
+
+## Developers
+
+Note that this project is currently only built on linux; but we do plan on supporting MacOs and Windows in the future.
+
+### Getting started
+
+Install Rust, by following the [official Rust instructions](https://www.rust-lang.org/tools/install).
+
+`git clone` this project and you should be good to go.
+
+### Building
+
+Invoke `cargo build` from the project root.
+
+### Testing
+
+Some of our tests require access to an archive Ethereum node. If you want to run these tests you will require setting the environment variable `STARKNET_ETHEREUM_WEBSOCKET_URL` to the websocket address of a Goerli full node. Infura provides such nodes for free (on Goerli testnet), and is what we currently use for our own CI.
+
+Example with an Infura node:
+```
+export STARKNET_ETHEREUM_WEBSOCKET_URL=wss://goerli.infura.io/ws/v3/<project-id>
+```
+
+Run the tests (invoke from project root):
+```
+cargo test
+```
+
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0
+   ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license
+   ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+## Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
