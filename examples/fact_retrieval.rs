@@ -56,9 +56,9 @@ async fn main() {
     // Sort the logs into Fact and Memory Page logs.
     let mut facts = HashMap::new();
     let mut mempages = HashMap::new();
-    logs.iter().for_each(|log| match log {
+    logs.into_iter().for_each(|log| match log {
         Log::Fact(fact) => {
-            facts.insert(fact.hash, fact.mempage_hashes.clone());
+            facts.insert(fact.hash, fact.mempage_hashes);
         }
         Log::Mempage(mempage) => {
             mempages.insert(mempage.hash, mempage.origin.transaction_hash);
@@ -71,7 +71,7 @@ async fn main() {
         .expect("No list of memory pages found for the requested hash");
 
     // Identify the memory page transactions of that fact.
-    let tx = fact_mempages
+    let fact_transactions = fact_mempages
         .iter()
         .map(|mp| {
             let t = mempages.get(mp).expect("Memory page log missing");
@@ -81,7 +81,7 @@ async fn main() {
 
     // Retrieve the memory page transactions, and interpret it as a state update fact.
     let fact = starknet
-        .retrieve_fact(&tx)
+        .retrieve_fact(&fact_transactions)
         .await
         .expect("Failed to retrieve the fact's transactions");
 
