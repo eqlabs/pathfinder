@@ -1,6 +1,7 @@
 //! Provides abstractions to interface with StarkNet's Ethereum contracts and events.
 mod contract;
 mod fact;
+
 pub use contract::*;
 use fact::*;
 
@@ -14,7 +15,9 @@ use web3::{
 use anyhow::{Context, Result};
 
 use crate::ethereum::{
-    starknet::contract::{FactLog, GpsContract, MempageContract, MempageLog},
+    starknet::contract::{
+        FactLog, GpsContract, MempageContract, MempageLog, StateTransitionFactLog, StateUpdateLog,
+    },
     RpcErrorCode,
 };
 
@@ -22,14 +25,17 @@ use crate::ethereum::{
 pub struct Starknet {
     gps_contract: GpsContract,
     mempage_contract: MempageContract,
+    core_contract: CoreContract,
     ws: Web3<WebSocket>,
 }
 
 /// A StarkNet Ethereum [Log] event.
 #[derive(Debug)]
-pub enum Log {
-    Fact(FactLog),
-    Mempage(MempageLog),
+pub enum StarknetLog {
+    Fact(LogWithOrigin<FactLog>),
+    Mempage(LogWithOrigin<MempageLog>),
+    StateUpdate(LogWithOrigin<StateUpdateLog>),
+    StateTransitionFact(LogWithOrigin<StateTransitionFactLog>),
 }
 
 /// Error return by `Starknet::get_logs`.
@@ -65,10 +71,12 @@ impl Starknet {
     pub fn load(web_socket: WebSocket) -> Starknet {
         let gps_contract = GpsContract::load(Web3::new(web_socket.clone()));
         let mempage_contract = MempageContract::load(Web3::new(web_socket.clone()));
+        let core_contract = CoreContract::load(Web3::new(web_socket.clone()));
 
         Self {
             gps_contract,
             mempage_contract,
+            core_contract,
             ws: Web3::new(web_socket),
         }
     }
@@ -82,11 +90,11 @@ impl Starknet {
         &self,
         from: BlockNumber,
         to: BlockNumber,
-    ) -> std::result::Result<Vec<Log>, GetLogsError> {
+    ) -> std::result::Result<Vec<StarknetLog>, GetLogsError> {
         let log_filter = web3::types::FilterBuilder::default()
             .address(vec![
-                self.mempage_contract.address(),
-                self.gps_contract.address(),
+                self.mempage_contract.address,
+                self.gps_contract.address,
             ])
             .topics(
                 Some(vec![
@@ -139,24 +147,42 @@ impl Starknet {
     }
 
     /// Parses an [Ethereum log](web3::types::Log) into a StarkNet [Log].
-    fn parse_log(&self, log: &web3::types::Log) -> Result<Log> {
+    fn parse_log(&self, log: &web3::types::Log) -> Result<StarknetLog> {
         // The first topic of an Ethereum log is its signature. We use this
         // to identify the StarkNet log type.
         match log.topics.first() {
             Some(topic) if topic == &self.mempage_contract.mempage_event.signature() => {
-                Ok(Log::Mempage(
+                Ok(StarknetLog::Mempage(
                     self.mempage_contract
                         .mempage_event
                         .parse_log(log)
                         .context("mempage log parsing")?,
                 ))
             }
-            Some(topic) if topic == &self.gps_contract.fact_event.signature() => Ok(Log::Fact(
-                self.gps_contract
-                    .fact_event
-                    .parse_log(log)
-                    .context("fact log parsing")?,
-            )),
+            Some(topic) if topic == &self.gps_contract.fact_event.signature() => {
+                Ok(StarknetLog::Fact(
+                    self.gps_contract
+                        .fact_event
+                        .parse_log(log)
+                        .context("fact log parsing")?,
+                ))
+            }
+            Some(topic) if topic == &self.core_contract.state_transition_event.signature() => {
+                Ok(StarknetLog::StateTransitionFact(
+                    self.core_contract
+                        .state_transition_event
+                        .parse_log(log)
+                        .context("state transition fact log parsing")?,
+                ))
+            }
+            Some(topic) if topic == &self.core_contract.state_update_event.signature() => {
+                Ok(StarknetLog::StateUpdate(
+                    self.core_contract
+                        .state_update_event
+                        .parse_log(log)
+                        .context("state update log parsing")?,
+                ))
+            }
             Some(topic) => anyhow::bail!("unknown log signature: {}", topic),
             None => anyhow::bail!("log contained no signature"),
         }
