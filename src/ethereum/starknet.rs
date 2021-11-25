@@ -1,6 +1,7 @@
 //! Provides abstractions to interface with StarkNet's Ethereum contracts and events.
 mod contract;
 mod fact;
+mod state_root;
 
 pub use contract::*;
 use fact::*;
