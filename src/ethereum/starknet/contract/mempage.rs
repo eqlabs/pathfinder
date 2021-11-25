@@ -24,7 +24,7 @@ const MEMPAGE_ABI: &[u8] = include_bytes!(concat!(
 /// identify and parse generic Ethereum logs into [MempageLogs](MempageLog)
 /// using its [MempageEvent].
 pub struct MempageContract {
-    contract: Contract<WebSocket>,
+    pub address: H160,
     mempage_register_function: Function,
     pub mempage_event: MempageEvent,
 }
@@ -47,8 +47,8 @@ pub struct MempageLog {
 impl MempageContract {
     /// Creates a new [MempageContract].
     pub fn load(ws: Web3<WebSocket>) -> MempageContract {
-        let addr = H160::from_str(MEMPAGE_ADDR).unwrap();
-        let contract = Contract::from_json(ws.eth(), addr, MEMPAGE_ABI).unwrap();
+        let address = H160::from_str(MEMPAGE_ADDR).unwrap();
+        let contract = Contract::from_json(ws.eth(), address, MEMPAGE_ABI).unwrap();
         let event = contract
             .abi()
             .event("LogMemoryPageFactContinuous")
@@ -61,15 +61,10 @@ impl MempageContract {
             .clone();
 
         MempageContract {
-            contract,
+            address,
             mempage_event: MempageEvent { event },
             mempage_register_function: function,
         }
-    }
-
-    /// The [MempageContract's](MempageContract) address.
-    pub fn address(&self) -> H160 {
-        self.contract.address()
     }
 
     pub fn decode_mempage(&self, transaction: &Transaction) -> Result<Vec<U256>> {
@@ -150,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn address() {
         let ws = create_test_websocket_transport().await;
-        let address = MempageContract::load(ws).address();
+        let address = MempageContract::load(ws).address;
         let expected = H160::from_str(MEMPAGE_ADDR).unwrap();
 
         assert_eq!(address, expected);

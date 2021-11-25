@@ -24,13 +24,8 @@ const GPS_ABI: &[u8] = include_bytes!(concat!(
 /// be used to identify and parse generic Ethereum logs into
 ///  [FactLogs](FactLog) using its [FactEvent].
 pub struct GpsContract {
-    contract: Contract<WebSocket>,
-    pub fact_event: FactEvent,
-}
-
-/// Parses StarkNet [FactLogs](FactLog) emitted by [GpsContract].
-pub struct FactEvent {
-    event: Event,
+    pub address: H160,
+    pub fact_event: StarknetEvent<FactLog>,
 }
 
 /// A StarkNet Ethereum log containing a Fact.
@@ -48,8 +43,8 @@ pub struct FactLog {
 impl GpsContract {
     /// Creates a new [GpsContract].
     pub fn load(ws: Web3<WebSocket>) -> GpsContract {
-        let addr = H160::from_str(GPS_ADDR).unwrap();
-        let contract = Contract::from_json(ws.eth(), addr, GPS_ABI).unwrap();
+        let address = H160::from_str(GPS_ADDR).unwrap();
+        let contract = Contract::from_json(ws.eth(), address, GPS_ABI).unwrap();
         let event = contract
             .abi()
             .event("LogMemoryPagesHashes")
@@ -57,14 +52,8 @@ impl GpsContract {
             .clone();
 
         GpsContract {
-            contract,
-            fact_event: FactEvent { event },
+            address,
         }
-    }
-
-    /// The [GpsContract's](GpsContract) address.
-    pub fn address(&self) -> H160 {
-        self.contract.address()
     }
 }
 
@@ -123,7 +112,7 @@ mod tests {
     #[tokio::test]
     async fn address() {
         let ws = create_test_websocket_transport().await;
-        let address = GpsContract::load(ws).address();
+        let address = GpsContract::load(ws).address;
         let expected = H160::from_str(GPS_ADDR).unwrap();
 
         assert_eq!(address, expected);
