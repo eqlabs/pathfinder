@@ -152,15 +152,15 @@ mod test {
         StarknetTransaction {
             origin: EthOrigin {
                 block_hash: H256::from_str(
-                    "0x17c7105d8d2c9e0b8e6a8ce9ba845889146a69443d90850d14d809af89009b82",
+                    "0xdc6802921731b3c9db21366af5c178ea208fd32ed3c5cd47ee20d49f46087f69",
                 )
                 .unwrap(),
-                block_number: 5806884,
+                block_number: 5858259,
                 transaction_hash: H256::from_str(
-                    "0x93f9609808869a6360cd734fae6cd1792fed0b79e45b2e05836f5353ab4a2ce3",
+                    "0x39587b08226798e3132015b0d1957a14f37fd550ffe6716d0a1823acd5839515",
                 )
                 .unwrap(),
-                transaction_index: 10,
+                transaction_index: 26,
             },
             log_index: 0,
         }
@@ -173,15 +173,15 @@ mod test {
         StarknetTransaction {
             origin: EthOrigin {
                 block_hash: H256::from_str(
-                    "0x17c7105d8d2c9e0b8e6a8ce9ba845889146a69443d90850d14d809af89009b82",
+                    "0x31ed206024a3368bc562f8e566a8728f031aadbe378ee333408608e0642675e9",
                 )
                 .unwrap(),
-                block_number: 5806884,
+                block_number: 5858173,
                 transaction_hash: H256::from_str(
-                    "0x573354d51d28514519b8fe8604e1ef5152a608aa6bfc8fb59fe5dbb89a5a9cd1",
+                    "0x01d8c2d121f8b7e617c1f9167274794cc1ccc91c9b070bc9e66c614cfd41084a",
                 )
                 .unwrap(),
-                transaction_index: 11,
+                transaction_index: 26,
             },
             log_index: 1,
         }
