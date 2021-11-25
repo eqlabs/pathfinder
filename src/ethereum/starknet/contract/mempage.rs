@@ -14,7 +14,7 @@ use web3::{
 
 use crate::ethereum::{get_log_param, EthOrigin};
 
-const MEMPAGE_ADDR: &str = "0xb609Eba1DC0298A984Fa8a34528966E997C5BB13";
+const MEMPAGE_ADDR: &str = "0x743789ff2fF82Bfb907009C9911a7dA636D34FA7";
 const MEMPAGE_ABI: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/resources/contracts/memory_page_fact_registry.json"

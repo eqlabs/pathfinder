@@ -14,7 +14,7 @@ use web3::{
 
 use crate::ethereum::{get_log_param, EthOrigin};
 
-const GPS_ADDR: &str = "0xB02D49C4d89f0CeA504C4C93934E7fC66e20A257";
+const GPS_ADDR: &str = "0x5EF3C980Bf970FcE5BbC217835743ea9f0388f4F";
 const GPS_ABI: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/resources/contracts/gps_statement_verifier.json"

@@ -15,9 +15,9 @@ use std::str::FromStr;
 use web3::{transports::WebSocket, types::H160, Web3};
 
 /// The address of the core StarkNet contract (proxy).
-const CORE_PROXY_ADDR: &str = "0x67D629978274b4E1e07256Ec2ef39185bb3d4D0d";
+const CORE_PROXY_ADDR: &str = "0xde29d060D45901Fb19ED6C6e959EB22d8626708e";
 /// The address of the core contract implementation.
-const CORE_IMPL_ADDR: &str = "0x4e5e71dc0eb7a6ddc3f6030542a327c0db849397";
+const CORE_IMPL_ADDR: &str = "0xF10EfCF03796D38E0f6c5b87c471368e6E0DC674";
 
 const CORE_PROXY_ABI: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
