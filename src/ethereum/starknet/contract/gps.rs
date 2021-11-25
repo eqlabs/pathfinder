@@ -6,13 +6,12 @@ use std::{convert::TryFrom, str::FromStr};
 use anyhow::{Context, Result};
 use web3::{
     contract::{tokens::Tokenizable, Contract},
-    ethabi::{Event, RawLog},
     transports::WebSocket,
     types::{H160, H256},
     Web3,
 };
 
-use crate::ethereum::{get_log_param, EthOrigin};
+use crate::ethereum::{get_log_param, starknet::StarknetEvent};
 
 const GPS_ADDR: &str = "0x5EF3C980Bf970FcE5BbC217835743ea9f0388f4F";
 const GPS_ABI: &[u8] = include_bytes!(concat!(
@@ -21,23 +20,10 @@ const GPS_ABI: &[u8] = include_bytes!(concat!(
 ));
 
 /// Abstraction for StarkNet's Generic Proof Service contract. It can
-/// be used to identify and parse generic Ethereum logs into
-///  [FactLogs](FactLog) using its [FactEvent].
+/// be used to identify and parse generic Ethereum logs into [FactLogs](FactLog).
 pub struct GpsContract {
     pub address: H160,
     pub fact_event: StarknetEvent<FactLog>,
-}
-
-/// A StarkNet Ethereum log containing a Fact.
-///
-/// Contains a list of memory pages which can be
-/// parsed to reveal the state updates provided
-/// by this [FactLog].
-#[derive(Debug, Clone, PartialEq)]
-pub struct FactLog {
-    pub origin: EthOrigin,
-    pub hash: H256,
-    pub mempage_hashes: Vec<H256>,
 }
 
 impl GpsContract {
@@ -53,28 +39,26 @@ impl GpsContract {
 
         GpsContract {
             address,
+            fact_event: StarknetEvent::new(event),
         }
     }
 }
 
-impl FactEvent {
-    /// The [FactEvent's](FactEvent) signature. Can be used
-    /// to identify an Ethereum log by comparing to its first topic.
-    pub fn signature(&self) -> H256 {
-        self.event.signature()
-    }
+/// A StarkNet Ethereum log containing a Fact.
+///
+/// Contains a list of memory pages which can be
+/// parsed to reveal the state updates provided
+/// by this [FactLog].
+#[derive(Debug, Clone, PartialEq)]
+pub struct FactLog {
+    pub hash: H256,
+    pub mempage_hashes: Vec<H256>,
+}
 
-    /// Parses an Ethereum log into a [FactLog].
-    pub fn parse_log(&self, log: &web3::types::Log) -> Result<FactLog> {
-        let origin = EthOrigin::try_from(log)?;
+impl TryFrom<web3::ethabi::Log> for FactLog {
+    type Error = anyhow::Error;
 
-        let log = RawLog {
-            topics: log.topics.clone(),
-            data: log.data.0.clone(),
-        };
-
-        let log = self.event.parse_log(log)?;
-
+    fn try_from(log: web3::ethabi::Log) -> Result<Self, Self::Error> {
         let hash = get_log_param(&log, "factHash")
             .map(|param| H256::from_token(param.value))
             .context("fact hash could not be cast to hash")??;
@@ -90,9 +74,8 @@ impl FactEvent {
             .context("page hash could not be parsed")?;
 
         Ok(FactLog {
-            origin,
-            mempage_hashes,
             hash,
+            mempage_hashes,
         })
     }
 }
