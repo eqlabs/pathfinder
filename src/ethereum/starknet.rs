@@ -1,6 +1,8 @@
 //! Provides abstractions to interface with StarkNet's Ethereum contracts and events.
 mod contract;
 mod fact;
+mod state_root;
+
 pub use contract::*;
 use fact::*;
 
@@ -14,7 +16,9 @@ use web3::{
 use anyhow::{Context, Result};
 
 use crate::ethereum::{
-    starknet::contract::{FactLog, GpsContract, MempageContract, MempageLog},
+    starknet::contract::{
+        FactLog, GpsContract, MempageContract, MempageLog, StateTransitionFactLog, StateUpdateLog,
+    },
     RpcErrorCode,
 };
 
@@ -22,14 +26,17 @@ use crate::ethereum::{
 pub struct Starknet {
     gps_contract: GpsContract,
     mempage_contract: MempageContract,
+    core_contract: CoreContract,
     ws: Web3<WebSocket>,
 }
 
 /// A StarkNet Ethereum [Log] event.
 #[derive(Debug)]
-pub enum Log {
-    Fact(FactLog),
-    Mempage(MempageLog),
+pub enum StarknetLog {
+    Fact(LogWithOrigin<FactLog>),
+    Mempage(LogWithOrigin<MempageLog>),
+    StateUpdate(LogWithOrigin<StateUpdateLog>),
+    StateTransitionFact(LogWithOrigin<StateTransitionFactLog>),
 }
 
 /// Error return by `Starknet::get_logs`.
@@ -65,10 +72,12 @@ impl Starknet {
     pub fn load(web_socket: WebSocket) -> Starknet {
         let gps_contract = GpsContract::load(Web3::new(web_socket.clone()));
         let mempage_contract = MempageContract::load(Web3::new(web_socket.clone()));
+        let core_contract = CoreContract::load(Web3::new(web_socket.clone()));
 
         Self {
             gps_contract,
             mempage_contract,
+            core_contract,
             ws: Web3::new(web_socket),
         }
     }
@@ -82,11 +91,11 @@ impl Starknet {
         &self,
         from: BlockNumber,
         to: BlockNumber,
-    ) -> std::result::Result<Vec<Log>, GetLogsError> {
+    ) -> std::result::Result<Vec<StarknetLog>, GetLogsError> {
         let log_filter = web3::types::FilterBuilder::default()
             .address(vec![
-                self.mempage_contract.address(),
-                self.gps_contract.address(),
+                self.mempage_contract.address,
+                self.gps_contract.address,
             ])
             .topics(
                 Some(vec![
@@ -139,24 +148,42 @@ impl Starknet {
     }
 
     /// Parses an [Ethereum log](web3::types::Log) into a StarkNet [Log].
-    fn parse_log(&self, log: &web3::types::Log) -> Result<Log> {
+    fn parse_log(&self, log: &web3::types::Log) -> Result<StarknetLog> {
         // The first topic of an Ethereum log is its signature. We use this
         // to identify the StarkNet log type.
         match log.topics.first() {
             Some(topic) if topic == &self.mempage_contract.mempage_event.signature() => {
-                Ok(Log::Mempage(
+                Ok(StarknetLog::Mempage(
                     self.mempage_contract
                         .mempage_event
                         .parse_log(log)
                         .context("mempage log parsing")?,
                 ))
             }
-            Some(topic) if topic == &self.gps_contract.fact_event.signature() => Ok(Log::Fact(
-                self.gps_contract
-                    .fact_event
-                    .parse_log(log)
-                    .context("fact log parsing")?,
-            )),
+            Some(topic) if topic == &self.gps_contract.fact_event.signature() => {
+                Ok(StarknetLog::Fact(
+                    self.gps_contract
+                        .fact_event
+                        .parse_log(log)
+                        .context("fact log parsing")?,
+                ))
+            }
+            Some(topic) if topic == &self.core_contract.state_transition_event.signature() => {
+                Ok(StarknetLog::StateTransitionFact(
+                    self.core_contract
+                        .state_transition_event
+                        .parse_log(log)
+                        .context("state transition fact log parsing")?,
+                ))
+            }
+            Some(topic) if topic == &self.core_contract.state_update_event.signature() => {
+                Ok(StarknetLog::StateUpdate(
+                    self.core_contract
+                        .state_update_event
+                        .parse_log(log)
+                        .context("state update log parsing")?,
+                ))
+            }
             Some(topic) => anyhow::bail!("unknown log signature: {}", topic),
             None => anyhow::bail!("log contained no signature"),
         }
@@ -165,12 +192,13 @@ impl Starknet {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, str::FromStr};
+    use std::str::FromStr;
 
     use crate::ethereum::test::{
         create_test_websocket, fact_test_tx, mempage_test_tx, retrieve_log,
     };
     use assert_matches::assert_matches;
+    use pretty_assertions::assert_eq;
     use web3::types::H256;
 
     use super::*;
@@ -200,7 +228,7 @@ mod tests {
         let log = retrieve_log(&mempage_tx).await;
         let mempage_log = starknet.parse_log(&log).unwrap();
 
-        assert_matches!(mempage_log, Log::Mempage(..));
+        assert_matches!(mempage_log, StarknetLog::Mempage(..));
     }
 
     #[tokio::test]
@@ -212,21 +240,21 @@ mod tests {
         let log = retrieve_log(&fact_tx).await;
         let fact_log = starknet.parse_log(&log).unwrap();
 
-        assert_matches!(fact_log, Log::Fact(..));
+        assert_matches!(fact_log, StarknetLog::Fact(..));
     }
 
     #[cfg(test)]
     mod retrieve_logs {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn ok() {
             let ws = create_test_websocket().await;
             let starknet = Starknet::load(ws);
-            // The block the StarkNet core contract was deployed with.
-            // Use this to retrieve a small set of logs.
-            let to = 5745469;
-            let from = to + 10;
+
+            let from = 5864142;
+            let to = 5864142 - 100;
 
             let result = starknet
                 .retrieve_logs(
@@ -236,7 +264,7 @@ mod tests {
                 .await;
 
             let logs = result.unwrap();
-            assert_eq!(logs.len(), 12);
+            assert_eq!(logs.len(), 84);
         }
 
         #[tokio::test]
@@ -260,12 +288,20 @@ mod tests {
         let ws = create_test_websocket().await;
         let starknet = Starknet::load(ws);
 
+        // A fact containing both contract deploments and storage updates.
+        //
+        // Randomly chosen using:
+        //  https://goerli.etherscan.io/address/0x67D629978274b4E1e07256Ec2ef39185bb3d4D0d#events
         let fact_hash =
-            H256::from_str("0x983e4a7350a46070642a1ba0e6df4b097d527633c1ef256a2140c9ad0f264587")
+            H256::from_str("0xbf3b7d196393ee7b5ddddf6e219830c65cc94b4afa5af613ec94a7ed651c2813")
                 .unwrap();
 
-        let from = 5742000;
-        let to = from + 10_000;
+        // Block number containing this fact update.
+        let to = 5876654;
+        // Memory pages logs are emitted in blocks prior to the update.
+        // So we need to retrieve logs from a range to ensure we get all
+        // the required logs for this fact.
+        let from = to - 10_000;
 
         let logs = starknet
             .retrieve_logs(
@@ -275,122 +311,88 @@ mod tests {
             .await
             .unwrap();
 
-        let mut facts = HashMap::new();
-        let mut mempages = HashMap::new();
-
-        logs.iter().for_each(|log| match log {
-            Log::Fact(fact) => {
-                facts.insert(fact.hash, fact.mempage_hashes.clone());
-            }
-            Log::Mempage(mempage) => {
-                mempages.insert(mempage.hash, mempage.origin.transaction_hash);
-            }
-        });
-
-        let fact_mempages = facts.get(&fact_hash).unwrap();
-
-        let tx = fact_mempages
+        // Find our fact hash in the logs
+        let fact = logs
             .iter()
-            .map(|mp| {
-                let t = mempages.get(mp).unwrap();
-                TransactionId::Hash(*t)
+            .find_map(|log| match log {
+                StarknetLog::Fact(f) if f.data.hash == fact_hash => Some(f.clone()),
+                _ => None,
+            })
+            .unwrap();
+
+        // Collect memory page logs that belong to our fact
+        let mempage_txs = logs
+            .iter()
+            .filter_map(|log| match log {
+                StarknetLog::Mempage(mempage)
+                    if fact.data.mempage_hashes.contains(&mempage.data.hash) =>
+                {
+                    let tx = mempage.origin.transaction_hash;
+                    Some(TransactionId::Hash(tx))
+                }
+                _ => None,
             })
             .collect::<Vec<_>>();
 
-        let fact = starknet.retrieve_fact(&tx).await.unwrap();
+        let fact = starknet.retrieve_fact(&mempage_txs).await.unwrap();
 
         let expected = Fact {
             deployed_contracts: vec![
                 DeployedContract {
-                    address: U256::from_str(
-                        "0x55231fadef974ea197e68c99fdb1896a3793e3db35f7fac120ae11bd7ae221",
-                    )
-                    .unwrap(),
-                    hash: U256::from_str(
-                        "0x2f42c7edbed0fabd97d566fa27674df17bd0f36b888c55fb6d69f5db98201ed",
-                    )
-                    .unwrap(),
-                    call_data: vec![
-                        U256::from_str(
-                            "0x567aaf5e66bde341cbd4582e9c275ad9bc1de92fa57a9b9d02b75f14433259",
-                        )
-                        .unwrap(),
-                        U256::from_str(
-                            "0x30435903dcd550c23d5c7b80a3c2b80971e1e3107e49938e0a1f884eaf45416",
-                        )
-                        .unwrap(),
-                    ],
+                    address: U256::from_dec_str("2005238406252901036683599278926811665941308458283132997267154497601833857461").unwrap(),
+                    hash: U256::from_dec_str("2175195626185073029849142407296785061642163892759228526742429373445244228408").unwrap(),
+                    call_data: vec![],
                 },
                 DeployedContract {
-                    address: U256::from_str(
-                        "0x85f7a619508eb9b6035ef700c5a2b32ce7d98781a9aa5f951aa5f73d78ca18",
-                    )
-                    .unwrap(),
-                    hash: U256::from_str(
-                        "0x4f279979402f0a86770030d520010242f5d18c731a43a126d3d416eee036e0a",
-                    )
-                    .unwrap(),
-                    call_data: vec![U256::from(2), U256::from(1), U256::from(2)],
+                    address: U256::from_dec_str("1380657829967356330790660033071345383611153364290931023546902339385807484883").unwrap(),
+                    hash: U256::from_dec_str("2175195626185073029849142407296785061642163892759228526742429373445244228408").unwrap(),
+                    call_data: vec![],
                 },
             ],
             contract_updates: vec![
                 ContractUpdate {
-                    address: U256::from_str(
-                        "0x4095069acd316ec7d0fb479e2a22b6c80fdefa36eb9aa2d98770393a2f0793",
-                    )
-                    .unwrap(),
-                    storage_updates: vec![StorageUpdate {
-                        address: U256::from_str(
-                            "0x415768d4e7426fcae576c82580903e277c028ace66a738ba50b333b4dba2a0",
-                        ).unwrap(),
-                        value: U256::from_dec_str("1436351082076388378937592820583595915390412612503470928012048545736083828717").unwrap(),
-                    }],
+                    address: U256::from_dec_str("1380657829967356330790660033071345383611153364290931023546902339385807484883").unwrap(),
+                    storage_updates: vec![]
                 },
                 ContractUpdate {
-                    address: U256::from_str(
-                        "0x55231fadef974ea197e68c99fdb1896a3793e3db35f7fac120ae11bd7ae221",
-                    )
-                    .unwrap(),
-                    storage_updates: vec![StorageUpdate {
-                        address: U256::from_str(
-                            "0x567aaf5e66bde341cbd4582e9c275ad9bc1de92fa57a9b9d02b75f14433259",
-                        ).unwrap(),
-                        value: U256::from_dec_str("1364375615306131238293526755218258502029326963887457755108602545788322862102").unwrap(),
-                    }],
+                    address: U256::from_dec_str("1755069831273166072366458588985965223979686686906815766019613573637758579966").unwrap(),
+                    storage_updates: vec![
+                        StorageUpdate {
+                            address: U256::from_dec_str("814079005391940027390129862062157285361348684878695833898695909074510122245").unwrap(),
+                            value: U256::from_dec_str("2145888722024684049935776658900472878504765045824615012672687402235959174952").unwrap()
+                        },
+                        StorageUpdate {
+                            address: U256::from_dec_str("1410752890141599390055702225444248987277077018130707938554244692172889272177").unwrap(),
+                            value: U256::from(0)
+                        },
+                        StorageUpdate {
+                            address: U256::from_dec_str("1563672576422918850564506150092036819309968525068313502302455251173901598124").unwrap(),
+                            value: U256::from(11)
+                        },
+                        StorageUpdate {
+                            address: U256::from_dec_str("1788136559461238800386522850547867498833152733095516909793758980120885021902").unwrap(),
+                            value: U256::from(0)
+                        }
+                    ]
                 },
                 ContractUpdate {
-                    address: U256::from_str(
-                        "0x85f7a619508eb9b6035ef700c5a2b32ce7d98781a9aa5f951aa5f73d78ca18",
-                    )
-                    .unwrap(),
-                    storage_updates: vec![StorageUpdate {
-                        address: U256::from_str(
-                            "0xd3492e64be829d49fe51f410d37fa2cf87aabd7a0dc2c85946067e2d61412f",
-                        ).unwrap(),
-                        value: U256::from(2),
-                    },
-                    StorageUpdate {
-                        address: U256::from_str(
-                            "0xd3492e64be829d49fe51f410d37fa2cf87aabd7a0dc2c85946067e2d614130",
-                        ).unwrap(),
-                        value: U256::from(3),
-                    }],
+                    address: U256::from_dec_str("2005238406252901036683599278926811665941308458283132997267154497601833857461").unwrap(),
+                    storage_updates: vec![]
                 },
                 ContractUpdate {
-                    address: U256::from_str(
-                        "0x308136cc7250bdb051ae19abf9133f4d8982966146ee334a7f4aa57c4fe334f",
-                    )
-                    .unwrap(),
-                    storage_updates: vec![],
-                },
-                ContractUpdate {
-                    address: U256::from_str(
-                        "0x730dad481c14b223102383eb2dced32d2478926bc20fe01a3c5f6b0dea8bc94",
-                    )
-                    .unwrap(),
-                    storage_updates: vec![],
-                },
-            ],
+                    address: U256::from_dec_str("2211333340133722854231389664684920138369167001212521106227823317724820414359").unwrap(),
+                    storage_updates: vec![
+                        StorageUpdate {
+                            address: U256::from_dec_str("2433998266483775785325659667502784461255680180764730822921086061280079738301").unwrap(),
+                            value: U256::from_dec_str("447000000000000000000").unwrap()
+                        },
+                        StorageUpdate {
+                            address: U256::from_dec_str("3303413371309657170411995174561851664035014984988022984254662524842095446428").unwrap(),
+                            value: U256::from_dec_str("500000000000000000000").unwrap()
+                        }
+                    ]
+                }
+            ]
         };
 
         assert_eq!(fact, expected);

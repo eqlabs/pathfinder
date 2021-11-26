@@ -6,50 +6,59 @@ use std::{convert::TryFrom, str::FromStr};
 use anyhow::{Context, Result};
 use web3::{
     contract::Contract,
-    ethabi::{Event, Function, RawLog},
+    ethabi::Function,
     transports::WebSocket,
     types::{Transaction, H160, H256, U256},
     Web3,
 };
 
-use crate::ethereum::{get_log_param, EthOrigin};
+use crate::ethereum::{get_log_param, starknet::StarknetEvent};
 
-const MEMPAGE_ADDR: &str = "0xb609Eba1DC0298A984Fa8a34528966E997C5BB13";
+const MEMPAGE_ADDR: &str = "0x743789ff2fF82Bfb907009C9911a7dA636D34FA7";
 const MEMPAGE_ABI: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/resources/contracts/memory_page_fact_registry.json"
 ));
 
 /// Abstraction for StarkNet's Memory Page contract. It can be used to
-/// identify and parse generic Ethereum logs into [MempageLogs](MempageLog)
-/// using its [MempageEvent].
+/// identify and parse generic Ethereum logs into [MempageLogs](MempageLog).
 pub struct MempageContract {
-    contract: Contract<WebSocket>,
+    pub address: H160,
     mempage_register_function: Function,
-    pub mempage_event: MempageEvent,
-}
-
-/// Parses StarkNet [MempageLogs](MempageLog) emitted by [MempageContract].
-pub struct MempageEvent {
-    event: Event,
+    pub mempage_event: StarknetEvent<MempageLog>,
 }
 
 /// An Ethereum log representing a StarkNet memory page.
 ///
 /// The actual memory page data is contained in the origin
 /// transaction's input data.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MempageLog {
-    pub origin: EthOrigin,
     pub hash: H256,
+}
+
+impl TryFrom<web3::ethabi::Log> for MempageLog {
+    type Error = anyhow::Error;
+
+    fn try_from(log: web3::ethabi::Log) -> Result<Self, Self::Error> {
+        let hash = get_log_param(&log, "memoryHash")?
+            .value
+            .into_uint()
+            .context("mempage hash could not be cast to U256")?;
+        let mut bytes = vec![0; 32];
+        hash.to_big_endian(&mut bytes);
+        let hash = H256::from_slice(&bytes);
+
+        Ok(Self { hash })
+    }
 }
 
 impl MempageContract {
     /// Creates a new [MempageContract].
     pub fn load(ws: Web3<WebSocket>) -> MempageContract {
-        let addr = H160::from_str(MEMPAGE_ADDR).unwrap();
-        let contract = Contract::from_json(ws.eth(), addr, MEMPAGE_ABI).unwrap();
-        let event = contract
+        let address = H160::from_str(MEMPAGE_ADDR).unwrap();
+        let contract = Contract::from_json(ws.eth(), address, MEMPAGE_ABI).unwrap();
+        let mempage_event = contract
             .abi()
             .event("LogMemoryPageFactContinuous")
             .unwrap()
@@ -60,16 +69,13 @@ impl MempageContract {
             .unwrap()
             .clone();
 
+        let mempage_event = StarknetEvent::new(mempage_event);
+
         MempageContract {
-            contract,
-            mempage_event: MempageEvent { event },
+            address,
+            mempage_event,
             mempage_register_function: function,
         }
-    }
-
-    /// The [MempageContract's](MempageContract) address.
-    pub fn address(&self) -> H160 {
-        self.contract.address()
     }
 
     pub fn decode_mempage(&self, transaction: &Transaction) -> Result<Vec<U256>> {
@@ -104,35 +110,6 @@ impl MempageContract {
     }
 }
 
-impl MempageEvent {
-    /// The [MempageEvent's](MempageEvent) signature. Can be used
-    /// to identify an Ethereum log by comparing to its first topic.
-    pub fn signature(&self) -> H256 {
-        self.event.signature()
-    }
-
-    /// Parses an Ethereum log into a [MempageLog].
-    pub fn parse_log(&self, log: &web3::types::Log) -> Result<MempageLog> {
-        let origin = EthOrigin::try_from(log)?;
-
-        let log = RawLog {
-            topics: log.topics.clone(),
-            data: log.data.0.clone(),
-        };
-
-        let log = self.event.parse_log(log)?;
-        let hash = get_log_param(&log, "memoryHash")?
-            .value
-            .into_uint()
-            .context("mempage hash could not be cast to uint")?;
-        let mut be_bytes = vec![0u8; 32];
-        hash.to_big_endian(&mut be_bytes);
-        let hash = H256::from_slice(&be_bytes);
-
-        Ok(MempageLog { hash, origin })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use web3::types::TransactionId;
@@ -150,7 +127,7 @@ mod tests {
     #[tokio::test]
     async fn address() {
         let ws = create_test_websocket_transport().await;
-        let address = MempageContract::load(ws).address();
+        let address = MempageContract::load(ws).address;
         let expected = H160::from_str(MEMPAGE_ADDR).unwrap();
 
         assert_eq!(address, expected);

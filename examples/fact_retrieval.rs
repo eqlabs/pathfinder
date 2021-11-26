@@ -25,7 +25,7 @@
 use std::{collections::HashMap, str::FromStr};
 
 use clap::Arg;
-use pathfinder_lib::ethereum::starknet::{Log, Starknet};
+use pathfinder_lib::ethereum::starknet::{Starknet, StarknetLog};
 use web3::{
     transports::WebSocket,
     types::{BlockNumber, TransactionId, H256},
@@ -57,12 +57,13 @@ async fn main() {
     let mut facts = HashMap::new();
     let mut mempages = HashMap::new();
     logs.into_iter().for_each(|log| match log {
-        Log::Fact(fact) => {
-            facts.insert(fact.hash, fact.mempage_hashes);
+        StarknetLog::Fact(fact) => {
+            facts.insert(fact.data.hash, fact.data.mempage_hashes);
         }
-        Log::Mempage(mempage) => {
-            mempages.insert(mempage.hash, mempage.origin.transaction_hash);
+        StarknetLog::Mempage(mempage) => {
+            mempages.insert(mempage.data.hash, mempage.origin.transaction_hash);
         }
+        _ => {}
     });
 
     // Identify the memory page logs of the fact we are interested in.
