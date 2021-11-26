@@ -76,16 +76,24 @@ impl StateRootStream {
     pub async fn next(&mut self) -> Result<LogWithOrigin<StateUpdateLog>, GetRootError> {
         if self.buffer.is_empty() {
             self.buffer = self.retrieve_logs().await?;
+            self.last = Some(
+                self.buffer
+                    .back()
+                    .expect("retrieve_logs should always return at least one new log")
+                    .clone(),
+            );
         }
-        // SAFETY: unwrap is safe due to the above empty check and that
-        // retrieve_next_updates will only return once there is a new update.
-        let last = self.buffer.pop_front().unwrap();
-        self.last = Some(last.clone());
+
+        let last = self
+            .buffer
+            .pop_front()
+            .expect("is_empty and retrieve_logs ensure buffer is never empty");
         Ok(last)
     }
 
     /// Gets the next batch of [StateUpdateLog] from L1. Checks that
-    /// `self.last` is still valid and no reorg occurred.
+    /// `self.last` is still valid and no reorg occurred. Will always return
+    /// at least one new log.
     ///
     /// ## Reorg detection
     ///
@@ -111,6 +119,10 @@ impl StateRootStream {
         // set if we encounter the Infura result cap error.
         //
         // Allows us to perform a binary search of the query range space.
+        //
+        // This is required to avoid cycles of:
+        //   1. Find no new logs, increase search range
+        //   2. Hit result limit error, decrease search range
         let mut stride_cap = None;
 
         loop {
@@ -129,20 +141,19 @@ impl StateRootStream {
             };
 
             // Check for reorgs. Only required if there was a last known update to validate.
+            //
+            // We queried for logs starting from the same block as last known. We need to account
+            // for logs that occurred in the same block and transaction, but with a smaller log index.
+            //
+            // If the last known log is not in the set then we have a reorg event.
             if let Some(last) = self.last.as_ref() {
-                // We queried for logs starting from the same block as last known. We need to account
-                // for logs that occurred in the same block and transaction, but with a smaller log index.
-                //
-                // If the last known log is not in the set then we have a reorg event.
                 loop {
                     match logs.pop_front() {
-                        // Log from the same origin point, but smaller log index.
                         Some(log)
                             if log.origin == last.origin && log.log_index < last.log_index =>
                         {
                             continue
                         }
-                        // Log found. Yay!
                         Some(log) if &log == last => break,
                         _ => return Err(GetRootError::Reorg),
                     }
@@ -150,23 +161,23 @@ impl StateRootStream {
             }
 
             // At this point we have validated and removed the last known log.
+            //
             // If there are no new logs then either:
-            //  1. there are no new logs on L1, or
-            //  2. we need to increase our stride
+            //
+            //  1. There are no new logs remaining on L1
+            //      a. We should wait and retry. Eventually a new block(s) will
+            //         appear with logs will appear on L1.
+            //  2. We haven't reached the end of L1
+            //      a. Increase our stride and try again. Bearing in mind stride_cap.
             if logs.is_empty() {
                 let latest_on_chain = self.websocket.eth().block_number().await?.as_u64();
 
-                if to_block <= latest_on_chain {
-                    // Increase stride. Account for stride cap (binary search style)
-                    // so that we don't run into a cycle of:
-                    //  1. No logs, increase stride
-                    //  2. Infura result cap, reduce stride
+                if to_block < latest_on_chain {
                     match stride_cap {
                         Some(max) => self.stride = (self.stride.saturating_add(max + 1)) / 2,
                         None => self.stride = self.stride.saturating_mul(2),
                     }
                 } else {
-                    // No new logs on L1, sleep and try again..
                     const SLEEP: Duration = Duration::from_secs(5);
                     tokio::time::sleep(SLEEP).await;
                 }
