@@ -29,7 +29,7 @@ mod tests {
     mod reorg {
         use web3::types::H256;
 
-        use crate::ethereum::{log::FetchError, EthOrigin};
+        use crate::ethereum::{log::FetchError, BlockOrigin, EthOrigin, TransactionOrigin};
 
         use super::*;
 
@@ -46,12 +46,16 @@ mod tests {
             // on other chains. (since we don't know when L2 history on L1 starts).
             let not_genesis = StateUpdateLog {
                 origin: EthOrigin {
-                    block_hash: H256::from_low_u64_le(10),
-                    block_number: 0,
-                    transaction_hash: H256::from_low_u64_le(1123),
-                    transaction_index: 12,
+                    block: BlockOrigin {
+                        hash: H256::from_low_u64_le(10),
+                        number: 0,
+                    },
+                    transaction: TransactionOrigin {
+                        hash: H256::from_low_u64_le(11),
+                        index: 12,
+                    },
+                    log_index: 11.into(),
                 },
-                log_index: 11.into(),
                 global_root: 12354.into(),
                 sequence_number: 3.into(),
             };
@@ -72,12 +76,16 @@ mod tests {
 
             let not_genesis = StateUpdateLog {
                 origin: EthOrigin {
-                    block_hash: H256::from_low_u64_le(10),
-                    block_number: latest_on_chain + 500,
-                    transaction_hash: H256::from_low_u64_le(1123),
-                    transaction_index: 12,
+                    block: BlockOrigin {
+                        hash: H256::from_low_u64_le(10),
+                        number: latest_on_chain + 500,
+                    },
+                    transaction: TransactionOrigin {
+                        hash: H256::from_low_u64_le(11),
+                        index: 12,
+                    },
+                    log_index: 11.into(),
                 },
-                log_index: 11.into(),
                 global_root: 12354.into(),
                 sequence_number: 3.into(),
             };

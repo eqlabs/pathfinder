@@ -40,8 +40,8 @@ impl From<web3::error::Error> for BackwardFetchError {
 /// at some log type A, but search backwards for all logs of type B.
 pub struct BackwardLogFetcher<L, R>
 where
-    L: MetaLog + PartialEq,
-    R: MetaLog + PartialEq,
+    L: MetaLog + PartialEq + std::fmt::Debug,
+    R: MetaLog + PartialEq + std::fmt::Debug,
 {
     last_known: EitherMetaLog<L, R>,
     stride: u64,
@@ -50,8 +50,8 @@ where
 
 impl<L, R> BackwardLogFetcher<L, R>
 where
-    L: MetaLog + PartialEq,
-    R: MetaLog + PartialEq,
+    L: MetaLog + PartialEq + std::fmt::Debug,
+    R: MetaLog + PartialEq + std::fmt::Debug,
 {
     /// Creates a [LogFetcher] which fetches logs starting from `last_known`'s origin on L1.
     ///
@@ -78,7 +78,7 @@ where
         &mut self,
         transport: &Web3<Tr>,
     ) -> Result<Vec<EitherMetaLog<L, R>>, BackwardFetchError> {
-        let to_block = self.last_known.origin().block_number;
+        let to_block = self.last_known.origin().block.number;
         let base_filter = self
             .base_filter
             .clone()
@@ -124,10 +124,10 @@ where
             loop {
                 match logs.next().map(EitherMetaLog::try_from) {
                     Some(Ok(log))
-                        if log.origin() == self.last_known.origin()
-                            && log.log_index() > self.last_known.log_index() =>
+                        if log.origin().block == self.last_known.origin().block
+                            && log.origin().log_index > self.last_known.origin().log_index =>
                     {
-                        continue
+                        continue;
                     }
                     Some(Ok(log)) if log == self.last_known => break,
                     _ => return Err(BackwardFetchError::Reorg),

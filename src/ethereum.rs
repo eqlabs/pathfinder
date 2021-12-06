@@ -1,9 +1,12 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
-use web3::{ethabi::LogParam, types::H256};
-mod contract;
-mod log;
+use web3::{
+    ethabi::LogParam,
+    types::{H256, U256},
+};
+pub mod contract;
+pub mod log;
 pub mod state_update;
 
 /// List of semi-official Ethereum RPC errors taken from EIP-1474 (which is stagnant).
@@ -65,32 +68,61 @@ impl RpcErrorCode {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+pub struct BlockOrigin {
+    pub hash: H256,
+    pub number: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+pub struct TransactionOrigin {
+    pub hash: H256,
+    pub index: u64,
+}
+
 /// An Ethereum origin point.
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct EthOrigin {
-    pub block_hash: H256,
-    pub block_number: u64,
-    pub transaction_hash: H256,
-    pub transaction_index: u64,
+    pub block: BlockOrigin,
+    pub transaction: TransactionOrigin,
+    pub log_index: U256,
+}
+
+impl TryFrom<&web3::types::Log> for BlockOrigin {
+    type Error = anyhow::Error;
+
+    fn try_from(log: &web3::types::Log) -> Result<Self, Self::Error> {
+        let hash = log.block_hash.context("missing block hash")?;
+        let number = log.block_number.context("missing block hash")?.as_u64();
+        Ok(Self { hash, number })
+    }
+}
+
+impl TryFrom<&web3::types::Log> for TransactionOrigin {
+    type Error = anyhow::Error;
+
+    fn try_from(log: &web3::types::Log) -> Result<Self, Self::Error> {
+        let hash = log.transaction_hash.context("missing transaction hash")?;
+        let index = log
+            .transaction_index
+            .context("missing transaction index")?
+            .as_u64();
+        Ok(Self { hash, index })
+    }
 }
 
 impl TryFrom<&web3::types::Log> for EthOrigin {
     type Error = anyhow::Error;
 
     fn try_from(log: &web3::types::Log) -> Result<Self, Self::Error> {
-        let block_hash = log.block_hash.context("missing block hash")?;
-        let block_number = log.block_number.context("missing block hash")?.as_u64();
-        let transaction_hash = log.transaction_hash.context("missing transaction hash")?;
-        let transaction_index = log
-            .transaction_index
-            .context("missing transaction index")?
-            .as_u64();
+        let block = BlockOrigin::try_from(log)?;
+        let transaction = TransactionOrigin::try_from(log)?;
+        let log_index = log.log_index.context("missing log index")?;
 
         Ok(EthOrigin {
-            block_hash,
-            block_number,
-            transaction_hash,
-            transaction_index,
+            block,
+            transaction,
+            log_index,
         })
     }
 }
@@ -108,77 +140,8 @@ fn get_log_param(log: &web3::ethabi::Log, param: &str) -> Result<LogParam> {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
-
     use web3::transports::WebSocket;
-    use web3::types::H256;
     use web3::Web3;
-
-    use crate::ethereum::EthOrigin;
-
-    /// Information about an Ethereum transaction
-    /// known to contain a StarkNet log of interest.
-    pub struct StarknetTransaction {
-        /// Ethereum origin point
-        pub origin: EthOrigin,
-        /// The log index
-        pub log_index: usize,
-    }
-
-    /// An Ethereum transaction known to contain a StarkNet Mempage log.
-    ///
-    /// This was identified using https://goerli.etherscan.io by checking events emitted by the Mempage contract.
-    pub fn mempage_test_tx() -> StarknetTransaction {
-        StarknetTransaction {
-            origin: EthOrigin {
-                block_hash: H256::from_str(
-                    "0xdc6802921731b3c9db21366af5c178ea208fd32ed3c5cd47ee20d49f46087f69",
-                )
-                .unwrap(),
-                block_number: 5858259,
-                transaction_hash: H256::from_str(
-                    "0x39587b08226798e3132015b0d1957a14f37fd550ffe6716d0a1823acd5839515",
-                )
-                .unwrap(),
-                transaction_index: 26,
-            },
-            log_index: 0,
-        }
-    }
-
-    /// An Ethereum transaction known to contain a StarkNet Fact log.
-    ///
-    /// This was identified using https://goerli.etherscan.io by checking events emitted by the GPS contract.
-    pub fn fact_test_tx() -> StarknetTransaction {
-        StarknetTransaction {
-            origin: EthOrigin {
-                block_hash: H256::from_str(
-                    "0x31ed206024a3368bc562f8e566a8728f031aadbe378ee333408608e0642675e9",
-                )
-                .unwrap(),
-                block_number: 5858173,
-                transaction_hash: H256::from_str(
-                    "0x01d8c2d121f8b7e617c1f9167274794cc1ccc91c9b070bc9e66c614cfd41084a",
-                )
-                .unwrap(),
-                transaction_index: 26,
-            },
-            log_index: 1,
-        }
-    }
-
-    /// Retrieves an Ethereum log from the given transaction.
-    pub async fn retrieve_log(from: &StarknetTransaction) -> web3::types::Log {
-        let ws = create_test_websocket_transport().await;
-        // Get the log from Ethereum.
-        let tx = ws
-            .eth()
-            .transaction_receipt(from.origin.transaction_hash)
-            .await
-            .unwrap()
-            .unwrap();
-        tx.logs[from.log_index].clone()
-    }
 
     /// Creates a [Web3<WebSocket>] as specified by [create_test_websocket].
     pub async fn create_test_websocket_transport() -> Web3<WebSocket> {

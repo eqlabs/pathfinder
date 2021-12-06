@@ -38,7 +38,6 @@ impl TryFrom<web3::types::Log> for StateUpdateLog {
             global_root,
             sequence_number,
             origin,
-            log_index,
         })
     }
 }
@@ -56,7 +55,6 @@ impl TryFrom<web3::types::Log> for StateTransitionFactLog {
 
         Ok(Self {
             origin,
-            log_index,
             fact_hash,
         })
     }
@@ -86,7 +84,6 @@ impl TryFrom<web3::types::Log> for MemoryPagesHashesLog {
 
         Ok(Self {
             origin,
-            log_index,
             hash,
             mempage_hashes,
         })
@@ -109,7 +106,6 @@ impl TryFrom<web3::types::Log> for MemoryPageFactContinuousLog {
 
         Ok(Self {
             origin,
-            log_index,
             hash,
         })
     }
@@ -202,7 +198,6 @@ mod tests {
 
             let result = StateUpdateLog::try_from(log).unwrap();
             assert_eq!(result.origin, origin);
-            assert_eq!(result.log_index, log_index);
             assert_eq!(result.global_root, root);
             assert_eq!(result.sequence_number, sequence);
         }
@@ -282,7 +277,6 @@ mod tests {
 
             let result = StateTransitionFactLog::try_from(log).unwrap();
             assert_eq!(result.origin, origin);
-            assert_eq!(result.log_index, log_index);
             assert_eq!(result.fact_hash, fact_hash);
         }
 
@@ -369,7 +363,6 @@ mod tests {
 
             let result = MemoryPagesHashesLog::try_from(log).unwrap();
             assert_eq!(result.origin, origin);
-            assert_eq!(result.log_index, log_index);
             assert_eq!(result.hash, fact_hash);
             assert_eq!(result.mempage_hashes, pages_hashes);
         }
@@ -454,7 +447,6 @@ mod tests {
 
             let result = MemoryPageFactContinuousLog::try_from(log).unwrap();
             assert_eq!(result.origin, origin);
-            assert_eq!(result.log_index, log_index);
             assert_eq!(result.hash, memory_hash);
         }
 

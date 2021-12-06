@@ -10,7 +10,7 @@ use crate::ethereum::log::{fetch::MetaLog, get_logs, GetLogsError};
 /// reorganisations.
 pub struct LogFetcher<T>
 where
-    T: MetaLog + PartialEq,
+    T: MetaLog + PartialEq + std::fmt::Debug,
 {
     last_known: Option<T>,
     stride: u64,
@@ -33,7 +33,7 @@ impl From<anyhow::Error> for FetchError {
 
 impl<T> LogFetcher<T>
 where
-    T: MetaLog + PartialEq,
+    T: MetaLog + PartialEq + std::fmt::Debug,
 {
     /// Creates a [LogFetcher] which fetches logs starting from `last_known`'s origin on L1.
     /// If `last_known` is [None] then the starting point is genesis.
@@ -74,7 +74,7 @@ where
         let from_block = self
             .last_known
             .as_ref()
-            .map(|update| update.origin().block_number)
+            .map(|update| update.origin().block.number)
             .unwrap_or_default();
         let base_filter = self
             .base_filter
@@ -121,8 +121,8 @@ where
                 loop {
                     match logs.next().map(T::try_from) {
                         Some(Ok(log))
-                            if log.origin() == last.origin()
-                                && log.log_index() < last.log_index() =>
+                            if log.origin().block == last.origin().block
+                                && log.origin().log_index < last.origin().log_index =>
                         {
                             continue
                         }

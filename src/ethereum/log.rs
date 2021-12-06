@@ -17,7 +17,6 @@ use crate::ethereum::{EthOrigin, RpcErrorCode};
 #[derive(Debug, Clone, PartialEq)]
 pub struct StateUpdateLog {
     pub origin: EthOrigin,
-    pub log_index: U256,
     pub global_root: U256,
     pub sequence_number: U256,
 }
@@ -31,7 +30,6 @@ pub struct StateUpdateLog {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StateTransitionFactLog {
     pub origin: EthOrigin,
-    pub log_index: U256,
     pub fact_hash: H256,
 }
 
@@ -42,7 +40,6 @@ pub struct StateTransitionFactLog {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemoryPagesHashesLog {
     pub origin: EthOrigin,
-    pub log_index: U256,
     pub hash: H256,
     pub mempage_hashes: Vec<H256>,
 }
@@ -54,7 +51,6 @@ pub struct MemoryPagesHashesLog {
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct MemoryPageFactContinuousLog {
     pub origin: EthOrigin,
-    pub log_index: U256,
     pub hash: H256,
 }
 
