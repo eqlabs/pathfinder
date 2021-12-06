@@ -1,7 +1,10 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
+use web3::{ethabi::LogParam, types::H256};
 mod contract;
+mod log;
+pub mod state_update;
 
 /// List of semi-official Ethereum RPC errors taken from EIP-1474 (which is stagnant).
 ///
@@ -11,7 +14,7 @@ mod contract;
 /// EIP-1474:
 ///     https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1474.md#error-codes
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum RpcErrorCode {
+enum RpcErrorCode {
     ParseError,
     InvalidRequest,
     MethodNotFound,
@@ -27,7 +30,7 @@ pub enum RpcErrorCode {
 }
 
 impl RpcErrorCode {
-    pub fn code(&self) -> i64 {
+    fn code(&self) -> i64 {
         match self {
             RpcErrorCode::ParseError => -32700,
             RpcErrorCode::InvalidRequest => -32600,
@@ -44,7 +47,7 @@ impl RpcErrorCode {
         }
     }
 
-    pub fn reason(&self) -> &str {
+    fn reason(&self) -> &str {
         match self {
             RpcErrorCode::ParseError => "Invalid JSON",
             RpcErrorCode::InvalidRequest => "JSON is not a valid request object",
@@ -62,32 +65,13 @@ impl RpcErrorCode {
     }
 }
 
-pub enum BlockId {
-    Latest,
-    Earliest,
-    Number(u64),
-    Hash(H256),
-}
-
 /// An Ethereum origin point.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct EthOrigin {
     pub block_hash: H256,
     pub block_number: u64,
     pub transaction_hash: H256,
     pub transaction_index: u64,
-}
-
-impl From<BlockId> for web3::types::BlockId {
-    fn from(id: BlockId) -> Self {
-        type W3 = web3::types::BlockId;
-        match id {
-            BlockId::Latest => W3::Number(BlockNumber::Latest),
-            BlockId::Earliest => W3::Number(BlockNumber::Earliest),
-            BlockId::Number(x) => W3::Number(BlockNumber::Number(x.into())),
-            BlockId::Hash(x) => W3::Hash(x),
-        }
-    }
 }
 
 impl TryFrom<&web3::types::Log> for EthOrigin {
