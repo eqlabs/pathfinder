@@ -1,3 +1,8 @@
+mod fetch;
+mod parse;
+
+pub use fetch::*;
+
 use web3::{
     types::{Filter, H256, U256},
     Transport, Web3,
