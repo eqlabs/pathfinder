@@ -1,11 +1,7 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
-use web3::{
-    ethabi::LogParam,
-    types::{BlockNumber, H256},
-};
-pub mod starknet;
+mod contract;
 
 /// List of semi-official Ethereum RPC errors taken from EIP-1474 (which is stagnant).
 ///
