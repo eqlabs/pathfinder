@@ -1,4 +1,4 @@
-use web3::types::{H160, H256, U256};
+use web3::types::{H160, H256};
 
 use crate::ethereum::{
     contract::{

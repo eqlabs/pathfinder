@@ -2,7 +2,7 @@ use anyhow::Context;
 use web3::{
     contract::tokens::Tokenizable,
     ethabi::{ethereum_types::BigEndianHash, LogParam, RawLog},
-    types::{H256, U256},
+    types::H256,
 };
 
 use crate::ethereum::{
@@ -20,7 +20,7 @@ impl TryFrom<web3::types::Log> for StateUpdateLog {
     type Error = anyhow::Error;
 
     fn try_from(value: web3::types::Log) -> Result<Self, Self::Error> {
-        let (origin, log_index, raw_log) = parse_web3_log(value)?;
+        let (origin, raw_log) = parse_web3_log(value)?;
 
         let log = STATE_UPDATE_EVENT.parse_log(raw_log)?;
 
@@ -46,17 +46,14 @@ impl TryFrom<web3::types::Log> for StateTransitionFactLog {
     type Error = anyhow::Error;
 
     fn try_from(value: web3::types::Log) -> Result<Self, Self::Error> {
-        let (origin, log_index, raw_log) = parse_web3_log(value)?;
+        let (origin, raw_log) = parse_web3_log(value)?;
 
         let log = STATE_TRANSITION_FACT_EVENT.parse_log(raw_log)?;
 
         let fact_hash = H256::from_token(get_log_param(&log, "stateTransitionFact")?.value)
             .context("fact hash could not be parsed")?;
 
-        Ok(Self {
-            origin,
-            fact_hash,
-        })
+        Ok(Self { origin, fact_hash })
     }
 }
 
@@ -64,7 +61,7 @@ impl TryFrom<web3::types::Log> for MemoryPagesHashesLog {
     type Error = anyhow::Error;
 
     fn try_from(value: web3::types::Log) -> Result<Self, Self::Error> {
-        let (origin, log_index, raw_log) = parse_web3_log(value)?;
+        let (origin, raw_log) = parse_web3_log(value)?;
 
         let log = MEMORY_PAGE_HASHES_EVENT.parse_log(raw_log)?;
 
@@ -94,7 +91,7 @@ impl TryFrom<web3::types::Log> for MemoryPageFactContinuousLog {
     type Error = anyhow::Error;
 
     fn try_from(value: web3::types::Log) -> Result<Self, Self::Error> {
-        let (origin, log_index, raw_log) = parse_web3_log(value)?;
+        let (origin, raw_log) = parse_web3_log(value)?;
 
         let log = MEMORY_PAGE_FACT_CONTINUOUS_EVENT.parse_log(raw_log)?;
 
@@ -104,24 +101,20 @@ impl TryFrom<web3::types::Log> for MemoryPageFactContinuousLog {
             .context("mempage hash could not be cast to uint")?;
         let hash = H256::from_uint(&hash);
 
-        Ok(Self {
-            origin,
-            hash,
-        })
+        Ok(Self { origin, hash })
     }
 }
 
 /// Utility which extracts the [EthOrigin] and log index, and then converts to a [RawLog].
-fn parse_web3_log(log: web3::types::Log) -> anyhow::Result<(EthOrigin, U256, RawLog)> {
+fn parse_web3_log(log: web3::types::Log) -> anyhow::Result<(EthOrigin, RawLog)> {
     let origin = EthOrigin::try_from(&log)?;
-    let log_index = log.log_index.context("missing log index")?;
 
     let raw_log = RawLog {
         topics: log.topics,
         data: log.data.0,
     };
 
-    Ok((origin, log_index, raw_log))
+    Ok((origin, raw_log))
 }
 
 /// Utility function to retrieve a named parameter from a log.
@@ -136,7 +129,7 @@ fn get_log_param(log: &web3::ethabi::Log, param: &str) -> anyhow::Result<LogPara
 #[cfg(test)]
 mod tests {
     use hex::FromHex;
-    use web3::types::{H160, U64};
+    use web3::types::{H160, U256, U64};
 
     use super::*;
 
@@ -155,11 +148,6 @@ mod tests {
             log_type: None,
             removed: None,
         }
-    }
-
-    /// Test utility to extract the [EthOrigin] and log index.
-    fn get_log_origins(log: &web3::types::Log) -> (EthOrigin, U256) {
-        (EthOrigin::try_from(log).unwrap(), log.log_index.unwrap())
     }
 
     mod state_update {
@@ -194,7 +182,7 @@ mod tests {
         #[test]
         fn ok() {
             let (log, root, sequence) = test_data();
-            let (origin, log_index) = get_log_origins(&log);
+            let origin = EthOrigin::try_from(&log).unwrap();
 
             let result = StateUpdateLog::try_from(log).unwrap();
             assert_eq!(result.origin, origin);
@@ -273,7 +261,7 @@ mod tests {
         #[test]
         fn ok() {
             let (log, fact_hash) = test_data();
-            let (origin, log_index) = get_log_origins(&log);
+            let origin = EthOrigin::try_from(&log).unwrap();
 
             let result = StateTransitionFactLog::try_from(log).unwrap();
             assert_eq!(result.origin, origin);
@@ -359,7 +347,7 @@ mod tests {
             // Data taken from https://goerli.etherscan.io/tx/0x45852ddb65f209137a6966bc9efa7484e58a351619787dfa20e7fa8cc996d118#eventlog
             // (this must match MEMPAGE_HASHES_LOG).
             let (log, fact_hash, pages_hashes) = test_data();
-            let (origin, log_index) = get_log_origins(&log);
+            let origin = EthOrigin::try_from(&log).unwrap();
 
             let result = MemoryPagesHashesLog::try_from(log).unwrap();
             assert_eq!(result.origin, origin);
@@ -443,7 +431,7 @@ mod tests {
             // Data taken from https://goerli.etherscan.io/tx/0x6690a78c3284b1c825925021211a3ffa8c31b92bc0e00c57e0e1306d6425fc36#eventlog
             // (this must match MEMPAGE_FACT_LOG).
             let (log, memory_hash) = test_data();
-            let (origin, log_index) = get_log_origins(&log);
+            let origin = EthOrigin::try_from(&log).unwrap();
 
             let result = MemoryPageFactContinuousLog::try_from(log).unwrap();
             assert_eq!(result.origin, origin);
