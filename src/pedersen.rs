@@ -5,7 +5,6 @@ use ff::{Field, PrimeField};
 #[PrimeFieldModulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
 #[PrimeFieldGenerator = "7"]
 #[PrimeFieldReprEndianness = "little"]
-
 pub struct H256([u64; 4]);
 
 pub fn pedersen_hash(a: &H256, b: &H256) -> H256 {
@@ -58,7 +57,7 @@ impl Bit {
 }
 
 /// A point on an elliptic curve over [H251].
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct CurvePoint {
     x: H256,
     y: H256,
@@ -94,7 +93,7 @@ impl CurvePoint {
 
     fn double(&self) -> CurvePoint {
         if self.infinity {
-            return *self;
+            return self.clone();
         }
 
         // l = (3x^2+a)/2y with a=1 from stark curve
@@ -118,10 +117,10 @@ impl CurvePoint {
 
     fn add(&self, other: &CurvePoint) -> CurvePoint {
         if self.infinity {
-            return *other;
+            return other.clone();
         }
         if other.infinity {
-            return *self;
+            return self.clone();
         }
 
         // l = (y2-y1)/(x2-x1)
@@ -193,7 +192,7 @@ impl Default for PedersenHash {
 impl PedersenHash {
     fn hash(&self, a: &H256, b: &H256) -> H256 {
         // Add P0
-        let mut result = self.p0;
+        let mut result = self.p0.clone();
 
         // Add a_low * P1
         let mut tmp = CurvePoint::identity();
