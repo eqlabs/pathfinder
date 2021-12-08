@@ -8,10 +8,9 @@ use ff::{Field, PrimeField};
 pub struct Fp([u64; 4]);
 
 impl Fp {
-    /// Returns the i'th bit. Panic's if `i` is out of bounds.
-    fn get_bit(&self, i: usize) -> Bit {
-        let mut r = *self;
-        r.mont_reduce(
+    /// Transforms [Fp] into little endian bit representation.
+    fn into_bits(mut self) -> [Bit; 256] {
+        self.mont_reduce(
             self.0[0usize],
             self.0[1usize],
             self.0[2usize],
@@ -22,30 +21,26 @@ impl Fp {
             0,
         );
 
-        let outer = i / 64;
-        let inner = i % 64;
+        let mut bits = [Bit::Zero; 256];
 
-        match (r.0[outer] >> inner) & 0b1 {
-            0 => Bit::Zero,
-            _ => Bit::One,
+        const U64_BITS: usize = 64;
+
+        for (i, x) in self.0.into_iter().enumerate() {
+            for j in 0..U64_BITS {
+                if (x & (1 << j)) > 0 {
+                    bits[i * U64_BITS + j] = Bit::One;
+                }
+            }
         }
+
+        bits
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum Bit {
     One,
     Zero,
-}
-
-impl Bit {
-    fn is_one(&self) -> bool {
-        *self == Bit::One
-    }
-
-    fn is_zero(&self) -> bool {
-        !self.is_one()
-    }
 }
 
 /// A point on an elliptic curve over [H251].
@@ -114,15 +109,16 @@ impl CurvePoint {
         }
     }
 
-    fn mul(&self, magnitude: &Fp) -> CurvePoint {
-        let mut result = CurvePoint::identity();
-        for i in 0..256 {
-            result = result.double();
-            if magnitude.get_bit(255 - i).is_one() {
-                result = result.add(self);
+    fn multiply(&self, bits: &[Bit]) -> CurvePoint {
+        let mut product = CurvePoint::identity();
+        for b in bits.iter().rev() {
+            product = product.double();
+            if b == &Bit::One {
+                product = product.add(self);
             }
         }
-        result
+
+        product
     }
 }
 
@@ -203,47 +199,25 @@ const PEDERSEN_P4: CurvePoint = CurvePoint {
     infinity: false,
 };
 
-pub fn pedersen_hash(a: &Fp, b: &Fp) -> Fp {
+pub fn pedersen_hash(a: Fp, b: Fp) -> Fp {
     let mut result = PEDERSEN_P0.clone();
+    let a = a.into_bits();
+    let b = b.into_bits();
 
     // Add a_low * P1
-    let mut tmp = CurvePoint::identity();
-    for i in 0..248 {
-        tmp = tmp.double();
-        if a.get_bit(248 - 1 - i).is_one() {
-            tmp = tmp.add(&PEDERSEN_P1);
-        }
-    }
+    let tmp = PEDERSEN_P1.multiply(&a[..248]);
     result = result.add(&tmp);
 
     // Add a_high * P2
-    let mut tmp = CurvePoint::identity();
-    for i in 0..4 {
-        tmp = tmp.double();
-        if a.get_bit(252 - 1 - i).is_one() {
-            tmp = tmp.add(&PEDERSEN_P2);
-        }
-    }
+    let tmp = PEDERSEN_P2.multiply(&a[248..252]);
     result = result.add(&tmp);
 
     // Add b_low * P3
-    let mut tmp = CurvePoint::identity();
-    for i in 0..248 {
-        tmp = tmp.double();
-        if b.get_bit(248 - 1 - i).is_one() {
-            tmp = tmp.add(&PEDERSEN_P3);
-        }
-    }
+    let tmp = PEDERSEN_P3.multiply(&b[..248]);
     result = result.add(&tmp);
 
     // Add b_high * P4
-    let mut tmp = CurvePoint::identity();
-    for i in 0..4 {
-        tmp = tmp.double();
-        if b.get_bit(252 - 1 - i).is_one() {
-            tmp = tmp.add(&PEDERSEN_P4);
-        }
-    }
+    let tmp = PEDERSEN_P4.multiply(&b[248..252]);
     result = result.add(&tmp);
 
     // Return x-coordinate
@@ -255,34 +229,32 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
-    mod get_bit {
+    mod to_le_bits_rev {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn zero() {
-            let zero = Fp::zero();
-            for i in 0..=255 {
-                assert!(zero.get_bit(i).is_zero(), "bit {}", i);
-            }
+            let zero = Fp::zero().into_bits();
+            let expected = [Bit::Zero; 256];
+
+            assert_eq!(zero, expected);
         }
 
         #[test]
         fn one() {
-            let one = Fp::one();
-            assert!(one.get_bit(0).is_one());
-            for i in 1..=255 {
-                assert!(one.get_bit(i).is_zero(), "bit {}", i);
-            }
+            let one = Fp::one().into_bits();
+            let mut expected = [Bit::Zero; 256];
+            expected[0] = Bit::One;
+            assert_eq!(one, expected);
         }
 
         #[test]
         fn two() {
-            let two = Fp::one() + Fp::one();
-            assert!(two.get_bit(0).is_zero());
-            assert!(two.get_bit(1).is_one());
-            for i in 2..=255 {
-                assert!(two.get_bit(i).is_zero(), "bit {}", i);
-            }
+            let two = (Fp::one() + Fp::one()).into_bits();
+            let mut expected = [Bit::Zero; 256];
+            expected[1] = Bit::One;
+            assert_eq!(two, expected);
         }
     }
 
@@ -330,10 +302,10 @@ mod tests {
         }
 
         #[test]
-        fn mul() {
-            let three = Fp::one() + Fp::one() + Fp::one();
+        fn multiply() {
+            let three = (Fp::one() + Fp::one() + Fp::one()).into_bits();
             let g = curve_generator();
-            let g_triple = g.mul(&three);
+            let g_triple = g.multiply(&three);
             let expected = curve_from_xy_str(
                 "1839793652349538280924927302501143912227271479439798783640887258675143576352",
                 "3564972295958783757568195431080951091358810058262272733141798511604612925062",
@@ -404,7 +376,7 @@ mod tests {
         )
         .unwrap();
 
-        let hash = pedersen_hash(&a, &b);
+        let hash = pedersen_hash(a, b);
 
         let expected = Fp::from_str_vartime(
             "1382171651951541052082654537810074813456022260470662576358627909045455537762",
