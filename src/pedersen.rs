@@ -11,18 +11,26 @@ pub struct Fp([u64; 4]);
 impl Fp {
     /// Transforms [Fp] into little endian bit representation.
     fn into_bits(mut self) -> BitArray<Lsb0, [u64; 4]> {
-        self.mont_reduce(
-            self.0[0usize],
-            self.0[1usize],
-            self.0[2usize],
-            self.0[3usize],
-            0,
-            0,
-            0,
-            0,
-        );
+        #[cfg(not(target_endian = "little"))]
+        {
+            todo!("untested and probably unimplemented: big-endian targets")
+        }
 
-        self.0.into()
+        #[cfg(target_endian = "little")]
+        {
+            self.mont_reduce(
+                self.0[0usize],
+                self.0[1usize],
+                self.0[2usize],
+                self.0[3usize],
+                0,
+                0,
+                0,
+                0,
+            );
+
+            self.0.into()
+        }
     }
 }
 
