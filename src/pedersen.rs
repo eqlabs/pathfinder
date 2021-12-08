@@ -1,3 +1,4 @@
+use bitvec::{array::BitArray, order::Lsb0, slice::BitSlice};
 use ff::{Field, PrimeField};
 
 /// The field primitive used by [PedersenHash]
@@ -9,7 +10,7 @@ pub struct Fp([u64; 4]);
 
 impl Fp {
     /// Transforms [Fp] into little endian bit representation.
-    fn into_bits(mut self) -> [Bit; 256] {
+    fn into_bits(mut self) -> BitArray<Lsb0, [u64; 4]> {
         self.mont_reduce(
             self.0[0usize],
             self.0[1usize],
@@ -21,26 +22,8 @@ impl Fp {
             0,
         );
 
-        let mut bits = [Bit::Zero; 256];
-
-        const U64_BITS: usize = 64;
-
-        for (i, x) in self.0.into_iter().enumerate() {
-            for j in 0..U64_BITS {
-                if (x & (1 << j)) > 0 {
-                    bits[i * U64_BITS + j] = Bit::One;
-                }
-            }
-        }
-
-        bits
+        self.0.into()
     }
-}
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-enum Bit {
-    One,
-    Zero,
 }
 
 /// A point on an elliptic curve over [H251].
@@ -109,11 +92,11 @@ impl CurvePoint {
         }
     }
 
-    fn multiply(&self, bits: &[Bit]) -> CurvePoint {
+    fn multiply(&self, bits: &BitSlice<Lsb0, u64>) -> CurvePoint {
         let mut product = CurvePoint::identity();
         for b in bits.iter().rev() {
             product = product.double();
-            if b == &Bit::One {
+            if *b {
                 product = product.add(self);
             }
         }
@@ -245,7 +228,7 @@ mod tests {
         #[test]
         fn zero() {
             let zero = Fp::zero().into_bits();
-            let expected = [Bit::Zero; 256];
+            let expected = BitArray::<Lsb0, [u64; 4]>::default();
 
             assert_eq!(zero, expected);
         }
@@ -253,16 +236,20 @@ mod tests {
         #[test]
         fn one() {
             let one = Fp::one().into_bits();
-            let mut expected = [Bit::Zero; 256];
-            expected[0] = Bit::One;
+
+            let mut expected = BitArray::<Lsb0, [u64; 4]>::default();
+            expected.set(0, true);
+
             assert_eq!(one, expected);
         }
 
         #[test]
         fn two() {
             let two = (Fp::one() + Fp::one()).into_bits();
-            let mut expected = [Bit::Zero; 256];
-            expected[1] = Bit::One;
+
+            let mut expected = BitArray::<Lsb0, [u64; 4]>::default();
+            expected.set(1, true);
+
             assert_eq!(two, expected);
         }
     }
