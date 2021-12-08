@@ -34,7 +34,7 @@ impl Fp {
     }
 }
 
-/// A point on an elliptic curve over [H251].
+/// A point on an elliptic curve over [Fp].
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CurvePoint {
     x: Fp,
