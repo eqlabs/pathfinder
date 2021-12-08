@@ -122,6 +122,7 @@ impl CurvePoint {
     }
 }
 
+/// Montgomery representation of the Stark curve constant P0.
 const PEDERSEN_P0: CurvePoint = CurvePoint {
     x: Fp([
         1933903796324928314,
@@ -138,6 +139,7 @@ const PEDERSEN_P0: CurvePoint = CurvePoint {
     infinity: false,
 };
 
+/// Montgomery representation of the Stark curve constant P1.
 const PEDERSEN_P1: CurvePoint = CurvePoint {
     x: Fp([
         3602345268353203007,
@@ -153,6 +155,8 @@ const PEDERSEN_P1: CurvePoint = CurvePoint {
     ]),
     infinity: false,
 };
+
+/// Montgomery representation of the Stark curve constant P2.
 const PEDERSEN_P2: CurvePoint = CurvePoint {
     x: Fp([
         16491878934996302286,
@@ -168,6 +172,8 @@ const PEDERSEN_P2: CurvePoint = CurvePoint {
     ]),
     infinity: false,
 };
+
+/// Montgomery representation of the Stark curve constant P3.
 const PEDERSEN_P3: CurvePoint = CurvePoint {
     x: Fp([
         1203723169299412240,
@@ -183,6 +189,8 @@ const PEDERSEN_P3: CurvePoint = CurvePoint {
     ]),
     infinity: false,
 };
+
+/// Montgomery representation of the Stark curve constant P4.
 const PEDERSEN_P4: CurvePoint = CurvePoint {
     x: Fp([
         1145636535101238356,
@@ -199,6 +207,7 @@ const PEDERSEN_P4: CurvePoint = CurvePoint {
     infinity: false,
 };
 
+/// Performs the Stark Pedersen hash on `a` and `b`.
 pub fn pedersen_hash(a: Fp, b: Fp) -> Fp {
     let mut result = PEDERSEN_P0.clone();
     let a = a.into_bits();
