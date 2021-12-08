@@ -1,53 +1,13 @@
+use std::vec::IntoIter;
+
 use anyhow::{Context, Result};
 use web3::types::U256;
 
-/// Describes the deployment of a new StarkNet contract.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DeployedContract {
-    pub address: U256,
-    pub hash: U256,
-    pub call_data: Vec<U256>,
-}
+use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
 
-/// A StarkNet contract's storage updates.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ContractUpdate {
-    pub address: U256,
-    pub storage_updates: Vec<StorageUpdate>,
-}
-
-/// A StarkNet contract's storage update.
-#[derive(Debug, Clone, PartialEq)]
-pub struct StorageUpdate {
-    pub address: U256,
-    pub value: U256,
-}
-
-/// The set of state updates of a StarkNet [Fact].
+/// Utility to parse StarkNet memory pages into a [StateUpdate].
 ///
-/// Contains new [DeployedContracts](DeployedContract) as well as [ContractUpdates](ContractUpdate).
-#[derive(Debug, Clone, PartialEq)]
-pub struct Fact {
-    pub deployed_contracts: Vec<DeployedContract>,
-    pub contract_updates: Vec<ContractUpdate>,
-}
-
-impl Fact {
-    /// Parses a set of flattened StarkNet memory pages into a [Fact].
-    ///
-    /// Note that this should exclude the first memory page as this does
-    /// not relate to a [Fact's](Fact) data directly.
-    pub fn parse_mempages<I>(mempages: I) -> Result<Fact>
-    where
-        I: Iterator<Item = U256>,
-    {
-        FactParser(mempages).parse_fact()
-    }
-}
-
-/// Utility to parse StarkNet memory pages into a [Fact].
-///
-/// The broad structure of a [Fact] is as follows:
+/// The broad structure of a [StateUpdate] is as follows:
 ///     1. New contracts deployed,
 ///     2. Contract variable updates
 ///
@@ -67,19 +27,16 @@ impl Fact {
 ///         2. For each variable update j:
 ///             a. Variable's address
 ///             b. Variable's new value
-struct FactParser<I>(I)
-where
-    I: Iterator<Item = U256>;
+pub struct StateUpdateParser(pub IntoIter<U256>);
 
-impl<I> FactParser<I>
-where
-    I: Iterator<Item = U256>,
-{
-    fn parse_fact(mut self) -> Result<Fact> {
-        let deployed_contracts = self.parse_contract_deployments()?;
-        let contract_updates = self.parse_contract_updates()?;
+impl StateUpdateParser {
+    pub fn parse(mempage_data: Vec<U256>) -> Result<StateUpdate> {
+        let mut parser = Self(mempage_data.into_iter());
 
-        Ok(Fact {
+        let deployed_contracts = parser.parse_contract_deployments()?;
+        let contract_updates = parser.parse_contract_updates()?;
+
+        Ok(StateUpdate {
             deployed_contracts,
             contract_updates,
         })
@@ -242,8 +199,8 @@ mod tests {
         }
     }
 
-    impl From<Fact> for Vec<U256> {
-        fn from(val: Fact) -> Self {
+    impl From<StateUpdate> for Vec<U256> {
+        fn from(val: StateUpdate) -> Self {
             let deployed: Vec<U256> = DeploymentUpdates(val.deployed_contracts).into();
             let updates: Vec<U256> = ContractUpdates(val.contract_updates).into();
 
@@ -275,15 +232,15 @@ mod tests {
         }
     }
 
-    #[cfg(test)]
     mod parse_usize {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn ok() {
             let value = 35812usize;
             let data = vec![U256::from(value)].into_iter();
-            let mut parser = FactParser(data);
+            let mut parser = StateUpdateParser(data);
             let result = parser.parse_usize().unwrap();
 
             assert_eq!(result, value);
@@ -293,7 +250,7 @@ mod tests {
         fn max() {
             let value = usize::MAX;
             let data = vec![U256::from(value)].into_iter();
-            let mut parser = FactParser(data);
+            let mut parser = StateUpdateParser(data);
             let result = parser.parse_usize().unwrap();
 
             assert_eq!(result, value);
@@ -303,21 +260,21 @@ mod tests {
         fn overflow() {
             let value = usize::MAX;
             let data = vec![U256::from(value) + U256::from(1)].into_iter();
-            let mut parser = FactParser(data);
+            let mut parser = StateUpdateParser(data);
             parser.parse_usize().unwrap_err();
         }
 
         #[test]
         fn missing() {
             let data = Vec::new().into_iter();
-            let mut parser = FactParser(data);
+            let mut parser = StateUpdateParser(data);
             parser.parse_usize().unwrap_err();
         }
     }
 
-    #[cfg(test)]
     mod parse_storage_update {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn ok() {
@@ -327,7 +284,7 @@ mod tests {
             };
             let data: Vec<U256> = update.clone().into();
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             let result = parser.parse_storage_update().unwrap();
             assert_eq!(result, update);
         }
@@ -338,23 +295,24 @@ mod tests {
                 address: U256::from(200),
                 value: U256::from(300),
             };
-            let data: Vec<U256> = update.into();
+            let mut data: Vec<U256> = update.into();
+            data.pop();
 
-            let mut parser = FactParser(data.into_iter().skip(1));
+            let mut parser = StateUpdateParser(data.into_iter());
             parser.parse_storage_update().unwrap_err();
         }
     }
 
-    #[cfg(test)]
     mod parse_contract_update {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn ok() {
             let update = contract_update();
             let data: Vec<U256> = update.clone().into();
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             let result = parser.parse_contract_update().unwrap();
             assert_eq!(result, update);
         }
@@ -368,7 +326,7 @@ mod tests {
 
             let data: Vec<U256> = update.clone().into();
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             let result = parser.parse_contract_update().unwrap();
             assert_eq!(result, update);
         }
@@ -380,21 +338,21 @@ mod tests {
             let mut data: Vec<U256> = update.into();
             data[1] += U256::from(1);
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             parser.parse_contract_update().unwrap_err();
         }
     }
 
-    #[cfg(test)]
     mod parse_contract_updates {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn ok() {
             let updates = ContractUpdates(vec![contract_update(), contract_update()]);
             let data: Vec<U256> = updates.clone().into();
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             let result = parser.parse_contract_updates().unwrap();
             assert_eq!(result, updates.0);
         }
@@ -404,7 +362,7 @@ mod tests {
             let updates = ContractUpdates(Vec::new());
             let data: Vec<U256> = updates.clone().into();
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             let result = parser.parse_contract_updates().unwrap();
             assert_eq!(result, updates.0);
         }
@@ -416,21 +374,21 @@ mod tests {
             let mut data: Vec<U256> = updates.into();
             data[0] += U256::from(1);
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             parser.parse_contract_updates().unwrap_err();
         }
     }
 
-    #[cfg(test)]
     mod parse_contract_deployments {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn ok() {
             let deployment = DeploymentUpdates(vec![deployed_contract(), deployed_contract()]);
             let data: Vec<U256> = deployment.clone().into();
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             let result = parser.parse_contract_deployments().unwrap();
             assert_eq!(result, deployment.0);
         }
@@ -440,7 +398,7 @@ mod tests {
             let deployment = DeploymentUpdates(Vec::new());
             let data: Vec<U256> = deployment.clone().into();
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             let result = parser.parse_contract_deployments().unwrap();
             assert_eq!(result, deployment.0);
         }
@@ -452,68 +410,64 @@ mod tests {
             // Corrupt the length field, increasing it by 1.
             data[0] += U256::from(1);
 
-            let mut parser = FactParser(data.into_iter());
+            let mut parser = StateUpdateParser(data.into_iter());
             parser.parse_contract_deployments().unwrap_err();
         }
     }
 
-    #[cfg(test)]
     mod fact {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn ok() {
-            let fact = Fact {
+            let fact = StateUpdate {
                 deployed_contracts: vec![deployed_contract(), deployed_contract()],
                 contract_updates: vec![contract_update(), contract_update()],
             };
 
             let data: Vec<U256> = fact.clone().into();
 
-            let parser = FactParser(data.into_iter());
-            let result = parser.parse_fact().unwrap();
+            let result = StateUpdateParser::parse(data).unwrap();
             assert_eq!(result, fact);
         }
 
         #[test]
         fn no_deployed_contracts() {
-            let fact = Fact {
+            let fact = StateUpdate {
                 deployed_contracts: Vec::new(),
                 contract_updates: vec![contract_update(), contract_update()],
             };
 
             let data: Vec<U256> = fact.clone().into();
 
-            let parser = FactParser(data.into_iter());
-            let result = parser.parse_fact().unwrap();
+            let result = StateUpdateParser::parse(data).unwrap();
             assert_eq!(result, fact);
         }
 
         #[test]
         fn no_updated_contracts() {
-            let fact = Fact {
+            let fact = StateUpdate {
                 deployed_contracts: vec![deployed_contract(), deployed_contract()],
                 contract_updates: Vec::new(),
             };
 
             let data: Vec<U256> = fact.clone().into();
 
-            let parser = FactParser(data.into_iter());
-            let result = parser.parse_fact().unwrap();
+            let result = StateUpdateParser::parse(data).unwrap();
             assert_eq!(result, fact);
         }
 
         #[test]
         fn no_updates() {
-            let fact = Fact {
+            let fact = StateUpdate {
                 deployed_contracts: Vec::new(),
                 contract_updates: Vec::new(),
             };
 
             let data: Vec<U256> = fact.clone().into();
 
-            let parser = FactParser(data.into_iter());
-            let result = parser.parse_fact().unwrap();
+            let result = StateUpdateParser::parse(data).unwrap();
             assert_eq!(result, fact);
         }
     }
