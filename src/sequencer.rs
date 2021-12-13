@@ -17,11 +17,10 @@ pub struct Client {
     sequencer_url: Url,
 }
 
-/// Helper function which simplifies the handling of optional block IDs in queries.
-fn block_id_str(block: Option<U256>) -> String {
-    block
-        .map(|b| b.to_string())
-        .unwrap_or_else(|| "null".to_string())
+/// Helper function which simplifies the handling of optional block hashes in queries.
+fn block_hash_str(hash: Option<H256>) -> (String, String) {
+    hash.map(|h| ("blockHash".to_string(), format!("0x{:x}", h)))
+        .unwrap_or_else(|| ("blockId".to_string(), "null".to_string()))
 }
 
 impl Client {
@@ -31,9 +30,38 @@ impl Client {
         Self { sequencer_url }
     }
 
-    /// Gets block by id.
-    pub async fn block(&self, block_id: U256) -> Result<reply::Block> {
-        self.get_block(Some(block_id)).await
+    /// Gets block by hash.
+    pub async fn block(&self, block_hash: H256) -> Result<reply::Block> {
+        self.get_block(Some(block_hash)).await
+    }
+
+    /// Gets block by number.
+    pub async fn block_by_number(&self, block_number: u64) -> Result<reply::Block> {
+        let resp = reqwest::get(self.build_query(
+            "get_block_hash_by_id",
+            &[("blockId", &block_number.to_string())],
+        ))
+        .await
+        .unwrap();
+        let resp = resp.text().await?;
+
+        if let Ok(e) = serde_json::from_str::<self::reply::starknet::Error>(resp.as_str()) {
+            return Err(e.into());
+        }
+
+        let resp = resp
+            .strip_prefix('\"')
+            .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
+        let resp = resp
+            .strip_suffix('\"')
+            .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
+        let block_hash = crate::serde::from_relaxed_hex_str::<
+            H256,
+            { H256::len_bytes() },
+            { H256::len_bytes() * 2 },
+        >(resp)?;
+
+        self.get_block(Some(block_hash)).await
     }
 
     /// Gets latest block.
@@ -42,10 +70,9 @@ impl Client {
     }
 
     /// Helper function to wrap block query. `None` as `block_id` means latest block available.
-    async fn get_block(&self, block_id: Option<U256>) -> Result<reply::Block> {
-        let block_id = block_id_str(block_id);
-        let resp =
-            reqwest::get(self.build_query("get_block", &[("blockId", block_id.as_str())])).await?;
+    async fn get_block(&self, block_hash: Option<H256>) -> Result<reply::Block> {
+        let (tag, hash) = block_hash_str(block_hash);
+        let resp = reqwest::get(self.build_query("get_block", &[(&tag, &hash)])).await?;
         let resp = resp.text().await?;
         serde_json::from_str::<BlockReply>(resp.as_str())?.try_into()
     }
@@ -54,10 +81,10 @@ impl Client {
     pub async fn call(
         &self,
         payload: request::Call,
-        block_id: Option<U256>,
+        block_hash: Option<H256>,
     ) -> Result<reply::Call> {
-        let block_id = block_id_str(block_id);
-        let url = self.build_query("call_contract", &[("blockId", block_id.as_str())]);
+        let (tag, hash) = block_hash_str(block_hash);
+        let url = self.build_query("call_contract", &[(&tag, &hash)]);
         let client = reqwest::Client::new();
         let resp = client.post(url).json(&payload).send().await?;
         let resp = resp.text().await?;
@@ -65,13 +92,13 @@ impl Client {
     }
 
     /// Gets contract's code and ABI.
-    pub async fn code(&self, contract_addr: H256, block_id: Option<U256>) -> Result<reply::Code> {
-        let block_id = block_id_str(block_id);
+    pub async fn code(&self, contract_addr: H256, block_hash: Option<H256>) -> Result<reply::Code> {
+        let (tag, hash) = block_hash_str(block_hash);
         let resp = reqwest::get(self.build_query(
             "get_code",
             &[
                 ("contractAddress", format!("{:x}", contract_addr).as_str()),
-                ("blockId", block_id.as_str()),
+                (&tag, &hash),
             ],
         ))
         .await?;
@@ -84,15 +111,15 @@ impl Client {
         &self,
         contract_addr: H256,
         key: U256,
-        block_id: Option<U256>,
+        block_hash: Option<H256>,
     ) -> Result<H256> {
-        let block_id = block_id_str(block_id);
+        let (tag, hash) = block_hash_str(block_hash);
         let resp = reqwest::get(self.build_query(
             "get_storage_at",
             &[
                 ("contractAddress", format!("{:x}", contract_addr).as_str()),
                 ("key", key.to_string().as_str()),
-                ("blockId", block_id.as_str()),
+                (&tag, &hash),
             ],
         ))
         .await?;
@@ -122,8 +149,7 @@ impl Client {
         ))
         .await?;
         let resp = resp.text().await?;
-        let resp = serde_json::from_str(resp.as_str())?;
-        Ok(resp)
+        serde_json::from_str::<reply::TransactionReply>(resp.as_str())?.try_into()
     }
 
     /// Gets transaction status by transaction hash.
@@ -140,8 +166,7 @@ impl Client {
         ))
         .await?;
         let resp = resp.text().await?;
-        let resp = serde_json::from_str(resp.as_str())?;
-        Ok(resp)
+        serde_json::from_str::<reply::TransactionStatusReply>(resp.as_str())?.try_into()
     }
 
     /// Helper function that constructs a URL for particular query.
@@ -169,13 +194,22 @@ mod tests {
     use web3::types::U256;
 
     lazy_static::lazy_static! {
-        static ref VALID_CONTRACT_ADDR: H256 = H256::from_str("0x04c988a22c691166946fdcfcd1608518333065e6deb1519d5d5f8def8b6c3e78").unwrap();
-        static ref INVALID_CONTRACT_ADDR: H256 = H256::from_str("0x14c988a22c691166946fdcfcd1608518333065e6deb1519d5d5f8def8b6c3e78").unwrap();
+        static ref GENESIS_BLOCK_HASH: H256 = H256::from_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
+        static ref INVALID_BLOCK_HASH: H256 = H256::from_str("0x13d8d8bb5716cd3f16e54e3a6ff1a50542461d9022e5f4dec7a4b064041ab8d7").unwrap();
+        static ref UNKNOWN_BLOCK_HASH: H256 = H256::from_str("0x017adea6567a9f605d5011ac915bdda56dc1db37e17a7057b3dd7fa99c4ba30b").unwrap();
+        static ref CONTRACT_BLOCK_HASH: H256 = H256::from_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap();
+        static ref VALID_TX_HASH: H256 = H256::from_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
+        static ref INVALID_TX_HASH: H256 = H256::from_str("0x1493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
+        static ref UNKNOWN_TX_HASH: H256 = H256::from_str("0x015e4bb72df94be3044139fea2116c4d54add05cf9ef8f35aea114b5cea94713").unwrap();
+        static ref VALID_CONTRACT_ADDR: H256 = H256::from_str("0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
+        static ref INVALID_CONTRACT_ADDR: H256 = H256::from_str("0x16fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
+        static ref UNKNOWN_CONTRACT_ADDR: H256 = H256::from_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
+        static ref VALID_ENTRY_POINT: H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
     }
 
-    // Alpha3 network client factory helper
+    // Alpha4 network client factory helper
     fn client() -> Client {
-        const URL: &str = "https://alpha3.starknet.io/";
+        const URL: &str = "https://alpha4.starknet.io/";
         Client::new(Url::parse(URL).unwrap())
     }
 
@@ -185,7 +219,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            client().block(U256::zero()).await.unwrap();
+            client().block(*GENESIS_BLOCK_HASH).await.unwrap();
         }
 
         #[tokio::test]
@@ -194,19 +228,63 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn has_txn_with_empty_builtin_instance_counter() {
-            client().block(U256::from(6032)).await.unwrap();
+        async fn block_without_block_hash_field() {
+            client()
+                .block(
+                    H256::from_str(
+                        "01cf37f162c3fa3b57c1c4324c240b0c8c65bb5a15e039817a3023b9890e94d1",
+                    )
+                    .unwrap(),
+                )
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
-        async fn not_found() {
+        async fn unknown() {
+            // Use valid hash from mainnet
             assert_eq!(
                 client()
-                    .block(U256::max_value())
+                    .block(*UNKNOWN_BLOCK_HASH)
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
                 ErrorCode::BlockNotFound
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid() {
+            // Invalid block hash
+            assert_eq!(
+                client()
+                    .block(*INVALID_BLOCK_HASH)
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeBlockHash
+            );
+        }
+    }
+
+    mod block_by_number {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn genesis() {
+            client().block_by_number(0).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn invalid() {
+            assert_eq!(
+                client()
+                    .block_by_number(u64::MAX)
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::MalformedRequest
             );
         }
     }
@@ -215,17 +293,13 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        lazy_static::lazy_static! {
-            static ref VALID_ENTRY_POINT: H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
-        }
-
         #[tokio::test]
         async fn invalid_entry_point() {
             assert_eq!(
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![],
+                            calldata: vec![U256::from(1234)],
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: H256::zero(),
                             signature: vec![],
@@ -240,7 +314,27 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn transaction_failed() {
+        async fn invalid_contract_address() {
+            assert_eq!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234)],
+                            contract_address: *INVALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        None,
+                    )
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeContractAddress
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_call_data() {
             assert_eq!(
                 client()
                     .call(
@@ -250,7 +344,7 @@ mod tests {
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        Some(U256::from(5272)),
+                        Some(*CONTRACT_BLOCK_HASH),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
@@ -270,12 +364,52 @@ mod tests {
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        Some(U256::from(5000)),
+                        Some(*GENESIS_BLOCK_HASH),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
                 ErrorCode::UninitializedContract
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_block_hash() {
+            assert_eq!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234)],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        Some(*INVALID_BLOCK_HASH),
+                    )
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeBlockHash
+            );
+        }
+
+        #[tokio::test]
+        async fn unknown_block_hash() {
+            assert_eq!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234)],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        Some(*UNKNOWN_BLOCK_HASH),
+                    )
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::BlockNotFound
             );
         }
 
@@ -289,7 +423,7 @@ mod tests {
                         entry_point_selector: *VALID_ENTRY_POINT,
                         signature: vec![],
                     },
-                    Some(U256::from(5272)),
+                    Some(*CONTRACT_BLOCK_HASH),
                 )
                 .await
                 .unwrap();
@@ -301,7 +435,7 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn invalid_contract() {
+        async fn invalid_contract_address() {
             assert_eq!(
                 client()
                     .code(*INVALID_CONTRACT_ADDR, None)
@@ -313,10 +447,28 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn invalid_block() {
+        async fn unknown_contract_address() {
+            // Returns empty code and abi
+            client().code(*UNKNOWN_CONTRACT_ADDR, None).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn invalid_block_hash() {
             assert_eq!(
                 client()
-                    .code(*VALID_CONTRACT_ADDR, Some(U256::max_value()))
+                    .code(*VALID_CONTRACT_ADDR, Some(*INVALID_BLOCK_HASH))
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeBlockHash
+            );
+        }
+
+        #[tokio::test]
+        async fn unknown_block_hash() {
+            assert_eq!(
+                client()
+                    .code(*VALID_CONTRACT_ADDR, Some(*UNKNOWN_BLOCK_HASH))
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -327,7 +479,7 @@ mod tests {
         #[tokio::test]
         async fn success() {
             client()
-                .code(*VALID_CONTRACT_ADDR, Some(U256::from(5268)))
+                .code(*VALID_CONTRACT_ADDR, Some(*CONTRACT_BLOCK_HASH))
                 .await
                 .map_err(|e| e.downcast::<Error>().unwrap().code)
                 .unwrap();
@@ -343,7 +495,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn invalid_contract() {
+        async fn invalid_contract_address() {
             assert_eq!(
                 client()
                     .storage(*INVALID_CONTRACT_ADDR, *VALID_KEY, None)
@@ -367,10 +519,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn invalid_block() {
+        async fn unknown_block_hash() {
             assert_eq!(
                 client()
-                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(U256::max_value()))
+                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(*UNKNOWN_BLOCK_HASH))
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -379,9 +531,21 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn invalid_block_hash() {
+            assert_eq!(
+                client()
+                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(*INVALID_BLOCK_HASH))
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeBlockHash
+            );
+        }
+
+        #[tokio::test]
         async fn success() {
             client()
-                .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(U256::from(5272)))
+                .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(*CONTRACT_BLOCK_HASH))
                 .await
                 .unwrap();
         }
@@ -392,43 +556,29 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn rejected() {
-            assert_eq!(
-                client()
-                    .transaction(
-                        H256::from_str(
-                            "0x057b73bb15b9a1481deb6027c205dea3efb2ecb75c121a794302f84988ad3a56"
-                        )
-                        .unwrap()
-                    )
-                    .await
-                    .unwrap()
-                    .status,
-                Status::Rejected
-            );
-        }
-
-        #[tokio::test]
         async fn accepted() {
             assert_eq!(
-                client()
-                    .transaction(
-                        H256::from_str(
-                            "0x0285b9a272dd72769789d06400bf0da86ed80555b98ca8a6df0cc888c694e3f1"
-                        )
-                        .unwrap()
-                    )
-                    .await
-                    .unwrap()
-                    .status,
-                Status::AcceptedOnChain
+                client().transaction(*VALID_TX_HASH).await.unwrap().status,
+                Status::AcceptedOnL1
             );
         }
 
         #[tokio::test]
-        async fn not_received() {
+        async fn invalid_hash() {
             assert_eq!(
-                client().transaction(H256::zero()).await.unwrap().status,
+                client()
+                    .transaction(*INVALID_TX_HASH)
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeTransactionHash
+            );
+        }
+
+        #[tokio::test]
+        async fn unknown_hash() {
+            assert_eq!(
+                client().transaction(*UNKNOWN_TX_HASH).await.unwrap().status,
                 Status::NotReceived
             );
         }
@@ -439,46 +589,35 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn rejected() {
-            assert_eq!(
-                client()
-                    .transaction_status(
-                        H256::from_str(
-                            "0x057b73bb15b9a1481deb6027c205dea3efb2ecb75c121a794302f84988ad3a56"
-                        )
-                        .unwrap()
-                    )
-                    .await
-                    .unwrap()
-                    .tx_status
-                    .unwrap(),
-                Status::Rejected
-            );
-        }
-
-        #[tokio::test]
         async fn accepted() {
             assert_eq!(
                 client()
-                    .transaction_status(
-                        H256::from_str(
-                            "0x0285b9a272dd72769789d06400bf0da86ed80555b98ca8a6df0cc888c694e3f1"
-                        )
-                        .unwrap()
-                    )
+                    .transaction_status(*VALID_TX_HASH)
                     .await
                     .unwrap()
                     .tx_status
                     .unwrap(),
-                Status::AcceptedOnChain
+                Status::AcceptedOnL1
             );
         }
 
         #[tokio::test]
-        async fn not_received() {
+        async fn invalid_hash() {
             assert_eq!(
                 client()
-                    .transaction_status(H256::zero())
+                    .transaction_status(*INVALID_TX_HASH)
+                    .await
+                    .map_err(|e| e.downcast::<Error>().unwrap().code)
+                    .unwrap_err(),
+                ErrorCode::OutOfRangeTransactionHash
+            );
+        }
+
+        #[tokio::test]
+        async fn unknown_hash() {
+            assert_eq!(
+                client()
+                    .transaction_status(*UNKNOWN_TX_HASH)
                     .await
                     .unwrap()
                     .tx_status

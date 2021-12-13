@@ -8,7 +8,6 @@ use crate::{
     sequencer::{reply, request::Call},
 };
 use jsonrpsee::{proc_macros::rpc, types::error::Error};
-use web3::types::U256;
 
 /// TODO
 /// Add proper output structs as per spec.
@@ -50,16 +49,6 @@ pub trait RpcApi {
         contract_address: relaxed::H256,
         key: relaxed::H256,
         block_hash: BlockHashOrTag,
-    ) -> Result<relaxed::H256, Error>;
-
-    /// Get the value of the storage at the given address and key.
-    /// A __temporary replacement__ for [get_storage_at](RpcApiServer::get_storage_at) until we know how to calculate block hash.
-    #[method(name = "getStorageAtByBlockNumber")]
-    async fn get_storage_at_by_block_number(
-        &self,
-        contract_address: relaxed::H256,
-        key: relaxed::H256,
-        block_number: BlockNumberOrTag,
     ) -> Result<relaxed::H256, Error>;
 
     /// Get the details and status of a submitted transaction.
@@ -147,7 +136,7 @@ pub trait RpcApi {
 
     /// Get the most recent accepted block number.
     #[method(name = "blockNumber")]
-    async fn block_number(&self) -> Result<U256, Error>;
+    async fn block_number(&self) -> Result<u64, Error>;
 
     /// Return the currently configured StarkNet chain id.
     #[method(name = "chainId")]

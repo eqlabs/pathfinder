@@ -1,7 +1,7 @@
-use crate::serde::{H256AsRelaxedHexStr, U256AsBigDecimal};
+use crate::serde::H256AsRelaxedHexStr;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use web3::types::{H256, U256};
+use web3::types::H256;
 
 /// Special tag used when specifying the latest block.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -27,7 +27,7 @@ pub enum BlockHashOrTag {
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockNumberOrTag {
-    Number(#[serde_as(as = "U256AsBigDecimal")] U256),
+    Number(u64),
     Tag(Tag),
 }
 
@@ -40,7 +40,7 @@ pub mod relaxed {
     use web3::types;
 
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct H256(#[serde_as(as = "H256AsRelaxedHexStr")] types::H256);
 
     impl From<types::H256> for H256 {
