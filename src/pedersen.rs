@@ -1,15 +1,37 @@
 use bitvec::{array::BitArray, order::Lsb0, slice::BitSlice};
 use ff::{Field, PrimeField};
 
+use crate::core::StarkHash;
+
 /// The field primitive used by [PedersenHash]
 #[derive(PrimeField)]
 #[PrimeFieldModulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
 #[PrimeFieldGenerator = "7"]
-#[PrimeFieldReprEndianness = "little"]
-pub struct Fp([u64; 4]);
+#[PrimeFieldReprEndianness = "big"]
+struct FieldElement([u64; 4]);
 
-impl Fp {
-    /// Transforms [Fp] into little endian bit representation.
+impl From<StarkHash> for FieldElement {
+    fn from(hash: StarkHash) -> Self {
+        debug_assert_eq!(
+            std::mem::size_of::<FieldElement>(),
+            std::mem::size_of::<StarkHash>()
+        );
+        Self::from_repr(FieldElementRepr(hash.to_be_bytes())).unwrap()
+    }
+}
+
+impl From<FieldElement> for StarkHash {
+    fn from(fp: FieldElement) -> Self {
+        debug_assert_eq!(
+            std::mem::size_of::<FieldElement>(),
+            std::mem::size_of::<StarkHash>()
+        );
+        StarkHash::from_be_bytes(fp.to_repr().0)
+    }
+}
+
+impl FieldElement {
+    /// Transforms [FieldElement] into little endian bit representation.
     fn into_bits(mut self) -> BitArray<Lsb0, [u64; 4]> {
         #[cfg(not(target_endian = "little"))]
         {
@@ -34,19 +56,19 @@ impl Fp {
     }
 }
 
-/// A point on an elliptic curve over [Fp].
+/// A point on an elliptic curve over [FieldElement].
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CurvePoint {
-    x: Fp,
-    y: Fp,
+    x: FieldElement,
+    y: FieldElement,
     infinity: bool,
 }
 
 impl CurvePoint {
     fn identity() -> CurvePoint {
         Self {
-            x: Fp::zero(),
-            y: Fp::zero(),
+            x: FieldElement::zero(),
+            y: FieldElement::zero(),
             infinity: true,
         }
     }
@@ -58,9 +80,9 @@ impl CurvePoint {
 
         // l = (3x^2+a)/2y with a=1 from stark curve
         let lambda = {
-            let two = Fp::one() + Fp::one();
-            let three = two + Fp::one();
-            let dividend = three * (self.x * self.x) + Fp::one();
+            let two = FieldElement::one() + FieldElement::one();
+            let three = two + FieldElement::one();
+            let dividend = three * (self.x * self.x) + FieldElement::one();
             let divisor_inv = (two * self.y).invert().unwrap();
             dividend * divisor_inv
         };
@@ -115,13 +137,13 @@ impl CurvePoint {
 
 /// Montgomery representation of the Stark curve constant P0.
 const PEDERSEN_P0: CurvePoint = CurvePoint {
-    x: Fp([
+    x: FieldElement([
         1933903796324928314,
         7739989395386261137,
         1641324389046377921,
         316327189671755572,
     ]),
-    y: Fp([
+    y: FieldElement([
         14252083571674603243,
         12587053260418384210,
         4798858472748676776,
@@ -132,13 +154,13 @@ const PEDERSEN_P0: CurvePoint = CurvePoint {
 
 /// Montgomery representation of the Stark curve constant P1.
 const PEDERSEN_P1: CurvePoint = CurvePoint {
-    x: Fp([
+    x: FieldElement([
         3602345268353203007,
         13758484295849329960,
         518715844721862878,
         241691544791834578,
     ]),
-    y: Fp([
+    y: FieldElement([
         13441546676070136227,
         13001553326386915570,
         433857700841878496,
@@ -149,13 +171,13 @@ const PEDERSEN_P1: CurvePoint = CurvePoint {
 
 /// Montgomery representation of the Stark curve constant P2.
 const PEDERSEN_P2: CurvePoint = CurvePoint {
-    x: Fp([
+    x: FieldElement([
         16491878934996302286,
         12382025591154462459,
         10043949394709899044,
         253000153565733272,
     ]),
-    y: Fp([
+    y: FieldElement([
         13950428914333633429,
         2545498000137298346,
         5191292837124484988,
@@ -166,13 +188,13 @@ const PEDERSEN_P2: CurvePoint = CurvePoint {
 
 /// Montgomery representation of the Stark curve constant P3.
 const PEDERSEN_P3: CurvePoint = CurvePoint {
-    x: Fp([
+    x: FieldElement([
         1203723169299412240,
         18195981508842736832,
         12916675983929588442,
         338510149841406402,
     ]),
-    y: Fp([
+    y: FieldElement([
         12352616181161700245,
         11743524503750604092,
         11088962269971685343,
@@ -183,13 +205,13 @@ const PEDERSEN_P3: CurvePoint = CurvePoint {
 
 /// Montgomery representation of the Stark curve constant P4.
 const PEDERSEN_P4: CurvePoint = CurvePoint {
-    x: Fp([
+    x: FieldElement([
         1145636535101238356,
         10664803185694787051,
         299781701614706065,
         425493972656615276,
     ]),
-    y: Fp([
+    y: FieldElement([
         8187986478389849302,
         4428713245976508844,
         6033691581221864148,
@@ -198,11 +220,11 @@ const PEDERSEN_P4: CurvePoint = CurvePoint {
     infinity: false,
 };
 
-/// Performs the Stark Pedersen hash on `a` and `b`.
-pub fn pedersen_hash(a: Fp, b: Fp) -> Fp {
+/// Computes the Starknet Pedersen hash on `a` and `b`.
+pub fn pedersen_hash(a: StarkHash, b: StarkHash) -> StarkHash {
     let mut result = PEDERSEN_P0.clone();
-    let a = a.into_bits();
-    let b = b.into_bits();
+    let a = FieldElement::from(a).into_bits();
+    let b = FieldElement::from(b).into_bits();
 
     // Add a_low * P1
     let tmp = PEDERSEN_P1.multiply(&a[..248]);
@@ -221,7 +243,7 @@ pub fn pedersen_hash(a: Fp, b: Fp) -> Fp {
     result = result.add(&tmp);
 
     // Return x-coordinate
-    result.x
+    StarkHash::from(result.x)
 }
 
 #[cfg(test)]
@@ -235,7 +257,7 @@ mod tests {
 
         #[test]
         fn zero() {
-            let zero = Fp::zero().into_bits();
+            let zero = FieldElement::zero().into_bits();
             let expected = BitArray::<Lsb0, [u64; 4]>::default();
 
             assert_eq!(zero, expected);
@@ -243,7 +265,7 @@ mod tests {
 
         #[test]
         fn one() {
-            let one = Fp::one().into_bits();
+            let one = FieldElement::one().into_bits();
 
             let mut expected = BitArray::<Lsb0, [u64; 4]>::default();
             expected.set(0, true);
@@ -253,7 +275,7 @@ mod tests {
 
         #[test]
         fn two() {
-            let two = (Fp::one() + Fp::one()).into_bits();
+            let two = (FieldElement::one() + FieldElement::one()).into_bits();
 
             let mut expected = BitArray::<Lsb0, [u64; 4]>::default();
             expected.set(1, true);
@@ -267,8 +289,8 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         fn curve_from_xy_str(x: &str, y: &str) -> CurvePoint {
-            let x = Fp::from_str_vartime(x).expect("Curve x-value invalid");
-            let y = Fp::from_str_vartime(y).expect("Curve y-value invalid");
+            let x = FieldElement::from_str_vartime(x).expect("Curve x-value invalid");
+            let y = FieldElement::from_str_vartime(y).expect("Curve y-value invalid");
             CurvePoint {
                 x,
                 y,
@@ -307,7 +329,8 @@ mod tests {
 
         #[test]
         fn multiply() {
-            let three = (Fp::one() + Fp::one() + Fp::one()).into_bits();
+            let three =
+                (FieldElement::one() + FieldElement::one() + FieldElement::one()).into_bits();
             let g = curve_generator();
             let g_triple = g.multiply(&three);
             let expected = curve_from_xy_str(
@@ -371,22 +394,51 @@ mod tests {
     #[test]
     fn hash() {
         // Test vector from https://github.com/starkware-libs/crypto-cpp/blob/master/src/starkware/crypto/pedersen_hash_test.cc
-        let a = Fp::from_str_vartime(
-            "1740729136829561885683894917751815192814966525555656371386868611731128807883",
+        let a = StarkHash::from_hex_str(
+            "0x3d937c035c878245caf64531a5756109c53068da139362728feb561405371cb",
         )
         .unwrap();
-        let b = Fp::from_str_vartime(
-            "919869093895560023824014392670608914007817594969197822578496829435657368346",
+        let b = StarkHash::from_hex_str(
+            "0x208a0a10250e382e1e4bbe2880906c2791bf6275695e02fbbc6aeff9cd8b31a",
+        )
+        .unwrap();
+        let expected = StarkHash::from_hex_str(
+            "0x30e480bed5fe53fa909cc0f8c4d99b8f9f2c016be4c41e13a4848797979c662",
         )
         .unwrap();
 
         let hash = pedersen_hash(a, b);
 
-        let expected = Fp::from_str_vartime(
-            "1382171651951541052082654537810074813456022260470662576358627909045455537762",
+        assert_eq!(hash, expected);
+    }
+
+    #[test]
+    fn hash_to_field_element() {
+        // Compare decimal field point and hash hex string constructions.
+        let fp = FieldElement::from_str_vartime(
+            "1740729136829561885683894917751815192814966525555656371386868611731128807883",
+        )
+        .unwrap();
+        let hash = StarkHash::from_hex_str(
+            "0x3d937c035c878245caf64531a5756109c53068da139362728feb561405371cb",
         )
         .unwrap();
 
-        assert_eq!(hash, expected);
+        assert_eq!(FieldElement::from(hash), fp);
+    }
+
+    #[test]
+    fn field_element_to_hash() {
+        // Compare decimal field point and hash hex string constructions.
+        let fp = FieldElement::from_str_vartime(
+            "1740729136829561885683894917751815192814966525555656371386868611731128807883",
+        )
+        .unwrap();
+        let hash = StarkHash::from_hex_str(
+            "0x3d937c035c878245caf64531a5756109c53068da139362728feb561405371cb",
+        )
+        .unwrap();
+
+        assert_eq!(StarkHash::from(fp), hash);
     }
 }
