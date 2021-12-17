@@ -239,7 +239,7 @@ pub mod starknet {
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum TransactionReply {
-    Transaction(Transaction),
+    Transaction(Box<Transaction>),
     Error(starknet::Error),
 }
 
@@ -248,7 +248,7 @@ impl TryFrom<TransactionReply> for Transaction {
 
     fn try_from(value: TransactionReply) -> Result<Self, Self::Error> {
         match value {
-            TransactionReply::Transaction(t) => Ok(t),
+            TransactionReply::Transaction(t) => Ok(*t),
             TransactionReply::Error(e) => Err(anyhow::Error::new(e)),
         }
     }
