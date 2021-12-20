@@ -27,7 +27,6 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -- --skip rpc --skip sequencer
 
   clippy:
     runs-on: ubuntu-latest
