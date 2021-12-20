@@ -7,7 +7,7 @@ use crate::serde::from_relaxed_hex_str;
 use anyhow::Result;
 use reqwest::Url;
 use serde_json::{from_value, Value};
-use std::{convert::TryInto, fmt::Debug};
+use std::{borrow::Cow, convert::TryInto, fmt::Debug};
 use web3::types::{H256, U256};
 
 /// StarkNet sequencer client using REST API.
@@ -18,9 +18,9 @@ pub struct Client {
 }
 
 /// Helper function which simplifies the handling of optional block hashes in queries.
-fn block_hash_str(hash: Option<H256>) -> (String, String) {
-    hash.map(|h| ("blockHash".to_string(), format!("0x{:x}", h)))
-        .unwrap_or_else(|| ("blockId".to_string(), "null".to_string()))
+fn block_hash_str(hash: Option<H256>) -> (&'static str, Cow<'static, str>) {
+    hash.map(|h| ("blockHash", Cow::from(format!("0x{:x}", h))))
+        .unwrap_or_else(|| ("blockId", Cow::from("null")))
 }
 
 impl Client {
@@ -72,7 +72,7 @@ impl Client {
     /// Helper function to wrap block query. `None` as `block_id` means latest block available.
     async fn get_block(&self, block_hash: Option<H256>) -> Result<reply::Block> {
         let (tag, hash) = block_hash_str(block_hash);
-        let resp = reqwest::get(self.build_query("get_block", &[(&tag, &hash)])).await?;
+        let resp = reqwest::get(self.build_query("get_block", &[(tag, &hash)])).await?;
         let resp = resp.text().await?;
         serde_json::from_str::<BlockReply>(resp.as_str())?.try_into()
     }
@@ -84,7 +84,7 @@ impl Client {
         block_hash: Option<H256>,
     ) -> Result<reply::Call> {
         let (tag, hash) = block_hash_str(block_hash);
-        let url = self.build_query("call_contract", &[(&tag, &hash)]);
+        let url = self.build_query("call_contract", &[(tag, &hash)]);
         let client = reqwest::Client::new();
         let resp = client.post(url).json(&payload).send().await?;
         let resp = resp.text().await?;
@@ -98,7 +98,7 @@ impl Client {
             "get_code",
             &[
                 ("contractAddress", format!("{:x}", contract_addr).as_str()),
-                (&tag, &hash),
+                (tag, &hash),
             ],
         ))
         .await?;
@@ -119,7 +119,7 @@ impl Client {
             &[
                 ("contractAddress", format!("{:x}", contract_addr).as_str()),
                 ("key", key.to_string().as_str()),
-                (&tag, &hash),
+                (tag, &hash),
             ],
         ))
         .await?;
@@ -218,6 +218,7 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
+        #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
             client().block(*GENESIS_BLOCK_HASH).await.unwrap();
         }
@@ -228,6 +229,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "currently causes HTTP 504"]
         async fn block_without_block_hash_field() {
             client()
                 .block(

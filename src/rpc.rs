@@ -124,6 +124,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "currently causes HTTP 504"]
         async fn latest() {
             let (srv, addr) = build_server();
             spawn_server(srv).await;
