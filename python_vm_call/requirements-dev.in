@@ -1,0 +1,4 @@
+pip-tools
+pytest
+flake8
+black
