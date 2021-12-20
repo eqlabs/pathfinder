@@ -32,13 +32,11 @@ impl TryFrom<BlockReply> for Block {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
-    #[serde_as(as = "U256AsBigDecimal")]
-    pub block_id: U256,
-    #[serde_as(as = "DefaultOnError<Option<U256AsBigDecimal>>")]
-    #[serde(default)]
-    pub previous_block_id: Option<U256>,
-    #[serde_as(as = "U256AsBigDecimal")]
-    pub sequence_number: U256,
+    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+    pub block_hash: Option<H256>,
+    pub block_number: u64,
+    #[serde_as(as = "H256AsRelaxedHexStr")]
+    pub parent_block_hash: H256,
     #[serde_as(as = "H256AsRelaxedHexStr")]
     pub state_root: H256,
     pub status: block::Status,
@@ -124,6 +122,9 @@ impl TryFrom<CodeReply> for Code {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Code {
+    // Unknown block hash results in empty abi represented as a JSON
+    // object, instead of a JSON array
+    #[serde_as(deserialize_as = "DefaultOnError")]
     pub abi: Vec<code::Abi>,
     #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
     pub bytecode: Vec<H256>,
@@ -224,18 +225,44 @@ pub mod starknet {
         TransactionFailed,
         #[serde(rename = "StarknetErrorCode.UNINITIALIZED_CONTRACT")]
         UninitializedContract,
+        #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_BLOCK_HASH")]
+        OutOfRangeBlockHash,
+        #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_TRANSACTION_HASH")]
+        OutOfRangeTransactionHash,
+        #[serde(rename = "StarkErrorCode.MALFORMED_REQUEST")]
+        MalformedRequest,
     }
 }
 
-/// Used to deserialize a reply from [Client::transaction](crate::sequencer::Client::transaction).
+/// Used to deserialize replies to [Client::transaction](crate::sequencer::Client::transaction).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[serde(deny_unknown_fields)]
+pub enum TransactionReply {
+    Transaction(Box<Transaction>),
+    Error(starknet::Error),
+}
+
+impl TryFrom<TransactionReply> for Transaction {
+    type Error = anyhow::Error;
+
+    fn try_from(value: TransactionReply) -> Result<Self, Self::Error> {
+        match value {
+            TransactionReply::Transaction(t) => Ok(*t),
+            TransactionReply::Error(e) => Err(anyhow::Error::new(e)),
+        }
+    }
+}
+
+/// Actual transaction data from [TransactionReply].
 #[serde_as]
 #[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Transaction {
-    #[serde_as(as = "Option<U256AsBigDecimal>")]
+    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
-    pub block_id: Option<U256>,
+    pub block_hash: Option<H256>,
     #[serde_as(as = "Option<U256AsBigDecimal>")]
     #[serde(default)]
     pub block_number: Option<U256>,
@@ -243,26 +270,40 @@ pub struct Transaction {
     #[serde(default)]
     pub transaction: Option<transaction::Transaction>,
     #[serde(default)]
-    pub transaction_failure_reason: Option<transaction::Failure>,
-    #[serde(default)]
     pub transaction_index: Option<u64>,
-    #[serde_as(as = "H256AsRelaxedHexStr")]
-    pub transaction_hash: H256,
 }
 
-/// Used to deserialize a reply from [Client::transaction_status](crate::sequencer::Client::transaction_status).
+/// Used to deserialize replies to [Client::transaction_status](crate::sequencer::Client::transaction_status).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[serde(deny_unknown_fields)]
+pub enum TransactionStatusReply {
+    TransactionStatus(TransactionStatus),
+    Error(starknet::Error),
+}
+
+impl TryFrom<TransactionStatusReply> for TransactionStatus {
+    type Error = anyhow::Error;
+
+    fn try_from(value: TransactionStatusReply) -> Result<Self, Self::Error> {
+        match value {
+            TransactionStatusReply::TransactionStatus(t) => Ok(t),
+            TransactionStatusReply::Error(e) => Err(anyhow::Error::new(e)),
+        }
+    }
+}
+
+/// Actual transaction data from [TransactionStatusReply].
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionStatus {
-    #[serde_as(as = "Option<U256AsBigDecimal>")]
+    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
-    pub block_id: Option<U256>,
+    pub block_hash: Option<H256>,
     #[serde(default)]
     pub tx_status: Option<transaction::Status>,
-    #[serde(default)]
-    pub tx_failure_reason: Option<transaction::Failure>,
 }
 
 /// Types used when deserializing L2 transaction related data.
@@ -356,16 +397,16 @@ pub mod transaction {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
-        #[serde_as(as = "U256AsBigDecimal")]
-        pub block_id: U256,
-        #[serde_as(as = "U256AsBigDecimal")]
-        pub block_number: U256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        pub block_hash: H256,
+        pub block_number: u64,
         pub execution_resources: ExecutionResources,
+        pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub status: Status,
-        pub transaction_index: u64,
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub transaction_hash: H256,
+        pub transaction_index: u64,
     }
 
     /// Represents deserialized object containing L2 contract address and transaction type.
@@ -378,7 +419,7 @@ pub mod transaction {
         pub r#type: Type,
     }
 
-    /// L2 transaction status values.
+    /// Transaction status values.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub enum Status {
@@ -390,8 +431,10 @@ pub mod transaction {
         Pending,
         #[serde(rename = "REJECTED")]
         Rejected,
-        #[serde(rename = "ACCEPTED_ONCHAIN")]
-        AcceptedOnChain,
+        #[serde(rename = "ACCEPTED_ON_L1")]
+        AcceptedOnL1,
+        #[serde(rename = "ACCEPTED_ON_L2")]
+        AcceptedOnL2,
         #[serde(rename = "REVERTED")]
         Reverted,
     }
@@ -405,9 +448,6 @@ pub mod transaction {
         #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
         #[serde(default)]
         pub calldata: Option<Vec<U256>>,
-        #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
-        #[serde(default)]
-        pub caller_address: Option<H256>,
         #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
         #[serde(default)]
         pub constructor_calldata: Option<Vec<U256>>,
@@ -416,17 +456,17 @@ pub mod transaction {
         #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
         #[serde(default)]
         pub contract_address_salt: Option<H256>,
+        #[serde(default)]
+        pub entry_point_type: Option<EntryPointType>,
         #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
         #[serde(default)]
         pub entry_point_selector: Option<H256>,
-        #[serde(default)]
-        pub entry_point_type: Option<EntryPointType>,
-        pub r#type: Type,
         #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
         #[serde(default)]
         pub signature: Option<Vec<U256>>,
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub transaction_hash: H256,
+        pub r#type: Type,
     }
 
     /// Describes L2 transaction types.
