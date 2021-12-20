@@ -4,14 +4,17 @@ pub mod rpc_trait;
 pub mod types;
 
 use crate::rpc::{rpc_impl::RpcImpl, rpc_trait::RpcApiServer};
-use jsonrpsee::{http_server::HttpServerBuilder, types::Error};
+use jsonrpsee::{
+    http_server::{HttpServerBuilder, HttpServerHandle},
+    types::Error,
+};
 use std::{net::SocketAddr, result::Result};
 
 /// Starts the HTTP-RPC server.
-pub async fn run_server(addr: SocketAddr) -> Result<(), Error> {
+pub fn run_server(addr: SocketAddr) -> Result<HttpServerHandle, Error> {
     let server = HttpServerBuilder::default().build(addr)?;
     println!("📡 HTTP-RPC server started on: {}", server.local_addr()?);
-    server.start(RpcImpl::default().into_rpc()).await
+    server.start(RpcImpl::default().into_rpc())
 }
 
 #[cfg(test)]
@@ -45,8 +48,8 @@ mod tests {
     }
 
     /// Server spawn wrapper
-    async fn spawn_server(srv: HttpServer) {
-        tokio::spawn(srv.start(RpcImpl::default().into_rpc()));
+    fn spawn_server(srv: HttpServer) -> HttpServerHandle {
+        srv.start(RpcImpl::default().into_rpc()).unwrap()
     }
 
     lazy_static::lazy_static! {
@@ -71,7 +74,7 @@ mod tests {
         #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
                 .await
@@ -81,7 +84,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
                 .await
@@ -91,7 +94,7 @@ mod tests {
         #[tokio::test]
         async fn not_found() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
                 .await
@@ -101,7 +104,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_block_hash() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
                 .await
@@ -116,7 +119,7 @@ mod tests {
         #[tokio::test]
         async fn genesis() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_by_number(BlockNumberOrTag::Number(0))
                 .await
@@ -127,7 +130,7 @@ mod tests {
         #[ignore = "currently causes HTTP 504"]
         async fn latest() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
                 .await
@@ -137,7 +140,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_number() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_by_number(BlockNumberOrTag::Number(u64::MAX))
                 .await
@@ -153,7 +156,7 @@ mod tests {
         #[should_panic]
         async fn genesis() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_state_update_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
                 .await
@@ -164,7 +167,7 @@ mod tests {
         #[should_panic]
         async fn latest() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
                 .await
@@ -185,7 +188,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_contract() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_storage_at(
                     *INVALID_CONTRACT_ADDR,
@@ -200,7 +203,7 @@ mod tests {
         async fn invalid_key() {
             // Invalid key results with storage value of zero
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_storage_at(
                     *VALID_CONTRACT_ADDR,
@@ -214,7 +217,7 @@ mod tests {
         #[tokio::test]
         async fn block_not_found() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_storage_at(
                     *VALID_CONTRACT_ADDR,
@@ -228,7 +231,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_block_hash() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_storage_at(
                     *VALID_CONTRACT_ADDR,
@@ -242,7 +245,7 @@ mod tests {
         #[tokio::test]
         async fn contract_block() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_storage_at(
                     *VALID_CONTRACT_ADDR,
@@ -256,7 +259,7 @@ mod tests {
         #[tokio::test]
         async fn latest_block() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_storage_at(
                     *VALID_CONTRACT_ADDR,
@@ -274,7 +277,7 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_hash(*VALID_TX_HASH)
                 .await
@@ -284,7 +287,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_hash() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_hash(*INVALID_TX_HASH)
                 .await
@@ -294,7 +297,7 @@ mod tests {
         #[tokio::test]
         async fn unknown_hash() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_hash(*UNKNOWN_TX_HASH)
                 .await
@@ -309,7 +312,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_block_hash_and_index(BlockHashOrTag::Tag(Tag::Latest), 0)
                 .await
@@ -320,7 +323,7 @@ mod tests {
         #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_block_hash_and_index(
                     BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH),
@@ -333,7 +336,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_block() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_block_hash_and_index(
                     BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
@@ -346,7 +349,7 @@ mod tests {
         #[tokio::test]
         async fn unknown_block() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_block_hash_and_index(
                     BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
@@ -359,7 +362,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_transaction_index() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_block_hash_and_index(
                     BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
@@ -377,7 +380,7 @@ mod tests {
         #[tokio::test]
         async fn genesis() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_block_number_and_index(BlockNumberOrTag::Number(0), 0)
                 .await
@@ -387,7 +390,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_block_number_and_index(BlockNumberOrTag::Tag(Tag::Latest), 0)
                 .await
@@ -397,7 +400,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_block() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_by_block_number_and_index(BlockNumberOrTag::Number(u64::MAX), 0)
                 .await
@@ -411,7 +414,7 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_receipt(*VALID_TX_HASH)
                 .await
@@ -421,7 +424,7 @@ mod tests {
         #[tokio::test]
         async fn invalid() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_receipt(*INVALID_TX_HASH)
                 .await
@@ -431,7 +434,7 @@ mod tests {
         #[tokio::test]
         async fn unknown() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_transaction_receipt(*UNKNOWN_TX_HASH)
                 .await
@@ -445,7 +448,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_contract_address() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_code(*INVALID_CONTRACT_ADDR)
                 .await
@@ -455,14 +458,14 @@ mod tests {
         #[tokio::test]
         async fn unknown_contract_address() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr).get_code(*UNKNOWN_CONTRACT_ADDR).await.unwrap();
         }
 
         #[tokio::test]
         async fn success() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr).get_code(*VALID_CONTRACT_ADDR).await.unwrap();
         }
     }
@@ -475,7 +478,7 @@ mod tests {
         #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_transaction_count_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
                 .await
@@ -485,7 +488,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_transaction_count_by_hash(BlockHashOrTag::Tag(Tag::Latest))
                 .await
@@ -495,7 +498,7 @@ mod tests {
         #[tokio::test]
         async fn invalid() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_transaction_count_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
                 .await
@@ -505,7 +508,7 @@ mod tests {
         #[tokio::test]
         async fn unknown() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_transaction_count_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
                 .await
@@ -520,7 +523,7 @@ mod tests {
         #[tokio::test]
         async fn genesis() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_transaction_count_by_number(BlockNumberOrTag::Number(0))
                 .await
@@ -530,7 +533,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_transaction_count_by_number(BlockNumberOrTag::Tag(Tag::Latest))
                 .await
@@ -540,7 +543,7 @@ mod tests {
         #[tokio::test]
         async fn invalid() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .get_block_transaction_count_by_number(BlockNumberOrTag::Number(u64::MAX))
                 .await
@@ -559,7 +562,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .call(
                     Call {
@@ -577,7 +580,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_entry_point() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .call(
                     Call {
@@ -595,7 +598,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_contract_address() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .call(
                     Call {
@@ -613,7 +616,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_call_data() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .call(
                     Call {
@@ -631,7 +634,7 @@ mod tests {
         #[tokio::test]
         async fn uninitialized_contract() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .call(
                     Call {
@@ -649,7 +652,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_block_hash() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .call(
                     Call {
@@ -667,7 +670,7 @@ mod tests {
         #[tokio::test]
         async fn unknown_block_hash() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .call(
                     Call {
@@ -685,7 +688,7 @@ mod tests {
         #[tokio::test]
         async fn latest_invoked_block() {
             let (srv, addr) = build_server();
-            spawn_server(srv).await;
+            let _handle = spawn_server(srv);
             client(addr)
                 .call(
                     Call {
@@ -704,7 +707,7 @@ mod tests {
     #[tokio::test]
     async fn block_number() {
         let (srv, addr) = build_server();
-        spawn_server(srv).await;
+        let _handle = spawn_server(srv);
         client(addr).block_number().await.unwrap();
     }
 
@@ -712,7 +715,7 @@ mod tests {
     #[should_panic]
     async fn chain_id() {
         let (srv, addr) = build_server();
-        spawn_server(srv).await;
+        let _handle = spawn_server(srv);
         client(addr).chain_id().await.unwrap();
     }
 
@@ -720,7 +723,7 @@ mod tests {
     #[should_panic]
     async fn pending_transactions() {
         let (srv, addr) = build_server();
-        spawn_server(srv).await;
+        let _handle = spawn_server(srv);
         client(addr).pending_transactions().await.unwrap();
     }
 
@@ -728,7 +731,7 @@ mod tests {
     #[should_panic]
     async fn protocol_version() {
         let (srv, addr) = build_server();
-        spawn_server(srv).await;
+        let _handle = spawn_server(srv);
         client(addr).protocol_version().await.unwrap();
     }
 
@@ -736,7 +739,7 @@ mod tests {
     #[should_panic]
     async fn syncing() {
         let (srv, addr) = build_server();
-        spawn_server(srv).await;
+        let _handle = spawn_server(srv);
         client(addr).syncing().await.unwrap();
     }
 }
