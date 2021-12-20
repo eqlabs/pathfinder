@@ -7,9 +7,6 @@ async fn main() {
     let config =
         config::Configuration::parse_cmd_line_and_cfg_file().expect("Configuration failed");
 
-    rpc::run_server(config.http_rpc_addr)
-        .await
-        .expect("⚠️ Failed to start HTTP-RPC server");
-
-    println!("🛑 Node stopped.");
+    let _handle = rpc::run_server(config.http_rpc_addr).expect("⚠️ Failed to start HTTP-RPC server");
+    let () = std::future::pending().await;
 }

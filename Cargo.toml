@@ -29,14 +29,8 @@ ff = { git = "https://github.com/eqlabs/ff", branch = "derive_bitvec", default-f
 ] }
 hex = "0.4.3"
 home = "0.5.3"
-# The latest stable revision on master for which jsonrpsee::proc_macros worked fine.
-# Unfortunately 0.3.1 has still some issues with jsonrpsee::proc_macros.
-jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", rev = "94c881b83c8fd5a3facba17a90c5a386467c44eb", features = [
-    "full",
-] }
+jsonrpsee = { version = "0.6.1", features = ["full"] }
 lazy_static = "1.4.0"
-# Explicitly required for jsonrpsee::proc_macros until the next release fixes this.
-log = "0.4.14"
 reqwest = { version = "0.11.4", features = ["json"] }
 rusqlite = { version = "0.26.1", features = ["bundled"] }
 serde = { version = "1.0.130", features = ["derive"] }
