@@ -3,9 +3,13 @@ pub mod rpc_impl;
 pub mod rpc_trait;
 pub mod types;
 
-use crate::rpc::{rpc_impl::RpcImpl, rpc_trait::RpcApiServer};
+use crate::rpc::{
+    rpc_impl::RpcImpl,
+    rpc_trait::RpcApi,
+    types::{relaxed::H256, BlockHashOrTag, BlockNumberOrTag},
+};
 use jsonrpsee::{
-    http_server::{HttpServerBuilder, HttpServerHandle},
+    http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
     types::Error,
 };
 use std::{net::SocketAddr, result::Result};
@@ -13,8 +17,108 @@ use std::{net::SocketAddr, result::Result};
 /// Starts the HTTP-RPC server.
 pub fn run_server(addr: SocketAddr) -> Result<HttpServerHandle, Error> {
     let server = HttpServerBuilder::default().build(addr)?;
-    println!("📡 HTTP-RPC server started on: {}", server.local_addr()?);
-    server.start(RpcImpl::default().into_rpc())
+    let local_addr = server.local_addr()?;
+    let api = RpcImpl::default();
+    let mut module = RpcModule::new(api);
+    module.register_async_method("starknet_getBlockByHash", |params, context| async move {
+        let block_hash = params.one::<BlockHashOrTag>()?;
+        context.get_block_by_hash(block_hash).await
+    })?;
+    module.register_async_method("starknet_getBlockByNumber", |params, context| async move {
+        let block_number = params.one::<BlockNumberOrTag>()?;
+        context.get_block_by_number(block_number).await
+    })?;
+    module.register_async_method(
+        "starknet_getStateUpdateByHash",
+        |params, context| async move {
+            let block_hash = params.one::<BlockHashOrTag>()?;
+            context.get_state_update_by_hash(block_hash).await
+        },
+    )?;
+    module.register_async_method("starknet_getStorageAt", |params, context| async move {
+        let (contract_address, key, block_hash) = params.parse::<(H256, H256, BlockHashOrTag)>()?;
+        context
+            .get_storage_at(contract_address, key, block_hash)
+            .await
+    })?;
+    module.register_async_method(
+        "starknet_getTransactionByHash",
+        |params, context| async move {
+            let transaction_hash = params.one::<H256>()?;
+            context.get_transaction_by_hash(transaction_hash).await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_getTransactionByBlockHashAndIndex",
+        |params, context| async move {
+            let (block_hash, index) = params.parse::<(BlockHashOrTag, u64)>()?;
+            context
+                .get_transaction_by_block_hash_and_index(block_hash, index)
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_getTransactionByBlockNumberAndIndex",
+        |params, context| async move {
+            let (block_number, index) = params.parse::<(BlockNumberOrTag, u64)>()?;
+            context
+                .get_transaction_by_block_number_and_index(block_number, index)
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_getTransactionReceipt",
+        |params, context| async move {
+            let transaction_hash = params.one::<H256>()?;
+            context.get_transaction_receipt(transaction_hash).await
+        },
+    )?;
+    module.register_async_method("starknet_getCode", |params, context| async move {
+        let contract_address = params.one::<H256>()?;
+        context.get_code(contract_address).await
+    })?;
+    module.register_async_method(
+        "starknet_getBlockTransactionCountByHash",
+        |params, context| async move {
+            let block_hash = params.one::<BlockHashOrTag>()?;
+            context
+                .get_block_transaction_count_by_hash(block_hash)
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_getBlockTransactionCountByNumber",
+        |params, context| async move {
+            let block_number = params.one::<BlockNumberOrTag>()?;
+            context
+                .get_block_transaction_count_by_number(block_number)
+                .await
+        },
+    )?;
+    module.register_async_method("starknet_call", |params, context| async move {
+        let mut params = params.sequence();
+        let request = params.next::<crate::sequencer::request::Call>()?;
+        let block_hash = params.next::<BlockHashOrTag>()?;
+        context.call(request, block_hash).await
+    })?;
+    module.register_async_method("starknet_blockNumber", |_, context| async move {
+        context.block_number().await
+    })?;
+    module.register_async_method("starknet_chainId", |_, context| async move {
+        context.chain_id().await
+    })?;
+    module.register_async_method("starknet_pendingTransactions", |_, context| async move {
+        context.pending_transactions().await
+    })?;
+    module.register_async_method("starknet_protocolVersion", |_, context| async move {
+        context.protocol_version().await
+    })?;
+    module.register_async_method("starknet_syncing", |_, context| async move {
+        context.chain_id().await
+    })?;
+    let res = server.start(module);
+    println!("📡 HTTP-RPC server started on: {}", local_addr);
+    res
 }
 
 #[cfg(test)]

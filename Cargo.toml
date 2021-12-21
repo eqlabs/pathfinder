@@ -15,6 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0.44"
+async-trait = "0.1.52"
 bigdecimal = { version = "0.3.0", features = ["serde"] }
 # paritys scale codec locks us here
 bitvec = "0.20.4"

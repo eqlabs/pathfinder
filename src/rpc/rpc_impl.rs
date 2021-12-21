@@ -1,7 +1,7 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
     rpc::{
-        rpc_trait::RpcApiServer,
+        rpc_trait::RpcApi,
         types::{relaxed, BlockHashOrTag, BlockNumberOrTag, Syncing},
     },
     sequencer::{reply, request::Call, Client},
@@ -27,7 +27,8 @@ impl Default for RpcImpl {
 }
 
 #[async_trait]
-impl RpcApiServer for RpcImpl {
+// impl RpcApiServer for RpcImpl {
+impl RpcApi for RpcImpl {
     async fn get_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<reply::Block, Error> {
         // TODO get this from storage
         let block = match block_hash {
