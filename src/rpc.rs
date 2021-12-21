@@ -15,7 +15,7 @@ use jsonrpsee::{
 use std::{net::SocketAddr, result::Result};
 
 /// Starts the HTTP-RPC server.
-pub fn run_server(addr: SocketAddr) -> Result<HttpServerHandle, Error> {
+pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Error> {
     let server = HttpServerBuilder::default().build(addr)?;
     let local_addr = server.local_addr()?;
     let api = RpcImpl::default();
@@ -116,18 +116,20 @@ pub fn run_server(addr: SocketAddr) -> Result<HttpServerHandle, Error> {
     module.register_async_method("starknet_syncing", |_, context| async move {
         context.chain_id().await
     })?;
-    let res = server.start(module);
-    println!("📡 HTTP-RPC server started on: {}", local_addr);
-    res
+    server.start(module).map(|handle| (handle, local_addr))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rpc::{rpc_trait::RpcApiClient, types::relaxed};
+    use crate::{
+        rpc::{run_server, types::relaxed},
+        sequencer::reply::starknet,
+    };
     use jsonrpsee::{
         http_client::{HttpClient, HttpClientBuilder},
-        http_server::{HttpServer, HttpServerBuilder},
+        rpc_params,
+        types::traits::Client,
     };
     use std::{
         net::{Ipv4Addr, SocketAddrV4},
@@ -142,20 +144,6 @@ mod tests {
             .expect("Failed to create HTTP-RPC client")
     }
 
-    /// Helper server build function which allows for actual address retrieval
-    fn build_server() -> (HttpServer, SocketAddr) {
-        let server = HttpServerBuilder::default()
-            .build(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)))
-            .expect("Server build failed");
-        let addr = server.local_addr().expect("Failed to get address");
-        (server, addr)
-    }
-
-    /// Server spawn wrapper
-    fn spawn_server(srv: HttpServer) -> HttpServerHandle {
-        srv.start(RpcImpl::default().into_rpc()).unwrap()
-    }
-
     lazy_static::lazy_static! {
         static ref GENESIS_BLOCK_HASH: H256 = H256::from_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
         static ref INVALID_BLOCK_HASH: H256 = H256::from_str("0x13d8d8bb5716cd3f16e54e3a6ff1a50542461d9022e5f4dec7a4b064041ab8d7").unwrap();
@@ -168,49 +156,53 @@ mod tests {
         static ref INVALID_CONTRACT_ADDR: relaxed::H256 = H256::from_str("0x16fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap().into();
         static ref UNKNOWN_CONTRACT_ADDR: relaxed::H256 = H256::from_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap().into();
         static ref VALID_ENTRY_POINT: relaxed::H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap().into();
+        static ref LOCALHOST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
     }
 
     mod get_block_by_hash {
         use super::*;
-        use crate::rpc::types::{BlockHashOrTag, Tag};
+        use crate::{
+            rpc::types::{BlockHashOrTag, Tag},
+            sequencer::reply::BlockReply,
+        };
 
         #[tokio::test]
         #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
             client(addr)
-                .get_block_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
+                .request::<BlockReply>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn latest() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
             client(addr)
-                .get_block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+                .request::<BlockReply>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn not_found() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH));
             client(addr)
-                .get_block_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
+                .request::<starknet::Error>("starknet_getBlockByHash", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH));
             client(addr)
-                .get_block_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
+                .request::<starknet::Error>("starknet_getBlockByHash", params)
                 .await
                 .unwrap_err();
         }
@@ -218,35 +210,38 @@ mod tests {
 
     mod get_block_by_number {
         use super::*;
-        use crate::rpc::types::{BlockNumberOrTag, Tag};
+        use crate::{
+            rpc::types::{BlockNumberOrTag, Tag},
+            sequencer::reply::BlockReply,
+        };
 
         #[tokio::test]
         async fn genesis() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Number(0));
             client(addr)
-                .get_block_by_number(BlockNumberOrTag::Number(0))
+                .request::<BlockReply>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
-        #[ignore = "currently causes HTTP 504"]
+        // #[ignore = "currently causes HTTP 504"]
         async fn latest() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
             client(addr)
-                .get_block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+                .request::<BlockReply>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_number() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX));
             client(addr)
-                .get_block_by_number(BlockNumberOrTag::Number(u64::MAX))
+                .request::<starknet::Error>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap_err();
         }
@@ -259,10 +254,10 @@ mod tests {
         #[tokio::test]
         #[should_panic]
         async fn genesis() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
             client(addr)
-                .get_state_update_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
+                .request::<()>("starknet_getStateUpdateByHash", params)
                 .await
                 .unwrap();
         }
@@ -270,10 +265,10 @@ mod tests {
         #[tokio::test]
         #[should_panic]
         async fn latest() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
             client(addr)
-                .get_state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+                .request::<()>("starknet_getStateUpdateByHash", params)
                 .await
                 .unwrap();
         }
@@ -291,14 +286,14 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                *INVALID_CONTRACT_ADDR,
+                *VALID_KEY,
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .get_storage_at(
-                    *INVALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
+                .request::<starknet::Error>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
         }
@@ -306,70 +301,70 @@ mod tests {
         #[tokio::test]
         async fn invalid_key() {
             // Invalid key results with storage value of zero
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                *VALID_CONTRACT_ADDR,
+                relaxed::H256::from(H256::zero()),
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .get_storage_at(
-                    *VALID_CONTRACT_ADDR,
-                    H256::zero().into(),
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
+                .request::<relaxed::H256>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn block_not_found() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                *VALID_CONTRACT_ADDR,
+                *VALID_KEY,
+                BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
+            );
             client(addr)
-                .get_storage_at(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
-                )
+                .request::<starknet::Error>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                *VALID_CONTRACT_ADDR,
+                *VALID_KEY,
+                BlockHashOrTag::Hash(H256::zero())
+            );
             client(addr)
-                .get_storage_at(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Hash(H256::zero()),
-                )
+                .request::<starknet::Error>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn contract_block() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                *VALID_CONTRACT_ADDR,
+                *VALID_KEY,
+                BlockHashOrTag::Hash(*CONTRACT_BLOCK)
+            );
             client(addr)
-                .get_storage_at(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Hash(*CONTRACT_BLOCK),
-                )
+                .request::<relaxed::H256>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn latest_block() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                *VALID_CONTRACT_ADDR,
+                *VALID_KEY,
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .get_storage_at(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
+                .request::<relaxed::H256>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
         }
@@ -377,48 +372,52 @@ mod tests {
 
     mod get_transaction_by_hash {
         use super::*;
+        use crate::sequencer::reply::TransactionReply;
 
         #[tokio::test]
         async fn accepted() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(*VALID_TX_HASH);
             client(addr)
-                .get_transaction_by_hash(*VALID_TX_HASH)
+                .request::<TransactionReply>("starknet_getTransactionByHash", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_hash() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(*INVALID_TX_HASH);
             client(addr)
-                .get_transaction_by_hash(*INVALID_TX_HASH)
+                .request::<starknet::Error>("starknet_getTransactionByHash", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn unknown_hash() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(*UNKNOWN_TX_HASH);
             client(addr)
-                .get_transaction_by_hash(*UNKNOWN_TX_HASH)
+                .request::<starknet::Error>("starknet_getTransactionByHash", params)
                 .await
-                .unwrap();
+                .unwrap_err();
         }
     }
 
     mod get_transaction_by_block_hash_and_index {
         use super::*;
-        use crate::rpc::types::{BlockHashOrTag, Tag};
+        use crate::{
+            rpc::types::{BlockHashOrTag, Tag},
+            sequencer::reply::transaction::Transaction,
+        };
 
         #[tokio::test]
         async fn latest() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest), 0u64);
             client(addr)
-                .get_transaction_by_block_hash_and_index(BlockHashOrTag::Tag(Tag::Latest), 0)
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap();
         }
@@ -426,52 +425,40 @@ mod tests {
         #[tokio::test]
         #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH), 0u64);
             client(addr)
-                .get_transaction_by_block_hash_and_index(
-                    BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH),
-                    0,
-                )
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_block() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH), 0u64);
             client(addr)
-                .get_transaction_by_block_hash_and_index(
-                    BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
-                    0,
-                )
+                .request::<starknet::Error>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn unknown_block() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH), 0u64);
             client(addr)
-                .get_transaction_by_block_hash_and_index(
-                    BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
-                    0,
-                )
+                .request::<starknet::Error>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn invalid_transaction_index() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH), u64::MAX);
             client(addr)
-                .get_transaction_by_block_hash_and_index(
-                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
-                    u64::MAX,
-                )
+                .request::<starknet::Error>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap_err();
         }
@@ -479,34 +466,37 @@ mod tests {
 
     mod get_transaction_by_block_number_and_index {
         use super::*;
-        use crate::rpc::types::{BlockNumberOrTag, Tag};
+        use crate::{
+            rpc::types::{BlockNumberOrTag, Tag},
+            sequencer::reply::transaction::Transaction,
+        };
 
         #[tokio::test]
         async fn genesis() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Number(0), 0);
             client(addr)
-                .get_transaction_by_block_number_and_index(BlockNumberOrTag::Number(0), 0)
+                .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn latest() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest), 0);
             client(addr)
-                .get_transaction_by_block_number_and_index(BlockNumberOrTag::Tag(Tag::Latest), 0)
+                .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_block() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX), 0);
             client(addr)
-                .get_transaction_by_block_number_and_index(BlockNumberOrTag::Number(u64::MAX), 0)
+                .request::<starknet::Error>("starknet_getTransactionByBlockNumberAndIndex", params)
                 .await
                 .unwrap_err();
         }
@@ -514,63 +504,71 @@ mod tests {
 
     mod get_transaction_receipt {
         use super::*;
+        use crate::sequencer::reply::TransactionStatus;
 
         #[tokio::test]
         async fn accepted() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(*VALID_TX_HASH);
             client(addr)
-                .get_transaction_receipt(*VALID_TX_HASH)
+                .request::<TransactionStatus>("starknet_getTransactionReceipt", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(*INVALID_TX_HASH);
             client(addr)
-                .get_transaction_receipt(*INVALID_TX_HASH)
+                .request::<starknet::Error>("starknet_getTransactionReceipt", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn unknown() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(*UNKNOWN_TX_HASH);
             client(addr)
-                .get_transaction_receipt(*UNKNOWN_TX_HASH)
+                .request::<starknet::Error>("starknet_getTransactionReceipt", params)
                 .await
-                .unwrap();
+                .unwrap_err();
         }
     }
 
     mod get_code {
         use super::*;
+        use crate::sequencer::reply::Code;
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(*INVALID_CONTRACT_ADDR);
             client(addr)
-                .get_code(*INVALID_CONTRACT_ADDR)
+                .request::<starknet::Error>("starknet_getCode", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn unknown_contract_address() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
-            client(addr).get_code(*UNKNOWN_CONTRACT_ADDR).await.unwrap();
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(*UNKNOWN_CONTRACT_ADDR);
+            client(addr)
+                .request::<starknet::Error>("starknet_getCode", params)
+                .await
+                .unwrap_err();
         }
 
         #[tokio::test]
         async fn success() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
-            client(addr).get_code(*VALID_CONTRACT_ADDR).await.unwrap();
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(*VALID_CONTRACT_ADDR);
+            client(addr)
+                .request::<Code>("starknet_getCode", params)
+                .await
+                .unwrap();
         }
     }
 
@@ -581,40 +579,40 @@ mod tests {
         #[tokio::test]
         #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
             client(addr)
-                .get_block_transaction_count_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
+                .request::<u64>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn latest() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
             client(addr)
-                .get_block_transaction_count_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+                .request::<u64>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH));
             client(addr)
-                .get_block_transaction_count_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
+                .request::<starknet::Error>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn unknown() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH));
             client(addr)
-                .get_block_transaction_count_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
+                .request::<starknet::Error>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap_err();
         }
@@ -626,30 +624,30 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Number(0));
             client(addr)
-                .get_block_transaction_count_by_number(BlockNumberOrTag::Number(0))
+                .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn latest() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
             client(addr)
-                .get_block_transaction_count_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+                .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX));
             client(addr)
-                .get_block_transaction_count_by_number(BlockNumberOrTag::Number(u64::MAX))
+                .request::<starknet::Error>("starknet_getBlockTransactionCountByNumber", params)
                 .await
                 .unwrap_err();
         }
@@ -659,191 +657,207 @@ mod tests {
         use super::*;
         use crate::{
             rpc::types::{BlockHashOrTag, Tag},
-            sequencer::request::Call,
+            sequencer::{reply, request},
         };
         use web3::types::U256;
 
         #[tokio::test]
         async fn latest() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                request::Call {
+                    calldata: vec![U256::from(1234)],
+                    contract_address: **VALID_CONTRACT_ADDR,
+                    entry_point_selector: **VALID_ENTRY_POINT,
+                    signature: vec![],
+                },
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .call(
-                    Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: **VALID_CONTRACT_ADDR,
-                        entry_point_selector: **VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
+                .request::<reply::Call>("starknet_call", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_entry_point() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                request::Call {
+                    calldata: vec![U256::from(1234)],
+                    contract_address: **VALID_CONTRACT_ADDR,
+                    entry_point_selector: H256::zero(),
+                    signature: vec![],
+                },
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .call(
-                    Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: **VALID_CONTRACT_ADDR,
-                        entry_point_selector: H256::zero(),
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
+                .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                request::Call {
+                    calldata: vec![U256::from(1234)],
+                    contract_address: **INVALID_CONTRACT_ADDR,
+                    entry_point_selector: **VALID_ENTRY_POINT,
+                    signature: vec![],
+                },
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .call(
-                    Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: **INVALID_CONTRACT_ADDR,
-                        entry_point_selector: **VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
+                .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn invalid_call_data() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                request::Call {
+                    calldata: vec![],
+                    contract_address: **VALID_CONTRACT_ADDR,
+                    entry_point_selector: **VALID_ENTRY_POINT,
+                    signature: vec![],
+                },
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .call(
-                    Call {
-                        calldata: vec![],
-                        contract_address: **VALID_CONTRACT_ADDR,
-                        entry_point_selector: **VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
+                .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn uninitialized_contract() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                request::Call {
+                    calldata: vec![U256::from(1234)],
+                    contract_address: **VALID_CONTRACT_ADDR,
+                    entry_point_selector: **VALID_ENTRY_POINT,
+                    signature: vec![],
+                },
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .call(
-                    Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: **VALID_CONTRACT_ADDR,
-                        entry_point_selector: **VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH),
-                )
+                .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                request::Call {
+                    calldata: vec![U256::from(1234)],
+                    contract_address: **VALID_CONTRACT_ADDR,
+                    entry_point_selector: **VALID_ENTRY_POINT,
+                    signature: vec![],
+                },
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .call(
-                    Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: **VALID_CONTRACT_ADDR,
-                        entry_point_selector: **VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
-                )
+                .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn unknown_block_hash() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                request::Call {
+                    calldata: vec![U256::from(1234)],
+                    contract_address: **VALID_CONTRACT_ADDR,
+                    entry_point_selector: **VALID_ENTRY_POINT,
+                    signature: vec![],
+                },
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .call(
-                    Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: **VALID_CONTRACT_ADDR,
-                        entry_point_selector: **VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
-                )
+                .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
         }
 
         #[tokio::test]
         async fn latest_invoked_block() {
-            let (srv, addr) = build_server();
-            let _handle = spawn_server(srv);
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                request::Call {
+                    calldata: vec![U256::from(1234)],
+                    contract_address: **VALID_CONTRACT_ADDR,
+                    entry_point_selector: **VALID_ENTRY_POINT,
+                    signature: vec![],
+                },
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
             client(addr)
-                .call(
-                    Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: **VALID_CONTRACT_ADDR,
-                        entry_point_selector: **VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
-                )
+                .request::<starknet::Error>("starknet_call", params)
                 .await
-                .unwrap();
+                .unwrap_err();
         }
     }
 
     #[tokio::test]
     async fn block_number() {
-        let (srv, addr) = build_server();
-        let _handle = spawn_server(srv);
-        client(addr).block_number().await.unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let params = rpc_params!();
+        client(addr)
+            .request::<u64>("starknet_blockNumber", params)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     #[should_panic]
     async fn chain_id() {
-        let (srv, addr) = build_server();
-        let _handle = spawn_server(srv);
-        client(addr).chain_id().await.unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let params = rpc_params!();
+        client(addr)
+            .request::<relaxed::H256>("starknet_chainId", params)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     #[should_panic]
     async fn pending_transactions() {
-        let (srv, addr) = build_server();
-        let _handle = spawn_server(srv);
-        client(addr).pending_transactions().await.unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let params = rpc_params!();
+        client(addr)
+            .request::<()>("starknet_pendingTransactions", params)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     #[should_panic]
     async fn protocol_version() {
-        let (srv, addr) = build_server();
-        let _handle = spawn_server(srv);
-        client(addr).protocol_version().await.unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let params = rpc_params!();
+        client(addr)
+            .request::<relaxed::H256>("starknet_protocolVersion", params)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     #[should_panic]
     async fn syncing() {
-        let (srv, addr) = build_server();
-        let _handle = spawn_server(srv);
-        client(addr).syncing().await.unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let params = rpc_params!();
+        use crate::rpc::types::Syncing;
+        client(addr)
+            .request::<Syncing>("starknet_syncing", params)
+            .await
+            .unwrap();
     }
 }
