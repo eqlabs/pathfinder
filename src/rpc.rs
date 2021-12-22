@@ -1,11 +1,9 @@
 //! StarkNet node JSON-RPC related modules.
-pub mod rpc_impl;
-pub mod rpc_trait;
+pub mod api;
 pub mod types;
 
 use crate::rpc::{
-    rpc_impl::RpcImpl,
-    rpc_trait::RpcApi,
+    api::RpcApi,
     types::{relaxed::H256, BlockHashOrTag, BlockNumberOrTag},
 };
 use jsonrpsee::{
@@ -18,7 +16,7 @@ use std::{net::SocketAddr, result::Result};
 pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Error> {
     let server = HttpServerBuilder::default().build(addr)?;
     let local_addr = server.local_addr()?;
-    let api = RpcImpl::default();
+    let api = RpcApi::default();
     let mut module = RpcModule::new(api);
     module.register_async_method("starknet_getBlockByHash", |params, context| async move {
         let block_hash = params.one::<BlockHashOrTag>()?;
