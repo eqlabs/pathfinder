@@ -1,15 +1,9 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
-    rpc::{
-        rpc_trait::RpcApiServer,
-        types::{relaxed, BlockHashOrTag, BlockNumberOrTag, Syncing},
-    },
+    rpc::types::{relaxed, BlockHashOrTag, BlockNumberOrTag, Syncing},
     sequencer::{reply, request::Call, Client},
 };
-use jsonrpsee::types::{
-    async_trait,
-    error::{CallError, Error},
-};
+use jsonrpsee::types::error::{CallError, Error};
 use reqwest::Url;
 use std::convert::{From, TryInto};
 use web3::types::H256;
@@ -17,18 +11,20 @@ use web3::types::H256;
 /// Implements JSON-RPC endpoints.
 ///
 /// __TODO__ directly calls [sequencer::Client](crate::sequencer::Client) until storage is implemented.
-pub struct RpcImpl(Client);
+pub struct RpcApi(Client);
 
-impl Default for RpcImpl {
+impl Default for RpcApi {
     fn default() -> Self {
         let module = Client::new(Url::parse("https://alpha4.starknet.io/").expect("Valid URL."));
         Self(module)
     }
 }
 
-#[async_trait]
-impl RpcApiServer for RpcImpl {
-    async fn get_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<reply::Block, Error> {
+impl RpcApi {
+    pub async fn get_block_by_hash(
+        &self,
+        block_hash: BlockHashOrTag,
+    ) -> Result<reply::Block, Error> {
         // TODO get this from storage
         let block = match block_hash {
             BlockHashOrTag::Tag(_) => self.0.latest_block().await,
@@ -37,7 +33,7 @@ impl RpcApiServer for RpcImpl {
         Ok(block)
     }
 
-    async fn get_block_by_number(
+    pub async fn get_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<reply::Block, Error> {
@@ -48,7 +44,7 @@ impl RpcApiServer for RpcImpl {
         Ok(block)
     }
 
-    async fn get_state_update_by_hash(&self, block_hash: BlockHashOrTag) -> Result<(), Error> {
+    pub async fn get_state_update_by_hash(&self, block_hash: BlockHashOrTag) -> Result<(), Error> {
         // TODO get this from storage or directly from L1
         match block_hash {
             BlockHashOrTag::Tag(_) => todo!("Implement L1 state diff retrieval."),
@@ -58,7 +54,7 @@ impl RpcApiServer for RpcImpl {
         }
     }
 
-    async fn get_storage_at(
+    pub async fn get_storage_at(
         &self,
         contract_address: relaxed::H256,
         key: relaxed::H256,
@@ -78,7 +74,7 @@ impl RpcApiServer for RpcImpl {
         Ok(H256::from(x).into())
     }
 
-    async fn get_transaction_by_hash(
+    pub async fn get_transaction_by_hash(
         &self,
         transaction_hash: relaxed::H256,
     ) -> Result<reply::Transaction, Error> {
@@ -87,7 +83,7 @@ impl RpcApiServer for RpcImpl {
         Ok(txn)
     }
 
-    async fn get_transaction_by_block_hash_and_index(
+    pub async fn get_transaction_by_block_hash_and_index(
         &self,
         block_hash: BlockHashOrTag,
         index: u64,
@@ -107,7 +103,7 @@ impl RpcApiServer for RpcImpl {
         Ok(block.transactions[index].clone())
     }
 
-    async fn get_transaction_by_block_number_and_index(
+    pub async fn get_transaction_by_block_number_and_index(
         &self,
         block_number: BlockNumberOrTag,
         index: u64,
@@ -127,7 +123,7 @@ impl RpcApiServer for RpcImpl {
         Ok(block.transactions[index].clone())
     }
 
-    async fn get_transaction_receipt(
+    pub async fn get_transaction_receipt(
         &self,
         transaction_hash: relaxed::H256,
     ) -> Result<reply::TransactionStatus, Error> {
@@ -135,12 +131,12 @@ impl RpcApiServer for RpcImpl {
         Ok(status)
     }
 
-    async fn get_code(&self, contract_address: relaxed::H256) -> Result<reply::Code, Error> {
+    pub async fn get_code(&self, contract_address: relaxed::H256) -> Result<reply::Code, Error> {
         let code = self.0.code(*contract_address, None).await?;
         Ok(code)
     }
 
-    async fn get_block_transaction_count_by_hash(
+    pub async fn get_block_transaction_count_by_hash(
         &self,
         block_hash: BlockHashOrTag,
     ) -> Result<u64, Error> {
@@ -157,7 +153,7 @@ impl RpcApiServer for RpcImpl {
         Ok(len)
     }
 
-    async fn get_block_transaction_count_by_number(
+    pub async fn get_block_transaction_count_by_number(
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<u64, Error> {
@@ -174,7 +170,11 @@ impl RpcApiServer for RpcImpl {
         Ok(len)
     }
 
-    async fn call(&self, request: Call, block_hash: BlockHashOrTag) -> Result<reply::Call, Error> {
+    pub async fn call(
+        &self,
+        request: Call,
+        block_hash: BlockHashOrTag,
+    ) -> Result<reply::Call, Error> {
         let block_hash = match block_hash {
             BlockHashOrTag::Tag(_) => None,
             BlockHashOrTag::Hash(hash) => Some(hash),
@@ -183,24 +183,24 @@ impl RpcApiServer for RpcImpl {
         Ok(call)
     }
 
-    async fn block_number(&self) -> Result<u64, Error> {
+    pub async fn block_number(&self) -> Result<u64, Error> {
         let block = self.0.latest_block().await?;
         Ok(block.block_number)
     }
 
-    async fn chain_id(&self) -> Result<relaxed::H256, Error> {
+    pub async fn chain_id(&self) -> Result<relaxed::H256, Error> {
         todo!("Figure out where to take it from.")
     }
 
-    async fn pending_transactions(&self) -> Result<(), Error> {
+    pub async fn pending_transactions(&self) -> Result<(), Error> {
         todo!("Figure out where to take them from.")
     }
 
-    async fn protocol_version(&self) -> Result<relaxed::H256, Error> {
+    pub async fn protocol_version(&self) -> Result<relaxed::H256, Error> {
         todo!("Figure out where to take it from.")
     }
 
-    async fn syncing(&self) -> Result<Syncing, Error> {
+    pub async fn syncing(&self) -> Result<Syncing, Error> {
         todo!("Figure out where to take it from.")
     }
 }
