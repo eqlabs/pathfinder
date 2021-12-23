@@ -166,8 +166,8 @@ pub mod reply {
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StateDiff {
-            storage_diffs: Vec<u32>,
-            contracts: Vec<u32>,
+            storage_diffs: Vec<StorageDiff>,
+            contracts: Vec<Contract>,
         }
 
         /// L2 storage diff.
