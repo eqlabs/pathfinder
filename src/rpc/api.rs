@@ -1,6 +1,10 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
-    rpc::types::{relaxed, reply::Syncing, BlockHashOrTag, BlockNumberOrTag},
+    rpc::types::{
+        relaxed,
+        reply::{ErrorCode, Syncing},
+        BlockHashOrTag, BlockNumberOrTag,
+    },
     sequencer::{reply, request::Call, Client},
 };
 use jsonrpsee::types::error::{CallError, Error};
@@ -49,7 +53,7 @@ impl RpcApi {
                                     .contains("Block ID should be in the range") =>
                         {
                             Error::Call(CallError::Custom {
-                                code: crate::rpc::types::reply::ErrorCode::InalidBlockNumber as i32,
+                                code: ErrorCode::InvalidBlockNumber as i32,
                                 message: "Invalid block number".to_owned(),
                                 data: None,
                             })
@@ -87,7 +91,29 @@ impl RpcApi {
         let storage = self
             .0
             .storage(*contract_address, key.into(), block_hash)
-            .await?;
+            .await
+            .map_err(|e| match e.downcast_ref::<reply::starknet::Error>() {
+                Some(starknet_e) => match starknet_e.code {
+                    // TODO reply::starknet::ErrorCode::UninitializedContract
+                    // probably does not fall into this category
+                    reply::starknet::ErrorCode::OutOfRangeContractAddress => {
+                        Error::Call(CallError::Custom {
+                            code: ErrorCode::ContractNotFound as i32,
+                            message: "Contract not found".to_owned(),
+                            data: None,
+                        })
+                    }
+                    reply::starknet::ErrorCode::OutOfRangeStorageKey => {
+                        Error::Call(CallError::Custom {
+                            code: ErrorCode::InvaldStorageKey as i32,
+                            message: "Invalid storage key".to_owned(),
+                            data: None,
+                        })
+                    }
+                    _ => e.into(),
+                },
+                None => e.into(),
+            })?;
         let x: [u8; 32] = storage.into();
         Ok(H256::from(x).into())
     }

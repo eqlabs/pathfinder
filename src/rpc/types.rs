@@ -134,7 +134,9 @@ pub mod reply {
     /// Starkware specific RPC error codes.
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum ErrorCode {
-        InalidBlockNumber = -32025,
+        ContractNotFound = -32020,
+        InvaldStorageKey = -32023,
+        InvalidBlockNumber = -32025,
     }
 
     /// L2 state update as returned by the RPC API.

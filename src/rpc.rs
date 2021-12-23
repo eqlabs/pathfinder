@@ -243,7 +243,6 @@ mod tests {
                 .request::<starknet::Error>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap_err();
-
             assert_matches!(
                 reply,
                 Error::Request(s) => {
@@ -287,6 +286,7 @@ mod tests {
 
         lazy_static::lazy_static! {
             static ref VALID_KEY: relaxed::H256 = H256::from_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap().into();
+            static ref INVALID_KEY: relaxed::H256 = H256::from_str("0x1206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap().into();
             static ref CONTRACT_BLOCK: H256 = H256::from_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap();
         }
 
@@ -298,15 +298,41 @@ mod tests {
                 *VALID_KEY,
                 BlockHashOrTag::Tag(Tag::Latest)
             );
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32020,"message":"Contract not found"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
         async fn invalid_key() {
-            // Invalid key results with storage value of zero
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                *VALID_CONTRACT_ADDR,
+                *INVALID_KEY,
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
+            let reply = client(addr)
+                .request::<relaxed::H256>("starknet_getStorageAt", params)
+                .await
+                .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32023,"message":"Invalid storage key"},"id":0}"#.to_owned())
+                }
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_key_is_zero() {
+            // Invalid key of value zero results with storage value of zero
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
                 *VALID_CONTRACT_ADDR,
