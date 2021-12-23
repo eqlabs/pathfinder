@@ -32,6 +32,7 @@ pub enum BlockNumberOrTag {
 }
 
 /// Contains hash type wrappers enabling deserialization via `*AsRelaxedHexStr`.
+/// Which allows for skipping leading zeros in serialized hex strings.
 pub mod relaxed {
     use crate::serde::H256AsRelaxedHexStr;
     use serde::{Deserialize, Serialize};
@@ -60,45 +61,49 @@ pub mod relaxed {
     }
 }
 
-/// Describes Starknet's syncing status RPC reply.
-#[serde_as]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum Syncing {
-    False(bool),
-    Status(syncing::Status),
-}
-
-pub mod syncing {
-    use crate::serde::H256AsRelaxedHexStr;
+/// Groups all strictly output types of the RPC API.
+pub mod reply {
     use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
-    use web3::types::H256;
 
-    /// Represents Starknet node syncing status.
-    #[serde_as]
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    /// Describes Starknet's syncing status RPC reply.
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+    #[serde(untagged)]
     #[serde(deny_unknown_fields)]
-    pub struct Status {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        starting_block: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        current_block: H256,
-        highest_block: HighestBlock,
+    pub enum Syncing {
+        False(bool),
+        Status(syncing::Status),
     }
 
-    /// Represents highest block status.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
-    pub enum HighestBlock {
-        #[serde(rename = "PENDING")]
-        Pending,
-        #[serde(rename = "PROVEN")]
-        Proven,
-        #[serde(rename = "ACCEPTED_ONCHAIN")]
-        AcceptedOnChain,
-        #[serde(rename = "REJECTED")]
-        Rejected,
+    pub mod syncing {
+        use crate::serde::H256AsRelaxedHexStr;
+        use serde::{Deserialize, Serialize};
+        use serde_with::serde_as;
+        use web3::types::H256;
+
+        /// Represents Starknet node syncing status.
+        #[serde_as]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct Status {
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            starting_block: H256,
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            current_block: H256,
+            highest_block: BlockStatus,
+        }
+
+        /// Represents highest block status.
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub enum BlockStatus {
+            #[serde(rename = "PENDING")]
+            Pending,
+            #[serde(rename = "PROVEN")]
+            Proven,
+            #[serde(rename = "ACCEPTED_ONCHAIN")]
+            AcceptedOnChain,
+            #[serde(rename = "REJECTED")]
+            Rejected,
+        }
     }
 }

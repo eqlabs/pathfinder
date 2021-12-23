@@ -1,6 +1,6 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
-    rpc::types::{relaxed, BlockHashOrTag, BlockNumberOrTag, Syncing},
+    rpc::types::{relaxed, reply::Syncing, BlockHashOrTag, BlockNumberOrTag},
     sequencer::{reply, request::Call, Client},
 };
 use jsonrpsee::types::error::{CallError, Error};
