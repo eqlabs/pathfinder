@@ -225,7 +225,6 @@ mod tests {
         }
 
         #[tokio::test]
-        // #[ignore = "currently causes HTTP 504"]
         async fn latest() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));

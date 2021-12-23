@@ -229,7 +229,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "currently causes HTTP 504"]
         async fn block_without_block_hash_field() {
             client()
                 .block(
