@@ -124,6 +124,7 @@ mod tests {
         rpc::{run_server, types::relaxed},
         sequencer::reply::starknet,
     };
+    use assert_matches::assert_matches;
     use jsonrpsee::{
         http_client::{HttpClient, HttpClientBuilder},
         rpc_params,
@@ -238,10 +239,17 @@ mod tests {
         async fn invalid_number() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX));
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap_err();
+
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32025,"message":"Invalid block number"},"id":0}"#.to_owned())
+                }
+            );
         }
     }
 
@@ -852,7 +860,7 @@ mod tests {
     async fn syncing() {
         let (_handle, addr) = run_server(*LOCALHOST).unwrap();
         let params = rpc_params!();
-        use crate::rpc::types::Syncing;
+        use crate::rpc::types::reply::Syncing;
         client(addr)
             .request::<Syncing>("starknet_syncing", params)
             .await

@@ -63,7 +63,10 @@ pub mod relaxed {
 
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
+    use crate::serde::H256AsRelaxedHexStr;
     use serde::{Deserialize, Serialize};
+    use serde_with::serde_as;
+    use web3::types::{H160, H256};
 
     /// Describes Starknet's syncing status RPC reply.
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -104,6 +107,89 @@ pub mod reply {
             AcceptedOnChain,
             #[serde(rename = "REJECTED")]
             Rejected,
+        }
+    }
+
+    /// L2 Block as returned by the RPC API.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Block {
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        block_hash: H256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        parent_hash: H256,
+        block_number: u64,
+        status: syncing::BlockStatus,
+        sequencer: H160,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        new_root: H256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        old_root: H256,
+        accepted_time: u64,
+        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+        transactions: Vec<H256>,
+    }
+
+    /// Starkware specific RPC error codes.
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    pub enum ErrorCode {
+        InalidBlockNumber = -32025,
+    }
+
+    /// L2 state update as returned by the RPC API.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct StateUpdate {
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        block_hash: H256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        new_root: H256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        old_root: H256,
+        accepted_time: u64,
+        state_diff: state_update::StateDiff,
+    }
+
+    /// State update related substructures.
+    pub mod state_update {
+        use crate::serde::H256AsRelaxedHexStr;
+        use serde::{Deserialize, Serialize};
+        use serde_with::serde_as;
+        use web3::types::H256;
+
+        /// L2 state diff.
+        #[serde_as]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct StateDiff {
+            storage_diffs: Vec<u32>,
+            contracts: Vec<u32>,
+        }
+
+        /// L2 storage diff.
+        #[serde_as]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct StorageDiff {
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            address: H256,
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            key: H256,
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            value: H256,
+        }
+
+        /// L2 contract data within state diff.
+        #[serde_as]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct Contract {
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            address: H256,
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            contract_hash: H256,
         }
     }
 }

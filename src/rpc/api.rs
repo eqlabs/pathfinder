@@ -38,9 +38,27 @@ impl RpcApi {
         block_number: BlockNumberOrTag,
     ) -> Result<reply::Block, Error> {
         let block = match block_number {
-            BlockNumberOrTag::Tag(_) => self.0.latest_block().await,
-            BlockNumberOrTag::Number(number) => self.0.block_by_number(number).await,
-        }?;
+            BlockNumberOrTag::Tag(_) => self.0.latest_block().await?,
+            BlockNumberOrTag::Number(number) => {
+                self.0.block_by_number(number).await.map_err(|e| {
+                    match e.downcast_ref::<reply::starknet::Error>() {
+                        Some(starknet_e)
+                            if starknet_e.code == reply::starknet::ErrorCode::MalformedRequest
+                                && starknet_e
+                                    .message
+                                    .contains("Block ID should be in the range") =>
+                        {
+                            Error::Call(CallError::Custom {
+                                code: crate::rpc::types::reply::ErrorCode::InalidBlockNumber as i32,
+                                message: "Invalid block number".to_owned(),
+                                data: None,
+                            })
+                        }
+                        Some(_) | None => e.into(),
+                    }
+                })?
+            }
+        };
         Ok(block)
     }
 
