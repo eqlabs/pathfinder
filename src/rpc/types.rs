@@ -95,7 +95,7 @@ pub mod reply {
             highest_block: BlockStatus,
         }
 
-        /// Represents highest block status.
+        /// Represents block status.
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub enum BlockStatus {
@@ -137,6 +137,11 @@ pub mod reply {
         ContractNotFound = -32020,
         InvaldStorageKey = -32023,
         InvalidBlockNumber = -32025,
+    }
+
+    impl ErrorCode {
+        #[allow(non_upper_case_globals)]
+        pub const InvalidTransactionHash: ErrorCode = ErrorCode::InvalidBlockNumber;
     }
 
     /// L2 state update as returned by the RPC API.
@@ -193,5 +198,78 @@ pub mod reply {
             #[serde_as(as = "H256AsRelaxedHexStr")]
             contract_hash: H256,
         }
+    }
+
+    /// L2 transaction as returned by the RPC API.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Transaction {
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        txn_hash: H256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        #[serde(rename = "contractAddress")]
+        contract_address: H256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        entry_point_selector: H256,
+        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+        calldata: Vec<H256>,
+    }
+
+    /// L2 transaction receipt as returned by the RPC API.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct TransactionReceipt {
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        txn_hash: H256,
+        status: TransactionStatus,
+        status_data: String,
+        messages_sent: Vec<transaction_receipt::MessageToL1>,
+        l1_origin_message: transaction_receipt::MessageToL2,
+    }
+
+    /// Transaction receipt related substructures.
+    pub mod transaction_receipt {
+        use crate::serde::{H160AsRelaxedHexStr, H256AsRelaxedHexStr};
+        use serde::{Deserialize, Serialize};
+        use serde_with::serde_as;
+        use web3::types::{H160, H256};
+
+        #[serde_as]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct MessageToL1 {
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            to_address: H256,
+            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+            payload: Vec<H256>,
+        }
+
+        #[serde_as]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct MessageToL2 {
+            #[serde_as(as = "H160AsRelaxedHexStr")]
+            from_address: H160,
+            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+            payload: Vec<H256>,
+        }
+    }
+
+    /// Represents transaction status.
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub enum TransactionStatus {
+        #[serde(rename = "UNKNOWN")]
+        Unknown,
+        #[serde(rename = "RECEIVED")]
+        Received,
+        #[serde(rename = "PENDING")]
+        Pending,
+        #[serde(rename = "ACCEPTED_ONCHAIN")]
+        AcceptedOnChain,
+        #[serde(rename = "REJECTED")]
+        Rejected,
     }
 }
