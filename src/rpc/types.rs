@@ -61,6 +61,26 @@ pub mod relaxed {
     }
 }
 
+/// Groups all strictly input types of the RPC API.
+pub mod request {
+    use crate::serde::H256AsRelaxedHexStr;
+    use serde::{Deserialize, Serialize};
+    use serde_with::serde_as;
+    use web3::types::H256;
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    pub struct Call {
+        #[serde(rename = "contractAddress")]
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        pub contract_address: H256,
+        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+        pub calldata: Vec<H256>,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        pub entry_point_selector: H256,
+    }
+}
+
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     use crate::serde::H256AsRelaxedHexStr;
