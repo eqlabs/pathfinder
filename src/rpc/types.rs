@@ -91,7 +91,7 @@ pub mod reply {
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
-    use web3::types::{H160, H256};
+    use web3::types::{H160, H256, U256};
 
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -108,7 +108,7 @@ pub mod reply {
     }
 
     impl From<SeqStatus> for BlockStatus {
-        fn from(status: seq::block::Status) -> Self {
+        fn from(status: SeqStatus) -> Self {
             match status {
                 // TODO klis: this is a wild guess right now
                 SeqStatus::AcceptedOnL1 => BlockStatus::AcceptedOnChain,
@@ -278,7 +278,7 @@ pub mod reply {
 
     /// L2 transaction as returned by the RPC API.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Transaction {
         #[serde_as(as = "H256AsRelaxedHexStr")]
@@ -290,6 +290,29 @@ pub mod reply {
         entry_point_selector: H256,
         #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
         calldata: Vec<H256>,
+    }
+
+    impl From<seq::Transaction> for Transaction {
+        fn from(txn: seq::Transaction) -> Self {
+            match txn.transaction {
+                Some(txn) => Self {
+                    txn_hash: txn.transaction_hash,
+                    contract_address: txn.contract_address,
+                    entry_point_selector: txn.entry_point_selector.unwrap_or_default(),
+                    calldata: match txn.calldata {
+                        Some(cd) => cd
+                            .iter()
+                            .map(|d| {
+                                let x: [u8; 32] = (*d).into();
+                                x.into()
+                            })
+                            .collect(),
+                        None => vec![],
+                    },
+                },
+                None => Self::default(),
+            }
+        }
     }
 
     /// L2 transaction receipt as returned by the RPC API.
@@ -305,11 +328,35 @@ pub mod reply {
         l1_origin_message: transaction_receipt::MessageToL2,
     }
 
+    impl From<seq::transaction::Receipt> for TransactionReceipt {
+        fn from(receipt: seq::transaction::Receipt) -> Self {
+            Self {
+                txn_hash: receipt.transaction_hash,
+                status: receipt.status.into(),
+                // TODO
+                status_data: String::new(),
+                messages_sent: receipt
+                    .l2_to_l1_messages
+                    .iter()
+                    .map(|m| transaction_receipt::MessageToL1::from(m))
+                    .collect(),
+                l1_origin_message: match receipt.l1_to_l2_consumed_message {
+                    Some(m) => m.into(),
+                    None => transaction_receipt::MessageToL2::default(),
+                },
+            }
+        }
+    }
+
     /// Transaction receipt related substructures.
     pub mod transaction_receipt {
-        use crate::serde::{H160AsRelaxedHexStr, H256AsRelaxedHexStr};
+        use crate::{
+            sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message},
+            serde::{H160AsRelaxedHexStr, H256AsRelaxedHexStr},
+        };
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
+        use std::convert::From;
         use web3::types::{H160, H256};
 
         #[serde_as]
@@ -322,14 +369,46 @@ pub mod reply {
             payload: Vec<H256>,
         }
 
+        impl From<&L2ToL1Message> for MessageToL1 {
+            fn from(msg: &L2ToL1Message) -> Self {
+                Self {
+                    to_address: msg.to_address.into(),
+                    payload: msg
+                        .payload
+                        .iter()
+                        .map(|p| {
+                            let x: [u8; 32] = (*p).into();
+                            x.into()
+                        })
+                        .collect(),
+                }
+            }
+        }
+
         #[serde_as]
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct MessageToL2 {
             #[serde_as(as = "H160AsRelaxedHexStr")]
             from_address: H160,
             #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
             payload: Vec<H256>,
+        }
+
+        impl From<L1ToL2Message> for MessageToL2 {
+            fn from(msg: L1ToL2Message) -> Self {
+                Self {
+                    from_address: msg.from_address,
+                    payload: msg
+                        .payload
+                        .iter()
+                        .map(|p| {
+                            let x: [u8; 32] = (*p).into();
+                            x.into()
+                        })
+                        .collect(),
+                }
+            }
         }
     }
 
@@ -347,6 +426,21 @@ pub mod reply {
         AcceptedOnChain,
         #[serde(rename = "REJECTED")]
         Rejected,
+    }
+
+    impl From<seq::transaction::Status> for TransactionStatus {
+        fn from(status: SeqStatus) -> Self {
+            match status {
+                // TODO klis: this is a wild guess right now
+                SeqStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnChain,
+                SeqStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnChain,
+                SeqStatus::NotReceived => TransactionStatus::Unknown,
+                SeqStatus::Pending => TransactionStatus::Pending,
+                SeqStatus::Received => TransactionStatus::Received,
+                SeqStatus::Rejected => TransactionStatus::Rejected,
+                SeqStatus::Reverted => TransactionStatus::Unknown,
+            }
+        }
     }
 
     /// Describes Starknet's syncing status RPC reply.
