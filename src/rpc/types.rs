@@ -90,46 +90,18 @@ pub mod reply {
     use std::convert::From;
     use web3::types::{H160, H256};
 
-    /// Describes Starknet's syncing status RPC reply.
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-    #[serde(untagged)]
+    /// L2 Block status as returned by the RPC API.
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
-    pub enum Syncing {
-        False(bool),
-        Status(syncing::Status),
-    }
-
-    pub mod syncing {
-        use crate::serde::H256AsRelaxedHexStr;
-        use serde::{Deserialize, Serialize};
-        use serde_with::serde_as;
-        use web3::types::H256;
-
-        /// Represents Starknet node syncing status.
-        #[serde_as]
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
-        #[serde(deny_unknown_fields)]
-        pub struct Status {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            starting_block: H256,
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            current_block: H256,
-            highest_block: BlockStatus,
-        }
-
-        /// Represents block status.
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
-        #[serde(deny_unknown_fields)]
-        pub enum BlockStatus {
-            #[serde(rename = "PENDING")]
-            Pending,
-            #[serde(rename = "PROVEN")]
-            Proven,
-            #[serde(rename = "ACCEPTED_ONCHAIN")]
-            AcceptedOnChain,
-            #[serde(rename = "REJECTED")]
-            Rejected,
-        }
+    pub enum BlockStatus {
+        #[serde(rename = "PENDING")]
+        Pending,
+        #[serde(rename = "PROVEN")]
+        Proven,
+        #[serde(rename = "ACCEPTED_ONCHAIN")]
+        AcceptedOnChain,
+        #[serde(rename = "REJECTED")]
+        Rejected,
     }
 
     /// L2 Block as returned by the RPC API.
@@ -142,7 +114,7 @@ pub mod reply {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         parent_hash: H256,
         block_number: u64,
-        status: syncing::BlockStatus,
+        status: BlockStatus,
         sequencer: H160,
         #[serde_as(as = "H256AsRelaxedHexStr")]
         new_root: H256,
@@ -334,5 +306,34 @@ pub mod reply {
         AcceptedOnChain,
         #[serde(rename = "REJECTED")]
         Rejected,
+    }
+
+    /// Describes Starknet's syncing status RPC reply.
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+    #[serde(untagged)]
+    #[serde(deny_unknown_fields)]
+    pub enum Syncing {
+        False(bool),
+        Status(syncing::Status),
+    }
+
+    pub mod syncing {
+        use super::BlockStatus;
+        use crate::serde::H256AsRelaxedHexStr;
+        use serde::{Deserialize, Serialize};
+        use serde_with::serde_as;
+        use web3::types::H256;
+
+        /// Represents Starknet node syncing status.
+        #[serde_as]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct Status {
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            starting_block: H256,
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            current_block: H256,
+            highest_block: BlockStatus,
+        }
     }
 }
