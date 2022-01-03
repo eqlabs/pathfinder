@@ -64,8 +64,10 @@ pub mod relaxed {
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     use crate::serde::H256AsRelaxedHexStr;
+    use jsonrpsee::types::{CallError, Error};
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
+    use std::convert::From;
     use web3::types::{H160, H256};
 
     /// Describes Starknet's syncing status RPC reply.
@@ -134,14 +136,55 @@ pub mod reply {
     /// Starkware specific RPC error codes.
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum ErrorCode {
+        // "Failed to write transaction"
+        FailedToReceiveTransaction = -32001,
+        // "Contract not found"
         ContractNotFound = -32020,
-        InvaldStorageKey = -32023,
+        // "Invalid message selector"
+        InvalidMessageSelector = -32021,
+        // "Invalid call data"
+        InvalidCallData = -32022,
+        // "Invalid storage key"
+        InvalidStorageKey = -32023,
+        // "Invalid block hash"
+        InvalidBlockHash = -32024,
+        // "Invalid block number"
         InvalidBlockNumber = -32025,
+        // "Contract error"
+        ContractError = -32040,
     }
 
     impl ErrorCode {
+        // "Invalid transaction hash"
+        // TODO jsonrpsee::types::CallError
         #[allow(non_upper_case_globals)]
         pub const InvalidTransactionHash: ErrorCode = ErrorCode::InvalidBlockNumber;
+    }
+
+    impl std::string::ToString for ErrorCode {
+        fn to_string(&self) -> String {
+            match self {
+                ErrorCode::FailedToReceiveTransaction => "Failed to write transaction",
+                ErrorCode::ContractNotFound => "Contract not found",
+                ErrorCode::InvalidMessageSelector => "Invalid message selector",
+                ErrorCode::InvalidCallData => "Invalid call data",
+                ErrorCode::InvalidStorageKey => "Invalid storage key",
+                ErrorCode::InvalidBlockHash => "Invalid block hash",
+                ErrorCode::InvalidBlockNumber => "Invalid block number",
+                ErrorCode::ContractError => "Contract error",
+            }
+            .to_owned()
+        }
+    }
+
+    impl From<ErrorCode> for Error {
+        fn from(ecode: ErrorCode) -> Self {
+            Error::Call(CallError::Custom {
+                code: ecode as i32,
+                message: ecode.to_string(),
+                data: None,
+            })
+        }
     }
 
     /// L2 state update as returned by the RPC API.

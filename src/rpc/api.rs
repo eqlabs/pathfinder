@@ -2,7 +2,7 @@
 use crate::{
     rpc::types::{
         relaxed,
-        reply::{ErrorCode, Syncing},
+        reply::{ErrorCode, Syncing, Transaction},
         BlockHashOrTag, BlockNumberOrTag,
     },
     sequencer::{reply, request::Call, Client},
@@ -44,7 +44,7 @@ impl RpcApi {
         let block = match block_number {
             BlockNumberOrTag::Tag(_) => self.0.latest_block().await?,
             BlockNumberOrTag::Number(number) => {
-                self.0.block_by_number(number).await.map_err(|e| {
+                self.0.block_by_number(number).await.map_err(|e| -> Error {
                     match e.downcast_ref::<reply::starknet::Error>() {
                         Some(starknet_e)
                             if starknet_e.code == reply::starknet::ErrorCode::MalformedRequest
@@ -52,11 +52,7 @@ impl RpcApi {
                                     .message
                                     .contains("Block ID should be in the range") =>
                         {
-                            Error::Call(CallError::Custom {
-                                code: ErrorCode::InvalidBlockNumber as i32,
-                                message: "Invalid block number".to_owned(),
-                                data: None,
-                            })
+                            ErrorCode::InvalidBlockNumber.into()
                         }
                         Some(_) | None => e.into(),
                     }
@@ -92,27 +88,21 @@ impl RpcApi {
             .0
             .storage(*contract_address, key.into(), block_hash)
             .await
-            .map_err(|e| match e.downcast_ref::<reply::starknet::Error>() {
-                Some(starknet_e) => match starknet_e.code {
-                    // TODO reply::starknet::ErrorCode::UninitializedContract
-                    // probably does not fall into this category
-                    reply::starknet::ErrorCode::OutOfRangeContractAddress => {
-                        Error::Call(CallError::Custom {
-                            code: ErrorCode::ContractNotFound as i32,
-                            message: "Contract not found".to_owned(),
-                            data: None,
-                        })
-                    }
-                    reply::starknet::ErrorCode::OutOfRangeStorageKey => {
-                        Error::Call(CallError::Custom {
-                            code: ErrorCode::InvaldStorageKey as i32,
-                            message: "Invalid storage key".to_owned(),
-                            data: None,
-                        })
-                    }
-                    _ => e.into(),
-                },
-                None => e.into(),
+            .map_err(|e| -> Error {
+                match e.downcast_ref::<reply::starknet::Error>() {
+                    Some(starknet_e) => match starknet_e.code {
+                        // TODO reply::starknet::ErrorCode::UninitializedContract
+                        // probably does not fall into this category
+                        reply::starknet::ErrorCode::OutOfRangeContractAddress => {
+                            ErrorCode::ContractNotFound.into()
+                        }
+                        reply::starknet::ErrorCode::OutOfRangeStorageKey => {
+                            ErrorCode::InvalidStorageKey.into()
+                        }
+                        _ => e.into(),
+                    },
+                    None => e.into(),
+                }
             })?;
         let x: [u8; 32] = storage.into();
         Ok(H256::from(x).into())
@@ -236,7 +226,7 @@ impl RpcApi {
         todo!("Figure out where to take it from.")
     }
 
-    pub async fn pending_transactions(&self) -> Result<(), Error> {
+    pub async fn pending_transactions(&self) -> Result<Vec<Transaction>, Error> {
         todo!("Figure out where to take them from.")
     }
 
