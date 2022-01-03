@@ -83,7 +83,10 @@ pub mod request {
 
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
-    use crate::serde::H256AsRelaxedHexStr;
+    use crate::{
+        sequencer::reply as seq, sequencer::reply::block::Status as SeqStatus,
+        serde::H256AsRelaxedHexStr,
+    };
     use jsonrpsee::types::{CallError, Error};
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -102,6 +105,21 @@ pub mod reply {
         AcceptedOnChain,
         #[serde(rename = "REJECTED")]
         Rejected,
+    }
+
+    impl From<SeqStatus> for BlockStatus {
+        fn from(status: seq::block::Status) -> Self {
+            match status {
+                // TODO klis: this is a wild guess right now
+                SeqStatus::AcceptedOnL1 => BlockStatus::AcceptedOnChain,
+                SeqStatus::AcceptedOnL2 => BlockStatus::Proven,
+                SeqStatus::NotReceived => BlockStatus::Rejected,
+                SeqStatus::Pending => BlockStatus::Pending,
+                SeqStatus::Received => BlockStatus::Pending,
+                SeqStatus::Rejected => BlockStatus::Rejected,
+                SeqStatus::Reverted => BlockStatus::Rejected,
+            }
+        }
     }
 
     /// L2 Block as returned by the RPC API.
@@ -123,6 +141,29 @@ pub mod reply {
         accepted_time: u64,
         #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
         transactions: Vec<H256>,
+    }
+
+    impl From<seq::Block> for Block {
+        fn from(block: seq::Block) -> Self {
+            Self {
+                block_hash: block.block_hash.unwrap_or_default(),
+                parent_hash: block.parent_block_hash,
+                block_number: block.block_number,
+                status: block.status.into(),
+                // TODO should be sequencer identity
+                sequencer: H160::zero(),
+                // TODO check if state_root is the new root
+                new_root: block.state_root,
+                // TODO where to get it from
+                old_root: H256::zero(),
+                accepted_time: block.timestamp,
+                transactions: block
+                    .transactions
+                    .iter()
+                    .map(|t| t.transaction_hash)
+                    .collect(),
+            }
+        }
     }
 
     /// Starkware specific RPC error codes.
