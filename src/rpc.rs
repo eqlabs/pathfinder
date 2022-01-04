@@ -162,10 +162,7 @@ mod tests {
 
     mod get_block_by_hash {
         use super::*;
-        use crate::{
-            rpc::types::{BlockHashOrTag, Tag},
-            sequencer::reply::BlockReply,
-        };
+        use crate::rpc::types::{reply::Block, BlockHashOrTag, Tag};
 
         #[tokio::test]
         #[ignore = "currently causes HTTP 504"]
@@ -173,7 +170,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
             client(addr)
-                .request::<BlockReply>("starknet_getBlockByHash", params)
+                .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
         }
@@ -183,7 +180,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
             client(addr)
-                .request::<BlockReply>("starknet_getBlockByHash", params)
+                .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
         }
@@ -193,7 +190,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH));
             let reply = client(addr)
-                .request::<BlockReply>("starknet_getBlockByHash", params)
+                .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -209,7 +206,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH));
             let reply = client(addr)
-                .request::<BlockReply>("starknet_getBlockByHash", params)
+                .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -223,17 +220,14 @@ mod tests {
 
     mod get_block_by_number {
         use super::*;
-        use crate::{
-            rpc::types::{BlockNumberOrTag, Tag},
-            sequencer::reply::BlockReply,
-        };
+        use crate::rpc::types::{reply::Block, BlockNumberOrTag, Tag};
 
         #[tokio::test]
         async fn genesis() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Number(0));
             client(addr)
-                .request::<BlockReply>("starknet_getBlockByNumber", params)
+                .request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
         }
@@ -243,7 +237,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
             client(addr)
-                .request::<BlockReply>("starknet_getBlockByNumber", params)
+                .request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
         }
@@ -253,7 +247,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX));
             let reply = client(addr)
-                .request::<BlockReply>("starknet_getBlockByNumber", params)
+                .request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap_err();
             assert_matches!(

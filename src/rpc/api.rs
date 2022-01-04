@@ -2,7 +2,7 @@
 use crate::{
     rpc::types::{
         relaxed,
-        reply::{Code, ErrorCode, Syncing, Transaction},
+        reply::{Block, Code, ErrorCode, Syncing, Transaction},
         BlockHashOrTag, BlockNumberOrTag,
     },
     sequencer::{
@@ -49,7 +49,7 @@ impl Default for RpcApi {
 }
 
 impl RpcApi {
-    pub async fn get_block_by_hash(
+    async fn get_raw_block_by_hash(
         &self,
         block_hash: BlockHashOrTag,
     ) -> Result<reply::Block, Error> {
@@ -71,7 +71,12 @@ impl RpcApi {
         Ok(block)
     }
 
-    pub async fn get_block_by_number(
+    pub async fn get_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<Block, Error> {
+        let block = self.get_raw_block_by_hash(block_hash).await?;
+        Ok(block.into())
+    }
+
+    async fn get_raw_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<reply::Block, Error> {
@@ -94,6 +99,14 @@ impl RpcApi {
             }?,
         };
         Ok(block)
+    }
+
+    pub async fn get_block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<Block, Error> {
+        let block = self.get_raw_block_by_number(block_number).await?;
+        Ok(block.into())
     }
 
     pub async fn get_state_update_by_hash(&self, block_hash: BlockHashOrTag) -> Result<(), Error> {
@@ -170,7 +183,7 @@ impl RpcApi {
         index: u64,
     ) -> Result<Transaction, Error> {
         // TODO get this from storage
-        let block = self.get_block_by_hash(block_hash).await?;
+        let block = self.get_raw_block_by_hash(block_hash).await?;
         let index: usize = index
             .try_into()
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
@@ -187,7 +200,7 @@ impl RpcApi {
         index: u64,
     ) -> Result<Transaction, Error> {
         // TODO get this from storage
-        let block = self.get_block_by_number(block_number).await?;
+        let block = self.get_raw_block_by_number(block_number).await?;
         let index: usize = index
             .try_into()
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
@@ -232,7 +245,7 @@ impl RpcApi {
         block_hash: BlockHashOrTag,
     ) -> Result<u64, Error> {
         // TODO get this from storage
-        let block = self.get_block_by_hash(block_hash).await?;
+        let block = self.get_raw_block_by_hash(block_hash).await?;
         let len: u64 = block
             .transactions
             .len()
@@ -246,7 +259,7 @@ impl RpcApi {
         block_number: BlockNumberOrTag,
     ) -> Result<u64, Error> {
         // TODO get this from storage
-        let block = self.get_block_by_number(block_number).await?;
+        let block = self.get_raw_block_by_number(block_number).await?;
         let len: u64 = block
             .transactions
             .len()
