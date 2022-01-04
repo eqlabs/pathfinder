@@ -53,7 +53,7 @@ where
     L: MetaLog + PartialEq + std::fmt::Debug,
     R: MetaLog + PartialEq + std::fmt::Debug,
 {
-    /// Creates a [LogFetcher] which fetches logs starting from `last_known`'s origin on L1.
+    /// Creates a [LogFetcher](super::forward::LogFetcher) which fetches logs starting from `last_known`'s origin on L1.
     ///
     /// In other words, the first log returned will be the one *before* `last_known`.
     pub fn new(last_known: EitherMetaLog<L, R>) -> Self {

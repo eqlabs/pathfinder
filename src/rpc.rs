@@ -120,10 +120,7 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        rpc::{run_server, types::relaxed},
-        sequencer::reply::starknet,
-    };
+    use crate::rpc::{run_server, types::relaxed};
     use assert_matches::assert_matches;
     use jsonrpsee::{
         http_client::{HttpClient, HttpClientBuilder},

@@ -62,7 +62,7 @@ pub mod relaxed {
 
     impl From<crate::sequencer::reply::Call> for Vec<H256> {
         fn from(call: crate::sequencer::reply::Call) -> Self {
-            call.result.into_iter().map(|x| H256::from(x)).collect()
+            call.result.into_iter().map(H256::from).collect()
         }
     }
 }
@@ -366,7 +366,7 @@ pub mod reply {
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .iter()
-                    .map(|m| transaction_receipt::MessageToL1::from(m))
+                    .map(transaction_receipt::MessageToL1::from)
                     .collect(),
                 l1_origin_message: match receipt.l1_to_l2_consumed_message {
                     Some(m) => m.into(),
