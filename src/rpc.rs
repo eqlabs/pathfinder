@@ -365,10 +365,16 @@ mod tests {
                 *VALID_KEY,
                 BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
             );
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
@@ -377,12 +383,18 @@ mod tests {
             let params = rpc_params!(
                 *VALID_CONTRACT_ADDR,
                 *VALID_KEY,
-                BlockHashOrTag::Hash(H256::zero())
+                BlockHashOrTag::Hash(*INVALID_BLOCK_HASH)
             );
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]

@@ -110,6 +110,9 @@ impl RpcApi {
                             ErrorCode::ContractNotFound.into()
                         }
                         SeqErrorCode::OutOfRangeStorageKey => ErrorCode::InvalidStorageKey.into(),
+                        SeqErrorCode::OutOfRangeBlockHash | SeqErrorCode::BlockNotFound => {
+                            ErrorCode::InvalidBlockHash.into()
+                        }
                         _ => e.into(),
                     },
                     None => e.into(),
