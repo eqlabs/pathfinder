@@ -193,7 +193,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH));
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getBlockByHash", params)
+                .request::<BlockReply>("starknet_getBlockByHash", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -209,7 +209,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH));
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getBlockByHash", params)
+                .request::<BlockReply>("starknet_getBlockByHash", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -253,7 +253,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX));
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getBlockByNumber", params)
+                .request::<BlockReply>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -311,7 +311,7 @@ mod tests {
                 BlockHashOrTag::Tag(Tag::Latest)
             );
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getStorageAt", params)
+                .request::<relaxed::H256>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -366,7 +366,7 @@ mod tests {
                 BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
             );
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getStorageAt", params)
+                .request::<relaxed::H256>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -386,7 +386,7 @@ mod tests {
                 BlockHashOrTag::Hash(*INVALID_BLOCK_HASH)
             );
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getStorageAt", params)
+                .request::<relaxed::H256>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -428,14 +428,14 @@ mod tests {
 
     mod get_transaction_by_hash {
         use super::*;
-        use crate::sequencer::reply::TransactionReply;
+        use crate::rpc::types::reply::Transaction;
 
         #[tokio::test]
         async fn accepted() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*VALID_TX_HASH);
             client(addr)
-                .request::<TransactionReply>("starknet_getTransactionByHash", params)
+                .request::<Transaction>("starknet_getTransactionByHash", params)
                 .await
                 .unwrap();
         }
@@ -444,29 +444,38 @@ mod tests {
         async fn invalid_hash() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*INVALID_TX_HASH);
-            client(addr)
-                .request::<starknet::Error>("starknet_getTransactionByHash", params)
+            let reply = client(addr)
+                .request::<Transaction>("starknet_getTransactionByHash", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32025,"message":"Invalid transaction hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
         async fn unknown_hash() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*UNKNOWN_TX_HASH);
-            client(addr)
-                .request::<starknet::Error>("starknet_getTransactionByHash", params)
+            let reply = client(addr)
+                .request::<Transaction>("starknet_getTransactionByHash", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32025,"message":"Invalid transaction hash"},"id":0}"#.to_owned())
+                }
+            );
         }
     }
 
     mod get_transaction_by_block_hash_and_index {
         use super::*;
-        use crate::{
-            rpc::types::{BlockHashOrTag, Tag},
-            sequencer::reply::transaction::Transaction,
-        };
+        use crate::rpc::types::{reply::Transaction, BlockHashOrTag, Tag};
 
         #[tokio::test]
         async fn latest() {
@@ -493,20 +502,32 @@ mod tests {
         async fn invalid_block() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH), 0u64);
-            client(addr)
-                .request::<starknet::Error>("starknet_getTransactionByBlockHashAndIndex", params)
+            let reply = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
         async fn unknown_block() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH), 0u64);
-            client(addr)
-                .request::<starknet::Error>("starknet_getTransactionByBlockHashAndIndex", params)
+            let reply = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
@@ -514,7 +535,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*DEPLOY_CONTRACT_BLOCK_HASH), u64::MAX);
             client(addr)
-                .request::<starknet::Error>("starknet_getTransactionByBlockHashAndIndex", params)
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap_err();
         }
@@ -522,10 +543,7 @@ mod tests {
 
     mod get_transaction_by_block_number_and_index {
         use super::*;
-        use crate::{
-            rpc::types::{BlockNumberOrTag, Tag},
-            sequencer::reply::transaction::Transaction,
-        };
+        use crate::rpc::types::{reply::Transaction, BlockNumberOrTag, Tag};
 
         #[tokio::test]
         async fn genesis() {
@@ -551,8 +569,24 @@ mod tests {
         async fn invalid_block() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX), 0);
+            let reply = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
+                .await
+                .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32025,"message":"Invalid block number"},"id":0}"#.to_owned())
+                }
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_transaction_index() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest), u64::MAX);
             client(addr)
-                .request::<starknet::Error>("starknet_getTransactionByBlockNumberAndIndex", params)
+                .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
                 .await
                 .unwrap_err();
         }
@@ -577,7 +611,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*INVALID_TX_HASH);
             client(addr)
-                .request::<starknet::Error>("starknet_getTransactionReceipt", params)
+                .request::<TransactionStatus>("starknet_getTransactionReceipt", params)
                 .await
                 .unwrap_err();
         }
@@ -587,9 +621,9 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*UNKNOWN_TX_HASH);
             client(addr)
-                .request::<starknet::Error>("starknet_getTransactionReceipt", params)
+                .request::<TransactionStatus>("starknet_getTransactionReceipt", params)
                 .await
-                .unwrap_err();
+                .unwrap();
         }
     }
 
@@ -602,7 +636,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getCode", params)
+                .request::<Code>("starknet_getCode", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -665,7 +699,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH));
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getBlockTransactionCountByHash", params)
+                .request::<u64>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -681,7 +715,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH));
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getBlockTransactionCountByHash", params)
+                .request::<u64>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -722,7 +756,7 @@ mod tests {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX));
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_getBlockTransactionCountByNumber", params)
+                .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -773,7 +807,7 @@ mod tests {
                 BlockHashOrTag::Tag(Tag::Latest)
             );
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_call", params)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -797,7 +831,7 @@ mod tests {
                 BlockHashOrTag::Tag(Tag::Latest)
             );
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_call", params)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -821,7 +855,7 @@ mod tests {
                 BlockHashOrTag::Tag(Tag::Latest)
             );
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_call", params)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -845,7 +879,7 @@ mod tests {
                 BlockHashOrTag::Hash(*PRE_DEPLOY_CONTRACT_BLOCK_HASH)
             );
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_call", params)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -869,7 +903,7 @@ mod tests {
                 BlockHashOrTag::Hash(*INVALID_BLOCK_HASH)
             );
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_call", params)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -893,7 +927,7 @@ mod tests {
                 BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
             );
             let reply = client(addr)
-                .request::<starknet::Error>("starknet_call", params)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(

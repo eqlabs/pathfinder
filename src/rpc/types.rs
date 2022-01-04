@@ -89,6 +89,8 @@ pub mod request {
 
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
+    // At the moment both reply types are the same for get_code, hence the re-export
+    pub use crate::sequencer::reply::Code;
     use crate::{
         sequencer::reply as seq, sequencer::reply::block::Status as SeqStatus,
         serde::H256AsRelaxedHexStr,
@@ -97,7 +99,7 @@ pub mod reply {
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
-    use web3::types::{H160, H256, U256};
+    use web3::types::{H160, H256};
 
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -317,6 +319,26 @@ pub mod reply {
                     },
                 },
                 None => Self::default(),
+            }
+        }
+    }
+
+    impl From<seq::transaction::Transaction> for Transaction {
+        fn from(txn: seq::transaction::Transaction) -> Self {
+            Self {
+                txn_hash: txn.transaction_hash,
+                contract_address: txn.contract_address,
+                entry_point_selector: txn.entry_point_selector.unwrap_or_default(),
+                calldata: match txn.calldata {
+                    Some(cd) => cd
+                        .iter()
+                        .map(|d| {
+                            let x: [u8; 32] = (*d).into();
+                            x.into()
+                        })
+                        .collect(),
+                    None => vec![],
+                },
             }
         }
     }

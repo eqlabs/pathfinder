@@ -2,7 +2,7 @@
 use crate::{
     rpc::types::{
         relaxed,
-        reply::{ErrorCode, Syncing, Transaction},
+        reply::{Code, ErrorCode, Syncing, Transaction},
         BlockHashOrTag, BlockNumberOrTag,
     },
     sequencer::{
@@ -14,6 +14,27 @@ use jsonrpsee::types::error::{CallError, Error};
 use reqwest::Url;
 use std::convert::{From, TryInto};
 use web3::types::H256;
+
+/// Helper function for creating invalid transaction hash call error.
+///
+/// Unfortunately invalid transaction hash has the same error code as
+/// invalid block hash, so `ErrorCode::InvalidTransactionHash.into()`
+/// cannot be used.
+fn invalid_transaction_hash() -> Error {
+    Error::Call(CallError::Custom {
+        code: ErrorCode::InvalidTransactionHash as i32,
+        message: "Invalid transaction hash".to_owned(),
+        data: None,
+    })
+}
+
+/// Helper function.
+fn transaction_index_not_found(index: usize) -> Error {
+    Error::Call(CallError::InvalidParams(anyhow::anyhow!(
+        "transaction index {} not found",
+        index
+    )))
+}
 
 /// Implements JSON-RPC endpoints.
 ///
@@ -104,11 +125,8 @@ impl RpcApi {
             .map_err(|e| -> Error {
                 match e.downcast_ref::<SeqError>() {
                     Some(starknet_e) => match starknet_e.code {
-                        // TODO SeqErrorCode::UninitializedContract
-                        // probably does not fall into this category
-                        SeqErrorCode::OutOfRangeContractAddress => {
-                            ErrorCode::ContractNotFound.into()
-                        }
+                        SeqErrorCode::OutOfRangeContractAddress
+                        | SeqErrorCode::UninitializedContract => ErrorCode::ContractNotFound.into(),
                         SeqErrorCode::OutOfRangeStorageKey => ErrorCode::InvalidStorageKey.into(),
                         SeqErrorCode::OutOfRangeBlockHash | SeqErrorCode::BlockNotFound => {
                             ErrorCode::InvalidBlockHash.into()
@@ -125,50 +143,59 @@ impl RpcApi {
     pub async fn get_transaction_by_hash(
         &self,
         transaction_hash: relaxed::H256,
-    ) -> Result<reply::Transaction, Error> {
+    ) -> Result<Transaction, Error> {
         // TODO get this from storage
-        let txn = self.0.transaction(*transaction_hash).await?;
-        Ok(txn)
+        let txn = self
+            .0
+            .transaction(*transaction_hash)
+            .await
+            .map_err(|e| -> Error {
+                match e.downcast_ref::<SeqError>() {
+                    Some(starknet_e) => match starknet_e.code {
+                        SeqErrorCode::OutOfRangeTransactionHash => invalid_transaction_hash(),
+                        _ => e.into(),
+                    },
+                    None => e.into(),
+                }
+            })?;
+        if txn.status == reply::transaction::Status::NotReceived {
+            return Err(invalid_transaction_hash());
+        }
+        Ok(txn.into())
     }
 
     pub async fn get_transaction_by_block_hash_and_index(
         &self,
         block_hash: BlockHashOrTag,
         index: u64,
-    ) -> Result<reply::transaction::Transaction, Error> {
+    ) -> Result<Transaction, Error> {
         // TODO get this from storage
         let block = self.get_block_by_hash(block_hash).await?;
         let index: usize = index
             .try_into()
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
 
-        if index >= block.transactions.len() {
-            return Err(Error::Call(CallError::InvalidParams(anyhow::anyhow!(
-                "transaction index {} not found",
-                index
-            ))));
-        }
-        Ok(block.transactions[index].clone())
+        block.transactions.into_iter().nth(index).map_or(
+            Err(transaction_index_not_found(index)),
+            |txn| Ok(txn.into()),
+        )
     }
 
     pub async fn get_transaction_by_block_number_and_index(
         &self,
         block_number: BlockNumberOrTag,
         index: u64,
-    ) -> Result<reply::transaction::Transaction, Error> {
+    ) -> Result<Transaction, Error> {
         // TODO get this from storage
         let block = self.get_block_by_number(block_number).await?;
         let index: usize = index
             .try_into()
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
 
-        if index >= block.transactions.len() {
-            return Err(Error::Call(CallError::InvalidParams(anyhow::anyhow!(
-                "transaction index {} not found",
-                index
-            ))));
-        }
-        Ok(block.transactions[index].clone())
+        block.transactions.into_iter().nth(index).map_or(
+            Err(transaction_index_not_found(index)),
+            |txn| Ok(txn.into()),
+        )
     }
 
     pub async fn get_transaction_receipt(
@@ -179,7 +206,7 @@ impl RpcApi {
         Ok(status)
     }
 
-    pub async fn get_code(&self, contract_address: relaxed::H256) -> Result<reply::Code, Error> {
+    pub async fn get_code(&self, contract_address: relaxed::H256) -> Result<Code, Error> {
         let code = self
             .0
             .code(*contract_address, None)
@@ -187,7 +214,8 @@ impl RpcApi {
             .map_err(|e| -> Error {
                 match e.downcast_ref::<SeqError>() {
                     Some(starknet_e) => match starknet_e.code {
-                        SeqErrorCode::OutOfRangeContractAddress => {
+                        SeqErrorCode::OutOfRangeContractAddress
+                        | SeqErrorCode::UninitializedContract => {
                             // TODO check me
                             ErrorCode::ContractNotFound.into()
                         }
