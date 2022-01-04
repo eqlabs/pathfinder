@@ -77,7 +77,7 @@ impl TryFrom<CallReply> for Call {
 #[serde(deny_unknown_fields)]
 pub struct Call {
     #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-    result: Vec<H256>,
+    pub result: Vec<H256>,
 }
 
 /// Types used when deserializing L2 call related data.

@@ -59,6 +59,12 @@ pub mod relaxed {
             &self.0
         }
     }
+
+    impl From<crate::sequencer::reply::Call> for Vec<H256> {
+        fn from(call: crate::sequencer::reply::Call) -> Self {
+            call.result.into_iter().map(|x| H256::from(x)).collect()
+        }
+    }
 }
 
 /// Groups all strictly input types of the RPC API.

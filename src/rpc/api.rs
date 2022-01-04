@@ -208,13 +208,43 @@ impl RpcApi {
         &self,
         request: Call,
         block_hash: BlockHashOrTag,
-    ) -> Result<reply::Call, Error> {
+    ) -> Result<Vec<relaxed::H256>, Error> {
         let block_hash = match block_hash {
             BlockHashOrTag::Tag(_) => None,
             BlockHashOrTag::Hash(hash) => Some(hash),
         };
-        let call = self.0.call(request, block_hash).await?;
-        Ok(call)
+        let call = self
+            .0
+            .call(request, block_hash)
+            .await
+            .map_err(|e| -> Error {
+                match e.downcast_ref::<reply::starknet::Error>() {
+                    Some(starknet_e) => match starknet_e.code {
+                        reply::starknet::ErrorCode::EntryPointNotFound => {
+                            // TODO check me
+                            ErrorCode::InvalidMessageSelector.into()
+                        }
+                        reply::starknet::ErrorCode::OutOfRangeContractAddress
+                        | reply::starknet::ErrorCode::UninitializedContract => {
+                            // TODO check me
+                            ErrorCode::ContractNotFound.into()
+                        }
+                        reply::starknet::ErrorCode::TransactionFailed => {
+                            // TODO check me
+                            ErrorCode::InvalidCallData.into()
+                        }
+                        reply::starknet::ErrorCode::OutOfRangeBlockHash
+                        | reply::starknet::ErrorCode::BlockNotFound => {
+                            // TODO consult Starkware
+                            ErrorCode::InvalidBlockHash.into()
+                        }
+                        _ => e.into(),
+                    },
+                    None => e.into(),
+                }
+            })?;
+
+        Ok(call.into())
     }
 
     pub async fn block_number(&self) -> Result<u64, Error> {

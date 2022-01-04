@@ -146,8 +146,10 @@ mod tests {
     lazy_static::lazy_static! {
         static ref GENESIS_BLOCK_HASH: H256 = H256::from_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
         static ref INVALID_BLOCK_HASH: H256 = H256::from_str("0x13d8d8bb5716cd3f16e54e3a6ff1a50542461d9022e5f4dec7a4b064041ab8d7").unwrap();
-        static ref UNKNOWN_BLOCK_HASH: H256 = H256::from_str("0x017adea6567a9f605d5011ac915bdda56dc1db37e17a7057b3dd7fa99c4ba30b").unwrap();
-        static ref CONTRACT_BLOCK_HASH: H256 = H256::from_str("0x009aaa1733f916339979d0df10e2969c4a12146e80c8aa5bafbec876605bf35a").unwrap();
+        static ref UNKNOWN_BLOCK_HASH: H256 = H256::from_str("0x03c85a69453e63fd475424ecc70438bd855cd76e6f0d5dec0d0dd56e0f7a771c").unwrap();
+        static ref PRE_DEPLOY_CONTRACT_BLOCK_HASH: H256 = H256::from_str("0x05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f").unwrap();
+        static ref DEPLOY_CONTRACT_BLOCK_HASH: H256 = H256::from_str("0x07177acba67cb659e336abb3a158c8d29770b87b1b62e2bfa94cd376b72d34c5").unwrap();
+        static ref INVOKE_CONTRACT_BLOCK_HASH: H256 = H256::from_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap();
         static ref VALID_TX_HASH: relaxed::H256 = H256::from_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap().into();
         static ref INVALID_TX_HASH: relaxed::H256 = H256::from_str("0x1493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap().into();
         static ref UNKNOWN_TX_HASH: relaxed::H256 = H256::from_str("0x015e4bb72df94be3044139fea2116c4d54add05cf9ef8f35aea114b5cea94713").unwrap().into();
@@ -487,7 +489,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_transaction_index() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
-            let params = rpc_params!(BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH), u64::MAX);
+            let params = rpc_params!(BlockHashOrTag::Hash(*DEPLOY_CONTRACT_BLOCK_HASH), u64::MAX);
             client(addr)
                 .request::<starknet::Error>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
@@ -688,7 +690,7 @@ mod tests {
         use super::*;
         use crate::{
             rpc::types::{BlockHashOrTag, Tag},
-            sequencer::{reply, request},
+            sequencer::request,
         };
         use web3::types::U256;
 
@@ -705,7 +707,7 @@ mod tests {
                 BlockHashOrTag::Tag(Tag::Latest)
             );
             client(addr)
-                .request::<reply::Call>("starknet_call", params)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
                 .await
                 .unwrap();
         }
@@ -722,10 +724,16 @@ mod tests {
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32021,"message":"Invalid message selector"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
@@ -740,10 +748,16 @@ mod tests {
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32020,"message":"Contract not found"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
@@ -758,10 +772,16 @@ mod tests {
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32022,"message":"Invalid call data"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
@@ -774,12 +794,18 @@ mod tests {
                     entry_point_selector: **VALID_ENTRY_POINT,
                     signature: vec![],
                 },
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockHashOrTag::Hash(*PRE_DEPLOY_CONTRACT_BLOCK_HASH)
             );
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32020,"message":"Contract not found"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
@@ -792,12 +818,18 @@ mod tests {
                     entry_point_selector: **VALID_ENTRY_POINT,
                     signature: vec![],
                 },
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockHashOrTag::Hash(*INVALID_BLOCK_HASH)
             );
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
@@ -810,12 +842,18 @@ mod tests {
                     entry_point_selector: **VALID_ENTRY_POINT,
                     signature: vec![],
                 },
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
             );
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_call", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
@@ -828,12 +866,12 @@ mod tests {
                     entry_point_selector: **VALID_ENTRY_POINT,
                     signature: vec![],
                 },
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockHashOrTag::Hash(*INVOKE_CONTRACT_BLOCK_HASH)
             );
             client(addr)
-                .request::<starknet::Error>("starknet_call", params)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
                 .await
-                .unwrap_err();
+                .unwrap();
         }
     }
 
