@@ -177,7 +177,22 @@ impl RpcApi {
     }
 
     pub async fn get_code(&self, contract_address: relaxed::H256) -> Result<reply::Code, Error> {
-        let code = self.0.code(*contract_address, None).await?;
+        let code = self
+            .0
+            .code(*contract_address, None)
+            .await
+            .map_err(|e| -> Error {
+                match e.downcast_ref::<SeqError>() {
+                    Some(starknet_e) => match starknet_e.code {
+                        SeqErrorCode::OutOfRangeContractAddress => {
+                            // TODO check me
+                            ErrorCode::ContractNotFound.into()
+                        }
+                        _ => e.into(),
+                    },
+                    None => e.into(),
+                }
+            })?;
         Ok(code)
     }
 

@@ -300,7 +300,6 @@ mod tests {
         lazy_static::lazy_static! {
             static ref VALID_KEY: relaxed::H256 = H256::from_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap().into();
             static ref INVALID_KEY: relaxed::H256 = H256::from_str("0x1206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap().into();
-            static ref CONTRACT_BLOCK: H256 = H256::from_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap();
         }
 
         #[tokio::test]
@@ -392,7 +391,7 @@ mod tests {
             let params = rpc_params!(
                 *VALID_CONTRACT_ADDR,
                 *VALID_KEY,
-                BlockHashOrTag::Hash(*CONTRACT_BLOCK)
+                BlockHashOrTag::Hash(*INVOKE_CONTRACT_BLOCK_HASH)
             );
             client(addr)
                 .request::<relaxed::H256>("starknet_getStorageAt", params)
@@ -590,20 +589,27 @@ mod tests {
         async fn invalid_contract_address() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getCode", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32020,"message":"Contract not found"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
         async fn unknown_contract_address() {
+            // At the moment a valid address from mainnet causes an empty but valid reply on goerli
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*UNKNOWN_CONTRACT_ADDR);
             client(addr)
-                .request::<starknet::Error>("starknet_getCode", params)
+                .request::<Code>("starknet_getCode", params)
                 .await
-                .unwrap_err();
+                .unwrap();
         }
 
         #[tokio::test]
