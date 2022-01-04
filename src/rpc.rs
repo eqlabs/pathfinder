@@ -588,14 +588,14 @@ mod tests {
 
     mod get_transaction_receipt {
         use super::*;
-        use crate::sequencer::reply::TransactionStatus;
+        use crate::rpc::types::reply::TransactionReceipt;
 
         #[tokio::test]
         async fn accepted() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*VALID_TX_HASH);
             client(addr)
-                .request::<TransactionStatus>("starknet_getTransactionReceipt", params)
+                .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                 .await
                 .unwrap();
         }
@@ -604,20 +604,32 @@ mod tests {
         async fn invalid() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*INVALID_TX_HASH);
-            client(addr)
-                .request::<TransactionStatus>("starknet_getTransactionReceipt", params)
+            let reply = client(addr)
+                .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32025,"message":"Invalid transaction hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
         async fn unknown() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(*UNKNOWN_TX_HASH);
-            client(addr)
-                .request::<TransactionStatus>("starknet_getTransactionReceipt", params)
+            let reply = client(addr)
+                .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                 .await
-                .unwrap();
+                .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32025,"message":"Invalid transaction hash"},"id":0}"#.to_owned())
+                }
+            );
         }
     }
 

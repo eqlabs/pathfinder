@@ -2,7 +2,7 @@
 use crate::{
     rpc::types::{
         relaxed,
-        reply::{Block, Code, ErrorCode, StateUpdate, Syncing, Transaction},
+        reply::{Block, Code, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
         BlockHashOrTag, BlockNumberOrTag,
     },
     sequencer::{
@@ -153,10 +153,10 @@ impl RpcApi {
         Ok(H256::from(x).into())
     }
 
-    pub async fn get_transaction_by_hash(
+    async fn get_raw_transaction_by_hash(
         &self,
         transaction_hash: relaxed::H256,
-    ) -> Result<Transaction, Error> {
+    ) -> Result<raw::Transaction, Error> {
         // TODO get this from storage
         let txn = self
             .0
@@ -171,6 +171,18 @@ impl RpcApi {
                     None => e.into(),
                 }
             })?;
+        if txn.status == raw::transaction::Status::NotReceived {
+            return Err(invalid_transaction_hash());
+        }
+        Ok(txn)
+    }
+
+    pub async fn get_transaction_by_hash(
+        &self,
+        transaction_hash: relaxed::H256,
+    ) -> Result<Transaction, Error> {
+        // TODO get this from storage
+        let txn = self.get_raw_transaction_by_hash(transaction_hash).await?;
         if txn.status == raw::transaction::Status::NotReceived {
             return Err(invalid_transaction_hash());
         }
@@ -214,9 +226,31 @@ impl RpcApi {
     pub async fn get_transaction_receipt(
         &self,
         transaction_hash: relaxed::H256,
-    ) -> Result<raw::TransactionStatus, Error> {
-        let status = self.0.transaction_status(*transaction_hash).await?;
-        Ok(status)
+    ) -> Result<TransactionReceipt, Error> {
+        let txn = self.get_raw_transaction_by_hash(transaction_hash).await?;
+        if let Some(block_hash) = txn.block_hash {
+            if let Some(index) = txn.transaction_index {
+                let block = self
+                    .get_raw_block_by_hash(BlockHashOrTag::Hash(block_hash))
+                    .await?;
+                let index: usize = index
+                    .try_into()
+                    .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
+                block
+                    .transaction_receipts
+                    .into_iter()
+                    .nth(index)
+                    .map_or(Err(transaction_index_not_found(index)), |receipt| {
+                        Ok(receipt.into())
+                    })
+            } else {
+                Err(Error::Call(CallError::InvalidParams(anyhow::anyhow!(
+                    "transaction index not found"
+                ))))
+            }
+        } else {
+            Err(ErrorCode::InvalidBlockHash.into())
+        }
     }
 
     pub async fn get_code(&self, contract_address: relaxed::H256) -> Result<Code, Error> {
