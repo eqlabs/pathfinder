@@ -5,7 +5,10 @@ use crate::{
         reply::{ErrorCode, Syncing, Transaction},
         BlockHashOrTag, BlockNumberOrTag,
     },
-    sequencer::{reply, request::Call, Client},
+    sequencer::{
+        reply, reply::starknet::Error as SeqError, reply::starknet::ErrorCode as SeqErrorCode,
+        request::Call, Client,
+    },
 };
 use jsonrpsee::types::error::{CallError, Error};
 use reqwest::Url;
@@ -31,9 +34,19 @@ impl RpcApi {
     ) -> Result<reply::Block, Error> {
         // TODO get this from storage
         let block = match block_hash {
-            BlockHashOrTag::Tag(_) => self.0.latest_block().await,
-            BlockHashOrTag::Hash(hash) => self.0.block(hash).await,
-        }?;
+            BlockHashOrTag::Tag(_) => self.0.latest_block().await?,
+            BlockHashOrTag::Hash(hash) => self.0.block(hash).await.map_err(|e| -> Error {
+                match e.downcast_ref::<SeqError>() {
+                    Some(starknet_e) => match starknet_e.code {
+                        SeqErrorCode::OutOfRangeBlockHash | SeqErrorCode::BlockNotFound => {
+                            ErrorCode::InvalidBlockHash.into()
+                        }
+                        _ => e.into(),
+                    },
+                    None => e.into(),
+                }
+            })?,
+        };
         Ok(block)
     }
 
@@ -45,9 +58,9 @@ impl RpcApi {
             BlockNumberOrTag::Tag(_) => self.0.latest_block().await?,
             BlockNumberOrTag::Number(number) => {
                 self.0.block_by_number(number).await.map_err(|e| -> Error {
-                    match e.downcast_ref::<reply::starknet::Error>() {
+                    match e.downcast_ref::<SeqError>() {
                         Some(starknet_e)
-                            if starknet_e.code == reply::starknet::ErrorCode::MalformedRequest
+                            if starknet_e.code == SeqErrorCode::MalformedRequest
                                 && starknet_e
                                     .message
                                     .contains("Block ID should be in the range") =>
@@ -56,8 +69,8 @@ impl RpcApi {
                         }
                         Some(_) | None => e.into(),
                     }
-                })?
-            }
+                })
+            }?,
         };
         Ok(block)
     }
@@ -89,16 +102,14 @@ impl RpcApi {
             .storage(*contract_address, key.into(), block_hash)
             .await
             .map_err(|e| -> Error {
-                match e.downcast_ref::<reply::starknet::Error>() {
+                match e.downcast_ref::<SeqError>() {
                     Some(starknet_e) => match starknet_e.code {
-                        // TODO reply::starknet::ErrorCode::UninitializedContract
+                        // TODO SeqErrorCode::UninitializedContract
                         // probably does not fall into this category
-                        reply::starknet::ErrorCode::OutOfRangeContractAddress => {
+                        SeqErrorCode::OutOfRangeContractAddress => {
                             ErrorCode::ContractNotFound.into()
                         }
-                        reply::starknet::ErrorCode::OutOfRangeStorageKey => {
-                            ErrorCode::InvalidStorageKey.into()
-                        }
+                        SeqErrorCode::OutOfRangeStorageKey => ErrorCode::InvalidStorageKey.into(),
                         _ => e.into(),
                     },
                     None => e.into(),
@@ -175,10 +186,7 @@ impl RpcApi {
         block_hash: BlockHashOrTag,
     ) -> Result<u64, Error> {
         // TODO get this from storage
-        let block = match block_hash {
-            BlockHashOrTag::Tag(_) => self.0.latest_block().await,
-            BlockHashOrTag::Hash(hash) => self.0.block(hash).await,
-        }?;
+        let block = self.get_block_by_hash(block_hash).await?;
         let len: u64 = block
             .transactions
             .len()
@@ -192,10 +200,7 @@ impl RpcApi {
         block_number: BlockNumberOrTag,
     ) -> Result<u64, Error> {
         // TODO get this from storage
-        let block = match block_number {
-            BlockNumberOrTag::Tag(_) => self.0.latest_block().await,
-            BlockNumberOrTag::Number(number) => self.0.block_by_number(number).await,
-        }?;
+        let block = self.get_block_by_number(block_number).await?;
         let len: u64 = block
             .transactions
             .len()
@@ -218,23 +223,22 @@ impl RpcApi {
             .call(request, block_hash)
             .await
             .map_err(|e| -> Error {
-                match e.downcast_ref::<reply::starknet::Error>() {
+                match e.downcast_ref::<SeqError>() {
                     Some(starknet_e) => match starknet_e.code {
-                        reply::starknet::ErrorCode::EntryPointNotFound => {
+                        SeqErrorCode::EntryPointNotFound => {
                             // TODO check me
                             ErrorCode::InvalidMessageSelector.into()
                         }
-                        reply::starknet::ErrorCode::OutOfRangeContractAddress
-                        | reply::starknet::ErrorCode::UninitializedContract => {
+                        SeqErrorCode::OutOfRangeContractAddress
+                        | SeqErrorCode::UninitializedContract => {
                             // TODO check me
                             ErrorCode::ContractNotFound.into()
                         }
-                        reply::starknet::ErrorCode::TransactionFailed => {
+                        SeqErrorCode::TransactionFailed => {
                             // TODO check me
                             ErrorCode::InvalidCallData.into()
                         }
-                        reply::starknet::ErrorCode::OutOfRangeBlockHash
-                        | reply::starknet::ErrorCode::BlockNotFound => {
+                        SeqErrorCode::OutOfRangeBlockHash | SeqErrorCode::BlockNotFound => {
                             // TODO consult Starkware
                             ErrorCode::InvalidBlockHash.into()
                         }

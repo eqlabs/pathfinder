@@ -192,20 +192,32 @@ mod tests {
         async fn not_found() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH));
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getBlockByHash", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH));
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getBlockByHash", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
     }
 
@@ -634,20 +646,32 @@ mod tests {
         async fn invalid() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH));
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
 
         #[tokio::test]
         async fn unknown() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH));
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32024,"message":"Invalid block hash"},"id":0}"#.to_owned())
+                }
+            );
         }
     }
 
@@ -679,10 +703,16 @@ mod tests {
         async fn invalid() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX));
-            client(addr)
+            let reply = client(addr)
                 .request::<starknet::Error>("starknet_getBlockTransactionCountByNumber", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                reply,
+                Error::Request(s) => {
+                    assert_eq!(s, r#"{"jsonrpc":"2.0","error":{"code":-32025,"message":"Invalid block number"},"id":0}"#.to_owned())
+                }
+            );
         }
     }
 
