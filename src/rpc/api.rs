@@ -2,7 +2,7 @@
 use crate::{
     rpc::types::{
         relaxed,
-        reply::{Block, Code, ErrorCode, Syncing, Transaction},
+        reply::{Block, Code, ErrorCode, StateUpdate, Syncing, Transaction},
         BlockHashOrTag, BlockNumberOrTag,
     },
     sequencer::{
@@ -106,7 +106,10 @@ impl RpcApi {
         Ok(block.into())
     }
 
-    pub async fn get_state_update_by_hash(&self, block_hash: BlockHashOrTag) -> Result<(), Error> {
+    pub async fn get_state_update_by_hash(
+        &self,
+        block_hash: BlockHashOrTag,
+    ) -> Result<StateUpdate, Error> {
         // TODO get this from storage or directly from L1
         match block_hash {
             BlockHashOrTag::Tag(_) => todo!("Implement L1 state diff retrieval."),
