@@ -6,8 +6,8 @@ use crate::{
         BlockHashOrTag, BlockNumberOrTag,
     },
     sequencer::{
-        reply, reply::starknet::Error as SeqError, reply::starknet::ErrorCode as SeqErrorCode,
-        request::Call, Client,
+        reply as raw, reply::starknet::Error as RawError,
+        reply::starknet::ErrorCode as RawErrorCode, request::Call, Client,
     },
 };
 use jsonrpsee::types::error::{CallError, Error};
@@ -49,17 +49,14 @@ impl Default for RpcApi {
 }
 
 impl RpcApi {
-    async fn get_raw_block_by_hash(
-        &self,
-        block_hash: BlockHashOrTag,
-    ) -> Result<reply::Block, Error> {
+    async fn get_raw_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<raw::Block, Error> {
         // TODO get this from storage
         let block = match block_hash {
             BlockHashOrTag::Tag(_) => self.0.latest_block().await?,
             BlockHashOrTag::Hash(hash) => self.0.block(hash).await.map_err(|e| -> Error {
-                match e.downcast_ref::<SeqError>() {
+                match e.downcast_ref::<RawError>() {
                     Some(starknet_e) => match starknet_e.code {
-                        SeqErrorCode::OutOfRangeBlockHash | SeqErrorCode::BlockNotFound => {
+                        RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound => {
                             ErrorCode::InvalidBlockHash.into()
                         }
                         _ => e.into(),
@@ -79,14 +76,14 @@ impl RpcApi {
     async fn get_raw_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
-    ) -> Result<reply::Block, Error> {
+    ) -> Result<raw::Block, Error> {
         let block = match block_number {
             BlockNumberOrTag::Tag(_) => self.0.latest_block().await?,
             BlockNumberOrTag::Number(number) => {
                 self.0.block_by_number(number).await.map_err(|e| -> Error {
-                    match e.downcast_ref::<SeqError>() {
+                    match e.downcast_ref::<RawError>() {
                         Some(starknet_e)
-                            if starknet_e.code == SeqErrorCode::MalformedRequest
+                            if starknet_e.code == RawErrorCode::MalformedRequest
                                 && starknet_e
                                     .message
                                     .contains("Block ID should be in the range") =>
@@ -136,12 +133,12 @@ impl RpcApi {
             .storage(*contract_address, key.into(), block_hash)
             .await
             .map_err(|e| -> Error {
-                match e.downcast_ref::<SeqError>() {
+                match e.downcast_ref::<RawError>() {
                     Some(starknet_e) => match starknet_e.code {
-                        SeqErrorCode::OutOfRangeContractAddress
-                        | SeqErrorCode::UninitializedContract => ErrorCode::ContractNotFound.into(),
-                        SeqErrorCode::OutOfRangeStorageKey => ErrorCode::InvalidStorageKey.into(),
-                        SeqErrorCode::OutOfRangeBlockHash | SeqErrorCode::BlockNotFound => {
+                        RawErrorCode::OutOfRangeContractAddress
+                        | RawErrorCode::UninitializedContract => ErrorCode::ContractNotFound.into(),
+                        RawErrorCode::OutOfRangeStorageKey => ErrorCode::InvalidStorageKey.into(),
+                        RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound => {
                             ErrorCode::InvalidBlockHash.into()
                         }
                         _ => e.into(),
@@ -163,15 +160,15 @@ impl RpcApi {
             .transaction(*transaction_hash)
             .await
             .map_err(|e| -> Error {
-                match e.downcast_ref::<SeqError>() {
+                match e.downcast_ref::<RawError>() {
                     Some(starknet_e) => match starknet_e.code {
-                        SeqErrorCode::OutOfRangeTransactionHash => invalid_transaction_hash(),
+                        RawErrorCode::OutOfRangeTransactionHash => invalid_transaction_hash(),
                         _ => e.into(),
                     },
                     None => e.into(),
                 }
             })?;
-        if txn.status == reply::transaction::Status::NotReceived {
+        if txn.status == raw::transaction::Status::NotReceived {
             return Err(invalid_transaction_hash());
         }
         Ok(txn.into())
@@ -214,7 +211,7 @@ impl RpcApi {
     pub async fn get_transaction_receipt(
         &self,
         transaction_hash: relaxed::H256,
-    ) -> Result<reply::TransactionStatus, Error> {
+    ) -> Result<raw::TransactionStatus, Error> {
         let status = self.0.transaction_status(*transaction_hash).await?;
         Ok(status)
     }
@@ -225,10 +222,10 @@ impl RpcApi {
             .code(*contract_address, None)
             .await
             .map_err(|e| -> Error {
-                match e.downcast_ref::<SeqError>() {
+                match e.downcast_ref::<RawError>() {
                     Some(starknet_e) => match starknet_e.code {
-                        SeqErrorCode::OutOfRangeContractAddress
-                        | SeqErrorCode::UninitializedContract => {
+                        RawErrorCode::OutOfRangeContractAddress
+                        | RawErrorCode::UninitializedContract => {
                             // TODO check me
                             ErrorCode::ContractNotFound.into()
                         }
@@ -282,22 +279,22 @@ impl RpcApi {
             .call(request, block_hash)
             .await
             .map_err(|e| -> Error {
-                match e.downcast_ref::<SeqError>() {
+                match e.downcast_ref::<RawError>() {
                     Some(starknet_e) => match starknet_e.code {
-                        SeqErrorCode::EntryPointNotFound => {
+                        RawErrorCode::EntryPointNotFound => {
                             // TODO check me
                             ErrorCode::InvalidMessageSelector.into()
                         }
-                        SeqErrorCode::OutOfRangeContractAddress
-                        | SeqErrorCode::UninitializedContract => {
+                        RawErrorCode::OutOfRangeContractAddress
+                        | RawErrorCode::UninitializedContract => {
                             // TODO check me
                             ErrorCode::ContractNotFound.into()
                         }
-                        SeqErrorCode::TransactionFailed => {
+                        RawErrorCode::TransactionFailed => {
                             // TODO check me
                             ErrorCode::InvalidCallData.into()
                         }
-                        SeqErrorCode::OutOfRangeBlockHash | SeqErrorCode::BlockNotFound => {
+                        RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound => {
                             // TODO consult Starkware
                             ErrorCode::InvalidBlockHash.into()
                         }
