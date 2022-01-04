@@ -183,9 +183,6 @@ impl RpcApi {
     ) -> Result<Transaction, Error> {
         // TODO get this from storage
         let txn = self.get_raw_transaction_by_hash(transaction_hash).await?;
-        if txn.status == raw::transaction::Status::NotReceived {
-            return Err(invalid_transaction_hash());
-        }
         Ok(txn.into())
     }
 
