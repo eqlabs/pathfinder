@@ -3,11 +3,12 @@ use crate::{
     rpc::types::{
         relaxed,
         reply::{Block, Code, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
+        request::Call,
         BlockHashOrTag, BlockNumberOrTag,
     },
     sequencer::{
         reply as raw, reply::starknet::Error as RawError,
-        reply::starknet::ErrorCode as RawErrorCode, request::Call, Client,
+        reply::starknet::ErrorCode as RawErrorCode, Client,
     },
 };
 use jsonrpsee::types::error::{CallError, Error};
@@ -310,7 +311,7 @@ impl RpcApi {
         };
         let call = self
             .0
-            .call(request, block_hash)
+            .call(request.into(), block_hash)
             .await
             .map_err(|e| -> Error {
                 match e.downcast_ref::<RawError>() {

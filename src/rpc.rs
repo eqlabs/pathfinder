@@ -4,7 +4,7 @@ pub mod types;
 
 use crate::rpc::{
     api::RpcApi,
-    types::{relaxed::H256, BlockHashOrTag, BlockNumberOrTag},
+    types::{relaxed::H256, request::Call, BlockHashOrTag, BlockNumberOrTag},
 };
 use jsonrpsee::{
     http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
@@ -95,7 +95,7 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
     )?;
     module.register_async_method("starknet_call", |params, context| async move {
         let mut params = params.sequence();
-        let request = params.next::<crate::sequencer::request::Call>()?;
+        let request = params.next::<Call>()?;
         let block_hash = params.next::<BlockHashOrTag>()?;
         context.call(request, block_hash).await
     })?;
@@ -757,21 +757,21 @@ mod tests {
 
     mod call {
         use super::*;
-        use crate::{
-            rpc::types::{BlockHashOrTag, Tag},
-            sequencer::request,
-        };
-        use web3::types::U256;
+        use crate::rpc::types::{request::Call, BlockHashOrTag, Tag};
+        use web3::types::H256;
+
+        lazy_static::lazy_static! {
+            static ref CALL_DATA: Vec<H256> = vec![H256::from_str("0x0000000000000000000000000000000000000000000000000000000000001234").unwrap()];
+        }
 
         #[tokio::test]
         async fn latest() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
-                request::Call {
-                    calldata: vec![U256::from(1234)],
+                Call {
+                    calldata: CALL_DATA.clone(),
                     contract_address: **VALID_CONTRACT_ADDR,
                     entry_point_selector: **VALID_ENTRY_POINT,
-                    signature: vec![],
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
@@ -785,11 +785,10 @@ mod tests {
         async fn invalid_entry_point() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
-                request::Call {
-                    calldata: vec![U256::from(1234)],
+                Call {
+                    calldata: CALL_DATA.clone(),
                     contract_address: **VALID_CONTRACT_ADDR,
                     entry_point_selector: H256::zero(),
-                    signature: vec![],
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
@@ -807,11 +806,10 @@ mod tests {
         async fn invalid_contract_address() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
-                request::Call {
-                    calldata: vec![U256::from(1234)],
+                Call {
+                    calldata: CALL_DATA.clone(),
                     contract_address: **INVALID_CONTRACT_ADDR,
                     entry_point_selector: **VALID_ENTRY_POINT,
-                    signature: vec![],
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
@@ -829,11 +827,10 @@ mod tests {
         async fn invalid_call_data() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
-                request::Call {
+                Call {
                     calldata: vec![],
                     contract_address: **VALID_CONTRACT_ADDR,
                     entry_point_selector: **VALID_ENTRY_POINT,
-                    signature: vec![],
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
@@ -851,11 +848,10 @@ mod tests {
         async fn uninitialized_contract() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
-                request::Call {
-                    calldata: vec![U256::from(1234)],
+                Call {
+                    calldata: CALL_DATA.clone(),
                     contract_address: **VALID_CONTRACT_ADDR,
                     entry_point_selector: **VALID_ENTRY_POINT,
-                    signature: vec![],
                 },
                 BlockHashOrTag::Hash(*PRE_DEPLOY_CONTRACT_BLOCK_HASH)
             );
@@ -873,11 +869,10 @@ mod tests {
         async fn invalid_block_hash() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
-                request::Call {
-                    calldata: vec![U256::from(1234)],
+                Call {
+                    calldata: CALL_DATA.clone(),
                     contract_address: **VALID_CONTRACT_ADDR,
                     entry_point_selector: **VALID_ENTRY_POINT,
-                    signature: vec![],
                 },
                 BlockHashOrTag::Hash(*INVALID_BLOCK_HASH)
             );
@@ -895,11 +890,10 @@ mod tests {
         async fn unknown_block_hash() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
-                request::Call {
-                    calldata: vec![U256::from(1234)],
+                Call {
+                    calldata: CALL_DATA.clone(),
                     contract_address: **VALID_CONTRACT_ADDR,
                     entry_point_selector: **VALID_ENTRY_POINT,
-                    signature: vec![],
                 },
                 BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
             );
@@ -917,11 +911,10 @@ mod tests {
         async fn latest_invoked_block() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
-                request::Call {
-                    calldata: vec![U256::from(1234)],
+                Call {
+                    calldata: CALL_DATA.clone(),
                     contract_address: **VALID_CONTRACT_ADDR,
                     entry_point_selector: **VALID_ENTRY_POINT,
-                    signature: vec![],
                 },
                 BlockHashOrTag::Hash(*INVOKE_CONTRACT_BLOCK_HASH)
             );
