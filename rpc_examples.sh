@@ -40,8 +40,8 @@ rpc_call '[{"jsonrpc":"2.0","id":"14","method":"starknet_getBlockTransactionCoun
 {"jsonrpc":"2.0","id":"16","method":"starknet_getBlockTransactionCountByNumber","params":["latest"]},
 {"jsonrpc":"2.0","id":"17","method":"starknet_getBlockTransactionCountByNumber","params":[21348]}]'
 
-rpc_call '{"jsonrpc":"2.0","id":"18","method":"starknet_call","params":[{"calldata":[1234],"contract_address":"0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
-"entry_point_selector":"0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320","signature":[]}, "latest"]}'
+rpc_call '{"jsonrpc":"2.0","id":"18","method":"starknet_call","params":[{"calldata":["0x1234"],"contractAddress":"0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
+"entry_point_selector":"0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"}, "latest"]}'
 
 rpc_call '{"jsonrpc":"2.0","id":"19","method":"starknet_blockNumber"}'
 
