@@ -1,3 +1,4 @@
+//! Data structures used by the JSON-RPC API methods.
 use crate::serde::H256AsRelaxedHexStr;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -74,6 +75,7 @@ pub mod request {
     use serde_with::serde_as;
     use web3::types::H256;
 
+    /// Contains parameters passed to `starknet_call`.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Call {
@@ -378,6 +380,7 @@ pub mod reply {
         use std::convert::From;
         use web3::types::{H160, H256};
 
+        /// Message sent from L2 to L1.
         #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
@@ -404,6 +407,7 @@ pub mod reply {
             }
         }
 
+        /// Message sent from L1 to L2.
         #[serde_as]
         #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
@@ -471,6 +475,7 @@ pub mod reply {
         Status(syncing::Status),
     }
 
+    /// Starknet's syncing status substructures.
     pub mod syncing {
         use super::BlockStatus;
         use crate::serde::H256AsRelaxedHexStr;
