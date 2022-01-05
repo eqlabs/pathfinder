@@ -177,27 +177,18 @@ pub mod reply {
     /// Starkware specific RPC error codes.
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum ErrorCode {
-        // "Failed to write transaction"
         FailedToReceiveTransaction = -32001,
-        // "Contract not found"
         ContractNotFound = -32020,
-        // "Invalid message selector"
         InvalidMessageSelector = -32021,
-        // "Invalid call data"
         InvalidCallData = -32022,
-        // "Invalid storage key"
         InvalidStorageKey = -32023,
-        // "Invalid block hash"
         InvalidBlockHash = -32024,
-        // "Invalid block number"
         InvalidBlockNumber = -32025,
-        // "Contract error"
         ContractError = -32040,
     }
 
     impl ErrorCode {
-        // "Invalid transaction hash"
-        // TODO jsonrpsee::types::CallError
+        // Workaround for a duplicate error code value
         #[allow(non_upper_case_globals)]
         pub const InvalidTransactionHash: ErrorCode = ErrorCode::InvalidBlockNumber;
     }
