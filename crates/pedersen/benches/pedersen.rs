@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pathfinder_lib::pedersen::{pedersen_hash, StarkHash};
+use pedersen::{pedersen_hash, StarkHash};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     // These are the test vectors also used in tests, taken from
