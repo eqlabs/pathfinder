@@ -120,7 +120,7 @@ pub mod reply {
     impl From<SeqStatus> for BlockStatus {
         fn from(status: SeqStatus) -> Self {
             match status {
-                // TODO klis: this is a wild guess right now
+                // TODO verify this mapping with Starkware
                 SeqStatus::AcceptedOnL1 => BlockStatus::AcceptedOnChain,
                 SeqStatus::AcceptedOnL2 => BlockStatus::Proven,
                 SeqStatus::NotReceived => BlockStatus::Rejected,
@@ -177,6 +177,9 @@ pub mod reply {
     }
 
     /// Starkware specific RPC error codes.
+    // TODO verify with Starkware how `sequencer::reply::starknet::ErrorCode` should
+    // map to the values below in all JSON-RPC API methods. Also verify if
+    // the mapping should be method-specific or common for all methods.
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum ErrorCode {
         FailedToReceiveTransaction = -32001,
@@ -354,7 +357,7 @@ pub mod reply {
             Self {
                 txn_hash: receipt.transaction_hash,
                 status: receipt.status.into(),
-                // TODO
+                // TODO at the moment not available in sequencer replies
                 status_data: String::new(),
                 messages_sent: receipt
                     .l2_to_l1_messages
@@ -454,7 +457,7 @@ pub mod reply {
     impl From<seq::transaction::Status> for TransactionStatus {
         fn from(status: SeqStatus) -> Self {
             match status {
-                // TODO klis: this is a wild guess right now
+                // TODO verify this mapping with Starkware
                 SeqStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnChain,
                 SeqStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnChain,
                 SeqStatus::NotReceived => TransactionStatus::Unknown,

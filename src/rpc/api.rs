@@ -57,14 +57,11 @@ impl RpcApi {
         let block = match block_hash {
             BlockHashOrTag::Tag(_) => self.0.latest_block().await?,
             BlockHashOrTag::Hash(hash) => self.0.block(hash).await.map_err(|e| -> Error {
-                match e.downcast_ref::<RawError>() {
-                    Some(starknet_e) => match starknet_e.code {
-                        RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound => {
-                            ErrorCode::InvalidBlockHash.into()
-                        }
-                        _ => e.into(),
-                    },
-                    None => e.into(),
+                match e.downcast_ref::<RawError>().map(|e| e.code) {
+                    Some(RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound) => {
+                        ErrorCode::InvalidBlockHash.into()
+                    }
+                    Some(_) | None => e.into(),
                 }
             })?,
         };
@@ -293,16 +290,12 @@ impl RpcApi {
             .code(*contract_address, None)
             .await
             .map_err(|e| -> Error {
-                match e.downcast_ref::<RawError>() {
-                    Some(starknet_e) => match starknet_e.code {
+                match e.downcast_ref::<RawError>().map(|e| e.code) {
+                    Some(
                         RawErrorCode::OutOfRangeContractAddress
-                        | RawErrorCode::UninitializedContract => {
-                            // TODO check me
-                            ErrorCode::ContractNotFound.into()
-                        }
-                        _ => e.into(),
-                    },
-                    None => e.into(),
+                        | RawErrorCode::UninitializedContract,
+                    ) => ErrorCode::ContractNotFound.into(),
+                    Some(_) | None => e.into(),
                 }
             })?;
         Ok(code)
@@ -364,20 +357,12 @@ impl RpcApi {
                 match e.downcast_ref::<RawError>() {
                     Some(starknet_e) => match starknet_e.code {
                         RawErrorCode::EntryPointNotFound => {
-                            // TODO check me
                             ErrorCode::InvalidMessageSelector.into()
                         }
                         RawErrorCode::OutOfRangeContractAddress
-                        | RawErrorCode::UninitializedContract => {
-                            // TODO check me
-                            ErrorCode::ContractNotFound.into()
-                        }
-                        RawErrorCode::TransactionFailed => {
-                            // TODO check me
-                            ErrorCode::InvalidCallData.into()
-                        }
+                        | RawErrorCode::UninitializedContract => ErrorCode::ContractNotFound.into(),
+                        RawErrorCode::TransactionFailed => ErrorCode::InvalidCallData.into(),
                         RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound => {
-                            // TODO check me
                             ErrorCode::InvalidBlockHash.into()
                         }
                         _ => e.into(),
