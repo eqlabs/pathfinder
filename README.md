@@ -81,7 +81,7 @@ Install Rust, by following the [official Rust instructions](https://www.rust-lan
 
 ### Building
 
-Invoke `cargo build` from the project root.
+Invoke `cargo build -p pathfinder` from the project root.
 
 ### Testing
 

@@ -1,9 +1,4 @@
 [package]
-authors = [
-    "Mirko von Leipzig <mirko.vonleipzig@gmail.com>",
-    "Krzysztof Lis <klis33@gmail.com>",
-    "Joonas Joonas Koivunen <joonas@equilibrium.co>"
-]
 name = "pathfinder"
 version = "0.1.0"
 edition = "2021"
@@ -21,13 +16,6 @@ bigdecimal = { version = "0.3.0", features = ["serde"] }
 bitvec = "0.20.4"
 clap = "2.33.3"
 enum-iterator = "0.7.0"
-# Use our fork of ff. ff currently causes a bitvec-funty clash with our ethereum deps.
-# We've modified ff to not rely on bitvec (note that ff features are broken: https://github.com/zkcrypto/ff/issues/69).
-# We can use normal ff once it and `ethabi` (via `web3`) play nice.
-ff = { git = "https://github.com/eqlabs/ff", branch = "derive_bitvec", default-features = false, features = [
-    "derive",
-    "alloc",
-] }
 hex = "0.4.3"
 home = "0.5.3"
 jsonrpsee = { version = "0.6.1", features = ["full"] }

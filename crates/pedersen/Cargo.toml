@@ -1,10 +1,4 @@
 [package]
-authors = [
-    "Mirko von Leipzig <mirko.vonleipzig@gmail.com>",
-    "Michael Nielsen <michael@equilibrium.co>",
-    "Krzysztof Lis <klis33@gmail.com>",
-    "Joonas Joonas Koivunen <joonas@equilibrium.co>"
-]
 name = "pedersen"
 version = "0.1.0"
 edition = "2021"
@@ -25,11 +19,11 @@ ff = { git = "https://github.com/eqlabs/ff", branch = "derive_bitvec", default-f
     "derive",
     "alloc",
 ] }
-hex = "0.4.3"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
 criterion = "0.3"
+hex = "0.4.3"
 pretty_assertions = "1.0.0"
 
 [[bench]]
