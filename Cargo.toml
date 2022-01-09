@@ -3,3 +3,4 @@ members = [
     "crates/pathfinder",
     "crates/pedersen",
 ]
+resolver = "2"
