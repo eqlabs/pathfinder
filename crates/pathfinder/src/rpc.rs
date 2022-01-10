@@ -4,11 +4,7 @@ pub mod types;
 
 use crate::rpc::{
     api::RpcApi,
-    types::{
-        relaxed::H256,
-        request::{BlockResponseScope, Call},
-        BlockHashOrTag, BlockNumberOrTag,
-    },
+    types::{relaxed::H256, request::Call, BlockHashOrTag, BlockNumberOrTag},
 };
 use jsonrpsee::{
     http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},

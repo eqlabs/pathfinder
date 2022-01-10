@@ -403,6 +403,7 @@ pub mod reply {
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,
         l1_origin_message: transaction_receipt::MessageToL2,
+        events: Vec<transaction_receipt::Event>,
     }
 
     impl From<seq::transaction::Receipt> for TransactionReceipt {
@@ -421,6 +422,8 @@ pub mod reply {
                     Some(m) => m.into(),
                     None => transaction_receipt::MessageToL2::default(),
                 },
+                // TODO at the moment not available in sequencer replies
+                events: vec![],
             }
         }
     }
@@ -488,6 +491,19 @@ pub mod reply {
                         .collect(),
                 }
             }
+        }
+
+        /// Event emitted as a part of a transaction.
+        #[serde_as]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct Event {
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            from_address: H256,
+            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+            keys: Vec<H256>,
+            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+            data: Vec<H256>,
         }
     }
 
