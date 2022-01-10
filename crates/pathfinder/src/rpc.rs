@@ -207,6 +207,17 @@ mod tests {
         }
 
         #[tokio::test]
+        #[should_panic]
+        async fn pending() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
+            client(addr)
+                .request::<Block>("starknet_getBlockByHash", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
         async fn not_found() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH));
@@ -260,6 +271,17 @@ mod tests {
         }
 
         #[tokio::test]
+        #[should_panic]
+        async fn pending() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending));
+            client(addr)
+                .request::<Block>("starknet_getBlockByNumber", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
         async fn invalid_number() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX));
@@ -294,6 +316,17 @@ mod tests {
         async fn latest() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
+            client(addr)
+                .request::<()>("starknet_getStateUpdateByHash", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        #[should_panic]
+        async fn pending() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
             client(addr)
                 .request::<()>("starknet_getStateUpdateByHash", params)
                 .await
@@ -425,6 +458,21 @@ mod tests {
                 .await
                 .unwrap();
         }
+
+        #[tokio::test]
+        #[should_panic]
+        async fn pending_block() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                *VALID_CONTRACT_ADDR,
+                *VALID_KEY,
+                BlockHashOrTag::Tag(Tag::Pending)
+            );
+            client(addr)
+                .request::<relaxed::H256>("starknet_getStorageAt", params)
+                .await
+                .unwrap();
+        }
     }
 
     mod get_transaction_by_hash {
@@ -475,6 +523,17 @@ mod tests {
         use crate::rpc::types::{reply::Transaction, BlockHashOrTag, Tag};
 
         #[tokio::test]
+        #[ignore = "currently causes HTTP 504"]
+        async fn genesis() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH), 0u64);
+            client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
         async fn latest() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest), 0u64);
@@ -485,10 +544,10 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "currently causes HTTP 504"]
-        async fn genesis() {
+        #[should_panic]
+        async fn pending() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
-            let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH), 0u64);
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending), 0u64);
             client(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
@@ -552,6 +611,17 @@ mod tests {
         async fn latest() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest), 0);
+            client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        #[should_panic]
+        async fn pending() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending), 0);
             client(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
                 .await
@@ -692,6 +762,17 @@ mod tests {
         }
 
         #[tokio::test]
+        #[should_panic]
+        async fn pending() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
+            client(addr)
+                .request::<u64>("starknet_getBlockTransactionCountByHash", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
         async fn invalid() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH));
@@ -745,6 +826,17 @@ mod tests {
         }
 
         #[tokio::test]
+        #[should_panic]
+        async fn pending() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending));
+            client(addr)
+                .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
         async fn invalid() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Number(u64::MAX));
@@ -778,6 +870,24 @@ mod tests {
                     entry_point_selector: **VALID_ENTRY_POINT,
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
+            );
+            client(addr)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        #[should_panic]
+        async fn pending() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                Call {
+                    calldata: CALL_DATA.clone(),
+                    contract_address: **VALID_CONTRACT_ADDR,
+                    entry_point_selector: **VALID_ENTRY_POINT,
+                },
+                BlockHashOrTag::Tag(Tag::Pending)
             );
             client(addr)
                 .request::<Vec<relaxed::H256>>("starknet_call", params)

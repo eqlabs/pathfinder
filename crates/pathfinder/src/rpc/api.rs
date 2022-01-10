@@ -91,7 +91,10 @@ impl RpcApi {
         block_number: BlockNumberOrTag,
     ) -> Result<raw::Block, Error> {
         let block = match block_number {
-            BlockNumberOrTag::Tag(_) => self.0.latest_block().await?,
+            BlockNumberOrTag::Tag(Tag::Latest) => self.0.latest_block().await?,
+            BlockNumberOrTag::Tag(Tag::Pending) => {
+                todo!("Implement when sequencer support for pending tag available.")
+            }
             BlockNumberOrTag::Number(number) => {
                 self.0.block_by_number(number).await.map_err(|e| -> Error {
                     match e.downcast_ref::<RawError>() {
