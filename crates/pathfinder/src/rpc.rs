@@ -207,7 +207,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[should_panic]
         async fn pending() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
@@ -271,7 +270,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[should_panic]
         async fn pending() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending));
@@ -432,7 +430,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn contract_block() {
+        async fn latest_invoke_block() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
                 *VALID_CONTRACT_ADDR,
@@ -460,7 +458,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[should_panic]
         async fn pending_block() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
@@ -544,7 +541,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[should_panic]
         async fn pending() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending), 0u64);
@@ -618,7 +614,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[should_panic]
         async fn pending() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending), 0);
@@ -762,7 +757,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[should_panic]
         async fn pending() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
@@ -826,7 +820,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[should_panic]
         async fn pending() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending));
@@ -861,7 +854,24 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn latest() {
+        async fn latest_invoked_block() {
+            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+            let params = rpc_params!(
+                Call {
+                    calldata: CALL_DATA.clone(),
+                    contract_address: **VALID_CONTRACT_ADDR,
+                    entry_point_selector: **VALID_ENTRY_POINT,
+                },
+                BlockHashOrTag::Hash(*INVOKE_CONTRACT_BLOCK_HASH)
+            );
+            client(addr)
+                .request::<Vec<relaxed::H256>>("starknet_call", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_block() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
                 Call {
@@ -878,8 +888,7 @@ mod tests {
         }
 
         #[tokio::test]
-        #[should_panic]
-        async fn pending() {
+        async fn pending_block() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(
                 Call {
@@ -1019,23 +1028,6 @@ mod tests {
                 error,
                 Error::Request(s) => assert_eq!(get_err(s), *error::INVALID_BLOCK_HASH)
             );
-        }
-
-        #[tokio::test]
-        async fn latest_invoked_block() {
-            let (_handle, addr) = run_server(*LOCALHOST).unwrap();
-            let params = rpc_params!(
-                Call {
-                    calldata: CALL_DATA.clone(),
-                    contract_address: **VALID_CONTRACT_ADDR,
-                    entry_point_selector: **VALID_ENTRY_POINT,
-                },
-                BlockHashOrTag::Hash(*INVOKE_CONTRACT_BLOCK_HASH)
-            );
-            client(addr)
-                .request::<Vec<relaxed::H256>>("starknet_call", params)
-                .await
-                .unwrap();
         }
     }
 

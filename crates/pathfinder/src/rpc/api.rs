@@ -54,20 +54,18 @@ impl RpcApi {
     /// Helper function.
     async fn get_raw_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<raw::Block, Error> {
         // TODO get this from storage
-        let block = match block_hash {
-            BlockHashOrTag::Tag(Tag::Latest) => self.0.latest_block().await?,
-            BlockHashOrTag::Tag(Tag::Pending) => {
-                todo!("Implement when sequencer support for pending tag available.")
-            }
-            BlockHashOrTag::Hash(hash) => self.0.block(hash).await.map_err(|e| -> Error {
+        let block = self
+            .0
+            .block_by_hash(block_hash)
+            .await
+            .map_err(|e| -> Error {
                 match e.downcast_ref::<RawError>().map(|e| e.code) {
                     Some(RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound) => {
                         ErrorCode::InvalidBlockHash.into()
                     }
                     Some(_) | None => e.into(),
                 }
-            })?,
-        };
+            })?;
         Ok(block)
     }
 
@@ -90,27 +88,23 @@ impl RpcApi {
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<raw::Block, Error> {
-        let block = match block_number {
-            BlockNumberOrTag::Tag(Tag::Latest) => self.0.latest_block().await?,
-            BlockNumberOrTag::Tag(Tag::Pending) => {
-                todo!("Implement when sequencer support for pending tag available.")
-            }
-            BlockNumberOrTag::Number(number) => {
-                self.0.block_by_number(number).await.map_err(|e| -> Error {
-                    match e.downcast_ref::<RawError>() {
-                        Some(starknet_e)
-                            if starknet_e.code == RawErrorCode::MalformedRequest
-                                && starknet_e
-                                    .message
-                                    .contains("Block ID should be in the range") =>
-                        {
-                            ErrorCode::InvalidBlockNumber.into()
-                        }
-                        Some(_) | None => e.into(),
+        let block = self
+            .0
+            .block_by_number(block_number)
+            .await
+            .map_err(|e| -> Error {
+                match e.downcast_ref::<RawError>() {
+                    Some(starknet_e)
+                        if starknet_e.code == RawErrorCode::MalformedRequest
+                            && starknet_e
+                                .message
+                                .contains("Block ID should be in the range") =>
+                    {
+                        ErrorCode::InvalidBlockNumber.into()
                     }
-                })
-            }?,
-        };
+                    Some(_) | None => e.into(),
+                }
+            })?;
         Ok(block)
     }
 
@@ -157,13 +151,6 @@ impl RpcApi {
         key: relaxed::H256,
         block_hash: BlockHashOrTag,
     ) -> Result<relaxed::H256, Error> {
-        let block_hash = match block_hash {
-            BlockHashOrTag::Tag(Tag::Latest) => None,
-            BlockHashOrTag::Tag(Tag::Pending) => {
-                todo!("Implement when sequencer support for pending tag available.")
-            }
-            BlockHashOrTag::Hash(hash) => Some(hash),
-        };
         let key: H256 = *key;
         let key: [u8; 32] = key.into();
         let storage = self
@@ -304,7 +291,7 @@ impl RpcApi {
     pub async fn get_code(&self, contract_address: relaxed::H256) -> Result<Code, Error> {
         let code = self
             .0
-            .code(*contract_address, None)
+            .code(*contract_address, BlockHashOrTag::Tag(Tag::Latest))
             .await
             .map_err(|e| -> Error {
                 match e.downcast_ref::<RawError>().map(|e| e.code) {
@@ -362,13 +349,6 @@ impl RpcApi {
         request: Call,
         block_hash: BlockHashOrTag,
     ) -> Result<Vec<relaxed::H256>, Error> {
-        let block_hash = match block_hash {
-            BlockHashOrTag::Tag(Tag::Latest) => None,
-            BlockHashOrTag::Tag(Tag::Pending) => {
-                todo!("Implement when sequencer support for pending tag available.")
-            }
-            BlockHashOrTag::Hash(hash) => Some(hash),
-        };
         let call = self
             .0
             .call(request.into(), block_hash)
@@ -390,13 +370,15 @@ impl RpcApi {
                     None => e.into(),
                 }
             })?;
-
         Ok(call.into())
     }
 
     /// Get the most recent accepted block number.
     pub async fn block_number(&self) -> Result<u64, Error> {
-        let block = self.0.latest_block().await?;
+        let block = self
+            .0
+            .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+            .await?;
         Ok(block.block_number)
     }
 
