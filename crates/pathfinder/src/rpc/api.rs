@@ -3,7 +3,7 @@ use crate::{
     rpc::types::{
         relaxed,
         reply::{Block, Code, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
-        request::Call,
+        request::{BlockResponseScope, Call},
         BlockHashOrTag, BlockNumberOrTag,
     },
     sequencer::{
@@ -72,9 +72,14 @@ impl RpcApi {
     /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
     /// hex string, or a block tag:
     /// - `latest`, which means the most recent block.
-    pub async fn get_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<Block, Error> {
+    pub async fn get_block_by_hash(
+        &self,
+        block_hash: BlockHashOrTag,
+        requested_scope: Option<BlockResponseScope>,
+    ) -> Result<Block, Error> {
         let block = self.get_raw_block_by_hash(block_hash).await?;
-        Ok(block.into())
+        let scope = requested_scope.unwrap_or_default();
+        Ok(Block::from_scoped(block, scope))
     }
 
     /// Helper function.
@@ -109,9 +114,11 @@ impl RpcApi {
     pub async fn get_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
+        requested_scope: Option<BlockResponseScope>,
     ) -> Result<Block, Error> {
         let block = self.get_raw_block_by_number(block_number).await?;
-        Ok(block.into())
+        let scope = requested_scope.unwrap_or_default();
+        Ok(Block::from_scoped(block, scope))
     }
 
     /// Get the information about the result of executing the requested block.

@@ -4,7 +4,11 @@ pub mod types;
 
 use crate::rpc::{
     api::RpcApi,
-    types::{relaxed::H256, request::Call, BlockHashOrTag, BlockNumberOrTag},
+    types::{
+        relaxed::H256,
+        request::{BlockResponseScope, Call},
+        BlockHashOrTag, BlockNumberOrTag,
+    },
 };
 use jsonrpsee::{
     http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
@@ -19,12 +23,16 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
     let api = RpcApi::default();
     let mut module = RpcModule::new(api);
     module.register_async_method("starknet_getBlockByHash", |params, context| async move {
-        let block_hash = params.one::<BlockHashOrTag>()?;
-        context.get_block_by_hash(block_hash).await
+        let mut params = params.sequence();
+        let block_hash = params.next()?;
+        let scope = params.optional_next()?;
+        context.get_block_by_hash(block_hash, scope).await
     })?;
     module.register_async_method("starknet_getBlockByNumber", |params, context| async move {
-        let block_number = params.one::<BlockNumberOrTag>()?;
-        context.get_block_by_number(block_number).await
+        let mut params = params.sequence();
+        let block_number = params.next()?;
+        let scope = params.optional_next()?;
+        context.get_block_by_number(block_number, scope).await
     })?;
     module.register_async_method(
         "starknet_getStateUpdateByHash",

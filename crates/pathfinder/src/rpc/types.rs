@@ -87,11 +87,30 @@ pub mod request {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub entry_point_selector: H256,
     }
+
+    /// Determines the type of response to block related queries.
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub enum BlockResponseScope {
+        #[serde(rename = "TXN_HASH")]
+        TransactionHashes,
+        #[serde(rename = "FULL_TXNS")]
+        FullTransactions,
+        #[serde(rename = "FULL_TXN_AND_RECEIPTS")]
+        FullTransactionsAndReceipts,
+    }
+
+    impl Default for BlockResponseScope {
+        fn default() -> Self {
+            BlockResponseScope::TransactionHashes
+        }
+    }
 }
 
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
+    use super::request::BlockResponseScope;
     pub use crate::sequencer::reply::Code;
     use crate::{
         sequencer::reply as seq, sequencer::reply::block::Status as SeqStatus,
@@ -132,6 +151,18 @@ pub mod reply {
         }
     }
 
+    /// Wrapper for transaction data returned in block related queries,
+    /// chosen variant depends on [BlockResponseScope](crate::rpc::types::request::BlockResponseScope).
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    #[serde(untagged)]
+    pub enum Transactions {
+        HashesOnly(#[serde_as(as = "Vec<H256AsRelaxedHexStr>")] Vec<H256>),
+        Full(Vec<Transaction>),
+        FullWithReceipts(Vec<TransactionAndReceipt>),
+    }
+
     /// L2 Block as returned by the RPC API.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -149,12 +180,11 @@ pub mod reply {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         old_root: H256,
         accepted_time: u64,
-        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-        transactions: Vec<H256>,
+        transactions: Transactions,
     }
 
-    impl From<seq::Block> for Block {
-        fn from(block: seq::Block) -> Self {
+    impl Block {
+        pub fn from_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
             Self {
                 block_hash: block.block_hash.unwrap_or_default(),
                 parent_hash: block.parent_block_hash,
@@ -167,11 +197,31 @@ pub mod reply {
                 // TODO where to get it from
                 old_root: H256::zero(),
                 accepted_time: block.timestamp,
-                transactions: block
-                    .transactions
-                    .iter()
-                    .map(|t| t.transaction_hash)
-                    .collect(),
+                transactions: match scope {
+                    BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
+                        block
+                            .transactions
+                            .into_iter()
+                            .map(|t| t.transaction_hash)
+                            .collect(),
+                    ),
+                    BlockResponseScope::FullTransactions => Transactions::Full(
+                        block.transactions.into_iter().map(|t| t.into()).collect(),
+                    ),
+                    BlockResponseScope::FullTransactionsAndReceipts => {
+                        Transactions::FullWithReceipts(
+                            block
+                                .transactions
+                                .into_iter()
+                                .zip(block.transaction_receipts.into_iter())
+                                .map(|(t, r)| TransactionAndReceipt {
+                                    transaction: t.into(),
+                                    receipt: r.into(),
+                                })
+                                .collect(),
+                        )
+                    }
+                },
             }
         }
     }
@@ -283,7 +333,6 @@ pub mod reply {
     /// L2 transaction as returned by the RPC API.
     #[serde_as]
     #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
     pub struct Transaction {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         txn_hash: H256,
@@ -342,7 +391,6 @@ pub mod reply {
     /// L2 transaction receipt as returned by the RPC API.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
     pub struct TransactionReceipt {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         txn_hash: H256,
@@ -436,6 +484,17 @@ pub mod reply {
                 }
             }
         }
+    }
+
+    /// Used in [Block](crate::rpc::types::reply::Block) when the requested scope of
+    /// reply is [BlockResponseScope::FullTransactionsAndReceipts](crate::rpc::types::request::BlockResponseScope).
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    pub struct TransactionAndReceipt {
+        #[serde(flatten)]
+        transaction: Transaction,
+        #[serde(flatten)]
+        receipt: TransactionReceipt,
     }
 
     /// Represents transaction status.
