@@ -19,8 +19,8 @@ use web3::types::H256;
 /// Helper function for creating invalid transaction hash call error.
 ///
 /// Unfortunately invalid transaction hash has the same error code as
-/// invalid block hash, so `ErrorCode::InvalidTransactionHash.into()`
 /// cannot be used.
+/// invalid block hash, so `ErrorCode::InvalidTransactionHash.into()`
 fn invalid_transaction_hash() -> Error {
     Error::Call(CallError::Custom {
         code: ErrorCode::InvalidTransactionHash as i32,

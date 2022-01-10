@@ -130,8 +130,10 @@ pub mod reply {
         Pending,
         #[serde(rename = "PROVEN")]
         Proven,
-        #[serde(rename = "ACCEPTED_ONCHAIN")]
-        AcceptedOnChain,
+        #[serde(rename = "ACCEPTED_ON_L2")]
+        AcceptedOnL2,
+        #[serde(rename = "ACCEPTED_ON_L1")]
+        AcceptedOnL1,
         #[serde(rename = "REJECTED")]
         Rejected,
     }
@@ -140,8 +142,8 @@ pub mod reply {
         fn from(status: SeqStatus) -> Self {
             match status {
                 // TODO verify this mapping with Starkware
-                SeqStatus::AcceptedOnL1 => BlockStatus::AcceptedOnChain,
-                SeqStatus::AcceptedOnL2 => BlockStatus::Proven,
+                SeqStatus::AcceptedOnL1 => BlockStatus::AcceptedOnL1,
+                SeqStatus::AcceptedOnL2 => BlockStatus::AcceptedOnL2,
                 SeqStatus::NotReceived => BlockStatus::Rejected,
                 SeqStatus::Pending => BlockStatus::Pending,
                 SeqStatus::Received => BlockStatus::Pending,
@@ -395,6 +397,7 @@ pub mod reply {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         txn_hash: H256,
         status: TransactionStatus,
+        #[serde(rename = "statusData")]
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,
         l1_origin_message: transaction_receipt::MessageToL2,
@@ -507,8 +510,10 @@ pub mod reply {
         Received,
         #[serde(rename = "PENDING")]
         Pending,
-        #[serde(rename = "ACCEPTED_ONCHAIN")]
-        AcceptedOnChain,
+        #[serde(rename = "ACCEPTED_ON_L2")]
+        AcceptedOnL2,
+        #[serde(rename = "ACCEPTED_ON_L1")]
+        AcceptedOnL1,
         #[serde(rename = "REJECTED")]
         Rejected,
     }
@@ -517,8 +522,8 @@ pub mod reply {
         fn from(status: SeqStatus) -> Self {
             match status {
                 // TODO verify this mapping with Starkware
-                SeqStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnChain,
-                SeqStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnChain,
+                SeqStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
+                SeqStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnL2,
                 SeqStatus::NotReceived => TransactionStatus::Unknown,
                 SeqStatus::Pending => TransactionStatus::Pending,
                 SeqStatus::Received => TransactionStatus::Received,
