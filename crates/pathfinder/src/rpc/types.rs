@@ -10,6 +10,8 @@ use web3::types::H256;
 pub enum Tag {
     #[serde(rename = "latest")]
     Latest,
+    #[serde(rename = "pending")]
+    Pending,
 }
 
 /// A wrapper that contains either a block hash or the special `latest` tag.

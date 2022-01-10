@@ -4,7 +4,7 @@ use crate::{
         relaxed,
         reply::{Block, Code, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
         request::{BlockResponseScope, Call},
-        BlockHashOrTag, BlockNumberOrTag,
+        BlockHashOrTag, BlockNumberOrTag, Tag,
     },
     sequencer::{
         reply as raw, reply::starknet::Error as RawError,
@@ -55,7 +55,10 @@ impl RpcApi {
     async fn get_raw_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<raw::Block, Error> {
         // TODO get this from storage
         let block = match block_hash {
-            BlockHashOrTag::Tag(_) => self.0.latest_block().await?,
+            BlockHashOrTag::Tag(Tag::Latest) => self.0.latest_block().await?,
+            BlockHashOrTag::Tag(Tag::Pending) => {
+                todo!("Implement when sequencer support for pending tag available.")
+            }
             BlockHashOrTag::Hash(hash) => self.0.block(hash).await.map_err(|e| -> Error {
                 match e.downcast_ref::<RawError>().map(|e| e.code) {
                     Some(RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound) => {
@@ -131,10 +134,11 @@ impl RpcApi {
     ) -> Result<StateUpdate, Error> {
         // TODO get this from storage or directly from L1
         match block_hash {
-            BlockHashOrTag::Tag(_) => todo!("Implement L1 state diff retrieval."),
-            BlockHashOrTag::Hash(_) => todo!(
-                "Implement L1 state diff retrieval, determine the type of hash required here."
-            ),
+            BlockHashOrTag::Tag(Tag::Latest) => todo!("Implement L1 state diff retrieval."),
+            BlockHashOrTag::Tag(Tag::Pending) => {
+                todo!("Implement when sequencer support for pending tag available.")
+            }
+            BlockHashOrTag::Hash(_) => todo!("Implement L1 state diff retrieval."),
         }
     }
 
@@ -151,7 +155,10 @@ impl RpcApi {
         block_hash: BlockHashOrTag,
     ) -> Result<relaxed::H256, Error> {
         let block_hash = match block_hash {
-            BlockHashOrTag::Tag(_) => None,
+            BlockHashOrTag::Tag(Tag::Latest) => None,
+            BlockHashOrTag::Tag(Tag::Pending) => {
+                todo!("Implement when sequencer support for pending tag available.")
+            }
             BlockHashOrTag::Hash(hash) => Some(hash),
         };
         let key: H256 = *key;
@@ -353,7 +360,10 @@ impl RpcApi {
         block_hash: BlockHashOrTag,
     ) -> Result<Vec<relaxed::H256>, Error> {
         let block_hash = match block_hash {
-            BlockHashOrTag::Tag(_) => None,
+            BlockHashOrTag::Tag(Tag::Latest) => None,
+            BlockHashOrTag::Tag(Tag::Pending) => {
+                todo!("Implement when sequencer support for pending tag available.")
+            }
             BlockHashOrTag::Hash(hash) => Some(hash),
         };
         let call = self
