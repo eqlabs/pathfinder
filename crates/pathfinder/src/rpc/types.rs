@@ -4,33 +4,51 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use web3::types::H256;
 
-/// Special tag used when specifying the latest block.
+/// Special tag used when specifying the `latest` or `pending` block.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum Tag {
+    /// The most recent fully constructed block
+    ///
+    /// Represented as the JSON string `"latest"` when passed as an RPC method argument,
+    /// for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["latest"]}`
     #[serde(rename = "latest")]
     Latest,
+    /// Currently constructed block
+    ///
+    /// Represented as the JSON string `"pending"` when passed as an RPC method argument,
+    /// for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["pending"]}`
     #[serde(rename = "pending")]
     Pending,
 }
 
-/// A wrapper that contains either a block hash or the special `latest` tag.
+/// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a [Tag](self::BlockHashOrTag::Tag).
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockHashOrTag {
+    /// Hash of a block
+    ///
+    /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64 characters
+    /// when passed as an RPC method argument, for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
     Hash(#[serde_as(as = "H256AsRelaxedHexStr")] H256),
+    /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
 }
 
-/// A wrapper that contains either a block number or the special `latest` tag.
+/// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockNumberOrTag {
+    /// Number (height) of a block
     Number(u64),
+    /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
 }
 

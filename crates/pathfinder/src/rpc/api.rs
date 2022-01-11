@@ -70,9 +70,8 @@ impl RpcApi {
     }
 
     /// Get block information given the block hash.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_block_by_hash(
         &self,
         block_hash: BlockHashOrTag,
@@ -109,8 +108,8 @@ impl RpcApi {
     }
 
     /// Get block information given the block number (its height).
-    /// `block_number` is the number (height) of the requested block, represented as an integer, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_number` is the [Number](crate::rpc::types::BlockNumberOrTag::Number) (height) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
@@ -122,9 +121,8 @@ impl RpcApi {
     }
 
     /// Get the information about the result of executing the requested block.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_state_update_by_hash(
         &self,
         block_hash: BlockHashOrTag,
@@ -141,10 +139,8 @@ impl RpcApi {
 
     /// Get the value of the storage at the given address and key.
     /// `contract_address` is the address of the contract to read from, `key` is the key to the storage value for the given contract,
-    /// both represented as 0x-prefixed hex strings.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_storage_at(
         &self,
         contract_address: relaxed::H256,
@@ -201,8 +197,7 @@ impl RpcApi {
     }
 
     /// Get the details and status of a submitted transaction.
-    /// `transaction_hash` is the hash of the requested transaction, represented as a 0x-prefixed
-    /// hex string.
+    /// `transaction_hash` is the hash of the requested transaction.
     pub async fn get_transaction_by_hash(
         &self,
         transaction_hash: relaxed::H256,
@@ -213,9 +208,8 @@ impl RpcApi {
     }
 
     /// Get the details of a transaction by a given block hash and index.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_transaction_by_block_hash_and_index(
         &self,
         block_hash: BlockHashOrTag,
@@ -234,8 +228,8 @@ impl RpcApi {
     }
 
     /// Get the details of a transaction by a given block number and index.
-    /// `block_number` is the number (height) of the requested block, represented as an integer, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_number` is the [Number](crate::rpc::types::BlockNumberOrTag::Number) (height) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_transaction_by_block_number_and_index(
         &self,
         block_number: BlockNumberOrTag,
@@ -254,8 +248,7 @@ impl RpcApi {
     }
 
     /// Get the transaction receipt by the transaction hash.
-    /// `transaction_hash` is the hash of the requested transaction, represented as a 0x-prefixed
-    /// hex string.
+    /// `transaction_hash` is the hash of the requested transaction.
     pub async fn get_transaction_receipt(
         &self,
         transaction_hash: relaxed::H256,
@@ -287,7 +280,7 @@ impl RpcApi {
     }
 
     /// Get the code of a specific contract.
-    /// `contract_address` is the address of the contract to read from, represented as a 0x-prefixed hex string.
+    /// `contract_address` is the address of the contract to read from.
     pub async fn get_code(&self, contract_address: relaxed::H256) -> Result<Code, Error> {
         let code = self
             .0
@@ -306,9 +299,8 @@ impl RpcApi {
     }
 
     /// Get the number of transactions in a block given a block hash.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_block_transaction_count_by_hash(
         &self,
         block_hash: BlockHashOrTag,
@@ -324,8 +316,8 @@ impl RpcApi {
     }
 
     /// Get the number of transactions in a block given a block hash.
-    /// `block_number` is the number (height) of the requested block, represented as an integer, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_block_transaction_count_by_number(
         &self,
         block_number: BlockNumberOrTag,
@@ -341,9 +333,8 @@ impl RpcApi {
     }
 
     /// Call a starknet function without creating a StarkNet transaction.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn call(
         &self,
         request: Call,
