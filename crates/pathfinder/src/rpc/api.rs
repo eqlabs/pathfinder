@@ -3,8 +3,8 @@ use crate::{
     rpc::types::{
         relaxed,
         reply::{Block, Code, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
-        request::Call,
-        BlockHashOrTag, BlockNumberOrTag,
+        request::{BlockResponseScope, Call},
+        BlockHashOrTag, BlockNumberOrTag, Tag,
     },
     sequencer::{
         reply as raw, reply::starknet::Error as RawError,
@@ -19,8 +19,8 @@ use web3::types::H256;
 /// Helper function for creating invalid transaction hash call error.
 ///
 /// Unfortunately invalid transaction hash has the same error code as
-/// invalid block hash, so `ErrorCode::InvalidTransactionHash.into()`
 /// cannot be used.
+/// invalid block hash, so `ErrorCode::InvalidTransactionHash.into()`
 fn invalid_transaction_hash() -> Error {
     Error::Call(CallError::Custom {
         code: ErrorCode::InvalidTransactionHash as i32,
@@ -54,27 +54,32 @@ impl RpcApi {
     /// Helper function.
     async fn get_raw_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<raw::Block, Error> {
         // TODO get this from storage
-        let block = match block_hash {
-            BlockHashOrTag::Tag(_) => self.0.latest_block().await?,
-            BlockHashOrTag::Hash(hash) => self.0.block(hash).await.map_err(|e| -> Error {
+        let block = self
+            .0
+            .block_by_hash(block_hash)
+            .await
+            .map_err(|e| -> Error {
                 match e.downcast_ref::<RawError>().map(|e| e.code) {
                     Some(RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound) => {
                         ErrorCode::InvalidBlockHash.into()
                     }
                     Some(_) | None => e.into(),
                 }
-            })?,
-        };
+            })?;
         Ok(block)
     }
 
     /// Get block information given the block hash.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
-    pub async fn get_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<Block, Error> {
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
+    pub async fn get_block_by_hash(
+        &self,
+        block_hash: BlockHashOrTag,
+        requested_scope: Option<BlockResponseScope>,
+    ) -> Result<Block, Error> {
         let block = self.get_raw_block_by_hash(block_hash).await?;
-        Ok(block.into())
+        let scope = requested_scope.unwrap_or_default();
+        Ok(Block::from_scoped(block, scope))
     }
 
     /// Helper function.
@@ -82,71 +87,66 @@ impl RpcApi {
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<raw::Block, Error> {
-        let block = match block_number {
-            BlockNumberOrTag::Tag(_) => self.0.latest_block().await?,
-            BlockNumberOrTag::Number(number) => {
-                self.0.block_by_number(number).await.map_err(|e| -> Error {
-                    match e.downcast_ref::<RawError>() {
-                        Some(starknet_e)
-                            if starknet_e.code == RawErrorCode::MalformedRequest
-                                && starknet_e
-                                    .message
-                                    .contains("Block ID should be in the range") =>
-                        {
-                            ErrorCode::InvalidBlockNumber.into()
-                        }
-                        Some(_) | None => e.into(),
+        let block = self
+            .0
+            .block_by_number(block_number)
+            .await
+            .map_err(|e| -> Error {
+                match e.downcast_ref::<RawError>() {
+                    Some(starknet_e)
+                        if starknet_e.code == RawErrorCode::MalformedRequest
+                            && starknet_e
+                                .message
+                                .contains("Block ID should be in the range") =>
+                    {
+                        ErrorCode::InvalidBlockNumber.into()
                     }
-                })
-            }?,
-        };
+                    Some(_) | None => e.into(),
+                }
+            })?;
         Ok(block)
     }
 
     /// Get block information given the block number (its height).
-    /// `block_number` is the number (height) of the requested block, represented as an integer, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_number` is the [Number](crate::rpc::types::BlockNumberOrTag::Number) (height) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
+        requested_scope: Option<BlockResponseScope>,
     ) -> Result<Block, Error> {
         let block = self.get_raw_block_by_number(block_number).await?;
-        Ok(block.into())
+        let scope = requested_scope.unwrap_or_default();
+        Ok(Block::from_scoped(block, scope))
     }
 
     /// Get the information about the result of executing the requested block.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_state_update_by_hash(
         &self,
         block_hash: BlockHashOrTag,
     ) -> Result<StateUpdate, Error> {
         // TODO get this from storage or directly from L1
         match block_hash {
-            BlockHashOrTag::Tag(_) => todo!("Implement L1 state diff retrieval."),
-            BlockHashOrTag::Hash(_) => todo!(
-                "Implement L1 state diff retrieval, determine the type of hash required here."
-            ),
+            BlockHashOrTag::Tag(Tag::Latest) => todo!("Implement L1 state diff retrieval."),
+            BlockHashOrTag::Tag(Tag::Pending) => {
+                todo!("Implement when sequencer support for pending tag available.")
+            }
+            BlockHashOrTag::Hash(_) => todo!("Implement L1 state diff retrieval."),
         }
     }
 
     /// Get the value of the storage at the given address and key.
     /// `contract_address` is the address of the contract to read from, `key` is the key to the storage value for the given contract,
-    /// both represented as 0x-prefixed hex strings.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_storage_at(
         &self,
         contract_address: relaxed::H256,
         key: relaxed::H256,
         block_hash: BlockHashOrTag,
     ) -> Result<relaxed::H256, Error> {
-        let block_hash = match block_hash {
-            BlockHashOrTag::Tag(_) => None,
-            BlockHashOrTag::Hash(hash) => Some(hash),
-        };
         let key: H256 = *key;
         let key: [u8; 32] = key.into();
         let storage = self
@@ -197,8 +197,7 @@ impl RpcApi {
     }
 
     /// Get the details and status of a submitted transaction.
-    /// `transaction_hash` is the hash of the requested transaction, represented as a 0x-prefixed
-    /// hex string.
+    /// `transaction_hash` is the hash of the requested transaction.
     pub async fn get_transaction_by_hash(
         &self,
         transaction_hash: relaxed::H256,
@@ -209,9 +208,8 @@ impl RpcApi {
     }
 
     /// Get the details of a transaction by a given block hash and index.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_transaction_by_block_hash_and_index(
         &self,
         block_hash: BlockHashOrTag,
@@ -230,8 +228,8 @@ impl RpcApi {
     }
 
     /// Get the details of a transaction by a given block number and index.
-    /// `block_number` is the number (height) of the requested block, represented as an integer, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_number` is the [Number](crate::rpc::types::BlockNumberOrTag::Number) (height) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_transaction_by_block_number_and_index(
         &self,
         block_number: BlockNumberOrTag,
@@ -250,8 +248,7 @@ impl RpcApi {
     }
 
     /// Get the transaction receipt by the transaction hash.
-    /// `transaction_hash` is the hash of the requested transaction, represented as a 0x-prefixed
-    /// hex string.
+    /// `transaction_hash` is the hash of the requested transaction.
     pub async fn get_transaction_receipt(
         &self,
         transaction_hash: relaxed::H256,
@@ -283,11 +280,11 @@ impl RpcApi {
     }
 
     /// Get the code of a specific contract.
-    /// `contract_address` is the address of the contract to read from, represented as a 0x-prefixed hex string.
+    /// `contract_address` is the address of the contract to read from.
     pub async fn get_code(&self, contract_address: relaxed::H256) -> Result<Code, Error> {
         let code = self
             .0
-            .code(*contract_address, None)
+            .code(*contract_address, BlockHashOrTag::Tag(Tag::Latest))
             .await
             .map_err(|e| -> Error {
                 match e.downcast_ref::<RawError>().map(|e| e.code) {
@@ -302,9 +299,8 @@ impl RpcApi {
     }
 
     /// Get the number of transactions in a block given a block hash.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_block_transaction_count_by_hash(
         &self,
         block_hash: BlockHashOrTag,
@@ -320,8 +316,8 @@ impl RpcApi {
     }
 
     /// Get the number of transactions in a block given a block hash.
-    /// `block_number` is the number (height) of the requested block, represented as an integer, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn get_block_transaction_count_by_number(
         &self,
         block_number: BlockNumberOrTag,
@@ -337,18 +333,13 @@ impl RpcApi {
     }
 
     /// Call a starknet function without creating a StarkNet transaction.
-    /// `block_hash` is the hash of the requested block, represented as a 0x-prefixed
-    /// hex string, or a block tag:
-    /// - `latest`, which means the most recent block.
+    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    /// of the requested block.
     pub async fn call(
         &self,
         request: Call,
         block_hash: BlockHashOrTag,
     ) -> Result<Vec<relaxed::H256>, Error> {
-        let block_hash = match block_hash {
-            BlockHashOrTag::Tag(_) => None,
-            BlockHashOrTag::Hash(hash) => Some(hash),
-        };
         let call = self
             .0
             .call(request.into(), block_hash)
@@ -370,13 +361,15 @@ impl RpcApi {
                     None => e.into(),
                 }
             })?;
-
         Ok(call.into())
     }
 
     /// Get the most recent accepted block number.
     pub async fn block_number(&self) -> Result<u64, Error> {
-        let block = self.0.latest_block().await?;
+        let block = self
+            .0
+            .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+            .await?;
         Ok(block.block_number)
     }
 

@@ -3,7 +3,10 @@ pub mod reply;
 pub mod request;
 
 use self::reply::BlockReply;
-use crate::serde::from_relaxed_hex_str;
+use crate::{
+    rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
+    serde::from_relaxed_hex_str,
+};
 use anyhow::Result;
 use reqwest::Url;
 use serde_json::{from_value, Value};
@@ -18,9 +21,12 @@ pub struct Client {
 }
 
 /// Helper function which simplifies the handling of optional block hashes in queries.
-fn block_hash_str(hash: Option<H256>) -> (&'static str, Cow<'static, str>) {
-    hash.map(|h| ("blockHash", Cow::from(format!("0x{:x}", h))))
-        .unwrap_or_else(|| ("blockId", Cow::from("null")))
+fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
+    match hash {
+        BlockHashOrTag::Hash(h) => ("blockHash", Cow::from(format!("0x{:x}", h))),
+        BlockHashOrTag::Tag(Tag::Latest) => ("blockId", Cow::from("null")),
+        BlockHashOrTag::Tag(Tag::Pending) => ("blockId", Cow::from("pending")),
+    }
 }
 
 impl Client {
@@ -30,47 +36,41 @@ impl Client {
         Self { sequencer_url }
     }
 
-    /// Gets block by hash.
-    pub async fn block(&self, block_hash: H256) -> Result<reply::Block> {
-        self.get_block(Some(block_hash)).await
-    }
-
     /// Gets block by number.
-    pub async fn block_by_number(&self, block_number: u64) -> Result<reply::Block> {
-        let resp = reqwest::get(self.build_query(
-            "get_block_hash_by_id",
-            &[("blockId", &block_number.to_string())],
-        ))
-        .await
-        .unwrap();
-        let resp = resp.text().await?;
+    pub async fn block_by_number(&self, block_number: BlockNumberOrTag) -> Result<reply::Block> {
+        let block_hash = match block_number {
+            BlockNumberOrTag::Number(n) => {
+                let resp = reqwest::get(
+                    self.build_query("get_block_hash_by_id", &[("blockId", &n.to_string())]),
+                )
+                .await
+                .unwrap();
+                let resp = resp.text().await?;
 
-        if let Ok(e) = serde_json::from_str::<self::reply::starknet::Error>(resp.as_str()) {
-            return Err(e.into());
-        }
+                if let Ok(e) = serde_json::from_str::<self::reply::starknet::Error>(resp.as_str()) {
+                    return Err(e.into());
+                }
 
-        let resp = resp
-            .strip_prefix('\"')
-            .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
-        let resp = resp
-            .strip_suffix('\"')
-            .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
-        let block_hash = crate::serde::from_relaxed_hex_str::<
-            H256,
-            { H256::len_bytes() },
-            { H256::len_bytes() * 2 },
-        >(resp)?;
-
-        self.get_block(Some(block_hash)).await
+                let resp = resp
+                    .strip_prefix('\"')
+                    .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
+                let resp = resp
+                    .strip_suffix('\"')
+                    .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
+                let block_hash = crate::serde::from_relaxed_hex_str::<
+                    H256,
+                    { H256::len_bytes() },
+                    { H256::len_bytes() * 2 },
+                >(resp)?;
+                BlockHashOrTag::Hash(block_hash)
+            }
+            BlockNumberOrTag::Tag(tag) => BlockHashOrTag::Tag(tag),
+        };
+        self.block_by_hash(block_hash).await
     }
 
-    /// Gets latest block.
-    pub async fn latest_block(&self) -> Result<reply::Block> {
-        self.get_block(None).await
-    }
-
-    /// Helper function to wrap block query. `None` as `block_id` means latest block available.
-    async fn get_block(&self, block_hash: Option<H256>) -> Result<reply::Block> {
+    /// Get block by hash.
+    pub async fn block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<reply::Block> {
         let (tag, hash) = block_hash_str(block_hash);
         let resp = reqwest::get(self.build_query("get_block", &[(tag, &hash)])).await?;
         let resp = resp.text().await?;
@@ -81,7 +81,7 @@ impl Client {
     pub async fn call(
         &self,
         payload: request::Call,
-        block_hash: Option<H256>,
+        block_hash: BlockHashOrTag,
     ) -> Result<reply::Call> {
         let (tag, hash) = block_hash_str(block_hash);
         let url = self.build_query("call_contract", &[(tag, &hash)]);
@@ -92,7 +92,11 @@ impl Client {
     }
 
     /// Gets contract's code and ABI.
-    pub async fn code(&self, contract_addr: H256, block_hash: Option<H256>) -> Result<reply::Code> {
+    pub async fn code(
+        &self,
+        contract_addr: H256,
+        block_hash: BlockHashOrTag,
+    ) -> Result<reply::Code> {
         let (tag, hash) = block_hash_str(block_hash);
         let resp = reqwest::get(self.build_query(
             "get_code",
@@ -111,7 +115,7 @@ impl Client {
         &self,
         contract_addr: H256,
         key: U256,
-        block_hash: Option<H256>,
+        block_hash: BlockHashOrTag,
     ) -> Result<H256> {
         let (tag, hash) = block_hash_str(block_hash);
         let resp = reqwest::get(self.build_query(
@@ -213,31 +217,45 @@ mod tests {
         Client::new(Url::parse(URL).unwrap())
     }
 
-    mod block {
+    mod block_by_hash {
         use super::*;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
-            client().block(*GENESIS_BLOCK_HASH).await.unwrap();
+            client()
+                .block_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn latest() {
-            client().latest_block().await.unwrap();
+            client()
+                .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn pending() {
+            client()
+                .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         #[ignore = "currently causes HTTP 504"]
         async fn block_without_block_hash_field() {
             client()
-                .block(
+                .block_by_hash(BlockHashOrTag::Hash(
                     H256::from_str(
                         "01cf37f162c3fa3b57c1c4324c240b0c8c65bb5a15e039817a3023b9890e94d1",
                     )
                     .unwrap(),
-                )
+                ))
                 .await
                 .unwrap();
         }
@@ -247,7 +265,7 @@ mod tests {
             // Use valid hash from mainnet
             assert_eq!(
                 client()
-                    .block(*UNKNOWN_BLOCK_HASH)
+                    .block_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -260,7 +278,7 @@ mod tests {
             // Invalid block hash
             assert_eq!(
                 client()
-                    .block(*INVALID_BLOCK_HASH)
+                    .block_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -275,14 +293,33 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            client().block_by_number(0).await.unwrap();
+            client()
+                .block_by_number(BlockNumberOrTag::Number(0))
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest() {
+            client()
+                .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn pending() {
+            client()
+                .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn invalid() {
             assert_eq!(
                 client()
-                    .block_by_number(u64::MAX)
+                    .block_by_number(BlockNumberOrTag::Number(u64::MAX))
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -306,7 +343,7 @@ mod tests {
                             entry_point_selector: H256::zero(),
                             signature: vec![],
                         },
-                        None,
+                        BlockHashOrTag::Tag(Tag::Latest),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
@@ -326,7 +363,7 @@ mod tests {
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        None,
+                        BlockHashOrTag::Tag(Tag::Latest),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
@@ -346,7 +383,7 @@ mod tests {
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        Some(*CONTRACT_BLOCK_HASH),
+                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
@@ -366,7 +403,7 @@ mod tests {
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        Some(*GENESIS_BLOCK_HASH),
+                        BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
@@ -386,7 +423,7 @@ mod tests {
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        Some(*INVALID_BLOCK_HASH),
+                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
@@ -406,7 +443,7 @@ mod tests {
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        Some(*UNKNOWN_BLOCK_HASH),
+                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
                     )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
@@ -416,7 +453,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn success() {
+        async fn latest_invoke_block() {
             client()
                 .call(
                     request::Call {
@@ -425,7 +462,39 @@ mod tests {
                         entry_point_selector: *VALID_ENTRY_POINT,
                         signature: vec![],
                     },
-                    Some(*CONTRACT_BLOCK_HASH),
+                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_block() {
+            client()
+                .call(
+                    request::Call {
+                        calldata: vec![U256::from(1234)],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn pending_block() {
+            client()
+                .call(
+                    request::Call {
+                        calldata: vec![U256::from(1234)],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Tag(Tag::Pending),
                 )
                 .await
                 .unwrap();
@@ -440,7 +509,7 @@ mod tests {
         async fn invalid_contract_address() {
             assert_eq!(
                 client()
-                    .code(*INVALID_CONTRACT_ADDR, None)
+                    .code(*INVALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -451,14 +520,20 @@ mod tests {
         #[tokio::test]
         async fn unknown_contract_address() {
             // Returns empty code and abi
-            client().code(*UNKNOWN_CONTRACT_ADDR, None).await.unwrap();
+            client()
+                .code(*UNKNOWN_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
             assert_eq!(
                 client()
-                    .code(*VALID_CONTRACT_ADDR, Some(*INVALID_BLOCK_HASH))
+                    .code(
+                        *VALID_CONTRACT_ADDR,
+                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH)
+                    )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -470,7 +545,10 @@ mod tests {
         async fn unknown_block_hash() {
             assert_eq!(
                 client()
-                    .code(*VALID_CONTRACT_ADDR, Some(*UNKNOWN_BLOCK_HASH))
+                    .code(
+                        *VALID_CONTRACT_ADDR,
+                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
+                    )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -479,11 +557,29 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn success() {
+        async fn latest_invoke_block() {
             client()
-                .code(*VALID_CONTRACT_ADDR, Some(*CONTRACT_BLOCK_HASH))
+                .code(
+                    *VALID_CONTRACT_ADDR,
+                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                )
                 .await
-                .map_err(|e| e.downcast::<Error>().unwrap().code)
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_block() {
+            client()
+                .code(*VALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn pending_block() {
+            client()
+                .code(*VALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Pending))
+                .await
                 .unwrap();
         }
     }
@@ -500,7 +596,11 @@ mod tests {
         async fn invalid_contract_address() {
             assert_eq!(
                 client()
-                    .storage(*INVALID_CONTRACT_ADDR, *VALID_KEY, None)
+                    .storage(
+                        *INVALID_CONTRACT_ADDR,
+                        *VALID_KEY,
+                        BlockHashOrTag::Tag(Tag::Latest)
+                    )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -512,7 +612,11 @@ mod tests {
         async fn invalid_key() {
             assert_eq!(
                 client()
-                    .storage(*VALID_CONTRACT_ADDR, U256::max_value(), None)
+                    .storage(
+                        *VALID_CONTRACT_ADDR,
+                        U256::max_value(),
+                        BlockHashOrTag::Tag(Tag::Latest)
+                    )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -524,7 +628,11 @@ mod tests {
         async fn unknown_block_hash() {
             assert_eq!(
                 client()
-                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(*UNKNOWN_BLOCK_HASH))
+                    .storage(
+                        *VALID_CONTRACT_ADDR,
+                        *VALID_KEY,
+                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
+                    )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -536,7 +644,11 @@ mod tests {
         async fn invalid_block_hash() {
             assert_eq!(
                 client()
-                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(*INVALID_BLOCK_HASH))
+                    .storage(
+                        *VALID_CONTRACT_ADDR,
+                        *VALID_KEY,
+                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH)
+                    )
                     .await
                     .map_err(|e| e.downcast::<Error>().unwrap().code)
                     .unwrap_err(),
@@ -545,9 +657,37 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn success() {
+        async fn latest_invoke_block() {
             client()
-                .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, Some(*CONTRACT_BLOCK_HASH))
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_block() {
+            client()
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn pending_block() {
+            client()
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    BlockHashOrTag::Tag(Tag::Pending),
+                )
                 .await
                 .unwrap();
         }

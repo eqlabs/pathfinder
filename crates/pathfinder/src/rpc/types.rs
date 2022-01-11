@@ -4,31 +4,51 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use web3::types::H256;
 
-/// Special tag used when specifying the latest block.
+/// Special tag used when specifying the `latest` or `pending` block.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum Tag {
+    /// The most recent fully constructed block
+    ///
+    /// Represented as the JSON string `"latest"` when passed as an RPC method argument,
+    /// for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["latest"]}`
     #[serde(rename = "latest")]
     Latest,
+    /// Currently constructed block
+    ///
+    /// Represented as the JSON string `"pending"` when passed as an RPC method argument,
+    /// for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["pending"]}`
+    #[serde(rename = "pending")]
+    Pending,
 }
 
-/// A wrapper that contains either a block hash or the special `latest` tag.
+/// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a [Tag](self::BlockHashOrTag::Tag).
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockHashOrTag {
+    /// Hash of a block
+    ///
+    /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64 characters
+    /// when passed as an RPC method argument, for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
     Hash(#[serde_as(as = "H256AsRelaxedHexStr")] H256),
+    /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
 }
 
-/// A wrapper that contains either a block number or the special `latest` tag.
+/// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockNumberOrTag {
+    /// Number (height) of a block
     Number(u64),
+    /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
 }
 
@@ -87,11 +107,30 @@ pub mod request {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub entry_point_selector: H256,
     }
+
+    /// Determines the type of response to block related queries.
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub enum BlockResponseScope {
+        #[serde(rename = "TXN_HASH")]
+        TransactionHashes,
+        #[serde(rename = "FULL_TXNS")]
+        FullTransactions,
+        #[serde(rename = "FULL_TXN_AND_RECEIPTS")]
+        FullTransactionsAndReceipts,
+    }
+
+    impl Default for BlockResponseScope {
+        fn default() -> Self {
+            BlockResponseScope::TransactionHashes
+        }
+    }
 }
 
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
+    use super::request::BlockResponseScope;
     pub use crate::sequencer::reply::Code;
     use crate::{
         sequencer::reply as seq, sequencer::reply::block::Status as SeqStatus,
@@ -111,8 +150,10 @@ pub mod reply {
         Pending,
         #[serde(rename = "PROVEN")]
         Proven,
-        #[serde(rename = "ACCEPTED_ONCHAIN")]
-        AcceptedOnChain,
+        #[serde(rename = "ACCEPTED_ON_L2")]
+        AcceptedOnL2,
+        #[serde(rename = "ACCEPTED_ON_L1")]
+        AcceptedOnL1,
         #[serde(rename = "REJECTED")]
         Rejected,
     }
@@ -121,8 +162,8 @@ pub mod reply {
         fn from(status: SeqStatus) -> Self {
             match status {
                 // TODO verify this mapping with Starkware
-                SeqStatus::AcceptedOnL1 => BlockStatus::AcceptedOnChain,
-                SeqStatus::AcceptedOnL2 => BlockStatus::Proven,
+                SeqStatus::AcceptedOnL1 => BlockStatus::AcceptedOnL1,
+                SeqStatus::AcceptedOnL2 => BlockStatus::AcceptedOnL2,
                 SeqStatus::NotReceived => BlockStatus::Rejected,
                 SeqStatus::Pending => BlockStatus::Pending,
                 SeqStatus::Received => BlockStatus::Pending,
@@ -130,6 +171,18 @@ pub mod reply {
                 SeqStatus::Reverted => BlockStatus::Rejected,
             }
         }
+    }
+
+    /// Wrapper for transaction data returned in block related queries,
+    /// chosen variant depends on [BlockResponseScope](crate::rpc::types::request::BlockResponseScope).
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    #[serde(untagged)]
+    pub enum Transactions {
+        HashesOnly(#[serde_as(as = "Vec<H256AsRelaxedHexStr>")] Vec<H256>),
+        Full(Vec<Transaction>),
+        FullWithReceipts(Vec<TransactionAndReceipt>),
     }
 
     /// L2 Block as returned by the RPC API.
@@ -149,12 +202,11 @@ pub mod reply {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         old_root: H256,
         accepted_time: u64,
-        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-        transactions: Vec<H256>,
+        transactions: Transactions,
     }
 
-    impl From<seq::Block> for Block {
-        fn from(block: seq::Block) -> Self {
+    impl Block {
+        pub fn from_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
             Self {
                 block_hash: block.block_hash.unwrap_or_default(),
                 parent_hash: block.parent_block_hash,
@@ -167,11 +219,31 @@ pub mod reply {
                 // TODO where to get it from
                 old_root: H256::zero(),
                 accepted_time: block.timestamp,
-                transactions: block
-                    .transactions
-                    .iter()
-                    .map(|t| t.transaction_hash)
-                    .collect(),
+                transactions: match scope {
+                    BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
+                        block
+                            .transactions
+                            .into_iter()
+                            .map(|t| t.transaction_hash)
+                            .collect(),
+                    ),
+                    BlockResponseScope::FullTransactions => Transactions::Full(
+                        block.transactions.into_iter().map(|t| t.into()).collect(),
+                    ),
+                    BlockResponseScope::FullTransactionsAndReceipts => {
+                        Transactions::FullWithReceipts(
+                            block
+                                .transactions
+                                .into_iter()
+                                .zip(block.transaction_receipts.into_iter())
+                                .map(|(t, r)| TransactionAndReceipt {
+                                    transaction: t.into(),
+                                    receipt: r.into(),
+                                })
+                                .collect(),
+                        )
+                    }
+                },
             }
         }
     }
@@ -283,7 +355,6 @@ pub mod reply {
     /// L2 transaction as returned by the RPC API.
     #[serde_as]
     #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
     pub struct Transaction {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         txn_hash: H256,
@@ -342,14 +413,15 @@ pub mod reply {
     /// L2 transaction receipt as returned by the RPC API.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
     pub struct TransactionReceipt {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         txn_hash: H256,
         status: TransactionStatus,
+        #[serde(rename = "statusData")]
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,
         l1_origin_message: transaction_receipt::MessageToL2,
+        events: Vec<transaction_receipt::Event>,
     }
 
     impl From<seq::transaction::Receipt> for TransactionReceipt {
@@ -368,6 +440,8 @@ pub mod reply {
                     Some(m) => m.into(),
                     None => transaction_receipt::MessageToL2::default(),
                 },
+                // TODO at the moment not available in sequencer replies
+                events: vec![],
             }
         }
     }
@@ -436,6 +510,30 @@ pub mod reply {
                 }
             }
         }
+
+        /// Event emitted as a part of a transaction.
+        #[serde_as]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct Event {
+            #[serde_as(as = "H256AsRelaxedHexStr")]
+            from_address: H256,
+            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+            keys: Vec<H256>,
+            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+            data: Vec<H256>,
+        }
+    }
+
+    /// Used in [Block](crate::rpc::types::reply::Block) when the requested scope of
+    /// reply is [BlockResponseScope::FullTransactionsAndReceipts](crate::rpc::types::request::BlockResponseScope).
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    pub struct TransactionAndReceipt {
+        #[serde(flatten)]
+        transaction: Transaction,
+        #[serde(flatten)]
+        receipt: TransactionReceipt,
     }
 
     /// Represents transaction status.
@@ -448,8 +546,10 @@ pub mod reply {
         Received,
         #[serde(rename = "PENDING")]
         Pending,
-        #[serde(rename = "ACCEPTED_ONCHAIN")]
-        AcceptedOnChain,
+        #[serde(rename = "ACCEPTED_ON_L2")]
+        AcceptedOnL2,
+        #[serde(rename = "ACCEPTED_ON_L1")]
+        AcceptedOnL1,
         #[serde(rename = "REJECTED")]
         Rejected,
     }
@@ -458,8 +558,8 @@ pub mod reply {
         fn from(status: SeqStatus) -> Self {
             match status {
                 // TODO verify this mapping with Starkware
-                SeqStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnChain,
-                SeqStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnChain,
+                SeqStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
+                SeqStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnL2,
                 SeqStatus::NotReceived => TransactionStatus::Unknown,
                 SeqStatus::Pending => TransactionStatus::Pending,
                 SeqStatus::Received => TransactionStatus::Received,

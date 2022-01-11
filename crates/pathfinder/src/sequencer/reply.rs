@@ -5,8 +5,8 @@ use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
 use std::convert::TryFrom;
 use web3::types::{H256, U256};
 
-/// Used to deserialize replies to [Client::block](crate::sequencer::Client::block) and
-/// [Client::latest_block](crate::sequencer::Client::latest_block).
+/// Used to deserialize replies to [Client::block_by_hash](crate::sequencer::Client::block_by_hash) and
+/// [Client::block_by_number](crate::sequencer::Client::block_by_number).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
