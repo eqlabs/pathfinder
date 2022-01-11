@@ -1,4 +1,5 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
+use super::error::{SequencerError, StarknetError};
 use crate::serde::{H256AsRelaxedHexStr, U256AsBigDecimal};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
@@ -12,16 +13,16 @@ use web3::types::{H256, U256};
 #[serde(deny_unknown_fields)]
 pub enum BlockReply {
     Block(Block),
-    Error(starknet::Error),
+    Error(StarknetError),
 }
 
 impl TryFrom<BlockReply> for Block {
-    type Error = anyhow::Error;
+    type Error = SequencerError;
 
     fn try_from(value: BlockReply) -> Result<Self, Self::Error> {
         match value {
             BlockReply::Block(b) => Ok(b),
-            BlockReply::Error(e) => Err(anyhow::Error::new(e)),
+            BlockReply::Error(e) => Err(SequencerError::StarknetError(e)),
         }
     }
 }
@@ -56,16 +57,16 @@ pub mod block {
 #[serde(deny_unknown_fields)]
 pub enum CallReply {
     Call(Call),
-    Error(starknet::Error),
+    Error(StarknetError),
 }
 
 impl TryFrom<CallReply> for Call {
-    type Error = anyhow::Error;
+    type Error = SequencerError;
 
     fn try_from(value: CallReply) -> Result<Self, Self::Error> {
         match value {
             CallReply::Call(c) => Ok(c),
-            CallReply::Error(e) => Err(anyhow::Error::new(e)),
+            CallReply::Error(e) => Err(SequencerError::StarknetError(e)),
         }
     }
 }
@@ -103,16 +104,16 @@ pub mod call {
 #[serde(deny_unknown_fields)]
 pub enum CodeReply {
     Code(Code),
-    Error(starknet::Error),
+    Error(StarknetError),
 }
 
 impl TryFrom<CodeReply> for Code {
-    type Error = anyhow::Error;
+    type Error = SequencerError;
 
     fn try_from(value: CodeReply) -> Result<Self, Self::Error> {
         match value {
             CodeReply::Code(c) => Ok(c),
-            CodeReply::Error(e) => Err(anyhow::Error::new(e)),
+            CodeReply::Error(e) => Err(SequencerError::StarknetError(e)),
         }
     }
 }
@@ -185,71 +186,22 @@ pub mod code {
     }
 }
 
-pub mod starknet {
-    use serde::{Deserialize, Serialize};
-    use serde_with::skip_serializing_none;
-
-    /// Used for deserializing specific Starknet sequencer error data.
-    #[skip_serializing_none]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    pub struct Error {
-        pub code: ErrorCode,
-        pub message: String,
-        // The `problems` field is intentionally omitted here
-        // Let's deserialize it if it proves necessary
-    }
-
-    impl std::error::Error for Error {}
-
-    impl std::fmt::Display for Error {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{:?}", self)
-        }
-    }
-
-    /// Represents error codes reported by the sequencer.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
-    pub enum ErrorCode {
-        #[serde(rename = "StarknetErrorCode.BLOCK_NOT_FOUND")]
-        BlockNotFound,
-        #[serde(rename = "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT")]
-        EntryPointNotFound,
-        #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_CONTRACT_ADDRESS")]
-        OutOfRangeContractAddress,
-        #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_CONTRACT_STORAGE_KEY")]
-        OutOfRangeStorageKey,
-        #[serde(rename = "StarkErrorCode.SCHEMA_VALIDATION_ERROR")]
-        SchemaValidationError,
-        #[serde(rename = "StarknetErrorCode.TRANSACTION_FAILED")]
-        TransactionFailed,
-        #[serde(rename = "StarknetErrorCode.UNINITIALIZED_CONTRACT")]
-        UninitializedContract,
-        #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_BLOCK_HASH")]
-        OutOfRangeBlockHash,
-        #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_TRANSACTION_HASH")]
-        OutOfRangeTransactionHash,
-        #[serde(rename = "StarkErrorCode.MALFORMED_REQUEST")]
-        MalformedRequest,
-    }
-}
-
 /// Used to deserialize replies to [Client::transaction](crate::sequencer::Client::transaction).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum TransactionReply {
     Transaction(Box<Transaction>),
-    Error(starknet::Error),
+    Error(StarknetError),
 }
 
 impl TryFrom<TransactionReply> for Transaction {
-    type Error = anyhow::Error;
+    type Error = SequencerError;
 
     fn try_from(value: TransactionReply) -> Result<Self, Self::Error> {
         match value {
             TransactionReply::Transaction(t) => Ok(*t),
-            TransactionReply::Error(e) => Err(anyhow::Error::new(e)),
+            TransactionReply::Error(e) => Err(SequencerError::StarknetError(e)),
         }
     }
 }
@@ -279,16 +231,16 @@ pub struct Transaction {
 #[serde(deny_unknown_fields)]
 pub enum TransactionStatusReply {
     TransactionStatus(TransactionStatus),
-    Error(starknet::Error),
+    Error(StarknetError),
 }
 
 impl TryFrom<TransactionStatusReply> for TransactionStatus {
-    type Error = anyhow::Error;
+    type Error = SequencerError;
 
     fn try_from(value: TransactionStatusReply) -> Result<Self, Self::Error> {
         match value {
             TransactionStatusReply::TransactionStatus(t) => Ok(t),
-            TransactionStatusReply::Error(e) => Err(anyhow::Error::new(e)),
+            TransactionStatusReply::Error(e) => Err(SequencerError::StarknetError(e)),
         }
     }
 }
