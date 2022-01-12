@@ -1,36 +1,11 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use super::error::{SequencerError, StarknetError};
-use crate::{
-    rpc::types::relaxed,
-    serde::{H256AsRelaxedHexStr, U256AsBigDecimal},
-};
+use crate::serde::{H256AsRelaxedHexStr, U256AsBigDecimal};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
-use std::convert::TryFrom;
 use web3::types::{H256, U256};
 
 /// Used to deserialize replies to [Client::block_by_hash](crate::sequencer::Client::block_by_hash) and
 /// [Client::block_by_number](crate::sequencer::Client::block_by_number).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum BlockReply {
-    Block(Block),
-    Error(StarknetError),
-}
-
-impl TryFrom<BlockReply> for Block {
-    type Error = SequencerError;
-
-    fn try_from(value: BlockReply) -> Result<Self, Self::Error> {
-        match value {
-            BlockReply::Block(b) => Ok(b),
-            BlockReply::Error(e) => Err(SequencerError::StarknetError(e)),
-        }
-    }
-}
-
-/// Actual block data from [BlockReply].
 #[serde_as]
 #[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -54,47 +29,7 @@ pub mod block {
     pub type Status = super::transaction::Status;
 }
 
-/// Used to deserialize replies to the `get_block_hash_by_id` query.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum BlockHashReply {
-    Hash(relaxed::H256),
-    Error(StarknetError),
-}
-
-impl TryFrom<BlockHashReply> for relaxed::H256 {
-    type Error = SequencerError;
-
-    fn try_from(value: BlockHashReply) -> Result<Self, Self::Error> {
-        match value {
-            BlockHashReply::Hash(b) => Ok(b),
-            BlockHashReply::Error(e) => Err(SequencerError::StarknetError(e)),
-        }
-    }
-}
-
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum CallReply {
-    Call(Call),
-    Error(StarknetError),
-}
-
-impl TryFrom<CallReply> for Call {
-    type Error = SequencerError;
-
-    fn try_from(value: CallReply) -> Result<Self, Self::Error> {
-        match value {
-            CallReply::Call(c) => Ok(c),
-            CallReply::Error(e) => Err(SequencerError::StarknetError(e)),
-        }
-    }
-}
-
-/// Actual call data from [CallReply].
 #[serde_as]
 #[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -121,27 +56,6 @@ pub mod call {
 }
 
 /// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
-#[serde_as]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum CodeReply {
-    Code(Code),
-    Error(StarknetError),
-}
-
-impl TryFrom<CodeReply> for Code {
-    type Error = SequencerError;
-
-    fn try_from(value: CodeReply) -> Result<Self, Self::Error> {
-        match value {
-            CodeReply::Code(c) => Ok(c),
-            CodeReply::Error(e) => Err(SequencerError::StarknetError(e)),
-        }
-    }
-}
-
-/// Actual code data from [CodeReply].
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -209,47 +123,7 @@ pub mod code {
     }
 }
 
-/// Used to deserialize replies to [Client::storage](crate::sequencer::Client::storage).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum StorageReply {
-    Value(relaxed::H256),
-    Error(StarknetError),
-}
-
-impl TryFrom<StorageReply> for relaxed::H256 {
-    type Error = SequencerError;
-
-    fn try_from(value: StorageReply) -> Result<Self, Self::Error> {
-        match value {
-            StorageReply::Value(b) => Ok(b),
-            StorageReply::Error(e) => Err(SequencerError::StarknetError(e)),
-        }
-    }
-}
-
 /// Used to deserialize replies to [Client::transaction](crate::sequencer::Client::transaction).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum TransactionReply {
-    Transaction(Box<Transaction>),
-    Error(StarknetError),
-}
-
-impl TryFrom<TransactionReply> for Transaction {
-    type Error = SequencerError;
-
-    fn try_from(value: TransactionReply) -> Result<Self, Self::Error> {
-        match value {
-            TransactionReply::Transaction(t) => Ok(*t),
-            TransactionReply::Error(e) => Err(SequencerError::StarknetError(e)),
-        }
-    }
-}
-
-/// Actual transaction data from [TransactionReply].
 #[serde_as]
 #[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -269,26 +143,6 @@ pub struct Transaction {
 }
 
 /// Used to deserialize replies to [Client::transaction_status](crate::sequencer::Client::transaction_status).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum TransactionStatusReply {
-    TransactionStatus(TransactionStatus),
-    Error(StarknetError),
-}
-
-impl TryFrom<TransactionStatusReply> for TransactionStatus {
-    type Error = SequencerError;
-
-    fn try_from(value: TransactionStatusReply) -> Result<Self, Self::Error> {
-        match value {
-            TransactionStatusReply::TransactionStatus(t) => Ok(t),
-            TransactionStatusReply::Error(e) => Err(SequencerError::StarknetError(e)),
-        }
-    }
-}
-
-/// Actual transaction data from [TransactionStatusReply].
 #[serde_as]
 #[skip_serializing_none]
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]

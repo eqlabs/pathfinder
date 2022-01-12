@@ -8,8 +8,10 @@ use crate::{
     sequencer::error::SequencerError,
 };
 use reqwest::Url;
-use std::{borrow::Cow, convert::TryInto, fmt::Debug, result::Result};
+use std::{borrow::Cow, fmt::Debug, result::Result};
 use web3::types::{H256, U256};
+
+use self::error::StarknetError;
 
 /// StarkNet sequencer client using REST API.
 #[derive(Debug)]
@@ -27,14 +29,24 @@ fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
     }
 }
 
-/// Starknet specific errors come with an internal server error HTTP staus code (500), so
-/// we have to treat them in a special way. Other HTTP errors are let through.
-fn check_for_error(response: &reqwest::Response) -> reqwest::Result<()> {
-    if response.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
-        return Ok(());
+/// __Mandatory__ function to parse every sequencer query response.
+async fn parse<T>(resp: reqwest::Response) -> Result<T, SequencerError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    // Starknet specific errors end with a 500 status code
+    // but the body contains a JSON object with the error description
+    if resp.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
+        let resp = resp.text().await?;
+        let starknet_error = serde_json::from_str::<StarknetError>(resp.as_str())?;
+        return Err(SequencerError::StarknetError(starknet_error));
     }
-
-    response.error_for_status_ref().map(|_| ())
+    // Status codes <400;499> and <501;599> are mapped to SequencerError::TransportError
+    resp.error_for_status_ref().map(|_| ())?;
+    let resp = resp.text().await?;
+    // Attempt to deserialize the actual data we are looking for
+    let deserialized = serde_json::from_str::<T>(resp.as_str())?;
+    Ok(deserialized)
 }
 
 impl Client {
@@ -55,10 +67,7 @@ impl Client {
                     self.build_query("get_block_hash_by_id", &[("blockId", &n.to_string())]),
                 )
                 .await?;
-                check_for_error(&resp)?;
-                let resp = resp.text().await?;
-                let block_hash: relaxed::H256 =
-                    serde_json::from_str::<reply::BlockHashReply>(resp.as_str())?.try_into()?;
+                let block_hash: relaxed::H256 = parse(resp).await?;
                 BlockHashOrTag::Hash(*block_hash)
             }
             BlockNumberOrTag::Tag(tag) => BlockHashOrTag::Tag(tag),
@@ -73,9 +82,7 @@ impl Client {
     ) -> Result<reply::Block, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
         let resp = reqwest::get(self.build_query("get_block", &[(tag, &hash)])).await?;
-        check_for_error(&resp)?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<reply::BlockReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
@@ -88,9 +95,7 @@ impl Client {
         let url = self.build_query("call_contract", &[(tag, &hash)]);
         let client = reqwest::Client::new();
         let resp = client.post(url).json(&payload).send().await?;
-        check_for_error(&resp)?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<reply::CallReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Gets contract's code and ABI.
@@ -108,9 +113,7 @@ impl Client {
             ],
         ))
         .await?;
-        check_for_error(&resp)?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<reply::CodeReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Gets storage value associated with a `key` for a prticular contract.
@@ -130,10 +133,7 @@ impl Client {
             ],
         ))
         .await?;
-        check_for_error(&resp)?;
-        let resp = resp.text().await?;
-        let value: relaxed::H256 =
-            serde_json::from_str::<reply::StorageReply>(resp.as_str())?.try_into()?;
+        let value: relaxed::H256 = parse(resp).await?;
         Ok(*value)
     }
 
@@ -150,9 +150,7 @@ impl Client {
             )],
         ))
         .await?;
-        check_for_error(&resp)?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<reply::TransactionReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Gets transaction status by transaction hash.
@@ -168,9 +166,7 @@ impl Client {
             )],
         ))
         .await?;
-        check_for_error(&resp)?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<reply::TransactionStatusReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Helper function that constructs a URL for particular query.
