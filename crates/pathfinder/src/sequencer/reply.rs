@@ -1,6 +1,9 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use super::error::{SequencerError, StarknetError};
-use crate::serde::{H256AsRelaxedHexStr, U256AsBigDecimal};
+use crate::{
+    rpc::types::relaxed,
+    serde::{H256AsRelaxedHexStr, U256AsBigDecimal},
+};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
 use std::convert::TryFrom;
@@ -49,6 +52,26 @@ pub struct Block {
 /// Types used when deserializing L2 block related data.
 pub mod block {
     pub type Status = super::transaction::Status;
+}
+
+/// Used to deserialize replies to the `get_block_hash_by_id` query.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[serde(deny_unknown_fields)]
+pub enum BlockHashReply {
+    Hash(relaxed::H256),
+    Error(StarknetError),
+}
+
+impl TryFrom<BlockHashReply> for relaxed::H256 {
+    type Error = SequencerError;
+
+    fn try_from(value: BlockHashReply) -> Result<Self, Self::Error> {
+        match value {
+            BlockHashReply::Hash(b) => Ok(b),
+            BlockHashReply::Error(e) => Err(SequencerError::StarknetError(e)),
+        }
+    }
 }
 
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
@@ -182,6 +205,26 @@ pub mod code {
         pub struct Output {
             pub name: String,
             pub r#type: String,
+        }
+    }
+}
+
+/// Used to deserialize replies to [Client::storage](crate::sequencer::Client::storage).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[serde(deny_unknown_fields)]
+pub enum StorageReply {
+    Value(relaxed::H256),
+    Error(StarknetError),
+}
+
+impl TryFrom<StorageReply> for relaxed::H256 {
+    type Error = SequencerError;
+
+    fn try_from(value: StorageReply) -> Result<Self, Self::Error> {
+        match value {
+            StorageReply::Value(b) => Ok(b),
+            StorageReply::Error(e) => Err(SequencerError::StarknetError(e)),
         }
     }
 }

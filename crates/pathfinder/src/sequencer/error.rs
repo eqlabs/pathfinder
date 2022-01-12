@@ -6,14 +6,9 @@ use serde::{Deserialize, Serialize};
 /// Sequencer errors.
 #[derive(Debug, thiserror::Error)]
 pub enum SequencerError {
-    /// All errors related to parsing sequencer replies that should
-    /// be in the JSON format.
-    #[error("Failed to parse sequencer reply JSON: {0}")]
+    /// All errors related to deserializing sequencer replies.
+    #[error("Failed to deserialize sequencer reply: {0}")]
     DeserializationError(#[from] serde_json::Error),
-    /// All errors related to parsing sequencer replies that
-    /// are not related to JSON handling.
-    #[error("Failed to parse a non-JSON sequencer reply: {0}")]
-    ParseError(#[from] anyhow::Error),
     /// Starknet specific errors.
     #[error("Starknet error: {0}")]
     StarknetError(#[from] StarknetError),
@@ -28,7 +23,6 @@ impl From<SequencerError> for rpc::Error {
             SequencerError::DeserializationError(e) => {
                 rpc::Error::Call(rpc::CallError::Failed(e.into()))
             }
-            SequencerError::ParseError(e) => rpc::Error::Call(rpc::CallError::Failed(e)),
             SequencerError::StarknetError(e) => match e.code {
                 StarknetErrorCode::OutOfRangeBlockHash | StarknetErrorCode::BlockNotFound => {
                     RpcErrorCode::InvalidBlockHash.into()

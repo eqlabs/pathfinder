@@ -4,12 +4,10 @@ pub mod reply;
 pub mod request;
 
 use crate::{
-    rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
-    sequencer::error::{SequencerError, StarknetError},
-    serde::from_relaxed_hex_str,
+    rpc::types::{relaxed, BlockHashOrTag, BlockNumberOrTag, Tag},
+    sequencer::error::SequencerError,
 };
 use reqwest::Url;
-use serde_json::{from_value, Value};
 use std::{borrow::Cow, convert::TryInto, fmt::Debug, result::Result};
 use web3::types::{H256, U256};
 
@@ -56,28 +54,12 @@ impl Client {
                 let resp = reqwest::get(
                     self.build_query("get_block_hash_by_id", &[("blockId", &n.to_string())]),
                 )
-                .await
-                .unwrap();
+                .await?;
                 check_for_error(&resp)?;
                 let resp = resp.text().await?;
-
-                if let Ok(e) = serde_json::from_str::<StarknetError>(resp.as_str()) {
-                    return Err(e.into());
-                }
-
-                let resp = resp
-                    .strip_prefix('\"')
-                    .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
-                let resp = resp
-                    .strip_suffix('\"')
-                    .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
-                let block_hash = crate::serde::from_relaxed_hex_str::<
-                    H256,
-                    { H256::len_bytes() },
-                    { H256::len_bytes() * 2 },
-                >(resp)?;
-
-                BlockHashOrTag::Hash(block_hash)
+                let block_hash: relaxed::H256 =
+                    serde_json::from_str::<reply::BlockHashReply>(resp.as_str())?.try_into()?;
+                BlockHashOrTag::Hash(*block_hash)
             }
             BlockNumberOrTag::Tag(tag) => BlockHashOrTag::Tag(tag),
         };
@@ -150,18 +132,9 @@ impl Client {
         .await?;
         check_for_error(&resp)?;
         let resp = resp.text().await?;
-        let json_val: Value = serde_json::from_str(resp.as_str())?;
-
-        if let Value::String(s) = json_val {
-            let value =
-                from_relaxed_hex_str::<H256, { H256::len_bytes() }, { H256::len_bytes() * 2 }>(
-                    s.as_str(),
-                )?;
-            Ok(value)
-        } else {
-            let e = from_value::<StarknetError>(json_val)?;
-            Err(e.into())
-        }
+        let value: relaxed::H256 =
+            serde_json::from_str::<reply::StorageReply>(resp.as_str())?.try_into()?;
+        Ok(*value)
     }
 
     /// Gets transaction by hash.
