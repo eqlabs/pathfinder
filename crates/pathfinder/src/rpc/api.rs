@@ -6,12 +6,12 @@ use crate::{
         request::{BlockResponseScope, Call},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
-    sequencer::{
-        reply as raw, reply::starknet::Error as RawError,
-        reply::starknet::ErrorCode as RawErrorCode, Client,
-    },
+    sequencer::{reply as raw, Client},
 };
-use jsonrpsee::types::error::{CallError, Error};
+use jsonrpsee::types::{
+    error::{CallError, Error},
+    RpcResult,
+};
 use reqwest::Url;
 use std::convert::{From, TryInto};
 use web3::types::H256;
@@ -20,11 +20,10 @@ use web3::types::H256;
 ///
 /// Unfortunately invalid transaction hash has the same error code as
 /// cannot be used.
-/// invalid block hash, so `ErrorCode::InvalidTransactionHash.into()`
 fn invalid_transaction_hash() -> Error {
     Error::Call(CallError::Custom {
         code: ErrorCode::InvalidTransactionHash as i32,
-        message: "Invalid transaction hash".to_owned(),
+        message: ErrorCode::InvalidTransactionHashStr.to_owned(),
         data: None,
     })
 }
@@ -52,20 +51,9 @@ impl Default for RpcApi {
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-adrs/blob/master/api/starknet_operator_api_openrpc.json).
 impl RpcApi {
     /// Helper function.
-    async fn get_raw_block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<raw::Block, Error> {
+    async fn get_raw_block_by_hash(&self, block_hash: BlockHashOrTag) -> RpcResult<raw::Block> {
         // TODO get this from storage
-        let block = self
-            .0
-            .block_by_hash(block_hash)
-            .await
-            .map_err(|e| -> Error {
-                match e.downcast_ref::<RawError>().map(|e| e.code) {
-                    Some(RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound) => {
-                        ErrorCode::InvalidBlockHash.into()
-                    }
-                    Some(_) | None => e.into(),
-                }
-            })?;
+        let block = self.0.block_by_hash(block_hash).await?;
         Ok(block)
     }
 
@@ -76,7 +64,7 @@ impl RpcApi {
         &self,
         block_hash: BlockHashOrTag,
         requested_scope: Option<BlockResponseScope>,
-    ) -> Result<Block, Error> {
+    ) -> RpcResult<Block> {
         let block = self.get_raw_block_by_hash(block_hash).await?;
         let scope = requested_scope.unwrap_or_default();
         Ok(Block::from_scoped(block, scope))
@@ -86,24 +74,8 @@ impl RpcApi {
     async fn get_raw_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
-    ) -> Result<raw::Block, Error> {
-        let block = self
-            .0
-            .block_by_number(block_number)
-            .await
-            .map_err(|e| -> Error {
-                match e.downcast_ref::<RawError>() {
-                    Some(starknet_e)
-                        if starknet_e.code == RawErrorCode::MalformedRequest
-                            && starknet_e
-                                .message
-                                .contains("Block ID should be in the range") =>
-                    {
-                        ErrorCode::InvalidBlockNumber.into()
-                    }
-                    Some(_) | None => e.into(),
-                }
-            })?;
+    ) -> RpcResult<raw::Block> {
+        let block = self.0.block_by_number(block_number).await?;
         Ok(block)
     }
 
@@ -114,7 +86,7 @@ impl RpcApi {
         &self,
         block_number: BlockNumberOrTag,
         requested_scope: Option<BlockResponseScope>,
-    ) -> Result<Block, Error> {
+    ) -> RpcResult<Block> {
         let block = self.get_raw_block_by_number(block_number).await?;
         let scope = requested_scope.unwrap_or_default();
         Ok(Block::from_scoped(block, scope))
@@ -126,7 +98,7 @@ impl RpcApi {
     pub async fn get_state_update_by_hash(
         &self,
         block_hash: BlockHashOrTag,
-    ) -> Result<StateUpdate, Error> {
+    ) -> RpcResult<StateUpdate> {
         // TODO get this from storage or directly from L1
         match block_hash {
             BlockHashOrTag::Tag(Tag::Latest) => todo!("Implement L1 state diff retrieval."),
@@ -146,27 +118,13 @@ impl RpcApi {
         contract_address: relaxed::H256,
         key: relaxed::H256,
         block_hash: BlockHashOrTag,
-    ) -> Result<relaxed::H256, Error> {
+    ) -> RpcResult<relaxed::H256> {
         let key: H256 = *key;
         let key: [u8; 32] = key.into();
         let storage = self
             .0
             .storage(*contract_address, key.into(), block_hash)
-            .await
-            .map_err(|e| -> Error {
-                match e.downcast_ref::<RawError>() {
-                    Some(starknet_e) => match starknet_e.code {
-                        RawErrorCode::OutOfRangeContractAddress
-                        | RawErrorCode::UninitializedContract => ErrorCode::ContractNotFound.into(),
-                        RawErrorCode::OutOfRangeStorageKey => ErrorCode::InvalidStorageKey.into(),
-                        RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound => {
-                            ErrorCode::InvalidBlockHash.into()
-                        }
-                        _ => e.into(),
-                    },
-                    None => e.into(),
-                }
-            })?;
+            .await?;
         let x: [u8; 32] = storage.into();
         Ok(H256::from(x).into())
     }
@@ -175,21 +133,9 @@ impl RpcApi {
     async fn get_raw_transaction_by_hash(
         &self,
         transaction_hash: relaxed::H256,
-    ) -> Result<raw::Transaction, Error> {
+    ) -> RpcResult<raw::Transaction> {
         // TODO get this from storage
-        let txn = self
-            .0
-            .transaction(*transaction_hash)
-            .await
-            .map_err(|e| -> Error {
-                match e.downcast_ref::<RawError>() {
-                    Some(starknet_e) => match starknet_e.code {
-                        RawErrorCode::OutOfRangeTransactionHash => invalid_transaction_hash(),
-                        _ => e.into(),
-                    },
-                    None => e.into(),
-                }
-            })?;
+        let txn = self.0.transaction(*transaction_hash).await?;
         if txn.status == raw::transaction::Status::NotReceived {
             return Err(invalid_transaction_hash());
         }
@@ -201,7 +147,7 @@ impl RpcApi {
     pub async fn get_transaction_by_hash(
         &self,
         transaction_hash: relaxed::H256,
-    ) -> Result<Transaction, Error> {
+    ) -> RpcResult<Transaction> {
         // TODO get this from storage
         let txn = self.get_raw_transaction_by_hash(transaction_hash).await?;
         Ok(txn.into())
@@ -214,7 +160,7 @@ impl RpcApi {
         &self,
         block_hash: BlockHashOrTag,
         index: u64,
-    ) -> Result<Transaction, Error> {
+    ) -> RpcResult<Transaction> {
         // TODO get this from storage
         let block = self.get_raw_block_by_hash(block_hash).await?;
         let index: usize = index
@@ -234,7 +180,7 @@ impl RpcApi {
         &self,
         block_number: BlockNumberOrTag,
         index: u64,
-    ) -> Result<Transaction, Error> {
+    ) -> RpcResult<Transaction> {
         // TODO get this from storage
         let block = self.get_raw_block_by_number(block_number).await?;
         let index: usize = index
@@ -252,7 +198,7 @@ impl RpcApi {
     pub async fn get_transaction_receipt(
         &self,
         transaction_hash: relaxed::H256,
-    ) -> Result<TransactionReceipt, Error> {
+    ) -> RpcResult<TransactionReceipt> {
         let txn = self.get_raw_transaction_by_hash(transaction_hash).await?;
         if let Some(block_hash) = txn.block_hash {
             if let Some(index) = txn.transaction_index {
@@ -281,20 +227,11 @@ impl RpcApi {
 
     /// Get the code of a specific contract.
     /// `contract_address` is the address of the contract to read from.
-    pub async fn get_code(&self, contract_address: relaxed::H256) -> Result<Code, Error> {
+    pub async fn get_code(&self, contract_address: relaxed::H256) -> RpcResult<Code> {
         let code = self
             .0
             .code(*contract_address, BlockHashOrTag::Tag(Tag::Latest))
-            .await
-            .map_err(|e| -> Error {
-                match e.downcast_ref::<RawError>().map(|e| e.code) {
-                    Some(
-                        RawErrorCode::OutOfRangeContractAddress
-                        | RawErrorCode::UninitializedContract,
-                    ) => ErrorCode::ContractNotFound.into(),
-                    Some(_) | None => e.into(),
-                }
-            })?;
+            .await?;
         Ok(code)
     }
 
@@ -304,7 +241,7 @@ impl RpcApi {
     pub async fn get_block_transaction_count_by_hash(
         &self,
         block_hash: BlockHashOrTag,
-    ) -> Result<u64, Error> {
+    ) -> RpcResult<u64> {
         // TODO get this from storage
         let block = self.get_raw_block_by_hash(block_hash).await?;
         let len: u64 = block
@@ -321,7 +258,7 @@ impl RpcApi {
     pub async fn get_block_transaction_count_by_number(
         &self,
         block_number: BlockNumberOrTag,
-    ) -> Result<u64, Error> {
+    ) -> RpcResult<u64> {
         // TODO get this from storage
         let block = self.get_raw_block_by_number(block_number).await?;
         let len: u64 = block
@@ -339,33 +276,13 @@ impl RpcApi {
         &self,
         request: Call,
         block_hash: BlockHashOrTag,
-    ) -> Result<Vec<relaxed::H256>, Error> {
-        let call = self
-            .0
-            .call(request.into(), block_hash)
-            .await
-            .map_err(|e| -> Error {
-                match e.downcast_ref::<RawError>() {
-                    Some(starknet_e) => match starknet_e.code {
-                        RawErrorCode::EntryPointNotFound => {
-                            ErrorCode::InvalidMessageSelector.into()
-                        }
-                        RawErrorCode::OutOfRangeContractAddress
-                        | RawErrorCode::UninitializedContract => ErrorCode::ContractNotFound.into(),
-                        RawErrorCode::TransactionFailed => ErrorCode::InvalidCallData.into(),
-                        RawErrorCode::OutOfRangeBlockHash | RawErrorCode::BlockNotFound => {
-                            ErrorCode::InvalidBlockHash.into()
-                        }
-                        _ => e.into(),
-                    },
-                    None => e.into(),
-                }
-            })?;
+    ) -> RpcResult<Vec<relaxed::H256>> {
+        let call = self.0.call(request.into(), block_hash).await?;
         Ok(call.into())
     }
 
     /// Get the most recent accepted block number.
-    pub async fn block_number(&self) -> Result<u64, Error> {
+    pub async fn block_number(&self) -> RpcResult<u64> {
         let block = self
             .0
             .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
@@ -374,22 +291,22 @@ impl RpcApi {
     }
 
     /// Return the currently configured StarkNet chain id.
-    pub async fn chain_id(&self) -> Result<relaxed::H256, Error> {
+    pub async fn chain_id(&self) -> RpcResult<relaxed::H256> {
         todo!("Figure out where to take it from.")
     }
 
     /// Returns the transactions in the transaction pool, recognized by this sequencer.
-    pub async fn pending_transactions(&self) -> Result<Vec<Transaction>, Error> {
+    pub async fn pending_transactions(&self) -> RpcResult<Vec<Transaction>> {
         todo!("Figure out where to take them from.")
     }
 
     /// Returns the current starknet protocol version identifier, as supported by this node.
-    pub async fn protocol_version(&self) -> Result<relaxed::H256, Error> {
+    pub async fn protocol_version(&self) -> RpcResult<relaxed::H256> {
         todo!("Figure out where to take it from.")
     }
 
     /// Returns an object about the sync status, or false if the node is not synching.
-    pub async fn syncing(&self) -> Result<Syncing, Error> {
+    pub async fn syncing(&self) -> RpcResult<Syncing> {
         todo!("Figure out where to take it from.")
     }
 }

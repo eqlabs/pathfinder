@@ -268,6 +268,8 @@ pub mod reply {
         // Workaround for a duplicate error code value
         #[allow(non_upper_case_globals)]
         pub const InvalidTransactionHash: ErrorCode = ErrorCode::InvalidBlockNumber;
+        #[allow(non_upper_case_globals)]
+        pub const InvalidTransactionHashStr: &'static str = "Invalid transaction hash";
     }
 
     impl std::string::ToString for ErrorCode {

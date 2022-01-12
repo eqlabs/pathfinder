@@ -1,17 +1,17 @@
 //! StarkNet L2 sequencer client.
+pub mod error;
 pub mod reply;
 pub mod request;
 
-use self::reply::BlockReply;
 use crate::{
-    rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
-    serde::from_relaxed_hex_str,
+    rpc::types::{relaxed, BlockHashOrTag, BlockNumberOrTag, Tag},
+    sequencer::error::SequencerError,
 };
-use anyhow::Result;
 use reqwest::Url;
-use serde_json::{from_value, Value};
-use std::{borrow::Cow, convert::TryInto, fmt::Debug};
+use std::{borrow::Cow, fmt::Debug, result::Result};
 use web3::types::{H256, U256};
+
+use self::error::StarknetError;
 
 /// StarkNet sequencer client using REST API.
 #[derive(Debug)]
@@ -29,6 +29,26 @@ fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
     }
 }
 
+/// __Mandatory__ function to parse every sequencer query response.
+async fn parse<T>(resp: reqwest::Response) -> Result<T, SequencerError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    // Starknet specific errors end with a 500 status code
+    // but the body contains a JSON object with the error description
+    if resp.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
+        let resp = resp.text().await?;
+        let starknet_error = serde_json::from_str::<StarknetError>(resp.as_str())?;
+        return Err(SequencerError::StarknetError(starknet_error));
+    }
+    // Status codes <400;499> and <501;599> are mapped to SequencerError::TransportError
+    resp.error_for_status_ref().map(|_| ())?;
+    let resp = resp.text().await?;
+    // Attempt to deserialize the actual data we are looking for
+    let deserialized = serde_json::from_str::<T>(resp.as_str())?;
+    Ok(deserialized)
+}
+
 impl Client {
     /// Creates a new sequencer client, `sequencer_url` needs to be a valid _base URL_.
     pub fn new(sequencer_url: Url) -> Self {
@@ -37,32 +57,18 @@ impl Client {
     }
 
     /// Gets block by number.
-    pub async fn block_by_number(&self, block_number: BlockNumberOrTag) -> Result<reply::Block> {
+    pub async fn block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<reply::Block, SequencerError> {
         let block_hash = match block_number {
             BlockNumberOrTag::Number(n) => {
                 let resp = reqwest::get(
                     self.build_query("get_block_hash_by_id", &[("blockId", &n.to_string())]),
                 )
-                .await
-                .unwrap();
-                let resp = resp.text().await?;
-
-                if let Ok(e) = serde_json::from_str::<self::reply::starknet::Error>(resp.as_str()) {
-                    return Err(e.into());
-                }
-
-                let resp = resp
-                    .strip_prefix('\"')
-                    .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
-                let resp = resp
-                    .strip_suffix('\"')
-                    .ok_or(anyhow::anyhow!("quoted hash string expected"))?;
-                let block_hash = crate::serde::from_relaxed_hex_str::<
-                    H256,
-                    { H256::len_bytes() },
-                    { H256::len_bytes() * 2 },
-                >(resp)?;
-                BlockHashOrTag::Hash(block_hash)
+                .await?;
+                let block_hash: relaxed::H256 = parse(resp).await?;
+                BlockHashOrTag::Hash(*block_hash)
             }
             BlockNumberOrTag::Tag(tag) => BlockHashOrTag::Tag(tag),
         };
@@ -70,11 +76,13 @@ impl Client {
     }
 
     /// Get block by hash.
-    pub async fn block_by_hash(&self, block_hash: BlockHashOrTag) -> Result<reply::Block> {
+    pub async fn block_by_hash(
+        &self,
+        block_hash: BlockHashOrTag,
+    ) -> Result<reply::Block, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
         let resp = reqwest::get(self.build_query("get_block", &[(tag, &hash)])).await?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<BlockReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
@@ -82,13 +90,12 @@ impl Client {
         &self,
         payload: request::Call,
         block_hash: BlockHashOrTag,
-    ) -> Result<reply::Call> {
+    ) -> Result<reply::Call, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
         let url = self.build_query("call_contract", &[(tag, &hash)]);
         let client = reqwest::Client::new();
         let resp = client.post(url).json(&payload).send().await?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<reply::CallReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Gets contract's code and ABI.
@@ -96,7 +103,7 @@ impl Client {
         &self,
         contract_addr: H256,
         block_hash: BlockHashOrTag,
-    ) -> Result<reply::Code> {
+    ) -> Result<reply::Code, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
         let resp = reqwest::get(self.build_query(
             "get_code",
@@ -106,8 +113,7 @@ impl Client {
             ],
         ))
         .await?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<reply::CodeReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Gets storage value associated with a `key` for a prticular contract.
@@ -116,7 +122,7 @@ impl Client {
         contract_addr: H256,
         key: U256,
         block_hash: BlockHashOrTag,
-    ) -> Result<H256> {
+    ) -> Result<H256, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
         let resp = reqwest::get(self.build_query(
             "get_storage_at",
@@ -127,23 +133,15 @@ impl Client {
             ],
         ))
         .await?;
-        let resp = resp.text().await?;
-        let json_val: Value = serde_json::from_str(resp.as_str())?;
-
-        if let Value::String(s) = json_val {
-            let value =
-                from_relaxed_hex_str::<H256, { H256::len_bytes() }, { H256::len_bytes() * 2 }>(
-                    s.as_str(),
-                )?;
-            Ok(value)
-        } else {
-            let error = from_value::<reply::starknet::Error>(json_val)?;
-            Err(anyhow::Error::new(error))
-        }
+        let value: relaxed::H256 = parse(resp).await?;
+        Ok(*value)
     }
 
     /// Gets transaction by hash.
-    pub async fn transaction(&self, transaction_hash: H256) -> Result<reply::Transaction> {
+    pub async fn transaction(
+        &self,
+        transaction_hash: H256,
+    ) -> Result<reply::Transaction, SequencerError> {
         let resp = reqwest::get(self.build_query(
             "get_transaction",
             &[(
@@ -152,15 +150,14 @@ impl Client {
             )],
         ))
         .await?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<reply::TransactionReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Gets transaction status by transaction hash.
     pub async fn transaction_status(
         &self,
         transaction_hash: H256,
-    ) -> Result<reply::TransactionStatus> {
+    ) -> Result<reply::TransactionStatus, SequencerError> {
         let resp = reqwest::get(self.build_query(
             "get_transaction_status",
             &[(
@@ -169,8 +166,7 @@ impl Client {
             )],
         ))
         .await?;
-        let resp = resp.text().await?;
-        serde_json::from_str::<reply::TransactionStatusReply>(resp.as_str())?.try_into()
+        parse(resp).await
     }
 
     /// Helper function that constructs a URL for particular query.
@@ -187,13 +183,8 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        reply::{
-            starknet::{Error, ErrorCode},
-            transaction::Status,
-        },
-        *,
-    };
+    use super::{error::StarknetErrorCode, *};
+    use assert_matches::assert_matches;
     use std::str::FromStr;
     use web3::types::U256;
 
@@ -263,33 +254,32 @@ mod tests {
         #[tokio::test]
         async fn unknown() {
             // Use valid hash from mainnet
-            assert_eq!(
-                client()
-                    .block_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::BlockNotFound
+            let error = client()
+                .block_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
             );
         }
 
         #[tokio::test]
         async fn invalid() {
             // Invalid block hash
-            assert_eq!(
-                client()
-                    .block_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeBlockHash
+            let error = client()
+                .block_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeBlockHash)
             );
         }
     }
 
     mod block_by_number {
         use super::*;
-        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn genesis() {
@@ -317,13 +307,13 @@ mod tests {
 
         #[tokio::test]
         async fn invalid() {
-            assert_eq!(
-                client()
-                    .block_by_number(BlockNumberOrTag::Number(u64::MAX))
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::MalformedRequest
+            let error = client()
+                .block_by_number(BlockNumberOrTag::Number(u64::MAX))
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::MalformedRequest)
             );
         }
     }
@@ -334,121 +324,121 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_entry_point() {
-            assert_eq!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: vec![U256::from(1234)],
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: H256::zero(),
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Tag(Tag::Latest),
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::EntryPointNotFound
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: vec![U256::from(1234)],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: H256::zero(),
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::EntryPointNotFound)
             );
         }
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            assert_eq!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: vec![U256::from(1234)],
-                            contract_address: *INVALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Tag(Tag::Latest),
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeContractAddress
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: vec![U256::from(1234)],
+                        contract_address: *INVALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeContractAddress)
             );
         }
 
         #[tokio::test]
         async fn invalid_call_data() {
-            assert_eq!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: vec![],
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::TransactionFailed
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: vec![],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::TransactionFailed)
             );
         }
 
         #[tokio::test]
         async fn uninitialized_contract() {
-            assert_eq!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: vec![],
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH),
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::UninitializedContract
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: vec![],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
             );
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            assert_eq!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: vec![U256::from(1234)],
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeBlockHash
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: vec![U256::from(1234)],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeBlockHash)
             );
         }
 
         #[tokio::test]
         async fn unknown_block_hash() {
-            assert_eq!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: vec![U256::from(1234)],
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::BlockNotFound
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: vec![U256::from(1234)],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
             );
         }
 
@@ -507,13 +497,13 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            assert_eq!(
-                client()
-                    .code(*INVALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeContractAddress
+            let error = client()
+                .code(*INVALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeContractAddress)
             );
         }
 
@@ -528,31 +518,31 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            assert_eq!(
-                client()
-                    .code(
-                        *VALID_CONTRACT_ADDR,
-                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH)
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeBlockHash
+            let error = client()
+                .code(
+                    *VALID_CONTRACT_ADDR,
+                    BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeBlockHash)
             );
         }
 
         #[tokio::test]
         async fn unknown_block_hash() {
-            assert_eq!(
-                client()
-                    .code(
-                        *VALID_CONTRACT_ADDR,
-                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::BlockNotFound
+            let error = client()
+                .code(
+                    *VALID_CONTRACT_ADDR,
+                    BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
             );
         }
 
@@ -594,65 +584,65 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            assert_eq!(
-                client()
-                    .storage(
-                        *INVALID_CONTRACT_ADDR,
-                        *VALID_KEY,
-                        BlockHashOrTag::Tag(Tag::Latest)
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeContractAddress
+            let error = client()
+                .storage(
+                    *INVALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeContractAddress)
             );
         }
 
         #[tokio::test]
         async fn invalid_key() {
-            assert_eq!(
-                client()
-                    .storage(
-                        *VALID_CONTRACT_ADDR,
-                        U256::max_value(),
-                        BlockHashOrTag::Tag(Tag::Latest)
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeStorageKey
+            let error = client()
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    U256::max_value(),
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeStorageKey)
             );
         }
 
         #[tokio::test]
         async fn unknown_block_hash() {
-            assert_eq!(
-                client()
-                    .storage(
-                        *VALID_CONTRACT_ADDR,
-                        *VALID_KEY,
-                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH)
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::BlockNotFound
+            let error = client()
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
             );
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            assert_eq!(
-                client()
-                    .storage(
-                        *VALID_CONTRACT_ADDR,
-                        *VALID_KEY,
-                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH)
-                    )
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeBlockHash
+            let error = client()
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeBlockHash)
             );
         }
 
@@ -694,7 +684,7 @@ mod tests {
     }
 
     mod transaction {
-        use super::*;
+        use super::{reply::transaction::Status, *};
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -707,13 +697,10 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            assert_eq!(
-                client()
-                    .transaction(*INVALID_TX_HASH)
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeTransactionHash
+            let error = client().transaction(*INVALID_TX_HASH).await.unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeTransactionHash)
             );
         }
 
@@ -727,8 +714,7 @@ mod tests {
     }
 
     mod transaction_status {
-        use super::*;
-        use pretty_assertions::assert_eq;
+        use super::{reply::transaction::Status, *};
 
         #[tokio::test]
         async fn accepted() {
@@ -745,13 +731,13 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            assert_eq!(
-                client()
-                    .transaction_status(*INVALID_TX_HASH)
-                    .await
-                    .map_err(|e| e.downcast::<Error>().unwrap().code)
-                    .unwrap_err(),
-                ErrorCode::OutOfRangeTransactionHash
+            let error = client()
+                .transaction_status(*INVALID_TX_HASH)
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeTransactionHash)
             );
         }
 
