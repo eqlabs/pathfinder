@@ -9,6 +9,10 @@ license = "MIT OR Apache-2.0"
 name = "pedersen"
 path = "src/lib.rs"
 
+[features]
+# enables simple hex string parsing for field elements, which is useful for testing.
+hex_str = []
+
 [dependencies]
 # paritys scale codec locks us here
 bitvec = "0.20.4"
