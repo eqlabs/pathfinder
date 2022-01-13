@@ -22,8 +22,8 @@ use web3::types::H256;
 /// cannot be used.
 fn invalid_transaction_hash() -> Error {
     Error::Call(CallError::Custom {
-        code: ErrorCode::InvalidTransactionHash as i32,
-        message: ErrorCode::InvalidTransactionHashStr.to_owned(),
+        code: ErrorCode::INVALID_TRANSACTION_HASH as i32,
+        message: ErrorCode::INVALID_TRANSACTION_HASH_STR.to_owned(),
         data: None,
     })
 }

@@ -31,8 +31,8 @@ impl From<SequencerError> for rpc::Error {
                 | StarknetErrorCode::UninitializedContract => RpcErrorCode::ContractNotFound.into(),
                 StarknetErrorCode::OutOfRangeTransactionHash => {
                     rpc::Error::Call(rpc::CallError::Custom {
-                        code: RpcErrorCode::InvalidTransactionHash as i32,
-                        message: RpcErrorCode::InvalidTransactionHashStr.to_owned(),
+                        code: RpcErrorCode::INVALID_TRANSACTION_HASH as i32,
+                        message: RpcErrorCode::INVALID_TRANSACTION_HASH_STR.to_owned(),
                         data: None,
                     })
                 }
