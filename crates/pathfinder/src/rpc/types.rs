@@ -254,22 +254,20 @@ pub mod reply {
     // the mapping should be method-specific or common for all methods.
     #[derive(Copy, Clone, Debug, PartialEq)]
     pub enum ErrorCode {
-        FailedToReceiveTransaction = -32001,
-        ContractNotFound = -32020,
-        InvalidMessageSelector = -32021,
-        InvalidCallData = -32022,
-        InvalidStorageKey = -32023,
-        InvalidBlockHash = -32024,
-        InvalidBlockNumber = -32025,
-        ContractError = -32040,
+        FailedToReceiveTransaction = 1,
+        ContractNotFound = 20,
+        InvalidMessageSelector = 21,
+        InvalidCallData = 22,
+        InvalidStorageKey = 23,
+        InvalidBlockHash = 24,
+        InvalidBlockNumber = 25,
+        ContractError = 40,
     }
 
     impl ErrorCode {
-        // Workaround for a duplicate error code value
-        #[allow(non_upper_case_globals)]
-        pub const InvalidTransactionHash: ErrorCode = ErrorCode::InvalidBlockNumber;
-        #[allow(non_upper_case_globals)]
-        pub const InvalidTransactionHashStr: &'static str = "Invalid transaction hash";
+        // Workaround for a duplicate error code value, this will be fixed in the spec soon
+        pub const INVALID_TRANSACTION_HASH: ErrorCode = ErrorCode::InvalidBlockNumber;
+        pub const INVALID_TRANSACTION_HASH_STR: &'static str = "Invalid transaction hash";
     }
 
     impl std::string::ToString for ErrorCode {

@@ -163,13 +163,13 @@ mod tests {
 
     mod error {
         lazy_static::lazy_static! {
-            pub static ref CONTRACT_NOT_FOUND: (i64, String) = (-32020, "Contract not found".to_owned());
-            pub static ref INVALID_SELECTOR: (i64, String) = (-32021, "Invalid message selector".to_owned());
-            pub static ref INVALID_CALL_DATA: (i64, String) = (-32022, "Invalid call data".to_owned());
-            pub static ref INVALID_KEY: (i64, String) = (-32023, "Invalid storage key".to_owned());
-            pub static ref INVALID_BLOCK_HASH: (i64, String) = (-32024, "Invalid block hash".to_owned());
-            pub static ref INVALID_TX_HASH: (i64, String) = (-32025, "Invalid transaction hash".to_owned());
-            pub static ref INVALID_BLOCK_NUMBER: (i64, String) = (-32025, "Invalid block number".to_owned());
+            pub static ref CONTRACT_NOT_FOUND: (i64, String) = (20, "Contract not found".to_owned());
+            pub static ref INVALID_SELECTOR: (i64, String) = (21, "Invalid message selector".to_owned());
+            pub static ref INVALID_CALL_DATA: (i64, String) = (22, "Invalid call data".to_owned());
+            pub static ref INVALID_KEY: (i64, String) = (23, "Invalid storage key".to_owned());
+            pub static ref INVALID_BLOCK_HASH: (i64, String) = (24, "Invalid block hash".to_owned());
+            pub static ref INVALID_TX_HASH: (i64, String) = (25, "Invalid transaction hash".to_owned());
+            pub static ref INVALID_BLOCK_NUMBER: (i64, String) = (25, "Invalid block number".to_owned());
         }
     }
 
