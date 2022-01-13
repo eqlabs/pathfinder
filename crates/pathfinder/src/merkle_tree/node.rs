@@ -55,7 +55,7 @@ pub struct EdgeNode {
 /// Describes the direction a child of a [BinaryNode] may have.
 ///
 /// Binary nodes have two children, one left and one right.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Direction {
     Left,
     Right,
@@ -200,7 +200,269 @@ impl EdgeNode {
         let child_edge = self.child.borrow().as_edge().cloned();
         if let Some(child_edge) = child_edge {
             self.path.extend_from_bitslice(&child_edge.path);
-            self.child.swap(&child_edge.child.clone());
+            self.child = child_edge.child;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod direction {
+        use super::*;
+        use Direction::*;
+
+        #[test]
+        fn invert() {
+            assert_eq!(Left.invert(), Right);
+            assert_eq!(Right.invert(), Left);
+        }
+
+        #[test]
+        fn bool_round_trip() {
+            assert_eq!(Direction::from(bool::from(Left)), Left);
+            assert_eq!(Direction::from(bool::from(Right)), Right);
+        }
+
+        #[test]
+        fn right_is_true() {
+            assert!(bool::from(Right));
+        }
+
+        #[test]
+        fn left_is_false() {
+            assert!(!bool::from(Left));
+        }
+    }
+
+    mod binary {
+        use bitvec::bitvec;
+
+        use super::*;
+
+        #[test]
+        fn direction() {
+            let uut = BinaryNode {
+                hash: None,
+                height: 1,
+                left: Rc::new(RefCell::new(Node::Leaf(
+                    StarkHash::from_hex_str("abc").unwrap(),
+                ))),
+                right: Rc::new(RefCell::new(Node::Leaf(
+                    StarkHash::from_hex_str("def").unwrap(),
+                ))),
+            };
+
+            let mut zero_key = bitvec![Msb0, u8; 1; 251];
+            zero_key.set(1, false);
+            let zero_key = StarkHash::from_bits(&zero_key).unwrap();
+
+            let mut one_key = bitvec![Msb0, u8; 0; 251];
+            one_key.set(1, true);
+            let one_key = StarkHash::from_bits(&one_key).unwrap();
+
+            let zero_direction = uut.direction(zero_key);
+            let one_direction = uut.direction(one_key);
+
+            assert_eq!(zero_direction, Direction::from(false));
+            assert_eq!(one_direction, Direction::from(true));
+        }
+
+        #[test]
+        fn get_child() {
+            let left = Rc::new(RefCell::new(Node::Leaf(
+                StarkHash::from_hex_str("abc").unwrap(),
+            )));
+            let right = Rc::new(RefCell::new(Node::Leaf(
+                StarkHash::from_hex_str("def").unwrap(),
+            )));
+
+            let uut = BinaryNode {
+                hash: None,
+                height: 1,
+                left: left.clone(),
+                right: right.clone(),
+            };
+
+            use Direction::*;
+            assert_eq!(uut.get_child(Left), left);
+            assert_eq!(uut.get_child(Right), right);
+        }
+    }
+
+    mod edge {
+        use super::*;
+
+        mod path_matches {
+            use super::*;
+
+            #[test]
+            fn full() {
+                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
+                let child = Rc::new(RefCell::new(Node::Leaf(
+                    StarkHash::from_hex_str("abc").unwrap(),
+                )));
+
+                let uut = EdgeNode {
+                    hash: None,
+                    height: 0,
+                    path: key.view_bits().to_bitvec(),
+                    child,
+                };
+
+                assert!(uut.path_matches(key));
+            }
+
+            #[test]
+            fn prefix() {
+                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
+                let child = Rc::new(RefCell::new(Node::Leaf(
+                    StarkHash::from_hex_str("abc").unwrap(),
+                )));
+
+                let path = key.view_bits()[..45].to_bitvec();
+
+                let uut = EdgeNode {
+                    hash: None,
+                    height: 0,
+                    path,
+                    child,
+                };
+
+                assert!(uut.path_matches(key));
+            }
+
+            #[test]
+            fn suffix() {
+                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
+                let child = Rc::new(RefCell::new(Node::Leaf(
+                    StarkHash::from_hex_str("abc").unwrap(),
+                )));
+
+                let path = key.view_bits()[50..].to_bitvec();
+
+                let uut = EdgeNode {
+                    hash: None,
+                    height: 50,
+                    path,
+                    child,
+                };
+
+                assert!(uut.path_matches(key));
+            }
+
+            #[test]
+            fn middle_slice() {
+                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
+                let child = Rc::new(RefCell::new(Node::Leaf(
+                    StarkHash::from_hex_str("abc").unwrap(),
+                )));
+
+                let path = key.view_bits()[230..235].to_bitvec();
+
+                let uut = EdgeNode {
+                    hash: None,
+                    height: 230,
+                    path,
+                    child,
+                };
+
+                assert!(uut.path_matches(key));
+            }
+        }
+
+        mod merge_edge_child {
+            use super::*;
+
+            #[test]
+            fn edge_child() {
+                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
+                let path = key.view_bits().to_bitvec();
+                let grandchild = Rc::new(RefCell::new(Node::Unresolved(
+                    StarkHash::from_hex_str("abc").unwrap(),
+                )));
+                let edge_child = Rc::new(RefCell::new(Node::Edge(EdgeNode {
+                    hash: None,
+                    height: 0,
+                    path: path.clone(),
+                    child: grandchild.clone(),
+                })));
+
+                let mut uut = EdgeNode {
+                    hash: None,
+                    height: 0,
+                    path,
+                    child: edge_child,
+                };
+
+                uut.merge_child_edge();
+                assert_eq!(uut.child, grandchild);
+            }
+
+            #[test]
+            fn binary_child() {
+                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
+                let path = key.view_bits().to_bitvec();
+                let binary = Rc::new(RefCell::new(Node::Binary(BinaryNode {
+                    hash: None,
+                    height: 0,
+                    left: Rc::new(RefCell::new(Node::Leaf(
+                        StarkHash::from_hex_str("abc").unwrap(),
+                    ))),
+                    right: Rc::new(RefCell::new(Node::Leaf(
+                        StarkHash::from_hex_str("def").unwrap(),
+                    ))),
+                })));
+
+                let mut uut = EdgeNode {
+                    hash: None,
+                    height: 0,
+                    path,
+                    child: binary.clone(),
+                };
+
+                uut.merge_child_edge();
+                assert_eq!(uut.child, binary);
+            }
+
+            #[test]
+            fn unresolved_child() {
+                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
+                let path = key.view_bits().to_bitvec();
+                let unresolved = Rc::new(RefCell::new(Node::Unresolved(
+                    StarkHash::from_hex_str("abc").unwrap(),
+                )));
+
+                let mut uut = EdgeNode {
+                    hash: None,
+                    height: 0,
+                    path,
+                    child: unresolved.clone(),
+                };
+
+                uut.merge_child_edge();
+                assert_eq!(uut.child, unresolved);
+            }
+
+            #[test]
+            fn leaf_child() {
+                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
+                let path = key.view_bits().to_bitvec();
+                let leaf = Rc::new(RefCell::new(Node::Leaf(
+                    StarkHash::from_hex_str("abc").unwrap(),
+                )));
+
+                let mut uut = EdgeNode {
+                    hash: None,
+                    height: 0,
+                    path,
+                    child: leaf.clone(),
+                };
+
+                uut.merge_child_edge();
+                assert_eq!(uut.child, leaf);
+            }
         }
     }
 }
