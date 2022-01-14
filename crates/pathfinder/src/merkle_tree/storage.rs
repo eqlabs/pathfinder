@@ -54,6 +54,7 @@ use pedersen::StarkHash;
 ///
 /// None of the [RcNodeStorage] functions rollback on failure. This means that if any error
 /// is encountered, the transaction should be rolled back to prevent database corruption.
+#[derive(Debug, Clone)]
 pub struct RcNodeStorage<'a> {
     transaction: &'a Transaction<'a>,
     table: String,
@@ -262,7 +263,7 @@ impl<'a> RcNodeStorage<'a> {
     ///
     /// Does not perform rollback on failure. This implies that you should rollback the [RcNodeStorage's](RcNodeStorage) transaction
     /// if this call returns an error to prevent database corruption.
-    pub fn delete_node(&self, key: StarkHash) -> anyhow::Result<()> {
+    fn delete_node(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
         let node = match self.get(key)? {
@@ -291,7 +292,7 @@ impl<'a> RcNodeStorage<'a> {
 
     /// Decrements the reference count of the node and automatically deletes it
     /// if the count becomes zero.
-    fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
+    pub fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
         let ref_count = self

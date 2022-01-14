@@ -66,21 +66,26 @@ pub const ZERO_HASH: StarkHash = StarkHash::zero();
 /// This is used to update, mutate and access global Starknet state as well as individual contract states.
 ///
 /// For more information on how this functions internally, see [here](super::merkle_tree).
+#[derive(Debug, Clone)]
 pub struct MerkleTree<'a> {
     storage: RcNodeStorage<'a>,
     root: Rc<RefCell<Node>>,
 }
 
 impl<'a> MerkleTree<'a> {
-    /// Deletes the current tree root (including from persistent storage).
+    /// Removes one instance of the tree and its root from persistent storage.
     ///
-    /// This will in turn delete all internal nodes and leaves which no longer
-    /// have a root to connect to.
+    /// This implies decrementing the root's reference count. The root will
+    /// only get deleted if the reference count reaches zero. This will in turn
+    /// delete all internal nodes and leaves which no longer have a root to connect to.
+    ///
+    /// This allows for multiple instances of the same tree state to be committed,
+    /// without deleting all of them in a single call.
     pub fn delete(self) -> anyhow::Result<()> {
-        match *self.root.borrow() {
-            Node::Unresolved(hash) if hash != ZERO_HASH => self
+        match self.root.borrow().hash() {
+            Some(hash) if hash != ZERO_HASH => self
                 .storage
-                .delete_node(hash)
+                .decrement_ref_count(hash)
                 .context("Failed to delete tree root"),
             _ => Ok(()),
         }
@@ -88,7 +93,8 @@ impl<'a> MerkleTree<'a> {
 
     /// Loads an existing tree or creates a new one if it does not yet exist.
     ///
-    /// Use the [ZERO_HASH] as root if the tree does not yet exist.
+    /// Use the [ZERO_HASH] as root if the tree does not yet exist, will otherwise
+    /// error if the given hash does not exist.
     ///
     /// The transaction is used for all storage interactions. The transaction
     /// should therefore be committed after all tree mutations are completed.
@@ -105,19 +111,39 @@ impl<'a> MerkleTree<'a> {
         root: StarkHash,
     ) -> anyhow::Result<Self> {
         let storage = RcNodeStorage::open(table, transaction)?;
-        let root = Rc::new(RefCell::new(Node::Unresolved(root)));
 
-        Ok(Self { storage, root })
+        // Create a tree with root node unresolved, so we can use the resolve function.
+        // Bit clumsy, but oh well.
+        let root_node = Rc::new(RefCell::new(Node::Unresolved(root)));
+        let mut tree = Self {
+            storage,
+            root: root_node,
+        };
+
+        if root != ZERO_HASH {
+            // Resolve non-zero root node to check that it does exist.
+            let root_node = tree
+                .resolve(root, 0)
+                .context("Failed to resolve root node")?;
+            tree.root = Rc::new(RefCell::new(root_node));
+        }
+
+        Ok(tree)
     }
 
     /// Persists all changes to storage and returns the new root hash.
+    ///
+    /// Note that the root is reference counted in storage. Committing the
+    /// same tree again will therefore increment the count again.
     pub fn commit(self) -> anyhow::Result<StarkHash> {
         // Go through tree, collect dirty nodes, calculate their hashes and
         // persist them. Take care to increment ref counts of child nodes. So in order
         // to do this correctly, will have to start back-to-front.
         self.commit_subtree(&mut *self.root.borrow_mut())?;
         // unwrap is safe as `commit_subtree` will set the hash.
-        Ok(self.root.borrow().hash().unwrap())
+        let root = self.root.borrow().hash().unwrap();
+        self.storage.increment_ref_count(root)?;
+        Ok(root)
     }
 
     /// Persists any changes in this subtree to storage.
@@ -466,13 +492,13 @@ impl<'a> MerkleTree<'a> {
 
         let node = match node {
             PersistedNode::Binary(binary) => Node::Binary(BinaryNode {
-                hash: None,
+                hash: Some(hash),
                 height,
                 left: Rc::new(RefCell::new(Node::Unresolved(binary.left))),
                 right: Rc::new(RefCell::new(Node::Unresolved(binary.right))),
             }),
             PersistedNode::Edge(edge) => Node::Edge(EdgeNode {
-                hash: None,
+                hash: Some(hash),
                 height,
                 path: edge.path,
                 child: Rc::new(RefCell::new(Node::Unresolved(edge.child))),
@@ -507,6 +533,15 @@ mod tests {
 
         let key = StarkHash::from_hex_str("99cadc82").unwrap();
         assert_eq!(uut.get(key).unwrap(), ZERO_HASH);
+    }
+
+    #[test]
+    fn load_bad_root() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+
+        let non_root = StarkHash::from_hex_str("99cadc82").unwrap();
+        MerkleTree::load("test".to_string(), &transaction, non_root).unwrap_err();
     }
 
     mod set {
@@ -1016,6 +1051,46 @@ mod tests {
                 assert_eq!(uut.get(key1).unwrap(), ZERO_HASH);
                 assert_eq!(uut.get(key2).unwrap(), val2);
             }
+        }
+
+        #[test]
+        fn mulitple_identical_roots() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test".to_string(), &transaction, ZERO_HASH).unwrap();
+
+            let key = StarkHash::from_hex_str("99cadc82").unwrap();
+            let val = StarkHash::from_hex_str("12345678").unwrap();
+            uut.set(key, val).unwrap();
+
+            let root0 = uut.commit().unwrap();
+
+            let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
+            let root1 = uut.commit().unwrap();
+
+            let uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
+            let root2 = uut.commit().unwrap();
+
+            assert_eq!(root0, root1);
+            assert_eq!(root0, root2);
+
+            let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
+            uut.delete().unwrap();
+
+            let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
+            assert_eq!(uut.get(key).unwrap(), val);
+
+            let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
+            uut.delete().unwrap();
+
+            let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
+            assert_eq!(uut.get(key).unwrap(), val);
+
+            let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
+            uut.delete().unwrap();
+
+            // This should fail since the root has been deleted.
+            MerkleTree::load("test".to_string(), &transaction, root0).unwrap_err();
         }
     }
 }
