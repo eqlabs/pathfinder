@@ -57,7 +57,7 @@ use crate::merkle_tree::{
     storage::{PersistedBinaryNode, PersistedEdgeNode, PersistedNode, RcNodeStorage},
 };
 
-use pedersen::{pedersen_hash, StarkHash};
+use pedersen::StarkHash;
 
 pub const ZERO_HASH: StarkHash = StarkHash::zero();
 
@@ -168,12 +168,11 @@ impl<'a> MerkleTree<'a> {
             Binary(binary) => {
                 self.commit_subtree(&mut *binary.left.borrow_mut())?;
                 self.commit_subtree(&mut *binary.right.borrow_mut())?;
+                // This will succeed as `commit_subtree` will set the child hashes.
+                binary.calculate_hash();
                 // unwrap is safe as `commit_subtree` will set the hashes.
                 let left = binary.left.borrow().hash().unwrap();
                 let right = binary.right.borrow().hash().unwrap();
-
-                binary.hash = Some(pedersen_hash(left, right));
-
                 let persisted_node = PersistedNode::Binary(PersistedBinaryNode { left, right });
                 // unwrap is safe as we just set the hash.
                 self.storage
@@ -182,17 +181,11 @@ impl<'a> MerkleTree<'a> {
             }
             Edge(edge) => {
                 self.commit_subtree(&mut *edge.child.borrow_mut())?;
+                // This will succeed as `commit_subtree` will set the child's hash.
+                edge.calculate_hash();
+
                 // unwrap is safe as `commit_subtree` will set the hash.
                 let child = edge.child.borrow().hash().unwrap();
-                // todo: check from_bits etc.
-                let path = StarkHash::from_bits(&edge.path).unwrap();
-                let mut length = [0; 32];
-                length[31] = edge.path.len() as u8;
-                // unwrap is safe as only the least significant byte contains a value so it cannot overflow.
-                let length = StarkHash::from_be_bytes(length).unwrap();
-                let hash = pedersen_hash(child, path) + length;
-                edge.hash = Some(hash);
-
                 let persisted_node = PersistedNode::Edge(PersistedEdgeNode {
                     path: edge.path.clone(),
                     child,

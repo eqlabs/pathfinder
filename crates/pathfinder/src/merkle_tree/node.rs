@@ -6,7 +6,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
-use pedersen::StarkHash;
+use pedersen::{pedersen_hash, StarkHash};
 
 use crate::merkle_tree::ZERO_HASH;
 
@@ -114,6 +114,30 @@ impl BinaryNode {
             Direction::Right => self.right.clone(),
         }
     }
+
+    /// If possible, calculates and sets its own hash value.
+    ///
+    /// Does nothing if the hash is already [Some].
+    ///
+    /// If either childs hash is [None], then the hash cannot
+    /// be calculated and it will remain [None].
+    pub fn calculate_hash(&mut self) {
+        if self.hash.is_some() {
+            return;
+        }
+
+        let left = match self.left.borrow().hash() {
+            Some(hash) => hash,
+            None => return,
+        };
+
+        let right = match self.right.borrow().hash() {
+            Some(hash) => hash,
+            None => return,
+        };
+
+        self.hash = Some(pedersen_hash(left, right));
+    }
 }
 
 impl Node {
@@ -203,6 +227,31 @@ impl EdgeNode {
             self.child = child_edge.child;
         }
     }
+
+    /// If possible, calculates and sets its own hash value.
+    ///
+    /// Does nothing if the hash is already [Some].
+    ///
+    /// If the child's hash is [None], then the hash cannot
+    /// be calculated and it will remain [None].
+    pub fn calculate_hash(&mut self) {
+        if self.hash.is_some() {
+            return;
+        }
+
+        let child = match self.child.borrow().hash() {
+            Some(hash) => hash,
+            None => return,
+        };
+
+        let path = StarkHash::from_bits(&self.path).unwrap();
+        let mut length = [0; 32];
+        length[31] = self.path.len() as u8;
+
+        let length = StarkHash::from_be_bytes(length).unwrap();
+        let hash = pedersen_hash(child, path) + length;
+        self.hash = Some(hash);
+    }
 }
 
 #[cfg(test)]
@@ -289,10 +338,67 @@ mod tests {
             assert_eq!(uut.get_child(Left), left);
             assert_eq!(uut.get_child(Right), right);
         }
+
+        #[test]
+        fn hash() {
+            // Test data taken from starkware cairo-lang repo:
+            // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L14
+            //
+            // Note that the hash function must be exchanged for `async_pedersen_hash_func`, otherwise it just uses some other test hash function.
+            let expected = StarkHash::from_hex_str(
+                "0615bb8d47888d2987ad0c63fc06e9e771930986a4dd8adc55617febfcf3639e",
+            )
+            .unwrap();
+            let left = StarkHash::from_hex_str("1234").unwrap();
+            let right = StarkHash::from_hex_str("abcd").unwrap();
+
+            let left = Rc::new(RefCell::new(Node::Unresolved(left)));
+            let right = Rc::new(RefCell::new(Node::Unresolved(right)));
+
+            let mut uut = BinaryNode {
+                hash: None,
+                height: 0,
+                left,
+                right,
+            };
+
+            uut.calculate_hash();
+
+            assert_eq!(uut.hash, Some(expected));
+        }
     }
 
     mod edge {
+        use bitvec::bitvec;
+
         use super::*;
+
+        #[test]
+        fn hash() {
+            // Test data taken from starkware cairo-lang repo:
+            // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L38
+            //
+            // Note that the hash function must be exchanged for `async_pedersen_hash_func`, otherwise it just uses some other test hash function.
+            let expected = StarkHash::from_hex_str(
+                "1d937094c09b5f8e26a662d21911871e3cbc6858d55cc49af9848ea6fed4e9",
+            )
+            .unwrap();
+            let child = StarkHash::from_hex_str("1234ABCD").unwrap();
+            let child = Rc::new(RefCell::new(Node::Unresolved(child)));
+            // Path = 42 in binary.
+            let path = bitvec![Msb0, u8; 1, 0, 1, 0, 1, 0];
+
+            let mut uut = EdgeNode {
+                hash: None,
+                height: 0,
+                path,
+                child,
+            };
+
+            uut.calculate_hash();
+
+            assert_eq!(uut.hash, Some(expected));
+        }
 
         mod path_matches {
             use super::*;
