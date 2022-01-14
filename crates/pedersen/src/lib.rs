@@ -135,8 +135,8 @@ impl StarkHash {
         fn parse_hex_digit(digit: u8) -> Result<u8, HexParseError> {
             match digit {
                 b'0'..=b'9' => Ok(digit - b'0'),
-                b'A'..=b'F' => Ok(digit - b'A'),
-                b'a'..=b'f' => Ok(digit - b'a'),
+                b'A'..=b'F' => Ok(digit - b'A' + 10),
+                b'a'..=b'f' => Ok(digit - b'a' + 10),
                 other => Err(HexParseError::InvalidNibble(other)),
             }
         }
@@ -271,5 +271,57 @@ mod tests {
         let fp = FieldElement::from(original);
         let hash = StarkHash::from(fp);
         assert_eq!(hash, original);
+    }
+
+    #[cfg(feature = "hex_str")]
+    mod from_hex_str {
+        use crate::StarkHash;
+
+        /// Test hex string with its expected [StarkHash].
+        fn test_data() -> (&'static str, StarkHash) {
+            let mut expected = [0; 32];
+            expected[31] = 0xEF;
+            expected[30] = 0xCD;
+            expected[29] = 0xAB;
+            expected[28] = 0xef;
+            expected[27] = 0xcd;
+            expected[26] = 0xab;
+            expected[25] = 0x89;
+            expected[24] = 0x67;
+            expected[23] = 0x45;
+            expected[22] = 0x23;
+            expected[21] = 0x01;
+            let expected = StarkHash::from_be_bytes(expected).unwrap();
+
+            ("0123456789abcdefABCDEF", expected)
+        }
+
+        #[test]
+        fn simple() {
+            let (test_str, expected) = test_data();
+            let uut = StarkHash::from_hex_str(test_str).unwrap();
+            assert_eq!(uut, expected);
+        }
+
+        #[test]
+        fn prefix() {
+            let (test_str, expected) = test_data();
+            let uut = StarkHash::from_hex_str(&format!("0x{}", test_str)).unwrap();
+            assert_eq!(uut, expected);
+        }
+
+        #[test]
+        fn leading_zeros() {
+            let (test_str, expected) = test_data();
+            let uut = StarkHash::from_hex_str(&format!("000000000{}", test_str)).unwrap();
+            assert_eq!(uut, expected);
+        }
+
+        #[test]
+        fn prefix_and_leading_zeros() {
+            let (test_str, expected) = test_data();
+            let uut = StarkHash::from_hex_str(&format!("0x000000000{}", test_str)).unwrap();
+            assert_eq!(uut, expected);
+        }
     }
 }
