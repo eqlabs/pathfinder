@@ -953,6 +953,8 @@ mod tests {
                 assert_eq!(uut.get(key1).unwrap(), ZERO_HASH);
                 assert_eq!(uut.get(key2).unwrap(), ZERO_HASH);
 
+                MerkleTree::load("test".to_string(), &transaction, root1).unwrap_err();
+
                 let uut = MerkleTree::load("test".to_string(), &transaction, root2).unwrap();
                 assert_eq!(uut.get(key0).unwrap(), val0);
                 assert_eq!(uut.get(key1).unwrap(), val1);
@@ -1038,6 +1040,8 @@ mod tests {
                 assert_eq!(uut.get(key0).unwrap(), val0);
                 assert_eq!(uut.get(key1).unwrap(), ZERO_HASH);
                 assert_eq!(uut.get(key2).unwrap(), ZERO_HASH);
+
+                MerkleTree::load("test".to_string(), &transaction, root1).unwrap_err();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root2).unwrap();
                 assert_eq!(uut.get(key0).unwrap(), val0);

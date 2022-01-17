@@ -246,6 +246,7 @@ impl EdgeNode {
 
         let path = StarkHash::from_bits(&self.path).unwrap();
         let mut length = [0; 32];
+        // Safe as len() is guaranteed to be <= 251
         length[31] = self.path.len() as u8;
 
         let length = StarkHash::from_be_bytes(length).unwrap();

@@ -32,7 +32,7 @@
 //!
 //! #### [PersistedNode::Binary]
 //!
-//! This is stored as 64 bytes: [left child (32), right child] (32)].
+//! This is stored as 64 bytes: [left child (32), right child (32)].
 //!
 //! #### [PersistedNode::Edge]
 //!
