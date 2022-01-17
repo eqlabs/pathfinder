@@ -491,15 +491,15 @@ mod tests {
                 )));
                 let edge_child = Rc::new(RefCell::new(Node::Edge(EdgeNode {
                     hash: None,
-                    height: 0,
-                    path: path.clone(),
+                    height: 189,
+                    path: path.as_bitslice()[189..].to_bitvec(),
                     child: grandchild.clone(),
                 })));
 
                 let mut uut = EdgeNode {
                     hash: None,
                     height: 0,
-                    path,
+                    path: path.as_bitslice()[..189].to_bitvec(),
                     child: edge_child,
                 };
 
