@@ -169,7 +169,7 @@ mod tests {
             pub static ref INVALID_KEY: (i64, String) = (23, "Invalid storage key".to_owned());
             pub static ref INVALID_BLOCK_HASH: (i64, String) = (24, "Invalid block hash".to_owned());
             pub static ref INVALID_TX_HASH: (i64, String) = (25, "Invalid transaction hash".to_owned());
-            pub static ref INVALID_BLOCK_NUMBER: (i64, String) = (25, "Invalid block number".to_owned());
+            pub static ref INVALID_BLOCK_NUMBER: (i64, String) = (26, "Invalid block number".to_owned());
         }
     }
 

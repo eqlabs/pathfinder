@@ -16,18 +16,6 @@ use reqwest::Url;
 use std::convert::{From, TryInto};
 use web3::types::H256;
 
-/// Helper function for creating invalid transaction hash call error.
-///
-/// Unfortunately invalid transaction hash has the same error code as
-/// cannot be used.
-fn invalid_transaction_hash() -> Error {
-    Error::Call(CallError::Custom {
-        code: ErrorCode::INVALID_TRANSACTION_HASH as i32,
-        message: ErrorCode::INVALID_TRANSACTION_HASH_STR.to_owned(),
-        data: None,
-    })
-}
-
 /// Helper function.
 fn transaction_index_not_found(index: usize) -> Error {
     Error::Call(CallError::InvalidParams(anyhow::anyhow!(
@@ -137,7 +125,7 @@ impl RpcApi {
         // TODO get this from storage
         let txn = self.0.transaction(*transaction_hash).await?;
         if txn.status == raw::transaction::Status::NotReceived {
-            return Err(invalid_transaction_hash());
+            return Err(ErrorCode::InvalidTransactionHash.into());
         }
         Ok(txn)
     }
