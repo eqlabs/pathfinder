@@ -1090,4 +1090,46 @@ mod tests {
             MerkleTree::load("test".to_string(), &transaction, root0).unwrap_err();
         }
     }
+
+    mod real_world {
+        use super::*;
+
+        #[ignore = "Root data is incorrect"]
+        #[test]
+        fn simple() {
+            // Test data created from Starknet cairo wrangling.
+
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test".to_string(), &transaction, ZERO_HASH).unwrap();
+
+            uut.set(
+                StarkHash::from_hex_str("1").unwrap(),
+                StarkHash::from_hex_str("0").unwrap(),
+            )
+            .unwrap();
+
+            uut.set(
+                StarkHash::from_hex_str("134").unwrap(),
+                StarkHash::from_hex_str("1").unwrap(),
+            )
+            .unwrap();
+
+            uut.set(
+                StarkHash::from_hex_str("135").unwrap(),
+                StarkHash::from_hex_str("2").unwrap(),
+            )
+            .unwrap();
+
+            let root = uut.commit().unwrap();
+
+            assert_eq!(
+                root,
+                StarkHash::from_hex_str(
+                    "05bb9440e27889a364bcb678b1f679ecd1347acdedcbf36e83494f857cc58026"
+                )
+                .unwrap()
+            );
+        }
+    }
 }
