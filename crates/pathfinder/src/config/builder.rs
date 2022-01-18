@@ -48,7 +48,7 @@ impl ConfigBuilder {
         let eth_url = eth_url.parse::<Url>().map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid Ethereum URL ({}): {}", eth_url, err.to_string()),
+                format!("Invalid Ethereum URL ({}): {}", eth_url, err),
             )
         })?;
 
@@ -58,8 +58,7 @@ impl ConfigBuilder {
                 std::io::ErrorKind::InvalidInput,
                 format!(
                     "Invalid HTTP-RPC listening interface and port ({}): {}",
-                    http_rpc_addr,
-                    err.to_string()
+                    http_rpc_addr, err
                 ),
             )
         })?;
