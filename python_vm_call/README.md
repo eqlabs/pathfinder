@@ -32,3 +32,25 @@ Inside the virtual environment, in the same directory as this README, after inst
 ```
 $ pytest
 ```
+
+At the moment pytest.ini ignores all warnings, which are from dependencies.
+
+## Formatting
+
+Running this will modify your files, regardless if they staged in git or not.
+
+Inside the virtual environment, similar to testing:
+
+```
+$ black src/
+```
+
+## Linting
+
+Many lints consider formatting, so format before linting.
+
+Inside the virtual environment, similar to testing:
+
+```
+$ flake8 src/
+```
