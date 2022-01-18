@@ -1,4 +1,8 @@
-# Development
+# py
+
+This directory will host the code to call contracts using `cairo-lang` python package, and other utilities.
+
+## Development
 
 Setup development environment by creating a virtual environment and entering it:
 
@@ -15,13 +19,13 @@ $ PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
 
 Then install development tools:
 
-```
+```bash
 $ PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
 ```
 
 Finally install the only real dependency, which cannot currently be managed by lock files:
 
-```
+```bash
 $ PIP_REQUIRE_VIRTUALENV=true pip install cairo-lang==0.6.2
 ```
 
@@ -33,7 +37,7 @@ Inside the virtual environment, in the same directory as this README, after inst
 $ pytest
 ```
 
-At the moment pytest.ini ignores all warnings, which are from dependencies.
+At the moment pytest ignores all warnings, which are from dependencies.
 
 ## Formatting
 
