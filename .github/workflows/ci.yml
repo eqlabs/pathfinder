@@ -51,3 +51,31 @@ jobs:
       - run: |
           cargo install cargo-sort
           cargo sort --check --workspace
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Prepare py/
+        run: |
+          cd py
+          pip install --upgrade pip
+          pip install --requirement requirements-dev.txt
+          pip install cairo-lang==0.6.2
+
+      - name: Test (python)
+        run: |
+          cd py
+          pytest
+
+      - name: Formatting (python)
+        run: |
+          cd py
+          black --check src/
+
+      - name: Lints (python)
+        run: |
+          cd py
+          flake8 src/
