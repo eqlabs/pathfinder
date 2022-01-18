@@ -260,14 +260,9 @@ pub mod reply {
         InvalidCallData = 22,
         InvalidStorageKey = 23,
         InvalidBlockHash = 24,
-        InvalidBlockNumber = 25,
+        InvalidTransactionHash = 25,
+        InvalidBlockNumber = 26,
         ContractError = 40,
-    }
-
-    impl ErrorCode {
-        // Workaround for a duplicate error code value, this will be fixed in the spec soon
-        pub const INVALID_TRANSACTION_HASH: ErrorCode = ErrorCode::InvalidBlockNumber;
-        pub const INVALID_TRANSACTION_HASH_STR: &'static str = "Invalid transaction hash";
     }
 
     impl std::string::ToString for ErrorCode {
@@ -279,6 +274,7 @@ pub mod reply {
                 ErrorCode::InvalidCallData => "Invalid call data",
                 ErrorCode::InvalidStorageKey => "Invalid storage key",
                 ErrorCode::InvalidBlockHash => "Invalid block hash",
+                ErrorCode::InvalidTransactionHash => "Invalid transaction hash",
                 ErrorCode::InvalidBlockNumber => "Invalid block number",
                 ErrorCode::ContractError => "Contract error",
             }
