@@ -2,6 +2,5 @@
 # cairo-lang==0.6.2
 pip-tools==6.4.0
 pytest==6.2.5
-pytest-asyncio
 flake8==4.0.1
 black==21.12b0
