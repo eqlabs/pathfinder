@@ -13,6 +13,7 @@
 #
 # does not accept any arguments.
 
+
 async def generate_root_and_nodes(input):
     """
     Input is a generator of (key, value)
@@ -32,13 +33,15 @@ async def generate_root_and_nodes(input):
     initial_ignorable_state = deepcopy(state.state.ffc.storage.db)
 
     # this should have no meaning on the output
-    contract_address = 3434122877859862112550733797372700318255828812231958594412050293946922622982
+    contract_address = (
+        3434122877859862112550733797372700318255828812231958594412050293946922622982
+    )
 
     # the testing state has a nice defaultdict which will create an entry when you try to request it
     # as the contract states. this is as opposed to raising KeyError
     # StarknetState (state) -> CarriedState (state?) -> contract_states (dict int => ContractCarriedState)
     contract_carried_state = state.state.contract_states[contract_address]
-    assert contract_carried_state != None
+    assert contract_carried_state is not None
 
     ccs_updates = contract_carried_state.storage_updates
     # we'd be fine with anything dict alike but if this passes lets keep it for now
@@ -48,7 +51,9 @@ async def generate_root_and_nodes(input):
         ccs_updates[k] = StorageLeaf(v)
 
     # flush the tree into storage, generate all nodes
-    new_root = (await contract_carried_state.update(ffc=state.state.ffc)).state.storage_commitment_tree.root
+    new_root = (
+        await contract_carried_state.update(ffc=state.state.ffc)
+    ).state.storage_commitment_tree.root
 
     nodes = {}
     for k, v in state.state.ffc.storage.db.items():
@@ -66,6 +71,7 @@ def parse_line(s):
     [key, value] = s.split(maxsplit=1)
     return (parse_value(key), parse_value(value))
 
+
 def parse_value(s):
     if s.startswith("0x"):
         hex = s[2:]
@@ -76,6 +82,7 @@ def parse_value(s):
         return int.from_bytes(data, "big")
 
     return int(s)
+
 
 if __name__ == "__main__":
     import asyncio
@@ -88,6 +95,5 @@ if __name__ == "__main__":
     print(root.hex())
 
     for k, v in nodes.items():
-        [prefix, suffix] = k.split(b':', maxsplit=1)
+        [prefix, suffix] = k.split(b":", maxsplit=1)
         print(f"{str(prefix, 'utf-8')}:{suffix.hex()} => {v.hex()}", file=sys.stderr)
-
