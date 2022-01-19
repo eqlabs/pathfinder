@@ -1094,7 +1094,6 @@ mod tests {
     mod real_world {
         use super::*;
 
-        #[ignore = "Root data is incorrect"]
         #[test]
         fn simple() {
             // Test data created from Starknet cairo wrangling.
@@ -1104,20 +1103,20 @@ mod tests {
             let mut uut = MerkleTree::load("test".to_string(), &transaction, ZERO_HASH).unwrap();
 
             uut.set(
-                StarkHash::from_hex_str("1").unwrap(),
-                StarkHash::from_hex_str("0").unwrap(),
+                StarkHash::from_hex_str("0x1").unwrap(),
+                StarkHash::from_hex_str("0x0").unwrap(),
             )
             .unwrap();
 
             uut.set(
-                StarkHash::from_hex_str("134").unwrap(),
-                StarkHash::from_hex_str("1").unwrap(),
+                StarkHash::from_hex_str("0x86").unwrap(),
+                StarkHash::from_hex_str("0x1").unwrap(),
             )
             .unwrap();
 
             uut.set(
-                StarkHash::from_hex_str("135").unwrap(),
-                StarkHash::from_hex_str("2").unwrap(),
+                StarkHash::from_hex_str("0x87").unwrap(),
+                StarkHash::from_hex_str("0x2").unwrap(),
             )
             .unwrap();
 
@@ -1126,7 +1125,7 @@ mod tests {
             assert_eq!(
                 root,
                 StarkHash::from_hex_str(
-                    "05bb9440e27889a364bcb678b1f679ecd1347acdedcbf36e83494f857cc58026"
+                    "0x05458b9f8491e7c845bffa4cd36cdb3a7c29dcdf75f2809bd6f4ce65386facfc"
                 )
                 .unwrap()
             );
