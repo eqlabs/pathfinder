@@ -55,10 +55,9 @@ async def generate_root_and_nodes(input):
     updates = {}
 
     for (contract_address, contract_hash, contract_commitment_tree_root) in input:
-        contract_hash = contract_hash.to_bytes(32, "big")
-        contract_commitment_tree_root = contract_commitment_tree_root.to_bytes(
-            32, "big"
-        )
+        assert type(contract_address) == int
+        assert type(contract_hash) == bytes, f"{type(contract_hash)}"
+        assert type(contract_commitment_tree_root) == bytes
 
         updates[contract_address] = await ContractState.create(
             contract_hash,
@@ -91,7 +90,7 @@ def parse_line(s):
     s = s.strip()
     [addr, c_hash, c_root_hash] = s.split(maxsplit=2)
     # TODO: maybe map would work?
-    return (parse_value(addr), parse_value(c_hash), parse_value(c_root_hash))
+    return (parse_value(addr), parse_bytes(c_hash), parse_bytes(c_root_hash))
 
 
 def parse_value(s):
@@ -104,6 +103,17 @@ def parse_value(s):
         return int.from_bytes(data, "big")
 
     return int(s)
+
+
+def parse_bytes(s):
+    if s.startswith("0x"):
+        hex = s[2:]
+        if len(hex) == 0:
+            return (0).to_bytes(32, "big")
+        assert len(hex) % 2 == 0, f"unsupported: odd length ({len(hex)}) hex input"
+        return bytes.fromhex(hex)
+
+    return int(s).to_bytes(32, "big")
 
 
 if __name__ == "__main__":

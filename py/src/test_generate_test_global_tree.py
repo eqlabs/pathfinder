@@ -1,4 +1,4 @@
-from generate_test_global_tree import generate_root_and_nodes, parse_value
+from generate_test_global_tree import generate_root_and_nodes, parse_value, parse_bytes
 import asyncio
 
 
@@ -6,10 +6,10 @@ def test_existing_example():
     contract_address = parse_value(
         "0x0797a50901fb5f57c8f231f5ce3b312851adc4b178dd557da00f6fd4d2dce006"
     )
-    contract_hash = parse_value(
+    contract_hash = parse_bytes(
         "0x02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779"
     )
-    contract_commitment_tree_root = parse_value(
+    contract_commitment_tree_root = parse_bytes(
         "0x04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028"
     )
 
