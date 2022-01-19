@@ -34,7 +34,7 @@ use web3::{transports::Http, types::FilterBuilder, Web3};
 
 #[tokio::main]
 async fn main() {
-    let (transport, block_hash, seq_no) = parse_cli_args();
+    let (transport, block_hash, block_no) = parse_cli_args();
 
     // Get the state update event at the given block.
     let filter = FilterBuilder::default()
@@ -47,7 +47,7 @@ async fn main() {
     let update_log = logs
         .into_iter()
         .map(|log| StateUpdateLog::try_from(log).expect("state update log parsing failed"))
-        .find(|log| log.sequence_number == seq_no)
+        .find(|log| log.block_number == block_no)
         .expect("state update log not found");
 
     let state_update = StateUpdate::retrieve(&transport, update_log)

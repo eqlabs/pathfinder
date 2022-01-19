@@ -18,7 +18,7 @@ use crate::ethereum::{EthOrigin, RpcErrorCode};
 pub struct StateUpdateLog {
     pub origin: EthOrigin,
     pub global_root: U256,
-    pub sequence_number: U256,
+    pub block_number: U256,
 }
 
 /// Links a [StateUpdateLog] event to its data -- which is contained
