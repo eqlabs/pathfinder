@@ -8,7 +8,7 @@ use crate::{
     sequencer::error::SequencerError,
 };
 use reqwest::Url;
-use std::{borrow::Cow, fmt::Debug, result::Result};
+use std::{borrow::Cow, fmt::Debug, result::Result, time::Duration};
 use web3::types::{H256, U256};
 
 use self::error::StarknetError;
@@ -16,6 +16,8 @@ use self::error::StarknetError;
 /// StarkNet sequencer client using REST API.
 #[derive(Debug)]
 pub struct Client {
+    /// This client is internally refcounted
+    inner: reqwest::Client,
     /// StarkNet sequencer URL.
     sequencer_url: Url,
 }
@@ -50,10 +52,27 @@ where
 }
 
 impl Client {
+    /// Creates a new sequencer client for the Goerli testnet.
+    pub fn goerli() -> reqwest::Result<Self> {
+        // Unwrap is safe here as this is a valid URL string.
+        Self::new(Url::parse("https://alpha4.starknet.io/").unwrap())
+    }
+
+    /// Creates a new sequencer client for the mainnet.
+    pub fn main() -> reqwest::Result<Self> {
+        // Unwrap is safe here as this is a valid URL string.
+        Self::new(Url::parse("https://alpha-mainnet.starknet.io/").unwrap())
+    }
+
     /// Creates a new sequencer client, `sequencer_url` needs to be a valid _base URL_.
-    pub fn new(sequencer_url: Url) -> Self {
+    fn new(sequencer_url: Url) -> reqwest::Result<Self> {
         debug_assert!(!sequencer_url.cannot_be_a_base());
-        Self { sequencer_url }
+        Ok(Self {
+            inner: reqwest::Client::builder()
+                .timeout(Duration::from_secs(60))
+                .build()?,
+            sequencer_url,
+        })
     }
 
     /// Gets block by number.
@@ -63,10 +82,11 @@ impl Client {
     ) -> Result<reply::Block, SequencerError> {
         let block_hash = match block_number {
             BlockNumberOrTag::Number(n) => {
-                let resp = reqwest::get(
-                    self.build_query("get_block_hash_by_id", &[("blockId", &n.to_string())]),
-                )
-                .await?;
+                let resp = self
+                    .inner
+                    .get(self.build_query("get_block_hash_by_id", &[("blockId", &n.to_string())]))
+                    .send()
+                    .await?;
                 let block_hash: relaxed::H256 = parse(resp).await?;
                 BlockHashOrTag::Hash(*block_hash)
             }
@@ -81,8 +101,23 @@ impl Client {
         block_hash: BlockHashOrTag,
     ) -> Result<reply::Block, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
-        let resp = reqwest::get(self.build_query("get_block", &[(tag, &hash)])).await?;
-        parse(resp).await
+        let resp = self
+            .inner
+            .get(self.build_query("get_block", &[(tag, &hash)]))
+            .send()
+            .await?;
+        let mut block: reply::Block = parse(resp).await?;
+        // If possible add the missing transaction statuses for those receipts that did not have the status field
+        for mut receipt in &mut block.transaction_receipts {
+            if receipt.status.is_none() {
+                receipt.status = self
+                    .transaction_status(receipt.transaction_hash)
+                    .await
+                    .ok()
+                    .map(|txn| txn.tx_status);
+            }
+        }
+        Ok(block)
     }
 
     /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
@@ -93,8 +128,7 @@ impl Client {
     ) -> Result<reply::Call, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
         let url = self.build_query("call_contract", &[(tag, &hash)]);
-        let client = reqwest::Client::new();
-        let resp = client.post(url).json(&payload).send().await?;
+        let resp = self.inner.post(url).json(&payload).send().await?;
         parse(resp).await
     }
 
@@ -105,14 +139,17 @@ impl Client {
         block_hash: BlockHashOrTag,
     ) -> Result<reply::Code, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
-        let resp = reqwest::get(self.build_query(
-            "get_code",
-            &[
-                ("contractAddress", format!("{:x}", contract_addr).as_str()),
-                (tag, &hash),
-            ],
-        ))
-        .await?;
+        let resp = self
+            .inner
+            .get(self.build_query(
+                "get_code",
+                &[
+                    ("contractAddress", format!("{:x}", contract_addr).as_str()),
+                    (tag, &hash),
+                ],
+            ))
+            .send()
+            .await?;
         parse(resp).await
     }
 
@@ -124,15 +161,18 @@ impl Client {
         block_hash: BlockHashOrTag,
     ) -> Result<H256, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
-        let resp = reqwest::get(self.build_query(
-            "get_storage_at",
-            &[
-                ("contractAddress", format!("{:x}", contract_addr).as_str()),
-                ("key", key.to_string().as_str()),
-                (tag, &hash),
-            ],
-        ))
-        .await?;
+        let resp = self
+            .inner
+            .get(self.build_query(
+                "get_storage_at",
+                &[
+                    ("contractAddress", format!("{:x}", contract_addr).as_str()),
+                    ("key", key.to_string().as_str()),
+                    (tag, &hash),
+                ],
+            ))
+            .send()
+            .await?;
         let value: relaxed::H256 = parse(resp).await?;
         Ok(*value)
     }
@@ -142,14 +182,17 @@ impl Client {
         &self,
         transaction_hash: H256,
     ) -> Result<reply::Transaction, SequencerError> {
-        let resp = reqwest::get(self.build_query(
-            "get_transaction",
-            &[(
-                "transactionHash",
-                format!("{:#x}", transaction_hash).as_str(),
-            )],
-        ))
-        .await?;
+        let resp = self
+            .inner
+            .get(self.build_query(
+                "get_transaction",
+                &[(
+                    "transactionHash",
+                    format!("{:#x}", transaction_hash).as_str(),
+                )],
+            ))
+            .send()
+            .await?;
         parse(resp).await
     }
 
@@ -158,14 +201,17 @@ impl Client {
         &self,
         transaction_hash: H256,
     ) -> Result<reply::TransactionStatus, SequencerError> {
-        let resp = reqwest::get(self.build_query(
-            "get_transaction_status",
-            &[(
-                "transactionHash",
-                format!("{:#x}", transaction_hash).as_str(),
-            )],
-        ))
-        .await?;
+        let resp = self
+            .inner
+            .get(self.build_query(
+                "get_transaction_status",
+                &[(
+                    "transactionHash",
+                    format!("{:#x}", transaction_hash).as_str(),
+                )],
+            ))
+            .send()
+            .await?;
         parse(resp).await
     }
 
@@ -202,10 +248,8 @@ mod tests {
         static ref VALID_ENTRY_POINT: H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
     }
 
-    // Alpha4 network client factory helper
     fn client() -> Client {
-        const URL: &str = "https://alpha4.starknet.io/";
-        Client::new(Url::parse(URL).unwrap())
+        Client::goerli().unwrap()
     }
 
     mod block_by_hash {
@@ -213,7 +257,6 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
             client()
                 .block_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
@@ -238,7 +281,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "currently causes HTTP 504"]
         async fn block_without_block_hash_field() {
             client()
                 .block_by_hash(BlockHashOrTag::Hash(
@@ -315,6 +357,14 @@ mod tests {
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::MalformedRequest)
             );
+        }
+
+        #[tokio::test]
+        async fn contains_receipts_without_status_field() {
+            client()
+                .block_by_number(BlockNumberOrTag::Number(1716))
+                .await
+                .unwrap();
         }
     }
 
@@ -723,8 +773,7 @@ mod tests {
                     .transaction_status(*VALID_TX_HASH)
                     .await
                     .unwrap()
-                    .tx_status
-                    .unwrap(),
+                    .tx_status,
                 Status::AcceptedOnL1
             );
         }
@@ -748,8 +797,7 @@ mod tests {
                     .transaction_status(*UNKNOWN_TX_HASH)
                     .await
                     .unwrap()
-                    .tx_status
-                    .unwrap(),
+                    .tx_status,
                 Status::NotReceived
             );
         }

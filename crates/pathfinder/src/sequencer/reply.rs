@@ -151,8 +151,7 @@ pub struct TransactionStatus {
     #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
     pub block_hash: Option<H256>,
-    #[serde(default)]
-    pub tx_status: Option<transaction::Status>,
+    pub tx_status: transaction::Status,
 }
 
 /// Types used when deserializing L2 transaction related data.
@@ -246,16 +245,30 @@ pub mod transaction {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub block_hash: H256,
-        pub block_number: u64,
+        pub events: Vec<Event>,
         pub execution_resources: ExecutionResources,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
-        pub status: Status,
+        // TODO this will hopefully be fixed in the next versions of the api:
+        // Unfortunately following 0.7.0 some blocks don't report this field
+        // and we have to take it into account.
+        pub status: Option<Status>,
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub transaction_hash: H256,
         pub transaction_index: u64,
+    }
+
+    /// Represents deserialized L2 transaction event data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Event {
+        #[serde_as(as = "Vec<U256AsDecimalStr>")]
+        data: Vec<U256>,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        from_address: H256,
+        #[serde_as(as = "Vec<U256AsDecimalStr>")]
+        keys: Vec<U256>,
     }
 
     /// Represents deserialized object containing L2 contract address and transaction type.
@@ -286,6 +299,8 @@ pub mod transaction {
         AcceptedOnL2,
         #[serde(rename = "REVERTED")]
         Reverted,
+        #[serde(rename = "ABORTED")]
+        Aborted,
     }
 
     /// Represents deserialized L2 transaction data.

@@ -99,7 +99,6 @@ pub mod request {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Call {
-        #[serde(rename = "contractAddress")]
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub contract_address: H256,
         #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
@@ -169,6 +168,7 @@ pub mod reply {
                 SeqStatus::Received => BlockStatus::Pending,
                 SeqStatus::Rejected => BlockStatus::Rejected,
                 SeqStatus::Reverted => BlockStatus::Rejected,
+                SeqStatus::Aborted => BlockStatus::Rejected,
             }
         }
     }
@@ -355,7 +355,6 @@ pub mod reply {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         txn_hash: H256,
         #[serde_as(as = "H256AsRelaxedHexStr")]
-        #[serde(rename = "contractAddress")]
         contract_address: H256,
         #[serde_as(as = "H256AsRelaxedHexStr")]
         entry_point_selector: H256,
@@ -413,7 +412,6 @@ pub mod reply {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         txn_hash: H256,
         status: TransactionStatus,
-        #[serde(rename = "statusData")]
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,
         l1_origin_message: transaction_receipt::MessageToL2,
@@ -424,7 +422,9 @@ pub mod reply {
         fn from(receipt: seq::transaction::Receipt) -> Self {
             Self {
                 txn_hash: receipt.transaction_hash,
-                status: receipt.status.into(),
+                status: receipt
+                    .status
+                    .map_or(TransactionStatus::Unknown, |s| s.into()),
                 // TODO at the moment not available in sequencer replies
                 status_data: String::new(),
                 messages_sent: receipt
@@ -561,6 +561,7 @@ pub mod reply {
                 SeqStatus::Received => TransactionStatus::Received,
                 SeqStatus::Rejected => TransactionStatus::Rejected,
                 SeqStatus::Reverted => TransactionStatus::Unknown,
+                SeqStatus::Aborted => TransactionStatus::Unknown,
             }
         }
     }

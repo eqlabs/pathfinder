@@ -186,7 +186,6 @@ mod tests {
         use crate::rpc::types::{reply::Block, BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
@@ -520,7 +519,6 @@ mod tests {
         use crate::rpc::types::{reply::Transaction, BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH), 0u64);
@@ -736,7 +734,6 @@ mod tests {
         use crate::rpc::types::{BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "currently causes HTTP 504"]
         async fn genesis() {
             let (_handle, addr) = run_server(*LOCALHOST).unwrap();
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
