@@ -276,7 +276,7 @@ impl<'a> MerkleTree<'a> {
                             }
                         };
 
-                        let new_direction = Direction::from(key.view_bits()[common.len()]);
+                        let new_direction = Direction::from(key.view_bits()[branch_height]);
                         let (left, right) = match new_direction {
                             Direction::Left => (new, old),
                             Direction::Right => (old, new),
@@ -1094,7 +1094,6 @@ mod tests {
     mod real_world {
         use super::*;
 
-        #[ignore = "Root data is incorrect"]
         #[test]
         fn simple() {
             // Test data created from Starknet cairo wrangling.
@@ -1104,20 +1103,20 @@ mod tests {
             let mut uut = MerkleTree::load("test".to_string(), &transaction, ZERO_HASH).unwrap();
 
             uut.set(
-                StarkHash::from_hex_str("1").unwrap(),
-                StarkHash::from_hex_str("0").unwrap(),
+                StarkHash::from_hex_str("0x1").unwrap(),
+                StarkHash::from_hex_str("0x0").unwrap(),
             )
             .unwrap();
 
             uut.set(
-                StarkHash::from_hex_str("134").unwrap(),
-                StarkHash::from_hex_str("1").unwrap(),
+                StarkHash::from_hex_str("0x86").unwrap(),
+                StarkHash::from_hex_str("0x1").unwrap(),
             )
             .unwrap();
 
             uut.set(
-                StarkHash::from_hex_str("135").unwrap(),
-                StarkHash::from_hex_str("2").unwrap(),
+                StarkHash::from_hex_str("0x87").unwrap(),
+                StarkHash::from_hex_str("0x2").unwrap(),
             )
             .unwrap();
 
@@ -1126,10 +1125,61 @@ mod tests {
             assert_eq!(
                 root,
                 StarkHash::from_hex_str(
-                    "05bb9440e27889a364bcb678b1f679ecd1347acdedcbf36e83494f857cc58026"
+                    "0x05458b9f8491e7c845bffa4cd36cdb3a7c29dcdf75f2809bd6f4ce65386facfc"
                 )
                 .unwrap()
             );
+        }
+
+        #[test]
+        fn contract_edge_branches_correctly_on_insert() {
+            // This emulates the contract update which exposed a bug in `set`.
+            //
+            // This was discovered by comparing the global state tree for the
+            // gensis block on goerli testnet (alpha 4.0).
+            //
+            // The bug was identified by comparing root and nodes against the python
+            // utility in `root/py/src/test_generate_test_storage_tree.py`.
+            let leaves = vec![
+                ("0x5", "0x66"),
+                (
+                    "0x1BF95D4B58F0741FEA29F94EE5A118D0847C8B7AE0173C2A570C9F74CCA9EA1",
+                    "0x7E5",
+                ),
+                (
+                    "0x3C75C20765D020B0EC41B48BB8C5338AC4B619FC950D59994E844E1E1B9D2A9",
+                    "0x7C7",
+                ),
+                (
+                    "0x4065B936C56F5908A981084DAFA66DC17600937DC80C52EEB834693BB811792",
+                    "0x7970C532B764BB36FAF5696B8BC1317505B8A4DC9EEE5DF4994671757975E4D",
+                ),
+                (
+                    "0x4B5FBB4904167E2E8195C35F7D4E78501A3FE95896794367C85B60B39AEFFC2",
+                    "0x232C969EAFC5B30C20648759D7FA1E2F4256AC6604E1921578101DCE4DFDF48",
+                ),
+            ];
+
+            // create test database
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+
+            let mut tree = MerkleTree::load("test".to_string(), &transaction, ZERO_HASH).unwrap();
+
+            for (key, val) in leaves {
+                let key = StarkHash::from_hex_str(key).unwrap();
+                let val = StarkHash::from_hex_str(val).unwrap();
+                tree.set(key, val).unwrap();
+            }
+
+            let root = tree.commit().unwrap();
+
+            let expected = StarkHash::from_hex_str(
+                "0x06ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe",
+            )
+            .unwrap();
+
+            assert_eq!(root, expected);
         }
     }
 }
