@@ -1,0 +1,121 @@
+# # generate_global_tree.py
+#
+# read stdin for lines of "contract_address contract_state_hash commitment_tree_root", after closing
+# stdin will report a root hash on stdout for this global storage merkle tree.
+# nodes will be dumped on stderr.
+#
+# keys and values are either:
+#
+# - hex for big endian integers (whatever accepted by bytes.fromhex) with 0x prefix
+# - base 10 integers
+#
+# No input validation is done for keys or values.
+#
+# does not accept any arguments.
+
+
+async def generate_root_and_nodes(input):
+    """
+    Input is a generator of (key, value)
+    Returns (root, nodes)
+    """
+
+    # use the testing utils
+    from starkware.starknet.testing.state import StarknetState
+    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
+        PatriciaTree,
+    )
+    from starkware.starknet.business_logic.state_objects import ContractState
+    from copy import deepcopy
+
+    # still create this for the ffc it creates.
+    state = await StarknetState.empty()
+
+    # StarknetState (state) -> CarriedState (state) -> ffc with DictStorage
+    ffc = state.state.ffc
+
+    # TODO: not sure why this needs to be given
+    empty_contract_state = await ContractState.empty(
+        state.general_config.contract_storage_commitment_tree_height, ffc
+    )
+    root = await PatriciaTree.empty_tree(
+        ffc,
+        state.general_config.global_state_commitment_tree_height,
+        empty_contract_state,
+    )
+
+    # creation of starknetstate will create in 0.6.2 meaningless entries in the
+    # default dictionary storage; deepcopy now to filter them out later
+
+    initial_ignorable_state = deepcopy(ffc.storage.db)
+
+    # using a dict here to do *some* validation, as in not to have same key
+    # multiple times in the modifications to support calling this on random
+    # input
+    updates = {}
+
+    for (contract_address, contract_hash, contract_commitment_tree_root) in input:
+        contract_hash = contract_hash.to_bytes(32, "big")
+        contract_commitment_tree_root = contract_commitment_tree_root.to_bytes(
+            32, "big"
+        )
+
+        updates[contract_address] = await ContractState.create(
+            contract_hash,
+            PatriciaTree(
+                root=contract_commitment_tree_root,
+                height=state.general_config.contract_storage_commitment_tree_height,
+            ),
+        )
+
+    # Call ParticiaTree.update directly:
+    # it takes a modifications or something
+    # - [key] = ContractState(contract_hash, commitment_tree_root)
+    # it's last parameter facts are empty or none
+
+    # flush the tree into storage, generate all nodes
+    new_root = (await root.update(ffc, updates.items())).root
+
+    nodes = {}
+    for k, v in state.state.ffc.storage.db.items():
+        if k in initial_ignorable_state and initial_ignorable_state[k] == v:
+            # just filter the initial zeros and related json
+            continue
+
+        nodes[k] = v
+
+    return (new_root, nodes)
+
+
+def parse_line(s):
+    s = s.strip()
+    [addr, c_hash, c_root_hash] = s.split(maxsplit=2)
+    # TODO: maybe map would work?
+    return (parse_value(addr), parse_value(c_hash), parse_value(c_root_hash))
+
+
+def parse_value(s):
+    if s.startswith("0x"):
+        hex = s[2:]
+        if len(hex) == 0:
+            return 0
+        assert len(hex) % 2 == 0, f"unsupported: odd length ({len(hex)}) hex input"
+        data = bytes.fromhex(hex)
+        return int.from_bytes(data, "big")
+
+    return int(s)
+
+
+if __name__ == "__main__":
+    import asyncio
+    import sys
+
+    assert len(sys.argv) <= 1, f"unsupported args; use stdin: {sys.argv}"
+
+    gen = (parse_line(line) for line in sys.stdin)
+    (root, nodes) = asyncio.run(generate_root_and_nodes(gen))
+    print(root.hex())
+
+    for k, v in nodes.items():
+        [prefix, suffix] = k.split(b":", maxsplit=1)
+        print(f"{str(prefix, 'utf-8')}:{suffix.hex()} => {v.hex()}", file=sys.stderr)
