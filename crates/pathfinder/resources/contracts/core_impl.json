@@ -50,6 +50,12 @@
                 "internalType": "uint256[]",
                 "name": "payload",
                 "type": "uint256[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "nonce",
+                "type": "uint256"
             }
         ],
         "name": "ConsumedMessageToL2",
@@ -106,6 +112,12 @@
                 "internalType": "uint256[]",
                 "name": "payload",
                 "type": "uint256[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "nonce",
+                "type": "uint256"
             }
         ],
         "name": "LogMessageToL2",
@@ -207,7 +219,7 @@
             {
                 "indexed": false,
                 "internalType": "int256",
-                "name": "sequenceNumber",
+                "name": "blockNumber",
                 "type": "int256"
             }
         ],
@@ -311,6 +323,19 @@
                 "internalType": "bool",
                 "name": "",
                 "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "l1ToL2MessageNonce",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -483,12 +508,12 @@
     },
     {
         "inputs": [],
-        "name": "stateRoot",
+        "name": "stateBlockNumber",
         "outputs": [
             {
-                "internalType": "uint256",
+                "internalType": "int256",
                 "name": "",
-                "type": "uint256"
+                "type": "int256"
             }
         ],
         "stateMutability": "view",
@@ -496,12 +521,12 @@
     },
     {
         "inputs": [],
-        "name": "stateSequenceNumber",
+        "name": "stateRoot",
         "outputs": [
             {
-                "internalType": "int256",
+                "internalType": "uint256",
                 "name": "",
-                "type": "int256"
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -522,11 +547,6 @@
     },
     {
         "inputs": [
-            {
-                "internalType": "int256",
-                "name": "sequenceNumber",
-                "type": "int256"
-            },
             {
                 "internalType": "uint256[]",
                 "name": "programOutput",

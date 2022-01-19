@@ -23,7 +23,7 @@ mod tests {
         let first_fetch = uut.fetch(&ws).await.unwrap();
         let first = first_fetch.first().expect("Should be at least one log");
 
-        assert_eq!(first.sequence_number, U256::from(0));
+        assert_eq!(first.block_number, U256::from(0));
     }
 
     mod reorg {
@@ -57,7 +57,7 @@ mod tests {
                     log_index: 11.into(),
                 },
                 global_root: 12354.into(),
-                sequence_number: 3.into(),
+                block_number: 3.into(),
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis));
@@ -87,7 +87,7 @@ mod tests {
                     log_index: 11.into(),
                 },
                 global_root: 12354.into(),
-                sequence_number: 3.into(),
+                block_number: 3.into(),
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis));

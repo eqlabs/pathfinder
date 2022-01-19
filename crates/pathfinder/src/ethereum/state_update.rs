@@ -122,7 +122,7 @@ mod tests {
                 "518441586592570845566219848761263100073689884954357429195191348826336924551",
             )
             .unwrap(),
-            sequence_number: U256::from(16407),
+            block_number: U256::from(16407),
         };
 
         let transport = create_test_websocket_transport().await;

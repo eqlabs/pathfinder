@@ -29,14 +29,14 @@ impl TryFrom<web3::types::Log> for StateUpdateLog {
             .into_uint()
             .context("global root could not be parsed")?;
 
-        let sequence_number = get_log_param(&log, "sequenceNumber")?
+        let block_number = get_log_param(&log, "blockNumber")?
             .value
             .into_int()
             .context("sequence number could not be parsed")?;
 
         Ok(Self {
             global_root,
-            sequence_number,
+            block_number,
             origin,
         })
     }
@@ -187,7 +187,7 @@ mod tests {
             let result = StateUpdateLog::try_from(log).unwrap();
             assert_eq!(result.origin, origin);
             assert_eq!(result.global_root, root);
-            assert_eq!(result.sequence_number, sequence);
+            assert_eq!(result.block_number, sequence);
         }
 
         #[test]
