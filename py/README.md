@@ -1,6 +1,8 @@
 # py
 
-This directory will host the code to call contracts using `cairo-lang` python package, and other utilities.
+This directory will host the code to call contracts using `cairo-lang` python package, and other utilities:
+
+- src/generate_test_storage_tree.py -- generates the patricia tree for a single contract from stdin
 
 ## Development
 
