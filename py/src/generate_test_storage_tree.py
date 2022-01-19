@@ -1,12 +1,14 @@
 # # generate_test_tree.py
 #
+# usage: echo "1 2" | python src/generate_test_storage_tree.py
+#
 # read stdin for lines of "key value", after closing stdin will report a root
 # hash on stdout for this per-contract storage merkle tree. nodes will be
 # dumped on stderr.
 #
 # keys and values are either:
 #
-# - hex for big endian integers (whatever accepted by bytes.fromhex)
+# - hex for big endian integers (whatever accepted by bytes.fromhex) prefixed by `0x`
 # - base 10 integers
 #
 # No input validation is done for keys or values. Values will be put in StorageLeaf, keys will be used as ints.
