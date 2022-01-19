@@ -18,15 +18,32 @@ pub struct Block {
     pub parent_block_hash: H256,
     #[serde_as(as = "H256AsRelaxedHexStr")]
     pub state_root: H256,
-    pub status: block::Status,
+    pub status: Status,
     pub timestamp: u64,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
 }
 
-/// Types used when deserializing L2 block related data.
-pub mod block {
-    pub type Status = super::transaction::Status;
+/// Block and transaction status values.
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub enum Status {
+    #[serde(rename = "NOT_RECEIVED")]
+    NotReceived,
+    #[serde(rename = "RECEIVED")]
+    Received,
+    #[serde(rename = "PENDING")]
+    Pending,
+    #[serde(rename = "REJECTED")]
+    Rejected,
+    #[serde(rename = "ACCEPTED_ON_L1")]
+    AcceptedOnL1,
+    #[serde(rename = "ACCEPTED_ON_L2")]
+    AcceptedOnL2,
+    #[serde(rename = "REVERTED")]
+    Reverted,
+    #[serde(rename = "ABORTED")]
+    Aborted,
 }
 
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
@@ -135,7 +152,7 @@ pub struct Transaction {
     #[serde_as(as = "Option<U256AsBigDecimal>")]
     #[serde(default)]
     pub block_number: Option<U256>,
-    pub status: transaction::Status,
+    pub status: Status,
     #[serde(default)]
     pub transaction: Option<transaction::Transaction>,
     #[serde(default)]
@@ -151,7 +168,7 @@ pub struct TransactionStatus {
     #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
     pub block_hash: Option<H256>,
-    pub tx_status: transaction::Status,
+    pub tx_status: Status,
 }
 
 /// Types used when deserializing L2 transaction related data.
@@ -240,19 +257,18 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction receipt data.
+    ///
+    /// As of cairo version 0.7.0 `#[serde(deny_unknown_fields)]`
+    /// is dropped as blocks from around number 49k onwards don't
+    /// contain the `status` field, while the older ones still do.
     #[serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
     pub struct Receipt {
         pub events: Vec<Event>,
         pub execution_resources: ExecutionResources,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
-        // TODO this will hopefully be fixed in the next versions of the api:
-        // Unfortunately following 0.7.0 some blocks don't report this field
-        // and we have to take it into account.
-        pub status: Option<Status>,
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub transaction_hash: H256,
         pub transaction_index: u64,
@@ -279,28 +295,6 @@ pub mod transaction {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub contract_address: H256,
         pub r#type: Type,
-    }
-
-    /// Transaction status values.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
-    pub enum Status {
-        #[serde(rename = "NOT_RECEIVED")]
-        NotReceived,
-        #[serde(rename = "RECEIVED")]
-        Received,
-        #[serde(rename = "PENDING")]
-        Pending,
-        #[serde(rename = "REJECTED")]
-        Rejected,
-        #[serde(rename = "ACCEPTED_ON_L1")]
-        AcceptedOnL1,
-        #[serde(rename = "ACCEPTED_ON_L2")]
-        AcceptedOnL2,
-        #[serde(rename = "REVERTED")]
-        Reverted,
-        #[serde(rename = "ABORTED")]
-        Aborted,
     }
 
     /// Represents deserialized L2 transaction data.

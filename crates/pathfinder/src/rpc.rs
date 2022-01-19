@@ -4,12 +4,17 @@ pub mod types;
 
 use crate::rpc::{
     api::RpcApi,
-    types::{relaxed::H256, request::Call, BlockHashOrTag, BlockNumberOrTag},
+    types::{
+        relaxed::H256,
+        request::{BlockResponseScope, Call},
+        BlockHashOrTag, BlockNumberOrTag,
+    },
 };
 use jsonrpsee::{
     http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
     types::Error,
 };
+use serde::Deserialize;
 use std::{net::SocketAddr, result::Result};
 
 /// Starts the HTTP-RPC server.
@@ -19,26 +24,63 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
     let api = RpcApi::default();
     let mut module = RpcModule::new(api);
     module.register_async_method("starknet_getBlockByHash", |params, context| async move {
-        let mut params = params.sequence();
-        let block_hash = params.next()?;
-        let scope = params.optional_next()?;
-        context.get_block_by_hash(block_hash, scope).await
+        let (hash, scope) = if params.is_object() {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub block_hash: BlockHashOrTag,
+                pub requested_scope: Option<BlockResponseScope>,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            (params.block_hash, params.requested_scope)
+        } else {
+            let mut params = params.sequence();
+            (params.next()?, params.optional_next()?)
+        };
+        context.get_block_by_hash(hash, scope).await
     })?;
     module.register_async_method("starknet_getBlockByNumber", |params, context| async move {
-        let mut params = params.sequence();
-        let block_number = params.next()?;
-        let scope = params.optional_next()?;
-        context.get_block_by_number(block_number, scope).await
+        let (number, scope) = if params.is_object() {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub block_number: BlockNumberOrTag,
+                pub requested_scope: Option<BlockResponseScope>,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            (params.block_number, params.requested_scope)
+        } else {
+            let mut params = params.sequence();
+            (params.next()?, params.optional_next()?)
+        };
+        context.get_block_by_number(number, scope).await
     })?;
     module.register_async_method(
         "starknet_getStateUpdateByHash",
         |params, context| async move {
-            let block_hash = params.one::<BlockHashOrTag>()?;
-            context.get_state_update_by_hash(block_hash).await
+            let hash = if params.is_object() {
+                #[derive(Debug, Deserialize)]
+                pub struct NamedArgs {
+                    pub block_hash: BlockHashOrTag,
+                }
+                params.parse::<NamedArgs>()?.block_hash
+            } else {
+                params.one::<BlockHashOrTag>()?
+            };
+            context.get_state_update_by_hash(hash).await
         },
     )?;
     module.register_async_method("starknet_getStorageAt", |params, context| async move {
-        let (contract_address, key, block_hash) = params.parse::<(H256, H256, BlockHashOrTag)>()?;
+        let (contract_address, key, block_hash) = if params.is_object() {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub contract_address: H256,
+                pub key: H256,
+                pub block_hash: BlockHashOrTag,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            (params.contract_address, params.key, params.block_hash)
+        } else {
+            params.parse::<(H256, H256, BlockHashOrTag)>()?
+        };
         context
             .get_storage_at(contract_address, key, block_hash)
             .await
@@ -46,14 +88,32 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
     module.register_async_method(
         "starknet_getTransactionByHash",
         |params, context| async move {
-            let transaction_hash = params.one::<H256>()?;
+            let transaction_hash = if params.is_object() {
+                #[derive(Debug, Deserialize)]
+                pub struct NamedArgs {
+                    pub transaction_hash: H256,
+                }
+                params.parse::<NamedArgs>()?.transaction_hash
+            } else {
+                params.one::<H256>()?
+            };
             context.get_transaction_by_hash(transaction_hash).await
         },
     )?;
     module.register_async_method(
         "starknet_getTransactionByBlockHashAndIndex",
         |params, context| async move {
-            let (block_hash, index) = params.parse::<(BlockHashOrTag, u64)>()?;
+            let (block_hash, index) = if params.is_object() {
+                #[derive(Debug, Deserialize)]
+                pub struct NamedArgs {
+                    pub block_hash: BlockHashOrTag,
+                    pub index: u64,
+                }
+                let params = params.parse::<NamedArgs>()?;
+                (params.block_hash, params.index)
+            } else {
+                params.parse::<(BlockHashOrTag, u64)>()?
+            };
             context
                 .get_transaction_by_block_hash_and_index(block_hash, index)
                 .await
@@ -62,7 +122,17 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
     module.register_async_method(
         "starknet_getTransactionByBlockNumberAndIndex",
         |params, context| async move {
-            let (block_number, index) = params.parse::<(BlockNumberOrTag, u64)>()?;
+            let (block_number, index) = if params.is_object() {
+                #[derive(Debug, Deserialize)]
+                pub struct NamedArgs {
+                    pub block_number: BlockNumberOrTag,
+                    pub index: u64,
+                }
+                let params = params.parse::<NamedArgs>()?;
+                (params.block_number, params.index)
+            } else {
+                params.parse::<(BlockNumberOrTag, u64)>()?
+            };
             context
                 .get_transaction_by_block_number_and_index(block_number, index)
                 .await
@@ -71,18 +141,42 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
     module.register_async_method(
         "starknet_getTransactionReceipt",
         |params, context| async move {
-            let transaction_hash = params.one::<H256>()?;
+            let transaction_hash = if params.is_object() {
+                #[derive(Debug, Deserialize)]
+                pub struct NamedArgs {
+                    pub transaction_hash: H256,
+                }
+                params.parse::<NamedArgs>()?.transaction_hash
+            } else {
+                params.one::<H256>()?
+            };
             context.get_transaction_receipt(transaction_hash).await
         },
     )?;
     module.register_async_method("starknet_getCode", |params, context| async move {
-        let contract_address = params.one::<H256>()?;
+        let contract_address = if params.is_object() {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub contract_address: H256,
+            }
+            params.parse::<NamedArgs>()?.contract_address
+        } else {
+            params.one::<H256>()?
+        };
         context.get_code(contract_address).await
     })?;
     module.register_async_method(
         "starknet_getBlockTransactionCountByHash",
         |params, context| async move {
-            let block_hash = params.one::<BlockHashOrTag>()?;
+            let block_hash = if params.is_object() {
+                #[derive(Debug, Deserialize)]
+                pub struct NamedArgs {
+                    pub block_hash: BlockHashOrTag,
+                }
+                params.parse::<NamedArgs>()?.block_hash
+            } else {
+                params.one::<BlockHashOrTag>()?
+            };
             context
                 .get_block_transaction_count_by_hash(block_hash)
                 .await
@@ -91,16 +185,33 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
     module.register_async_method(
         "starknet_getBlockTransactionCountByNumber",
         |params, context| async move {
-            let block_number = params.one::<BlockNumberOrTag>()?;
+            let block_number = if params.is_object() {
+                #[derive(Debug, Deserialize)]
+                pub struct NamedArgs {
+                    pub block_number: BlockNumberOrTag,
+                }
+                params.parse::<NamedArgs>()?.block_number
+            } else {
+                params.one::<BlockNumberOrTag>()?
+            };
             context
                 .get_block_transaction_count_by_number(block_number)
                 .await
         },
     )?;
     module.register_async_method("starknet_call", |params, context| async move {
-        let mut params = params.sequence();
-        let request = params.next::<Call>()?;
-        let block_hash = params.next::<BlockHashOrTag>()?;
+        let (request, block_hash) = if params.is_object() {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub request: Call,
+                pub block_hash: BlockHashOrTag,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            (params.request, params.block_hash)
+        } else {
+            let mut params = params.sequence();
+            (params.next::<Call>()?, params.next::<BlockHashOrTag>()?)
+        };
         context.call(request, block_hash).await
     })?;
     module.register_async_method("starknet_blockNumber", |_, context| async move {
@@ -131,7 +242,9 @@ mod tests {
         rpc_params,
         types::{traits::Client, v2::ParamsSer, DeserializeOwned},
     };
+    use serde_json::json;
     use std::{
+        collections::BTreeMap,
         net::{Ipv4Addr, SocketAddrV4},
         str::FromStr,
         time::Duration,
@@ -174,6 +287,11 @@ mod tests {
                 },
             }
         }
+    }
+
+    /// Helper function: produces named rpc method args map.
+    fn by_name<const N: usize>(params: [(&'_ str, serde_json::Value); N]) -> Option<ParamsSer<'_>> {
+        Some(BTreeMap::from(params).into())
     }
 
     /// Helper rpc client
@@ -223,10 +341,10 @@ mod tests {
 
     mod get_block_by_hash {
         use super::*;
-        use crate::rpc::types::{reply::Block, BlockHashOrTag, Tag};
+        use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently sequencer times out often"]
+        #[ignore = "Currently gives 502"]
         async fn genesis() {
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
             client_request::<Block>("starknet_getBlockByHash", params)
@@ -236,7 +354,22 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
+            let params = rpc_params!(
+                BlockHashOrTag::Tag(Tag::Latest),
+                BlockResponseScope::TransactionHashes
+            );
+            client_request::<Block>("starknet_getBlockByHash", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_named_args() {
+            use serde_json::json;
+            let params = by_name([
+                ("block_hash", json!("latest")),
+                ("requested_scope", json!("FULL_TXN_AND_RECEIPTS")),
+            ]);
             client_request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
@@ -244,7 +377,10 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
+            let params = rpc_params!(
+                BlockHashOrTag::Tag(Tag::Pending),
+                BlockResponseScope::FullTransactions
+            );
             client_request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
@@ -277,7 +413,7 @@ mod tests {
 
     mod get_block_by_number {
         use super::*;
-        use crate::rpc::types::{reply::Block, BlockNumberOrTag, Tag};
+        use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockNumberOrTag, Tag};
 
         #[tokio::test]
         async fn genesis() {
@@ -289,7 +425,22 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
+            let params = rpc_params!(
+                BlockNumberOrTag::Tag(Tag::Latest),
+                BlockResponseScope::TransactionHashes
+            );
+            client_request::<Block>("starknet_getBlockByNumber", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_named_args() {
+            use serde_json::json;
+            let params = by_name([
+                ("block_number", json!("latest")),
+                ("requested_scope", json!("FULL_TXN_AND_RECEIPTS")),
+            ]);
             client_request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
@@ -297,7 +448,10 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending));
+            let params = rpc_params!(
+                BlockNumberOrTag::Tag(Tag::Pending),
+                BlockResponseScope::FullTransactions
+            );
             client_request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
@@ -460,6 +614,18 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn latest_block_named_args() {
+            let params = by_name([
+                ("contract_address", json!(*VALID_CONTRACT_ADDR)),
+                ("key", json!(*VALID_KEY)),
+                ("block_hash", json!("latest")),
+            ]);
+            client_request::<relaxed::H256>("starknet_getStorageAt", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
         async fn pending_block() {
             let params = rpc_params!(
                 *VALID_CONTRACT_ADDR,
@@ -479,6 +645,14 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             let params = rpc_params!(*VALID_TX_HASH);
+            client_request::<Transaction>("starknet_getTransactionByHash", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn accepted_named_args() {
+            let params = by_name([("transaction_hash", json!(*VALID_TX_HASH))]);
             client_request::<Transaction>("starknet_getTransactionByHash", params)
                 .await
                 .unwrap();
@@ -514,7 +688,7 @@ mod tests {
         use crate::rpc::types::{reply::Transaction, BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently sequencer times out often"]
+        #[ignore = "Currently gives 502"]
         async fn genesis() {
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH), 0u64);
             client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
@@ -525,6 +699,14 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest), 0u64);
+            client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_named_args() {
+            let params = by_name([("block_hash", json!("latest")), ("index", json!(0u64))]);
             client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap();
@@ -594,6 +776,14 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn latest_named_args() {
+            let params = by_name([("block_number", json!("latest")), ("index", json!(0u64))]);
+            client_request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
         async fn pending() {
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending), 0);
             client_request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
@@ -632,6 +822,14 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             let params = rpc_params!(*VALID_TX_HASH);
+            client_request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn accepted_named_args() {
+            let params = by_name([("transaction_hash", json!(*VALID_TX_HASH))]);
             client_request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                 .await
                 .unwrap();
@@ -696,6 +894,14 @@ mod tests {
                 .await
                 .unwrap();
         }
+
+        #[tokio::test]
+        async fn success_named_args() {
+            let params = by_name([("contract_address", json!(*VALID_CONTRACT_ADDR))]);
+            client_request::<Code>("starknet_getCode", params)
+                .await
+                .unwrap();
+        }
     }
 
     mod get_block_transaction_count_by_hash {
@@ -703,7 +909,7 @@ mod tests {
         use crate::rpc::types::{BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently sequencer times out often"]
+        #[ignore = "Currently gives 502"]
         async fn genesis() {
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
             client_request::<u64>("starknet_getBlockTransactionCountByHash", params)
@@ -714,6 +920,14 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
+            client_request::<u64>("starknet_getBlockTransactionCountByHash", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_named_args() {
+            let params = by_name([("block_hash", json!("latest"))]);
             client_request::<u64>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap();
@@ -767,6 +981,14 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
+            client_request::<u64>("starknet_getBlockTransactionCountByNumber", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_named_args() {
+            let params = by_name([("block_number", json!("latest"))]);
             client_request::<u64>("starknet_getBlockTransactionCountByNumber", params)
                 .await
                 .unwrap();
@@ -827,6 +1049,24 @@ mod tests {
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
+            client_request::<Vec<relaxed::H256>>("starknet_call", params)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest_block_named_args() {
+            let params = by_name([
+                (
+                    "request",
+                    json!({
+                        "calldata": CALL_DATA.clone(),
+                        "contract_address": **VALID_CONTRACT_ADDR,
+                        "entry_point_selector": **VALID_ENTRY_POINT,
+                    }),
+                ),
+                ("block_hash", json!("latest")),
+            ]);
             client_request::<Vec<relaxed::H256>>("starknet_call", params)
                 .await
                 .unwrap();

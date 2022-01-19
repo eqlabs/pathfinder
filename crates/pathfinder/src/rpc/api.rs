@@ -123,7 +123,7 @@ impl RpcApi {
     ) -> RpcResult<raw::Transaction> {
         // TODO get this from storage
         let txn = self.0.transaction(*transaction_hash).await?;
-        if txn.status == raw::transaction::Status::NotReceived {
+        if txn.status == raw::Status::NotReceived {
             return Err(ErrorCode::InvalidTransactionHash.into());
         }
         Ok(txn)
@@ -200,7 +200,7 @@ impl RpcApi {
                     .into_iter()
                     .nth(index)
                     .map_or(Err(transaction_index_not_found(index)), |receipt| {
-                        Ok(receipt.into())
+                        Ok(TransactionReceipt::with_status(receipt, block.status))
                     })
             } else {
                 Err(Error::Call(CallError::InvalidParams(anyhow::anyhow!(
