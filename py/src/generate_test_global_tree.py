@@ -1,5 +1,13 @@
 # # generate_global_tree.py
 #
+# usage example (sending nodes in stderr to /dev/null):
+#
+# $ python src/generate_test_global_tree.py <<'EOF' 2>/dev/null
+# 978257171231527130811587576456504820066317852047211009343890029541393479136 0x02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779 0x0287ac1196abb9501ac540b88e74b6a2b9476903c3f7e85e71d573c997ce1e5b
+# 2216396239273623009628046076940816512923808178401142985552926513489037661413 0x02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779 0x0000000000000000000000000000000000000000000000000000000000000000
+# EOF
+# 05b4ca9e1caff46ebf6416f6d7192a9e562a6cf193b4fe73c30bf7d8062f0e13 # stdin
+#
 # read stdin for lines of "contract_address contract_state_hash commitment_tree_root", after closing
 # stdin will report a root hash on stdout for this global storage merkle tree.
 # nodes will be dumped on stderr.
@@ -9,7 +17,7 @@
 # - hex for big endian integers (whatever accepted by bytes.fromhex) with 0x prefix
 # - base 10 integers
 #
-# No input validation is done for keys or values.
+# No input validation is done for keys or values; they could be too large for example.
 #
 # does not accept any arguments.
 
