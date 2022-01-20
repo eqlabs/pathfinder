@@ -69,7 +69,7 @@ impl Client {
         debug_assert!(!sequencer_url.cannot_be_a_base());
         Ok(Self {
             inner: reqwest::Client::builder()
-                .timeout(Duration::from_secs(60))
+                .timeout(Duration::from_secs(120))
                 .build()?,
             sequencer_url,
         })
@@ -231,6 +231,7 @@ impl Client {
 mod tests {
     use super::{error::StarknetErrorCode, *};
     use assert_matches::assert_matches;
+    use reqwest::StatusCode;
     use std::str::FromStr;
     use web3::types::U256;
 
@@ -248,8 +249,93 @@ mod tests {
         static ref VALID_ENTRY_POINT: H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
     }
 
+    /// Convenience wrapper
     fn client() -> Client {
         Client::goerli().unwrap()
+    }
+
+    /// Convenience macro to allow retrying the test if rate limiting kicks in.
+    ///
+    /// Necessary until we resign from testing the client on a live API.
+    ///
+    /// Unfortunately __we cannot just use a wrapper function that takes the future as an argument__,
+    /// as this would mean that we would reuse the same client instance after each sleep which
+    /// is insufficient to break out of http 429 (the client needs to be destroyed as it does
+    /// employ pooling internally).
+    /// So __the following code does not actually yield desired results__, not to mention the obvious
+    /// convenience pf using `Rc<SequencerError>`due to the fact that some of its variants are not clonable:
+    /// ```
+    /// /// Helper wrapper to allow retrying the test if rate limiting kicks in.
+    ///
+    /// /// Necessary until we resign from testing the client on a live API.
+    ///
+    /// /// __`Rc`__ is used to work around most inner error types being not clonable.
+    /// async fn retry_on_spurious_err<Out, Fut>(f: Fut) -> Result<Out, Rc<SequencerError>>
+    /// where
+    ///     Out: Clone,
+    ///     Fut: Future<Output = Result<Out, Rc<SequencerError>>>,
+    /// {
+    ///     let mut sleep_time_ms = 8000;
+    ///     const MAX_SLEEP_TIME_MS: u64 = 128000;
+    ///     let clonable = f.shared();
+    ///     loop {
+    ///         match clonable.clone().await {
+    ///             Ok(r) => return Ok(r),
+    ///             Err(e) => match &*e {
+    ///                 SequencerError::TransportError(ee)
+    ///                     if ee.status() == Some(StatusCode::TOO_MANY_REQUESTS) =>
+    ///                 {
+    ///                     if sleep_time_ms > MAX_SLEEP_TIME_MS {
+    ///                         return Err(e);
+    ///                     }
+    ///                     // Give the api some slack and then retry
+    ///                     tokio::time::sleep(Duration::from_millis(sleep_time_ms)).await;
+    ///                     sleep_time_ms *= 2;
+    ///                 }
+    ///                 _ => return Err(e),
+    ///             },
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// By the way we would still have to use a convenience macro to avoid some boilerplate code pleasures:
+    ///
+    /// ```
+    /// /// Convenience macro, frees the user of remembering to add `async {}` and `map_err(Rc::new)` to the mix.
+    /// macro_rules! retry_on_rate_limiting {
+    ///     ($wrapped_call:expr) => {
+    ///         retry_on_spurious_err(async { ($wrapped_call).await.map_err(Rc::new) })
+    ///     };
+    /// }
+    /// ```
+    macro_rules! retry_on_rate_limiting {
+        ($wrapped_call:expr) => {{
+            let mut sleep_time_ms = 8000;
+            const MAX_SLEEP_TIME_MS: u64 = 128000;
+            loop {
+                match ($wrapped_call) {
+                    Ok(r) => break Ok(r),
+                    Err(e) => match &e {
+                        SequencerError::TransportError(ee)
+                            if ee.status() == Some(StatusCode::TOO_MANY_REQUESTS) =>
+                        {
+                            if sleep_time_ms > MAX_SLEEP_TIME_MS {
+                                break Err(e);
+                            }
+                            // Give the api some slack and then retry
+                            eprintln!(
+                                "Got HTTP 429, retrying after {} seconds...",
+                                sleep_time_ms / 1000
+                            );
+                            tokio::time::sleep(Duration::from_millis(sleep_time_ms)).await;
+                            sleep_time_ms *= 2;
+                        }
+                        _ => break Err(e),
+                    },
+                }
+            }
+        }};
     }
 
     mod block_by_hash {
@@ -257,50 +343,61 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        #[ignore = "Currently sequencer times out on genesis"]
+        #[ignore = "Currently sequencer times out often"]
         async fn genesis() {
-            client()
-                .block_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .block_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn latest() {
-            client()
-                .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn pending() {
-            client()
-                .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
+        #[ignore = "Currently sequencer times out often"]
         async fn block_without_block_hash_field() {
-            client()
-                .block_by_hash(BlockHashOrTag::Hash(
-                    H256::from_str(
-                        "01cf37f162c3fa3b57c1c4324c240b0c8c65bb5a15e039817a3023b9890e94d1",
-                    )
-                    .unwrap(),
-                ))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .block_by_hash(BlockHashOrTag::Hash(
+                        H256::from_str(
+                            "01cf37f162c3fa3b57c1c4324c240b0c8c65bb5a15e039817a3023b9890e94d1",
+                        )
+                        .unwrap(),
+                    ))
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn unknown() {
             // Use valid hash from mainnet
-            let error = client()
-                .block_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .block_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -310,10 +407,12 @@ mod tests {
         #[tokio::test]
         async fn invalid() {
             // Invalid block hash
-            let error = client()
-                .block_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .block_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeBlockHash)
@@ -326,34 +425,38 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            client()
-                .block_by_number(BlockNumberOrTag::Number(0))
-                .await
+            retry_on_rate_limiting!(client().block_by_number(BlockNumberOrTag::Number(0)).await)
                 .unwrap();
         }
 
         #[tokio::test]
         async fn latest() {
-            client()
-                .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn pending() {
-            client()
-                .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn invalid() {
-            let error = client()
-                .block_by_number(BlockNumberOrTag::Number(u64::MAX))
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .block_by_number(BlockNumberOrTag::Number(u64::MAX))
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::MalformedRequest)
@@ -361,11 +464,14 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "Currently sequencer times out often"]
         async fn contains_receipts_without_status_field() {
-            client()
-                .block_by_number(BlockNumberOrTag::Number(1716))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .block_by_number(BlockNumberOrTag::Number(1716))
+                    .await
+            )
+            .unwrap();
         }
     }
 
@@ -375,18 +481,20 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_entry_point() {
-            let error = client()
-                .call(
-                    request::Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: H256::zero(),
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234u64)],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: H256::zero(),
+                            signature: vec![],
+                        },
+                        BlockHashOrTag::Tag(Tag::Latest),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::EntryPointNotFound)
@@ -395,18 +503,20 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let error = client()
-                .call(
-                    request::Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: *INVALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234u64)],
+                            contract_address: *INVALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        BlockHashOrTag::Tag(Tag::Latest),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeContractAddress)
@@ -415,18 +525,20 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_call_data() {
-            let error = client()
-                .call(
-                    request::Call {
-                        calldata: vec![],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::TransactionFailed)
@@ -435,18 +547,20 @@ mod tests {
 
         #[tokio::test]
         async fn uninitialized_contract() {
-            let error = client()
-                .call(
-                    request::Call {
-                        calldata: vec![],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
@@ -455,18 +569,20 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let error = client()
-                .call(
-                    request::Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234)],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeBlockHash)
@@ -475,18 +591,20 @@ mod tests {
 
         #[tokio::test]
         async fn unknown_block_hash() {
-            let error = client()
-                .call(
-                    request::Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234u64)],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -495,50 +613,56 @@ mod tests {
 
         #[tokio::test]
         async fn latest_invoke_block() {
-            client()
-                .call(
-                    request::Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
-                )
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234)],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn latest_block() {
-            client()
-                .call(
-                    request::Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234)],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        BlockHashOrTag::Tag(Tag::Latest),
+                    )
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn pending_block() {
-            client()
-                .call(
-                    request::Call {
-                        calldata: vec![U256::from(1234)],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Pending),
-                )
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .call(
+                        request::Call {
+                            calldata: vec![U256::from(1234)],
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
+                            signature: vec![],
+                        },
+                        BlockHashOrTag::Tag(Tag::Pending),
+                    )
+                    .await
+            )
+            .unwrap();
         }
     }
 
@@ -548,10 +672,12 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let error = client()
-                .code(*INVALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .code(*INVALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeContractAddress)
@@ -560,22 +686,25 @@ mod tests {
 
         #[tokio::test]
         async fn unknown_contract_address() {
-            // Returns empty code and abi
-            client()
-                .code(*UNKNOWN_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .code(*UNKNOWN_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let error = client()
-                .code(
-                    *VALID_CONTRACT_ADDR,
-                    BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .code(
+                        *VALID_CONTRACT_ADDR,
+                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeBlockHash)
@@ -584,13 +713,15 @@ mod tests {
 
         #[tokio::test]
         async fn unknown_block_hash() {
-            let error = client()
-                .code(
-                    *VALID_CONTRACT_ADDR,
-                    BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .code(
+                        *VALID_CONTRACT_ADDR,
+                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -599,29 +730,35 @@ mod tests {
 
         #[tokio::test]
         async fn latest_invoke_block() {
-            client()
-                .code(
-                    *VALID_CONTRACT_ADDR,
-                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
-                )
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .code(
+                        *VALID_CONTRACT_ADDR,
+                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn latest_block() {
-            client()
-                .code(*VALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .code(*VALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn pending_block() {
-            client()
-                .code(*VALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Pending))
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .code(*VALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Pending))
+                    .await
+            )
+            .unwrap();
         }
     }
 
@@ -635,14 +772,16 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let error = client()
-                .storage(
-                    *INVALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .storage(
+                        *INVALID_CONTRACT_ADDR,
+                        *VALID_KEY,
+                        BlockHashOrTag::Tag(Tag::Latest),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeContractAddress)
@@ -651,14 +790,16 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_key() {
-            let error = client()
-                .storage(
-                    *VALID_CONTRACT_ADDR,
-                    U256::max_value(),
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .storage(
+                        *VALID_CONTRACT_ADDR,
+                        U256::max_value(),
+                        BlockHashOrTag::Tag(Tag::Latest),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeStorageKey)
@@ -667,14 +808,16 @@ mod tests {
 
         #[tokio::test]
         async fn unknown_block_hash() {
-            let error = client()
-                .storage(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .storage(
+                        *VALID_CONTRACT_ADDR,
+                        *VALID_KEY,
+                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -683,14 +826,16 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let error = client()
-                .storage(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
-                )
-                .await
-                .unwrap_err();
+            let error = retry_on_rate_limiting!(
+                client()
+                    .storage(
+                        *VALID_CONTRACT_ADDR,
+                        *VALID_KEY,
+                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeBlockHash)
@@ -699,38 +844,44 @@ mod tests {
 
         #[tokio::test]
         async fn latest_invoke_block() {
-            client()
-                .storage(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
-                )
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .storage(
+                        *VALID_CONTRACT_ADDR,
+                        *VALID_KEY,
+                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                    )
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn latest_block() {
-            client()
-                .storage(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .storage(
+                        *VALID_CONTRACT_ADDR,
+                        *VALID_KEY,
+                        BlockHashOrTag::Tag(Tag::Latest),
+                    )
+                    .await
+            )
+            .unwrap();
         }
 
         #[tokio::test]
         async fn pending_block() {
-            client()
-                .storage(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Tag(Tag::Pending),
-                )
-                .await
-                .unwrap();
+            retry_on_rate_limiting!(
+                client()
+                    .storage(
+                        *VALID_CONTRACT_ADDR,
+                        *VALID_KEY,
+                        BlockHashOrTag::Tag(Tag::Pending),
+                    )
+                    .await
+            )
+            .unwrap();
         }
     }
 
@@ -741,14 +892,17 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             assert_eq!(
-                client().transaction(*VALID_TX_HASH).await.unwrap().status,
+                retry_on_rate_limiting!(client().transaction(*VALID_TX_HASH).await)
+                    .unwrap()
+                    .status,
                 Status::AcceptedOnL1
             );
         }
 
         #[tokio::test]
         async fn invalid_hash() {
-            let error = client().transaction(*INVALID_TX_HASH).await.unwrap_err();
+            let error =
+                retry_on_rate_limiting!(client().transaction(*INVALID_TX_HASH).await).unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeTransactionHash)
@@ -758,7 +912,9 @@ mod tests {
         #[tokio::test]
         async fn unknown_hash() {
             assert_eq!(
-                client().transaction(*UNKNOWN_TX_HASH).await.unwrap().status,
+                retry_on_rate_limiting!(client().transaction(*UNKNOWN_TX_HASH).await)
+                    .unwrap()
+                    .status,
                 Status::NotReceived
             );
         }
@@ -770,9 +926,7 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             assert_eq!(
-                client()
-                    .transaction_status(*VALID_TX_HASH)
-                    .await
+                retry_on_rate_limiting!(client().transaction_status(*VALID_TX_HASH).await)
                     .unwrap()
                     .tx_status,
                 Status::AcceptedOnL1
@@ -781,10 +935,9 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let error = client()
-                .transaction_status(*INVALID_TX_HASH)
-                .await
-                .unwrap_err();
+            let error =
+                retry_on_rate_limiting!(client().transaction_status(*INVALID_TX_HASH).await)
+                    .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeTransactionHash)
@@ -794,9 +947,7 @@ mod tests {
         #[tokio::test]
         async fn unknown_hash() {
             assert_eq!(
-                client()
-                    .transaction_status(*UNKNOWN_TX_HASH)
-                    .await
+                retry_on_rate_limiting!(client().transaction_status(*UNKNOWN_TX_HASH).await)
                     .unwrap()
                     .tx_status,
                 Status::NotReceived
