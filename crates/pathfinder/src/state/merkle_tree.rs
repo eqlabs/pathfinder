@@ -44,17 +44,15 @@
 //!
 //! The in-memory tree is built using a graph of [Rc<RefCell<Node>>] which is a bit painful.
 
-mod node;
-mod storage;
-
 use anyhow::Context;
 use bitvec::prelude::BitVec;
 use rusqlite::Transaction;
 use std::{cell::RefCell, rc::Rc};
 
-use crate::merkle_tree::{
-    node::{BinaryNode, Direction, EdgeNode, Node},
-    storage::{PersistedBinaryNode, PersistedEdgeNode, PersistedNode, RcNodeStorage},
+use crate::state::merkle_node::{BinaryNode, Direction, EdgeNode, Node};
+
+use crate::storage::merkle_tree::{
+    PersistedBinaryNode, PersistedEdgeNode, PersistedNode, RcNodeStorage,
 };
 
 use pedersen::StarkHash;
