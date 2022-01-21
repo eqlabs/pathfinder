@@ -359,7 +359,7 @@ pub const PEDERSEN_P4: ProjectivePoint = ProjectivePoint {
 mod tests {
     use super::*;
 
-    mod to_le_bits_rev {
+    mod field {
         use super::*;
         use pretty_assertions::assert_eq;
 

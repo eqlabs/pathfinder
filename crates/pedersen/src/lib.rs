@@ -1,8 +1,8 @@
-pub mod field;
+pub mod curve;
 
 use std::error::Error;
 
-use crate::field::{
+use crate::curve::{
     AffinePoint, FieldElement, FieldElementRepr, PEDERSEN_P0, PEDERSEN_P1, PEDERSEN_P2,
     PEDERSEN_P3, PEDERSEN_P4,
 };
