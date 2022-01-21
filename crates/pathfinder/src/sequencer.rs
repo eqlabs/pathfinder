@@ -106,18 +106,7 @@ impl Client {
             .get(self.build_query("get_block", &[(tag, &hash)]))
             .send()
             .await?;
-        let mut block: reply::Block = parse(resp).await?;
-        // If possible add the missing transaction statuses for those receipts that did not have the status field
-        for mut receipt in &mut block.transaction_receipts {
-            if receipt.status.is_none() {
-                receipt.status = self
-                    .transaction_status(receipt.transaction_hash)
-                    .await
-                    .ok()
-                    .map(|txn| txn.tx_status);
-            }
-        }
-        Ok(block)
+        parse::<reply::Block>(resp).await
     }
 
     /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
@@ -343,7 +332,7 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        #[ignore = "Currently sequencer times out often"]
+        #[ignore = "Currently gives 502"]
         async fn genesis() {
             retry_on_rate_limiting!(
                 client()
@@ -374,7 +363,7 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "Currently sequencer times out often"]
+        #[ignore = "Currently gives 502"]
         async fn block_without_block_hash_field() {
             retry_on_rate_limiting!(
                 client()
@@ -464,7 +453,7 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "Currently sequencer times out often"]
+        #[ignore = "Currently gives 502"]
         async fn contains_receipts_without_status_field() {
             retry_on_rate_limiting!(
                 client()
@@ -573,7 +562,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234)],
+                            calldata: vec![U256::from(1234u64)],
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -617,7 +606,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234)],
+                            calldata: vec![U256::from(1234u64)],
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -635,7 +624,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234)],
+                            calldata: vec![U256::from(1234u64)],
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -653,7 +642,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234)],
+                            calldata: vec![U256::from(1234u64)],
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -886,7 +875,7 @@ mod tests {
     }
 
     mod transaction {
-        use super::{reply::transaction::Status, *};
+        use super::{reply::Status, *};
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -921,7 +910,7 @@ mod tests {
     }
 
     mod transaction_status {
-        use super::{reply::transaction::Status, *};
+        use super::{reply::Status, *};
 
         #[tokio::test]
         async fn accepted() {

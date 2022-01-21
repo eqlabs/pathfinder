@@ -98,6 +98,7 @@ pub mod request {
     /// Contains parameters passed to `starknet_call`.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct Call {
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub contract_address: H256,
@@ -132,8 +133,7 @@ pub mod reply {
     use super::request::BlockResponseScope;
     pub use crate::sequencer::reply::Code;
     use crate::{
-        sequencer::reply as seq, sequencer::reply::block::Status as SeqStatus,
-        serde::H256AsRelaxedHexStr,
+        sequencer::reply as seq, sequencer::reply::Status as SeqStatus, serde::H256AsRelaxedHexStr,
     };
     use jsonrpsee::types::{CallError, Error};
     use serde::{Deserialize, Serialize};
@@ -236,9 +236,21 @@ pub mod reply {
                                 .transactions
                                 .into_iter()
                                 .zip(block.transaction_receipts.into_iter())
-                                .map(|(t, r)| TransactionAndReceipt {
-                                    transaction: t.into(),
-                                    receipt: r.into(),
+                                .map(|(t, r)| {
+                                    let t: Transaction = t.into();
+                                    let r = TransactionReceipt::with_status(r, block.status);
+
+                                    TransactionAndReceipt {
+                                        txn_hash: t.txn_hash,
+                                        contract_address: t.contract_address,
+                                        entry_point_selector: t.entry_point_selector,
+                                        calldata: t.calldata,
+                                        status: r.status,
+                                        status_data: r.status_data,
+                                        messages_sent: r.messages_sent,
+                                        l1_origin_message: r.l1_origin_message,
+                                        events: r.events,
+                                    }
                                 })
                                 .collect(),
                         )
@@ -418,13 +430,11 @@ pub mod reply {
         events: Vec<transaction_receipt::Event>,
     }
 
-    impl From<seq::transaction::Receipt> for TransactionReceipt {
-        fn from(receipt: seq::transaction::Receipt) -> Self {
+    impl TransactionReceipt {
+        pub fn with_status(receipt: seq::transaction::Receipt, status: seq::Status) -> Self {
             Self {
                 txn_hash: receipt.transaction_hash,
-                status: receipt
-                    .status
-                    .map_or(TransactionStatus::Unknown, |s| s.into()),
+                status: status.into(),
                 // TODO at the moment not available in sequencer replies
                 status_data: String::new(),
                 messages_sent: receipt
@@ -526,10 +536,19 @@ pub mod reply {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionAndReceipt {
-        #[serde(flatten)]
-        transaction: Transaction,
-        #[serde(flatten)]
-        receipt: TransactionReceipt,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        txn_hash: H256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        contract_address: H256,
+        #[serde_as(as = "H256AsRelaxedHexStr")]
+        entry_point_selector: H256,
+        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
+        calldata: Vec<H256>,
+        status: TransactionStatus,
+        status_data: String,
+        messages_sent: Vec<transaction_receipt::MessageToL1>,
+        l1_origin_message: transaction_receipt::MessageToL2,
+        events: Vec<transaction_receipt::Event>,
     }
 
     /// Represents transaction status.
@@ -550,7 +569,7 @@ pub mod reply {
         Rejected,
     }
 
-    impl From<seq::transaction::Status> for TransactionStatus {
+    impl From<seq::Status> for TransactionStatus {
         fn from(status: SeqStatus) -> Self {
             match status {
                 // TODO verify this mapping with Starkware
