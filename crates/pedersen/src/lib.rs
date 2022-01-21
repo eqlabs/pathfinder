@@ -1,9 +1,10 @@
-mod field;
+pub mod curve;
 
 use std::error::Error;
 
-use crate::field::{
-    FieldElement, FieldElementRepr, PEDERSEN_P0, PEDERSEN_P1, PEDERSEN_P2, PEDERSEN_P3, PEDERSEN_P4,
+use crate::curve::{
+    AffinePoint, FieldElement, FieldElementRepr, PEDERSEN_P0, PEDERSEN_P1, PEDERSEN_P2,
+    PEDERSEN_P3, PEDERSEN_P4,
 };
 
 use bitvec::{order::Msb0, slice::BitSlice, view::BitView};
@@ -88,25 +89,18 @@ impl std::ops::Add for StarkHash {
 ///
 /// [Starknet Pedersen hash]: https://docs.starkware.co/starkex-v3/crypto/pedersen-hash-function
 pub fn pedersen_hash(a: StarkHash, b: StarkHash) -> StarkHash {
-    let mut result = PEDERSEN_P0.clone();
     let a = FieldElement::from(a).into_bits();
     let b = FieldElement::from(b).into_bits();
 
-    // Add a_low * P1
-    let tmp = PEDERSEN_P1.multiply(&a[..248]);
-    result = result.add(&tmp);
+    // Compute hash
+    let mut accumulator = PEDERSEN_P0;
+    accumulator.add(&PEDERSEN_P1.multiply(&a[..248])); // Add a_low * P1
+    accumulator.add(&PEDERSEN_P2.multiply(&a[248..252])); // Add a_high * P2
+    accumulator.add(&PEDERSEN_P3.multiply(&b[..248])); // Add b_low * P3
+    accumulator.add(&PEDERSEN_P4.multiply(&b[248..252])); // Add b_high * P4
 
-    // Add a_high * P2
-    let tmp = PEDERSEN_P2.multiply(&a[248..252]);
-    result = result.add(&tmp);
-
-    // Add b_low * P3
-    let tmp = PEDERSEN_P3.multiply(&b[..248]);
-    result = result.add(&tmp);
-
-    // Add b_high * P4
-    let tmp = PEDERSEN_P4.multiply(&b[248..252]);
-    result = result.add(&tmp);
+    // Convert to affine
+    let result = AffinePoint::from(&accumulator);
 
     // Return x-coordinate
     StarkHash::from(result.x)
