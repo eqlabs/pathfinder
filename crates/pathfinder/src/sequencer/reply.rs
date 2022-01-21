@@ -257,13 +257,10 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction receipt data.
-    ///
-    /// As of cairo version 0.7.0 `#[serde(deny_unknown_fields)]`
-    /// is dropped as blocks from around number 49k onwards don't
-    /// contain the `status` field, while the older ones still do.
     #[serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct Receipt {
         pub events: Vec<Event>,
         pub execution_resources: ExecutionResources,
