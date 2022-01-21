@@ -2,176 +2,123 @@
 //!
 //! Currently this consists of a Sqlite backend implementation.
 
+mod contract;
 pub mod merkle_tree;
+mod state;
 
-use anyhow::Result;
-use rusqlite::Connection;
+pub use contract::ContractsTable;
+pub use state::ContractsStateTable;
 
-/// A Sqlite storage backend.
-///
-/// todo: elaborate when more established.
-pub struct Storage {
-    connection: Connection,
+use anyhow::Context;
+use rusqlite::Transaction;
+
+/// Indicates database is non-existant.
+const DB_VERSION_EMPTY: u32 = 0;
+/// Current database version.
+const DB_VERSION_CURRENT: u32 = DB_VERSION_EMPTY + 1;
+/// Sqlite key used for the PRAGMA user version.
+const VERSION_KEY: &str = "user_version";
+
+/// Migrates the database to the latest version. This __MUST__ be called
+/// at the beginning of the application.
+pub fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
+    enable_foreign_keys(transaction).context("Failed to enable foreign key support")?;
+    let version = schema_version(transaction)?;
+
+    // Check that the database is not newer than this application knows of.
+    anyhow::ensure!(
+        version <= DB_VERSION_CURRENT,
+        "Database version is newer than this application ({} > {})",
+        version,
+        DB_VERSION_CURRENT
+    );
+
+    // Migrate all the tables.
+    contract::migrate(transaction, version).context("Failed to migrate contracts table")?;
+    state::migrate(transaction, version).context("Failed to migrate contract states table")?;
+
+    // Update the pragma schema.
+    transaction
+        .pragma_update(None, VERSION_KEY, DB_VERSION_CURRENT)
+        .context("Failed to update the schema version number")
 }
 
-impl Storage {
-    /// Current schema version, used to drive schema migration.
-    const SCHEMA_VERSION: u32 = 1;
-    /// Sqlite key used for the PRAGMA user version.
-    const VERSION_KEY: &'static str = "user_version";
+/// Returns the current schema version of the existing database,
+/// or [DB_VERSION_EMPTY] if database does not yet exist.
+fn schema_version(transaction: &Transaction) -> anyhow::Result<u32> {
+    // We store the schema version in the Sqlite provided PRAGMA "user_version",
+    // which stores an INTEGER and defaults to 0.
+    let version = transaction.query_row(
+        &format!("SELECT {} FROM pragma_user_version;", VERSION_KEY),
+        [],
+        |row| row.get::<_, u32>(0),
+    )?;
+    Ok(version)
+}
 
-    /// Creates a [Storage] from a [Sqlite Connection](Connection).
-    pub fn new(connection: Connection) -> Result<Self> {
-        let mut database = Self { connection };
-
-        database.enable_foreign_keys()?;
-        let existing_version = database.schema_version()?;
-        database.migrate(existing_version)?;
-
-        Ok(database)
-    }
-
-    fn enable_foreign_keys(&mut self) -> Result<()> {
-        use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
-        self.connection
-            .set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
-        Ok(())
-    }
-
-    /// Returns the current schema version of the existing database,
-    /// or 0 if database does not yet exist.
-    fn schema_version(&mut self) -> Result<u32> {
-        // We store the schema version in the Sqlite provided PRAGMA "user_version",
-        // which stores an INTEGER and defaults to 0.
-        let version = self.connection.query_row(
-            &format!("SELECT {} FROM pragma_user_version;", Self::VERSION_KEY),
-            [],
-            |row| row.get::<_, u32>(0),
-        )?;
-        Ok(version)
-    }
-
-    /// Updates the database schema to the current version.
-    fn migrate(&mut self, from: u32) -> Result<()> {
-        // todo: logs will be important here. Maybe emit a log per schema update,
-        //       and one if already up-to-date.
-        anyhow::ensure!(
-            from <= Self::SCHEMA_VERSION,
-            "Unknown database schema version: {}",
-            from
-        );
-
-        // Perform all migrations required from `from` to the current version.
-        for version in from..Self::SCHEMA_VERSION {
-            // We use a transaction to ensure that a each migration completes
-            // fully or not at all. This includes updating the schema version.
-            let tx = self.connection.transaction()?;
-
-            match version {
-                0 => {
-                    tx.execute_batch(r"
-                        CREATE TABLE l1_blocks(
-                            number INTEGER PRIMARY KEY,
-                            hash   BLOB    UNIQUE NOT NULL
-                        );
-
-                        CREATE TABLE l2_blocks(
-                            number INTEGER PRIMARY KEY,
-                            hash   BLOB    UNIQUE NOT NULL,
-
-                            l1_number INTEGER NOT NULL REFERENCES l1_blocks(number) ON DELETE CASCADE
-                        );
-
-                        CREATE TABLE transactions(
-                            number INTEGER PRIMARY KEY,
-                            hash   BLOB UNIQUE NOT NULL,
-
-                            l2_number INTEGER NOT NULL REFERENCES l2_blocks(number) ON DELETE CASCADE
-                        );
-
-                        CREATE TABLE contracts(
-                            id   INTEGER PRIMARY KEY,
-                            hash BLOB UNIQUE NOT NULL,
-                            code BLOB,
-                            abi  BLOB,
-
-                            tx_id INTEGER NOT NULL REFERENCES transactions(number) ON DELETE CASCADE
-                        );
-
-                        CREATE TABLE variables(
-                            key  INTEGER PRIMARY KEY,
-                            hash BLOB NOT NULL,
-
-                            contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE
-                        );
-
-                        CREATE TABLE variable_updates(
-                            id    INTEGER PRIMARY KEY,
-                            value BLOB,
-
-                            variable_key INTEGER NOT NULL REFERENCES variables(key)   ON DELETE CASCADE,
-                            tx_id        INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE
-                        );
-                    ")?;
-                }
-                other => anyhow::bail!("Unhandled database migration version: {}", other),
-            }
-
-            // Update the schema version and commit the transaction.
-            tx.pragma_update(None, Self::VERSION_KEY, version + 1)?;
-            tx.commit()?;
-        }
-
-        Ok(())
-    }
+/// Enables foreign key support for the database.
+fn enable_foreign_keys(transaction: &Transaction) -> anyhow::Result<()> {
+    use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
+    transaction.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn mem_storage() -> Storage {
-        Storage {
-            connection: Connection::open_in_memory().unwrap(),
-        }
-    }
-
     #[test]
     fn schema_version_defaults_to_zero() {
-        let mut db = mem_storage();
-        assert_eq!(db.schema_version().unwrap(), 0);
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+
+        let version = schema_version(&transaction).unwrap();
+        assert_eq!(version, DB_VERSION_EMPTY);
     }
 
     #[test]
     fn full_migration() {
-        let mut db = mem_storage();
-        db.migrate(0).unwrap();
-        assert_eq!(db.schema_version().unwrap(), Storage::SCHEMA_VERSION);
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+
+        migrate_database(&transaction).unwrap();
+        let version = schema_version(&transaction).unwrap();
+
+        assert_eq!(version, DB_VERSION_CURRENT);
     }
 
     #[test]
-    fn migration_should_fail_for_bad_version() {
-        let mut db = mem_storage();
-        db.migrate(Storage::SCHEMA_VERSION + 1).unwrap_err();
+    fn migration_fails_if_db_is_newer() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+
+        // Force the schema to a newer version
+        transaction
+            .pragma_update(None, VERSION_KEY, DB_VERSION_CURRENT + 1)
+            .unwrap();
+
+        // Migration should fail.
+        migrate_database(&transaction).unwrap_err();
     }
 
     #[test]
     fn foreign_keys_are_enforced() {
-        let mut db = mem_storage();
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
 
         // We first disable foreign key support. Sqlite currently enables this by default,
-        // but this may change. So we disable to check that our enable function works
-        // regardless of what Sqlite's default is.
+        // but this may change in the future. So we disable to check that our enable function
+        // works regardless of what Sqlite's default is.
         use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
-        db.connection
+        transaction
             .set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, false)
             .unwrap();
 
         // Enable foreign key support.
-        db.enable_foreign_keys().unwrap();
+        enable_foreign_keys(&transaction).unwrap();
 
         // Create tables with a parent-child foreign key requirement.
-        db.connection
+        transaction
             .execute_batch(
                 r"
                     CREATE TABLE parent(
@@ -187,13 +134,13 @@ mod tests {
             .unwrap();
 
         // Check that foreign keys are enforced.
-        db.connection
+        transaction
             .execute("INSERT INTO parent (id) VALUES (2)", [])
             .unwrap();
-        db.connection
+        transaction
             .execute("INSERT INTO child (id, parent_id) VALUES (0, 2)", [])
             .unwrap();
-        db.connection
+        transaction
             .execute("INSERT INTO child (id, parent_id) VALUES (1, 1)", [])
             .unwrap_err();
     }
