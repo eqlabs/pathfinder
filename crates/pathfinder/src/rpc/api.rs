@@ -12,7 +12,6 @@ use jsonrpsee::types::{
     error::{CallError, Error},
     RpcResult,
 };
-use reqwest::Url;
 use std::convert::{From, TryInto};
 use web3::types::H256;
 
@@ -31,7 +30,7 @@ pub struct RpcApi(Client);
 
 impl Default for RpcApi {
     fn default() -> Self {
-        let module = Client::new(Url::parse("https://alpha4.starknet.io/").expect("Valid URL."));
+        let module = Client::goerli().expect("failed to initialize sequencer client");
         Self(module)
     }
 }
