@@ -8,7 +8,7 @@ use std::{cell::RefCell, rc::Rc};
 use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
 use pedersen::{pedersen_hash, StarkHash};
 
-use crate::merkle_tree::ZERO_HASH;
+use crate::state::merkle_tree::ZERO_HASH;
 
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]

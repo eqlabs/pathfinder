@@ -2,6 +2,8 @@
 //!
 //! Currently this consists of a Sqlite backend implementation.
 
+pub mod merkle_tree;
+
 use anyhow::Result;
 use rusqlite::Connection;
 
