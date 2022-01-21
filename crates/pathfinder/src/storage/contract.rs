@@ -21,8 +21,6 @@ pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<(
 pub struct ContractsTable {}
 
 impl ContractsTable {
-    const TABLE: &'static str = "contracts";
-
     /// Migrates the [ContractsTable] from the given version to [DB_VERSION_CURRENT].
     fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
         match from_version {
@@ -32,16 +30,13 @@ impl ContractsTable {
         }
 
         transaction.execute(
-            &format!(
-                r"CREATE TABLE {}(
+            r"CREATE TABLE contracts (
                     address    BLOB PRIMARY KEY,
                     hash       BLOB NOT NULL,
                     code       BLOB,
                     abi        BLOB,
                     definition BLOB
                 )",
-                Self::TABLE
-            ),
             [],
         )?;
 
@@ -58,11 +53,8 @@ impl ContractsTable {
         definition: &[u8],
     ) -> anyhow::Result<()> {
         transaction.execute(
-            &format!(
-                r"INSERT INTO {} ( address,  hash, code,   abi,  definition)
-                          VALUES (:address, :hash, :code, :abi, :definition)",
-                Self::TABLE
-            ),
+            r"INSERT INTO contracts ( address,  hash, code,   abi,  definition)
+                                 VALUES (:address, :hash, :code, :abi, :definition)",
             named_params! {
                 ":address": &address.0.to_be_bytes()[..],
                 ":hash": &hash.0.to_be_bytes()[..],
@@ -81,7 +73,7 @@ impl ContractsTable {
     ) -> anyhow::Result<Option<ContractHash>> {
         let bytes: Option<Vec<u8>> = transaction
             .query_row(
-                &format!("SELECT hash FROM {} WHERE address = :address", Self::TABLE),
+                "SELECT hash FROM contracts WHERE address = :address",
                 named_params! {
                     ":address": &address.0.to_be_bytes()[..]
                 },

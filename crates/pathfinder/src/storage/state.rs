@@ -22,8 +22,6 @@ pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<(
 pub struct ContractsStateTable {}
 
 impl ContractsStateTable {
-    const TABLE: &'static str = "contract_states";
-
     /// Migrates the [ContractsStateTable] from the given version to [DB_VERSION_CURRENT].
     fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
         match from_version {
@@ -33,14 +31,11 @@ impl ContractsStateTable {
         }
 
         transaction.execute(
-            &format!(
-                r"CREATE TABLE {} (
+            r"CREATE TABLE contract_states (
                     state_hash BLOB PRIMARY KEY,
                     hash       BLOB NOT NULL,
                     root       BLOB NOT NULL
                 )",
-                Self::TABLE
-            ),
             [],
         )?;
 
@@ -55,11 +50,8 @@ impl ContractsStateTable {
         root: ContractRoot,
     ) -> anyhow::Result<()> {
         transaction.execute(
-            &format!(
-                r"INSERT INTO {} ( state_hash,  hash,  root)
-                          VALUES (:state_hash, :hash, :root)",
-                Self::TABLE
-            ),
+            r"INSERT INTO contract_states ( state_hash,  hash,  root)
+                                       VALUES (:state_hash, :hash, :root)",
             named_params! {
                 ":state_hash": &state_hash.0.to_be_bytes()[..],
                 ":hash": &hash.0.to_be_bytes()[..],
@@ -77,10 +69,7 @@ impl ContractsStateTable {
     ) -> anyhow::Result<Option<ContractRoot>> {
         let bytes: Option<Vec<u8>> = transaction
             .query_row(
-                &format!(
-                    "SELECT root FROM {} WHERE state_hash = :state_hash",
-                    Self::TABLE
-                ),
+                "SELECT root FROM contract_states WHERE state_hash = :state_hash",
                 named_params! {
                     ":state_hash": &state_hash.0.to_be_bytes()[..]
                 },
