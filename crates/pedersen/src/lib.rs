@@ -18,9 +18,26 @@ pub struct StarkHash([u8; 32]);
 
 impl std::fmt::Debug for StarkHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StarkHash(")?;
-        self.0.iter().try_for_each(|&b| write!(f, "{:02x}", b))?;
-        write!(f, ")")
+        write!(f, "StarkHash({})", self)
+    }
+}
+
+impl std::fmt::Display for StarkHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // 0xABCDEF1234567890
+        write!(f, "0x{:X}", self)
+    }
+}
+
+impl std::fmt::LowerHex for StarkHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.iter().try_for_each(|&b| write!(f, "{:02x}", b))
+    }
+}
+
+impl std::fmt::UpperHex for StarkHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.iter().try_for_each(|&b| write!(f, "{:02X}", b))
     }
 }
 
@@ -348,6 +365,60 @@ mod tests {
             bytes[0] = 0b0000_1000;
             let result = StarkHash::from_be_slice(&bytes[..]);
             assert_eq!(result, Err(FromSliceError::Overflow));
+        }
+    }
+
+    mod fmt {
+        use crate::StarkHash;
+
+        #[test]
+        fn debug() {
+            let hex_str = "1234567890abcdef000edcba0987654321";
+            let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
+            let result = format!("{:?}", starkhash);
+
+            let mut expected = "0".repeat(64 - hex_str.len());
+            expected.push_str(hex_str);
+            let expected = format!("StarkHash({})", starkhash);
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn fmt() {
+            let hex_str = "1234567890abcdef000edcba0987654321";
+            let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
+            let result = format!("{:x}", starkhash);
+
+            let mut expected = "0".repeat(64 - hex_str.len());
+            expected.push_str(hex_str);
+
+            // We don't really care which casing is used by fmt.
+            assert_eq!(result.to_lowercase(), expected.to_lowercase());
+        }
+
+        #[test]
+        fn lower_hex() {
+            let hex_str = "1234567890abcdef000edcba0987654321";
+            let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
+            let result = format!("{:x}", starkhash);
+
+            let mut expected = "0".repeat(64 - hex_str.len());
+            expected.push_str(hex_str);
+
+            assert_eq!(result, expected.to_lowercase());
+        }
+
+        #[test]
+        fn upper_hex() {
+            let hex_str = "1234567890abcdef000edcba0987654321";
+            let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
+            let result = format!("{:X}", starkhash);
+
+            let mut expected = "0".repeat(64 - hex_str.len());
+            expected.push_str(hex_str);
+
+            assert_eq!(result, expected.to_uppercase());
         }
     }
 
