@@ -9,6 +9,7 @@ mod state;
 
 pub use contract::ContractsTable;
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
+pub use state::{ContractsStateTable, GlobalStateRecord, GlobalStateTable};
 
 use anyhow::Context;
 use rusqlite::Transaction;
@@ -37,6 +38,7 @@ pub fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
     // Migrate all the tables.
     contract::migrate(transaction, version).context("Failed to migrate contracts table")?;
     ethereum::migrate(transaction, version).context("Failed to migrate Ethereum tables")?;
+    state::migrate(transaction, version).context("Failed to migrate StarkNet state tables")?;
 
     // Update the pragma schema.
     transaction
