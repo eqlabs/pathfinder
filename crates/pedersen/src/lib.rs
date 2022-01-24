@@ -29,7 +29,17 @@ impl std::fmt::Debug for StarkHash {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct OverflowError;
 
+/// Error return by [StarkHash::from_be_bytes].
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum FromSliceError {
+    /// More than 251 bits were set. Equivalant to [OverflowError].
+    Overflow,
+    /// Slice did not contain exactly 32 bytes of data.
+    BadLength,
+}
+
 impl Error for OverflowError {}
+impl Error for FromSliceError {}
 
 impl std::fmt::Display for OverflowError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -37,10 +47,32 @@ impl std::fmt::Display for OverflowError {
     }
 }
 
+impl std::fmt::Display for FromSliceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FromSliceError::Overflow => f.write_str("The StarkHash maximum was exceeded."),
+            FromSliceError::BadLength => {
+                f.write_str("Bad slice length, expected exactly 32 bytes.")
+            }
+        }
+    }
+}
+
 impl StarkHash {
     /// Returns the big-endian representation of this [StarkHash].
     pub fn to_be_bytes(self) -> [u8; 32] {
         self.0
+    }
+
+    /// Convenience function which extends [StarkHash::from_be_bytes] to work with slices.
+    ///
+    /// Errors if the slice length is not exactly 32 bytes,
+    /// or the [StarkHash] maximum is exceeded (same as [StarkHash::from_be_bytes]).
+    pub fn from_be_slice(bytes: &[u8]) -> Result<Self, FromSliceError> {
+        match bytes.try_into() {
+            Ok(array) => StarkHash::from_be_bytes(array).map_err(|_| FromSliceError::Overflow),
+            Err(_) => Err(FromSliceError::BadLength),
+        }
     }
 
     /// Creates a [StarkHash] from big-endian bytes.
@@ -276,9 +308,53 @@ mod tests {
         assert_eq!(hash, original);
     }
 
+    mod from_slice {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[test]
+        fn round_trip() {
+            let original = StarkHash::from_hex_str("abcdef0123456789").unwrap();
+            let bytes = original.to_be_bytes();
+            let result = StarkHash::from_be_slice(&bytes[..]).unwrap();
+
+            assert_eq!(result, original);
+        }
+
+        #[test]
+        fn too_long() {
+            let original = StarkHash::from_hex_str("abcdef0123456789").unwrap();
+            let mut bytes = original.to_be_bytes().to_vec();
+            bytes.push(0);
+            let result = StarkHash::from_be_slice(&bytes[..]);
+
+            assert_eq!(result, Err(FromSliceError::BadLength));
+        }
+
+        #[test]
+        fn too_short() {
+            let original = StarkHash::from_hex_str("abcdef0123456789").unwrap();
+            let mut bytes = original.to_be_bytes().to_vec();
+            bytes.pop();
+            let result = StarkHash::from_be_slice(&bytes[..]);
+
+            assert_eq!(result, Err(FromSliceError::BadLength));
+        }
+
+        #[test]
+        fn overflow() {
+            // Set the 252nd bit (which is invalid).
+            let mut bytes = [0; 32];
+            bytes[0] = 0b0000_1000;
+            let result = StarkHash::from_be_slice(&bytes[..]);
+            assert_eq!(result, Err(FromSliceError::Overflow));
+        }
+    }
+
     #[cfg(feature = "hex_str")]
     mod from_hex_str {
-        use crate::StarkHash;
+        use super::*;
+        use pretty_assertions::assert_eq;
 
         /// Test hex string with its expected [StarkHash].
         fn test_data() -> (&'static str, StarkHash) {
