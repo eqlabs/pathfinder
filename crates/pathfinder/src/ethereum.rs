@@ -1,7 +1,11 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
-use web3::types::{H256, U256};
+
+use crate::core::{
+    EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+    EthereumTransactionIndex,
+};
 pub mod contract;
 pub mod log;
 pub mod state_update;
@@ -67,14 +71,14 @@ impl RpcErrorCode {
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct BlockOrigin {
-    pub hash: H256,
-    pub number: u64,
+    pub hash: EthereumBlockHash,
+    pub number: EthereumBlockNumber,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct TransactionOrigin {
-    pub hash: H256,
-    pub index: u64,
+    pub hash: EthereumTransactionHash,
+    pub index: EthereumTransactionIndex,
 }
 
 /// An Ethereum origin point.
@@ -82,7 +86,7 @@ pub struct TransactionOrigin {
 pub struct EthOrigin {
     pub block: BlockOrigin,
     pub transaction: TransactionOrigin,
-    pub log_index: U256,
+    pub log_index: EthereumLogIndex,
 }
 
 impl TryFrom<&web3::types::Log> for BlockOrigin {
@@ -90,7 +94,9 @@ impl TryFrom<&web3::types::Log> for BlockOrigin {
 
     fn try_from(log: &web3::types::Log) -> Result<Self, Self::Error> {
         let hash = log.block_hash.context("missing block hash")?;
+        let hash = EthereumBlockHash(hash);
         let number = log.block_number.context("missing block hash")?.as_u64();
+        let number = EthereumBlockNumber(number);
         Ok(Self { hash, number })
     }
 }
@@ -100,10 +106,12 @@ impl TryFrom<&web3::types::Log> for TransactionOrigin {
 
     fn try_from(log: &web3::types::Log) -> Result<Self, Self::Error> {
         let hash = log.transaction_hash.context("missing transaction hash")?;
+        let hash = EthereumTransactionHash(hash);
         let index = log
             .transaction_index
             .context("missing transaction index")?
             .as_u64();
+        let index = EthereumTransactionIndex(index);
         Ok(Self { hash, index })
     }
 }
@@ -114,12 +122,12 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
     fn try_from(log: &web3::types::Log) -> Result<Self, Self::Error> {
         let block = BlockOrigin::try_from(log)?;
         let transaction = TransactionOrigin::try_from(log)?;
-        let log_index = log.log_index.context("missing log index")?;
+        let log_index = log.log_index.context("missing log index")?.as_u64();
 
         Ok(EthOrigin {
             block,
             transaction,
-            log_index,
+            log_index: EthereumLogIndex(log_index),
         })
     }
 }

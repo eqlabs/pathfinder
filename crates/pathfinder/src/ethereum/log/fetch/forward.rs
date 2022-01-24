@@ -74,7 +74,7 @@ where
         let from_block = self
             .last_known
             .as_ref()
-            .map(|update| update.origin().block.number)
+            .map(|update| update.origin().block.number.0)
             .unwrap_or_default();
         let base_filter = self
             .base_filter
@@ -122,7 +122,7 @@ where
                     match logs.next().map(T::try_from) {
                         Some(Ok(log))
                             if log.origin().block == last.origin().block
-                                && log.origin().log_index < last.origin().log_index =>
+                                && log.origin().log_index.0 < last.origin().log_index.0 =>
                         {
                             continue
                         }

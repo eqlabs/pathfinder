@@ -78,7 +78,7 @@ where
         &mut self,
         transport: &Web3<Tr>,
     ) -> Result<Vec<EitherMetaLog<L, R>>, BackwardFetchError> {
-        let to_block = self.last_known.origin().block.number;
+        let to_block = self.last_known.origin().block.number.0;
         let base_filter = self
             .base_filter
             .clone()
@@ -125,7 +125,7 @@ where
                 match logs.next().map(EitherMetaLog::try_from) {
                     Some(Ok(log))
                         if log.origin().block == self.last_known.origin().block
-                            && log.origin().log_index > self.last_known.origin().log_index =>
+                            && log.origin().log_index.0 > self.last_known.origin().log_index.0 =>
                     {
                         continue;
                     }

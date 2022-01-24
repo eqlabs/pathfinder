@@ -25,9 +25,12 @@
 use std::str::FromStr;
 
 use clap::Arg;
-use pathfinder_lib::ethereum::{
-    log::{MetaLog, StateUpdateLog},
-    state_update::StateUpdate,
+use pathfinder_lib::{
+    core::{EthereumBlockHash, StarknetBlockNumber},
+    ethereum::{
+        log::{MetaLog, StateUpdateLog},
+        state_update::StateUpdate,
+    },
 };
 use web3::types::{H256, U256};
 use web3::{transports::Http, types::FilterBuilder, Web3};
@@ -38,7 +41,7 @@ async fn main() {
 
     // Get the state update event at the given block.
     let filter = FilterBuilder::default()
-        .block_hash(block_hash)
+        .block_hash(block_hash.0)
         .address(vec![StateUpdateLog::contract_address()])
         .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
         .build();
@@ -58,7 +61,7 @@ async fn main() {
 }
 
 /// Creates the CLI and parses the resulting arguments.
-fn parse_cli_args() -> (Web3<Http>, H256, U256) {
+fn parse_cli_args() -> (Web3<Http>, EthereumBlockHash, StarknetBlockNumber) {
     let cli = clap::App::new("fact-retrieval")
         .about("Retrieves and displays a StarkNet state update fact")
         .after_help("You can use Etherscan to identify a fact hash to retrieve. The fact hash for a state update is emitted as a `LogStateTransitionFact` log.")
@@ -101,7 +104,9 @@ Examples:
     let client = Http::new(url).expect("A valid HTTP URL");
 
     let block = H256::from_str(block).expect("A valid block hash");
+    let block = EthereumBlockHash(block);
     let seq_no = U256::from_dec_str(seq_no).expect("A valid sequence number");
+    let seq_no = StarknetBlockNumber(seq_no.as_u64());
 
     let client = Web3::new(client);
 

@@ -1,19 +1,24 @@
 use anyhow::Context;
+use pedersen::StarkHash;
 use web3::{
     contract::tokens::Tokenizable,
     ethabi::{ethereum_types::BigEndianHash, LogParam, RawLog},
     types::H256,
 };
 
-use crate::ethereum::{
-    contract::{
-        MEMORY_PAGE_FACT_CONTINUOUS_EVENT, MEMORY_PAGE_HASHES_EVENT, STATE_TRANSITION_FACT_EVENT,
-        STATE_UPDATE_EVENT,
+use crate::{
+    core::{GlobalRoot, StarknetBlockNumber},
+    ethereum::{
+        contract::{
+            MEMORY_PAGE_FACT_CONTINUOUS_EVENT, MEMORY_PAGE_HASHES_EVENT,
+            STATE_TRANSITION_FACT_EVENT, STATE_UPDATE_EVENT,
+        },
+        log::{
+            MemoryPageFactContinuousLog, MemoryPagesHashesLog, StateTransitionFactLog,
+            StateUpdateLog,
+        },
+        EthOrigin,
     },
-    log::{
-        MemoryPageFactContinuousLog, MemoryPagesHashesLog, StateTransitionFactLog, StateUpdateLog,
-    },
-    EthOrigin,
 };
 
 impl TryFrom<web3::types::Log> for StateUpdateLog {
@@ -28,11 +33,18 @@ impl TryFrom<web3::types::Log> for StateUpdateLog {
             .value
             .into_uint()
             .context("global root could not be parsed")?;
+        let mut buf = [0u8; 32];
+        global_root.to_big_endian(&mut buf);
+        let global_root =
+            StarkHash::from_be_bytes(buf).context("global root could not be parsed")?;
+        let global_root = GlobalRoot(global_root);
 
         let block_number = get_log_param(&log, "blockNumber")?
             .value
             .into_int()
-            .context("sequence number could not be parsed")?;
+            .context("Starknet block number could not be parsed")?
+            .as_u64();
+        let block_number = StarknetBlockNumber(block_number);
 
         Ok(Self {
             global_root,
@@ -157,20 +169,22 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         /// Creates a valid web3 log containing a [StateUpdateLog]. Also returns the
-        /// log's `global_root` and `sequence_number`
+        /// log's StarkNet `global_root` and `block_number`
         ///
         /// Data taken from https://goerli.etherscan.io/tx/0xb6ba98e34c60bb39785df907de3c41c0a9c95302e50f213606772817514714ce#eventlog
-        fn test_data() -> (web3::types::Log, U256, U256) {
+        fn test_data() -> (web3::types::Log, GlobalRoot, StarknetBlockNumber) {
             let data = Vec::from_hex("06bd197ccc199cc3be696635a482ff818a1f166ef91c5fd844aacafb15a12bcd0000000000000000000000000000000000000000000000000000000000003583").unwrap();
             let signature = H256::from_str(
                 "0xe8012213bb931d3efa0a954cfb0d7b75f2a5e2358ba5f7d3edfb0154f6e7a568",
             )
             .unwrap();
-            let global_root = U256::from_dec_str(
-                "3047987094929013274212756710761212983919076800001333477926653575191255395277",
-            )
-            .unwrap();
-            let sequence_number = U256::from(13699);
+            let global_root = GlobalRoot(
+                StarkHash::from_hex_str(
+                    "06bd197ccc199cc3be696635a482ff818a1f166ef91c5fd844aacafb15a12bcd",
+                )
+                .unwrap(),
+            );
+            let sequence_number = StarknetBlockNumber(13699);
 
             (
                 create_test_log(signature, data),

@@ -4,11 +4,14 @@ mod parse;
 pub use fetch::*;
 
 use web3::{
-    types::{Filter, H256, U256},
+    types::{Filter, H256},
     Transport, Web3,
 };
 
-use crate::ethereum::{EthOrigin, RpcErrorCode};
+use crate::{
+    core::{GlobalRoot, StarknetBlockNumber},
+    ethereum::{EthOrigin, RpcErrorCode},
+};
 
 /// Describes a state update log event. Is always emitted
 /// as a pair with [StateTransitionFactLog].
@@ -17,8 +20,8 @@ use crate::ethereum::{EthOrigin, RpcErrorCode};
 #[derive(Debug, Clone, PartialEq)]
 pub struct StateUpdateLog {
     pub origin: EthOrigin,
-    pub global_root: U256,
-    pub block_number: U256,
+    pub global_root: GlobalRoot,
+    pub block_number: StarknetBlockNumber,
 }
 
 /// Links a [StateUpdateLog] event to its data -- which is contained

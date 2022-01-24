@@ -31,7 +31,7 @@ pub async fn retrieve_transition_fact<T: Transport>(
             None,
             None,
         )
-        .block_hash(state_update.origin.block.hash)
+        .block_hash(state_update.origin.block.hash.0)
         .build();
 
     let logs = transport
@@ -141,7 +141,7 @@ pub async fn retrieve_mempage_transaction_data<T: Transport>(
         .map(|page| {
             transport
                 .eth()
-                .transaction(TransactionId::Hash(page.origin.transaction.hash))
+                .transaction(TransactionId::Hash(page.origin.transaction.hash.0))
         })
         .collect::<Vec<_>>();
 
