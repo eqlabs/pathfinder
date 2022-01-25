@@ -223,7 +223,7 @@ mod tests {
             data.extend(
                 val.call_data
                     .into_iter()
-                    .map(|item| u256_from_starkhash(item)),
+                    .map(u256_from_starkhash),
             );
             data
         }
