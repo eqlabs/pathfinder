@@ -76,6 +76,8 @@ impl std::fmt::Display for FromSliceError {
 }
 
 impl StarkHash {
+    pub const ZERO: StarkHash = StarkHash([0u8; 32]);
+
     /// Returns the big-endian representation of this [StarkHash].
     pub fn to_be_bytes(self) -> [u8; 32] {
         self.0
@@ -100,11 +102,6 @@ impl StarkHash {
             0..=0b0000_0111 => Ok(Self(bytes)),
             _ => Err(OverflowError),
         }
-    }
-
-    /// Returns a [StarkHash] equal to [0; 32].
-    pub const fn zero() -> Self {
-        StarkHash([0; 32])
     }
 
     /// Returns a bit view of the 251 least significant bits in MSB order.
