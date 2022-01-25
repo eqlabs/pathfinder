@@ -42,6 +42,12 @@ impl std::fmt::UpperHex for StarkHash {
     }
 }
 
+impl std::default::Default for StarkHash {
+    fn default() -> Self {
+        StarkHash::zero()
+    }
+}
+
 /// Error returned by [StarkHash::from_be_bytes] indicating that
 /// more than the allowed 251 bits were set.
 #[derive(Debug, PartialEq, Clone, Copy)]

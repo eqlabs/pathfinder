@@ -190,7 +190,7 @@ impl RpcApi {
         if let Some(block_hash) = txn.block_hash {
             if let Some(index) = txn.transaction_index {
                 let block = self
-                    .get_raw_block_by_hash(BlockHashOrTag::Hash(block_hash))
+                    .get_raw_block_by_hash(BlockHashOrTag::Hash(block_hash.0.to_be_bytes().into()))
                     .await?;
                 let index: usize = index
                     .try_into()
@@ -276,7 +276,7 @@ impl RpcApi {
             .await?;
         // The default value should actually never happen as block_number is None only
         // in a pending block.
-        Ok(block.block_number.unwrap_or_default())
+        Ok(block.block_number.unwrap_or_default().0)
     }
 
     /// Return the currently configured StarkNet chain id.

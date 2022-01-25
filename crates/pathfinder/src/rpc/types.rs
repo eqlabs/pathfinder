@@ -1,5 +1,8 @@
 //! Data structures used by the JSON-RPC API methods.
-use crate::serde::H256AsRelaxedHexStr;
+use crate::{
+    core::{GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
+    serde::H256AsRelaxedHexStr,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use web3::types::H256;
@@ -41,7 +44,6 @@ pub enum BlockHashOrTag {
 }
 
 /// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
-#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
@@ -83,29 +85,31 @@ pub mod relaxed {
 
     impl From<crate::sequencer::reply::Call> for Vec<H256> {
         fn from(call: crate::sequencer::reply::Call) -> Self {
-            call.result.into_iter().map(H256::from).collect()
+            call.result
+                .into_iter()
+                .map(|r| types::H256::from(r.0.to_be_bytes()).into())
+                .collect()
         }
     }
 }
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use crate::serde::H256AsRelaxedHexStr;
+    use crate::{
+        core::{CallParam, ContractAddress, EntryPoint},
+        serde::H256AsRelaxedHexStr,
+    };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use web3::types::H256;
 
     /// Contains parameters passed to `starknet_call`.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Call {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub contract_address: H256,
-        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-        pub calldata: Vec<H256>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub entry_point_selector: H256,
+        pub contract_address: ContractAddress,
+        pub calldata: Vec<CallParam>,
+        pub entry_point_selector: EntryPoint,
     }
 
     /// Determines the type of response to block related queries.
@@ -133,7 +137,10 @@ pub mod reply {
     use super::request::BlockResponseScope;
     pub use crate::sequencer::reply::Code;
     use crate::{
-        sequencer::reply as seq, sequencer::reply::Status as SeqStatus, serde::H256AsRelaxedHexStr,
+        core::{GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
+        sequencer::reply as seq,
+        sequencer::reply::Status as SeqStatus,
+        serde::H256AsRelaxedHexStr,
     };
     use jsonrpsee::types::{CallError, Error};
     use serde::{Deserialize, Serialize};
@@ -186,21 +193,16 @@ pub mod reply {
     }
 
     /// L2 Block as returned by the RPC API.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Block {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        block_hash: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        parent_hash: H256,
-        block_number: u64,
+        block_hash: StarknetBlockHash,
+        parent_hash: StarknetBlockHash,
+        block_number: StarknetBlockNumber,
         status: BlockStatus,
         sequencer: H160,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        new_root: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        old_root: H256,
+        new_root: GlobalRoot,
+        old_root: GlobalRoot,
         accepted_time: u64,
         transactions: Transactions,
     }
@@ -217,7 +219,7 @@ pub mod reply {
                 // TODO check if state_root is the new root
                 new_root: block.state_root.unwrap_or_default(),
                 // TODO where to get it from
-                old_root: H256::zero(),
+                old_root: GlobalRoot::default(),
                 accepted_time: block.timestamp,
                 transactions: match scope {
                     BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
@@ -327,7 +329,6 @@ pub mod reply {
         use web3::types::H256;
 
         /// L2 state diff.
-        #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StateDiff {

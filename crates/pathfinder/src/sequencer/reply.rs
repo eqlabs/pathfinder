@@ -1,26 +1,27 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::serde::{H256AsRelaxedHexStr, U256AsBigDecimal};
+use crate::{
+    core::{
+        ByecodeWord, CallResult, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        StarknetTransactionIndex,
+    },
+    serde::{H256AsRelaxedHexStr, U256AsBigDecimal},
+};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
 use web3::types::{H256, U256};
 
 /// Used to deserialize replies to [Client::block_by_hash](crate::sequencer::Client::block_by_hash) and
 /// [Client::block_by_number](crate::sequencer::Client::block_by_number).
-#[serde_as]
-#[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
-    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
-    pub block_hash: Option<H256>,
+    pub block_hash: Option<StarknetBlockHash>,
     #[serde(default)]
-    pub block_number: Option<u64>,
-    #[serde_as(as = "H256AsRelaxedHexStr")]
-    pub parent_block_hash: H256,
-    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+    pub block_number: Option<StarknetBlockNumber>,
+    pub parent_block_hash: StarknetBlockHash,
     #[serde(default)]
-    pub state_root: Option<H256>,
+    pub state_root: Option<GlobalRoot>,
     pub status: Status,
     pub timestamp: u64,
     pub transaction_receipts: Vec<transaction::Receipt>,
@@ -50,13 +51,10 @@ pub enum Status {
 }
 
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
-#[serde_as]
-#[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Call {
-    #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-    pub result: Vec<H256>,
+    pub result: Vec<CallResult>,
 }
 
 /// Types used when deserializing L2 call related data.
@@ -84,8 +82,7 @@ pub struct Code {
     // object, instead of a JSON array
     #[serde_as(deserialize_as = "DefaultOnError")]
     pub abi: Vec<code::Abi>,
-    #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-    pub bytecode: Vec<H256>,
+    pub bytecode: Vec<ByecodeWord>,
 }
 
 /// Types used when deserializing L2 contract related data.
@@ -94,7 +91,6 @@ pub mod code {
     use serde_with::skip_serializing_none;
 
     /// Represents deserialized L2 contract Application Blockchain Interface element.
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Abi {
@@ -106,6 +102,7 @@ pub mod code {
         #[serde(default)]
         pub outputs: Option<Vec<abi::Output>>,
         pub r#type: String,
+        #[serde(default)]
         pub size: Option<u64>,
         #[serde(rename = "stateMutability")]
         #[serde(default)]
@@ -145,16 +142,13 @@ pub mod code {
 
 /// Used to deserialize replies to [Client::transaction](crate::sequencer::Client::transaction).
 #[serde_as]
-#[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Transaction {
-    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
-    pub block_hash: Option<H256>,
-    #[serde_as(as = "Option<U256AsBigDecimal>")]
+    pub block_hash: Option<StarknetBlockHash>,
     #[serde(default)]
-    pub block_number: Option<U256>,
+    pub block_number: Option<StarknetBlockNumber>,
     pub status: Status,
     #[serde(default)]
     pub transaction: Option<transaction::Transaction>,
@@ -164,13 +158,11 @@ pub struct Transaction {
 
 /// Used to deserialize replies to [Client::transaction_status](crate::sequencer::Client::transaction_status).
 #[serde_as]
-#[skip_serializing_none]
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionStatus {
-    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
-    pub block_hash: Option<H256>,
+    pub block_hash: Option<StarknetBlockHash>,
     pub tx_status: Status,
 }
 
@@ -194,7 +186,6 @@ pub mod transaction {
     }
 
     /// Represents execution resources for L2 transaction.
-    #[skip_serializing_none]
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
@@ -264,7 +255,6 @@ pub mod transaction {
 
     /// Represents deserialized L2 transaction receipt data.
     #[serde_as]
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
@@ -302,7 +292,6 @@ pub mod transaction {
 
     /// Represents deserialized L2 transaction data.
     #[serde_as]
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Transaction {
