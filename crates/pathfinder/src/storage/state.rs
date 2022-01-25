@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pedersen::StarkHash;
-use rusqlite::{named_params, OptionalExtension, Transaction};
+use rusqlite::{named_params, OptionalExtension, Params, Transaction};
 use web3::types::H256;
 
 use crate::{
@@ -115,43 +115,50 @@ impl GlobalStateTable {
         Ok(())
     }
 
-    /// Retrieves the latest global StarkNet state from the [GlobalStateTable]. Latest is defined as the
-    /// record with the largest [StarknetBlockNumber].
-    pub fn get_latest_state(
+    pub fn get_state_at_block_number(
         transaction: &Transaction,
+        block: StarknetBlockNumber,
     ) -> anyhow::Result<Option<GlobalStateRecord>> {
-        let row = transaction
-            .query_row(
-                r"SELECT * FROM global_state
+        Self::state_query_row(
+            transaction,
+            r"SELECT * FROM global_state
                     NATURAL JOIN ethereum_transactions
                     NATURAL JOIN ethereum_blocks
-                    ORDER BY starknet_block_number DESC
+                    WHERE starknet_block_number = :starknet_block_number
                     LIMIT 1",
-                [],
-                |row| {
-                    let block_number = StarknetBlockNumber(row.get("starknet_block_number")?);
-                    let eth_block_number = EthereumBlockNumber(row.get("ethereum_block_number")?);
-                    let tx_index = EthereumTransactionIndex(row.get("ethereum_transaction_index")?);
-                    let log_index = EthereumLogIndex(row.get("ethereum_log_index")?);
+            named_params! { ":starknet_block_number": block.0 },
+        )
+    }
 
-                    // Unfortunately there is no way to return a non-rusqlite error here so can't convert these yet.
-                    let block_hash: Vec<u8> = row.get("starknet_block_hash")?;
-                    let root: Vec<u8> = row.get("starknet_global_root")?;
-                    let eth_block_hash: Vec<u8> = row.get("ethereum_block_hash")?;
-                    let tx_hash: Vec<u8> = row.get("ethereum_transaction_hash")?;
+    fn state_query_row<P: Params>(
+        transaction: &Transaction,
+        sql_query: &str,
+        params: P,
+    ) -> anyhow::Result<Option<GlobalStateRecord>> {
+        let row = transaction
+            .query_row(sql_query, params, |row| {
+                let block_number = StarknetBlockNumber(row.get("starknet_block_number")?);
+                let eth_block_number = EthereumBlockNumber(row.get("ethereum_block_number")?);
+                let tx_index = EthereumTransactionIndex(row.get("ethereum_transaction_index")?);
+                let log_index = EthereumLogIndex(row.get("ethereum_log_index")?);
 
-                    Ok((
-                        block_number,
-                        block_hash,
-                        root,
-                        eth_block_number,
-                        eth_block_hash,
-                        tx_hash,
-                        tx_index,
-                        log_index,
-                    ))
-                },
-            )
+                // Unfortunately there is no way to return a non-rusqlite error here so can't convert these yet.
+                let block_hash: Vec<u8> = row.get("starknet_block_hash")?;
+                let root: Vec<u8> = row.get("starknet_global_root")?;
+                let eth_block_hash: Vec<u8> = row.get("ethereum_block_hash")?;
+                let tx_hash: Vec<u8> = row.get("ethereum_transaction_hash")?;
+
+                Ok((
+                    block_number,
+                    block_hash,
+                    root,
+                    eth_block_number,
+                    eth_block_hash,
+                    tx_hash,
+                    tx_index,
+                    log_index,
+                ))
+            })
             .optional()?;
 
         let row = row.map(
@@ -200,6 +207,22 @@ impl GlobalStateTable {
         );
 
         row.transpose()
+    }
+
+    /// Retrieves the latest global StarkNet state from the [GlobalStateTable]. Latest is defined as the
+    /// record with the largest [StarknetBlockNumber].
+    pub fn get_latest_state(
+        transaction: &Transaction,
+    ) -> anyhow::Result<Option<GlobalStateRecord>> {
+        Self::state_query_row(
+            transaction,
+            r"SELECT * FROM global_state
+                    NATURAL JOIN ethereum_transactions
+                    NATURAL JOIN ethereum_blocks
+                    ORDER BY starknet_block_number DESC
+                    LIMIT 1",
+            [],
+        )
     }
 }
 
@@ -318,6 +341,78 @@ mod tests {
                     EthereumLogIndex(99),
                 )
                 .unwrap_err();
+            }
+        }
+
+        mod get_state_at_block_number {
+            use super::*;
+
+            #[test]
+            fn none() {
+                let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+                let transaction = conn.transaction().unwrap();
+
+                storage::migrate_database(&transaction).unwrap();
+
+                let latest = GlobalStateTable::get_state_at_block_number(
+                    &transaction,
+                    StarknetBlockNumber(0),
+                )
+                .unwrap();
+                assert_eq!(latest, None);
+            }
+
+            #[test]
+            fn some() {
+                let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+                let transaction = conn.transaction().unwrap();
+                storage::migrate_database(&transaction).unwrap();
+
+                // Data to insert
+                let record = GlobalStateRecord {
+                    block_number: StarknetBlockNumber(10),
+                    block_hash: StarknetBlockHash(StarkHash::from_hex_str("123").unwrap()),
+                    global_root: GlobalRoot(StarkHash::from_hex_str("111").unwrap()),
+                    eth_block_number: EthereumBlockNumber(2003),
+                    eth_block_hash: EthereumBlockHash(
+                        H256::from_str(&"abca".repeat(64 / 4)).unwrap(),
+                    ),
+                    eth_tx_hash: EthereumTransactionHash(
+                        H256::from_str(&"defa".repeat(64 / 4)).unwrap(),
+                    ),
+                    eth_tx_index: EthereumTransactionIndex(14),
+                    eth_log_index: EthereumLogIndex(99),
+                };
+
+                storage::EthereumBlocksTable::insert(
+                    &transaction,
+                    record.eth_block_hash,
+                    record.eth_block_number,
+                )
+                .unwrap();
+
+                storage::EthereumTransactionsTable::insert(
+                    &transaction,
+                    record.eth_block_hash,
+                    record.eth_tx_hash,
+                    record.eth_tx_index,
+                )
+                .unwrap();
+
+                GlobalStateTable::insert(
+                    &transaction,
+                    record.block_number,
+                    record.block_hash,
+                    record.global_root,
+                    record.eth_tx_hash,
+                    record.eth_log_index,
+                )
+                .unwrap();
+
+                let result =
+                    GlobalStateTable::get_state_at_block_number(&transaction, record.block_number)
+                        .unwrap();
+                assert_eq!(result, Some(record));
             }
         }
 
