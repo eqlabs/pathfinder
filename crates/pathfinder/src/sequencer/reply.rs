@@ -12,12 +12,15 @@ use web3::types::{H256, U256};
 #[serde(deny_unknown_fields)]
 pub struct Block {
     #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+    #[serde(default)]
     pub block_hash: Option<H256>,
-    pub block_number: u64,
+    #[serde(default)]
+    pub block_number: Option<u64>,
     #[serde_as(as = "H256AsRelaxedHexStr")]
     pub parent_block_hash: H256,
-    #[serde_as(as = "H256AsRelaxedHexStr")]
-    pub state_root: H256,
+    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+    #[serde(default)]
+    pub state_root: Option<H256>,
     pub status: Status,
     pub timestamp: u64,
     pub transaction_receipts: Vec<transaction::Receipt>,
@@ -241,6 +244,9 @@ pub mod transaction {
         pub selector: H256,
         #[serde_as(as = "H256AsRelaxedHexStr")]
         pub to_address: H256,
+        #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+        #[serde(default)]
+        pub nonce: Option<H256>,
     }
 
     /// Represents deserialized L2 to L1 message.

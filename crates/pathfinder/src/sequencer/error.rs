@@ -24,7 +24,9 @@ impl From<SequencerError> for rpc::Error {
                 rpc::Error::Call(rpc::CallError::Failed(e.into()))
             }
             SequencerError::StarknetError(e) => match e.code {
-                StarknetErrorCode::OutOfRangeBlockHash | StarknetErrorCode::BlockNotFound => {
+                StarknetErrorCode::OutOfRangeBlockHash | StarknetErrorCode::BlockNotFound
+                    if e.message.contains("Block hash") =>
+                {
                     RpcErrorCode::InvalidBlockHash.into()
                 }
                 StarknetErrorCode::OutOfRangeContractAddress
@@ -37,9 +39,7 @@ impl From<SequencerError> for rpc::Error {
                 StarknetErrorCode::EntryPointNotFound => {
                     RpcErrorCode::InvalidMessageSelector.into()
                 }
-                StarknetErrorCode::MalformedRequest
-                    if e.message.contains("Block ID should be in the range") =>
-                {
+                StarknetErrorCode::BlockNotFound if e.message.contains("Block number") => {
                     RpcErrorCode::InvalidBlockNumber.into()
                 }
                 _ => rpc::Error::Call(rpc::CallError::Failed(e.into())),

@@ -210,12 +210,12 @@ pub mod reply {
             Self {
                 block_hash: block.block_hash.unwrap_or_default(),
                 parent_hash: block.parent_block_hash,
-                block_number: block.block_number,
+                block_number: block.block_number.unwrap_or_default(),
                 status: block.status.into(),
                 // TODO should be sequencer identity
                 sequencer: H160::zero(),
                 // TODO check if state_root is the new root
-                new_root: block.state_root,
+                new_root: block.state_root.unwrap_or_default(),
                 // TODO where to get it from
                 old_root: H256::zero(),
                 accepted_time: block.timestamp,
