@@ -95,7 +95,7 @@ impl TryFrom<&web3::types::Log> for BlockOrigin {
     fn try_from(log: &web3::types::Log) -> Result<Self, Self::Error> {
         let hash = log.block_hash.context("missing block hash")?;
         let hash = EthereumBlockHash(hash);
-        let number = log.block_number.context("missing block hash")?.as_u64();
+        let number = log.block_number.context("missing block number")?.as_u64();
         let number = EthereumBlockNumber(number);
         Ok(Self { hash, number })
     }
