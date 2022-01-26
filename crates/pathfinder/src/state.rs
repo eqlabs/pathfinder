@@ -4,7 +4,10 @@ use rusqlite::{Connection, Transaction};
 use web3::{types::H256, Transport, Web3};
 
 use crate::{
-    core::{ContractHash, ContractRoot, ContractStateHash, GlobalRoot, StarknetBlockHash},
+    core::{
+        ContractHash, ContractRoot, ContractStateHash, GlobalRoot, StarknetBlockHash,
+        StarknetBlockTimestamp,
+    },
     ethereum::{
         log::{FetchError, StateUpdateLog},
         state_update::{
@@ -212,13 +215,14 @@ async fn update<T: Transport>(
         db,
         update_log.block_number,
         block_hash,
+        StarknetBlockTimestamp(block.timestamp),
         new_global_root,
         update_log.origin.transaction.hash,
         update_log.origin.log_index,
     )
     .context("Updating global state table")?;
 
-    // TODO: Time stamps and transactions and stuff. No idea how that works yet.
+    // TODO: Transactions and stuff. No idea how that works yet.
 
     Ok(())
 }

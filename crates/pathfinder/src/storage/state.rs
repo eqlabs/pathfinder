@@ -7,7 +7,7 @@ use crate::{
     core::{
         ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
-        StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
     },
     storage::{DB_VERSION_CURRENT, DB_VERSION_EMPTY},
 };
@@ -28,12 +28,16 @@ pub struct GlobalStateTable {}
 
 /// A StarkNet global state record from [GlobalStateTable] along with the Ethereum
 /// point of origin for this record.
+///
+/// Essentially this represents a Starknet block and its meta-data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GlobalStateRecord {
     /// The StarkNet block number of this state.
     pub block_number: StarknetBlockNumber,
     /// The StarkNet block hash of this state.
     pub block_hash: StarknetBlockHash,
+    /// The timestamp of this block.
+    pub block_timestamp: StarknetBlockTimestamp,
     /// The StarkNet global root of this state.
     pub global_root: GlobalRoot,
     /// The Ethereum block number this StarkNet state was confirmed on.
@@ -63,6 +67,7 @@ impl GlobalStateTable {
             r"CREATE TABLE global_state (
                     starknet_block_hash       BLOB PRIMARY KEY,
                     starknet_block_number     INTEGER NOT NULL,
+                    starknet_block_timestamp  INTEGER NOT NULL,
                     starknet_global_root      BLOB NOT NULL,
                     ethereum_transaction_hash BLOB NOT NULL,
                     ethereum_log_index        INTEGER NOT NULL,
@@ -85,6 +90,7 @@ impl GlobalStateTable {
         transaction: &Transaction,
         block_number: StarknetBlockNumber,
         block_hash: StarknetBlockHash,
+        block_timestamp: StarknetBlockTimestamp,
         global_root: GlobalRoot,
         eth_transaction: EthereumTransactionHash,
         eth_log_index: EthereumLogIndex,
@@ -93,12 +99,14 @@ impl GlobalStateTable {
             r"INSERT INTO global_state (
                     starknet_block_number,
                     starknet_block_hash,
+                    starknet_block_timestamp,
                     starknet_global_root,
                     ethereum_transaction_hash,
                     ethereum_log_index
                 ) VALUES (
                     :starknet_block_number,
                     :starknet_block_hash,
+                    :starknet_block_timestamp,
                     :starknet_global_root,
                     :ethereum_transaction_hash,
                     :ethereum_log_index
@@ -107,6 +115,7 @@ impl GlobalStateTable {
             named_params! {
                     ":starknet_block_number": block_number.0,
                     ":starknet_block_hash": &block_hash.0.to_be_bytes()[..],
+                    ":starknet_block_timestamp": block_timestamp.0,
                     ":starknet_global_root": &global_root.0.to_be_bytes()[..],
                     ":ethereum_transaction_hash": eth_transaction.0.as_bytes(),
                     ":ethereum_log_index": eth_log_index.0,
@@ -138,6 +147,7 @@ impl GlobalStateTable {
         let row = transaction
             .query_row(sql_query, params, |row| {
                 let block_number = StarknetBlockNumber(row.get("starknet_block_number")?);
+                let block_timestamp = StarknetBlockTimestamp(row.get("starknet_block_timestamp")?);
                 let eth_block_number = EthereumBlockNumber(row.get("ethereum_block_number")?);
                 let tx_index = EthereumTransactionIndex(row.get("ethereum_transaction_index")?);
                 let log_index = EthereumLogIndex(row.get("ethereum_log_index")?);
@@ -151,6 +161,7 @@ impl GlobalStateTable {
                 Ok((
                     block_number,
                     block_hash,
+                    block_timestamp,
                     root,
                     eth_block_number,
                     eth_block_hash,
@@ -165,6 +176,7 @@ impl GlobalStateTable {
             |(
                 block_number,
                 block_hash,
+                block_timestamp,
                 global_root,
                 eth_block_number,
                 eth_block_hash,
@@ -196,6 +208,7 @@ impl GlobalStateTable {
                 Ok(GlobalStateRecord {
                     block_number,
                     block_hash: StarknetBlockHash(block_hash),
+                    block_timestamp,
                     global_root: GlobalRoot(global_root),
                     eth_block_number,
                     eth_block_hash: EthereumBlockHash(eth_block_hash),
@@ -336,6 +349,7 @@ mod tests {
                     &transaction,
                     StarknetBlockNumber(10),
                     StarknetBlockHash(StarkHash::from_hex_str("123").unwrap()),
+                    StarknetBlockTimestamp(22),
                     GlobalRoot(StarkHash::from_hex_str("111").unwrap()),
                     EthereumTransactionHash(H256::from_str(&"abca".repeat(64 / 4)).unwrap()),
                     EthereumLogIndex(99),
@@ -372,6 +386,7 @@ mod tests {
                 let record = GlobalStateRecord {
                     block_number: StarknetBlockNumber(10),
                     block_hash: StarknetBlockHash(StarkHash::from_hex_str("123").unwrap()),
+                    block_timestamp: StarknetBlockTimestamp(22),
                     global_root: GlobalRoot(StarkHash::from_hex_str("111").unwrap()),
                     eth_block_number: EthereumBlockNumber(2003),
                     eth_block_hash: EthereumBlockHash(
@@ -403,6 +418,7 @@ mod tests {
                     &transaction,
                     record.block_number,
                     record.block_hash,
+                    record.block_timestamp,
                     record.global_root,
                     record.eth_tx_hash,
                     record.eth_log_index,
@@ -428,6 +444,7 @@ mod tests {
                 let first = GlobalStateRecord {
                     block_number: StarknetBlockNumber(10),
                     block_hash: StarknetBlockHash(StarkHash::from_hex_str("123").unwrap()),
+                    block_timestamp: StarknetBlockTimestamp(22),
                     global_root: GlobalRoot(StarkHash::from_hex_str("111").unwrap()),
                     eth_block_number: EthereumBlockNumber(2003),
                     eth_block_hash: EthereumBlockHash(
@@ -443,6 +460,7 @@ mod tests {
                 let second = GlobalStateRecord {
                     block_number: StarknetBlockNumber(11),
                     block_hash: StarknetBlockHash(StarkHash::from_hex_str("3512234").unwrap()),
+                    block_timestamp: StarknetBlockTimestamp(33),
                     global_root: GlobalRoot(StarkHash::from_hex_str("9371").unwrap()),
                     eth_block_number: EthereumBlockNumber(98123),
                     eth_block_hash: EthereumBlockHash(
@@ -458,6 +476,7 @@ mod tests {
                 let third = GlobalStateRecord {
                     block_number: StarknetBlockNumber(12),
                     block_hash: StarknetBlockHash(StarkHash::from_hex_str("35aac12234").unwrap()),
+                    block_timestamp: StarknetBlockTimestamp(44),
                     global_root: GlobalRoot(StarkHash::from_hex_str("937addd1").unwrap()),
                     eth_block_number: EthereumBlockNumber(11298123),
                     eth_block_hash: EthereumBlockHash(
@@ -521,6 +540,7 @@ mod tests {
                     &transaction,
                     first.block_number,
                     first.block_hash,
+                    first.block_timestamp,
                     first.global_root,
                     first.eth_tx_hash,
                     first.eth_log_index,
@@ -530,6 +550,7 @@ mod tests {
                     &transaction,
                     third.block_number,
                     third.block_hash,
+                    third.block_timestamp,
                     third.global_root,
                     third.eth_tx_hash,
                     third.eth_log_index,
@@ -539,6 +560,7 @@ mod tests {
                     &transaction,
                     second.block_number,
                     second.block_hash,
+                    second.block_timestamp,
                     second.global_root,
                     second.eth_tx_hash,
                     second.eth_log_index,

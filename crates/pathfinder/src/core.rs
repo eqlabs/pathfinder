@@ -50,6 +50,10 @@ pub struct StarknetBlockHash(pub StarkHash);
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct StarknetBlockNumber(pub u64);
 
+/// The timestamp of a Starknet block.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct StarknetBlockTimestamp(pub u64);
+
 /// An Ethereum block hash.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub struct EthereumBlockHash(pub H256);
