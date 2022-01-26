@@ -220,11 +220,7 @@ mod tests {
                 u256_from_starkhash(val.hash.0),
                 U256::from(val.call_data.len()),
             ];
-            data.extend(
-                val.call_data
-                    .into_iter()
-                    .map(u256_from_starkhash),
-            );
+            data.extend(val.call_data.into_iter().map(u256_from_starkhash));
             data
         }
     }
