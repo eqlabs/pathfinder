@@ -161,12 +161,16 @@ pub struct TransactionStatus {
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    use crate::serde::{
-        H160AsRelaxedHexStr, H256AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr,
+    use crate::{
+        core::{
+            ContractAddress, ContractAddressSalt, EntryPoint, StarknetTransactionHash,
+            StarknetTransactionIndex,
+        },
+        serde::{H160AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr},
     };
     use serde::{Deserialize, Serialize};
     use serde_with::{serde_as, skip_serializing_none};
-    use web3::types::{H160, H256, U256};
+    use web3::types::{H160, U256};
 
     /// Represents deserialized L2 transaction entry point values.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -224,13 +228,10 @@ pub mod transaction {
         pub from_address: H160,
         #[serde_as(as = "Vec<U256AsDecimalStr>")]
         pub payload: Vec<U256>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub selector: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub to_address: H256,
-        #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+        pub selector: EntryPoint,
+        pub to_address: ContractAddress,
         #[serde(default)]
-        pub nonce: Option<H256>,
+        pub nonce: Option<L1ToL2MessageNonce>,
     }
 
     /// Represents deserialized L2 to L1 message.
@@ -238,8 +239,7 @@ pub mod transaction {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub from_address: H256,
+        pub from_address: ContractAddress,
         #[serde_as(as = "Vec<U256AsDecimalStr>")]
         pub payload: Vec<U256>,
         #[serde_as(as = "H160AsRelaxedHexStr")]
@@ -255,9 +255,8 @@ pub mod transaction {
         pub execution_resources: ExecutionResources,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub transaction_hash: H256,
-        pub transaction_index: u64,
+        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_index: StarknetTransactionIndex,
     }
 
     /// Represents deserialized L2 transaction event data.
@@ -267,8 +266,7 @@ pub mod transaction {
     pub struct Event {
         #[serde_as(as = "Vec<U256AsDecimalStr>")]
         data: Vec<U256>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        from_address: H256,
+        from_address: ContractAddress,
         #[serde_as(as = "Vec<U256AsDecimalStr>")]
         keys: Vec<U256>,
     }
@@ -278,8 +276,7 @@ pub mod transaction {
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Source {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub contract_address: H256,
+        pub contract_address: ContractAddress,
         pub r#type: Type,
     }
 
@@ -294,21 +291,17 @@ pub mod transaction {
         #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
         #[serde(default)]
         pub constructor_calldata: Option<Vec<U256>>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub contract_address: H256,
-        #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+        pub contract_address: ContractAddress,
         #[serde(default)]
-        pub contract_address_salt: Option<H256>,
+        pub contract_address_salt: Option<ContractAddressSalt>,
         #[serde(default)]
         pub entry_point_type: Option<EntryPointType>,
-        #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
         #[serde(default)]
-        pub entry_point_selector: Option<H256>,
+        pub entry_point_selector: Option<EntryPoint>,
         #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
         #[serde(default)]
         pub signature: Option<Vec<U256>>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub transaction_hash: H256,
+        pub transaction_hash: StarknetTransactionHash,
         pub r#type: Type,
     }
 

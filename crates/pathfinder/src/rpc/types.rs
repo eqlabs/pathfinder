@@ -130,12 +130,16 @@ pub mod reply {
     use super::request::BlockResponseScope;
     pub use crate::sequencer::reply::Code;
     use crate::{
-        core::{GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
+        core::{
+            CallParam, ContractAddress, EntryPoint, GlobalRoot, StarknetBlockHash,
+            StarknetBlockNumber, StarknetTransactionHash,
+        },
         sequencer::reply as seq,
         sequencer::reply::Status as SeqStatus,
         serde::H256AsRelaxedHexStr,
     };
     use jsonrpsee::types::{CallError, Error};
+    use pedersen::StarkHash;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
@@ -175,12 +179,11 @@ pub mod reply {
 
     /// Wrapper for transaction data returned in block related queries,
     /// chosen variant depends on [BlockResponseScope](crate::rpc::types::request::BlockResponseScope).
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     #[serde(untagged)]
     pub enum Transactions {
-        HashesOnly(#[serde_as(as = "Vec<H256AsRelaxedHexStr>")] Vec<H256>),
+        HashesOnly(Vec<StarknetTransactionHash>),
         Full(Vec<Transaction>),
         FullWithReceipts(Vec<TransactionAndReceipt>),
     }
@@ -358,17 +361,14 @@ pub mod reply {
     #[serde_as]
     #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        txn_hash: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        contract_address: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        entry_point_selector: H256,
-        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-        calldata: Vec<H256>,
+        txn_hash: StarknetTransactionHash,
+        contract_address: ContractAddress,
+        entry_point_selector: EntryPoint,
+        calldata: Vec<CallParam>,
     }
 
     impl From<seq::Transaction> for Transaction {
+        // TODO What if there's a failed conversion? None/Default()/Error code?
         fn from(txn: seq::Transaction) -> Self {
             match txn.transaction {
                 Some(txn) => Self {
@@ -380,7 +380,7 @@ pub mod reply {
                             .iter()
                             .map(|d| {
                                 let x: [u8; 32] = (*d).into();
-                                x.into()
+                                CallParam(StarkHash::from_be_bytes(x).unwrap_or_default())
                             })
                             .collect(),
                         None => vec![],
@@ -392,6 +392,7 @@ pub mod reply {
     }
 
     impl From<seq::transaction::Transaction> for Transaction {
+        // TODO What if there's a failed conversion? None/Default()/Error code?
         fn from(txn: seq::transaction::Transaction) -> Self {
             Self {
                 txn_hash: txn.transaction_hash,
@@ -402,7 +403,7 @@ pub mod reply {
                         .iter()
                         .map(|d| {
                             let x: [u8; 32] = (*d).into();
-                            x.into()
+                            CallParam(StarkHash::from_be_bytes(x).unwrap_or_default())
                         })
                         .collect(),
                     None => vec![],
@@ -412,11 +413,9 @@ pub mod reply {
     }
 
     /// L2 transaction receipt as returned by the RPC API.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionReceipt {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        txn_hash: H256,
+        txn_hash: StarknetTransactionHash,
         status: TransactionStatus,
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,
@@ -530,14 +529,10 @@ pub mod reply {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionAndReceipt {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        txn_hash: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        contract_address: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        entry_point_selector: H256,
-        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-        calldata: Vec<H256>,
+        txn_hash: StarknetTransactionHash,
+        contract_address: ContractAddress,
+        entry_point_selector: EntryPoint,
+        calldata: Vec<CallParam>,
         status: TransactionStatus,
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,

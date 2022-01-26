@@ -7,8 +7,12 @@ use serde::{Deserialize, Serialize};
 use web3::types::H256;
 
 /// The address of a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ContractAddress(pub StarkHash);
+
+/// The salt of a StarkNet contract address.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ContractAddressSalt(pub StarkHash);
 
 /// A StarkNet contract's hash. This is a hash over a contract's
 /// deployment properties e.g. code and ABI.
@@ -31,7 +35,7 @@ pub struct ContractStateHash(pub StarkHash);
 pub struct ContractRoot(pub StarkHash);
 
 /// Entry point of a StarkNet `call`.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EntryPoint(pub StarkHash);
 
 /// A single parameter passed to a StarkNet `call`.
@@ -72,12 +76,16 @@ pub struct StarknetBlockNumber(pub u64);
 pub struct StarknetBlockTimestamp(pub u64);
 
 /// A StarkNet transaction hash.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetTransactionHash(pub StarkHash);
 
 /// A StarkNet transaction hash.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetTransactionIndex(pub u64);
+
+/// A nonce that is added to the L1 to L2 message.
+#[derive(Debug, Default, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct L1ToL2MessageNonce(pub StarkHash);
 
 /// An Ethereum block hash.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
