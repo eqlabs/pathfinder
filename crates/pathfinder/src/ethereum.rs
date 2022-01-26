@@ -133,7 +133,7 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use web3::transports::WebSocket;
     use web3::Web3;
 
