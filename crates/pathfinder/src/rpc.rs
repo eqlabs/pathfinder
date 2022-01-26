@@ -189,7 +189,10 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rpc::{run_server, types::relaxed};
+    use crate::{
+        rpc::{run_server, types::relaxed},
+        sequencer::test_utils::v2,
+    };
     use assert_matches::assert_matches;
     use jsonrpsee::{
         http_client::{HttpClient, HttpClientBuilder},
@@ -271,28 +274,6 @@ mod tests {
         static ref UNKNOWN_CONTRACT_ADDR: relaxed::H256 = H256::from_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap().into();
         static ref VALID_ENTRY_POINT: relaxed::H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap().into();
         static ref LOCALHOST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
-    }
-
-    mod v2 {
-        use crate::core::{
-            ContractAddress, EntryPoint, StarknetBlockHash, StarknetTransactionHash,
-        };
-        use std::str::FromStr;
-
-        lazy_static::lazy_static! {
-            pub static ref GENESIS_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
-            pub static ref INVALID_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_str("0x06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
-            pub static ref UNKNOWN_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_str("0x03c85a69453e63fd475424ecc70438bd855cd76e6f0d5dec0d0dd56e0f7a771c").unwrap();
-            pub static ref CONTRACT_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap();
-            pub static ref VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-            pub static ref INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_str("0x0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-            pub static ref UNKNOWN_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_str("0x015e4bb72df94be3044139fea2116c4d54add05cf9ef8f35aea114b5cea94713").unwrap();
-            pub static ref VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_str("0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-            pub static ref INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_str("0x05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-            pub static ref UNKNOWN_CONTRACT_ADDR: ContractAddress = ContractAddress::from_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
-            pub static ref VALID_ENTRY_POINT: EntryPoint = EntryPoint::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
-            pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint::from_str("").unwrap();
-        }
     }
 
     mod error {
@@ -1098,7 +1079,7 @@ mod tests {
         };
 
         lazy_static::lazy_static! {
-            static ref CALL_DATA: Vec<CallParam> = vec![CallParam::from_str("1234").unwrap()];
+            static ref CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("1234").unwrap()];
         }
 
         #[tokio::test]

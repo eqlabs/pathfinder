@@ -221,8 +221,49 @@ impl Client {
 }
 
 #[cfg(test)]
+pub mod test_utils {
+    pub mod v2 {
+        use crate::core::{
+            CallParam, ContractAddress, EntryPoint, StarknetBlockHash, StarknetTransactionHash,
+        };
+        use pedersen::{HexParseError, StarkHash};
+
+        macro_rules! impl_from_hex_str {
+            ($type:ty) => {
+                impl $type {
+                    pub fn from_hex_str(s: &str) -> std::result::Result<Self, HexParseError> {
+                        Ok(Self(StarkHash::from_hex_str(s)?))
+                    }
+                }
+            };
+        }
+
+        impl_from_hex_str!(CallParam);
+        impl_from_hex_str!(ContractAddress);
+        impl_from_hex_str!(EntryPoint);
+        impl_from_hex_str!(StarknetBlockHash);
+        impl_from_hex_str!(StarknetTransactionHash);
+
+        lazy_static::lazy_static! {
+            pub static ref GENESIS_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_hex_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
+            pub static ref INVALID_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_hex_str("0x06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
+            pub static ref UNKNOWN_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_hex_str("0x03c85a69453e63fd475424ecc70438bd855cd76e6f0d5dec0d0dd56e0f7a771c").unwrap();
+            pub static ref CONTRACT_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_hex_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap();
+            pub static ref VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
+            pub static ref INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
+            pub static ref UNKNOWN_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x015e4bb72df94be3044139fea2116c4d54add05cf9ef8f35aea114b5cea94713").unwrap();
+            pub static ref VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
+            pub static ref INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
+            pub static ref UNKNOWN_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
+            pub static ref VALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
+            pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("").unwrap();
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
-    use super::{error::StarknetErrorCode, *};
+    use super::{error::StarknetErrorCode, test_utils::v2, *};
     use assert_matches::assert_matches;
     use reqwest::StatusCode;
     use std::str::FromStr;
@@ -240,28 +281,6 @@ mod tests {
         static ref INVALID_CONTRACT_ADDR: H256 = H256::from_str("0x16fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
         static ref UNKNOWN_CONTRACT_ADDR: H256 = H256::from_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
         static ref VALID_ENTRY_POINT: H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
-    }
-
-    mod v2 {
-        use crate::core::{
-            ContractAddress, EntryPoint, StarknetBlockHash, StarknetTransactionHash,
-        };
-        use std::str::FromStr;
-
-        lazy_static::lazy_static! {
-            pub static ref GENESIS_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
-            pub static ref INVALID_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_str("0x06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
-            pub static ref UNKNOWN_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_str("0x03c85a69453e63fd475424ecc70438bd855cd76e6f0d5dec0d0dd56e0f7a771c").unwrap();
-            pub static ref CONTRACT_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap();
-            pub static ref VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-            pub static ref INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_str("0x0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-            pub static ref UNKNOWN_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_str("0x015e4bb72df94be3044139fea2116c4d54add05cf9ef8f35aea114b5cea94713").unwrap();
-            pub static ref VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_str("0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-            pub static ref INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_str("0x05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-            pub static ref UNKNOWN_CONTRACT_ADDR: ContractAddress = ContractAddress::from_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
-            pub static ref VALID_ENTRY_POINT: EntryPoint = EntryPoint::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
-            pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint::from_str("").unwrap();
-        }
     }
 
     /// Convenience wrapper

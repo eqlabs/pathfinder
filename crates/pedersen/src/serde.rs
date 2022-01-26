@@ -1,6 +1,5 @@
 use super::StarkHash;
 use serde::{de::Visitor, Deserialize, Serialize};
-use std::str::FromStr;
 
 impl Serialize for StarkHash {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

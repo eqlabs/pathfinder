@@ -240,7 +240,6 @@ impl EdgeNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
 
     mod direction {
         use super::*;

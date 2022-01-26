@@ -184,14 +184,12 @@ impl From<FieldElement> for StarkHash {
     }
 }
 
-impl std::str::FromStr for StarkHash {
-    type Err = HexParseError;
-
+impl StarkHash {
     /// A convenience function which parses a hex string into a [StarkHash].
     ///
     /// Supports both upper and lower case hex strings, as well as an
     /// optional "0x" prefix.
-    fn from_str(hex_str: &str) -> Result<Self, Self::Err> {
+    pub fn from_hex_str(hex_str: &str) -> Result<Self, HexParseError> {
         fn parse_hex_digit(digit: u8) -> Result<u8, HexParseError> {
             match digit {
                 b'0'..=b'9' => Ok(digit - b'0'),
@@ -260,7 +258,6 @@ mod tests {
     use super::*;
     use bitvec::bitvec;
     use pretty_assertions::assert_eq;
-    use std::str::FromStr;
 
     #[test]
     fn view_bits() {
@@ -391,7 +388,6 @@ mod tests {
     }
 
     mod fmt {
-        use super::*;
         use crate::StarkHash;
         use pretty_assertions::assert_eq;
 
