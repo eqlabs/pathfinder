@@ -48,21 +48,6 @@ impl std::default::Default for StarkHash {
     }
 }
 
-impl std::cmp::Eq for StarkHash {}
-
-impl std::cmp::PartialOrd for StarkHash {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl std::cmp::Ord for StarkHash {
-    #[inline]
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
-    }
-}
-
 /// Error returned by [StarkHash::from_be_bytes] indicating that
 /// more than the allowed 251 bits were set.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -120,19 +105,12 @@ impl StarkHash {
 
     /// Creates a [StarkHash] from big-endian bytes.
     ///
-    /// Returns [OverflowError] if value larger than `PrimeFieldModulus - 1`.
+    /// Returns [OverflowError] if not less than the field modulus.
     pub fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, OverflowError> {
-        // 3618502788666131213697322783095070105623107215331596699973092056135872020481
-        // 0x800000000000011000000000000000000000000000000000000000000000001
-        const MODULUS: [u8; 32] = [
-            0x08, 0, 0, 0, 0, 0, 0, 0x11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 1,
-        ];
-
-        if bytes < MODULUS {
-            Ok(Self(bytes))
-        } else {
-            Err(OverflowError)
+        // FieldElement::from_repr[_vartime] does the check in a correct way
+        match FieldElement::from_repr_vartime(FieldElementRepr(bytes)) {
+            Some(field_element) => Ok(Self(field_element.to_repr().0)),
+            None => Err(OverflowError),
         }
     }
 
@@ -201,7 +179,7 @@ impl From<FieldElement> for StarkHash {
             std::mem::size_of::<StarkHash>()
         );
         // unwrap is safe because the FieldElement and StarkHash
-        // should both be 251 bits only.
+        // should both be smaller than the field modulus.
         StarkHash::from_be_bytes(fp.to_repr().0).unwrap()
     }
 }
