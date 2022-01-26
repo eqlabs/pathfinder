@@ -1,14 +1,7 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::{
-    core::{
-        ByecodeWord, CallResult, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-        StarknetTransactionIndex,
-    },
-    serde::{H256AsRelaxedHexStr, U256AsBigDecimal},
-};
+use crate::core::{ByecodeWord, CallResult, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
-use web3::types::{H256, U256};
 
 /// Used to deserialize replies to [Client::block_by_hash](crate::sequencer::Client::block_by_hash) and
 /// [Client::block_by_number](crate::sequencer::Client::block_by_number).

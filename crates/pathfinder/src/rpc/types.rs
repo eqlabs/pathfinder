@@ -1,8 +1,5 @@
 //! Data structures used by the JSON-RPC API methods.
-use crate::{
-    core::{GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
-    serde::H256AsRelaxedHexStr,
-};
+use crate::serde::H256AsRelaxedHexStr;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use web3::types::H256;
@@ -95,13 +92,9 @@ pub mod relaxed {
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use crate::{
-        core::{CallParam, ContractAddress, EntryPoint},
-        serde::H256AsRelaxedHexStr,
-    };
+    use crate::core::{CallParam, ContractAddress, EntryPoint};
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
-    use web3::types::H256;
 
     /// Contains parameters passed to `starknet_call`.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

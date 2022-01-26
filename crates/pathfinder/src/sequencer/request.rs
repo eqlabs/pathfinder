@@ -2,11 +2,11 @@
 use crate::{
     core::{ContractAddress, EntryPoint},
     rpc::types::request as rpc,
-    serde::{H256AsRelaxedHexStr, U256AsBigDecimal},
+    serde::U256AsBigDecimal,
 };
 use serde::{Deserialize, Serialize};
 use std::convert::From;
-use web3::types::{H256, U256};
+use web3::types::U256;
 
 /// Used to serialize payload for [Client::call](crate::sequencer::Client::call).
 #[serde_with::serde_as]

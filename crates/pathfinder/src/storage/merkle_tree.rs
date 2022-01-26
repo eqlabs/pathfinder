@@ -349,6 +349,7 @@ impl<'a> RcNodeStorage<'a> {
 mod tests {
     use super::*;
     use bitvec::bitvec;
+    use std::str::FromStr;
 
     /// Test helper function to query a node's current reference count from the database.
     fn get_ref_count(storage: &RcNodeStorage, key: StarkHash) -> u16 {

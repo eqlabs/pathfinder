@@ -240,6 +240,7 @@ impl EdgeNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     mod direction {
         use super::*;
@@ -269,9 +270,8 @@ mod tests {
     }
 
     mod binary {
-        use bitvec::bitvec;
-
         use super::*;
+        use bitvec::bitvec;
 
         #[test]
         fn direction() {

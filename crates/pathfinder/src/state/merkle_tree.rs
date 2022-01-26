@@ -526,6 +526,7 @@ impl<'a> MerkleTree<'a> {
 mod tests {
     use super::*;
     use bitvec::prelude::*;
+    use std::str::FromStr;
 
     fn starkhash_from_bits(bits: &BitSlice<Msb0, u8>) -> StarkHash {
         assert!(bits.len() <= 251);

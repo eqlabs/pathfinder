@@ -607,6 +607,7 @@ mod tests {
 
     mod contracts {
         use super::*;
+        use std::str::FromStr;
 
         #[test]
         fn get_root() {
