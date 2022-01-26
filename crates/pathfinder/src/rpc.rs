@@ -298,7 +298,7 @@ mod tests {
         use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently gives 502"]
+        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
             client_request::<Block>("starknet_getBlockByHash", params)
@@ -399,6 +399,7 @@ mod tests {
         use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockNumberOrTag, Tag};
 
         #[tokio::test]
+        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(BlockNumberOrTag::Number(0));
             client_request::<Block>("starknet_getBlockByNumber", params)
@@ -708,7 +709,7 @@ mod tests {
         use crate::rpc::types::{reply::Transaction, BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently gives 502"]
+        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH), 0u64);
             client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
@@ -784,6 +785,7 @@ mod tests {
         use crate::rpc::types::{reply::Transaction, BlockNumberOrTag, Tag};
 
         #[tokio::test]
+        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(BlockNumberOrTag::Number(0), 0);
             client_request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
@@ -951,7 +953,7 @@ mod tests {
         use crate::rpc::types::{BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently gives 502"]
+        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH));
             client_request::<u64>("starknet_getBlockTransactionCountByHash", params)
@@ -1017,6 +1019,7 @@ mod tests {
         use crate::rpc::types::{BlockNumberOrTag, Tag};
 
         #[tokio::test]
+        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(BlockNumberOrTag::Number(0));
             client_request::<u64>("starknet_getBlockTransactionCountByNumber", params)

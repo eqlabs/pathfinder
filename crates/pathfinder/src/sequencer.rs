@@ -26,8 +26,17 @@ pub struct Client {
 fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
     match hash {
         BlockHashOrTag::Hash(h) => ("blockHash", Cow::from(format!("0x{:x}", h))),
-        BlockHashOrTag::Tag(Tag::Latest) => ("blockId", Cow::from("null")),
-        BlockHashOrTag::Tag(Tag::Pending) => ("blockId", Cow::from("pending")),
+        BlockHashOrTag::Tag(Tag::Latest) => ("blockNumber", Cow::from("null")),
+        BlockHashOrTag::Tag(Tag::Pending) => ("blockNumber", Cow::from("pending")),
+    }
+}
+
+/// Helper function which simplifies the handling of optional block numbers in queries.
+fn block_number_str(number: BlockNumberOrTag) -> Cow<'static, str> {
+    match number {
+        BlockNumberOrTag::Number(n) => Cow::from(n.to_string()),
+        BlockNumberOrTag::Tag(Tag::Latest) => Cow::from("null"),
+        BlockNumberOrTag::Tag(Tag::Pending) => Cow::from("pending"),
     }
 }
 
@@ -80,19 +89,13 @@ impl Client {
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<reply::Block, SequencerError> {
-        let block_hash = match block_number {
-            BlockNumberOrTag::Number(n) => {
-                let resp = self
-                    .inner
-                    .get(self.build_query("get_block_hash_by_id", &[("blockId", &n.to_string())]))
-                    .send()
-                    .await?;
-                let block_hash: relaxed::H256 = parse(resp).await?;
-                BlockHashOrTag::Hash(*block_hash)
-            }
-            BlockNumberOrTag::Tag(tag) => BlockHashOrTag::Tag(tag),
-        };
-        self.block_by_hash(block_hash).await
+        let number = block_number_str(block_number);
+        let resp = self
+            .inner
+            .get(self.build_query("get_block", &[("blockNumber", &number)]))
+            .send()
+            .await?;
+        parse::<reply::Block>(resp).await
     }
 
     /// Get block by hash.
@@ -327,20 +330,47 @@ mod tests {
         }};
     }
 
+    #[tokio::test]
+    #[ignore = "Currently gives 502/503"]
+    async fn genesis_block() {
+        let by_hash = retry_on_rate_limiting!(
+            client()
+                .block_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
+                .await
+        )
+        .unwrap();
+        let by_number =
+            retry_on_rate_limiting!(client().block_by_number(BlockNumberOrTag::Number(0)).await)
+                .unwrap();
+        assert_eq!(by_hash, by_number);
+    }
+
+    #[tokio::test]
+    // Temporary replacement for the `genesis_block` test, which essentially does the same
+    async fn block_number_matches_block_hash() {
+        let by_hash = retry_on_rate_limiting!(
+            client()
+                .block_by_hash(BlockHashOrTag::Hash(
+                    H256::from_str(
+                        "0x07187d565e5563658f2b88a9000c6eb84692dcd90a8ab7d8fe75d768205d9b66"
+                    )
+                    .unwrap()
+                ))
+                .await
+        )
+        .unwrap();
+        let by_number = retry_on_rate_limiting!(
+            client()
+                .block_by_number(BlockNumberOrTag::Number(50000))
+                .await
+        )
+        .unwrap();
+        assert_eq!(by_hash, by_number);
+    }
+
     mod block_by_hash {
         use super::*;
         use pretty_assertions::assert_eq;
-
-        #[tokio::test]
-        #[ignore = "Currently gives 502"]
-        async fn genesis() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
-                    .await
-            )
-            .unwrap();
-        }
 
         #[tokio::test]
         async fn latest() {
@@ -363,7 +393,7 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "Currently gives 502"]
+        #[ignore = "Currently gives 502/503"]
         async fn block_without_block_hash_field() {
             retry_on_rate_limiting!(
                 client()
@@ -413,12 +443,6 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn genesis() {
-            retry_on_rate_limiting!(client().block_by_number(BlockNumberOrTag::Number(0)).await)
-                .unwrap();
-        }
-
-        #[tokio::test]
         async fn latest() {
             retry_on_rate_limiting!(
                 client()
@@ -448,12 +472,12 @@ mod tests {
             .unwrap_err();
             assert_matches!(
                 error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::MalformedRequest)
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
             );
         }
 
         #[tokio::test]
-        #[ignore = "Currently gives 502"]
+        #[ignore = "Currently gives 502/503"]
         async fn contains_receipts_without_status_field() {
             retry_on_rate_limiting!(
                 client()

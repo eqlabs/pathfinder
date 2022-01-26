@@ -274,7 +274,9 @@ impl RpcApi {
             .0
             .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
             .await?;
-        Ok(block.block_number)
+        // The default value should actually never happen as block_number is None only
+        // in a pending block.
+        Ok(block.block_number.unwrap_or_default())
     }
 
     /// Return the currently configured StarkNet chain id.
