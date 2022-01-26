@@ -94,7 +94,6 @@ pub mod relaxed {
 pub mod request {
     use crate::core::{CallParam, ContractAddress, EntryPoint};
     use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
 
     /// Contains parameters passed to `starknet_call`.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

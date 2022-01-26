@@ -323,12 +323,20 @@ mod tests {
         assert_eq!(bytes, original);
     }
 
+    // Prime field modulus
+    const MODULUS: [u8; 32] = [
+        8, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 1,
+    ];
+
     #[test]
     fn from_bytes_overflow() {
-        // Set the 252nd bit (which is invalid).
-        let mut bytes = [0; 32];
-        bytes[0] = 0b0000_1000;
-        assert_eq!(StarkHash::from_be_bytes(bytes), Err(OverflowError));
+        // Field modulus
+        assert_eq!(StarkHash::from_be_bytes(MODULUS), Err(OverflowError));
+        // Field modulus - 1
+        let mut max_val = MODULUS;
+        max_val[31] = 0;
+        StarkHash::from_be_bytes(max_val).unwrap();
     }
 
     #[test]
@@ -379,11 +387,15 @@ mod tests {
 
         #[test]
         fn overflow() {
-            // Set the 252nd bit (which is invalid).
-            let mut bytes = [0; 32];
-            bytes[0] = 0b0000_1000;
-            let result = StarkHash::from_be_slice(&bytes[..]);
-            assert_eq!(result, Err(FromSliceError::Overflow));
+            // Field modulus
+            assert_eq!(
+                StarkHash::from_be_slice(&MODULUS[..]),
+                Err(FromSliceError::Overflow)
+            );
+            // Field modulus - 1
+            let mut max_val = MODULUS;
+            max_val[31] = 0;
+            StarkHash::from_be_slice(&max_val[..]).unwrap();
         }
     }
 
@@ -442,7 +454,7 @@ mod tests {
         }
     }
 
-    mod from_str {
+    mod from_hex_str {
         use super::*;
         use assert_matches::assert_matches;
         use pretty_assertions::assert_eq;
@@ -506,11 +518,16 @@ mod tests {
 
         #[test]
         fn overflow() {
-            let bit_252th_set = "8".to_string() + &"0".repeat(63);
+            // Field modulus
+            let mut modulus = "8".to_string() + &"0".repeat(12) + "11" + &"0".repeat(47) + "1";
             assert_eq!(
-                StarkHash::from_hex_str(&bit_252th_set).unwrap_err(),
+                StarkHash::from_hex_str(&modulus).unwrap_err(),
                 HexParseError::Overflow
-            )
+            );
+            // Field modulus - 1
+            modulus.pop();
+            modulus.push('0');
+            StarkHash::from_hex_str(&modulus).unwrap();
         }
     }
 }

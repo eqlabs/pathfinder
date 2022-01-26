@@ -1,7 +1,7 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use crate::core::{ByecodeWord, CallResult, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
+use serde_with::{serde_as, DefaultOnError};
 
 /// Used to deserialize replies to [Client::block_by_hash](crate::sequencer::Client::block_by_hash) and
 /// [Client::block_by_number](crate::sequencer::Client::block_by_number).
@@ -81,7 +81,6 @@ pub struct Code {
 /// Types used when deserializing L2 contract related data.
 pub mod code {
     use serde::{Deserialize, Serialize};
-    use serde_with::skip_serializing_none;
 
     /// Represents deserialized L2 contract Application Blockchain Interface element.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -163,13 +162,13 @@ pub struct TransactionStatus {
 pub mod transaction {
     use crate::{
         core::{
-            ContractAddress, ContractAddressSalt, EntryPoint, StarknetTransactionHash,
-            StarknetTransactionIndex,
+            ContractAddress, ContractAddressSalt, EntryPoint, L1ToL2MessageNonce,
+            StarknetTransactionHash, StarknetTransactionIndex,
         },
         serde::{H160AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr},
     };
     use serde::{Deserialize, Serialize};
-    use serde_with::{serde_as, skip_serializing_none};
+    use serde_with::serde_as;
     use web3::types::{H160, U256};
 
     /// Represents deserialized L2 transaction entry point values.
