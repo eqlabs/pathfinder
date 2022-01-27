@@ -72,7 +72,7 @@ impl GlobalStateTable {
                     ethereum_transaction_hash BLOB NOT NULL,
                     ethereum_log_index        INTEGER NOT NULL,
 
-                    FOREIGN KEY(ethereum_transaction_hash) REFERENCES ethereum_transactions(ethereum_transaction_hash)
+                    FOREIGN KEY(ethereum_transaction_hash) REFERENCES ethereum_transactions(hash)
                 )",
             [],
         )?;
@@ -130,11 +130,21 @@ impl GlobalStateTable {
     ) -> anyhow::Result<Option<GlobalStateRecord>> {
         Self::state_query_row(
             transaction,
-            r"SELECT * FROM global_state
-                    NATURAL JOIN ethereum_transactions
-                    NATURAL JOIN ethereum_blocks
-                    WHERE starknet_block_number = :starknet_block_number
-                    LIMIT 1",
+            r"SELECT
+                global_state.starknet_block_number      as starknet_block_number,
+                global_state.starknet_block_hash        as starknet_block_hash,
+                global_state.starknet_global_root       as starknet_global_root,
+                global_state.starknet_block_timestamp   as starknet_block_timestamp,
+                global_state.ethereum_log_index         as ethereum_log_index,
+                ethereum_transactions.hash              as ethereum_transaction_hash,
+                ethereum_transactions.idx               as ethereum_transaction_index,
+                ethereum_blocks.number                  as ethereum_block_number,
+                ethereum_blocks.hash                    as ethereum_block_hash
+            FROM global_state
+            JOIN ethereum_transactions ON global_state.ethereum_transaction_hash = ethereum_transactions.hash
+            JOIN ethereum_blocks ON ethereum_transactions.block_hash = ethereum_blocks.hash
+            WHERE starknet_block_number = :starknet_block_number
+            LIMIT 1",
             named_params! { ":starknet_block_number": block.0 },
         )
     }
@@ -229,11 +239,21 @@ impl GlobalStateTable {
     ) -> anyhow::Result<Option<GlobalStateRecord>> {
         Self::state_query_row(
             transaction,
-            r"SELECT * FROM global_state
-                    NATURAL JOIN ethereum_transactions
-                    NATURAL JOIN ethereum_blocks
-                    ORDER BY starknet_block_number DESC
-                    LIMIT 1",
+            r"SELECT
+                global_state.starknet_block_number      as starknet_block_number,
+                global_state.starknet_block_hash        as starknet_block_hash,
+                global_state.starknet_global_root       as starknet_global_root,
+                global_state.starknet_block_timestamp   as starknet_block_timestamp,
+                global_state.ethereum_log_index         as ethereum_log_index,
+                ethereum_transactions.hash              as ethereum_transaction_hash,
+                ethereum_transactions.idx               as ethereum_transaction_index,
+                ethereum_blocks.number                  as ethereum_block_number,
+                ethereum_blocks.hash                    as ethereum_block_hash
+            FROM global_state
+            JOIN ethereum_transactions ON global_state.ethereum_transaction_hash = ethereum_transactions.hash
+            JOIN ethereum_blocks ON ethereum_transactions.block_hash = ethereum_blocks.hash
+            ORDER BY starknet_block_number DESC
+            LIMIT 1",
             [],
         )
     }
