@@ -1,8 +1,6 @@
 //! Data structures used by the JSON-RPC API methods.
-use crate::serde::H256AsRelaxedHexStr;
+use crate::core::{StarknetBlockHash, StarknetBlockNumber};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use web3::types::H256;
 
 /// Special tag used when specifying the `latest` or `pending` block.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -25,8 +23,7 @@ pub enum Tag {
 }
 
 /// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a [Tag](self::BlockHashOrTag::Tag).
-#[serde_as]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockHashOrTag {
@@ -35,18 +32,18 @@ pub enum BlockHashOrTag {
     /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64 characters
     /// when passed as an RPC method argument, for example:
     /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
-    Hash(#[serde_as(as = "H256AsRelaxedHexStr")] H256),
+    Hash(StarknetBlockHash),
     /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
 }
 
 /// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockNumberOrTag {
     /// Number (height) of a block
-    Number(u64),
+    Number(StarknetBlockNumber),
     /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
 }
@@ -135,14 +132,13 @@ pub mod reply {
         },
         sequencer::reply as seq,
         sequencer::reply::Status as SeqStatus,
-        serde::H256AsRelaxedHexStr,
     };
     use jsonrpsee::types::{CallError, Error};
     use pedersen::StarkHash;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
-    use web3::types::{H160, H256};
+    use web3::types::H160;
 
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -302,26 +298,20 @@ pub mod reply {
     }
 
     /// L2 state update as returned by the RPC API.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct StateUpdate {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        block_hash: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        new_root: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        old_root: H256,
+        block_hash: StarknetBlockHash,
+        new_root: GlobalRoot,
+        old_root: GlobalRoot,
         accepted_time: u64,
         state_diff: state_update::StateDiff,
     }
 
     /// State update related substructures.
     pub mod state_update {
-        use crate::serde::H256AsRelaxedHexStr;
+        use crate::core::{ContractAddress, ContractHash, StorageAddress, StorageValue};
         use serde::{Deserialize, Serialize};
-        use serde_with::serde_as;
-        use web3::types::H256;
 
         /// L2 state diff.
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -332,27 +322,20 @@ pub mod reply {
         }
 
         /// L2 storage diff.
-        #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageDiff {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            address: H256,
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            key: H256,
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            value: H256,
+            address: ContractAddress,
+            key: StorageAddress,
+            value: StorageValue,
         }
 
         /// L2 contract data within state diff.
-        #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Contract {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            address: H256,
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            contract_hash: H256,
+            address: ContractAddress,
+            contract_hash: ContractHash,
         }
     }
 
@@ -585,20 +568,15 @@ pub mod reply {
     /// Starknet's syncing status substructures.
     pub mod syncing {
         use super::BlockStatus;
-        use crate::serde::H256AsRelaxedHexStr;
+        use crate::core::StarknetBlockHash;
         use serde::{Deserialize, Serialize};
-        use serde_with::serde_as;
-        use web3::types::H256;
 
         /// Represents Starknet node syncing status.
-        #[serde_as]
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Status {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            starting_block: H256,
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            current_block: H256,
+            starting_block: StarknetBlockHash,
+            current_block: StarknetBlockHash,
             highest_block: BlockStatus,
         }
     }

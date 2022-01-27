@@ -4,12 +4,13 @@ pub mod reply;
 pub mod request;
 
 use crate::{
-    rpc::types::{relaxed, BlockHashOrTag, BlockNumberOrTag, Tag},
+    core::{ContractAddress, StarknetTransactionHash, StorageValue},
+    rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
 };
 use reqwest::Url;
 use std::{borrow::Cow, fmt::Debug, result::Result, time::Duration};
-use web3::types::{H256, U256};
+use web3::types::U256;
 
 use self::error::StarknetError;
 
@@ -25,7 +26,7 @@ pub struct Client {
 /// Helper function which simplifies the handling of optional block hashes in queries.
 fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
     match hash {
-        BlockHashOrTag::Hash(h) => ("blockHash", Cow::from(format!("0x{:x}", h))),
+        BlockHashOrTag::Hash(h) => ("blockHash", Cow::from(format!("0x{:x}", h.0))),
         BlockHashOrTag::Tag(Tag::Latest) => ("blockNumber", Cow::from("null")),
         BlockHashOrTag::Tag(Tag::Pending) => ("blockNumber", Cow::from("pending")),
     }
@@ -34,7 +35,7 @@ fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
 /// Helper function which simplifies the handling of optional block numbers in queries.
 fn block_number_str(number: BlockNumberOrTag) -> Cow<'static, str> {
     match number {
-        BlockNumberOrTag::Number(n) => Cow::from(n.to_string()),
+        BlockNumberOrTag::Number(n) => Cow::from(n.0.to_string()),
         BlockNumberOrTag::Tag(Tag::Latest) => Cow::from("null"),
         BlockNumberOrTag::Tag(Tag::Pending) => Cow::from("pending"),
     }
@@ -55,7 +56,6 @@ where
     // Status codes <400;499> and <501;599> are mapped to SequencerError::TransportError
     resp.error_for_status_ref().map(|_| ())?;
     let resp = resp.text().await?;
-    eprintln!("{}", resp);
     // Attempt to deserialize the actual data we are looking for
     let deserialized = serde_json::from_str::<T>(resp.as_str())?;
     Ok(deserialized)
@@ -128,7 +128,7 @@ impl Client {
     /// Gets contract's code and ABI.
     pub async fn code(
         &self,
-        contract_addr: H256,
+        contract_addr: ContractAddress,
         block_hash: BlockHashOrTag,
     ) -> Result<reply::Code, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
@@ -137,7 +137,10 @@ impl Client {
             .get(self.build_query(
                 "get_code",
                 &[
-                    ("contractAddress", format!("{:x}", contract_addr).as_str()),
+                    (
+                        "contractAddress",
+                        format!("0x{:x}", contract_addr.0).as_str(),
+                    ),
                     (tag, &hash),
                 ],
             ))
@@ -149,31 +152,33 @@ impl Client {
     /// Gets storage value associated with a `key` for a prticular contract.
     pub async fn storage(
         &self,
-        contract_addr: H256,
+        contract_addr: ContractAddress,
         key: U256,
         block_hash: BlockHashOrTag,
-    ) -> Result<H256, SequencerError> {
+    ) -> Result<StorageValue, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
         let resp = self
             .inner
             .get(self.build_query(
                 "get_storage_at",
                 &[
-                    ("contractAddress", format!("{:x}", contract_addr).as_str()),
+                    (
+                        "contractAddress",
+                        format!("0x{:x}", contract_addr.0).as_str(),
+                    ),
                     ("key", key.to_string().as_str()),
                     (tag, &hash),
                 ],
             ))
             .send()
             .await?;
-        let value: relaxed::H256 = parse(resp).await?;
-        Ok(*value)
+        parse::<StorageValue>(resp).await
     }
 
     /// Gets transaction by hash.
     pub async fn transaction(
         &self,
-        transaction_hash: H256,
+        transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError> {
         let resp = self
             .inner
@@ -181,7 +186,7 @@ impl Client {
                 "get_transaction",
                 &[(
                     "transactionHash",
-                    format!("{:#x}", transaction_hash).as_str(),
+                    format!("0x{:x}", transaction_hash.0).as_str(),
                 )],
             ))
             .send()
@@ -192,7 +197,7 @@ impl Client {
     /// Gets transaction status by transaction hash.
     pub async fn transaction_status(
         &self,
-        transaction_hash: H256,
+        transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::TransactionStatus, SequencerError> {
         let resp = self
             .inner
@@ -200,7 +205,7 @@ impl Client {
                 "get_transaction_status",
                 &[(
                     "transactionHash",
-                    format!("{:#x}", transaction_hash).as_str(),
+                    format!("0x{:x}", transaction_hash.0).as_str(),
                 )],
             ))
             .send()
@@ -222,66 +227,65 @@ impl Client {
 
 #[cfg(test)]
 pub mod test_utils {
-    pub mod v2 {
-        use crate::core::{
-            CallParam, ContractAddress, EntryPoint, StarknetBlockHash, StarknetTransactionHash,
-        };
-        use pedersen::{HexParseError, StarkHash};
+    use crate::{
+        core::{
+            CallParam, ContractAddress, EntryPoint, StarknetBlockHash, StarknetBlockNumber,
+            StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
+        },
+        rpc::types::{BlockHashOrTag, BlockNumberOrTag},
+    };
+    use pedersen::{HexParseError, StarkHash};
 
-        macro_rules! impl_from_hex_str {
-            ($type:ty) => {
-                impl $type {
-                    pub fn from_hex_str(s: &str) -> std::result::Result<Self, HexParseError> {
-                        Ok(Self(StarkHash::from_hex_str(s)?))
-                    }
+    macro_rules! impl_from_hex_str {
+        ($type:ty) => {
+            impl $type {
+                pub fn from_hex_str(s: &str) -> std::result::Result<Self, HexParseError> {
+                    Ok(Self(StarkHash::from_hex_str(s)?))
                 }
-            };
-        }
+            }
+        };
+    }
 
-        impl_from_hex_str!(CallParam);
-        impl_from_hex_str!(ContractAddress);
-        impl_from_hex_str!(EntryPoint);
-        impl_from_hex_str!(StarknetBlockHash);
-        impl_from_hex_str!(StarknetTransactionHash);
+    impl_from_hex_str!(CallParam);
+    impl_from_hex_str!(ContractAddress);
+    impl_from_hex_str!(EntryPoint);
+    impl_from_hex_str!(StarknetBlockHash);
+    impl_from_hex_str!(StarknetTransactionHash);
+    impl_from_hex_str!(StorageAddress);
 
-        lazy_static::lazy_static! {
-            pub static ref GENESIS_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_hex_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
-            pub static ref INVALID_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_hex_str("0x06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
-            pub static ref UNKNOWN_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_hex_str("0x03c85a69453e63fd475424ecc70438bd855cd76e6f0d5dec0d0dd56e0f7a771c").unwrap();
-            pub static ref CONTRACT_BLOCK_HASH: StarknetBlockHash = StarknetBlockHash::from_hex_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap();
-            pub static ref VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-            pub static ref INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-            pub static ref UNKNOWN_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x015e4bb72df94be3044139fea2116c4d54add05cf9ef8f35aea114b5cea94713").unwrap();
-            pub static ref VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-            pub static ref INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-            pub static ref UNKNOWN_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
-            pub static ref VALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
-            pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("").unwrap();
-        }
+    lazy_static::lazy_static! {
+        pub static ref GENESIS_BLOCK_NUMBER: BlockNumberOrTag = BlockNumberOrTag::Number(StarknetBlockNumber(0u64));
+        pub static ref INVALID_BLOCK_NUMBER: BlockNumberOrTag = BlockNumberOrTag::Number(StarknetBlockNumber(u64::MAX));
+        pub static ref GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap());
+        pub static ref INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap());
+        pub static ref UNKNOWN_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x03c85a69453e63fd475424ecc70438bd855cd76e6f0d5dec0d0dd56e0f7a771c").unwrap());
+        pub static ref PRE_DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f").unwrap());
+        pub static ref DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x07177acba67cb659e336abb3a158c8d29770b87b1b62e2bfa94cd376b72d34c5").unwrap());
+        pub static ref INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap());
+        pub static ref VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
+        pub static ref INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
+        pub static ref UNKNOWN_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x015e4bb72df94be3044139fea2116c4d54add05cf9ef8f35aea114b5cea94713").unwrap();
+        pub static ref VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
+        pub static ref INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
+        pub static ref UNKNOWN_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
+        pub static ref VALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
+        pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("").unwrap();
+        pub static ref VALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(0u64);
+        pub static ref INVALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(u64::MAX);
+        pub static ref VALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
+        pub static ref INVALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0106F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
+        pub static ref ZERO_KEY: StorageAddress = StorageAddress(StarkHash::zero());
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{error::StarknetErrorCode, test_utils::v2, *};
+    use super::{error::StarknetErrorCode, test_utils::*, *};
+    use crate::core::{StarknetBlockHash, StarknetBlockNumber};
     use assert_matches::assert_matches;
+    use pedersen::StarkHash;
     use reqwest::StatusCode;
-    use std::str::FromStr;
     use web3::types::U256;
-
-    lazy_static::lazy_static! {
-        static ref GENESIS_BLOCK_HASH: H256 = H256::from_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
-        static ref INVALID_BLOCK_HASH: H256 = H256::from_str("0x06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap();
-        static ref UNKNOWN_BLOCK_HASH: H256 = H256::from_str("0x03c85a69453e63fd475424ecc70438bd855cd76e6f0d5dec0d0dd56e0f7a771c").unwrap();
-        static ref CONTRACT_BLOCK_HASH: H256 = H256::from_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap();
-        static ref VALID_TX_HASH: H256 = H256::from_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-        static ref INVALID_TX_HASH: H256 = H256::from_str("0x1493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-        static ref UNKNOWN_TX_HASH: H256 = H256::from_str("0x015e4bb72df94be3044139fea2116c4d54add05cf9ef8f35aea114b5cea94713").unwrap();
-        static ref VALID_CONTRACT_ADDR: H256 = H256::from_str("0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-        static ref INVALID_CONTRACT_ADDR: H256 = H256::from_str("0x16fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-        static ref UNKNOWN_CONTRACT_ADDR: H256 = H256::from_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
-        static ref VALID_ENTRY_POINT: H256 = H256::from_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
-    }
 
     /// Convenience wrapper
     fn client() -> Client {
@@ -375,15 +379,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "Currently gives 502/503"]
     async fn genesis_block() {
-        let by_hash = retry_on_rate_limiting!(
-            client()
-                .block_by_hash(BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH))
-                .await
-        )
-        .unwrap();
+        let by_hash =
+            retry_on_rate_limiting!(client().block_by_hash(*GENESIS_BLOCK_HASH).await).unwrap();
         let by_number =
-            retry_on_rate_limiting!(client().block_by_number(BlockNumberOrTag::Number(0)).await)
-                .unwrap();
+            retry_on_rate_limiting!(client().block_by_number(*GENESIS_BLOCK_NUMBER).await).unwrap();
         assert_eq!(by_hash, by_number);
     }
 
@@ -393,7 +392,7 @@ mod tests {
         let by_hash = retry_on_rate_limiting!(
             client()
                 .block_by_hash(BlockHashOrTag::Hash(
-                    H256::from_str(
+                    StarknetBlockHash::from_hex_str(
                         "0x07187d565e5563658f2b88a9000c6eb84692dcd90a8ab7d8fe75d768205d9b66"
                     )
                     .unwrap()
@@ -403,7 +402,7 @@ mod tests {
         .unwrap();
         let by_number = retry_on_rate_limiting!(
             client()
-                .block_by_number(BlockNumberOrTag::Number(50000))
+                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(50000)))
                 .await
         )
         .unwrap();
@@ -440,7 +439,7 @@ mod tests {
             retry_on_rate_limiting!(
                 client()
                     .block_by_hash(BlockHashOrTag::Hash(
-                        H256::from_str(
+                        StarknetBlockHash::from_hex_str(
                             "01cf37f162c3fa3b57c1c4324c240b0c8c65bb5a15e039817a3023b9890e94d1",
                         )
                         .unwrap(),
@@ -453,12 +452,8 @@ mod tests {
         #[tokio::test]
         async fn unknown() {
             // Use valid hash from mainnet
-            let error = retry_on_rate_limiting!(
-                client()
-                    .block_by_hash(BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH))
-                    .await
-            )
-            .unwrap_err();
+            let error = retry_on_rate_limiting!(client().block_by_hash(*UNKNOWN_BLOCK_HASH).await)
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -468,12 +463,8 @@ mod tests {
         #[tokio::test]
         async fn invalid() {
             // Invalid block hash
-            let error = retry_on_rate_limiting!(
-                client()
-                    .block_by_hash(BlockHashOrTag::Hash(*INVALID_BLOCK_HASH))
-                    .await
-            )
-            .unwrap_err();
+            let error = retry_on_rate_limiting!(client().block_by_hash(*INVALID_BLOCK_HASH).await)
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -506,12 +497,9 @@ mod tests {
 
         #[tokio::test]
         async fn invalid() {
-            let error = retry_on_rate_limiting!(
-                client()
-                    .block_by_number(BlockNumberOrTag::Number(u64::MAX))
-                    .await
-            )
-            .unwrap_err();
+            let error =
+                retry_on_rate_limiting!(client().block_by_number(*INVALID_BLOCK_NUMBER).await)
+                    .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -523,7 +511,7 @@ mod tests {
         async fn contains_receipts_without_status_field() {
             retry_on_rate_limiting!(
                 client()
-                    .block_by_number(BlockNumberOrTag::Number(1716))
+                    .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1716)))
                     .await
             )
             .unwrap();
@@ -541,8 +529,8 @@ mod tests {
                     .call(
                         request::Call {
                             calldata: vec![U256::from(1234u64)],
-                            contract_address: *v2::VALID_CONTRACT_ADDR,
-                            entry_point_selector: *v2::INVALID_ENTRY_POINT,
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *INVALID_ENTRY_POINT,
                             signature: vec![],
                         },
                         BlockHashOrTag::Tag(Tag::Latest),
@@ -563,8 +551,8 @@ mod tests {
                     .call(
                         request::Call {
                             calldata: vec![U256::from(1234u64)],
-                            contract_address: *v2::INVALID_CONTRACT_ADDR,
-                            entry_point_selector: *v2::VALID_ENTRY_POINT,
+                            contract_address: *INVALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
                         BlockHashOrTag::Tag(Tag::Latest),
@@ -585,11 +573,11 @@ mod tests {
                     .call(
                         request::Call {
                             calldata: vec![],
-                            contract_address: *v2::VALID_CONTRACT_ADDR,
-                            entry_point_selector: *v2::VALID_ENTRY_POINT,
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                        *INVOKE_CONTRACT_BLOCK_HASH,
                     )
                     .await
             )
@@ -607,11 +595,11 @@ mod tests {
                     .call(
                         request::Call {
                             calldata: vec![],
-                            contract_address: *v2::VALID_CONTRACT_ADDR,
-                            entry_point_selector: *v2::VALID_ENTRY_POINT,
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        BlockHashOrTag::Hash(*GENESIS_BLOCK_HASH),
+                        *GENESIS_BLOCK_HASH,
                     )
                     .await
             )
@@ -629,11 +617,11 @@ mod tests {
                     .call(
                         request::Call {
                             calldata: vec![U256::from(1234u64)],
-                            contract_address: *v2::VALID_CONTRACT_ADDR,
-                            entry_point_selector: *v2::VALID_ENTRY_POINT,
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
+                        *INVALID_BLOCK_HASH,
                     )
                     .await
             )
@@ -651,11 +639,11 @@ mod tests {
                     .call(
                         request::Call {
                             calldata: vec![U256::from(1234u64)],
-                            contract_address: *v2::VALID_CONTRACT_ADDR,
-                            entry_point_selector: *v2::VALID_ENTRY_POINT,
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
+                        *UNKNOWN_BLOCK_HASH,
                     )
                     .await
             )
@@ -673,11 +661,11 @@ mod tests {
                     .call(
                         request::Call {
                             calldata: vec![U256::from(1234u64)],
-                            contract_address: *v2::VALID_CONTRACT_ADDR,
-                            entry_point_selector: *v2::VALID_ENTRY_POINT,
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
-                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                        *INVOKE_CONTRACT_BLOCK_HASH,
                     )
                     .await
             )
@@ -691,8 +679,8 @@ mod tests {
                     .call(
                         request::Call {
                             calldata: vec![U256::from(1234u64)],
-                            contract_address: *v2::VALID_CONTRACT_ADDR,
-                            entry_point_selector: *v2::VALID_ENTRY_POINT,
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
                         BlockHashOrTag::Tag(Tag::Latest),
@@ -709,8 +697,8 @@ mod tests {
                     .call(
                         request::Call {
                             calldata: vec![U256::from(1234u64)],
-                            contract_address: *v2::VALID_CONTRACT_ADDR,
-                            entry_point_selector: *v2::VALID_ENTRY_POINT,
+                            contract_address: *VALID_CONTRACT_ADDR,
+                            entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
                         },
                         BlockHashOrTag::Tag(Tag::Pending),
@@ -723,20 +711,18 @@ mod tests {
 
     mod code {
         use super::*;
+        use crate::sequencer::reply::Code;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let error = retry_on_rate_limiting!(
+            let result = retry_on_rate_limiting!(
                 client()
                     .code(*INVALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
                     .await
             )
-            .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeContractAddress)
-            );
+            .unwrap();
+            assert_eq!(result, Code::default());
         }
 
         #[tokio::test]
@@ -753,10 +739,7 @@ mod tests {
         async fn invalid_block_hash() {
             let error = retry_on_rate_limiting!(
                 client()
-                    .code(
-                        *VALID_CONTRACT_ADDR,
-                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
-                    )
+                    .code(*VALID_CONTRACT_ADDR, *INVALID_BLOCK_HASH,)
                     .await
             )
             .unwrap_err();
@@ -770,10 +753,7 @@ mod tests {
         async fn unknown_block_hash() {
             let error = retry_on_rate_limiting!(
                 client()
-                    .code(
-                        *VALID_CONTRACT_ADDR,
-                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
-                    )
+                    .code(*VALID_CONTRACT_ADDR, *UNKNOWN_BLOCK_HASH,)
                     .await
             )
             .unwrap_err();
@@ -787,10 +767,7 @@ mod tests {
         async fn latest_invoke_block() {
             retry_on_rate_limiting!(
                 client()
-                    .code(
-                        *VALID_CONTRACT_ADDR,
-                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
-                    )
+                    .code(*VALID_CONTRACT_ADDR, *INVOKE_CONTRACT_BLOCK_HASH,)
                     .await
             )
             .unwrap();
@@ -827,7 +804,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let error = retry_on_rate_limiting!(
+            let result = retry_on_rate_limiting!(
                 client()
                     .storage(
                         *INVALID_CONTRACT_ADDR,
@@ -836,11 +813,8 @@ mod tests {
                     )
                     .await
             )
-            .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeContractAddress)
-            );
+            .unwrap();
+            assert_eq!(result, StorageValue(StarkHash::zero()));
         }
 
         #[tokio::test]
@@ -865,11 +839,7 @@ mod tests {
         async fn unknown_block_hash() {
             let error = retry_on_rate_limiting!(
                 client()
-                    .storage(
-                        *VALID_CONTRACT_ADDR,
-                        *VALID_KEY,
-                        BlockHashOrTag::Hash(*UNKNOWN_BLOCK_HASH),
-                    )
+                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, *UNKNOWN_BLOCK_HASH,)
                     .await
             )
             .unwrap_err();
@@ -883,11 +853,7 @@ mod tests {
         async fn invalid_block_hash() {
             let error = retry_on_rate_limiting!(
                 client()
-                    .storage(
-                        *VALID_CONTRACT_ADDR,
-                        *VALID_KEY,
-                        BlockHashOrTag::Hash(*INVALID_BLOCK_HASH),
-                    )
+                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH,)
                     .await
             )
             .unwrap_err();
@@ -904,7 +870,7 @@ mod tests {
                     .storage(
                         *VALID_CONTRACT_ADDR,
                         *VALID_KEY,
-                        BlockHashOrTag::Hash(*CONTRACT_BLOCK_HASH),
+                        *INVOKE_CONTRACT_BLOCK_HASH,
                     )
                     .await
             )
@@ -956,11 +922,11 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let error =
-                retry_on_rate_limiting!(client().transaction(*INVALID_TX_HASH).await).unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeTransactionHash)
+            assert_eq!(
+                retry_on_rate_limiting!(client().transaction(*INVALID_TX_HASH).await)
+                    .unwrap()
+                    .status,
+                Status::NotReceived,
             );
         }
 
@@ -970,7 +936,7 @@ mod tests {
                 retry_on_rate_limiting!(client().transaction(*UNKNOWN_TX_HASH).await)
                     .unwrap()
                     .status,
-                Status::NotReceived
+                Status::NotReceived,
             );
         }
     }
@@ -990,12 +956,11 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let error =
+            assert_eq!(
                 retry_on_rate_limiting!(client().transaction_status(*INVALID_TX_HASH).await)
-                    .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeTransactionHash)
+                    .unwrap()
+                    .tx_status,
+                Status::NotReceived
             );
         }
 

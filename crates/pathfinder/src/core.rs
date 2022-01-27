@@ -18,20 +18,20 @@ pub struct ContractAddressSalt(pub StarkHash);
 /// deployment properties e.g. code and ABI.
 ///
 /// Not to be confused with [ContractStateHash].
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractHash(pub StarkHash);
 
 /// A StarkNet contract's state hash. This is the value stored
 /// in the global state tree.
 ///
 /// Not to be confused with [ContractHash].
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractStateHash(pub StarkHash);
 
 /// A commitment root of a StarkNet contract. This is the entry-point
 /// for a contract's state at a specific point in time via the contract
 /// state tree.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractRoot(pub StarkHash);
 
 /// Entry point of a StarkNet `call`.
@@ -44,18 +44,18 @@ pub struct CallParam(pub StarkHash);
 
 /// A single result value of a StarkNet `call`.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-pub struct CallResult(pub StarkHash);
+pub struct CallResultValue(pub StarkHash);
 
 /// A word from a StarkNet contract bytecode.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ByecodeWord(pub StarkHash);
 
 /// The address of a storage element for a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StorageAddress(pub StarkHash);
 
 /// The value of a storage element for a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StorageValue(pub StarkHash);
 
 /// A commitment root of the global StarkNet state. This is the entry-point

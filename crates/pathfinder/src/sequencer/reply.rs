@@ -1,5 +1,7 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::core::{ByecodeWord, CallResult, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use crate::core::{
+    ByecodeWord, CallResultValue, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DefaultOnError};
 
@@ -47,7 +49,7 @@ pub enum Status {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Call {
-    pub result: Vec<CallResult>,
+    pub result: Vec<CallResultValue>,
 }
 
 /// Types used when deserializing L2 call related data.
@@ -68,7 +70,7 @@ pub mod call {
 
 /// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Code {
     // Unknown block hash results in empty abi represented as a JSON
