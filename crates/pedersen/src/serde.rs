@@ -69,7 +69,7 @@ mod tests {
     const ZERO: &str = r#""0x0""#;
     const ODD: &str = "0x1234567890abcde";
     const EVEN: &str = "0x1234567890abcdef";
-    const MAX: &str = "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    const MAX: &str = "0x800000000000011000000000000000000000000000000000000000000000000";
 
     #[test]
     fn empty() {
