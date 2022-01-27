@@ -1,60 +1,6 @@
-use bitvec::{array::BitArray, order::Lsb0, slice::BitSlice};
-use ff::{Field, PrimeField};
-
-/// The field primitive used by [PedersenHash]
-#[derive(PrimeField)]
-#[PrimeFieldModulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
-#[PrimeFieldGenerator = "7"]
-#[PrimeFieldReprEndianness = "big"]
-pub struct FieldElement([u64; 4]);
-
-impl FieldElement {
-    /// Transforms [FieldElement] into little endian bit representation.
-    pub fn into_bits(mut self) -> BitArray<Lsb0, [u64; 4]> {
-        #[cfg(not(target_endian = "little"))]
-        {
-            todo!("untested and probably unimplemented: big-endian targets")
-        }
-
-        #[cfg(target_endian = "little")]
-        {
-            self.mont_reduce(
-                self.0[0usize],
-                self.0[1usize],
-                self.0[2usize],
-                self.0[3usize],
-                0,
-                0,
-                0,
-                0,
-            );
-
-            self.0.into()
-        }
-    }
-}
-
-/// Montgomery representation of one
-pub const FIELD_ONE: FieldElement = FieldElement([
-    18446744073709551585,
-    18446744073709551615,
-    18446744073709551615,
-    576460752303422960,
-]);
-/// Montgomery representation of two
-pub const FIELD_TWO: FieldElement = FieldElement([
-    18446744073709551553,
-    18446744073709551615,
-    18446744073709551615,
-    576460752303422416,
-]);
-/// Montgomery representation of three
-pub const FIELD_THREE: FieldElement = FieldElement([
-    18446744073709551521,
-    18446744073709551615,
-    18446744073709551615,
-    576460752303421872,
-]);
+use crate::field::{FieldElement, FIELD_ONE, FIELD_THREE, FIELD_TWO};
+use bitvec::{order::Lsb0, slice::BitSlice};
+use ff::Field;
 
 /// An affine point on an elliptic curve over [FieldElement].
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -78,7 +24,15 @@ impl From<&ProjectivePoint> for AffinePoint {
 }
 
 impl AffinePoint {
-    pub fn identity() -> AffinePoint {
+    pub const fn new(x: [u64; 4], y: [u64; 4]) -> Self {
+        Self {
+            x: FieldElement::new(x),
+            y: FieldElement::new(y),
+            infinity: false,
+        }
+    }
+
+    pub fn identity() -> Self {
         Self {
             x: FieldElement::zero(),
             y: FieldElement::zero(),
@@ -114,7 +68,11 @@ impl AffinePoint {
             return;
         }
         if self.x == other.x {
-            self.double();
+            if self.y != other.y {
+                self.infinity = true;
+            } else {
+                self.double();
+            }
             return;
         }
 
@@ -166,7 +124,7 @@ impl From<&AffinePoint> for ProjectivePoint {
 }
 
 impl ProjectivePoint {
-    pub fn identity() -> ProjectivePoint {
+    pub fn identity() -> Self {
         Self {
             x: FieldElement::zero(),
             y: FieldElement::zero(),
@@ -210,19 +168,64 @@ impl ProjectivePoint {
         }
         let u0 = self.x * other.z;
         let u1 = other.x * self.z;
+        let t0 = self.y * other.z;
+        let t1 = other.y * self.z;
         if u0 == u1 {
-            self.double();
+            if t0 != t1 {
+                self.infinity = true;
+            } else {
+                self.double();
+            }
             return;
         }
 
-        let t0 = self.y * other.z;
-        let t1 = other.y * self.z;
         let t = t0 - t1;
-
         let u = u0 - u1;
         let u2 = u * u;
 
         let v = self.z * other.z;
+        let w = t * t * v - u2 * (u0 + u1);
+        let u3 = u * u2;
+
+        let x = u * w;
+        let y = t * (u0 * u2 - w) - t0 * u3;
+        let z = u3 * v;
+
+        self.x = x;
+        self.y = y;
+        self.z = z;
+    }
+
+    pub fn add_affine(&mut self, other: &AffinePoint) {
+        if other.infinity {
+            return;
+        }
+        if self.infinity {
+            self.x = other.x;
+            self.y = other.y;
+            self.z = FIELD_ONE;
+            self.infinity = other.infinity;
+            return;
+        }
+        let u0 = self.x;
+        let u1 = other.x * self.z;
+        let t0 = self.y;
+        let t1 = other.y * self.z;
+        if u0 == u1 {
+            if t0 != t1 {
+                self.infinity = true;
+                return;
+            } else {
+                self.double();
+                return;
+            }
+        }
+
+        let t = t0 - t1;
+        let u = u0 - u1;
+        let u2 = u * u;
+
+        let v = self.z;
         let w = t * t * v - u2 * (u0 + u1);
         let u3 = u * u2;
 
@@ -249,13 +252,13 @@ impl ProjectivePoint {
 
 /// Montgomery representation of the Stark curve generator G.
 pub const CURVE_G: ProjectivePoint = ProjectivePoint {
-    x: FieldElement([
+    x: FieldElement::new([
         14484022957141291997,
         5884444832209845738,
         299981207024966779,
         232005955912912577,
     ]),
-    y: FieldElement([
+    y: FieldElement::new([
         6241159653446987914,
         664812301889158119,
         18147424675297964973,
@@ -267,13 +270,13 @@ pub const CURVE_G: ProjectivePoint = ProjectivePoint {
 
 /// Montgomery representation of the Stark curve constant P0.
 pub const PEDERSEN_P0: ProjectivePoint = ProjectivePoint {
-    x: FieldElement([
+    x: FieldElement::new([
         1933903796324928314,
         7739989395386261137,
         1641324389046377921,
         316327189671755572,
     ]),
-    y: FieldElement([
+    y: FieldElement::new([
         14252083571674603243,
         12587053260418384210,
         4798858472748676776,
@@ -285,13 +288,13 @@ pub const PEDERSEN_P0: ProjectivePoint = ProjectivePoint {
 
 /// Montgomery representation of the Stark curve constant P1.
 pub const PEDERSEN_P1: ProjectivePoint = ProjectivePoint {
-    x: FieldElement([
+    x: FieldElement::new([
         3602345268353203007,
         13758484295849329960,
         518715844721862878,
         241691544791834578,
     ]),
-    y: FieldElement([
+    y: FieldElement::new([
         13441546676070136227,
         13001553326386915570,
         433857700841878496,
@@ -303,13 +306,13 @@ pub const PEDERSEN_P1: ProjectivePoint = ProjectivePoint {
 
 /// Montgomery representation of the Stark curve constant P2.
 pub const PEDERSEN_P2: ProjectivePoint = ProjectivePoint {
-    x: FieldElement([
+    x: FieldElement::new([
         16491878934996302286,
         12382025591154462459,
         10043949394709899044,
         253000153565733272,
     ]),
-    y: FieldElement([
+    y: FieldElement::new([
         13950428914333633429,
         2545498000137298346,
         5191292837124484988,
@@ -321,13 +324,13 @@ pub const PEDERSEN_P2: ProjectivePoint = ProjectivePoint {
 
 /// Montgomery representation of the Stark curve constant P3.
 pub const PEDERSEN_P3: ProjectivePoint = ProjectivePoint {
-    x: FieldElement([
+    x: FieldElement::new([
         1203723169299412240,
         18195981508842736832,
         12916675983929588442,
         338510149841406402,
     ]),
-    y: FieldElement([
+    y: FieldElement::new([
         12352616181161700245,
         11743524503750604092,
         11088962269971685343,
@@ -339,13 +342,13 @@ pub const PEDERSEN_P3: ProjectivePoint = ProjectivePoint {
 
 /// Montgomery representation of the Stark curve constant P4.
 pub const PEDERSEN_P4: ProjectivePoint = ProjectivePoint {
-    x: FieldElement([
+    x: FieldElement::new([
         1145636535101238356,
         10664803185694787051,
         299781701614706065,
         425493972656615276,
     ]),
-    y: FieldElement([
+    y: FieldElement::new([
         8187986478389849302,
         4428713245976508844,
         6033691581221864148,
@@ -358,182 +361,136 @@ pub const PEDERSEN_P4: ProjectivePoint = ProjectivePoint {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ff::PrimeField;
+    use pretty_assertions::assert_eq;
 
-    mod field {
-        use super::*;
-        use pretty_assertions::assert_eq;
-
-        #[test]
-        fn bits_zero() {
-            let zero = FieldElement::zero().into_bits();
-            let expected = BitArray::<Lsb0, [u64; 4]>::default();
-
-            assert_eq!(zero, expected);
-        }
-
-        #[test]
-        fn bits_one() {
-            let one = FieldElement::one().into_bits();
-
-            let mut expected = BitArray::<Lsb0, [u64; 4]>::default();
-            expected.set(0, true);
-
-            assert_eq!(one, expected);
-        }
-
-        #[test]
-        fn bits_two() {
-            let two = (FieldElement::one() + FieldElement::one()).into_bits();
-
-            let mut expected = BitArray::<Lsb0, [u64; 4]>::default();
-            expected.set(1, true);
-
-            assert_eq!(two, expected);
-        }
-
-        #[test]
-        fn const_one_two_three() {
-            let one = FieldElement::from(1);
-            let two = FieldElement::from(2);
-            let three = FieldElement::from(3);
-            assert_eq!(FIELD_ONE, one);
-            assert_eq!(FIELD_TWO, two);
-            assert_eq!(FIELD_THREE, three);
+    fn affine_from_xy_str(x: &str, y: &str) -> AffinePoint {
+        let x = FieldElement::from_str_vartime(x).expect("Curve x-value invalid");
+        let y = FieldElement::from_str_vartime(y).expect("Curve y-value invalid");
+        AffinePoint {
+            x,
+            y,
+            infinity: false,
         }
     }
 
-    mod curve {
-        use super::*;
-        use pretty_assertions::assert_eq;
-
-        fn affine_from_xy_str(x: &str, y: &str) -> AffinePoint {
-            let x = FieldElement::from_str_vartime(x).expect("Curve x-value invalid");
-            let y = FieldElement::from_str_vartime(y).expect("Curve y-value invalid");
-            AffinePoint {
-                x,
-                y,
-                infinity: false,
-            }
+    fn projective_from_xy_str(x: &str, y: &str) -> ProjectivePoint {
+        let x = FieldElement::from_str_vartime(x).expect("Curve x-value invalid");
+        let y = FieldElement::from_str_vartime(y).expect("Curve y-value invalid");
+        ProjectivePoint {
+            x,
+            y,
+            z: FIELD_ONE,
+            infinity: false,
         }
+    }
 
-        fn projective_from_xy_str(x: &str, y: &str) -> ProjectivePoint {
-            let x = FieldElement::from_str_vartime(x).expect("Curve x-value invalid");
-            let y = FieldElement::from_str_vartime(y).expect("Curve y-value invalid");
-            ProjectivePoint {
-                x,
-                y,
-                z: FIELD_ONE,
-                infinity: false,
-            }
-        }
+    #[test]
+    fn projective_double() {
+        let g_double = {
+            let mut g = CURVE_G;
+            g.double();
+            AffinePoint::from(&g)
+        };
+        let expected = affine_from_xy_str(
+            "3324833730090626974525872402899302150520188025637965566623476530814354734325",
+            "3147007486456030910661996439995670279305852583596209647900952752170983517249",
+        );
+        assert_eq!(g_double, expected);
+    }
 
-        #[test]
-        fn projective_double() {
-            let g_double = {
-                let mut g = CURVE_G;
-                g.double();
-                AffinePoint::from(&g)
-            };
-            let expected = affine_from_xy_str(
-                "3324833730090626974525872402899302150520188025637965566623476530814354734325",
-                "3147007486456030910661996439995670279305852583596209647900952752170983517249",
-            );
-            assert_eq!(g_double, expected);
-        }
+    #[test]
+    fn projective_double_and_add() {
+        let g_triple = {
+            let mut g = CURVE_G;
+            g.double();
+            g.add(&CURVE_G);
+            AffinePoint::from(&g)
+        };
+        let expected = affine_from_xy_str(
+            "1839793652349538280924927302501143912227271479439798783640887258675143576352",
+            "3564972295958783757568195431080951091358810058262272733141798511604612925062",
+        );
+        assert_eq!(g_triple, expected);
+    }
 
-        #[test]
-        fn projective_double_and_add() {
-            let g_triple = {
-                let mut g = CURVE_G;
-                g.double();
-                g.add(&CURVE_G);
-                AffinePoint::from(&g)
-            };
-            let expected = affine_from_xy_str(
-                "1839793652349538280924927302501143912227271479439798783640887258675143576352",
-                "3564972295958783757568195431080951091358810058262272733141798511604612925062",
-            );
-            assert_eq!(g_triple, expected);
-        }
+    #[test]
+    fn projective_multiply() {
+        let three = FIELD_THREE.into_bits();
+        let g = CURVE_G;
+        let g_triple = AffinePoint::from(&g.multiply(&three));
+        let expected = affine_from_xy_str(
+            "1839793652349538280924927302501143912227271479439798783640887258675143576352",
+            "3564972295958783757568195431080951091358810058262272733141798511604612925062",
+        );
+        assert_eq!(g_triple, expected);
+    }
 
-        #[test]
-        fn projective_multiply() {
-            let three = FIELD_THREE.into_bits();
-            let g = CURVE_G;
-            let g_triple = AffinePoint::from(&g.multiply(&three));
-            let expected = affine_from_xy_str(
-                "1839793652349538280924927302501143912227271479439798783640887258675143576352",
-                "3564972295958783757568195431080951091358810058262272733141798511604612925062",
-            );
-            assert_eq!(g_triple, expected);
-        }
+    #[test]
+    fn affine_projective_multiply() {
+        let three = FIELD_THREE.into_bits();
 
-        #[test]
-        fn affine_projective_multiply() {
-            let three = FIELD_THREE.into_bits();
+        let ag = AffinePoint::from(&CURVE_G);
+        let ag_triple = ag.multiply(&three);
 
-            let ag = AffinePoint::from(&CURVE_G);
-            let ag_triple = ag.multiply(&three);
+        let pg = ProjectivePoint::from(&ag);
+        let pg_triple = pg.multiply(&three);
 
-            let pg = ProjectivePoint::from(&ag);
-            let pg_triple = pg.multiply(&three);
+        let result = AffinePoint::from(&pg_triple);
+        assert_eq!(ag_triple.x, result.x);
+    }
 
-            let result = AffinePoint::from(&pg_triple);
-            assert_eq!(ag_triple.x, result.x);
-        }
+    #[test]
+    fn const_generator() {
+        let expected = projective_from_xy_str(
+            "874739451078007766457464989774322083649278607533249481151382481072868806602",
+            "152666792071518830868575557812948353041420400780739481342941381225525861407",
+        );
+        assert_eq!(CURVE_G, expected);
+    }
 
-        #[test]
-        fn const_generator() {
-            let expected = projective_from_xy_str(
-                "874739451078007766457464989774322083649278607533249481151382481072868806602",
-                "152666792071518830868575557812948353041420400780739481342941381225525861407",
-            );
-            assert_eq!(CURVE_G, expected);
-        }
+    #[test]
+    fn const_p0() {
+        let expected = projective_from_xy_str(
+            "2089986280348253421170679821480865132823066470938446095505822317253594081284",
+            "1713931329540660377023406109199410414810705867260802078187082345529207694986",
+        );
+        assert_eq!(PEDERSEN_P0, expected);
+    }
 
-        #[test]
-        fn const_p0() {
-            let expected = projective_from_xy_str(
-                "2089986280348253421170679821480865132823066470938446095505822317253594081284",
-                "1713931329540660377023406109199410414810705867260802078187082345529207694986",
-            );
-            assert_eq!(PEDERSEN_P0, expected);
-        }
+    #[test]
+    fn const_p1() {
+        let expected = projective_from_xy_str(
+            "996781205833008774514500082376783249102396023663454813447423147977397232763",
+            "1668503676786377725805489344771023921079126552019160156920634619255970485781",
+        );
+        assert_eq!(PEDERSEN_P1, expected);
+    }
 
-        #[test]
-        fn const_p1() {
-            let expected = projective_from_xy_str(
-                "996781205833008774514500082376783249102396023663454813447423147977397232763",
-                "1668503676786377725805489344771023921079126552019160156920634619255970485781",
-            );
-            assert_eq!(PEDERSEN_P1, expected);
-        }
+    #[test]
+    fn const_p2() {
+        let expected = projective_from_xy_str(
+            "2251563274489750535117886426533222435294046428347329203627021249169616184184",
+            "1798716007562728905295480679789526322175868328062420237419143593021674992973",
+        );
+        assert_eq!(PEDERSEN_P2, expected);
+    }
 
-        #[test]
-        fn const_p2() {
-            let expected = projective_from_xy_str(
-                "2251563274489750535117886426533222435294046428347329203627021249169616184184",
-                "1798716007562728905295480679789526322175868328062420237419143593021674992973",
-            );
-            assert_eq!(PEDERSEN_P2, expected);
-        }
+    #[test]
+    fn const_p3() {
+        let expected = projective_from_xy_str(
+            "2138414695194151160943305727036575959195309218611738193261179310511854807447",
+            "113410276730064486255102093846540133784865286929052426931474106396135072156",
+        );
+        assert_eq!(PEDERSEN_P3, expected);
+    }
 
-        #[test]
-        fn const_p3() {
-            let expected = projective_from_xy_str(
-                "2138414695194151160943305727036575959195309218611738193261179310511854807447",
-                "113410276730064486255102093846540133784865286929052426931474106396135072156",
-            );
-            assert_eq!(PEDERSEN_P3, expected);
-        }
-
-        #[test]
-        fn const_p4() {
-            let expected = projective_from_xy_str(
-                "2379962749567351885752724891227938183011949129833673362440656643086021394946",
-                "776496453633298175483985398648758586525933812536653089401905292063708816422",
-            );
-            assert_eq!(PEDERSEN_P4, expected);
-        }
+    #[test]
+    fn const_p4() {
+        let expected = projective_from_xy_str(
+            "2379962749567351885752724891227938183011949129833673362440656643086021394946",
+            "776496453633298175483985398648758586525933812536653089401905292063708816422",
+        );
+        assert_eq!(PEDERSEN_P4, expected);
     }
 }
