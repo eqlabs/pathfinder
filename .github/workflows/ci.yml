@@ -22,7 +22,7 @@ jobs:
       - uses: Swatinem/rust-cache@v1
       - run: |
           timeout 5m cargo test -p pathfinder -- --skip rpc::tests --skip sequencer::tests
-          timeout 3m cargo test -p pedersen --benches --features hex_str
+          timeout 3m cargo test -p pedersen --benches
   clippy:
     runs-on: ubuntu-latest
     steps:
