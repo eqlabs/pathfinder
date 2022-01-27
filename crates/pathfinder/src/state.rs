@@ -19,7 +19,10 @@ use crate::{
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
-    storage::{ContractsStateTable, ContractsTable, GlobalStateTable},
+    storage::{
+        ContractsStateTable, ContractsTable, EthereumBlocksTable, EthereumTransactionsTable,
+        GlobalStateTable,
+    },
 };
 
 mod merkle_node;
@@ -224,6 +227,21 @@ async fn update<T: Transport>(
     let block_hash = StarknetBlockHash(block_hash);
 
     // Persist new global root et al to database.
+    EthereumBlocksTable::insert(
+        db,
+        update_log.origin.block.hash,
+        update_log.origin.block.number,
+    )
+    .context("Updating Ethereum blocks table")?;
+
+    EthereumTransactionsTable::insert(
+        db,
+        update_log.origin.block.hash,
+        update_log.origin.transaction.hash,
+        update_log.origin.transaction.index,
+    )
+    .context("Updating Ethereum transactions table")?;
+
     GlobalStateTable::insert(
         db,
         update_log.block_number,
