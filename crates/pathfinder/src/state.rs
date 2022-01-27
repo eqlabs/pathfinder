@@ -43,25 +43,21 @@ pub async fn sync<T: Transport>(
     // TODO: Track sync progress in some global way, so that RPC can check and react accordingly.
     //       This could either be the database, or a mutable lazy_static thingy.
 
-    let db_tx = database
-        .transaction()
-        .context("Create database transaction")?;
+    let mut previous_state = {
+        // Temporary transaction with no side-effects, which will rollback when
+        // droppped anyway. Required because our database API only accepts transactions.
+        let db_tx = database
+            .transaction()
+            .context("Create database transaction")?;
+        GlobalStateTable::get_latest_state(&db_tx).context("Get latest StarkNet state")?
+    };
 
-    let latest_state =
-        GlobalStateTable::get_latest_state(&db_tx).context("Get latest StarkNet state")?;
-
-    // There shouldn't be any side effects from just reading the state,
-    // but rolling back to be safe.
-    //
-    // We don't care about any errors from rolling back the transaction.
-    let _ = db_tx.rollback();
-
-    let mut global_root = latest_state
+    let mut global_root = previous_state
         .as_ref()
         .map(|record| record.global_root)
         .unwrap_or(GlobalRoot(StarkHash::ZERO));
 
-    let latest_state = latest_state.map(|record| StateUpdateLog {
+    let latest_state_log = previous_state.as_ref().map(|record| StateUpdateLog {
         origin: EthOrigin {
             block: BlockOrigin {
                 hash: record.eth_block_hash,
@@ -77,7 +73,7 @@ pub async fn sync<T: Transport>(
         block_number: record.block_number,
     });
 
-    let mut root_fetcher = StateRootFetcher::new(latest_state);
+    let mut root_fetcher = StateRootFetcher::new(latest_state_log);
 
     loop {
         // Download the next set of updates logs from L1.
@@ -98,6 +94,23 @@ pub async fn sync<T: Transport>(
                     root_log.block_number.0
                 )
             })?;
+
+            // Verify database state integretity i.e. latest state should be sequential,
+            // and we are the only writer.
+            let current_state =
+                GlobalStateTable::get_latest_state(&db_transaction).with_context(|| {
+                    format!(
+                        "Get latest StarkNet state for block number {}",
+                        root_log.block_number.0
+                    )
+                })?;
+            anyhow::ensure!(
+                current_state == previous_state,
+                "State mismatch between database and sync process for block number {}",
+                root_log.block_number.0
+            );
+            previous_state = current_state;
+
             match update(
                 transport,
                 global_root,
