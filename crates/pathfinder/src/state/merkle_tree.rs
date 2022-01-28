@@ -141,6 +141,9 @@ impl<'a> MerkleTree<'a> {
         // unwrap is safe as `commit_subtree` will set the hash.
         let root = self.root.borrow().hash().unwrap();
         self.storage.increment_ref_count(root)?;
+
+        // TODO: (debug only) expand tree assert that no edge node has edge node as child
+
         Ok(root)
     }
 
@@ -386,7 +389,7 @@ impl<'a> MerkleTree<'a> {
                     };
 
                     // Merge the remaining child if it's an edge.
-                    edge.merge_child_edge();
+                    self.merge_edges(&mut edge)?;
 
                     edge
                 };
@@ -404,7 +407,7 @@ impl<'a> MerkleTree<'a> {
         // Check the parent of the new edge. If it is also an edge, then they must merge.
         if let Some(node) = node_iter.next() {
             if let Node::Edge(edge) = &mut *node.borrow_mut() {
-                edge.merge_child_edge();
+                self.merge_edges(edge)?;
             }
         }
 
@@ -498,6 +501,26 @@ impl<'a> MerkleTree<'a> {
         };
 
         Ok(node)
+    }
+
+    /// This is a convenience function which merges the edge node with its child __iff__ it is also an edge.
+    ///
+    /// Does nothing if the child is not also an edge node.
+    ///
+    /// This can occur when mutating the tree (e.g. deleting a child of a binary node), and is an illegal state
+    /// (since edge nodes __must be__ maximal subtrees).
+    fn merge_edges(&self, parent: &mut EdgeNode) -> anyhow::Result<()> {
+        let resolved_child = match &*parent.child.borrow() {
+            Node::Unresolved(hash) => self.resolve(*hash, parent.height + parent.path.len())?,
+            other => other.clone(),
+        };
+
+        if let Some(child_edge) = resolved_child.as_edge().cloned() {
+            parent.path.extend_from_bitslice(&child_edge.path);
+            parent.child = child_edge.child;
+        }
+
+        Ok(())
     }
 }
 
@@ -873,7 +896,6 @@ mod tests {
         }
 
         #[test]
-        #[should_panic]
         fn delete_leaf_regression() {
             // This test exercises a bug in the merging of edge nodes. It was caused
             // by the merge code not resolving unresolved nodes. This meant that
