@@ -212,22 +212,6 @@ impl EdgeNode {
         &self.path[..common_length]
     }
 
-    /// This is a convenience function which merges the edge node with its child __iff__ it is also an edge.
-    ///
-    /// Does nothing if the child is not also an edge node.
-    ///
-    /// This can occur when mutating the tree (e.g. deleting a child of a binary node), and is an illegal state
-    /// (since edge nodes __must be__ maximal subtrees).
-    pub fn merge_child_edge(&mut self) {
-        // Cannot merge the borrow into the if let as this results in a double borrow
-        // when swapping the child's child in.
-        let child_edge = self.child.borrow().as_edge().cloned();
-        if let Some(child_edge) = child_edge {
-            self.path.extend_from_bitslice(&child_edge.path);
-            self.child = child_edge.child;
-        }
-    }
-
     /// If possible, calculates and sets its own hash value.
     ///
     /// Does nothing if the hash is already [Some].
@@ -476,99 +460,6 @@ mod tests {
                 };
 
                 assert!(uut.path_matches(key));
-            }
-        }
-
-        mod merge_edge_child {
-            use super::*;
-
-            #[test]
-            fn edge_child() {
-                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
-                let path = key.view_bits().to_bitvec();
-                let grandchild = Rc::new(RefCell::new(Node::Unresolved(
-                    StarkHash::from_hex_str("abc").unwrap(),
-                )));
-                let edge_child = Rc::new(RefCell::new(Node::Edge(EdgeNode {
-                    hash: None,
-                    height: 189,
-                    path: path.as_bitslice()[189..].to_bitvec(),
-                    child: grandchild.clone(),
-                })));
-
-                let mut uut = EdgeNode {
-                    hash: None,
-                    height: 0,
-                    path: path.as_bitslice()[..189].to_bitvec(),
-                    child: edge_child,
-                };
-
-                uut.merge_child_edge();
-                assert_eq!(uut.child, grandchild);
-            }
-
-            #[test]
-            fn binary_child() {
-                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
-                let path = key.view_bits().to_bitvec();
-                let binary = Rc::new(RefCell::new(Node::Binary(BinaryNode {
-                    hash: None,
-                    height: 0,
-                    left: Rc::new(RefCell::new(Node::Leaf(
-                        StarkHash::from_hex_str("abc").unwrap(),
-                    ))),
-                    right: Rc::new(RefCell::new(Node::Leaf(
-                        StarkHash::from_hex_str("def").unwrap(),
-                    ))),
-                })));
-
-                let mut uut = EdgeNode {
-                    hash: None,
-                    height: 0,
-                    path,
-                    child: binary.clone(),
-                };
-
-                uut.merge_child_edge();
-                assert_eq!(uut.child, binary);
-            }
-
-            #[test]
-            fn unresolved_child() {
-                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
-                let path = key.view_bits().to_bitvec();
-                let unresolved = Rc::new(RefCell::new(Node::Unresolved(
-                    StarkHash::from_hex_str("abc").unwrap(),
-                )));
-
-                let mut uut = EdgeNode {
-                    hash: None,
-                    height: 0,
-                    path,
-                    child: unresolved.clone(),
-                };
-
-                uut.merge_child_edge();
-                assert_eq!(uut.child, unresolved);
-            }
-
-            #[test]
-            fn leaf_child() {
-                let key = StarkHash::from_hex_str("123456789abcdef").unwrap();
-                let path = key.view_bits().to_bitvec();
-                let leaf = Rc::new(RefCell::new(Node::Leaf(
-                    StarkHash::from_hex_str("abc").unwrap(),
-                )));
-
-                let mut uut = EdgeNode {
-                    hash: None,
-                    height: 0,
-                    path,
-                    child: leaf.clone(),
-                };
-
-                uut.merge_child_edge();
-                assert_eq!(uut.child, leaf);
             }
         }
     }

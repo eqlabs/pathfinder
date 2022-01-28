@@ -141,6 +141,9 @@ impl<'a> MerkleTree<'a> {
         // unwrap is safe as `commit_subtree` will set the hash.
         let root = self.root.borrow().hash().unwrap();
         self.storage.increment_ref_count(root)?;
+
+        // TODO: (debug only) expand tree assert that no edge node has edge node as child
+
         Ok(root)
     }
 
@@ -386,7 +389,7 @@ impl<'a> MerkleTree<'a> {
                     };
 
                     // Merge the remaining child if it's an edge.
-                    edge.merge_child_edge();
+                    self.merge_edges(&mut edge)?;
 
                     edge
                 };
@@ -404,7 +407,7 @@ impl<'a> MerkleTree<'a> {
         // Check the parent of the new edge. If it is also an edge, then they must merge.
         if let Some(node) = node_iter.next() {
             if let Node::Edge(edge) = &mut *node.borrow_mut() {
-                edge.merge_child_edge();
+                self.merge_edges(edge)?;
             }
         }
 
@@ -498,6 +501,26 @@ impl<'a> MerkleTree<'a> {
         };
 
         Ok(node)
+    }
+
+    /// This is a convenience function which merges the edge node with its child __iff__ it is also an edge.
+    ///
+    /// Does nothing if the child is not also an edge node.
+    ///
+    /// This can occur when mutating the tree (e.g. deleting a child of a binary node), and is an illegal state
+    /// (since edge nodes __must be__ maximal subtrees).
+    fn merge_edges(&self, parent: &mut EdgeNode) -> anyhow::Result<()> {
+        let resolved_child = match &*parent.child.borrow() {
+            Node::Unresolved(hash) => self.resolve(*hash, parent.height + parent.path.len())?,
+            other => other.clone(),
+        };
+
+        if let Some(child_edge) = resolved_child.as_edge().cloned() {
+            parent.path.extend_from_bitslice(&child_edge.path);
+            parent.child = child_edge.child;
+        }
+
+        Ok(())
     }
 }
 
@@ -870,6 +893,60 @@ mod tests {
             assert_eq!(uut.get(key0).unwrap(), val0);
             assert_eq!(uut.get(key1).unwrap(), val1);
             assert_eq!(uut.get(key2).unwrap(), val2);
+        }
+
+        #[test]
+        fn delete_leaf_regression() {
+            // This test exercises a bug in the merging of edge nodes. It was caused
+            // by the merge code not resolving unresolved nodes. This meant that
+            // unresolved edge nodes would not get merged with the parent edge node
+            // causing a malformed tree.
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test".to_string(), &transaction, ZERO_HASH).unwrap();
+
+            let leaves = [
+                (
+                    "0x01A2FD9B06EAB5BCA4D3885EE4C42736E835A57399FF8B7F6083A92FD2A20095",
+                    "0x0215AA555E0CE3E462423D18B7216378D3CCD5D94D724AC7897FBC83FAAA4ED4",
+                ),
+                (
+                    "0x07AC69285B869DC3E8B305C748A0B867B2DE3027AECEBA51158ECA3B7354D76F",
+                    "0x065C85592F29501D97A2EA1CCF2BA867E6A838D602F4E7A7391EFCBF66958386",
+                ),
+                (
+                    "0x05C71AB5EF6A5E9DBC7EFD5C61554AB36039F60E5BA076833102E24344524566",
+                    "0x060970DF8E8A19AF3F41B78E93B845EC074A0AED4E96D18C6633580722B93A28",
+                ),
+                (
+                    "0x0000000000000000000000000000000000000000000000000000000000000005",
+                    "0x000000000000000000000000000000000000000000000000000000000000022B",
+                ),
+                (
+                    "0x0000000000000000000000000000000000000000000000000000000000000005",
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                ),
+            ];
+
+            // Add the first four leaves and commit them to storage.
+            for (key, val) in &leaves[..4] {
+                let key = StarkHash::from_hex_str(key).unwrap();
+                let val = StarkHash::from_hex_str(val).unwrap();
+                uut.set(key, val).unwrap();
+            }
+            let root = uut.commit().unwrap();
+
+            // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
+            let mut uut = MerkleTree::load("test".to_string(), &transaction, root).unwrap();
+            let key = StarkHash::from_hex_str(leaves[4].0).unwrap();
+            let val = StarkHash::from_hex_str(leaves[4].1).unwrap();
+            uut.set(key, val).unwrap();
+            let root = uut.commit().unwrap();
+            let expect = StarkHash::from_hex_str(
+                "05f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896",
+            )
+            .unwrap();
+            assert_eq!(root, expect);
         }
 
         mod consecutive_roots {
