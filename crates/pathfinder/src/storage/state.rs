@@ -110,7 +110,7 @@ impl GlobalStateTable {
                     :starknet_global_root,
                     :ethereum_transaction_hash,
                     :ethereum_log_index
-                ) ON CONFLICT DO NOTHING
+                )
             ",
             named_params! {
                     ":starknet_block_number": block_number.0,
@@ -299,7 +299,8 @@ impl ContractsStateTable {
     ) -> anyhow::Result<()> {
         transaction.execute(
             r"INSERT INTO contract_states ( state_hash,  hash,  root)
-                                       VALUES (:state_hash, :hash, :root)",
+                                       VALUES (:state_hash, :hash, :root)
+                                       ON CONFLICT DO NOTHING",
             named_params! {
                 ":state_hash": &state_hash.0.to_be_bytes()[..],
                 ":hash": &hash.0.to_be_bytes()[..],
