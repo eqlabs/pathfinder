@@ -159,7 +159,8 @@ pub async fn chain<T: Transport>(transport: Web3<T>) -> anyhow::Result<Chain> {
 pub mod test {
     use super::*;
 
-    use web3::transports::WebSocket;
+    use reqwest::Url;
+    use web3::transports::{Http, WebSocket};
     use web3::Web3;
 
     /// Creates a [Web3<WebSocket>] as specified by [create_test_websocket].
@@ -177,26 +178,59 @@ pub mod test {
         WebSocket::new(&url).await.unwrap()
     }
 
+    /// Creates a [Web3<Htttp>] transport from the Ethereum endpoint specified by the relevant environment variables.
+    ///
+    /// Requires an environment variable for both the URL and (optional) password.
+    ///
+    /// Panics if the environment variables are not specified.
+    ///
+    /// Goerli:  PATHFINDER_ETHEREUM_HTTP_GOERLI_URL
+    ///          PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD (optional)
+    ///
+    /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
+    ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
+    pub async fn create_test_transport(chain: Chain) -> Web3<Http> {
+        let key_prefix = match chain {
+            Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
+            Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
+        };
+
+        let url_key = format!("{}_URL", key_prefix);
+        let password_key = format!("{}_PASSWORD", key_prefix);
+
+        let url = std::env::var(&url_key)
+            .unwrap_or_else(|_| panic!("Ethereum URL environment var not set {url_key}"));
+
+        let password = std::env::var(password_key).ok();
+
+        let mut url = url.parse::<Url>().expect("Bad Ethereum URL");
+        url.set_password(password.as_deref()).unwrap();
+
+        let client = reqwest::Client::builder().build().unwrap();
+        let transport = Http::with_client(client, url);
+
+        Web3::new(transport)
+    }
+
     mod chain {
         use super::*;
 
         #[tokio::test]
         async fn goerli() {
-            let transport = create_test_websocket_transport().await;
-
+            let expected_chain = Chain::Goerli;
+            let transport = create_test_transport(expected_chain).await;
             let chain = chain(transport).await.unwrap();
 
-            assert_eq!(chain, Chain::Goerli);
+            assert_eq!(chain, expected_chain);
         }
 
         #[tokio::test]
-        #[should_panic = "No way of getting mainnet test endpoint yet"]
         async fn mainnet() {
-            let transport = create_test_websocket_transport().await;
-
+            let expected_chain = Chain::Mainnet;
+            let transport = create_test_transport(expected_chain).await;
             let chain = chain(transport).await.unwrap();
 
-            assert_eq!(chain, Chain::Mainnet);
+            assert_eq!(chain, expected_chain);
         }
     }
 }
