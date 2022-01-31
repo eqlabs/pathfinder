@@ -5,10 +5,10 @@ pub type StateRootFetcher = LogFetcher<StateUpdateLog>;
 
 #[cfg(test)]
 mod tests {
-    use crate::ethereum::test::create_test_websocket;
+    use crate::{core::StarknetBlockNumber, ethereum::test::create_test_websocket};
     use assert_matches::assert_matches;
     use pretty_assertions::assert_eq;
-    use web3::{types::U256, Web3};
+    use web3::Web3;
 
     use super::*;
 
@@ -23,13 +23,20 @@ mod tests {
         let first_fetch = uut.fetch(&ws).await.unwrap();
         let first = first_fetch.first().expect("Should be at least one log");
 
-        assert_eq!(first.block_number, U256::from(0));
+        assert_eq!(first.block_number, StarknetBlockNumber(0));
     }
 
     mod reorg {
+        use pedersen::StarkHash;
         use web3::types::H256;
 
-        use crate::ethereum::{log::FetchError, BlockOrigin, EthOrigin, TransactionOrigin};
+        use crate::{
+            core::{
+                EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+                EthereumTransactionIndex, GlobalRoot,
+            },
+            ethereum::{log::FetchError, BlockOrigin, EthOrigin, TransactionOrigin},
+        };
 
         use super::*;
 
@@ -47,17 +54,17 @@ mod tests {
             let not_genesis = StateUpdateLog {
                 origin: EthOrigin {
                     block: BlockOrigin {
-                        hash: H256::from_low_u64_le(10),
-                        number: 0,
+                        hash: EthereumBlockHash(H256::from_low_u64_le(10)),
+                        number: EthereumBlockNumber(0),
                     },
                     transaction: TransactionOrigin {
-                        hash: H256::from_low_u64_le(11),
-                        index: 12,
+                        hash: EthereumTransactionHash(H256::from_low_u64_le(11)),
+                        index: EthereumTransactionIndex(12),
                     },
-                    log_index: 11.into(),
+                    log_index: EthereumLogIndex(11),
                 },
-                global_root: 12354.into(),
-                block_number: 3.into(),
+                global_root: GlobalRoot(StarkHash::from_hex_str("12354").unwrap()),
+                block_number: StarknetBlockNumber(3),
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis));
@@ -77,17 +84,17 @@ mod tests {
             let not_genesis = StateUpdateLog {
                 origin: EthOrigin {
                     block: BlockOrigin {
-                        hash: H256::from_low_u64_le(10),
-                        number: latest_on_chain + 500,
+                        hash: EthereumBlockHash(H256::from_low_u64_le(10)),
+                        number: EthereumBlockNumber(latest_on_chain + 500),
                     },
                     transaction: TransactionOrigin {
-                        hash: H256::from_low_u64_le(11),
-                        index: 12,
+                        hash: EthereumTransactionHash(H256::from_low_u64_le(11)),
+                        index: EthereumTransactionIndex(12),
                     },
-                    log_index: 11.into(),
+                    log_index: EthereumLogIndex(11),
                 },
-                global_root: 12354.into(),
-                block_number: 3.into(),
+                global_root: GlobalRoot(StarkHash::from_hex_str("12354").unwrap()),
+                block_number: StarknetBlockNumber(3),
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis));

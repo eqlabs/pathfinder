@@ -1,9 +1,13 @@
 use std::vec::IntoIter;
 
 use anyhow::{Context, Result};
+use pedersen::StarkHash;
 use web3::types::U256;
 
-use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
+use crate::{
+    core::{ContractAddress, ContractHash, StorageAddress, StorageValue},
+    ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
+};
 
 /// Utility to parse StarkNet memory pages into a [StateUpdate].
 ///
@@ -43,34 +47,41 @@ impl StateUpdateParser {
     }
 
     fn parse_contract_deployments(&mut self) -> Result<Vec<DeployedContract>> {
-        let deployment_data_len = self.parse_usize().context("contract deployment length")?;
+        let deployment_data_len = self
+            .0
+            .next()
+            .context("Contract deployment length missing")?;
+        let deployment_data_len =
+            parse_usize(deployment_data_len).context("Parsing contract deployment length")?;
 
         let mut deployment_data = self.0.by_ref().take(deployment_data_len);
         let mut data_consumed = 0;
 
         let mut deployed_contracts = Vec::new();
         while let Some(address) = deployment_data.next() {
+            let address = parse_starkhash(address).context("Parsing contract address")?;
+            let address = ContractAddress(address);
+
             let hash = deployment_data
                 .next()
-                .context("deployed contract hash missing")?;
+                .context("Deployed contract hash missing")?;
+            let hash = parse_starkhash(hash).context("Parsing contract hash")?;
+            let hash = ContractHash(hash);
 
             let num_constructor_args = deployment_data
                 .next()
-                .context("constructor arg count missing")?;
-            anyhow::ensure!(
-                num_constructor_args <= U256::from(usize::MAX),
-                "constructor arg count exceeds usize::MAX"
-            );
-            // Safe due to previous ensure.
-            let num_constructor_args = num_constructor_args.as_usize();
+                .context("Constructor arg count missing")?;
+            let num_constructor_args =
+                parse_usize(num_constructor_args).context("Parsing constructor arg count")?;
 
             let constructor_args = deployment_data
                 .by_ref()
                 .take(num_constructor_args)
-                .collect::<Vec<_>>();
+                .map(|arg| parse_starkhash(arg).context("Parsing constructor arg"))
+                .collect::<Result<Vec<_>>>()?;
             anyhow::ensure!(
                 constructor_args.len() == num_constructor_args,
-                "deployed contract constructor missing constructor args"
+                "Missing constructor args"
             );
 
             deployed_contracts.push(DeployedContract {
@@ -91,7 +102,12 @@ impl StateUpdateParser {
     }
 
     fn parse_contract_updates(&mut self) -> Result<Vec<ContractUpdate>> {
-        let num_contracts = self.parse_usize().context("number of contract updates")?;
+        let num_contracts = self
+            .0
+            .next()
+            .context("Missing number of contract updates")?;
+        let num_contracts =
+            parse_usize(num_contracts).context("Parsing number of contract updates")?;
 
         (0..num_contracts)
             .map(|i| {
@@ -102,9 +118,12 @@ impl StateUpdateParser {
     }
 
     fn parse_contract_update(&mut self) -> Result<ContractUpdate> {
-        let address = self.0.next().context("contract address missing")?;
+        let address = self.0.next().context("Missing contract address")?;
+        let address = parse_starkhash(address).context("Parsing contract address")?;
+        let address = ContractAddress(address);
 
-        let num_updates = self.parse_usize().context("number of storage updates")?;
+        let num_updates = self.0.next().context("Missing number of storage updates")?;
+        let num_updates = parse_usize(num_updates).context("Parsing Number of storage updates")?;
 
         let storage_updates = (0..num_updates)
             .map(|i| {
@@ -120,35 +139,55 @@ impl StateUpdateParser {
     }
 
     fn parse_storage_update(&mut self) -> Result<StorageUpdate> {
-        let address = self.0.next().context("missing storage address")?;
-        let value = self.0.next().context("missing storage value")?;
+        let address = self.0.next().context("Missing storage address")?;
+        let address = parse_starkhash(address).context("Parsing storage address")?;
+        let address = StorageAddress(address);
+        let value = self.0.next().context("Missing storage value")?;
+        let value = parse_starkhash(value).context("Parsing storage value")?;
+        let value = StorageValue(value);
 
         Ok(StorageUpdate { address, value })
     }
+}
 
-    /// A safe parsing into [usize].
-    fn parse_usize(&mut self) -> Result<usize> {
-        let size = self.0.next().context("value missing")?;
+/// A safe parsing into [usize].
+fn parse_usize(value: U256) -> Result<usize> {
+    anyhow::ensure!(value <= U256::from(usize::MAX), "value exceeds usize::MAX");
+    // This is safe due to the previous ensure.
+    Ok(value.as_usize())
+}
 
-        anyhow::ensure!(size <= U256::from(usize::MAX), "value exceeds usize::MAX");
-        // This is safe due to the previous ensure.
-        Ok(size.as_usize())
-    }
+/// A safe parsing into [StarkHash]
+fn parse_starkhash(value: U256) -> Result<StarkHash> {
+    let mut buf = [0u8; 32];
+    value.to_big_endian(&mut buf);
+    let starkhash = StarkHash::from_be_bytes(buf)?;
+    Ok(starkhash)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn u256_from_starkhash(hash: StarkHash) -> U256 {
+        let bytes = hash.to_be_bytes();
+        U256::from_big_endian(&bytes[..])
+    }
+
     impl From<StorageUpdate> for Vec<U256> {
         fn from(val: StorageUpdate) -> Self {
-            vec![val.address, val.value]
+            let address = u256_from_starkhash(val.address.0);
+            let value = u256_from_starkhash(val.value.0);
+            vec![address, value]
         }
     }
 
     impl From<ContractUpdate> for Vec<U256> {
         fn from(val: ContractUpdate) -> Self {
-            let mut data = vec![val.address, U256::from(val.storage_updates.len())];
+            let mut data = vec![
+                u256_from_starkhash(val.address.0),
+                U256::from(val.storage_updates.len()),
+            ];
             data.extend(
                 val.storage_updates
                     .into_iter()
@@ -176,8 +215,12 @@ mod tests {
 
     impl From<DeployedContract> for Vec<U256> {
         fn from(val: DeployedContract) -> Self {
-            let mut data = vec![val.address, val.hash, U256::from(val.call_data.len())];
-            data.extend(val.call_data.into_iter());
+            let mut data = vec![
+                u256_from_starkhash(val.address.0),
+                u256_from_starkhash(val.hash.0),
+                U256::from(val.call_data.len()),
+            ];
+            data.extend(val.call_data.into_iter().map(u256_from_starkhash));
             data
         }
     }
@@ -210,15 +253,15 @@ mod tests {
 
     fn contract_update() -> ContractUpdate {
         ContractUpdate {
-            address: U256::from(123456),
+            address: ContractAddress(StarkHash::from_hex_str("123456").unwrap()),
             storage_updates: vec![
                 StorageUpdate {
-                    address: U256::from(1),
-                    value: U256::from(301),
+                    address: StorageAddress(StarkHash::from_hex_str("1").unwrap()),
+                    value: StorageValue(StarkHash::from_hex_str("301").unwrap()),
                 },
                 StorageUpdate {
-                    address: U256::from(2),
-                    value: U256::from(305),
+                    address: StorageAddress(StarkHash::from_hex_str("2").unwrap()),
+                    value: StorageValue(StarkHash::from_hex_str("305").unwrap()),
                 },
             ],
         }
@@ -226,9 +269,13 @@ mod tests {
 
     fn deployed_contract() -> DeployedContract {
         DeployedContract {
-            address: U256::from(45691),
-            hash: U256::from(22513),
-            call_data: vec![U256::from(1), U256::from(2), U256::from(1230)],
+            address: ContractAddress(StarkHash::from_hex_str("45691").unwrap()),
+            hash: ContractHash(StarkHash::from_hex_str("22513").unwrap()),
+            call_data: vec![
+                StarkHash::from_hex_str("1").unwrap(),
+                StarkHash::from_hex_str("2").unwrap(),
+                StarkHash::from_hex_str("1230").unwrap(),
+            ],
         }
     }
 
@@ -239,9 +286,8 @@ mod tests {
         #[test]
         fn ok() {
             let value = 35812usize;
-            let data = vec![U256::from(value)].into_iter();
-            let mut parser = StateUpdateParser(data);
-            let result = parser.parse_usize().unwrap();
+            let data = U256::from(value);
+            let result = parse_usize(data).unwrap();
 
             assert_eq!(result, value);
         }
@@ -249,9 +295,8 @@ mod tests {
         #[test]
         fn max() {
             let value = usize::MAX;
-            let data = vec![U256::from(value)].into_iter();
-            let mut parser = StateUpdateParser(data);
-            let result = parser.parse_usize().unwrap();
+            let data = U256::from(value);
+            let result = parse_usize(data).unwrap();
 
             assert_eq!(result, value);
         }
@@ -259,16 +304,8 @@ mod tests {
         #[test]
         fn overflow() {
             let value = usize::MAX;
-            let data = vec![U256::from(value) + U256::from(1)].into_iter();
-            let mut parser = StateUpdateParser(data);
-            parser.parse_usize().unwrap_err();
-        }
-
-        #[test]
-        fn missing() {
-            let data = Vec::new().into_iter();
-            let mut parser = StateUpdateParser(data);
-            parser.parse_usize().unwrap_err();
+            let data = U256::from(value) + U256::from(1);
+            parse_usize(data).unwrap_err();
         }
     }
 
@@ -279,8 +316,8 @@ mod tests {
         #[test]
         fn ok() {
             let update = StorageUpdate {
-                address: U256::from(200),
-                value: U256::from(300),
+                address: StorageAddress(StarkHash::from_hex_str("200").unwrap()),
+                value: StorageValue(StarkHash::from_hex_str("300").unwrap()),
             };
             let data: Vec<U256> = update.clone().into();
 
@@ -292,8 +329,8 @@ mod tests {
         #[test]
         fn missing_data() {
             let update = StorageUpdate {
-                address: U256::from(200),
-                value: U256::from(300),
+                address: StorageAddress(StarkHash::from_hex_str("200").unwrap()),
+                value: StorageValue(StarkHash::from_hex_str("300").unwrap()),
             };
             let mut data: Vec<U256> = update.into();
             data.pop();
@@ -320,7 +357,7 @@ mod tests {
         #[test]
         fn no_storage_updates() {
             let update = ContractUpdate {
-                address: U256::from(123456),
+                address: ContractAddress(StarkHash::from_hex_str("123456").unwrap()),
                 storage_updates: Vec::new(),
             };
 

@@ -50,22 +50,26 @@ pub struct StarknetBlockHash(pub StarkHash);
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct StarknetBlockNumber(pub u64);
 
-/// An Ethereum block hash.
+/// The timestamp of a Starknet block.
 #[derive(Debug, Copy, Clone, PartialEq)]
+pub struct StarknetBlockTimestamp(pub u64);
+
+/// An Ethereum block hash.
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub struct EthereumBlockHash(pub H256);
 
 /// An Ethereum block number.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub struct EthereumBlockNumber(pub u64);
 
 /// An Ethereum transaction hash.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub struct EthereumTransactionHash(pub H256);
 
 /// An Ethereum transaction's index within a block.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub struct EthereumTransactionIndex(pub u64);
 
 /// An Ethereum log's index within a block.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub struct EthereumLogIndex(pub u64);

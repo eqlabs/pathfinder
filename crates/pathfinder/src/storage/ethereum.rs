@@ -13,7 +13,7 @@ pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<(
     EthereumBlocksTable::migrate(transaction, from_version)
         .context("Failed to migrate the Ethereum blocks table")?;
     EthereumTransactionsTable::migrate(transaction, from_version)
-        .context("Failed to migrate the Ethereum transactionns table")
+        .context("Failed to migrate the Ethereum transactions table")
 }
 
 /// Stores basic information about an Ethereum block, enough to descibe it as a unique point
@@ -35,8 +35,8 @@ impl EthereumBlocksTable {
 
         transaction.execute(
             r"CREATE TABLE ethereum_blocks (
-                    ethereum_block_hash   BLOB PRIMARY KEY,
-                    ethereum_block_number INTEGER NOT NULL
+                    hash   BLOB PRIMARY KEY,
+                    number INTEGER NOT NULL
                 )",
             [],
         )?;
@@ -53,12 +53,12 @@ impl EthereumBlocksTable {
         number: EthereumBlockNumber,
     ) -> anyhow::Result<()> {
         transaction.execute(
-            r"INSERT INTO ethereum_blocks ( ethereum_block_hash,  ethereum_block_number)
-                                       VALUES (:ethereum_block_hash, :ethereum_block_number)
+            r"INSERT INTO ethereum_blocks ( hash,  number)
+                                       VALUES (:hash, :number)
                                        ON CONFLICT DO NOTHING",
             named_params! {
-                ":ethereum_block_hash": hash.0.as_bytes(),
-                ":ethereum_block_number": number.0,
+                ":hash": hash.0.as_bytes(),
+                ":number": number.0,
             },
         )?;
         Ok(())
@@ -86,11 +86,11 @@ impl EthereumTransactionsTable {
         // TODO: consider ON DELETE CASCADE when we start cleaning up. Don't forget to document if we use it.
         transaction.execute(
             r"CREATE TABLE ethereum_transactions (
-                    ethereum_transaction_hash    BLOB PRIMARY KEY,
-                    ethereum_transaction_index   INTEGER NOT NULL,
-                    ethereum_block_hash          BLOB NOT NULL,
+                    hash       BLOB PRIMARY KEY,
+                    idx        INTEGER NOT NULL,
+                    block_hash BLOB NOT NULL,
 
-                    FOREIGN KEY(ethereum_block_hash) REFERENCES ethereum_blocks(ethereum_block_hash)
+                    FOREIGN KEY(block_hash) REFERENCES ethereum_blocks(hash)
                 )",
             [],
         )?;
@@ -111,13 +111,13 @@ impl EthereumTransactionsTable {
         tx_index: EthereumTransactionIndex,
     ) -> anyhow::Result<()> {
         transaction.execute(
-            r"INSERT INTO ethereum_transactions ( ethereum_transaction_hash,  ethereum_transaction_index,  ethereum_block_hash)
-                                             VALUES (:ethereum_transaction_hash, :ethereum_transaction_index, :ethereum_block_hash)
+            r"INSERT INTO ethereum_transactions ( hash,  idx,  block_hash)
+                                             VALUES (:hash, :idx, :block_hash)
                                              ON CONFLICT DO NOTHING",
             named_params! {
-                ":ethereum_transaction_hash": tx_hash.0.as_bytes(),
-                ":ethereum_transaction_index": tx_index.0,
-                ":ethereum_block_hash": block_hash.0.as_bytes(),
+                ":hash": tx_hash.0.as_bytes(),
+                ":idx": tx_index.0,
+                ":block_hash": block_hash.0.as_bytes(),
             },
         )?;
         Ok(())

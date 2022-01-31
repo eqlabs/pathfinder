@@ -8,8 +8,6 @@ use std::{cell::RefCell, rc::Rc};
 use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
 use pedersen::{pedersen_hash, StarkHash};
 
-use crate::state::merkle_tree::ZERO_HASH;
-
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
@@ -154,12 +152,12 @@ impl Node {
     }
 
     /// Returns true if the node represents an empty node -- this is defined as a node
-    /// with the [ZERO_HASH].
+    /// with the [StarkHash::ZERO].
     ///
     /// This can occur for the root node in an empty graph.
     pub fn is_empty(&self) -> bool {
         match self {
-            Node::Unresolved(hash) => hash == &ZERO_HASH,
+            Node::Unresolved(hash) => hash == &StarkHash::ZERO,
             _ => false,
         }
     }
