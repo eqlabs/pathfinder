@@ -21,7 +21,7 @@ use crate::{
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{
         ContractsStateTable, ContractsTable, EthereumBlocksTable, EthereumTransactionsTable,
-        GlobalStateTable,
+        GlobalStateRecord, GlobalStateTable,
     },
 };
 
@@ -100,21 +100,22 @@ pub async fn sync<T: Transport>(
 
             // Verify database state integretity i.e. latest state should be sequential,
             // and we are the only writer.
-            let current_state =
-                GlobalStateTable::get_latest_state(&db_transaction).with_context(|| {
+            let previous_state_db = GlobalStateTable::get_latest_state(&db_transaction)
+                .with_context(|| {
                     format!(
                         "Get latest StarkNet state for block number {}",
                         root_log.block_number.0
                     )
                 })?;
             anyhow::ensure!(
-                current_state == previous_state,
-                "State mismatch between database and sync process for block number {}",
-                root_log.block_number.0
+                previous_state_db == previous_state,
+                "State mismatch between database and sync process for block number {}\n{:?}\n\n{:?}",
+                root_log.block_number.0,
+                previous_state,
+                previous_state_db
             );
-            previous_state = current_state;
 
-            match update(
+            previous_state = match update(
                 transport,
                 global_root,
                 &root_log,
@@ -123,7 +124,7 @@ pub async fn sync<T: Transport>(
             )
             .await
             {
-                Ok(_) => {}
+                Ok(state) => Some(state),
                 Err(UpdateError::Reorg) => todo!("Handle reorg event!"),
                 Err(UpdateError::Other(other)) => {
                     return Err(other).with_context(|| {
@@ -152,7 +153,7 @@ async fn update<T: Transport>(
     update_log: &StateUpdateLog,
     db: &Transaction<'_>,
     sequencer: &sequencer::Client,
-) -> Result<(), UpdateError> {
+) -> Result<GlobalStateRecord, UpdateError> {
     // Download update from L1.
     use RetrieveStateUpdateError::*;
     let state_update = match StateUpdate::retrieve(transport, update_log.clone()).await {
@@ -255,7 +256,17 @@ async fn update<T: Transport>(
 
     // TODO: Transactions and stuff. No idea how that works yet.
 
-    Ok(())
+    Ok(GlobalStateRecord {
+        block_number: update_log.block_number,
+        block_hash,
+        block_timestamp: StarknetBlockTimestamp(block.timestamp),
+        global_root: new_global_root,
+        eth_block_number: update_log.origin.block.number,
+        eth_block_hash: update_log.origin.block.hash,
+        eth_tx_hash: update_log.origin.transaction.hash,
+        eth_tx_index: update_log.origin.transaction.index,
+        eth_log_index: update_log.origin.log_index,
+    })
 }
 
 /// Updates a contract's state with the given [storage updates](ContractUpdate). It returns the
