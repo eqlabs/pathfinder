@@ -6,33 +6,7 @@ impl Serialize for StarkHash {
     where
         S: serde::Serializer,
     {
-        if self == &StarkHash::ZERO {
-            return serializer.serialize_str("0x0");
-        }
-
-        const LUT: [u8; 16] = *b"0123456789abcdef";
-
-        let mut buf = [0u8; 66];
-        buf[0] = b'0';
-        // Skip all leading zero bytes
-        let it = self.0.iter().skip_while(|&&b| b == 0);
-        let num_bytes = it.clone().count();
-        let skipped = 32 - num_bytes;
-        // The first high nibble can be 0
-        let start = if self.0[skipped] < 0x10 { 1 } else { 2 };
-        let end = start + num_bytes * 2;
-        // Same lookup table is ~25% faster than hex::encode_from_slice 🤷
-        it.enumerate().for_each(|(i, &b)| {
-            let idx = b as usize;
-            let pos = start + i * 2;
-            let x = [LUT[(idx & 0xf0) >> 4], LUT[idx & 0x0f]];
-            buf[pos..pos + 2].copy_from_slice(&x);
-        });
-
-        buf[1] = b'x';
-
-        // Unwrap is safe as the buffer contains valid utf8
-        serializer.serialize_str(std::str::from_utf8(&buf[..end]).unwrap())
+        serializer.serialize_str(&self.to_hex_str())
     }
 }
 

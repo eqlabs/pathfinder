@@ -1,17 +1,17 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
     core::{
-        CallResultValue, ContractAddress, StarknetTransactionHash, StarknetTransactionIndex,
-        StorageAddress, StorageValue,
+        CallResultValue, ContractAddress, StarknetChainId, StarknetProtocolVersion,
+        StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
     },
     rpc::types::{
-        relaxed,
         reply::{Block, Code, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
         request::{BlockResponseScope, Call},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
-    sequencer::{reply as raw, Client},
+    sequencer::{error::StarknetError, reply as raw, Client},
 };
+use core::num;
 use jsonrpsee::types::{
     error::{CallError, Error},
     RpcResult,
@@ -109,11 +109,7 @@ impl RpcApi {
         key: StorageAddress,
         block_hash: BlockHashOrTag,
     ) -> RpcResult<StorageValue> {
-        let key: [u8; 32] = key.0.to_be_bytes();
-        let storage_val = self
-            .0
-            .storage(contract_address, key.into(), block_hash)
-            .await?;
+        let storage_val = self.0.storage(contract_address, key, block_hash).await?;
         Ok(storage_val)
     }
 
@@ -277,13 +273,14 @@ impl RpcApi {
             .0
             .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
             .await?;
-        // The default value should actually never happen as block_number is None only
-        // in a pending block.
-        Ok(block.block_number.unwrap_or_default().0)
+        let number = block.block_number.ok_or(anyhow::anyhow!(
+            "Block number field missing in latest block."
+        ))?;
+        Ok(number.0)
     }
 
     /// Return the currently configured StarkNet chain id.
-    pub async fn chain_id(&self) -> RpcResult<relaxed::H256> {
+    pub async fn chain_id(&self) -> RpcResult<StarknetChainId> {
         todo!("Figure out where to take it from.")
     }
 
@@ -293,7 +290,7 @@ impl RpcApi {
     }
 
     /// Returns the current starknet protocol version identifier, as supported by this node.
-    pub async fn protocol_version(&self) -> RpcResult<relaxed::H256> {
+    pub async fn protocol_version(&self) -> RpcResult<StarknetProtocolVersion> {
         todo!("Figure out where to take it from.")
     }
 

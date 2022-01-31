@@ -224,6 +224,36 @@ impl StarkHash {
         let hash = StarkHash::from_be_bytes(buf)?;
         Ok(hash)
     }
+
+    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+    pub fn to_hex_str(&self) -> String {
+        if self == &StarkHash::zero() {
+            return "0x0".to_string();
+        }
+
+        const LUT: [u8; 16] = *b"0123456789abcdef";
+
+        // Skip all leading zero bytes
+        let it = self.0.iter().skip_while(|&&b| b == 0);
+        let num_bytes = it.clone().count();
+        let skipped = 32 - num_bytes;
+        // The first high nibble can be 0
+        let start = if self.0[skipped] < 0x10 { 1 } else { 2 };
+        let len = start + num_bytes * 2;
+        let mut buf = vec![0; len];
+        buf[0] = b'0';
+        // Same small lookup table is ~25% faster than hex::encode_from_slice 🤷
+        it.enumerate().for_each(|(i, &b)| {
+            let idx = b as usize;
+            let pos = start + i * 2;
+            let x = [LUT[(idx & 0xf0) >> 4], LUT[idx & 0x0f]];
+            buf[pos..pos + 2].copy_from_slice(&x);
+        });
+        buf[1] = b'x';
+
+        // Unwrap is safe as the buffer contains valid utf8
+        String::from_utf8(buf).unwrap()
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -519,7 +549,8 @@ mod tests {
         #[test]
         fn overflow() {
             // Field modulus
-            let mut modulus = "8".to_string() + &"0".repeat(12) + "11" + &"0".repeat(47) + "1";
+            let mut modulus =
+                "0x800000000000011000000000000000000000000000000000000000000000001".to_string();
             assert_eq!(
                 StarkHash::from_hex_str(&modulus).unwrap_err(),
                 HexParseError::Overflow
@@ -528,6 +559,37 @@ mod tests {
             modulus.pop();
             modulus.push('0');
             StarkHash::from_hex_str(&modulus).unwrap();
+        }
+    }
+
+    mod to_hex_str {
+        use super::*;
+        use pretty_assertions::assert_eq;
+        const ODD: &str = "0x1234567890abcde";
+        const EVEN: &str = "0x1234567890abcdef";
+        const MAX: &str = "0x800000000000011000000000000000000000000000000000000000000000000";
+
+        #[test]
+        fn zero() {
+            assert_eq!(StarkHash::zero().to_hex_str(), "0x0");
+        }
+
+        #[test]
+        fn odd() {
+            let hash = StarkHash::from_hex_str(ODD).unwrap();
+            assert_eq!(hash.to_hex_str(), ODD);
+        }
+
+        #[test]
+        fn even() {
+            let hash = StarkHash::from_hex_str(EVEN).unwrap();
+            assert_eq!(hash.to_hex_str(), EVEN);
+        }
+
+        #[test]
+        fn max() {
+            let hash = StarkHash::from_hex_str(MAX).unwrap();
+            assert_eq!(hash.to_hex_str(), MAX);
         }
     }
 }

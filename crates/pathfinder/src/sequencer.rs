@@ -3,16 +3,14 @@ pub mod error;
 pub mod reply;
 pub mod request;
 
+use self::error::StarknetError;
 use crate::{
-    core::{ContractAddress, StarknetTransactionHash, StorageValue},
+    core::{ContractAddress, StarknetTransactionHash, StorageAddress, StorageValue},
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
 };
 use reqwest::Url;
 use std::{borrow::Cow, fmt::Debug, result::Result, time::Duration};
-use web3::types::U256;
-
-use self::error::StarknetError;
 
 /// StarkNet sequencer client using REST API.
 #[derive(Debug)]
@@ -26,7 +24,7 @@ pub struct Client {
 /// Helper function which simplifies the handling of optional block hashes in queries.
 fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
     match hash {
-        BlockHashOrTag::Hash(h) => ("blockHash", Cow::from(format!("0x{:x}", h.0))),
+        BlockHashOrTag::Hash(h) => ("blockHash", Cow::from(h.0.to_hex_str())),
         BlockHashOrTag::Tag(Tag::Latest) => ("blockNumber", Cow::from("null")),
         BlockHashOrTag::Tag(Tag::Pending) => ("blockNumber", Cow::from("pending")),
     }
@@ -44,7 +42,7 @@ fn block_number_str(number: BlockNumberOrTag) -> Cow<'static, str> {
 /// __Mandatory__ function to parse every sequencer query response.
 async fn parse<T>(resp: reqwest::Response) -> Result<T, SequencerError>
 where
-    T: serde::de::DeserializeOwned,
+    T: ::serde::de::DeserializeOwned,
 {
     // Starknet specific errors end with a 500 status code
     // but the body contains a JSON object with the error description
@@ -137,10 +135,7 @@ impl Client {
             .get(self.build_query(
                 "get_code",
                 &[
-                    (
-                        "contractAddress",
-                        format!("0x{:x}", contract_addr.0).as_str(),
-                    ),
+                    ("contractAddress", &contract_addr.0.to_hex_str()),
                     (tag, &hash),
                 ],
             ))
@@ -153,20 +148,19 @@ impl Client {
     pub async fn storage(
         &self,
         contract_addr: ContractAddress,
-        key: U256,
+        key: StorageAddress,
         block_hash: BlockHashOrTag,
     ) -> Result<StorageValue, SequencerError> {
+        use crate::rpc::serde::starkhash_to_dec_str;
+
         let (tag, hash) = block_hash_str(block_hash);
         let resp = self
             .inner
             .get(self.build_query(
                 "get_storage_at",
                 &[
-                    (
-                        "contractAddress",
-                        format!("0x{:x}", contract_addr.0).as_str(),
-                    ),
-                    ("key", key.to_string().as_str()),
+                    ("contractAddress", &contract_addr.0.to_hex_str()),
+                    ("key", &starkhash_to_dec_str(&key.0)),
                     (tag, &hash),
                 ],
             ))
@@ -184,10 +178,7 @@ impl Client {
             .inner
             .get(self.build_query(
                 "get_transaction",
-                &[(
-                    "transactionHash",
-                    format!("0x{:x}", transaction_hash.0).as_str(),
-                )],
+                &[("transactionHash", &transaction_hash.0.to_hex_str())],
             ))
             .send()
             .await?;
@@ -203,10 +194,7 @@ impl Client {
             .inner
             .get(self.build_query(
                 "get_transaction_status",
-                &[(
-                    "transactionHash",
-                    format!("0x{:x}", transaction_hash.0).as_str(),
-                )],
+                &[("transactionHash", &transaction_hash.0.to_hex_str())],
             ))
             .send()
             .await?;
@@ -269,12 +257,13 @@ pub mod test_utils {
         pub static ref INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
         pub static ref UNKNOWN_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
         pub static ref VALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
-        pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("").unwrap();
+        pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::zero());
         pub static ref VALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(0u64);
         pub static ref INVALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(u64::MAX);
         pub static ref VALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
         pub static ref INVALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0106F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
         pub static ref ZERO_KEY: StorageAddress = StorageAddress(StarkHash::zero());
+        pub static ref VALID_CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("0x4d2").unwrap()];
     }
 }
 
@@ -285,7 +274,6 @@ mod tests {
     use assert_matches::assert_matches;
     use pedersen::StarkHash;
     use reqwest::StatusCode;
-    use web3::types::U256;
 
     /// Convenience wrapper
     fn client() -> Client {
@@ -528,7 +516,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234u64)],
+                            calldata: VALID_CALL_DATA.clone(),
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *INVALID_ENTRY_POINT,
                             signature: vec![],
@@ -550,7 +538,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234u64)],
+                            calldata: VALID_CALL_DATA.clone(),
                             contract_address: *INVALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -616,7 +604,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234u64)],
+                            calldata: VALID_CALL_DATA.clone(),
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -638,7 +626,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234u64)],
+                            calldata: VALID_CALL_DATA.clone(),
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -660,7 +648,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234u64)],
+                            calldata: VALID_CALL_DATA.clone(),
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -678,7 +666,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234u64)],
+                            calldata: VALID_CALL_DATA.clone(),
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -696,7 +684,7 @@ mod tests {
                 client()
                     .call(
                         request::Call {
-                            calldata: vec![U256::from(1234u64)],
+                            calldata: VALID_CALL_DATA.clone(),
                             contract_address: *VALID_CONTRACT_ADDR,
                             entry_point_selector: *VALID_ENTRY_POINT,
                             signature: vec![],
@@ -798,10 +786,6 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        lazy_static::lazy_static! {
-            static ref VALID_KEY: U256 = U256::from_str_radix("916907772491729262376534102982219947830828984996257231353398618781993312401", 10).unwrap();
-        }
-
         #[tokio::test]
         async fn invalid_contract_address() {
             let result = retry_on_rate_limiting!(
@@ -819,20 +803,17 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_key() {
-            let error = retry_on_rate_limiting!(
+            let result = retry_on_rate_limiting!(
                 client()
                     .storage(
                         *VALID_CONTRACT_ADDR,
-                        U256::max_value(),
+                        *ZERO_KEY,
                         BlockHashOrTag::Tag(Tag::Latest),
                     )
                     .await
             )
-            .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::OutOfRangeStorageKey)
-            );
+            .unwrap();
+            assert_eq!(result, StorageValue(StarkHash::zero()));
         }
 
         #[tokio::test]

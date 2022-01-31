@@ -48,45 +48,6 @@ pub enum BlockNumberOrTag {
     Tag(Tag),
 }
 
-/// Contains hash type wrappers enabling deserialization via `*AsRelaxedHexStr`.
-/// Which allows for skipping leading zeros in serialized hex strings.
-pub mod relaxed {
-    use crate::serde::H256AsRelaxedHexStr;
-    use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
-    use std::convert::From;
-    use web3::types;
-
-    #[serde_as]
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
-    pub struct H256(#[serde_as(as = "H256AsRelaxedHexStr")] types::H256);
-
-    impl From<types::H256> for H256 {
-        fn from(core: types::H256) -> Self {
-            H256(core)
-        }
-    }
-
-    use std::ops::Deref;
-
-    impl Deref for H256 {
-        type Target = types::H256;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-
-    impl From<crate::sequencer::reply::Call> for Vec<H256> {
-        fn from(call: crate::sequencer::reply::Call) -> Self {
-            call.result
-                .into_iter()
-                .map(|r| types::H256::from(r.0.to_be_bytes()).into())
-                .collect()
-        }
-    }
-}
-
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use crate::core::{CallParam, ContractAddress, EntryPoint};
@@ -134,7 +95,6 @@ pub mod reply {
         sequencer::reply::Status as SeqStatus,
     };
     use jsonrpsee::types::{CallError, Error};
-    use pedersen::StarkHash;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
@@ -187,12 +147,12 @@ pub mod reply {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Block {
-        block_hash: StarknetBlockHash,
+        block_hash: Option<StarknetBlockHash>,
         parent_hash: StarknetBlockHash,
-        block_number: StarknetBlockNumber,
+        block_number: Option<StarknetBlockNumber>,
         status: BlockStatus,
         sequencer: H160,
-        new_root: GlobalRoot,
+        new_root: Option<GlobalRoot>,
         old_root: GlobalRoot,
         accepted_time: u64,
         transactions: Transactions,
@@ -201,14 +161,14 @@ pub mod reply {
     impl Block {
         pub fn from_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
             Self {
-                block_hash: block.block_hash.unwrap_or_default(),
+                block_hash: block.block_hash,
                 parent_hash: block.parent_block_hash,
-                block_number: block.block_number.unwrap_or_default(),
+                block_number: block.block_number,
                 status: block.status.into(),
                 // TODO should be sequencer identity
                 sequencer: H160::zero(),
                 // TODO check if state_root is the new root
-                new_root: block.state_root.unwrap_or_default(),
+                new_root: block.state_root,
                 // TODO where to get it from
                 old_root: GlobalRoot::default(),
                 accepted_time: block.timestamp,
@@ -345,28 +305,20 @@ pub mod reply {
     pub struct Transaction {
         txn_hash: StarknetTransactionHash,
         contract_address: ContractAddress,
-        entry_point_selector: EntryPoint,
-        calldata: Vec<CallParam>,
+        /// Absent for "deploy" transactions
+        entry_point_selector: Option<EntryPoint>,
+        /// Absent for "deploy" transactions
+        calldata: Option<Vec<CallParam>>,
     }
 
     impl From<seq::Transaction> for Transaction {
-        // TODO What if there's a failed conversion? None/Default()/Error code?
         fn from(txn: seq::Transaction) -> Self {
             match txn.transaction {
                 Some(txn) => Self {
                     txn_hash: txn.transaction_hash,
                     contract_address: txn.contract_address,
-                    entry_point_selector: txn.entry_point_selector.unwrap_or_default(),
-                    calldata: match txn.calldata {
-                        Some(cd) => cd
-                            .iter()
-                            .map(|d| {
-                                let x: [u8; 32] = (*d).into();
-                                CallParam(StarkHash::from_be_bytes(x).unwrap_or_default())
-                            })
-                            .collect(),
-                        None => vec![],
-                    },
+                    entry_point_selector: txn.entry_point_selector,
+                    calldata: txn.calldata,
                 },
                 None => Self::default(),
             }
@@ -374,22 +326,12 @@ pub mod reply {
     }
 
     impl From<seq::transaction::Transaction> for Transaction {
-        // TODO What if there's a failed conversion? None/Default()/Error code?
         fn from(txn: seq::transaction::Transaction) -> Self {
             Self {
                 txn_hash: txn.transaction_hash,
                 contract_address: txn.contract_address,
-                entry_point_selector: txn.entry_point_selector.unwrap_or_default(),
-                calldata: match txn.calldata {
-                    Some(cd) => cd
-                        .iter()
-                        .map(|d| {
-                            let x: [u8; 32] = (*d).into();
-                            CallParam(StarkHash::from_be_bytes(x).unwrap_or_default())
-                        })
-                        .collect(),
-                    None => vec![],
-                },
+                entry_point_selector: txn.entry_point_selector,
+                calldata: txn.calldata,
             }
         }
     }
@@ -414,7 +356,7 @@ pub mod reply {
                 status_data: String::new(),
                 messages_sent: receipt
                     .l2_to_l1_messages
-                    .iter()
+                    .into_iter()
                     .map(transaction_receipt::MessageToL1::from)
                     .collect(),
                 l1_origin_message: match receipt.l1_to_l2_consumed_message {
@@ -430,37 +372,32 @@ pub mod reply {
     /// Transaction receipt related substructures.
     pub mod transaction_receipt {
         use crate::{
+            core::{
+                ContractAddress, EthereumAddress, EventData, EventKey, L1ToL2MessagePayloadElem,
+                L2ToL1MessagePayloadElem,
+            },
+            rpc::serde::EthereumAddressAsHexStr,
             sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message},
-            serde::{H160AsRelaxedHexStr, H256AsRelaxedHexStr},
         };
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
         use std::convert::From;
-        use web3::types::{H160, H256};
 
         /// Message sent from L2 to L1.
         #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct MessageToL1 {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            to_address: H256,
-            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-            payload: Vec<H256>,
+            #[serde_as(as = "EthereumAddressAsHexStr")]
+            to_address: EthereumAddress,
+            payload: Vec<L2ToL1MessagePayloadElem>,
         }
 
-        impl From<&L2ToL1Message> for MessageToL1 {
-            fn from(msg: &L2ToL1Message) -> Self {
+        impl From<L2ToL1Message> for MessageToL1 {
+            fn from(msg: L2ToL1Message) -> Self {
                 Self {
-                    to_address: msg.to_address.into(),
-                    payload: msg
-                        .payload
-                        .iter()
-                        .map(|p| {
-                            let x: [u8; 32] = (*p).into();
-                            x.into()
-                        })
-                        .collect(),
+                    to_address: msg.to_address,
+                    payload: msg.payload,
                 }
             }
         }
@@ -470,39 +407,27 @@ pub mod reply {
         #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct MessageToL2 {
-            #[serde_as(as = "H160AsRelaxedHexStr")]
-            from_address: H160,
-            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-            payload: Vec<H256>,
+            #[serde_as(as = "EthereumAddressAsHexStr")]
+            from_address: EthereumAddress,
+            payload: Vec<L1ToL2MessagePayloadElem>,
         }
 
         impl From<L1ToL2Message> for MessageToL2 {
             fn from(msg: L1ToL2Message) -> Self {
                 Self {
                     from_address: msg.from_address,
-                    payload: msg
-                        .payload
-                        .iter()
-                        .map(|p| {
-                            let x: [u8; 32] = (*p).into();
-                            x.into()
-                        })
-                        .collect(),
+                    payload: msg.payload,
                 }
             }
         }
 
         /// Event emitted as a part of a transaction.
-        #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Event {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            from_address: H256,
-            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-            keys: Vec<H256>,
-            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-            data: Vec<H256>,
+            from_address: ContractAddress,
+            keys: Vec<EventKey>,
+            data: Vec<EventData>,
         }
     }
 
@@ -513,8 +438,10 @@ pub mod reply {
     pub struct TransactionAndReceipt {
         txn_hash: StarknetTransactionHash,
         contract_address: ContractAddress,
-        entry_point_selector: EntryPoint,
-        calldata: Vec<CallParam>,
+        /// Absent in "deploy" transaction
+        entry_point_selector: Option<EntryPoint>,
+        /// Absent in "deploy" transaction
+        calldata: Option<Vec<CallParam>>,
         status: TransactionStatus,
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,

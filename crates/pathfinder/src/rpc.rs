@@ -1,5 +1,6 @@
 //! StarkNet node JSON-RPC related modules.
 pub mod api;
+pub mod serde;
 pub mod types;
 
 use crate::{
@@ -12,11 +13,11 @@ use crate::{
         },
     },
 };
+use ::serde::Deserialize;
 use jsonrpsee::{
     http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
     types::Error,
 };
-use serde::Deserialize;
 use std::{net::SocketAddr, result::Result};
 
 /// Starts the HTTP-RPC server.
@@ -192,7 +193,8 @@ pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Er
 mod tests {
     use super::*;
     use crate::{
-        rpc::{run_server, types::relaxed},
+        core::{StarknetChainId, StarknetProtocolVersion},
+        rpc::run_server,
         sequencer::test_utils::*,
     };
     use assert_matches::assert_matches;
@@ -1251,7 +1253,7 @@ mod tests {
         let (_handle, addr) = run_server(*LOCALHOST).unwrap();
         let params = rpc_params!();
         client(addr)
-            .request::<relaxed::H256>("starknet_chainId", params)
+            .request::<StarknetChainId>("starknet_chainId", params)
             .await
             .unwrap();
     }
@@ -1273,7 +1275,7 @@ mod tests {
         let (_handle, addr) = run_server(*LOCALHOST).unwrap();
         let params = rpc_params!();
         client(addr)
-            .request::<relaxed::H256>("starknet_protocolVersion", params)
+            .request::<StarknetProtocolVersion>("starknet_protocolVersion", params)
             .await
             .unwrap();
     }
