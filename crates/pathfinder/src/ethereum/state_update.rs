@@ -97,15 +97,11 @@ mod tests {
     use pretty_assertions::assert_eq;
     use web3::types::H256;
 
-    use crate::{
-        core::{
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
-        },
-        ethereum::{
-            test::create_test_websocket_transport, BlockOrigin, EthOrigin, TransactionOrigin,
-        },
+    use crate::core::{
+        EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+        EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
     };
+    use crate::ethereum::{test::create_test_transport, BlockOrigin, EthOrigin, TransactionOrigin};
 
     use super::*;
 
@@ -142,7 +138,7 @@ mod tests {
             block_number: StarknetBlockNumber(16407),
         };
 
-        let transport = create_test_websocket_transport().await;
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
         let update = StateUpdate::retrieve(&transport, update_log).await.unwrap();
 
         let expected = StateUpdate {

@@ -1,13 +1,11 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
-use web3::{
-    types::{H256, U256},
-    Transport, Web3,
-};
+use web3::{types::U256, Transport, Web3};
 
 use crate::core::{
-    EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex, EthereumLogIndex,
+    EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+    EthereumTransactionIndex,
 };
 pub mod contract;
 pub mod log;
@@ -160,23 +158,8 @@ pub mod test {
     use super::*;
 
     use reqwest::Url;
-    use web3::transports::{Http, WebSocket};
+    use web3::transports::Http;
     use web3::Web3;
-
-    /// Creates a [Web3<WebSocket>] as specified by [create_test_websocket].
-    pub async fn create_test_websocket_transport() -> Web3<WebSocket> {
-        web3::Web3::new(create_test_websocket().await)
-    }
-
-    /// Creates a [WebSocket] which connects to the Ethereum node specified by
-    /// the `STARKNET_ETHEREUM_WEBSOCKET_URL` environment variable.
-    pub async fn create_test_websocket() -> WebSocket {
-        let url = std::env::var("STARKNET_ETHEREUM_WEBSOCKET_URL").expect(
-            "Ethereum websocket URL environment var not set (STARKNET_ETHEREUM_WEBSOCKET_URL)",
-        );
-
-        WebSocket::new(&url).await.unwrap()
-    }
 
     /// Creates a [Web3<Htttp>] transport from the Ethereum endpoint specified by the relevant environment variables.
     ///

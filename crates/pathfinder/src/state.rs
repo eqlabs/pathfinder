@@ -371,7 +371,7 @@ mod tests {
             EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
             EthereumTransactionIndex, StarknetBlockNumber,
         },
-        ethereum::test::create_test_websocket_transport,
+        ethereum::test::create_test_transport,
     };
 
     use super::*;
@@ -451,7 +451,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
         crate::storage::migrate_database(&transaction).unwrap();
 
-        let transport = create_test_websocket_transport().await;
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
 
         update(
             &transport,

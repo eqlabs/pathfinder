@@ -5,10 +5,13 @@ pub type StateRootFetcher = LogFetcher<StateUpdateLog>;
 
 #[cfg(test)]
 mod tests {
-    use crate::{core::StarknetBlockNumber, ethereum::test::create_test_websocket};
     use assert_matches::assert_matches;
     use pretty_assertions::assert_eq;
-    use web3::Web3;
+
+    use crate::{
+        core::StarknetBlockNumber,
+        ethereum::{test::create_test_transport, Chain},
+    };
 
     use super::*;
 
@@ -16,8 +19,7 @@ mod tests {
     async fn genesis() {
         // The first state root retrieved should be the genesis event,
         // with a sequence number of 0.
-        let ws = create_test_websocket().await;
-        let ws = Web3::new(ws);
+        let ws = create_test_transport(Chain::Goerli).await;
 
         let mut uut = StateRootFetcher::new(None);
         let first_fetch = uut.fetch(&ws).await.unwrap();
@@ -45,8 +47,7 @@ mod tests {
             // Seed with a incorrect update at the L1 genesis block.
             // This should get interpretted as a reorg once the correct
             // first L2 update log is found.
-            let ws = create_test_websocket().await;
-            let ws = Web3::new(ws);
+            let ws = create_test_transport(Chain::Goerli).await;
 
             // Note that block_number must be 0 so that we pull all of L1 history.
             // This makes the test robust against L2 changes, updates or deployments
@@ -76,8 +77,7 @@ mod tests {
             // Seed with an origin beyond the current L1 chain state.
             // This should be interpreted as a reorg as this update
             // won't be found.
-            let ws = create_test_websocket().await;
-            let ws = Web3::new(ws);
+            let ws = create_test_transport(Chain::Goerli).await;
 
             let latest_on_chain = ws.eth().block_number().await.unwrap().as_u64();
 
