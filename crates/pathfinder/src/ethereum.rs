@@ -1,14 +1,26 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
+use web3::{
+    types::{H256, U256},
+    Transport, Web3,
+};
 
 use crate::core::{
-    EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-    EthereumTransactionIndex,
+    EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex, EthereumLogIndex,
 };
 pub mod contract;
 pub mod log;
 pub mod state_update;
+
+/// Ethereum network chains runnings Starknet.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Chain {
+    /// The Ethereum mainnet chain.
+    Mainnet,
+    /// The Ethereum Goerli test network chain.
+    Goerli,
+}
 
 /// List of semi-official Ethereum RPC errors taken from EIP-1474 (which is stagnant).
 ///
@@ -132,8 +144,21 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
     }
 }
 
+/// Identifies the Ethereum [Chain] behind the given Ethereum transport.
+///
+/// Will error if it's not one of the valid Starknet [Chain] variants.
+pub async fn chain<T: Transport>(transport: Web3<T>) -> anyhow::Result<Chain> {
+    match transport.eth().chain_id().await? {
+        id if id == U256::from(1u32) => Ok(Chain::Mainnet),
+        id if id == U256::from(5u32) => Ok(Chain::Goerli),
+        other => anyhow::bail!("Unsupported chain ID: {}", other),
+    }
+}
+
 #[cfg(test)]
 pub mod test {
+    use super::*;
+
     use web3::transports::WebSocket;
     use web3::Web3;
 
@@ -150,5 +175,28 @@ pub mod test {
         );
 
         WebSocket::new(&url).await.unwrap()
+    }
+
+    mod chain {
+        use super::*;
+
+        #[tokio::test]
+        async fn goerli() {
+            let transport = create_test_websocket_transport().await;
+
+            let chain = chain(transport).await.unwrap();
+
+            assert_eq!(chain, Chain::Goerli);
+        }
+
+        #[tokio::test]
+        #[should_panic = "No way of getting mainnet test endpoint yet"]
+        async fn mainnet() {
+            let transport = create_test_websocket_transport().await;
+
+            let chain = chain(transport).await.unwrap();
+
+            assert_eq!(chain, Chain::Mainnet);
+        }
     }
 }
