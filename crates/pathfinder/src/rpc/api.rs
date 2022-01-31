@@ -9,9 +9,8 @@ use crate::{
         request::{BlockResponseScope, Call},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
-    sequencer::{error::StarknetError, reply as raw, Client},
+    sequencer::{reply as raw, Client},
 };
-use core::num;
 use jsonrpsee::types::{
     error::{CallError, Error},
     RpcResult,

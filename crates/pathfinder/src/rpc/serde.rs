@@ -179,7 +179,6 @@ fn bytes_to_hex_str(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hex::FromHexError;
     use pretty_assertions::assert_eq;
     const ZERO: (&str, &str, [u8; 1]) = ("0x0", "0", [0]);
     const ODD: (&str, &str, [u8; 8]) = (
