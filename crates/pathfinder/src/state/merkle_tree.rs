@@ -544,11 +544,7 @@ mod tests {
         let uut = MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
         let key = StarkHash::from_hex_str("99cadc82").unwrap();
-<<<<<<< HEAD
         assert_eq!(uut.get(key).unwrap(), StarkHash::ZERO);
-=======
-        assert_eq!(uut.get(key).unwrap(), ZERO_HASH);
->>>>>>> revert: FromStr changes
     }
 
     #[test]

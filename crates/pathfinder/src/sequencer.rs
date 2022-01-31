@@ -257,12 +257,12 @@ pub mod test_utils {
         pub static ref INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
         pub static ref UNKNOWN_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x0739636829ad5205d81af792a922a40e35c0ec7a72f4859843ee2e2a0d6f0af0").unwrap();
         pub static ref VALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
-        pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::zero());
+        pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
         pub static ref VALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(0u64);
         pub static ref INVALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(u64::MAX);
         pub static ref VALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
         pub static ref INVALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0106F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
-        pub static ref ZERO_KEY: StorageAddress = StorageAddress(StarkHash::zero());
+        pub static ref ZERO_KEY: StorageAddress = StorageAddress(StarkHash::ZERO);
         pub static ref VALID_CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("0x4d2").unwrap()];
     }
 }
@@ -798,7 +798,7 @@ mod tests {
                     .await
             )
             .unwrap();
-            assert_eq!(result, StorageValue(StarkHash::zero()));
+            assert_eq!(result, StorageValue(StarkHash::ZERO));
         }
 
         #[tokio::test]
@@ -813,7 +813,7 @@ mod tests {
                     .await
             )
             .unwrap();
-            assert_eq!(result, StorageValue(StarkHash::zero()));
+            assert_eq!(result, StorageValue(StarkHash::ZERO));
         }
 
         #[tokio::test]

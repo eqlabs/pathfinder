@@ -227,7 +227,7 @@ impl StarkHash {
 
     /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
     pub fn to_hex_str(&self) -> String {
-        if self == &StarkHash::zero() {
+        if self == &StarkHash::ZERO {
             return "0x0".to_string();
         }
 
@@ -571,7 +571,7 @@ mod tests {
 
         #[test]
         fn zero() {
-            assert_eq!(StarkHash::zero().to_hex_str(), "0x0");
+            assert_eq!(StarkHash::ZERO.to_hex_str(), "0x0");
         }
 
         #[test]

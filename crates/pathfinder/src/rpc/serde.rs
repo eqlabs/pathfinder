@@ -221,7 +221,7 @@ mod tests {
     fn zero() {
         let a = starkhash_from_biguint(BigUint::from_bytes_be(&ZERO.2)).unwrap();
         let b = starkhash_from_dec_str(ZERO.1).unwrap();
-        let expected = StarkHash::zero();
+        let expected = StarkHash::ZERO;
         assert_eq!(expected, a);
         assert_eq!(expected, b);
         assert_eq!(starkhash_to_dec_str(&expected), ZERO.1);

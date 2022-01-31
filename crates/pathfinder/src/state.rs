@@ -1,13 +1,10 @@
 use anyhow::Context;
 use pedersen::{pedersen_hash, StarkHash};
 use rusqlite::{Connection, Transaction};
-use web3::{types::H256, Transport, Web3};
+use web3::{Transport, Web3};
 
 use crate::{
-    core::{
-        ContractHash, ContractRoot, ContractStateHash, GlobalRoot, StarknetBlockHash,
-        StarknetBlockTimestamp,
-    },
+    core::{ContractHash, ContractRoot, ContractStateHash, GlobalRoot, StarknetBlockTimestamp},
     ethereum::{
         log::{FetchError, StateUpdateLog},
         state_update::{
@@ -206,15 +203,12 @@ async fn update<T: Transport>(
 
     // Download additional block information from sequencer.
     let block = sequencer
-        .block_by_number(BlockNumberOrTag::Number(update_log.block_number.0))
+        .block_by_number(BlockNumberOrTag::Number(update_log.block_number))
         .await
         .context("Downloading StarkNet block from sequencer")?;
 
     // Verify sequencer root against L1.
     let sequencer_root = block.state_root.context("Sequencer state root missing")?;
-    let sequencer_root =
-        StarkHash::from_be_bytes(sequencer_root.0).context("Parsing sequencer state root")?;
-    let sequencer_root = GlobalRoot(sequencer_root);
 
     if sequencer_root != update_log.global_root {
         return Err(UpdateError::Other(anyhow::anyhow!(
@@ -223,9 +217,6 @@ async fn update<T: Transport>(
     }
 
     let block_hash = block.block_hash.context("Sequencer block hash missing")?;
-    let block_hash =
-        StarkHash::from_be_bytes(block_hash.0).context("Parsing sequencer block hash")?;
-    let block_hash = StarknetBlockHash(block_hash);
 
     // Persist new global root et al to database.
     EthereumBlocksTable::insert(
@@ -318,10 +309,7 @@ async fn deploy_contract(
 ) -> anyhow::Result<()> {
     // Download code and ABI from the sequencer.
     let code = sequencer
-        .code(
-            H256(contract.address.0.to_be_bytes()),
-            BlockHashOrTag::Tag(Tag::Latest),
-        )
+        .code(contract.address, BlockHashOrTag::Tag(Tag::Latest))
         .await
         .context("Download contract code and ABI from sequencer")?;
 
@@ -330,7 +318,7 @@ async fn deploy_contract(
     let byte_code = code
         .bytecode
         .into_iter()
-        .flat_map(|bytes32| bytes32.0.into_iter())
+        .flat_map(|bytes32| bytes32.0.to_be_bytes())
         .collect::<Vec<u8>>();
 
     // TODO: Unsure on how to encode / decode this reliably.
@@ -364,17 +352,16 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
+    use super::*;
     use crate::{
         core::{
             EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, StarknetBlockNumber,
+            EthereumTransactionIndex, StarknetBlockHash, StarknetBlockNumber,
         },
         ethereum::test::create_test_websocket_transport,
     };
-
-    use super::*;
+    use std::str::FromStr;
+    use web3::types::H256;
 
     #[test]
     fn hash() {
