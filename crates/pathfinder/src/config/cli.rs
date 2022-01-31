@@ -42,7 +42,7 @@ where
     let http_rpc_addr = args.value_of(HTTP_RPC_ADDR_KEY).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
-        .with(ConfigOption::EthereumWebsocketUrl, ethereum_url)
+        .with(ConfigOption::EthereumHttpUrl, ethereum_url)
         .with(ConfigOption::EthereumUser, ethereum_user)
         .with(ConfigOption::EthereumPassword, ethereum_password)
         .with(ConfigOption::HttpRpcAddress, http_rpc_addr);
@@ -62,9 +62,9 @@ fn clap_app() -> clap::App<'static, 'static> {
             format!("HTTP-RPC listening address [default: {}]", DEFAULT_HTTP_RPC_ADDR);
     }
 
-    clap::App::new("Equilibrium StarkNet Node")
+    clap::App::new("Pathfinder StarkNet Node")
         .version(crate_version!())
-        .about("A StarkNet node")
+        .about("A StarkNet node implemented by Equilibrium. https://github.com/eqlabs/pathfinder")
         .arg(
             Arg::with_name(CONFIG_KEY)
                 .short("c")
@@ -93,11 +93,11 @@ fn clap_app() -> clap::App<'static, 'static> {
                 .long(ETH_URL_KEY)
                 .help("Ethereum API URL")
                 .takes_value(true)
-                .value_name("URL")
-                .long_help(r#"This should point to the websocket RPC endpoint of your Ethereum entry-point, typically a local Ethereum light client or a hosted gateway service such as Infura or Cloudflare.
+                .value_name("HTTP URL")
+                .long_help(r#"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum light client or a hosted gateway service such as Infura or Cloudflare.
 Examples:
-    infura: wss://goerli.infura.io/ws/v3/<PROJECT_ID>
-    geth:   wss://localhost:8545"#))
+    infura: https://goerli.infura.io/ws/v3/<PROJECT_ID>
+    geth:   https://localhost:8545"#))
         .arg(
             Arg::with_name(HTTP_RPC_ADDR_KEY)
                 .long(HTTP_RPC_ADDR_KEY)
@@ -119,7 +119,7 @@ mod tests {
     fn ethereum_url_long() {
         let value = "value".to_owned();
         let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.url", &value]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumWebsocketUrl), Some(value));
+        assert_eq!(cfg.take(ConfigOption::EthereumHttpUrl), Some(value));
     }
 
     #[test]

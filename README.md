@@ -85,11 +85,26 @@ Invoke `cargo build -p pathfinder` from the project root.
 
 ### Testing
 
-Some of our tests require access to an archive Ethereum node. If you want to run these tests you will require setting the environment variable `STARKNET_ETHEREUM_WEBSOCKET_URL` to the websocket address of a Goerli full node. Infura provides such nodes for free (on Goerli testnet), and is what we currently use for our own CI.
+Some of our tests require access to an __archive__ Ethereum node on the Goerli chain. To run these tests you will need to set the following environment variables:
+
+```bash
+PATHFINDER_ETHEREUM_HTTP_GOERLI_URL       # HTTP(S) endpoint for Goerli chain
+PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD  # HTTP(S) password for Goerli chain (optional)
+```
+
+Infura provides such nodes for free (on Goerli testnet), and is what we currently use for our own CI.
+
+In addition, the tests also require access to a __non-archive__ Ethereum node on Mainnet. To run these tests you will need to set the following environment variables:
+
+```bash
+PATHFINDER_ETHEREUM_HTTP_MAINNET_URL       # HTTP(S) endpoint for Mainnet chain
+PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD  # HTTP(S) password for Mainnet chain (optional)
+```
 
 Example with an Infura node:
 ```
-export STARKNET_ETHEREUM_WEBSOCKET_URL=wss://goerli.infura.io/ws/v3/<project-id>
+export PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=https://goerli.infura.io/ws/v3/<project-id>
+export PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=https://mainnet.infura.io/ws/v3/<project-id>
 ```
 
 Run the tests (invoke from project root):
