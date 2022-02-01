@@ -19,10 +19,10 @@ mod tests {
     async fn genesis() {
         // The first state root retrieved should be the genesis event,
         // with a sequence number of 0.
-        let ws = create_test_transport(Chain::Goerli).await;
+        let transport = create_test_transport(Chain::Goerli).await;
 
         let mut uut = StateRootFetcher::new(None);
-        let first_fetch = uut.fetch(&ws).await.unwrap();
+        let first_fetch = uut.fetch(&transport).await.unwrap();
         let first = first_fetch.first().expect("Should be at least one log");
 
         assert_eq!(first.block_number, StarknetBlockNumber(0));
@@ -47,7 +47,7 @@ mod tests {
             // Seed with a incorrect update at the L1 genesis block.
             // This should get interpretted as a reorg once the correct
             // first L2 update log is found.
-            let ws = create_test_transport(Chain::Goerli).await;
+            let transport = create_test_transport(Chain::Goerli).await;
 
             // Note that block_number must be 0 so that we pull all of L1 history.
             // This makes the test robust against L2 changes, updates or deployments
@@ -69,7 +69,7 @@ mod tests {
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis));
-            assert_matches!(uut.fetch(&ws).await, Err(FetchError::Reorg));
+            assert_matches!(uut.fetch(&transport).await, Err(FetchError::Reorg));
         }
 
         #[tokio::test]
@@ -77,9 +77,9 @@ mod tests {
             // Seed with an origin beyond the current L1 chain state.
             // This should be interpreted as a reorg as this update
             // won't be found.
-            let ws = create_test_transport(Chain::Goerli).await;
+            let transport = create_test_transport(Chain::Goerli).await;
 
-            let latest_on_chain = ws.eth().block_number().await.unwrap().as_u64();
+            let latest_on_chain = transport.eth().block_number().await.unwrap().as_u64();
 
             let not_genesis = StateUpdateLog {
                 origin: EthOrigin {
@@ -98,7 +98,7 @@ mod tests {
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis));
-            assert_matches!(uut.fetch(&ws).await, Err(FetchError::Reorg));
+            assert_matches!(uut.fetch(&transport).await, Err(FetchError::Reorg));
         }
     }
 }

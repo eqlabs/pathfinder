@@ -11,7 +11,7 @@ pub mod contract;
 pub mod log;
 pub mod state_update;
 
-/// Ethereum network chains runnings Starknet.
+/// Ethereum network chains running Starknet.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Chain {
     /// The Ethereum mainnet chain.
@@ -161,7 +161,7 @@ pub mod test {
     use web3::transports::Http;
     use web3::Web3;
 
-    /// Creates a [Web3<Htttp>] transport from the Ethereum endpoint specified by the relevant environment variables.
+    /// Creates a [Web3<Http>] transport from the Ethereum endpoint specified by the relevant environment variables.
     ///
     /// Requires an environment variable for both the URL and (optional) password.
     ///
