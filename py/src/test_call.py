@@ -195,6 +195,8 @@ def compile_test_contract():
     )
     import zstandard
 
+    # FIXME: use crates/pathfinder/fixtures/contract_definition.json.zst here, it's the same.
+
     raw = compile_starknet_codes(
         [(SIMPLIFIED_TEST_CONTRACT, "-")], debug_info=False
     ).serialize()
