@@ -79,12 +79,6 @@ impl Client {
         Self::new(Url::parse("https://alpha-mainnet.starknet.io/").unwrap())
     }
 
-    #[cfg(test)]
-    /// Creates a new sequencer client for a custom endpoint url.
-    pub fn custom(url: Url) -> reqwest::Result<Self> {
-        Self::new(url)
-    }
-
     /// Creates a new sequencer client, `sequencer_url` needs to be a valid _base URL_.
     fn new(sequencer_url: Url) -> reqwest::Result<Self> {
         debug_assert!(!sequencer_url.cannot_be_a_base());
@@ -998,7 +992,7 @@ mod tests {
     async fn full_contract() {
         assert_eq!(
             retry_on_rate_limiting!(
-                Client::custom(Url::from_str("https://external.integration.starknet.io/").unwrap())
+                Client::new(Url::from_str("https://external.integration.starknet.io/").unwrap())
                     .unwrap()
                     .full_contract(ContractAddress(
                         StarkHash::from_hex_str(
