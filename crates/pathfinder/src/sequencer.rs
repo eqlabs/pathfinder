@@ -710,7 +710,13 @@ mod tests {
                     .await
             )
             .unwrap();
-            assert_eq!(result, Code::default());
+            assert_eq!(
+                result,
+                Code {
+                    abi: vec![],
+                    bytecode: vec![]
+                }
+            );
         }
 
         #[tokio::test]

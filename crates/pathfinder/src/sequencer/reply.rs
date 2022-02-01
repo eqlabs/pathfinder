@@ -70,7 +70,7 @@ pub mod call {
 
 /// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
 #[serde_as]
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Code {
     // Unknown block hash results in empty abi represented as a JSON

@@ -95,6 +95,7 @@ pub mod reply {
         sequencer::reply::Status as SeqStatus,
     };
     use jsonrpsee::types::{CallError, Error};
+    use pedersen::StarkHash;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
@@ -170,7 +171,7 @@ pub mod reply {
                 // TODO check if state_root is the new root
                 new_root: block.state_root,
                 // TODO where to get it from
-                old_root: GlobalRoot::default(),
+                old_root: GlobalRoot(StarkHash::ZERO),
                 accepted_time: block.timestamp,
                 transactions: match scope {
                     BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
@@ -301,7 +302,7 @@ pub mod reply {
 
     /// L2 transaction as returned by the RPC API.
     #[serde_as]
-    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
         txn_hash: StarknetTransactionHash,
         contract_address: ContractAddress,
@@ -311,17 +312,19 @@ pub mod reply {
         calldata: Option<Vec<CallParam>>,
     }
 
-    impl From<seq::Transaction> for Transaction {
-        fn from(txn: seq::Transaction) -> Self {
-            match txn.transaction {
-                Some(txn) => Self {
-                    txn_hash: txn.transaction_hash,
-                    contract_address: txn.contract_address,
-                    entry_point_selector: txn.entry_point_selector,
-                    calldata: txn.calldata,
-                },
-                None => Self::default(),
-            }
+    impl TryFrom<seq::Transaction> for Transaction {
+        type Error = anyhow::Error;
+
+        fn try_from(txn: seq::Transaction) -> Result<Self, Self::Error> {
+            let txn = txn
+                .transaction
+                .ok_or(anyhow::anyhow!("Transaction not found."))?;
+            Ok(Self {
+                txn_hash: txn.transaction_hash,
+                contract_address: txn.contract_address,
+                entry_point_selector: txn.entry_point_selector,
+                calldata: txn.calldata,
+            })
         }
     }
 
@@ -343,7 +346,7 @@ pub mod reply {
         status: TransactionStatus,
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,
-        l1_origin_message: transaction_receipt::MessageToL2,
+        l1_origin_message: Option<transaction_receipt::MessageToL2>,
         events: Vec<transaction_receipt::Event>,
     }
 
@@ -359,10 +362,9 @@ pub mod reply {
                     .into_iter()
                     .map(transaction_receipt::MessageToL1::from)
                     .collect(),
-                l1_origin_message: match receipt.l1_to_l2_consumed_message {
-                    Some(m) => m.into(),
-                    None => transaction_receipt::MessageToL2::default(),
-                },
+                l1_origin_message: receipt
+                    .l1_to_l2_consumed_message
+                    .map(transaction_receipt::MessageToL2::from),
                 // TODO at the moment not available in sequencer replies
                 events: vec![],
             }
@@ -404,7 +406,7 @@ pub mod reply {
 
         /// Message sent from L1 to L2.
         #[serde_as]
-        #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct MessageToL2 {
             #[serde_as(as = "EthereumAddressAsHexStr")]
@@ -445,7 +447,7 @@ pub mod reply {
         status: TransactionStatus,
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,
-        l1_origin_message: transaction_receipt::MessageToL2,
+        l1_origin_message: Option<transaction_receipt::MessageToL2>,
         events: Vec<transaction_receipt::Event>,
     }
 

@@ -133,7 +133,8 @@ impl RpcApi {
     ) -> RpcResult<Transaction> {
         // TODO get this from storage
         let txn = self.get_raw_transaction_by_hash(transaction_hash).await?;
-        Ok(txn.into())
+        let txn = txn.try_into()?;
+        Ok(txn)
     }
 
     /// Get the details of a transaction by a given block hash and index.
