@@ -66,7 +66,7 @@ jobs:
           cd py
           pip install --upgrade pip
           pip install --requirement requirements-dev.txt
-          pip install cairo-lang==0.6.2
+          pip install cairo-lang==0.7.0
 
       - name: Test (python)
         run: |
