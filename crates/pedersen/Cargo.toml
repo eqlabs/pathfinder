@@ -9,10 +9,6 @@ license = "MIT OR Apache-2.0"
 name = "pedersen"
 path = "src/lib.rs"
 
-[features]
-# enables simple hex string parsing for field elements, which is useful for testing.
-hex_str = []
-
 [dependencies]
 # paritys scale codec locks us here
 bitvec = "0.20.4"
@@ -23,11 +19,14 @@ ff = { git = "https://github.com/eqlabs/ff", branch = "derive_bitvec", default-f
     "derive",
     "alloc",
 ] }
+serde = "1.0.134"
 
 [dev-dependencies]
+assert_matches = "1.5.0"
 criterion = "0.3"
 hex = "0.4.3"
 pretty_assertions = "1.0.0"
+serde_json = "1.0.75"
 
 [[bench]]
 name = "pedersen"

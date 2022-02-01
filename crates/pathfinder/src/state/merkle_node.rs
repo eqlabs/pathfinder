@@ -269,9 +269,8 @@ mod tests {
     }
 
     mod binary {
-        use bitvec::bitvec;
-
         use super::*;
+        use bitvec::bitvec;
 
         #[test]
         fn direction() {

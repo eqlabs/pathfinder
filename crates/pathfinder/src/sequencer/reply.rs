@@ -1,26 +1,22 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::serde::{H256AsRelaxedHexStr, U256AsBigDecimal};
+use crate::core::{
+    ByteCodeWord, CallResultValue, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, skip_serializing_none, DefaultOnError};
-use web3::types::{H256, U256};
+use serde_with::{serde_as, DefaultOnError};
 
 /// Used to deserialize replies to [Client::block_by_hash](crate::sequencer::Client::block_by_hash) and
 /// [Client::block_by_number](crate::sequencer::Client::block_by_number).
-#[serde_as]
-#[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
-    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
-    pub block_hash: Option<H256>,
+    pub block_hash: Option<StarknetBlockHash>,
     #[serde(default)]
-    pub block_number: Option<u64>,
-    #[serde_as(as = "H256AsRelaxedHexStr")]
-    pub parent_block_hash: H256,
-    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+    pub block_number: Option<StarknetBlockNumber>,
+    pub parent_block_hash: StarknetBlockHash,
     #[serde(default)]
-    pub state_root: Option<H256>,
+    pub state_root: Option<GlobalRoot>,
     pub status: Status,
     pub timestamp: u64,
     pub transaction_receipts: Vec<transaction::Receipt>,
@@ -28,7 +24,7 @@ pub struct Block {
 }
 
 /// Block and transaction status values.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum Status {
     #[serde(rename = "NOT_RECEIVED")]
@@ -50,24 +46,21 @@ pub enum Status {
 }
 
 /// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
-#[serde_as]
-#[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Call {
-    #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-    pub result: Vec<H256>,
+    pub result: Vec<CallResultValue>,
 }
 
 /// Types used when deserializing L2 call related data.
 pub mod call {
-    use serde::{Deserialize, Serialize};
+    use serde::Deserialize;
     use serde_with::serde_as;
     use std::collections::HashMap;
 
     /// Describes problems encountered during some of call failures .
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Problems {
         #[serde_as(as = "HashMap<_, _>")]
@@ -84,17 +77,14 @@ pub struct Code {
     // object, instead of a JSON array
     #[serde_as(deserialize_as = "DefaultOnError")]
     pub abi: Vec<code::Abi>,
-    #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-    pub bytecode: Vec<H256>,
+    pub bytecode: Vec<ByteCodeWord>,
 }
 
 /// Types used when deserializing L2 contract related data.
 pub mod code {
     use serde::{Deserialize, Serialize};
-    use serde_with::skip_serializing_none;
 
     /// Represents deserialized L2 contract Application Blockchain Interface element.
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Abi {
@@ -106,6 +96,7 @@ pub mod code {
         #[serde(default)]
         pub outputs: Option<Vec<abi::Output>>,
         pub r#type: String,
+        #[serde(default)]
         pub size: Option<u64>,
         #[serde(rename = "stateMutability")]
         #[serde(default)]
@@ -145,16 +136,13 @@ pub mod code {
 
 /// Used to deserialize replies to [Client::transaction](crate::sequencer::Client::transaction).
 #[serde_as]
-#[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Transaction {
-    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
-    pub block_hash: Option<H256>,
-    #[serde_as(as = "Option<U256AsBigDecimal>")]
+    pub block_hash: Option<StarknetBlockHash>,
     #[serde(default)]
-    pub block_number: Option<U256>,
+    pub block_number: Option<StarknetBlockNumber>,
     pub status: Status,
     #[serde(default)]
     pub transaction: Option<transaction::Transaction>,
@@ -164,27 +152,34 @@ pub struct Transaction {
 
 /// Used to deserialize replies to [Client::transaction_status](crate::sequencer::Client::transaction_status).
 #[serde_as]
-#[skip_serializing_none]
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionStatus {
-    #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
     #[serde(default)]
-    pub block_hash: Option<H256>,
+    pub block_hash: Option<StarknetBlockHash>,
     pub tx_status: Status,
 }
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    use crate::serde::{
-        H160AsRelaxedHexStr, H256AsRelaxedHexStr, U256AsBigDecimal, U256AsDecimalStr,
+    use crate::{
+        core::{
+            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+            EthereumAddress, EventData, EventKey, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
+            L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
+            TransactionSignatureElem,
+        },
+        rpc::serde::{
+            CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
+            EventDataAsDecimalStr, EventKeyAsDecimalStr, L1ToL2MessagePayloadElemAsDecimalStr,
+            L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
+        },
     };
-    use serde::{Deserialize, Serialize};
-    use serde_with::{serde_as, skip_serializing_none};
-    use web3::types::{H160, H256, U256};
+    use serde::Deserialize;
+    use serde_with::serde_as;
 
     /// Represents deserialized L2 transaction entry point values.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
@@ -194,8 +189,7 @@ pub mod transaction {
     }
 
     /// Represents execution resources for L2 transaction.
-    #[skip_serializing_none]
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
         builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
@@ -205,10 +199,10 @@ pub mod transaction {
 
     /// Types used when deserializing L2 execution resources related data.
     pub mod execution_resources {
-        use serde::{Deserialize, Serialize};
+        use serde::Deserialize;
 
         /// Sometimes `builtin_instance_counter` JSON object is returned empty.
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
         #[serde(untagged)]
         #[serde(deny_unknown_fields)]
         pub enum BuiltinInstanceCounter {
@@ -216,7 +210,7 @@ pub mod transaction {
             Empty(EmptyBuiltinInstanceCounter),
         }
 
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct NormalBuiltinInstanceCounter {
             bitwise_builtin: u64,
@@ -227,111 +221,98 @@ pub mod transaction {
             range_check_builtin: u64,
         }
 
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
         pub struct EmptyBuiltinInstanceCounter {}
     }
 
     /// Represents deserialized L1 to L2 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct L1ToL2Message {
-        #[serde_as(as = "H160AsRelaxedHexStr")]
-        pub from_address: H160,
-        #[serde_as(as = "Vec<U256AsDecimalStr>")]
-        pub payload: Vec<U256>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub selector: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub to_address: H256,
-        #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+        #[serde_as(as = "EthereumAddressAsHexStr")]
+        pub from_address: EthereumAddress,
+        #[serde_as(as = "Vec<L1ToL2MessagePayloadElemAsDecimalStr>")]
+        pub payload: Vec<L1ToL2MessagePayloadElem>,
+        pub selector: EntryPoint,
+        pub to_address: ContractAddress,
         #[serde(default)]
-        pub nonce: Option<H256>,
+        pub nonce: Option<L1ToL2MessageNonce>,
     }
 
     /// Represents deserialized L2 to L1 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub from_address: H256,
-        #[serde_as(as = "Vec<U256AsDecimalStr>")]
-        pub payload: Vec<U256>,
-        #[serde_as(as = "H160AsRelaxedHexStr")]
-        pub to_address: H160,
+        pub from_address: ContractAddress,
+        #[serde_as(as = "Vec<L2ToL1MessagePayloadElemAsDecimalStr>")]
+        pub payload: Vec<L2ToL1MessagePayloadElem>,
+        #[serde_as(as = "EthereumAddressAsHexStr")]
+        pub to_address: EthereumAddress,
     }
 
     /// Represents deserialized L2 transaction receipt data.
     #[serde_as]
-    #[skip_serializing_none]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
         pub events: Vec<Event>,
         pub execution_resources: ExecutionResources,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub transaction_hash: H256,
-        pub transaction_index: u64,
+        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_index: StarknetTransactionIndex,
     }
 
     /// Represents deserialized L2 transaction event data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Event {
-        #[serde_as(as = "Vec<U256AsDecimalStr>")]
-        data: Vec<U256>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        from_address: H256,
-        #[serde_as(as = "Vec<U256AsDecimalStr>")]
-        keys: Vec<U256>,
+        #[serde_as(as = "Vec<EventDataAsDecimalStr>")]
+        data: Vec<EventData>,
+        from_address: ContractAddress,
+        #[serde_as(as = "Vec<EventKeyAsDecimalStr>")]
+        keys: Vec<EventKey>,
     }
 
     /// Represents deserialized object containing L2 contract address and transaction type.
     #[serde_as]
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Source {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub contract_address: H256,
+        pub contract_address: ContractAddress,
         pub r#type: Type,
     }
 
     /// Represents deserialized L2 transaction data.
     #[serde_as]
-    #[skip_serializing_none]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Transaction {
-        #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
+        #[serde_as(as = "Option<Vec<CallParamAsDecimalStr>>")]
         #[serde(default)]
-        pub calldata: Option<Vec<U256>>,
-        #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
+        pub calldata: Option<Vec<CallParam>>,
+        #[serde_as(as = "Option<Vec<ConstructorParamAsDecimalStr>>")]
         #[serde(default)]
-        pub constructor_calldata: Option<Vec<U256>>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub contract_address: H256,
-        #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
+        pub constructor_calldata: Option<Vec<ConstructorParam>>,
+        pub contract_address: ContractAddress,
         #[serde(default)]
-        pub contract_address_salt: Option<H256>,
+        pub contract_address_salt: Option<ContractAddressSalt>,
         #[serde(default)]
         pub entry_point_type: Option<EntryPointType>,
-        #[serde_as(as = "Option<H256AsRelaxedHexStr>")]
         #[serde(default)]
-        pub entry_point_selector: Option<H256>,
-        #[serde_as(as = "Option<Vec<U256AsDecimalStr>>")]
+        pub entry_point_selector: Option<EntryPoint>,
+        #[serde_as(as = "Option<Vec<TransactionSignatureElemAsDecimalStr>>")]
         #[serde(default)]
-        pub signature: Option<Vec<U256>>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub transaction_hash: H256,
+        pub signature: Option<Vec<TransactionSignatureElem>>,
+        pub transaction_hash: StarknetTransactionHash,
         pub r#type: Type,
     }
 
     /// Describes L2 transaction types.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub enum Type {
         #[serde(rename = "DEPLOY")]
@@ -341,13 +322,11 @@ pub mod transaction {
     }
 
     /// Describes L2 transaction failure details.
-    #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Failure {
         pub code: String,
         pub error_message: String,
-        #[serde_as(as = "U256AsBigDecimal")]
-        pub tx_id: U256,
+        pub tx_id: u64,
     }
 }

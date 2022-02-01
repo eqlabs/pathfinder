@@ -1,4 +1,5 @@
 pub mod curve;
+pub mod serde;
 
 use std::error::Error;
 
@@ -41,6 +42,12 @@ impl std::fmt::UpperHex for StarkHash {
     }
 }
 
+impl std::default::Default for StarkHash {
+    fn default() -> Self {
+        StarkHash::ZERO
+    }
+}
+
 /// Error returned by [StarkHash::from_be_bytes] indicating that
 /// more than the allowed 251 bits were set.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -58,16 +65,18 @@ pub enum FromSliceError {
 impl Error for OverflowError {}
 impl Error for FromSliceError {}
 
+const OVERFLOW_MSG: &str = "The StarkHash maximum value was exceeded.";
+
 impl std::fmt::Display for OverflowError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("The StarkHash maximum was exceeded.")
+        f.write_str(OVERFLOW_MSG)
     }
 }
 
 impl std::fmt::Display for FromSliceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FromSliceError::Overflow => f.write_str("The StarkHash maximum was exceeded."),
+            FromSliceError::Overflow => f.write_str(OVERFLOW_MSG),
             FromSliceError::BadLength => {
                 f.write_str("Bad slice length, expected exactly 32 bytes.")
             }
@@ -96,11 +105,12 @@ impl StarkHash {
 
     /// Creates a [StarkHash] from big-endian bytes.
     ///
-    /// Returns [OverflowError] if more than 251 bits are set.
+    /// Returns [OverflowError] if not less than the field modulus.
     pub fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, OverflowError> {
-        match bytes[0] {
-            0..=0b0000_0111 => Ok(Self(bytes)),
-            _ => Err(OverflowError),
+        // FieldElement::from_repr[_vartime] does the check in a correct way
+        match FieldElement::from_repr_vartime(FieldElementRepr(bytes)) {
+            Some(field_element) => Ok(Self(field_element.to_repr().0)),
+            None => Err(OverflowError),
         }
     }
 
@@ -169,18 +179,17 @@ impl From<FieldElement> for StarkHash {
             std::mem::size_of::<StarkHash>()
         );
         // unwrap is safe because the FieldElement and StarkHash
-        // should both be 251 bits only.
+        // should both be smaller than the field modulus.
         StarkHash::from_be_bytes(fp.to_repr().0).unwrap()
     }
 }
 
-#[cfg(feature = "hex_str")]
 impl StarkHash {
     /// A convenience function which parses a hex string into a [StarkHash].
     ///
     /// Supports both upper and lower case hex strings, as well as an
     /// optional "0x" prefix.
-    pub fn from_hex_str(hex_str: &str) -> Result<StarkHash, HexParseError> {
+    pub fn from_hex_str(hex_str: &str) -> Result<Self, HexParseError> {
         fn parse_hex_digit(digit: u8) -> Result<u8, HexParseError> {
             match digit {
                 b'0'..=b'9' => Ok(digit - b'0'),
@@ -192,7 +201,7 @@ impl StarkHash {
 
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
         if hex_str.len() > 64 {
-            return Err(HexParseError::Overflow);
+            return Err(HexParseError::InvalidLength(hex_str.len()));
         }
 
         let mut buf = [0u8; 32];
@@ -215,19 +224,62 @@ impl StarkHash {
         let hash = StarkHash::from_be_bytes(buf)?;
         Ok(hash)
     }
+
+    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+    pub fn to_hex_str(&self) -> String {
+        if self == &StarkHash::ZERO {
+            return "0x0".to_string();
+        }
+
+        const LUT: [u8; 16] = *b"0123456789abcdef";
+
+        // Skip all leading zero bytes
+        let it = self.0.iter().skip_while(|&&b| b == 0);
+        let num_bytes = it.clone().count();
+        let skipped = 32 - num_bytes;
+        // The first high nibble can be 0
+        let start = if self.0[skipped] < 0x10 { 1 } else { 2 };
+        let len = start + num_bytes * 2;
+        let mut buf = vec![0; len];
+        buf[0] = b'0';
+        // Same small lookup table is ~25% faster than hex::encode_from_slice 🤷
+        it.enumerate().for_each(|(i, &b)| {
+            let idx = b as usize;
+            let pos = start + i * 2;
+            let x = [LUT[(idx & 0xf0) >> 4], LUT[idx & 0x0f]];
+            buf[pos..pos + 2].copy_from_slice(&x);
+        });
+        buf[1] = b'x';
+
+        // Unwrap is safe as the buffer contains valid utf8
+        String::from_utf8(buf).unwrap()
+    }
 }
 
-#[cfg(feature = "hex_str")]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum HexParseError {
     InvalidNibble(u8),
+    InvalidLength(usize),
     Overflow,
 }
 
-#[cfg(feature = "hex_str")]
+impl Error for HexParseError {}
+
 impl From<OverflowError> for HexParseError {
     fn from(_: OverflowError) -> Self {
         Self::Overflow
+    }
+}
+
+impl std::fmt::Display for HexParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidNibble(n) => f.write_fmt(format_args!("Invalid nibble found: 0x{:x}", *n)),
+            Self::InvalidLength(n) => {
+                f.write_fmt(format_args!("More than 64 digits found: {}", *n))
+            }
+            Self::Overflow => f.write_str(OVERFLOW_MSG),
+        }
     }
 }
 
@@ -301,12 +353,20 @@ mod tests {
         assert_eq!(bytes, original);
     }
 
+    // Prime field modulus
+    const MODULUS: [u8; 32] = [
+        8, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 1,
+    ];
+
     #[test]
     fn from_bytes_overflow() {
-        // Set the 252nd bit (which is invalid).
-        let mut bytes = [0; 32];
-        bytes[0] = 0b0000_1000;
-        assert_eq!(StarkHash::from_be_bytes(bytes), Err(OverflowError));
+        // Field modulus
+        assert_eq!(StarkHash::from_be_bytes(MODULUS), Err(OverflowError));
+        // Field modulus - 1
+        let mut max_val = MODULUS;
+        max_val[31] = 0;
+        StarkHash::from_be_bytes(max_val).unwrap();
     }
 
     #[test]
@@ -357,16 +417,21 @@ mod tests {
 
         #[test]
         fn overflow() {
-            // Set the 252nd bit (which is invalid).
-            let mut bytes = [0; 32];
-            bytes[0] = 0b0000_1000;
-            let result = StarkHash::from_be_slice(&bytes[..]);
-            assert_eq!(result, Err(FromSliceError::Overflow));
+            // Field modulus
+            assert_eq!(
+                StarkHash::from_be_slice(&MODULUS[..]),
+                Err(FromSliceError::Overflow)
+            );
+            // Field modulus - 1
+            let mut max_val = MODULUS;
+            max_val[31] = 0;
+            StarkHash::from_be_slice(&max_val[..]).unwrap();
         }
     }
 
     mod fmt {
         use crate::StarkHash;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn debug() {
@@ -419,9 +484,9 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "hex_str")]
     mod from_hex_str {
         use super::*;
+        use assert_matches::assert_matches;
         use pretty_assertions::assert_eq;
 
         /// Test hex string with its expected [StarkHash].
@@ -469,6 +534,62 @@ mod tests {
             let (test_str, expected) = test_data();
             let uut = StarkHash::from_hex_str(&format!("0x000000000{}", test_str)).unwrap();
             assert_eq!(uut, expected);
+        }
+
+        #[test]
+        fn invalid_nibble() {
+            assert_matches!(StarkHash::from_hex_str("0x123z").unwrap_err(), HexParseError::InvalidNibble(n) => assert_eq!(n, b'z'))
+        }
+
+        #[test]
+        fn invalid_len() {
+            assert_matches!(StarkHash::from_hex_str(&"1".repeat(65)).unwrap_err(), HexParseError::InvalidLength(n) => assert_eq!(n, 65))
+        }
+
+        #[test]
+        fn overflow() {
+            // Field modulus
+            let mut modulus =
+                "0x800000000000011000000000000000000000000000000000000000000000001".to_string();
+            assert_eq!(
+                StarkHash::from_hex_str(&modulus).unwrap_err(),
+                HexParseError::Overflow
+            );
+            // Field modulus - 1
+            modulus.pop();
+            modulus.push('0');
+            StarkHash::from_hex_str(&modulus).unwrap();
+        }
+    }
+
+    mod to_hex_str {
+        use super::*;
+        use pretty_assertions::assert_eq;
+        const ODD: &str = "0x1234567890abcde";
+        const EVEN: &str = "0x1234567890abcdef";
+        const MAX: &str = "0x800000000000011000000000000000000000000000000000000000000000000";
+
+        #[test]
+        fn zero() {
+            assert_eq!(StarkHash::ZERO.to_hex_str(), "0x0");
+        }
+
+        #[test]
+        fn odd() {
+            let hash = StarkHash::from_hex_str(ODD).unwrap();
+            assert_eq!(hash.to_hex_str(), ODD);
+        }
+
+        #[test]
+        fn even() {
+            let hash = StarkHash::from_hex_str(EVEN).unwrap();
+            assert_eq!(hash.to_hex_str(), EVEN);
+        }
+
+        #[test]
+        fn max() {
+            let hash = StarkHash::from_hex_str(MAX).unwrap();
+            assert_eq!(hash.to_hex_str(), MAX);
         }
     }
 }

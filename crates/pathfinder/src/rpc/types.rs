@@ -1,8 +1,6 @@
 //! Data structures used by the JSON-RPC API methods.
-use crate::serde::H256AsRelaxedHexStr;
+use crate::core::{StarknetBlockHash, StarknetBlockNumber};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use web3::types::H256;
 
 /// Special tag used when specifying the `latest` or `pending` block.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -25,8 +23,7 @@ pub enum Tag {
 }
 
 /// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a [Tag](self::BlockHashOrTag::Tag).
-#[serde_as]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockHashOrTag {
@@ -35,77 +32,34 @@ pub enum BlockHashOrTag {
     /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64 characters
     /// when passed as an RPC method argument, for example:
     /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
-    Hash(#[serde_as(as = "H256AsRelaxedHexStr")] H256),
+    Hash(StarknetBlockHash),
     /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
 }
 
 /// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
-#[serde_as]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockNumberOrTag {
     /// Number (height) of a block
-    Number(u64),
+    Number(StarknetBlockNumber),
     /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
 }
 
-/// Contains hash type wrappers enabling deserialization via `*AsRelaxedHexStr`.
-/// Which allows for skipping leading zeros in serialized hex strings.
-pub mod relaxed {
-    use crate::serde::H256AsRelaxedHexStr;
-    use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
-    use std::convert::From;
-    use web3::types;
-
-    #[serde_as]
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
-    pub struct H256(#[serde_as(as = "H256AsRelaxedHexStr")] types::H256);
-
-    impl From<types::H256> for H256 {
-        fn from(core: types::H256) -> Self {
-            H256(core)
-        }
-    }
-
-    use std::ops::Deref;
-
-    impl Deref for H256 {
-        type Target = types::H256;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-
-    impl From<crate::sequencer::reply::Call> for Vec<H256> {
-        fn from(call: crate::sequencer::reply::Call) -> Self {
-            call.result.into_iter().map(H256::from).collect()
-        }
-    }
-}
-
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use crate::serde::H256AsRelaxedHexStr;
+    use crate::core::{CallParam, ContractAddress, EntryPoint};
     use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
-    use web3::types::H256;
 
     /// Contains parameters passed to `starknet_call`.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Call {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub contract_address: H256,
-        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-        pub calldata: Vec<H256>,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        pub entry_point_selector: H256,
+        pub contract_address: ContractAddress,
+        pub calldata: Vec<CallParam>,
+        pub entry_point_selector: EntryPoint,
     }
 
     /// Determines the type of response to block related queries.
@@ -133,13 +87,19 @@ pub mod reply {
     use super::request::BlockResponseScope;
     pub use crate::sequencer::reply::Code;
     use crate::{
-        sequencer::reply as seq, sequencer::reply::Status as SeqStatus, serde::H256AsRelaxedHexStr,
+        core::{
+            CallParam, ContractAddress, EntryPoint, GlobalRoot, StarknetBlockHash,
+            StarknetBlockNumber, StarknetTransactionHash,
+        },
+        sequencer::reply as seq,
+        sequencer::reply::Status as SeqStatus,
     };
     use jsonrpsee::types::{CallError, Error};
+    use pedersen::StarkHash;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
-    use web3::types::{H160, H256};
+    use web3::types::H160;
 
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -175,32 +135,26 @@ pub mod reply {
 
     /// Wrapper for transaction data returned in block related queries,
     /// chosen variant depends on [BlockResponseScope](crate::rpc::types::request::BlockResponseScope).
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     #[serde(untagged)]
     pub enum Transactions {
-        HashesOnly(#[serde_as(as = "Vec<H256AsRelaxedHexStr>")] Vec<H256>),
+        HashesOnly(Vec<StarknetTransactionHash>),
         Full(Vec<Transaction>),
         FullWithReceipts(Vec<TransactionAndReceipt>),
     }
 
     /// L2 Block as returned by the RPC API.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Block {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        block_hash: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        parent_hash: H256,
-        block_number: u64,
+        block_hash: Option<StarknetBlockHash>,
+        parent_hash: StarknetBlockHash,
+        block_number: Option<StarknetBlockNumber>,
         status: BlockStatus,
         sequencer: H160,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        new_root: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        old_root: H256,
+        new_root: Option<GlobalRoot>,
+        old_root: GlobalRoot,
         accepted_time: u64,
         transactions: Transactions,
     }
@@ -208,16 +162,16 @@ pub mod reply {
     impl Block {
         pub fn from_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
             Self {
-                block_hash: block.block_hash.unwrap_or_default(),
+                block_hash: block.block_hash,
                 parent_hash: block.parent_block_hash,
-                block_number: block.block_number.unwrap_or_default(),
+                block_number: block.block_number,
                 status: block.status.into(),
                 // TODO should be sequencer identity
                 sequencer: H160::zero(),
                 // TODO check if state_root is the new root
-                new_root: block.state_root.unwrap_or_default(),
+                new_root: block.state_root,
                 // TODO where to get it from
-                old_root: H256::zero(),
+                old_root: GlobalRoot(StarkHash::ZERO),
                 accepted_time: block.timestamp,
                 transactions: match scope {
                     BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
@@ -305,29 +259,22 @@ pub mod reply {
     }
 
     /// L2 state update as returned by the RPC API.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct StateUpdate {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        block_hash: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        new_root: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        old_root: H256,
+        block_hash: StarknetBlockHash,
+        new_root: GlobalRoot,
+        old_root: GlobalRoot,
         accepted_time: u64,
         state_diff: state_update::StateDiff,
     }
 
     /// State update related substructures.
     pub mod state_update {
-        use crate::serde::H256AsRelaxedHexStr;
+        use crate::core::{ContractAddress, ContractHash, StorageAddress, StorageValue};
         use serde::{Deserialize, Serialize};
-        use serde_with::serde_as;
-        use web3::types::H256;
 
         /// L2 state diff.
-        #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StateDiff {
@@ -336,64 +283,48 @@ pub mod reply {
         }
 
         /// L2 storage diff.
-        #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageDiff {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            address: H256,
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            key: H256,
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            value: H256,
+            address: ContractAddress,
+            key: StorageAddress,
+            value: StorageValue,
         }
 
         /// L2 contract data within state diff.
-        #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Contract {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            address: H256,
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            contract_hash: H256,
+            address: ContractAddress,
+            contract_hash: ContractHash,
         }
     }
 
     /// L2 transaction as returned by the RPC API.
     #[serde_as]
-    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        txn_hash: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        contract_address: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        entry_point_selector: H256,
-        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-        calldata: Vec<H256>,
+        txn_hash: StarknetTransactionHash,
+        contract_address: ContractAddress,
+        /// Absent for "deploy" transactions
+        entry_point_selector: Option<EntryPoint>,
+        /// Absent for "deploy" transactions
+        calldata: Option<Vec<CallParam>>,
     }
 
-    impl From<seq::Transaction> for Transaction {
-        fn from(txn: seq::Transaction) -> Self {
-            match txn.transaction {
-                Some(txn) => Self {
-                    txn_hash: txn.transaction_hash,
-                    contract_address: txn.contract_address,
-                    entry_point_selector: txn.entry_point_selector.unwrap_or_default(),
-                    calldata: match txn.calldata {
-                        Some(cd) => cd
-                            .iter()
-                            .map(|d| {
-                                let x: [u8; 32] = (*d).into();
-                                x.into()
-                            })
-                            .collect(),
-                        None => vec![],
-                    },
-                },
-                None => Self::default(),
-            }
+    impl TryFrom<seq::Transaction> for Transaction {
+        type Error = anyhow::Error;
+
+        fn try_from(txn: seq::Transaction) -> Result<Self, Self::Error> {
+            let txn = txn
+                .transaction
+                .ok_or(anyhow::anyhow!("Transaction not found."))?;
+            Ok(Self {
+                txn_hash: txn.transaction_hash,
+                contract_address: txn.contract_address,
+                entry_point_selector: txn.entry_point_selector,
+                calldata: txn.calldata,
+            })
         }
     }
 
@@ -402,31 +333,20 @@ pub mod reply {
             Self {
                 txn_hash: txn.transaction_hash,
                 contract_address: txn.contract_address,
-                entry_point_selector: txn.entry_point_selector.unwrap_or_default(),
-                calldata: match txn.calldata {
-                    Some(cd) => cd
-                        .iter()
-                        .map(|d| {
-                            let x: [u8; 32] = (*d).into();
-                            x.into()
-                        })
-                        .collect(),
-                    None => vec![],
-                },
+                entry_point_selector: txn.entry_point_selector,
+                calldata: txn.calldata,
             }
         }
     }
 
     /// L2 transaction receipt as returned by the RPC API.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionReceipt {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        txn_hash: H256,
+        txn_hash: StarknetTransactionHash,
         status: TransactionStatus,
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,
-        l1_origin_message: transaction_receipt::MessageToL2,
+        l1_origin_message: Option<transaction_receipt::MessageToL2>,
         events: Vec<transaction_receipt::Event>,
     }
 
@@ -439,13 +359,12 @@ pub mod reply {
                 status_data: String::new(),
                 messages_sent: receipt
                     .l2_to_l1_messages
-                    .iter()
+                    .into_iter()
                     .map(transaction_receipt::MessageToL1::from)
                     .collect(),
-                l1_origin_message: match receipt.l1_to_l2_consumed_message {
-                    Some(m) => m.into(),
-                    None => transaction_receipt::MessageToL2::default(),
-                },
+                l1_origin_message: receipt
+                    .l1_to_l2_consumed_message
+                    .map(transaction_receipt::MessageToL2::from),
                 // TODO at the moment not available in sequencer replies
                 events: vec![],
             }
@@ -455,79 +374,62 @@ pub mod reply {
     /// Transaction receipt related substructures.
     pub mod transaction_receipt {
         use crate::{
+            core::{
+                ContractAddress, EthereumAddress, EventData, EventKey, L1ToL2MessagePayloadElem,
+                L2ToL1MessagePayloadElem,
+            },
+            rpc::serde::EthereumAddressAsHexStr,
             sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message},
-            serde::{H160AsRelaxedHexStr, H256AsRelaxedHexStr},
         };
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
         use std::convert::From;
-        use web3::types::{H160, H256};
 
         /// Message sent from L2 to L1.
         #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct MessageToL1 {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            to_address: H256,
-            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-            payload: Vec<H256>,
+            #[serde_as(as = "EthereumAddressAsHexStr")]
+            to_address: EthereumAddress,
+            payload: Vec<L2ToL1MessagePayloadElem>,
         }
 
-        impl From<&L2ToL1Message> for MessageToL1 {
-            fn from(msg: &L2ToL1Message) -> Self {
+        impl From<L2ToL1Message> for MessageToL1 {
+            fn from(msg: L2ToL1Message) -> Self {
                 Self {
-                    to_address: msg.to_address.into(),
-                    payload: msg
-                        .payload
-                        .iter()
-                        .map(|p| {
-                            let x: [u8; 32] = (*p).into();
-                            x.into()
-                        })
-                        .collect(),
+                    to_address: msg.to_address,
+                    payload: msg.payload,
                 }
             }
         }
 
         /// Message sent from L1 to L2.
         #[serde_as]
-        #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct MessageToL2 {
-            #[serde_as(as = "H160AsRelaxedHexStr")]
-            from_address: H160,
-            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-            payload: Vec<H256>,
+            #[serde_as(as = "EthereumAddressAsHexStr")]
+            from_address: EthereumAddress,
+            payload: Vec<L1ToL2MessagePayloadElem>,
         }
 
         impl From<L1ToL2Message> for MessageToL2 {
             fn from(msg: L1ToL2Message) -> Self {
                 Self {
                     from_address: msg.from_address,
-                    payload: msg
-                        .payload
-                        .iter()
-                        .map(|p| {
-                            let x: [u8; 32] = (*p).into();
-                            x.into()
-                        })
-                        .collect(),
+                    payload: msg.payload,
                 }
             }
         }
 
         /// Event emitted as a part of a transaction.
-        #[serde_as]
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Event {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            from_address: H256,
-            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-            keys: Vec<H256>,
-            #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-            data: Vec<H256>,
+            from_address: ContractAddress,
+            keys: Vec<EventKey>,
+            data: Vec<EventData>,
         }
     }
 
@@ -536,18 +438,16 @@ pub mod reply {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionAndReceipt {
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        txn_hash: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        contract_address: H256,
-        #[serde_as(as = "H256AsRelaxedHexStr")]
-        entry_point_selector: H256,
-        #[serde_as(as = "Vec<H256AsRelaxedHexStr>")]
-        calldata: Vec<H256>,
+        txn_hash: StarknetTransactionHash,
+        contract_address: ContractAddress,
+        /// Absent in "deploy" transaction
+        entry_point_selector: Option<EntryPoint>,
+        /// Absent in "deploy" transaction
+        calldata: Option<Vec<CallParam>>,
         status: TransactionStatus,
         status_data: String,
         messages_sent: Vec<transaction_receipt::MessageToL1>,
-        l1_origin_message: transaction_receipt::MessageToL2,
+        l1_origin_message: Option<transaction_receipt::MessageToL2>,
         events: Vec<transaction_receipt::Event>,
     }
 
@@ -597,20 +497,15 @@ pub mod reply {
     /// Starknet's syncing status substructures.
     pub mod syncing {
         use super::BlockStatus;
-        use crate::serde::H256AsRelaxedHexStr;
+        use crate::core::StarknetBlockHash;
         use serde::{Deserialize, Serialize};
-        use serde_with::serde_as;
-        use web3::types::H256;
 
         /// Represents Starknet node syncing status.
-        #[serde_as]
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Status {
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            starting_block: H256,
-            #[serde_as(as = "H256AsRelaxedHexStr")]
-            current_block: H256,
+            starting_block: StarknetBlockHash,
+            current_block: StarknetBlockHash,
             highest_block: BlockStatus,
         }
     }
