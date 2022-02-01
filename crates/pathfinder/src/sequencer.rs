@@ -39,11 +39,21 @@ fn block_number_str(number: BlockNumberOrTag) -> Cow<'static, str> {
     }
 }
 
-/// __Mandatory__ function to parse every sequencer query response.
+/// __Mandatory__ function to parse every sequencer query response and deserialize
+/// to expected output type.
 async fn parse<T>(resp: reqwest::Response) -> Result<T, SequencerError>
 where
     T: ::serde::de::DeserializeOwned,
 {
+    let resp = parse_raw(resp).await?;
+    let resp = resp.text().await?;
+    // Attempt to deserialize the actual data we are looking for
+    let resp = serde_json::from_str::<T>(resp.as_str())?;
+    Ok(resp)
+}
+
+/// Helper function which allows skipping deserialization when required.
+async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, SequencerError> {
     // Starknet specific errors end with a 500 status code
     // but the body contains a JSON object with the error description
     if resp.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
@@ -53,10 +63,7 @@ where
     }
     // Status codes <400;499> and <501;599> are mapped to SequencerError::TransportError
     resp.error_for_status_ref().map(|_| ())?;
-    let resp = resp.text().await?;
-    // Attempt to deserialize the actual data we are looking for
-    let deserialized = serde_json::from_str::<T>(resp.as_str())?;
-    Ok(deserialized)
+    Ok(resp)
 }
 
 impl Client {
@@ -142,6 +149,24 @@ impl Client {
             .send()
             .await?;
         parse(resp).await
+    }
+
+    /// Gets full contract definition.
+    pub async fn full_contract(
+        &self,
+        contract_addr: ContractAddress,
+    ) -> Result<bytes::Bytes, SequencerError> {
+        let resp = self
+            .inner
+            .get(self.build_query(
+                "get_full_contract",
+                &[("contractAddress", &contract_addr.0.to_hex_str())],
+            ))
+            .send()
+            .await?;
+        let resp = parse_raw(resp).await?;
+        let resp = resp.bytes().await?;
+        Ok(resp)
     }
 
     /// Gets storage value associated with a `key` for a prticular contract.
@@ -274,6 +299,7 @@ mod tests {
     use assert_matches::assert_matches;
     use pedersen::StarkHash;
     use reqwest::StatusCode;
+    use std::str::FromStr;
 
     /// Convenience wrapper
     fn client() -> Client {
@@ -960,5 +986,27 @@ mod tests {
                 Status::NotReceived
             );
         }
+    }
+
+    #[tokio::test]
+    async fn full_contract() {
+        assert_eq!(
+            retry_on_rate_limiting!(
+                Client::new(Url::from_str("https://external.integration.starknet.io/").unwrap())
+                    .unwrap()
+                    .full_contract(ContractAddress(
+                        StarkHash::from_hex_str(
+                            "4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc"
+                        )
+                        .unwrap()
+                    ))
+                    .await
+            )
+            .unwrap()
+            .len(),
+            // Fast sanity check
+            // TODO replace with something more meaningful once we figure out the structure to deserialize to
+            512208
+        );
     }
 }
