@@ -56,7 +56,7 @@ pub struct CallSignatureElem(pub StarkHash);
 
 /// A word from a StarkNet contract bytecode.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-pub struct ByecodeWord(pub StarkHash);
+pub struct ByteCodeWord(pub StarkHash);
 
 /// The address of a storage element for a StarkNet contract.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]

@@ -20,7 +20,7 @@ hex = "0.4.3"
 home = "0.5.3"
 jsonrpsee = { version = "0.6.1", features = ["full"] }
 lazy_static = "1.4.0"
-num-bigint = { version = "0.4.3", features = [ "serde" ] }
+num-bigint = { version = "0.4.3", features = ["serde"] }
 pedersen = { path = "../pedersen" }
 reqwest = { version = "0.11.4", features = ["json"] }
 rusqlite = { version = "0.26.1", features = ["bundled"] }
@@ -34,5 +34,4 @@ web3 = "0.17.0"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
-pedersen = { path = "../pedersen" }
 pretty_assertions = "1.0.0"

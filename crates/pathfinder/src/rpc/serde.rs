@@ -180,108 +180,100 @@ fn bytes_to_hex_str(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    const ZERO: (&str, &str, [u8; 1]) = ("0x0", "0", [0]);
-    const ODD: (&str, &str, [u8; 8]) = (
-        "0x1234567890abcde",
-        "81985529205931230",
-        [1, 0x23, 0x45, 0x67, 0x89, 0x0a, 0xbc, 0xde],
-    );
-    const EVEN: (&str, &str, [u8; 8]) = (
-        "0x1234567890abcdef",
-        "1311768467294899695",
-        [0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef],
-    );
-    const MAX: (&str, &str, [u8; 32]) = (
-        "0x800000000000011000000000000000000000000000000000000000000000000",
-        "3618502788666131213697322783095070105623107215331596699973092056135872020480",
-        [
-            8, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0,
-        ],
-    );
-    const OVERFLOW: (&str, &str, [u8; 32]) = (
-        "0x800000000000011000000000000000000000000000000000000000000000001",
-        "3618502788666131213697322783095070105623107215331596699973092056135872020481",
-        [
-            8, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 1,
-        ],
-    );
-    const TOO_LONG: (&str, &str, [u8; 33]) = (
-        "0x80000000000001100000000000000000000000000000000000000000000000100",
-        "926336713898529590706514632472337947039515447124888755193111566370783237243136",
-        [
-            8, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 1, 0,
-        ],
-    );
-    const INVALID_DIGIT: (&str, &str) = ("0x123z", "123a");
 
     #[test]
     fn zero() {
-        let a = starkhash_from_biguint(BigUint::from_bytes_be(&ZERO.2)).unwrap();
-        let b = starkhash_from_dec_str(ZERO.1).unwrap();
+        const ZERO_HEX_STR: &str = "0x0";
+        const ZERO_DEC_STR: &str = "0";
+        const ZERO_BYTES: [u8; 1] = [0];
+
+        let a = starkhash_from_biguint(BigUint::from_bytes_be(&ZERO_BYTES)).unwrap();
+        let b = starkhash_from_dec_str(ZERO_DEC_STR).unwrap();
         let expected = StarkHash::ZERO;
         assert_eq!(expected, a);
         assert_eq!(expected, b);
-        assert_eq!(starkhash_to_dec_str(&expected), ZERO.1);
+        assert_eq!(starkhash_to_dec_str(&expected), ZERO_DEC_STR);
 
-        let c: [u8; 32] = bytes_from_hex_str(ZERO.0).unwrap();
+        let c: [u8; 32] = bytes_from_hex_str(ZERO_HEX_STR).unwrap();
         assert!(c.iter().all(|x| *x == 0));
-        assert_eq!(bytes_to_hex_str(&c[..]), ZERO.0);
+        assert_eq!(bytes_to_hex_str(&c[..]), ZERO_HEX_STR);
     }
 
     #[test]
     fn odd() {
-        let a = starkhash_from_biguint(BigUint::from_bytes_be(&ODD.2)).unwrap();
-        let b = starkhash_from_dec_str(ODD.1).unwrap();
-        let expected = StarkHash::from_hex_str(ODD.0).unwrap();
+        const ODD_HEX_STR: &str = "0x1234567890abcde";
+        const ODD_DEC_STR: &str = "81985529205931230";
+        const ODD_BYTES: [u8; 8] = [1, 0x23, 0x45, 0x67, 0x89, 0x0a, 0xbc, 0xde];
+
+        let a = starkhash_from_biguint(BigUint::from_bytes_be(&ODD_BYTES)).unwrap();
+        let b = starkhash_from_dec_str(ODD_DEC_STR).unwrap();
+        let expected = StarkHash::from_hex_str(ODD_HEX_STR).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
-        assert_eq!(starkhash_to_dec_str(&expected), ODD.1);
+        assert_eq!(starkhash_to_dec_str(&expected), ODD_DEC_STR);
 
-        let c: [u8; 8] = bytes_from_hex_str(ODD.0).unwrap();
-        assert_eq!(c, ODD.2);
-        assert_eq!(bytes_to_hex_str(&c[..]), ODD.0);
+        let c: [u8; 8] = bytes_from_hex_str(ODD_HEX_STR).unwrap();
+        assert_eq!(c, ODD_BYTES);
+        assert_eq!(bytes_to_hex_str(&c[..]), ODD_HEX_STR);
     }
 
     #[test]
     fn even() {
-        let a = starkhash_from_biguint(BigUint::from_bytes_be(&EVEN.2)).unwrap();
-        let b = starkhash_from_dec_str(EVEN.1).unwrap();
-        let expected = StarkHash::from_hex_str(EVEN.0).unwrap();
+        const EVEN_HEX_STR: &str = "0x1234567890abcdef";
+        const EVEN_DEC_STR: &str = "1311768467294899695";
+        const EVEN_BYTES: [u8; 8] = [0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef];
+
+        let a = starkhash_from_biguint(BigUint::from_bytes_be(&EVEN_BYTES)).unwrap();
+        let b = starkhash_from_dec_str(EVEN_DEC_STR).unwrap();
+        let expected = StarkHash::from_hex_str(EVEN_HEX_STR).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
-        assert_eq!(starkhash_to_dec_str(&expected), EVEN.1);
+        assert_eq!(starkhash_to_dec_str(&expected), EVEN_DEC_STR);
 
-        let c: [u8; 8] = bytes_from_hex_str(EVEN.0).unwrap();
-        assert_eq!(c, EVEN.2);
-        assert_eq!(bytes_to_hex_str(&c[..]), EVEN.0);
+        let c: [u8; 8] = bytes_from_hex_str(EVEN_HEX_STR).unwrap();
+        assert_eq!(c, EVEN_BYTES);
+        assert_eq!(bytes_to_hex_str(&c[..]), EVEN_HEX_STR);
     }
 
     #[test]
     fn max() {
-        let a = starkhash_from_biguint(BigUint::from_bytes_be(&MAX.2)).unwrap();
-        let b = starkhash_from_dec_str(MAX.1).unwrap();
-        let expected = StarkHash::from_hex_str(MAX.0).unwrap();
+        const MAX_HEX_STR: &str =
+            "0x800000000000011000000000000000000000000000000000000000000000000";
+        const MAX_DEC_STR: &str =
+            "3618502788666131213697322783095070105623107215331596699973092056135872020480";
+        const MAX_BYTES: [u8; 32] = [
+            8, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+
+        let a = starkhash_from_biguint(BigUint::from_bytes_be(&MAX_BYTES)).unwrap();
+        let b = starkhash_from_dec_str(MAX_DEC_STR).unwrap();
+        let expected = StarkHash::from_hex_str(MAX_HEX_STR).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
-        assert_eq!(starkhash_to_dec_str(&expected), MAX.1);
+        assert_eq!(starkhash_to_dec_str(&expected), MAX_DEC_STR);
 
-        let c: [u8; 32] = bytes_from_hex_str(MAX.0).unwrap();
-        assert_eq!(c, MAX.2);
-        assert_eq!(bytes_to_hex_str(&c[..]), MAX.0);
+        let c: [u8; 32] = bytes_from_hex_str(MAX_HEX_STR).unwrap();
+        assert_eq!(c, MAX_BYTES);
+        assert_eq!(bytes_to_hex_str(&c[..]), MAX_HEX_STR);
     }
 
     #[test]
     fn overflow() {
+        const OVERFLOW_DEC_STR: &str =
+            "3618502788666131213697322783095070105623107215331596699973092056135872020481";
+        const OVERFLOW_BYTES: [u8; 32] = [
+            8, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 1,
+        ];
+
         use pedersen::FromSliceError;
         assert_eq!(
-            starkhash_from_biguint(BigUint::from_bytes_be(&OVERFLOW.2)),
+            starkhash_from_biguint(BigUint::from_bytes_be(&OVERFLOW_BYTES)),
             Err(FromSliceError::Overflow)
         );
         assert_eq!(
-            starkhash_from_dec_str(OVERFLOW.1)
+            starkhash_from_dec_str(OVERFLOW_DEC_STR)
                 .unwrap_err()
                 .downcast::<FromSliceError>()
                 .unwrap(),
@@ -291,20 +283,29 @@ mod tests {
 
     #[test]
     fn too_long() {
+        const TOO_LONG_HEX_STR: &str =
+            "0x80000000000001100000000000000000000000000000000000000000000000100";
+        const TOO_LONG_DEC_STR: &str =
+            "926336713898529590706514632472337947039515447124888755193111566370783237243136";
+        const TOO_LONG_BYTES: [u8; 33] = [
+            8, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 1, 0,
+        ];
+
         use pedersen::{FromSliceError, HexParseError};
         assert_eq!(
-            starkhash_from_biguint(BigUint::from_bytes_be(&TOO_LONG.2)),
+            starkhash_from_biguint(BigUint::from_bytes_be(&TOO_LONG_BYTES)),
             Err(FromSliceError::BadLength)
         );
         assert_eq!(
-            starkhash_from_dec_str(TOO_LONG.1)
+            starkhash_from_dec_str(TOO_LONG_DEC_STR)
                 .unwrap_err()
                 .downcast::<FromSliceError>()
                 .unwrap(),
             FromSliceError::BadLength
         );
         assert_eq!(
-            bytes_from_hex_str::<32>(TOO_LONG.0),
+            bytes_from_hex_str::<32>(TOO_LONG_HEX_STR),
             Err(HexParseError::InvalidLength(65))
         );
     }
@@ -312,12 +313,12 @@ mod tests {
     #[test]
     fn invalid_digit() {
         use num_bigint::ParseBigIntError;
-        starkhash_from_dec_str(INVALID_DIGIT.1)
+        starkhash_from_dec_str("123a")
             .unwrap_err()
             .downcast::<ParseBigIntError>()
             .unwrap();
         assert_eq!(
-            bytes_from_hex_str::<32>(INVALID_DIGIT.0),
+            bytes_from_hex_str::<32>("0x123z"),
             Err(HexParseError::InvalidNibble(b'z'))
         );
     }

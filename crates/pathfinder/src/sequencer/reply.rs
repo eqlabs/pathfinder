@@ -1,6 +1,6 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use crate::core::{
-    ByecodeWord, CallResultValue, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+    ByteCodeWord, CallResultValue, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DefaultOnError};
@@ -77,7 +77,7 @@ pub struct Code {
     // object, instead of a JSON array
     #[serde_as(deserialize_as = "DefaultOnError")]
     pub abi: Vec<code::Abi>,
-    pub bytecode: Vec<ByecodeWord>,
+    pub bytecode: Vec<ByteCodeWord>,
 }
 
 /// Types used when deserializing L2 contract related data.
