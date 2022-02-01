@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pedersen::{pedersen_hash, StarkHash};
+use pedersen::hash::{pedersen_hash, pedersen_hash_preprocessed, StarkHash};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     // These are the test vectors also used in tests, taken from
@@ -16,6 +16,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let e0 = StarkHash::from_be_bytes(parse_hex(e0)).unwrap();
     let e1 = StarkHash::from_be_bytes(parse_hex(e1)).unwrap();
 
+    c.bench_function("pedersen_hash_preprocessed", |b| {
+        b.iter(|| {
+            black_box(pedersen_hash_preprocessed(e0, e1));
+        });
+    });
     c.bench_function("pedersen_hash", |b| {
         b.iter(|| {
             black_box(pedersen_hash(e0, e1));
