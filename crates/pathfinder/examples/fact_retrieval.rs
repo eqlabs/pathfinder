@@ -86,16 +86,16 @@ fn parse_cli_args() -> (Web3<Http>, EthereumBlockHash, StarknetBlockNumber) {
                 .long("url")
                 .short("u")
                 .takes_value(true)
-                .value_name("URL")
+                .value_name("HTTP(S) URL")
                 .long_help(r#"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura or Cloudflare.
 
 Examples:
-    infura: wss://goerli.infura.io/ws/v3/<PROJECT_ID>
-    geth:   wss://localhost:8545"#));
+    infura: https://goerli.infura.io/v3/<PROJECT_ID>
+    geth:   https://localhost:8545"#));
 
     let args = cli.get_matches();
 
-    let url = args.value_of("url").expect("websocket url is required");
+    let url = args.value_of("url").expect("Ethereum HTTP url is required");
     let block = args.value_of("block").expect("block hash is required");
     let seq_no = args
         .value_of("seq-no")

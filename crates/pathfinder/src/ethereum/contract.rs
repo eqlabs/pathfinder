@@ -57,8 +57,6 @@ fn mempage_contract() -> Contract {
 
 #[cfg(test)]
 mod tests {
-    use crate::ethereum::test::create_test_websocket_transport;
-
     use super::*;
 
     mod contract {
@@ -66,6 +64,8 @@ mod tests {
             contract::Options,
             types::{BlockId, BlockNumber},
         };
+
+        use crate::ethereum::{test::create_test_transport, Chain};
 
         use super::*;
 
@@ -100,7 +100,7 @@ mod tests {
                 "/resources/contracts/core_proxy.json"
             ));
 
-            let transport = create_test_websocket_transport().await;
+            let transport = create_test_transport(Chain::Goerli).await;
 
             let core_proxy = web3::contract::Contract::from_json(
                 transport.eth(),

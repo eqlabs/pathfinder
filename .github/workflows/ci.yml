@@ -14,8 +14,10 @@ jobs:
       # An Ethereum access point is required for some L1 StarkNet contract tests.
       # This sets it to secret values stored in the repository, which prevents
       # leaking it in code.
-      STARKNET_ETHEREUM_WEBSOCKET_URL: ${{ secrets.STARKNET_ETHEREUM_WEBSOCKET_URL }}
-      STARKNET_ETHEREUM_PASSWORD: ${{ secrets.STARKNET_ETHEREUM_PASSWORD }}
+      PATHFINDER_ETHEREUM_HTTP_GOERLI_URL:       ${{ secrets.PATHFINDER_ETHEREUM_HTTP_GOERLI_URL }}
+      PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD:  ${{ secrets.PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD }}
+      PATHFINDER_ETHEREUM_HTTP_MAINNET_URL:      ${{ secrets.PATHFINDER_ETHEREUM_HTTP_MAINNET_URL }}
+      PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD: ${{ secrets.PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD }}
     steps:
       - uses: actions/checkout@v2
       - uses: dtolnay/rust-toolchain@stable

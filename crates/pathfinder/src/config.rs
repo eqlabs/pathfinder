@@ -14,7 +14,7 @@ const DEFAULT_HTTP_RPC_ADDR: &str = "127.0.0.1:9545";
 #[derive(Debug, PartialEq, Clone, Copy, Hash, Eq, IntoEnumIterator)]
 pub enum ConfigOption {
     /// The Ethereum URL.
-    EthereumWebsocketUrl,
+    EthereumHttpUrl,
     /// The Ethereum user.
     EthereumUser,
     /// The Ethereum password.
@@ -26,7 +26,7 @@ pub enum ConfigOption {
 impl Display for ConfigOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigOption::EthereumWebsocketUrl => f.write_str("Ethereum websocket URL"),
+            ConfigOption::EthereumHttpUrl => f.write_str("Ethereum HTTP URL"),
             ConfigOption::EthereumUser => f.write_str("Ethereum user"),
             ConfigOption::EthereumPassword => f.write_str("Ethereum password"),
             ConfigOption::HttpRpcAddress => f.write_str("HTTP-RPC socket address"),

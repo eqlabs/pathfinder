@@ -358,7 +358,7 @@ mod tests {
             EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
             EthereumTransactionIndex, StarknetBlockHash, StarknetBlockNumber,
         },
-        ethereum::test::create_test_websocket_transport,
+        ethereum::test::create_test_transport,
     };
     use std::str::FromStr;
     use web3::types::H256;
@@ -438,7 +438,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
         crate::storage::migrate_database(&transaction).unwrap();
 
-        let transport = create_test_websocket_transport().await;
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
 
         update(
             &transport,

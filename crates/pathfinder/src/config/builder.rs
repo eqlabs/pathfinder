@@ -39,7 +39,7 @@ impl ConfigBuilder {
         use super::DEFAULT_HTTP_RPC_ADDR;
 
         // Required parameters.
-        let eth_url = self.take_required(ConfigOption::EthereumWebsocketUrl)?;
+        let eth_url = self.take_required(ConfigOption::EthereumHttpUrl)?;
         let http_rpc_addr = self
             .take_required(ConfigOption::HttpRpcAddress)
             .unwrap_or_else(|_| DEFAULT_HTTP_RPC_ADDR.to_owned());
@@ -194,14 +194,14 @@ mod tests {
 
     mod try_build {
         /// List of [ConfigOption]'s that must be set for [ConfigBuilder] to produce a [Configuration].
-        const REQUIRED: &[ConfigOption] = &[ConfigOption::EthereumWebsocketUrl];
+        const REQUIRED: &[ConfigOption] = &[ConfigOption::EthereumHttpUrl];
 
         use super::*;
 
         /// Some options expect a specific type of value.
         fn get_valid_value(option: ConfigOption) -> String {
             match option {
-                ConfigOption::EthereumWebsocketUrl => "http://localhost",
+                ConfigOption::EthereumHttpUrl => "http://localhost",
                 _ => "value",
             }
             .to_owned()

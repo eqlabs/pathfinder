@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
+use web3::{types::U256, Transport, Web3};
 
 use crate::core::{
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
@@ -9,6 +10,15 @@ use crate::core::{
 pub mod contract;
 pub mod log;
 pub mod state_update;
+
+/// Ethereum network chains running Starknet.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Chain {
+    /// The Ethereum mainnet chain.
+    Mainnet,
+    /// The Ethereum Goerli test network chain.
+    Goerli,
+}
 
 /// List of semi-official Ethereum RPC errors taken from EIP-1474 (which is stagnant).
 ///
@@ -132,23 +142,78 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
     }
 }
 
+/// Identifies the Ethereum [Chain] behind the given Ethereum transport.
+///
+/// Will error if it's not one of the valid Starknet [Chain] variants.
+pub async fn chain<T: Transport>(transport: Web3<T>) -> anyhow::Result<Chain> {
+    match transport.eth().chain_id().await? {
+        id if id == U256::from(1u32) => Ok(Chain::Mainnet),
+        id if id == U256::from(5u32) => Ok(Chain::Goerli),
+        other => anyhow::bail!("Unsupported chain ID: {}", other),
+    }
+}
+
 #[cfg(test)]
 pub mod test {
-    use web3::transports::WebSocket;
+    use super::*;
+
+    use reqwest::Url;
+    use web3::transports::Http;
     use web3::Web3;
 
-    /// Creates a [Web3<WebSocket>] as specified by [create_test_websocket].
-    pub async fn create_test_websocket_transport() -> Web3<WebSocket> {
-        web3::Web3::new(create_test_websocket().await)
+    /// Creates a [Web3<Http>] transport from the Ethereum endpoint specified by the relevant environment variables.
+    ///
+    /// Requires an environment variable for both the URL and (optional) password.
+    ///
+    /// Panics if the environment variables are not specified.
+    ///
+    /// Goerli:  PATHFINDER_ETHEREUM_HTTP_GOERLI_URL
+    ///          PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD (optional)
+    ///
+    /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
+    ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
+    pub async fn create_test_transport(chain: Chain) -> Web3<Http> {
+        let key_prefix = match chain {
+            Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
+            Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
+        };
+
+        let url_key = format!("{}_URL", key_prefix);
+        let password_key = format!("{}_PASSWORD", key_prefix);
+
+        let url = std::env::var(&url_key)
+            .unwrap_or_else(|_| panic!("Ethereum URL environment var not set {url_key}"));
+
+        let password = std::env::var(password_key).ok();
+
+        let mut url = url.parse::<Url>().expect("Bad Ethereum URL");
+        url.set_password(password.as_deref()).unwrap();
+
+        let client = reqwest::Client::builder().build().unwrap();
+        let transport = Http::with_client(client, url);
+
+        Web3::new(transport)
     }
 
-    /// Creates a [WebSocket] which connects to the Ethereum node specified by
-    /// the `STARKNET_ETHEREUM_WEBSOCKET_URL` environment variable.
-    pub async fn create_test_websocket() -> WebSocket {
-        let url = std::env::var("STARKNET_ETHEREUM_WEBSOCKET_URL").expect(
-            "Ethereum websocket URL environment var not set (STARKNET_ETHEREUM_WEBSOCKET_URL)",
-        );
+    mod chain {
+        use super::*;
 
-        WebSocket::new(&url).await.unwrap()
+        #[tokio::test]
+        async fn goerli() {
+            let expected_chain = Chain::Goerli;
+            let transport = create_test_transport(expected_chain).await;
+            let chain = chain(transport).await.unwrap();
+
+            assert_eq!(chain, expected_chain);
+        }
+
+        #[tokio::test]
+        async fn mainnet() {
+            let expected_chain = Chain::Mainnet;
+            let transport = create_test_transport(expected_chain).await;
+            let chain = chain(transport).await.unwrap();
+
+            assert_eq!(chain, expected_chain);
+        }
     }
 }
