@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Context;
 use pedersen::{pedersen_hash, StarkHash};
 use rusqlite::{Connection, Transaction};
@@ -201,11 +203,30 @@ async fn update<T: Transport>(
         )));
     }
 
-    // Download additional block information from sequencer.
-    let block = sequencer
-        .block_by_number(BlockNumberOrTag::Number(update_log.block_number))
-        .await
-        .context("Downloading StarkNet block from sequencer")?;
+    // Download additional block information from sequencer. Use a custom timeout with retry strategy
+    // to work-around the sequencer's poor performance (spurious lack of response) for early blocks.
+    let block = loop {
+        match sequencer
+            .block_by_number_with_timeout(
+                BlockNumberOrTag::Number(update_log.block_number),
+                Duration::from_secs(3),
+            )
+            .await
+        {
+            Ok(block) => break block,
+            Err(err) => {
+                use sequencer::error::*;
+                match err {
+                    SequencerError::TransportError(terr) if terr.is_timeout() => continue,
+                    other => {
+                        let err = anyhow::anyhow!("{}", other)
+                            .context("Downloading StarkNet block from sequencer");
+                        return Err(UpdateError::Other(err));
+                    }
+                }
+            }
+        }
+    };
 
     // Verify sequencer root against L1.
     let sequencer_root = block.state_root.context("Sequencer state root missing")?;
