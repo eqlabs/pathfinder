@@ -6,7 +6,7 @@ use crate::core::{
 };
 use bigdecimal::BigDecimal;
 use num_bigint::{BigInt, BigUint, Sign};
-use pedersen::{FromSliceError, HexParseError, StarkHash};
+use pedersen::{HexParseError, OverflowError, StarkHash};
 use serde_with::serde_conv;
 use std::str::FromStr;
 use web3::types::H160;
@@ -75,21 +75,8 @@ serde_with::serde_conv!(
 );
 
 /// A helper conversion function. Only use with __sequencer API related types__.
-fn starkhash_from_biguint(b: BigUint) -> Result<StarkHash, FromSliceError> {
-    let mut b = b.to_bytes_be();
-    let len = b.len();
-
-    if len > 32 {
-        return Err(FromSliceError::BadLength);
-    }
-
-    if len < 32 {
-        b.resize(32, 0);
-        b.as_mut_slice().copy_within(..len, 32 - len);
-        b[..32 - len].fill(0);
-    }
-
-    StarkHash::from_be_slice(&b[..])
+fn starkhash_from_biguint(b: BigUint) -> Result<StarkHash, OverflowError> {
+    StarkHash::from_be_slice(&b.to_bytes_be())
 }
 
 /// A helper conversion function. Only use with __sequencer API related types__.
@@ -267,17 +254,16 @@ mod tests {
             0, 0, 1,
         ];
 
-        use pedersen::FromSliceError;
         assert_eq!(
             starkhash_from_biguint(BigUint::from_bytes_be(&OVERFLOW_BYTES)),
-            Err(FromSliceError::Overflow)
+            Err(OverflowError)
         );
         assert_eq!(
             starkhash_from_dec_str(OVERFLOW_DEC_STR)
                 .unwrap_err()
-                .downcast::<FromSliceError>()
+                .downcast::<OverflowError>()
                 .unwrap(),
-            FromSliceError::Overflow
+            OverflowError,
         );
     }
 
@@ -292,17 +278,17 @@ mod tests {
             0, 0, 1, 0,
         ];
 
-        use pedersen::{FromSliceError, HexParseError};
+        use pedersen::HexParseError;
         assert_eq!(
             starkhash_from_biguint(BigUint::from_bytes_be(&TOO_LONG_BYTES)),
-            Err(FromSliceError::BadLength)
+            Err(OverflowError)
         );
         assert_eq!(
             starkhash_from_dec_str(TOO_LONG_DEC_STR)
                 .unwrap_err()
-                .downcast::<FromSliceError>()
+                .downcast::<OverflowError>()
                 .unwrap(),
-            FromSliceError::BadLength
+            OverflowError
         );
         assert_eq!(
             bytes_from_hex_str::<32>(TOO_LONG_HEX_STR),

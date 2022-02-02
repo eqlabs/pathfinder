@@ -7,5 +7,5 @@ mod curve_consts;
 mod curve_consts_gen;
 
 pub use hash::{
-    pedersen_hash_preprocessed as pedersen_hash, FromSliceError, HexParseError, StarkHash,
+    pedersen_hash_preprocessed as pedersen_hash, HexParseError, OverflowError, StarkHash,
 };
