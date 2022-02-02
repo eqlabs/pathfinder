@@ -1,8 +1,9 @@
 use crate::{
-    core::{ContractAddress, ContractHash},
+    core::{ContractAddress, ContractCode, ContractHash},
     storage::{DB_VERSION_CURRENT, DB_VERSION_EMPTY},
 };
 
+use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{named_params, OptionalExtension, Transaction};
 
@@ -33,7 +34,7 @@ impl ContractsTable {
             r"CREATE TABLE contracts (
                     address    BLOB PRIMARY KEY,
                     hash       BLOB NOT NULL,
-                    code       BLOB,
+                    bytecode   BLOB,
                     abi        BLOB,
                     definition BLOB
                 )",
@@ -48,22 +49,69 @@ impl ContractsTable {
         transaction: &Transaction,
         address: ContractAddress,
         hash: ContractHash,
-        code: &[u8],
-        abi: &[u8],
+        code: ContractCode,
         definition: &[u8],
     ) -> anyhow::Result<()> {
+        let bytecode = code
+            .bytecode
+            .into_iter()
+            .flat_map(|word| word.to_be_bytes())
+            .collect::<Vec<_>>();
+
         transaction.execute(
-            r"INSERT INTO contracts ( address,  hash, code,   abi,  definition)
-                                 VALUES (:address, :hash, :code, :abi, :definition)",
+            r"INSERT INTO contracts ( address,  hash, bytecode,   abi,  definition)
+                             VALUES (:address, :hash, :bytecode, :abi, :definition)",
             named_params! {
                 ":address": &address.0.to_be_bytes()[..],
                 ":hash": &hash.0.to_be_bytes()[..],
-                ":code": code,
-                ":abi": abi,
+                ":bytecode": &bytecode[..],
+                ":abi": code.abi.as_bytes(),
                 ":definition": definition,
             },
         )?;
         Ok(())
+    }
+
+    /// Gets the specificed contract's [code](ContractCode).
+    pub fn get_code(
+        transaction: &Transaction,
+        address: ContractAddress,
+    ) -> anyhow::Result<Option<ContractCode>> {
+        let row = transaction
+            .query_row(
+                "SELECT bytecode, abi FROM contracts where address = :address",
+                named_params! {
+                    ":address": &address.0.to_be_bytes()[..]
+                },
+                |row| {
+                    let bytecode: Vec<u8> = row.get("bytecode")?;
+                    let abi: Vec<u8> = row.get("abi")?;
+
+                    Ok((bytecode, abi))
+                },
+            )
+            .optional()?;
+
+        let (bytecode, abi) = match row {
+            None => return Ok(None),
+            Some((bytecode, abi)) => (bytecode, abi),
+        };
+
+        anyhow::ensure!(
+            (bytecode.len() % 32) == 0,
+            "Bytecode length must be a multiple of 32, but got {}",
+            bytecode.len()
+        );
+
+        let bytecode = bytecode
+            .chunks(32)
+            // unwrap is safe because word is guaranteed to be 32 bytes
+            .map(|word| StarkHash::from_be_slice(word).unwrap())
+            .collect();
+
+        let abi = String::from_utf8(abi).context("Parsing ABI bytes")?;
+
+        Ok(Some(ContractCode { bytecode, abi }))
     }
 
     /// Gets the specificed contract's hash.
@@ -111,22 +159,43 @@ mod tests {
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
-        let code = vec![0, 1, 2, 3, 4];
-        let abi = vec![54, 62, 71];
+        let code = ContractCode {
+            bytecode: Vec::new(),
+            abi: String::new(),
+        };
         let definition = vec![9, 13, 25];
 
-        ContractsTable::insert(
-            &transaction,
-            address,
-            hash,
-            &code[..],
-            &abi[..],
-            &definition[..],
-        )
-        .unwrap();
+        ContractsTable::insert(&transaction, address, hash, code, &definition[..]).unwrap();
 
         let result = ContractsTable::get_hash(&transaction, address).unwrap();
 
         assert_eq!(result, Some(hash));
+    }
+
+    #[test]
+    fn get_code() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+
+        ContractsTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
+
+        let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
+        let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
+        let code = ContractCode {
+            bytecode: vec![
+                StarkHash::from_hex_str("abc").unwrap(),
+                StarkHash::from_hex_str("def").unwrap(),
+                StarkHash::from_hex_str("123").unwrap(),
+                StarkHash::from_hex_str("4567890").unwrap(),
+            ],
+            abi: "This is the ABI".to_string(),
+        };
+        let definition = vec![9, 13, 25];
+
+        ContractsTable::insert(&transaction, address, hash, code.clone(), &definition[..]).unwrap();
+
+        let result = ContractsTable::get_code(&transaction, address).unwrap();
+
+        assert_eq!(result, Some(code));
     }
 }
