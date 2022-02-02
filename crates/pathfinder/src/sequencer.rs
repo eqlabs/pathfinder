@@ -168,7 +168,7 @@ impl Client {
 
         Ok(ContractCode {
             bytecode: code.bytecode,
-            abi: code.abi,
+            abi: code.abi.to_string(),
         })
     }
 
