@@ -440,9 +440,9 @@ mod tests {
 
         let sequencer = sequencer::Client::goerli().unwrap();
 
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let storage = crate::storage::Storage::in_memory().unwrap();
+        let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
-        crate::storage::migrate_database(&transaction).unwrap();
 
         let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
 

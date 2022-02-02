@@ -1,7 +1,5 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::core::{
-    CallResultValue, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-};
+use crate::core::{CallResultValue, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use pedersen::StarkHash;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DefaultOnError};
