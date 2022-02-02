@@ -362,18 +362,6 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn not_found() {
-            let params = rpc_params!(*UNKNOWN_BLOCK_HASH);
-            let error = client_request::<Block>("starknet_getBlockByHash", params)
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_BLOCK_HASH)
-            );
-        }
-
-        #[tokio::test]
         async fn invalid_block_hash() {
             let params = rpc_params!(*INVALID_BLOCK_HASH);
             let error = client_request::<Block>("starknet_getBlockByHash", params)
@@ -552,18 +540,6 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn block_not_found() {
-            let params = rpc_params!(*VALID_CONTRACT_ADDR, *VALID_KEY, *UNKNOWN_BLOCK_HASH);
-            let error = client_request::<StorageValue>("starknet_getStorageAt", params)
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_BLOCK_HASH)
-            );
-        }
-
-        #[tokio::test]
         async fn invalid_block_hash() {
             let params = rpc_params!(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH);
             let error = client_request::<StorageValue>("starknet_getStorageAt", params)
@@ -663,18 +639,6 @@ mod tests {
                 Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_TX_HASH)
             );
         }
-
-        #[tokio::test]
-        async fn unknown_hash() {
-            let params = rpc_params!(*UNKNOWN_TX_HASH);
-            let error = client_request::<Transaction>("starknet_getTransactionByHash", params)
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_TX_HASH)
-            );
-        }
     }
 
     mod get_transaction_by_block_hash_and_index {
@@ -724,19 +688,6 @@ mod tests {
         #[tokio::test]
         async fn invalid_block() {
             let params = rpc_params!(*INVALID_BLOCK_HASH, *VALID_TX_INDEX);
-            let error =
-                client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
-                    .await
-                    .unwrap_err();
-            assert_matches!(
-                error,
-                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_BLOCK_HASH)
-            );
-        }
-
-        #[tokio::test]
-        async fn unknown_block() {
-            let params = rpc_params!(*UNKNOWN_BLOCK_HASH, *VALID_TX_INDEX);
             let error =
                 client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                     .await
@@ -866,19 +817,6 @@ mod tests {
                 Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_TX_HASH)
             );
         }
-
-        #[tokio::test]
-        async fn unknown() {
-            let params = rpc_params!(*UNKNOWN_TX_HASH);
-            let error =
-                client_request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
-                    .await
-                    .unwrap_err();
-            assert_matches!(
-                error,
-                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_TX_HASH)
-            );
-        }
     }
 
     mod get_code {
@@ -889,15 +827,6 @@ mod tests {
         async fn invalid_contract_address() {
             // At the moment an invalid address causes an empty but valid reply
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
-            client_request::<Code>("starknet_getCode", params)
-                .await
-                .unwrap();
-        }
-
-        #[tokio::test]
-        async fn unknown_contract_address() {
-            // At the moment a valid address from mainnet causes an empty but valid reply
-            let params = rpc_params!(*UNKNOWN_CONTRACT_ADDR);
             client_request::<Code>("starknet_getCode", params)
                 .await
                 .unwrap();
@@ -968,18 +897,6 @@ mod tests {
         #[tokio::test]
         async fn invalid() {
             let params = rpc_params!(*INVALID_BLOCK_HASH);
-            let error = client_request::<u64>("starknet_getBlockTransactionCountByHash", params)
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_BLOCK_HASH)
-            );
-        }
-
-        #[tokio::test]
-        async fn unknown() {
-            let params = rpc_params!(*UNKNOWN_BLOCK_HASH);
             let error = client_request::<u64>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap_err();
@@ -1207,25 +1124,6 @@ mod tests {
                     entry_point_selector: *VALID_ENTRY_POINT,
                 },
                 *INVALID_BLOCK_HASH
-            );
-            let error = client_request::<Vec<CallResultValue>>("starknet_call", params)
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_BLOCK_HASH)
-            );
-        }
-
-        #[tokio::test]
-        async fn unknown_block_hash() {
-            let params = rpc_params!(
-                Call {
-                    calldata: CALL_DATA.clone(),
-                    contract_address: *VALID_CONTRACT_ADDR,
-                    entry_point_selector: *VALID_ENTRY_POINT,
-                },
-                *UNKNOWN_BLOCK_HASH
             );
             let error = client_request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
