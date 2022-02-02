@@ -218,12 +218,20 @@ impl RpcApi {
 
     /// Get the code of a specific contract.
     /// `contract_address` is the address of the contract to read from.
-    pub async fn get_code(&self, contract_address: ContractAddress) -> RpcResult<Code> {
-        let code = self
-            .0
-            .code(contract_address, BlockHashOrTag::Tag(Tag::Latest))
-            .await?;
-        Ok(code)
+    pub async fn get_code(&self, contract_address: ContractAddress) -> RpcResult<ContractCode> {
+        let mut db = self
+            .storage
+            .connection()
+            .context("Opening database connection")?;
+        let tx = db.transaction().context("Creating database transaction")?;
+
+        let code = storage::ContractsTable::get_code(&tx, contract_address)
+            .context("Fetching code from database")?;
+
+        match code {
+            Some(code) => Ok(code),
+            None => todo!("Contract missing error code 20"),
+        }
     }
 
     /// Get the number of transactions in a block given a block hash.
