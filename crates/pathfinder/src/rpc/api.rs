@@ -230,7 +230,7 @@ impl RpcApi {
 
         match code {
             Some(code) => Ok(code),
-            None => todo!("Contract missing error code 20"),
+            None => Err(ErrorCode::ContractNotFound.into()),
         }
     }
 
