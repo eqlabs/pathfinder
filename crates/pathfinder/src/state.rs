@@ -6,7 +6,10 @@ use rusqlite::{Connection, Transaction};
 use web3::{Transport, Web3};
 
 use crate::{
-    core::{ContractHash, ContractRoot, ContractStateHash, GlobalRoot, StarknetBlockTimestamp},
+    core::{
+        ContractCode, ContractHash, ContractRoot, ContractStateHash, GlobalRoot,
+        StarknetBlockTimestamp,
+    },
     ethereum::{
         log::{FetchError, StateUpdateLog},
         state_update::{
@@ -15,7 +18,7 @@ use crate::{
         },
         BlockOrigin, EthOrigin, TransactionOrigin,
     },
-    rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
+    rpc::types::BlockNumberOrTag,
     sequencer,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{
@@ -329,10 +332,14 @@ async fn deploy_contract(
     sequencer: &sequencer::Client,
 ) -> anyhow::Result<()> {
     // Download code and ABI from the sequencer.
-    let code = sequencer
-        .code(contract.address, BlockHashOrTag::Tag(Tag::Latest))
+    let definition = sequencer
+        .contract_definition(contract.address)
         .await
         .context("Download contract code and ABI from sequencer")?;
+    let code = ContractCode {
+        abi: definition.abi,
+        bytecode: definition.program.bytecode,
+    };
 
     // TODO: verify contract hash (waiting on contract definition API change).
 
