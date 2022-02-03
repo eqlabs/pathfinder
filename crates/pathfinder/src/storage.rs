@@ -7,7 +7,9 @@ mod ethereum;
 pub mod merkle_tree;
 mod state;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::Mutex;
 
 pub use contract::ContractsTable;
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
@@ -30,9 +32,16 @@ const VERSION_KEY: &str = "user_version";
 /// - Pass the [Storage] (or clones thereof) to components which require database access.
 /// - Use [Storage::connection] to create connection's to the database, which can in turn
 ///   be used to interact with the various [tables](self).
-#[derive(Clone)]
+#[cfg_attr(not(test), derive(Clone))]
 pub struct Storage {
     database_path: PathBuf,
+    /// Required to keep the in-memory variant alive. Sqlite drops in-memory databases
+    /// as soon as all living connections are dropped, so we prevent this by storing
+    /// a keep-alive connection.
+    ///
+    /// [Connection] is !Sync so we wrap it in [Mutex] to get sync back.
+    #[cfg(test)]
+    keep_alive: Mutex<Connection>,
 }
 
 impl Storage {
@@ -43,20 +52,31 @@ impl Storage {
     ///
     /// May be cloned safely.
     pub fn migrate(database_path: PathBuf) -> anyhow::Result<Self> {
-        let storage = Storage { database_path };
-
-        let mut conn = storage.connection().context("Open database connection")?;
+        let mut conn = Self::open_connection(&database_path)?;
         let tx = conn.transaction().context("Create database transaction")?;
         migrate_database(&tx).context("Migrating database")?;
         tx.commit().context("Commiting migration transaction")?;
+
+        #[cfg(not(test))]
+        let storage = Storage { database_path };
+        #[cfg(test)]
+        let storage = Storage {
+            database_path,
+            keep_alive: Mutex::new(conn),
+        };
 
         Ok(storage)
     }
 
     /// Returns a new Sqlite [Connection] to the database.
     pub fn connection(&self) -> anyhow::Result<Connection> {
+        Self::open_connection(&self.database_path)
+    }
+
+    /// Opens a connection the given database path.
+    fn open_connection(database_path: &Path) -> anyhow::Result<Connection> {
         // TODO: think about flags?
-        let conn = Connection::open(&self.database_path)?;
+        let conn = Connection::open(database_path)?;
         Ok(conn)
     }
 
@@ -64,7 +84,21 @@ impl Storage {
     /// Convenience function for tests to create an in-memory database.
     /// Equivalent to [Storage::migrate] with an in-memory backed database.
     pub fn in_memory() -> anyhow::Result<Self> {
-        Self::migrate("file::memory:".into())
+        // Create a unique database name so that they are not shared between
+        // concurrent tests. i.e. Make every in-mem Storage unique.
+        lazy_static::lazy_static!(
+            static ref COUNT: Mutex<u64> = Mutex::new(0);
+        );
+        let unique_mem_db = {
+            let mut count = COUNT.lock().unwrap();
+            let unique_mem_db = format!("file:memdb{}?mode=memory&cache=shared", count);
+            *count += 1;
+            unique_mem_db
+        };
+
+        let database_path = PathBuf::from(unique_mem_db);
+
+        Self::migrate(database_path)
     }
 }
 
