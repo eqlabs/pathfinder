@@ -76,7 +76,8 @@ pub struct Code {
 }
 
 /// Used to deserialize a reply from [Client::contract_definition](crate::sequencer::Client::contract_definition).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+/// Stores only those fields from a full contract definition that are currently used by Pathfinder.
+#[derive(Clone, Debug, Deserialize)]
 pub struct LiteContractDefinition {
     pub abi: Box<serde_json::value::RawValue>,
     pub program: contract_definition::Program,
@@ -85,9 +86,9 @@ pub struct LiteContractDefinition {
 /// Types used when deserializing L2 contract definition related data.
 pub mod contract_definition {
     use super::StarkHash;
-    use serde::{Deserialize, Serialize};
+    use serde::Deserialize;
 
-    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[derive(Clone, Debug, Deserialize)]
     pub struct Program {
         #[serde(rename = "data")]
         pub bytecode: Vec<StarkHash>,

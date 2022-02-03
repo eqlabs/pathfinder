@@ -6,8 +6,8 @@ pub mod request;
 use self::error::StarknetError;
 use crate::{
     core::{
-        contract_definition, ContractAddress, ContractCode, LiteContractDefinition,
-        StarknetTransactionHash, StorageAddress, StorageValue,
+        ContractAddress, ContractCode, LiteContractDefinition, StarknetTransactionHash,
+        StorageAddress, StorageValue,
     },
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
@@ -190,9 +190,7 @@ impl Client {
         let def = parse::<reply::LiteContractDefinition>(resp).await?;
         Ok(LiteContractDefinition {
             abi: def.abi.to_string(),
-            program: contract_definition::Program {
-                bytecode: def.program.bytecode,
-            },
+            bytecode: def.program.bytecode,
         })
     }
 
@@ -854,12 +852,12 @@ mod tests {
 
         #[tokio::test]
         async fn success() {
-            let resp =
+            let def =
                 retry_on_rate_limiting!(client().contract_definition(*VALID_CONTRACT_ADDR).await)
                     .unwrap();
             // Fast sanity check
             // TODO replace with something more meaningful once we figure out the structure to deserialize to
-            assert_eq!(resp.program.bytecode.len(), 106);
+            assert_eq!(def.bytecode.len(), 106);
         }
     }
 

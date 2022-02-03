@@ -18,46 +18,39 @@ pub struct ContractAddressSalt(pub StarkHash);
 /// deployment properties e.g. code and ABI.
 ///
 /// Not to be confused with [ContractStateHash].
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ContractHash(pub StarkHash);
 
 /// A StarkNet contract's state hash. This is the value stored
 /// in the global state tree.
 ///
 /// Not to be confused with [ContractHash].
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ContractStateHash(pub StarkHash);
 
 /// A commitment root of a StarkNet contract. This is the entry-point
 /// for a contract's state at a specific point in time via the contract
 /// state tree.
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ContractRoot(pub StarkHash);
 
-/// A Starknet contract's bytecode and ABI.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A Starknet contract's bytecode and ABI. The `abi` field contains a raw JSON string
+/// hence the entire struct __will not deserialize from JSON properly__ and thus __does not__
+/// `#[derive(Deserialize)]`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ContractCode {
-    pub bytecode: Vec<StarkHash>,
     pub abi: String,
+    pub bytecode: Vec<StarkHash>,
 }
 
-/// A Starknet contract's definition.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A Starknet contract's definition. Stores only those fields from a full contract definition
+/// that are currently used by Pathfinder. The `abi` field contains a raw JSON string
+/// hence the entire struct __will not deserialize from JSON properly__ and thus __does not__
+/// `#[derive(Deserialize)]`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LiteContractDefinition {
     pub abi: String,
-    pub program: contract_definition::Program,
-}
-
-// Starknet contract definition related sub structures.
-pub mod contract_definition {
-    use super::StarkHash;
-    use serde::{Deserialize, Serialize};
-
-    /// A Starknet contract's definition "program".
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    pub struct Program {
-        pub bytecode: Vec<StarkHash>,
-    }
+    pub bytecode: Vec<StarkHash>,
 }
 
 /// Entry point of a StarkNet `call`.

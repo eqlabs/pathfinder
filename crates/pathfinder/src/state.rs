@@ -338,7 +338,7 @@ async fn deploy_contract(
         .context("Download contract code and ABI from sequencer")?;
     let code = ContractCode {
         abi: definition.abi,
-        bytecode: definition.program.bytecode,
+        bytecode: definition.bytecode,
     };
 
     // TODO: verify contract hash (waiting on contract definition API change).
