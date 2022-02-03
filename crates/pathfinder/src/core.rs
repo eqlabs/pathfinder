@@ -41,6 +41,25 @@ pub struct ContractCode {
     pub abi: String,
 }
 
+/// A Starknet contract's definition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContractDefinition {
+    pub abi: String,
+    pub program: contract_definition::Program,
+}
+
+// Starknet contract definition related sub structures.
+pub mod contract_definition {
+    use super::StarkHash;
+    use serde::{Deserialize, Serialize};
+
+    /// A Starknet contract's definition "program".
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct Program {
+        pub bytecode: Vec<StarkHash>,
+    }
+}
+
 /// Entry point of a StarkNet `call`.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EntryPoint(pub StarkHash);
