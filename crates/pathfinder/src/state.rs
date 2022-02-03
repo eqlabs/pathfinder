@@ -6,7 +6,10 @@ use rusqlite::{Connection, Transaction};
 use web3::{Transport, Web3};
 
 use crate::{
-    core::{ContractHash, ContractRoot, ContractStateHash, GlobalRoot, StarknetBlockTimestamp},
+    core::{
+        ContractHash, ContractRoot, ContractStateHash, GlobalRoot, StarknetBlockHash,
+        StarknetBlockTimestamp,
+    },
     ethereum::{
         log::{FetchError, StateUpdateLog},
         state_update::{
@@ -142,6 +145,8 @@ pub async fn sync<T: Transport>(
             })?;
 
             global_root = root_log.global_root;
+
+            println!("block {} complete", root_log.block_number.0);
         }
     }
 }
@@ -192,6 +197,9 @@ async fn update<T: Transport>(
         deploy_contract(contract, db, contract_definition).context("Contract deployment")?;
     }
 
+    println!("Contracts downloaded and deployed");
+
+    // Update contract state tree
     for contract_update in state_update.contract_updates {
         let contract_state_hash = update_contract_state(&contract_update, &global_tree, db)
             .await
@@ -215,41 +223,47 @@ async fn update<T: Transport>(
         )));
     }
 
+    println!("State trees updated");
     // Download additional block information from sequencer. Use a custom timeout with retry strategy
     // to work-around the sequencer's poor performance (spurious lack of response) for early blocks.
-    let block = loop {
-        match sequencer
-            .block_by_number_with_timeout(
-                BlockNumberOrTag::Number(update_log.block_number),
-                Duration::from_secs(3),
-            )
-            .await
-        {
-            Ok(block) => break block,
-            Err(err) => {
-                use sequencer::error::*;
-                match err {
-                    SequencerError::TransportError(terr) if terr.is_timeout() => continue,
-                    other => {
-                        let err = anyhow::anyhow!("{}", other)
-                            .context("Downloading StarkNet block from sequencer");
-                        return Err(UpdateError::Other(err));
-                    }
-                }
-            }
-        }
-    };
+    // let block = loop {
+    //     match sequencer
+    //         .block_by_number_with_timeout(
+    //             BlockNumberOrTag::Number(update_log.block_number),
+    //             Duration::from_secs(3),
+    //         )
+    //         .await
+    //     {
+    //         Ok(block) => break block,
+    //         Err(err) => {
+    //             use sequencer::error::*;
+    //             match err {
+    //                 SequencerError::TransportError(terr) if terr.is_timeout() => continue,
+    //                 other => {
+    //                     let err = anyhow::anyhow!("{}", other)
+    //                         .context("Downloading StarkNet block from sequencer");
+    //                     return Err(UpdateError::Other(err));
+    //                 }
+    //             }
+    //         }
+    //     }
+    // };
 
     // Verify sequencer root against L1.
-    let sequencer_root = block.state_root.context("Sequencer state root missing")?;
+    // let sequencer_root = block.state_root.context("Sequencer state root missing")?;
 
-    if sequencer_root != update_log.global_root {
-        return Err(UpdateError::Other(anyhow::anyhow!(
-            "Sequencer state root did not match L1."
-        )));
-    }
+    // if sequencer_root != update_log.global_root {
+    //     return Err(UpdateError::Other(anyhow::anyhow!(
+    //         "Sequencer state root did not match L1."
+    //     )));
+    // }
 
-    let block_hash = block.block_hash.context("Sequencer block hash missing")?;
+    // let block_hash = block.block_hash.context("Sequencer block hash missing")?;
+    let block_hash = StarknetBlockHash(pedersen_hash(
+        update_log.global_root.0,
+        StarkHash::from_be_slice(&update_log.block_number.0.to_be_bytes()).unwrap(),
+    ));
+    let timestamp = StarknetBlockTimestamp(0);
 
     // Persist new global root et al to database.
     EthereumBlocksTable::insert(
@@ -271,7 +285,7 @@ async fn update<T: Transport>(
         db,
         update_log.block_number,
         block_hash,
-        StarknetBlockTimestamp(block.timestamp),
+        timestamp,
         new_global_root,
         update_log.origin.transaction.hash,
         update_log.origin.log_index,
@@ -283,7 +297,7 @@ async fn update<T: Transport>(
     Ok(GlobalStateRecord {
         block_number: update_log.block_number,
         block_hash,
-        block_timestamp: StarknetBlockTimestamp(block.timestamp),
+        block_timestamp: timestamp,
         global_root: new_global_root,
         eth_block_number: update_log.origin.block.number,
         eth_block_hash: update_log.origin.block.hash,
@@ -489,5 +503,16 @@ mod tests {
         assert_eq!(state.eth_tx_hash, genesis.origin.transaction.hash);
         assert_eq!(state.eth_tx_index, genesis.origin.transaction.index);
         assert_eq!(state.eth_log_index, genesis.origin.log_index);
+    }
+
+    #[tokio::test]
+    async fn go_sync() {
+        let database =
+            crate::storage::Storage::migrate(std::path::PathBuf::from("test.sqlite")).unwrap();
+        let mut conn = database.connection().unwrap();
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
+        let sequencer = sequencer::Client::goerli().unwrap();
+
+        sync(&mut conn, &transport, &sequencer).await.unwrap()
     }
 }
