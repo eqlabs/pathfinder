@@ -1,16 +1,18 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
     core::{
-        CallResultValue, ContractAddress, StarknetChainId, StarknetProtocolVersion,
+        CallResultValue, ContractAddress, ContractCode, StarknetChainId, StarknetProtocolVersion,
         StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
     },
     rpc::types::{
-        reply::{Block, Code, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
+        reply::{Block, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
         request::{BlockResponseScope, Call},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
-    sequencer::{reply as raw, Client},
+    sequencer::{self, reply as raw},
+    storage::{self, Storage},
 };
+use anyhow::Context;
 use jsonrpsee::types::{
     error::{CallError, Error},
     RpcResult,
@@ -28,21 +30,21 @@ fn transaction_index_not_found(index: usize) -> Error {
 /// Implements JSON-RPC endpoints.
 ///
 /// __TODO__ directly calls [sequencer::Client](crate::sequencer::Client) until storage is implemented.
-pub struct RpcApi(Client);
-
-impl Default for RpcApi {
-    fn default() -> Self {
-        let module = Client::goerli().expect("failed to initialize sequencer client");
-        Self(module)
-    }
+pub struct RpcApi {
+    storage: Storage,
+    sequencer: sequencer::Client,
 }
 
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-adrs/blob/master/api/starknet_operator_api_openrpc.json).
 impl RpcApi {
+    pub fn new(storage: Storage, sequencer: sequencer::Client) -> Self {
+        Self { storage, sequencer }
+    }
+
     /// Helper function.
     async fn get_raw_block_by_hash(&self, block_hash: BlockHashOrTag) -> RpcResult<raw::Block> {
         // TODO get this from storage
-        let block = self.0.block_by_hash(block_hash).await?;
+        let block = self.sequencer.block_by_hash(block_hash).await?;
         Ok(block)
     }
 
@@ -64,7 +66,7 @@ impl RpcApi {
         &self,
         block_number: BlockNumberOrTag,
     ) -> RpcResult<raw::Block> {
-        let block = self.0.block_by_number(block_number).await?;
+        let block = self.sequencer.block_by_number(block_number).await?;
         Ok(block)
     }
 
@@ -108,7 +110,10 @@ impl RpcApi {
         key: StorageAddress,
         block_hash: BlockHashOrTag,
     ) -> RpcResult<StorageValue> {
-        let storage_val = self.0.storage(contract_address, key, block_hash).await?;
+        let storage_val = self
+            .sequencer
+            .storage(contract_address, key, block_hash)
+            .await?;
         Ok(storage_val)
     }
 
@@ -118,7 +123,7 @@ impl RpcApi {
         transaction_hash: StarknetTransactionHash,
     ) -> RpcResult<raw::Transaction> {
         // TODO get this from storage
-        let txn = self.0.transaction(transaction_hash).await?;
+        let txn = self.sequencer.transaction(transaction_hash).await?;
         if txn.status == raw::Status::NotReceived {
             return Err(ErrorCode::InvalidTransactionHash.into());
         }
@@ -213,12 +218,20 @@ impl RpcApi {
 
     /// Get the code of a specific contract.
     /// `contract_address` is the address of the contract to read from.
-    pub async fn get_code(&self, contract_address: ContractAddress) -> RpcResult<Code> {
-        let code = self
-            .0
-            .code(contract_address, BlockHashOrTag::Tag(Tag::Latest))
-            .await?;
-        Ok(code)
+    pub async fn get_code(&self, contract_address: ContractAddress) -> RpcResult<ContractCode> {
+        let mut db = self
+            .storage
+            .connection()
+            .context("Opening database connection")?;
+        let tx = db.transaction().context("Creating database transaction")?;
+
+        let code = storage::ContractsTable::get_code(&tx, contract_address)
+            .context("Fetching code from database")?;
+
+        match code {
+            Some(code) => Ok(code),
+            None => Err(ErrorCode::ContractNotFound.into()),
+        }
     }
 
     /// Get the number of transactions in a block given a block hash.
@@ -263,14 +276,14 @@ impl RpcApi {
         request: Call,
         block_hash: BlockHashOrTag,
     ) -> RpcResult<Vec<CallResultValue>> {
-        let call = self.0.call(request.into(), block_hash).await?;
+        let call = self.sequencer.call(request.into(), block_hash).await?;
         Ok(call.result)
     }
 
     /// Get the most recent accepted block number.
     pub async fn block_number(&self) -> RpcResult<u64> {
         let block = self
-            .0
+            .sequencer
             .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
             .await?;
         let number = block.block_number.ok_or(anyhow::anyhow!(

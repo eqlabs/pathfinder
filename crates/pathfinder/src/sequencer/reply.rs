@@ -1,9 +1,8 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::core::{
-    ByteCodeWord, CallResultValue, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-};
+use crate::core::{CallResultValue, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use pedersen::StarkHash;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DefaultOnError};
+use serde_with::serde_as;
 
 /// Used to deserialize replies to [Client::block_by_hash](crate::sequencer::Client::block_by_hash) and
 /// [Client::block_by_number](crate::sequencer::Client::block_by_number).
@@ -69,15 +68,11 @@ pub mod call {
 }
 
 /// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
-#[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Code {
-    // Unknown block hash results in empty abi represented as a JSON
-    // object, instead of a JSON array
-    #[serde_as(deserialize_as = "DefaultOnError")]
-    pub abi: Vec<code::Abi>,
-    pub bytecode: Vec<ByteCodeWord>,
+    pub abi: Box<serde_json::value::RawValue>,
+    pub bytecode: Vec<StarkHash>,
 }
 
 /// Types used when deserializing L2 contract related data.
@@ -328,5 +323,26 @@ pub mod transaction {
         pub code: String,
         pub error_message: String,
         pub tx_id: u64,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn code() {
+        let abi = r#"[{"inputs": [{"name": "amount", "type": "felt"}], "name": "increase_balance", "outputs": [], "type": "function"}, {"inputs": [], "name": "get_balance", "outputs": [{"name": "res", "type": "felt"}], "stateMutability": "view", "type": "function"}]"#;
+        let bytecode = vec![
+            StarkHash::from_hex_str("0x123").unwrap(),
+            StarkHash::from_hex_str("0x4567890").unwrap(),
+        ];
+        let encoded_bytecode = serde_json::to_string(&bytecode).unwrap();
+        let encoded = format!("{{ \"abi\": {}, \"bytecode\": {} }}", abi, encoded_bytecode);
+
+        let code = serde_json::from_str::<Code>(&encoded).unwrap();
+
+        assert_eq!(code.bytecode, bytecode);
+        assert_eq!(code.abi.get(), abi);
     }
 }

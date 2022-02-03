@@ -5,7 +5,7 @@ pub mod request;
 
 use self::error::StarknetError;
 use crate::{
-    core::{ContractAddress, StarknetTransactionHash, StorageAddress, StorageValue},
+    core::{ContractAddress, ContractCode, StarknetTransactionHash, StorageAddress, StorageValue},
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
 };
@@ -151,7 +151,7 @@ impl Client {
         &self,
         contract_addr: ContractAddress,
         block_hash: BlockHashOrTag,
-    ) -> Result<reply::Code, SequencerError> {
+    ) -> Result<ContractCode, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
         let resp = self
             .inner
@@ -164,7 +164,12 @@ impl Client {
             ))
             .send()
             .await?;
-        parse(resp).await
+        let code = parse::<reply::Code>(resp).await?;
+
+        Ok(ContractCode {
+            bytecode: code.bytecode,
+            abi: code.abi.to_string(),
+        })
     }
 
     /// Gets full contract definition.
@@ -799,7 +804,6 @@ mod tests {
 
     mod code {
         use super::*;
-        use crate::sequencer::reply::Code;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -812,9 +816,9 @@ mod tests {
             .unwrap();
             assert_eq!(
                 result,
-                Code {
-                    abi: vec![],
-                    bytecode: vec![]
+                ContractCode {
+                    abi: String::new(),
+                    bytecode: Vec::new(),
                 }
             );
         }

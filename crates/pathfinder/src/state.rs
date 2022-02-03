@@ -336,26 +336,11 @@ async fn deploy_contract(
 
     // TODO: verify contract hash (waiting on contract definition API change).
 
-    let byte_code = code
-        .bytecode
-        .into_iter()
-        .flat_map(|bytes32| bytes32.0.to_be_bytes())
-        .collect::<Vec<u8>>();
-
-    // TODO: Unsure on how to encode / decode this reliably.
-    let abi = "todo".as_bytes();
     // TODO: This is not available from sequencer yet.
     let definition = "does not exist".as_bytes();
 
-    ContractsTable::insert(
-        db,
-        contract.address,
-        contract.hash,
-        &byte_code,
-        abi,
-        definition,
-    )
-    .context("Inserting contract information into contracts table")?;
+    ContractsTable::insert(db, contract.address, contract.hash, code, definition)
+        .context("Inserting contract information into contracts table")?;
     Ok(())
 }
 
@@ -455,9 +440,9 @@ mod tests {
 
         let sequencer = sequencer::Client::goerli().unwrap();
 
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let storage = crate::storage::Storage::in_memory().unwrap();
+        let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
-        crate::storage::migrate_database(&transaction).unwrap();
 
         let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
 

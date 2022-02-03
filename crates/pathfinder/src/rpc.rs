@@ -12,6 +12,8 @@ use crate::{
             BlockHashOrTag, BlockNumberOrTag,
         },
     },
+    sequencer,
+    storage::Storage,
 };
 use ::serde::Deserialize;
 use jsonrpsee::{
@@ -21,10 +23,14 @@ use jsonrpsee::{
 use std::{net::SocketAddr, result::Result};
 
 /// Starts the HTTP-RPC server.
-pub fn run_server(addr: SocketAddr) -> Result<(HttpServerHandle, SocketAddr), Error> {
+pub fn run_server(
+    addr: SocketAddr,
+    storage: Storage,
+    sequencer: sequencer::Client,
+) -> Result<(HttpServerHandle, SocketAddr), Error> {
     let server = HttpServerBuilder::default().build(addr)?;
     let local_addr = server.local_addr()?;
-    let api = RpcApi::default();
+    let api = RpcApi::new(storage, sequencer);
     let mut module = RpcModule::new(api);
     module.register_async_method("starknet_getBlockByHash", |params, context| async move {
         #[derive(Debug, Deserialize)]
@@ -222,9 +228,12 @@ mod tests {
     {
         let mut sleep_time_ms = 8000;
         const MAX_SLEEP_TIME_MS: u64 = 128000;
+
         loop {
             // Restart the server each time (and implicitly the sequencer client, which actually does the job)
-            let (__handle, addr) = run_server(*LOCALHOST).unwrap();
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = sequencer::Client::goerli().unwrap();
+            let (__handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
             match client(addr).request::<Out>(method, params.clone()).await {
                 Ok(r) => return Ok(r),
                 Err(e) => match &e {
@@ -1239,7 +1248,9 @@ mod tests {
 
     #[tokio::test]
     async fn block_number() {
-        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let storage = Storage::in_memory().unwrap();
+        let sequencer = sequencer::Client::goerli().unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
         let params = rpc_params!();
         client(addr)
             .request::<u64>("starknet_blockNumber", params)
@@ -1250,7 +1261,9 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn chain_id() {
-        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let storage = Storage::in_memory().unwrap();
+        let sequencer = sequencer::Client::goerli().unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
         let params = rpc_params!();
         client(addr)
             .request::<StarknetChainId>("starknet_chainId", params)
@@ -1261,7 +1274,9 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn pending_transactions() {
-        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let storage = Storage::in_memory().unwrap();
+        let sequencer = sequencer::Client::goerli().unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
         let params = rpc_params!();
         client(addr)
             .request::<()>("starknet_pendingTransactions", params)
@@ -1272,7 +1287,9 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn protocol_version() {
-        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let storage = Storage::in_memory().unwrap();
+        let sequencer = sequencer::Client::goerli().unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
         let params = rpc_params!();
         client(addr)
             .request::<StarknetProtocolVersion>("starknet_protocolVersion", params)
@@ -1283,7 +1300,9 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn syncing() {
-        let (_handle, addr) = run_server(*LOCALHOST).unwrap();
+        let storage = Storage::in_memory().unwrap();
+        let sequencer = sequencer::Client::goerli().unwrap();
+        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
         let params = rpc_params!();
         use crate::rpc::types::reply::Syncing;
         client(addr)

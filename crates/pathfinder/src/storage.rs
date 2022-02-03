@@ -7,12 +7,14 @@ mod ethereum;
 pub mod merkle_tree;
 mod state;
 
+use std::path::PathBuf;
+
 pub use contract::ContractsTable;
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 pub use state::{ContractsStateTable, GlobalStateRecord, GlobalStateTable};
 
 use anyhow::Context;
-use rusqlite::Transaction;
+use rusqlite::{Connection, Transaction};
 
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
@@ -21,9 +23,54 @@ const DB_VERSION_CURRENT: u32 = DB_VERSION_EMPTY + 1;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
+/// Used to create [Connection's](Connection) to the pathfinder database.
+///
+/// Intended usage:
+/// - Use [Storage::migrate] to create the app's database.
+/// - Pass the [Storage] (or clones thereof) to components which require database access.
+/// - Use [Storage::connection] to create connection's to the database, which can in turn
+///   be used to interact with the various [tables](self).
+#[derive(Clone)]
+pub struct Storage {
+    database_path: PathBuf,
+}
+
+impl Storage {
+    /// Performs database schema migration and returns a new [Storage].
+    ///
+    /// This should be called __once__ at the start of the application,
+    /// and passed to the various components which require access to the database.
+    ///
+    /// May be cloned safely.
+    pub fn migrate(database_path: PathBuf) -> anyhow::Result<Self> {
+        let storage = Storage { database_path };
+
+        let mut conn = storage.connection().context("Open database connection")?;
+        let tx = conn.transaction().context("Create database transaction")?;
+        migrate_database(&tx).context("Migrating database")?;
+        tx.commit().context("Commiting migration transaction")?;
+
+        Ok(storage)
+    }
+
+    /// Returns a new Sqlite [Connection] to the database.
+    pub fn connection(&self) -> anyhow::Result<Connection> {
+        // TODO: think about flags?
+        let conn = Connection::open(&self.database_path)?;
+        Ok(conn)
+    }
+
+    #[cfg(test)]
+    /// Convenience function for tests to create an in-memory database.
+    /// Equivalent to [Storage::migrate] with an in-memory backed database.
+    pub fn in_memory() -> anyhow::Result<Self> {
+        Self::migrate("file::memory:".into())
+    }
+}
+
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
-pub fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
+fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
     enable_foreign_keys(transaction).context("Failed to enable foreign key support")?;
     let version = schema_version(transaction)?;
 

@@ -34,6 +34,13 @@ pub struct ContractStateHash(pub StarkHash);
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractRoot(pub StarkHash);
 
+/// A Starknet contract's bytecode and ABI.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContractCode {
+    pub bytecode: Vec<StarkHash>,
+    pub abi: String,
+}
+
 /// Entry point of a StarkNet `call`.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EntryPoint(pub StarkHash);
