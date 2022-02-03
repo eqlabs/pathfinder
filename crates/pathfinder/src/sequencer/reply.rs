@@ -75,6 +75,25 @@ pub struct Code {
     pub bytecode: Vec<StarkHash>,
 }
 
+/// Used to deserialize a reply from [Client::contract_definition](crate::sequencer::Client::contract_definition).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ContractDefinition {
+    pub abi: Box<serde_json::value::RawValue>,
+    pub program: contract_definition::Program,
+}
+
+/// Types used when deserializing L2 contract definition related data.
+pub mod contract_definition {
+    use super::StarkHash;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct Program {
+        #[serde(rename = "data")]
+        pub bytecode: Vec<StarkHash>,
+    }
+}
+
 /// Types used when deserializing L2 contract related data.
 pub mod code {
     use serde::{Deserialize, Serialize};

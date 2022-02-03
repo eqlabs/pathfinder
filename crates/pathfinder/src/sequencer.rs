@@ -5,7 +5,10 @@ pub mod request;
 
 use self::error::StarknetError;
 use crate::{
-    core::{ContractAddress, ContractCode, StarknetTransactionHash, StorageAddress, StorageValue},
+    core::{
+        contract_definition, ContractAddress, ContractCode, ContractDefinition,
+        StarknetTransactionHash, StorageAddress, StorageValue,
+    },
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
 };
@@ -46,9 +49,8 @@ where
     T: ::serde::de::DeserializeOwned,
 {
     let resp = parse_raw(resp).await?;
-    let resp = resp.text().await?;
     // Attempt to deserialize the actual data we are looking for
-    let resp = serde_json::from_str::<T>(resp.as_str())?;
+    let resp = resp.json::<T>().await?;
     Ok(resp)
 }
 
@@ -176,7 +178,7 @@ impl Client {
     pub async fn contract_definition(
         &self,
         contract_addr: ContractAddress,
-    ) -> Result<bytes::Bytes, SequencerError> {
+    ) -> Result<ContractDefinition, SequencerError> {
         let resp = self
             .inner
             .get(self.build_query(
@@ -185,9 +187,13 @@ impl Client {
             ))
             .send()
             .await?;
-        let resp = parse_raw(resp).await?;
-        let resp = resp.bytes().await?;
-        Ok(resp)
+        let def = parse::<reply::ContractDefinition>(resp).await?;
+        Ok(ContractDefinition {
+            abi: def.abi.to_string(),
+            program: contract_definition::Program {
+                bytecode: def.program.bytecode,
+            },
+        })
     }
 
     /// Gets storage value associated with a `key` for a prticular contract.
@@ -780,7 +786,7 @@ mod tests {
             assert_eq!(
                 result,
                 ContractCode {
-                    abi: String::new(),
+                    abi: "{}".to_string(),
                     bytecode: Vec::new(),
                 }
             );
@@ -848,12 +854,12 @@ mod tests {
 
         #[tokio::test]
         async fn success() {
-            let bytes =
+            let resp =
                 retry_on_rate_limiting!(client().contract_definition(*VALID_CONTRACT_ADDR).await)
                     .unwrap();
             // Fast sanity check
             // TODO replace with something more meaningful once we figure out the structure to deserialize to
-            assert_eq!(bytes.len(), 53032);
+            assert_eq!(resp.program.bytecode.len(), 106);
         }
     }
 
