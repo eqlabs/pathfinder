@@ -173,7 +173,7 @@ impl Client {
     }
 
     /// Gets full contract definition.
-    pub async fn full_contract(
+    pub async fn contract_definition(
         &self,
         contract_addr: ContractAddress,
     ) -> Result<bytes::Bytes, SequencerError> {
@@ -831,14 +831,14 @@ mod tests {
         }
     }
 
-    mod full_contract {
+    mod contract_definition {
         use super::*;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn invalid_contract_address() {
             let error =
-                retry_on_rate_limiting!(client().full_contract(*INVALID_CONTRACT_ADDR).await)
+                retry_on_rate_limiting!(client().contract_definition(*INVALID_CONTRACT_ADDR).await)
                     .unwrap_err();
             assert_matches!(
                 error,
@@ -848,8 +848,9 @@ mod tests {
 
         #[tokio::test]
         async fn success() {
-            let bytes = retry_on_rate_limiting!(client().full_contract(*VALID_CONTRACT_ADDR).await)
-                .unwrap();
+            let bytes =
+                retry_on_rate_limiting!(client().contract_definition(*VALID_CONTRACT_ADDR).await)
+                    .unwrap();
             // Fast sanity check
             // TODO replace with something more meaningful once we figure out the structure to deserialize to
             assert_eq!(bytes.len(), 53032);
