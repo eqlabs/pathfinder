@@ -43,7 +43,7 @@ pub struct ContractCode {
 
 /// A Starknet contract's definition.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ContractDefinition {
+pub struct LiteContractDefinition {
     pub abi: String,
     pub program: contract_definition::Program,
 }

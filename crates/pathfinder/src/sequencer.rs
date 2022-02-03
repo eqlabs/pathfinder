@@ -6,7 +6,7 @@ pub mod request;
 use self::error::StarknetError;
 use crate::{
     core::{
-        contract_definition, ContractAddress, ContractCode, ContractDefinition,
+        contract_definition, ContractAddress, ContractCode, LiteContractDefinition,
         StarknetTransactionHash, StorageAddress, StorageValue,
     },
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
@@ -178,7 +178,7 @@ impl Client {
     pub async fn contract_definition(
         &self,
         contract_addr: ContractAddress,
-    ) -> Result<ContractDefinition, SequencerError> {
+    ) -> Result<LiteContractDefinition, SequencerError> {
         let resp = self
             .inner
             .get(self.build_query(
@@ -187,8 +187,8 @@ impl Client {
             ))
             .send()
             .await?;
-        let def = parse::<reply::ContractDefinition>(resp).await?;
-        Ok(ContractDefinition {
+        let def = parse::<reply::LiteContractDefinition>(resp).await?;
+        Ok(LiteContractDefinition {
             abi: def.abi.to_string(),
             program: contract_definition::Program {
                 bytecode: def.program.bytecode,

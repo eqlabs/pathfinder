@@ -77,7 +77,7 @@ pub struct Code {
 
 /// Used to deserialize a reply from [Client::contract_definition](crate::sequencer::Client::contract_definition).
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ContractDefinition {
+pub struct LiteContractDefinition {
     pub abi: Box<serde_json::value::RawValue>,
     pub program: contract_definition::Program,
 }
