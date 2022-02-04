@@ -25,11 +25,11 @@ use sha3::Digest;
 /// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py
 /// [cairo-contract]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contracts.cairo#L76-L118
 /// [py-sortkeys]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py#L58-L71
-pub fn compute_contract_hash(contract_definition_dump: &str) -> Result<StarkHash> {
+pub fn compute_contract_hash(contract_definition_dump: &[u8]) -> Result<StarkHash> {
     use json::EntryPointType::*;
 
     let mut contract_definition =
-        serde_json::from_str::<json::ContractDefinition>(contract_definition_dump)
+        serde_json::from_slice::<json::ContractDefinition>(contract_definition_dump)
             .context("Failed to parse contract_definition")?;
 
     // the other modification is handled by skipping if the attributes vec is empty
@@ -386,7 +386,7 @@ mod json {
             // 500
             // {"code": "StarknetErrorCode.UNINITIALIZED_CONTRACT", "message": "Contract with address 2116724861677265616176388745625154424116334641142188761834194304782006389228 is not deployed."}
 
-            let hash = super::super::compute_contract_hash(&payload).unwrap();
+            let hash = super::super::compute_contract_hash(&payload.as_bytes()).unwrap();
 
             assert_eq!(hash, expected);
         }
