@@ -21,11 +21,11 @@ pub use forward::*;
 /// May contain one of two types of [MetaLog].
 ///
 /// Used by [BackwardLogFetcher].
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum EitherMetaLog<L, R>
 where
-    L: MetaLog + PartialEq + std::fmt::Debug,
-    R: MetaLog + PartialEq + std::fmt::Debug,
+    L: MetaLog + PartialEq + std::fmt::Debug + Clone,
+    R: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
     Left(L),
     Right(R),
@@ -107,8 +107,8 @@ impl MetaLog for MemoryPageFactContinuousLog {
 
 impl<L, R> TryFrom<web3::types::Log> for EitherMetaLog<L, R>
 where
-    L: MetaLog + PartialEq + std::fmt::Debug,
-    R: MetaLog + PartialEq + std::fmt::Debug,
+    L: MetaLog + PartialEq + std::fmt::Debug + Clone,
+    R: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
     type Error = anyhow::Error;
 
@@ -124,8 +124,8 @@ where
 
 impl<L, R> EitherMetaLog<L, R>
 where
-    L: MetaLog + PartialEq + std::fmt::Debug,
-    R: MetaLog + PartialEq + std::fmt::Debug,
+    L: MetaLog + PartialEq + std::fmt::Debug + Clone,
+    R: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
     fn origin(&self) -> &EthOrigin {
         match self {
