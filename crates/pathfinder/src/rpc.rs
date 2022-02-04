@@ -837,7 +837,6 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            // At the moment an invalid address causes an empty but valid reply
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
             let e = client_request::<Code>("starknet_getCode", params)
                 .await
