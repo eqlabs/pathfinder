@@ -159,3 +159,76 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::str::FromStr;
+
+    use pedersen::StarkHash;
+    use web3::types::H256;
+
+    use crate::{
+        core::{
+            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
+        },
+        ethereum::{
+            log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
+            TransactionOrigin,
+        },
+    };
+
+    #[tokio::test]
+    async fn consistency() {
+        // Give a starting point so that we don't search overly long.
+        // We use StateUpdateLog because it comes with a handy block number
+        // we can use to check for sequentiality.
+        let starknet_genesis_log = StateUpdateLog {
+            origin: EthOrigin {
+                block: BlockOrigin {
+                    hash: EthereumBlockHash(
+                        H256::from_str(
+                            "0xa3c7bb4baa81bb8bc5cc75ace7d8296b2668ccc2fd5ac9d22b5eefcfbf7f3444",
+                        )
+                        .unwrap(),
+                    ),
+                    number: EthereumBlockNumber(5854324),
+                },
+                transaction: TransactionOrigin {
+                    hash: EthereumTransactionHash(
+                        H256::from_str(
+                            "0x97ee44ba80d1ad5cff4a5adc02311f6e19490f48ea5a57c7f510e469cae7e65b",
+                        )
+                        .unwrap(),
+                    ),
+                    index: EthereumTransactionIndex(4),
+                },
+                log_index: EthereumLogIndex(23),
+            },
+            global_root: GlobalRoot(
+                StarkHash::from_hex_str(
+                    "0x02C2BB91714F8448ED814BDAC274AB6FCDBAFC22D835F9E847E5BEE8C2E5444E",
+                )
+                .unwrap(),
+            ),
+            block_number: StarknetBlockNumber(0),
+        };
+
+        let mut root_fetcher = LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log));
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
+        let mut block_number = 1;
+
+        let logs = root_fetcher.fetch(&transport).await.unwrap();
+        for log in logs {
+            assert_eq!(log.block_number.0, block_number, "First fetch");
+            block_number += 1;
+        }
+        let logs = root_fetcher.fetch(&transport).await.unwrap();
+        for log in logs {
+            assert_eq!(log.block_number.0, block_number, "Second fetch");
+            block_number += 1;
+        }
+    }
+}
