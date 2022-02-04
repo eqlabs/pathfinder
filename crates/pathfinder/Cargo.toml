@@ -33,6 +33,7 @@ thiserror = "1.0.30"
 tokio = "1.11.0"
 toml = "0.5.8"
 web3 = "0.17.0"
+zstd = "0.10"
 
 [dev-dependencies]
 assert_matches = "1.5.0"

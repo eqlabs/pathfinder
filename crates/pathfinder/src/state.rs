@@ -15,7 +15,7 @@ use crate::{
         },
         BlockOrigin, EthOrigin, TransactionOrigin,
     },
-    rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
+    rpc::types::BlockNumberOrTag,
     sequencer,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{
@@ -339,12 +339,23 @@ pub(crate) fn deploy_contract(
             .context("Compute contract hash")?;
 
     // TODO: verify contract hash (waiting on contract definition API change).
+    if hash != contract.hash.0 {
+        println!(
+            "!!! hash mismatch for {hash:x}, was supposed to be {:x}, address {:x}",
+            contract.hash.0, contract.address.0
+        );
+    }
 
-    // TODO: This is not available from sequencer yet.
-    let definition = "does not exist".as_bytes();
+    ContractsTable::insert(
+        db,
+        contract.address,
+        contract.hash,
+        &abi,
+        &code,
+        &contract_definition,
+    )
+    .context("Inserting contract information into contracts table")?;
 
-    ContractsTable::insert(db, contract.address, contract.hash, code, definition)
-        .context("Inserting contract information into contracts table")?;
     Ok(())
 }
 

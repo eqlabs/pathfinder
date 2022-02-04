@@ -5,7 +5,10 @@ pub mod request;
 
 use self::error::StarknetError;
 use crate::{
-    core::{ContractAddress, ContractCode, StarknetTransactionHash, StorageAddress, StorageValue},
+    core::{
+        ByteCodeWord, ContractAddress, ContractCode, StarknetTransactionHash, StorageAddress,
+        StorageValue,
+    },
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
 };
@@ -167,7 +170,7 @@ impl Client {
         let code = parse::<reply::Code>(resp).await?;
 
         Ok(ContractCode {
-            bytecode: code.bytecode,
+            bytecode: code.bytecode.into_iter().map(ByteCodeWord).collect(),
             abi: code.abi.to_string(),
         })
     }
