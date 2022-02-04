@@ -172,9 +172,12 @@ async fn update<T: Transport>(
 
     // Deploy contracts
     for contract in state_update.deployed_contracts {
-        deploy_contract(contract, db, sequencer)
+        let contract_definition = sequencer
+            .full_contract(contract.address)
             .await
-            .context("Contract deployment")?;
+            .context("Download contract definition from sequencer")?;
+
+        deploy_contract(contract, db, contract_definition).context("Contract deployment")?;
     }
 
     // Get the current contract root from global state. The global state stores
@@ -326,16 +329,14 @@ async fn update_contract_state(
 }
 
 /// Inserts a newly deployed Starknet contract into [ContractsTable].
-async fn deploy_contract(
+pub(crate) fn deploy_contract(
     contract: DeployedContract,
     db: &Transaction<'_>,
-    sequencer: &sequencer::Client,
+    contract_definition: bytes::Bytes,
 ) -> anyhow::Result<()> {
-    // Download code and ABI from the sequencer.
-    let code = sequencer
-        .code(contract.address, BlockHashOrTag::Tag(Tag::Latest))
-        .await
-        .context("Download contract code and ABI from sequencer")?;
+    let (abi, code, hash) =
+        crate::state::contract_hash::extract_abi_code_hash(&*contract_definition)
+            .context("Compute contract hash")?;
 
     // TODO: verify contract hash (waiting on contract definition API change).
 
