@@ -13,12 +13,9 @@ use crate::{
     ethereum::{
         log::{FetchError, StateUpdateLog},
         state_update::{
-            state_root::StateRootFetcher, ContractUpdate, DeployedContract,
-            RetrieveStateUpdateError, StateUpdate,
+            state_root::StateRootFetcher, ContractUpdate, DeployedContract, StateUpdate,
         },
-        BlockOrigin, EthOrigin, TransactionOrigin,
     },
-    rpc::types::BlockNumberOrTag,
     sequencer,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{
@@ -26,6 +23,8 @@ use crate::{
         EthereumTransactionsTable, GlobalStateRecord, GlobalStateTable,
     },
 };
+
+use tokio::sync::{mpsc, oneshot};
 
 pub(crate) mod contract_hash;
 mod merkle_node;
@@ -43,21 +42,184 @@ enum UpdateError {
 }
 
 /// Syncs the Starknet state with L1.
-pub async fn sync<T: Transport>(
-    database: &mut Connection,
-    transport: &Web3<T>,
+pub async fn sync<T: Transport + 'static>(
+    database: Connection,
+    transport: Web3<T>,
     sequencer: &sequencer::Client,
 ) -> anyhow::Result<()> {
     // TODO: Track sync progress in some global way, so that RPC can check and react accordingly.
     //       This could either be the database, or a mutable lazy_static thingy.
 
+    // before we start doing anything, the current database state needs to be read from the
+    // database, so that we can start reading root logs
+    let (initial_state_tx, initial_state_rx) = oneshot::channel();
+
+    // root logs tell us the root hash for one thing, dunno about others; they lead to state update
+    // logs for that block
+    let (root_logs_tx, root_logs_rx) = mpsc::channel::<Vec<StateUpdateLog>>(1);
+
+    // and retrieving these state updates takes a long time, so we have a separate stage for that
+    let (state_update_tx, state_update_rx) = mpsc::channel::<(StateUpdateLog, StateUpdate)>(1);
+
+    // for state updates, there are contracts which were deployed so these contract definitions
+    // need to be fetched
+    let (fetched_contracts_tx, fetched_contracts_rx) = mpsc::channel::<Vec<DeployedContract>>(1);
+
+    // the fetched contract definitions need to have abi, bytecode, hash extracted and compressed
+    let (compression_tx, compression_rx) = mpsc::channel::<(DeployedContract, bytes::Bytes)>(1);
+
+    // so that they can be persisted in the database along with the other updates
+    let (ready_tx, ready_contracts_rx) =
+        mpsc::channel::<(DeployedContract, Result<CompressedContract, anyhow::Error>)>(1);
+
+    // finally the simplest status display for the progress
+    let (block_update_tx, mut block_update_rx) =
+        mpsc::channel::<(u64, std::time::Instant, BlockInfo)>(1);
+
+    let _jh2 = tokio::task::spawn({
+        let sequencer = sequencer.clone();
+        fetch_contracts(sequencer, fetched_contracts_rx, compression_tx)
+    });
+
+    let _jh = std::thread::Builder::new()
+        .name(String::from("extract-compress"))
+        .spawn(move || extract_compress(ready_tx, compression_rx))
+        .context("failed to launch compressor thread")?;
+
+    let _jh_db = std::thread::Builder::new()
+        .name(String::from("database-updater"))
+        .spawn(move || {
+            update_database(
+                database,
+                initial_state_tx,
+                state_update_rx,
+                fetched_contracts_tx,
+                ready_contracts_rx,
+                block_update_tx,
+            )
+        })
+        .context("failed to launch database updater thread")?;
+
+    let _jh6 = tokio::task::spawn_local(async move {
+        let mut last = None;
+
+        // this example uses every block polling, but this could be much more useful stats
+        // every 5s for example.
+        while let Some((block_num, when, block_info)) = block_update_rx.recv().await {
+            if let Some(last) = last {
+                let elapsed = when - last;
+                println!("Updated to block {block_num} in {elapsed:?}: {block_info}");
+            } else {
+                println!("Updated to block {block_num}: {block_info}");
+            }
+
+            last = Some(when);
+        }
+    });
+
+    // needed for the web3 things
+    let local = tokio::task::LocalSet::new();
+
+    // FIXME: this could just be the sync call?
+    local
+        .run_until(async move {
+            let _jh5 = tokio::task::spawn_local({
+                let transport = transport.clone();
+                retrieve_state_updates(transport, root_logs_rx, state_update_tx)
+            });
+
+            let latest_state_log = initial_state_rx.await.unwrap();
+            let mut root_fetcher = StateRootFetcher::new(latest_state_log);
+
+            loop {
+                match root_fetcher.fetch(&transport).await {
+                    Ok(logs) if logs.is_empty() => {}
+                    Ok(logs) => {
+                        root_logs_tx.send(logs).await.unwrap();
+                        continue;
+                    }
+                    Err(FetchError::Reorg) => todo!("Handle reorg event!"),
+                    Err(FetchError::Other(other)) => {
+                        println!("{}", other.context("Fetching new Starknet roots from L1"));
+                    }
+                };
+
+                tokio::time::sleep(Duration::from_millis(10000)).await;
+            }
+
+            // this is infinite loop, so we never leave. could have a poison message, which would
+            // nicely stop all of the above created stages.
+        })
+        .await
+}
+
+async fn retrieve_state_updates<T: Transport + 'static>(
+    transport: Web3<T>,
+    mut root_logs_rx: mpsc::Receiver<Vec<StateUpdateLog>>,
+    state_update_tx: mpsc::Sender<(StateUpdateLog, StateUpdate)>,
+) {
+    while let Some(root_logs) = root_logs_rx.recv().await {
+        for root_log in root_logs {
+            let state_update = StateUpdate::retrieve(&transport, root_log.clone())
+                .await
+                .unwrap();
+            /*{
+                Ok(state_update) => state_update,
+                Err(RetrieveStateUpdateError::Other(other)) => {
+                    return Err(anyhow::anyhow!(
+                        "Fetching state update failed. {}",
+                        other
+                    ));
+                }
+                // Treat the rest as a reorg event.
+                Err(_reorg) => { return Err(anyhow::anyhow!("Reorg: {:?}", _reorg)); },
+            };*/
+
+            state_update_tx
+                .send((root_log, state_update))
+                .await
+                .expect("failed to send state updates");
+        }
+    }
+}
+
+async fn fetch_contracts(
+    sequencer: sequencer::Client,
+    mut fetched_contracts_rx: mpsc::Receiver<Vec<DeployedContract>>,
+    compression_tx: mpsc::Sender<(DeployedContract, bytes::Bytes)>,
+) {
+    while let Some(deployed_contracts) = fetched_contracts_rx.recv().await {
+        // as for the contracts to deploy, we should really check if we really need to download the
+        // contract on the db thread. however we can do the default setting right away, just await for
+        // the contracts in the end and deploy them then.
+        for contract in deployed_contracts {
+            let contract_definition = sequencer
+                .full_contract(contract.address)
+                .await
+                .expect("Download contract definition from sequencer");
+
+            compression_tx
+                .send((contract, contract_definition))
+                .await
+                .unwrap();
+        }
+    }
+}
+
+fn update_database(
+    mut database: Connection,
+    initial_state_tx: oneshot::Sender<Option<StateUpdateLog>>,
+    mut state_update_rx: mpsc::Receiver<(StateUpdateLog, StateUpdate)>,
+    fetched_contracts_tx: mpsc::Sender<Vec<DeployedContract>>,
+    mut ready_contracts_rx: mpsc::Receiver<(DeployedContract, anyhow::Result<CompressedContract>)>,
+    block_update_tx: mpsc::Sender<(u64, std::time::Instant, BlockInfo)>,
+) {
     let mut previous_state = {
         // Temporary transaction with no side-effects, which will rollback when
-        // droppped anyway. Required because our database API only accepts transactions.
-        let db_tx = database
-            .transaction()
-            .context("Create database transaction")?;
-        GlobalStateTable::get_latest_state(&db_tx).context("Get latest StarkNet state")?
+        // droppped anyway. Important not to keep this open for no reason, which might prevent
+        // other writes.
+        let db_tx = database.transaction().unwrap();
+        GlobalStateTable::get_latest_state(&db_tx).unwrap()
     };
 
     let mut global_root = previous_state
@@ -65,144 +227,224 @@ pub async fn sync<T: Transport>(
         .map(|record| record.global_root)
         .unwrap_or(GlobalRoot(StarkHash::ZERO));
 
-    let latest_state_log = previous_state.as_ref().map(|record| StateUpdateLog {
-        origin: EthOrigin {
-            block: BlockOrigin {
-                hash: record.eth_block_hash,
-                number: record.eth_block_number,
-            },
-            transaction: TransactionOrigin {
-                hash: record.eth_tx_hash,
-                index: record.eth_tx_index,
-            },
-            log_index: record.eth_log_index,
-        },
-        global_root: record.global_root,
-        block_number: record.block_number,
-    });
+    let latest_state_log = previous_state.as_ref().map(StateUpdateLog::from);
+    initial_state_tx.send(latest_state_log).unwrap();
 
-    let mut root_fetcher = StateRootFetcher::new(latest_state_log);
+    while let Some((root_log, state_update)) = state_update_rx.blocking_recv() {
+        // Perform each update as an atomic database unit.
+        let db_transaction = database.transaction().unwrap();
 
-    loop {
-        // Download the next set of updates logs from L1.
-        let root_logs = match root_fetcher.fetch(transport).await {
-            Ok(logs) if logs.is_empty() => return Ok(()),
-            Ok(logs) => logs,
-            Err(FetchError::Reorg) => todo!("Handle reorg event!"),
-            Err(FetchError::Other(other)) => {
-                return Err(other.context("Fetching new Starknet roots from L1"))
+        // TODO:
+        /*
+        .with_context(|| {
+            format!(
+                "Creating database transaction for block number {}",
+                root_log.block_number.0
+            )
+        })?;
+        */
+
+        // Verify database state integretity i.e. latest state should be sequential,
+        // and we are the only writer.
+        let previous_state_db = GlobalStateTable::get_latest_state(&db_transaction).unwrap();
+
+        // TODO
+        /*.with_context(|| {
+                format!(
+                    "Get latest StarkNet state for block number {}",
+                    root_log.block_number.0
+                )
+            })?;
+        */
+
+        assert_eq!(
+            previous_state_db, previous_state,
+            "State mismatch between database and sync process for block number {}\n{:?}\n\n{:?}",
+            root_log.block_number.0, previous_state, previous_state_db
+        );
+
+        let next_root = root_log.global_root;
+
+        let block_info;
+
+        match update(
+            state_update,
+            global_root,
+            &root_log,
+            &db_transaction,
+            &fetched_contracts_tx,
+            &mut ready_contracts_rx,
+        ) {
+            Ok(BlockUpdated { record, info }) => {
+                previous_state = Some(record);
+                block_info = info;
+            }
+            Err(UpdateError::Reorg) => todo!("Handle reorg event!"),
+            Err(UpdateError::Other(other)) => {
+                panic!(
+                    "Updating to block number {} gave {}",
+                    root_log.block_number.0, other
+                );
             }
         };
 
-        for root_log in root_logs {
-            // Perform each update as an atomic database unit.
-            let db_transaction = database.transaction().with_context(|| {
-                format!(
-                    "Creating database transaction for block number {}",
-                    root_log.block_number.0
-                )
-            })?;
+        db_transaction.commit().unwrap();
 
-            // Verify database state integretity i.e. latest state should be sequential,
-            // and we are the only writer.
-            let previous_state_db = GlobalStateTable::get_latest_state(&db_transaction)
-                .with_context(|| {
-                    format!(
-                        "Get latest StarkNet state for block number {}",
-                        root_log.block_number.0
-                    )
-                })?;
-            anyhow::ensure!(
-                previous_state_db == previous_state,
-                "State mismatch between database and sync process for block number {}\n{:?}\n\n{:?}",
-                root_log.block_number.0,
-                previous_state,
-                previous_state_db
-            );
-
-            previous_state = match update(
-                transport,
-                global_root,
-                &root_log,
-                &db_transaction,
-                sequencer,
+        /*with_context(|| {
+            format!(
+                "Committing database transaction for block number {}",
+                root_log.block_number.0
             )
-            .await
-            {
-                Ok(state) => Some(state),
-                Err(UpdateError::Reorg) => todo!("Handle reorg event!"),
-                Err(UpdateError::Other(other)) => {
-                    return Err(other).with_context(|| {
-                        format!("Updating to block number {}", root_log.block_number.0)
-                    });
-                }
-            };
-            db_transaction.commit().with_context(|| {
-                format!(
-                    "Committing database transaction for block number {}",
-                    root_log.block_number.0
-                )
-            })?;
+        })?;
+        */
+        global_root = next_root;
 
-            global_root = root_log.global_root;
+        block_update_tx
+            .blocking_send((
+                root_log.block_number.0,
+                std::time::Instant::now(),
+                block_info,
+            ))
+            .unwrap();
+    }
+}
 
-            println!("block {} complete", root_log.block_number.0);
-        }
+fn extract_compress(
+    tx: mpsc::Sender<(DeployedContract, anyhow::Result<CompressedContract>)>,
+    mut rx: mpsc::Receiver<(DeployedContract, bytes::Bytes)>,
+) {
+    let mut compressor = zstd::bulk::Compressor::new(10)
+        .context("Couldn't create zstd compressor for ContractsTable")
+        .unwrap();
+
+    let mut process_one = |definition: bytes::Bytes| {
+        // to really reuse the buffers, we should inline the extract_abi_code_hash as well.
+        let (abi, bytecode, hash) =
+            crate::state::contract_hash::extract_abi_code_hash(&*definition)
+                .context("Compute contract hash")?;
+
+        let abi = compressor
+            .compress(&abi)
+            .context("Failed to compress ABI")?;
+        let bytecode = compressor
+            .compress(&bytecode)
+            .context("Failed to compress bytecode")?;
+        let definition = compressor
+            .compress(&*definition)
+            .context("Failed to compress definition")?;
+
+        Result::<_, anyhow::Error>::Ok(CompressedContract {
+            abi,
+            bytecode,
+            definition,
+            hash,
+        })
+    };
+
+    while let Some((deployed_contract, def_bytes)) = rx.blocking_recv() {
+        tx.blocking_send((deployed_contract, process_one(def_bytes)))
+            .unwrap();
+    }
+}
+
+struct CompressedContract {
+    abi: Vec<u8>,
+    bytecode: Vec<u8>,
+    definition: Vec<u8>,
+    hash: StarkHash,
+}
+
+impl std::fmt::Debug for CompressedContract {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "CompressedContract {{ sizes: {:?}, hash: {} }}",
+            (self.abi.len(), self.bytecode.len(), self.definition.len()),
+            self.hash
+        )
     }
 }
 
 /// Updates the Starknet state with a new block described by [StateUpdateLog].
 ///
 /// Returns the new global root.
-async fn update<T: Transport>(
-    transport: &Web3<T>,
+fn update(
+    state_update: StateUpdate,
     global_root: GlobalRoot,
     update_log: &StateUpdateLog,
     db: &Transaction<'_>,
-    sequencer: &sequencer::Client,
-) -> Result<GlobalStateRecord, UpdateError> {
+    fetched_contracts_tx: &mpsc::Sender<Vec<DeployedContract>>,
+    ready_contracts_rx: &mut mpsc::Receiver<(DeployedContract, anyhow::Result<CompressedContract>)>,
+) -> Result<BlockUpdated, UpdateError> {
     // Download update from L1.
-    use RetrieveStateUpdateError::*;
-    let state_update = match StateUpdate::retrieve(transport, update_log.clone()).await {
-        Ok(state_update) => state_update,
-        Err(Other(other)) => {
-            return Err(UpdateError::Other(anyhow::anyhow!(
-                "Fetching state update failed. {}",
-                other
-            )));
-        }
-        // Treat the rest as a reorg event.
-        Err(_reorg) => return Err(UpdateError::Reorg),
-    };
+
+    let contract_count = state_update.deployed_contracts.len();
+
+    // TODO: check if the contract has been downloaded already
+    fetched_contracts_tx
+        .blocking_send(state_update.deployed_contracts)
+        .unwrap();
 
     let mut global_tree =
         GlobalStateTree::load(db, global_root).context("Loading global state tree")?;
 
-    // Deploy contracts
-    for contract in state_update.deployed_contracts {
-        // Add new contract's to global tree, the contract roots are initialized to ZERO.
-        let contract_root = ContractRoot(StarkHash::ZERO);
-        let state_hash = calculate_contract_state_hash(contract.hash, contract_root);
-        global_tree
-            .set(contract.address, state_hash)
-            .context("Adding deployed contract to global state tree")?;
-        ContractsStateTable::insert(db, state_hash, contract.hash, contract_root)
+    for _ in 0..contract_count {
+        let (contract, compressed) = ready_contracts_rx
+            .blocking_recv()
+            .context("should have gotten all of the compressed")?;
+
+        let compressed = compressed?;
+
+        // FIXME: this would only need to be done for contracts, which don't receive updates in this state
+        // update log
+        {
+            let state_hash =
+                calculate_contract_state_hash(contract.hash, ContractRoot(StarkHash::ZERO));
+
+            global_tree
+                .set(contract.address, state_hash)
+                .context("Adding deployed contract to global state tree")?;
+
+            // esp thinking about this being waste for most contracts which do receive updates.
+            ContractsStateTable::insert(
+                db,
+                state_hash,
+                contract.hash,
+                ContractRoot(StarkHash::ZERO),
+            )
             .context("Insert constract state hash into contracts state table")?;
+        }
 
-        let contract_definition = sequencer
-            .full_contract(contract.address)
-            .await
-            .context("Download contract definition from sequencer")?;
+        if compressed.hash != contract.hash.0 {
+            return Err(UpdateError::from(anyhow::anyhow!(
+                "Contract hash mismatch on address {}: expected {}, actual {}",
+                contract.address.0,
+                contract.hash.0,
+                compressed.hash,
+            )));
+        }
 
-        deploy_contract(contract, db, contract_definition).context("Contract deployment")?;
+        ContractCodeTable::insert_compressed(
+            db,
+            contract.hash,
+            &compressed.abi,
+            &compressed.bytecode,
+            &compressed.definition,
+        )
+        .context("Inserting contract information into contract code table")?;
+
+        ContractsTable::insert(db, contract.address, contract.hash)
+            .context("Inserting contract hash into contracts table")?;
     }
 
-    println!("Contracts downloaded and deployed");
+    let mut contracts_updated = 0;
+    let mut total_updates = 0;
 
     // Update contract state tree
     for contract_update in state_update.contract_updates {
+        total_updates += contract_update.storage_updates.len();
+
         let contract_state_hash = update_contract_state(&contract_update, &global_tree, db)
-            .await
             .context("Updating contract state")?;
 
         // Update the global state tree.
@@ -223,7 +465,6 @@ async fn update<T: Transport>(
         )));
     }
 
-    println!("State trees updated");
     // Download additional block information from sequencer. Use a custom timeout with retry strategy
     // to work-around the sequencer's poor performance (spurious lack of response) for early blocks.
     // let block = loop {
@@ -292,26 +533,54 @@ async fn update<T: Transport>(
     )
     .context("Updating global state table")?;
 
-    // TODO: Transactions and stuff. No idea how that works yet.
-
-    Ok(GlobalStateRecord {
-        block_number: update_log.block_number,
-        block_hash,
-        block_timestamp: timestamp,
-        global_root: new_global_root,
-        eth_block_number: update_log.origin.block.number,
-        eth_block_hash: update_log.origin.block.hash,
-        eth_tx_hash: update_log.origin.transaction.hash,
-        eth_tx_index: update_log.origin.transaction.index,
-        eth_log_index: update_log.origin.log_index,
+    Ok(BlockUpdated {
+        record: GlobalStateRecord {
+            block_number: update_log.block_number,
+            block_hash,
+            block_timestamp: timestamp,
+            global_root: new_global_root,
+            eth_block_number: update_log.origin.block.number,
+            eth_block_hash: update_log.origin.block.hash,
+            eth_tx_hash: update_log.origin.transaction.hash,
+            eth_tx_index: update_log.origin.transaction.index,
+            eth_log_index: update_log.origin.log_index,
+        },
+        info: BlockInfo {
+            deployed_contract_count: contract_count,
+            updated_contracts: contracts_updated,
+            total_updates,
+        },
     })
+}
+
+#[derive(Debug)]
+struct BlockUpdated {
+    record: GlobalStateRecord,
+    info: BlockInfo,
+}
+
+#[derive(Debug)]
+struct BlockInfo {
+    deployed_contract_count: usize,
+    updated_contracts: usize,
+    total_updates: usize,
+}
+
+impl std::fmt::Display for BlockInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} deployed contracts, {} contracts updated with total of {} updates",
+            self.deployed_contract_count, self.updated_contracts, self.total_updates
+        )
+    }
 }
 
 /// Updates a contract's state with the given [storage updates](ContractUpdate). It returns the
 /// [ContractStateHash] of the new state.
 ///
 /// Specifically, it updates the [ContractsStateTree] and [ContractsStateTable].
-async fn update_contract_state(
+fn update_contract_state(
     update: &ContractUpdate,
     global_tree: &GlobalStateTree<'_>,
     db: &Transaction<'_>,
@@ -348,33 +617,6 @@ async fn update_contract_state(
     Ok(contract_state_hash)
 }
 
-/// Inserts a newly deployed Starknet contract into [ContractCodeTable].
-pub(crate) fn deploy_contract(
-    contract: DeployedContract,
-    db: &Transaction<'_>,
-    contract_definition: bytes::Bytes,
-) -> anyhow::Result<()> {
-    let (abi, code, hash) =
-        crate::state::contract_hash::extract_abi_code_hash(&*contract_definition)
-            .context("Compute contract hash")?;
-
-    anyhow::ensure!(
-        hash == contract.hash.0,
-        "Contract hash mismatch on address {}: expected {}, actual {}",
-        contract.address.0,
-        contract.hash.0,
-        hash,
-    );
-
-    ContractCodeTable::insert(db, contract.hash, &abi, &code, &contract_definition)
-        .context("Inserting contract information into contract code table")?;
-
-    ContractsTable::insert(db, contract.address, contract.hash)
-        .context("Inserting contract hash into contracts table")?;
-
-    Ok(())
-}
-
 /// Calculates the contract state hash from its preimage.
 fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> ContractStateHash {
     const RESERVED: StarkHash = StarkHash::ZERO;
@@ -392,16 +634,9 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        core::{
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, StarknetBlockHash, StarknetBlockNumber,
-        },
-        ethereum::test::create_test_transport,
-    };
-    use std::str::FromStr;
-    use web3::types::H256;
+    use super::calculate_contract_state_hash;
+    use crate::core::{ContractHash, ContractRoot, ContractStateHash};
+    use pedersen::StarkHash;
 
     #[test]
     fn hash() {
@@ -428,8 +663,19 @@ mod tests {
         assert_eq!(result, expected);
     }
 
+    /*
+    use crate::{
+        core::{
+            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, StarknetBlockHash, StarknetBlockNumber,
+        },
+        ethereum::test::create_test_transport,
+    };
+    use std::str::FromStr;
+    use web3::types::H256;
     #[tokio::test]
     #[ignore = "Sequencer currently gives 502/503"]
+    #[allow(unused, dead_code)] // broke everything
     async fn genesis() {
         // Georli genesis block values from Alpha taken from Voyager block explorer.
         // https://goerli.voyager.online/block/0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b
@@ -480,6 +726,7 @@ mod tests {
 
         let transport = create_test_transport(crate::ethereum::Chain::Goerli);
 
+        /*
         update(
             &transport,
             GlobalRoot(StarkHash::ZERO),
@@ -489,6 +736,7 @@ mod tests {
         )
         .await
         .unwrap();
+        */
 
         // Read the new latest state from database.
         let state = GlobalStateTable::get_latest_state(&transaction)
@@ -503,16 +751,17 @@ mod tests {
         assert_eq!(state.eth_tx_hash, genesis.origin.transaction.hash);
         assert_eq!(state.eth_tx_index, genesis.origin.transaction.index);
         assert_eq!(state.eth_log_index, genesis.origin.log_index);
-    }
+    }*/
 
     #[tokio::test]
     async fn go_sync() {
         let database =
             crate::storage::Storage::migrate(std::path::PathBuf::from("test.sqlite")).unwrap();
-        let mut conn = database.connection().unwrap();
-        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
-        let sequencer = sequencer::Client::goerli().unwrap();
+        let conn = database.connection().unwrap();
+        let transport =
+            crate::ethereum::test::create_test_transport(crate::ethereum::Chain::Goerli);
+        let sequencer = crate::sequencer::Client::goerli().unwrap();
 
-        sync(&mut conn, &transport, &sequencer).await.unwrap()
+        super::sync(conn, transport, &sequencer).await.unwrap()
     }
 }
