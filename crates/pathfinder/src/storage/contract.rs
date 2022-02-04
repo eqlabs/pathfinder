@@ -102,6 +102,11 @@ impl ContractsTable {
             Some((bytecode, abi)) => (bytecode, abi),
         };
 
+        // it might be dangerious to not have some upper bound on the compressed size.
+        // someone could put a very tight bomb to our database, and then have it OOM during
+        // runtime, but if you can already modify our database at will, maybe there's more useful
+        // things to do.
+
         let bytecode = zstd::decode_all(&*bytecode)
             .context("Corruption: invalid compressed column (bytecode)")?;
 
