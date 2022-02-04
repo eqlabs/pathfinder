@@ -24,9 +24,12 @@ use crate::{
     },
 };
 
+mod contract_hash;
 mod merkle_node;
 mod merkle_tree;
 mod state_tree;
+
+pub use contract_hash::compute_contract_hash;
 
 #[derive(thiserror::Error, Debug)]
 enum UpdateError {
@@ -353,6 +356,9 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
     let hash = pedersen_hash(hash.0, root.0);
     let hash = pedersen_hash(hash, RESERVED);
     let hash = pedersen_hash(hash, CONTRACT_VERSION);
+
+    // Compare this with the HashChain construction used in the contract_hash: the number of
+    // elements is not hashed to this hash, and this is supposed to be different.
     ContractStateHash(hash)
 }
 
