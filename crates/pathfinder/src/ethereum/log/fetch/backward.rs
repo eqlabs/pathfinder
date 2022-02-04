@@ -40,8 +40,8 @@ impl From<web3::error::Error> for BackwardFetchError {
 /// at some log type A, but search backwards for all logs of type B.
 pub struct BackwardLogFetcher<L, R>
 where
-    L: MetaLog + PartialEq + std::fmt::Debug,
-    R: MetaLog + PartialEq + std::fmt::Debug,
+    L: MetaLog + PartialEq + std::fmt::Debug + Clone,
+    R: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
     last_known: EitherMetaLog<L, R>,
     stride: u64,
@@ -50,8 +50,8 @@ where
 
 impl<L, R> BackwardLogFetcher<L, R>
 where
-    L: MetaLog + PartialEq + std::fmt::Debug,
-    R: MetaLog + PartialEq + std::fmt::Debug,
+    L: MetaLog + PartialEq + std::fmt::Debug + Clone,
+    R: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
     /// Creates a [LogFetcher](super::forward::LogFetcher) which fetches logs starting from `last_known`'s origin on L1.
     ///
@@ -151,6 +151,9 @@ where
                     return Err(BackwardFetchError::GenesisReached);
                 }
             }
+
+            // unwrap is safe due to the is_empty check above.
+            self.last_known = logs.last().unwrap().clone();
 
             return Ok(logs);
         }
