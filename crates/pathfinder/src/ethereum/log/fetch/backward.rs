@@ -159,3 +159,87 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::str::FromStr;
+
+    use pedersen::StarkHash;
+    use web3::types::H256;
+
+    use crate::{
+        core::{
+            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
+        },
+        ethereum::{
+            log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
+            TransactionOrigin,
+        },
+    };
+
+    #[tokio::test]
+    async fn consistency() {
+        // We use StateUpdateLog because it comes with a handy block number
+        // we can use to check for sequentiality.
+        let update_log = StateUpdateLog {
+            origin: EthOrigin {
+                block: BlockOrigin {
+                    hash: EthereumBlockHash(
+                        H256::from_str(
+                            "0x0b3208a115098a1654a092b35c8668794c23ddfef35100c83d59fb9b5993bfbb",
+                        )
+                        .unwrap(),
+                    ),
+                    number: EthereumBlockNumber(5904264),
+                },
+                transaction: TransactionOrigin {
+                    hash: EthereumTransactionHash(
+                        H256::from_str(
+                            "0xcdbfab0ca513e6b1c0eee89adb60478e7c8ea4d80edbddc470be41c630ae67c4",
+                        )
+                        .unwrap(),
+                    ),
+                    index: EthereumTransactionIndex(7),
+                },
+                log_index: EthereumLogIndex(17),
+            },
+            global_root: GlobalRoot(
+                StarkHash::from_hex_str(
+                    "0x05EA3EB34039C870869FD7E6E51B46C10A289AA88A8887E8DA8F1009D84EA98B",
+                )
+                .unwrap(),
+            ),
+            block_number: StarknetBlockNumber(7690),
+        };
+
+        // We use the same log type twice; this shouldn't matter and let's us check
+        // the block number sequence.
+        let mut fetcher = BackwardLogFetcher::<StateUpdateLog, StateUpdateLog>::new(
+            EitherMetaLog::Left(update_log.clone()),
+        );
+
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
+        let logs = fetcher.fetch(&transport).await.unwrap();
+        let mut block_number = update_log.block_number.0 - 1;
+        for log in logs {
+            let log = match log {
+                EitherMetaLog::Left(log) => log,
+                EitherMetaLog::Right(log) => log,
+            };
+            assert_eq!(log.block_number.0, block_number, "First fetch");
+            block_number -= 1;
+        }
+        let logs = fetcher.fetch(&transport).await.unwrap();
+        for log in logs {
+            let log = match log {
+                EitherMetaLog::Left(log) => log,
+                EitherMetaLog::Right(log) => log,
+            };
+            assert_eq!(log.block_number.0, block_number, "Second fetch");
+            block_number -= 1;
+        }
+    }
+}
