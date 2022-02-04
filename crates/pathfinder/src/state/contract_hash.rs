@@ -416,6 +416,25 @@ mod json {
 
             assert_eq!(hash, expected);
         }
+
+        #[test]
+        fn second() {
+            let contract_definition = zstd::decode_all(
+                // opening up a file requires a path relative to the test running
+                &include_bytes!("../../fixtures/contract_definition.json.zst")[..],
+            )
+            .unwrap();
+
+            let hash = super::super::compute_contract_hash(&contract_definition).unwrap();
+
+            assert_eq!(
+                hash,
+                pedersen::StarkHash::from_hex_str(
+                    "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+                )
+                .unwrap()
+            );
+        }
     }
 
     #[cfg(test)]
