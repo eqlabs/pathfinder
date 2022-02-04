@@ -830,35 +830,123 @@ mod tests {
 
     mod get_code {
         use super::*;
-        use crate::sequencer::reply::Code;
+        use crate::{
+            ethereum::state_update::DeployedContract, rpc::types::reply::ErrorCode,
+            sequencer::reply::Code,
+        };
 
         #[tokio::test]
         async fn invalid_contract_address() {
             // At the moment an invalid address causes an empty but valid reply
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
-            client_request::<Code>("starknet_getCode", params)
+            let e = client_request::<Code>("starknet_getCode", params)
                 .await
-                .unwrap();
+                .unwrap_err();
+
+            assert_eq!(ErrorCode::ContractNotFound, e);
         }
 
-        mod success {
-            use super::*;
+        #[tokio::test]
+        async fn returns_not_found_if_we_dont_know_about_the_contract() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = sequencer::Client::goerli().unwrap();
+            let (__handle, addr) = run_server(
+                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
+                storage,
+                sequencer,
+            )
+            .unwrap();
 
-            #[tokio::test]
-            async fn positional_args() {
-                let params = rpc_params!(*VALID_CONTRACT_ADDR);
-                client_request::<Code>("starknet_getCode", params)
-                    .await
-                    .unwrap();
+            let not_found = client(addr)
+                .request::<Code>(
+                    "starknet_getCode",
+                    rpc_params!(
+                        "0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc"
+                    ),
+                )
+                .await
+                .unwrap_err();
+
+            assert_eq!(ErrorCode::ContractNotFound, not_found);
+        }
+
+        #[tokio::test]
+        async fn returns_abi_and_code_for_known() {
+            use crate::core::{ContractCode, ContractHash};
+            use anyhow::Context;
+            use bytes::Bytes;
+            use futures::stream::TryStreamExt;
+            use pedersen::StarkHash;
+
+            let storage = Storage::in_memory().unwrap();
+
+            let contract_definition = include_bytes!("../fixtures/contract_definition.json.zst");
+            let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition)).unwrap();
+            let contract_definition = Bytes::from(buffer);
+
+            {
+                let mut conn = storage.connection().unwrap();
+                let tx = conn.transaction().unwrap();
+
+                crate::state::deploy_contract(
+                    DeployedContract {
+                        address: ContractAddress(
+                            StarkHash::from_hex_str(
+                                "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                            )
+                            .unwrap(),
+                        ),
+                        hash: ContractHash(
+                            StarkHash::from_hex_str(
+                                "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b",
+                            )
+                            .unwrap(),
+                        ),
+                        call_data: vec![],
+                    },
+                    &tx,
+                    contract_definition,
+                )
+                .context("Deploy testing contract")
+                .unwrap();
+
+                tx.commit().unwrap();
             }
 
-            #[tokio::test]
-            async fn named_args() {
-                let params = by_name([("contract_address", json!(*VALID_CONTRACT_ADDR))]);
-                client_request::<Code>("starknet_getCode", params)
-                    .await
-                    .unwrap();
-            }
+            let sequencer = sequencer::Client::goerli().unwrap();
+            let (__handle, addr) = run_server(
+                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
+                storage,
+                sequencer,
+            )
+            .unwrap();
+
+            let client = client(addr);
+
+            // both parameters, these used to be separate tests
+            let rets = [
+                rpc_params!("0x057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"),
+                by_name([(
+                    "contract_address",
+                    json!("0x057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"),
+                )]),
+            ]
+            .into_iter()
+            .map(|arg| client.request::<ContractCode>("starknet_getCode", arg))
+            .collect::<futures::stream::FuturesOrdered<_>>()
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+
+            assert_eq!(rets.len(), 2);
+
+            assert_eq!(rets[0], rets[1]);
+            let abi = rets[0].abi.to_string();
+            assert_eq!(
+                abi,
+                r#""[{"inputs":[{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"contract_address","type":"felt"},{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"call_increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"address","type":"felt"}],"name":"get_value","outputs":[{"name":"res","type":"felt"}],"type":"function"}]""#
+            );
+            assert_eq!(rets[0].bytecode.len(), 132);
         }
     }
 

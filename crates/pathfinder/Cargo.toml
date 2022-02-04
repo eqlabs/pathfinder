@@ -17,6 +17,7 @@ bitvec = "0.20.4"
 bytes = "1.1.0"
 clap = "2.33.3"
 enum-iterator = "0.7.0"
+futures = { version = "0.3", default-features = false, features = ["std"] }
 hex = "0.4.3"
 home = "0.5.3"
 jsonrpsee = { version = "0.6.1", features = ["full"] }
