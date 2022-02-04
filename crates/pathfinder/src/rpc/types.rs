@@ -231,8 +231,90 @@ pub mod reply {
         ContractError = 40,
     }
 
-    impl std::string::ToString for ErrorCode {
-        fn to_string(&self) -> String {
+    /// We can have this equality and should have it in order to use it for tests. It is meant to
+    /// be used when expecting that the rpc result is an error. The rpc result should first be
+    /// accessed with [`Result::unwrap_err`], then compared to the expected [`ErrorCode`] with
+    /// [`assert_eq!`].
+    #[cfg(test)]
+    impl PartialEq<jsonrpsee::types::Error> for ErrorCode {
+        fn eq(&self, other: &jsonrpsee::types::Error) -> bool {
+            use jsonrpsee::types::Error::*;
+
+            // the interesting variant Error::Request holds the whole error value as a raw string,
+            // which looks like FailedResponse.
+            //
+            // RpcError could have more user error body, which is why there's the
+            // deny_unknown_fields, as when writing this there were no such extra types being used.
+
+            #[derive(serde::Deserialize, Debug)]
+            pub struct FailedResponse<'a> {
+                // we don't really care about this when testing; version
+                #[serde(borrow, rename = "jsonrpc")]
+                _jsonrpc: &'a serde_json::value::RawValue,
+                // don't care: request id
+                #[serde(borrow, rename = "id")]
+                _id: &'a serde_json::value::RawValue,
+                #[serde(borrow)]
+                error: RpcError<'a>,
+            }
+
+            #[derive(serde::Deserialize, Debug)]
+            #[serde(deny_unknown_fields)]
+            pub struct RpcError<'a> {
+                code: i32,
+                #[serde(borrow)]
+                message: std::borrow::Cow<'a, str>,
+            }
+
+            impl PartialEq<ErrorCode> for FailedResponse<'_> {
+                fn eq(&self, rhs: &ErrorCode) -> bool {
+                    if let Ok(lhs) = ErrorCode::try_from(self.error.code) {
+                        // make sure the error matches what we think it was; it's ... a bit extra,
+                        // but shouldn't really be an issue.
+                        &*self.error.message == lhs.as_str() && &lhs == rhs
+                    } else {
+                        false
+                    }
+                }
+            }
+
+            let resp = match other {
+                Request(ref s) => serde_json::from_str::<FailedResponse>(s),
+                _ => return false,
+            };
+
+            if let Ok(resp) = resp {
+                &resp == self
+            } else {
+                // Parsing failure doesn't really matter, and we don't need to panic; the assert_eq
+                // will make sure we'll have informative panic.
+                false
+            }
+        }
+    }
+
+    impl TryFrom<i32> for ErrorCode {
+        type Error = i32;
+
+        fn try_from(code: i32) -> Result<ErrorCode, Self::Error> {
+            use ErrorCode::*;
+            Ok(match code {
+                1 => FailedToReceiveTransaction,
+                20 => ContractNotFound,
+                21 => InvalidMessageSelector,
+                22 => InvalidCallData,
+                23 => InvalidStorageKey,
+                24 => InvalidBlockHash,
+                25 => InvalidTransactionHash,
+                26 => InvalidBlockNumber,
+                40 => ContractError,
+                x => return Err(x),
+            })
+        }
+    }
+
+    impl ErrorCode {
+        fn as_str(&self) -> &'static str {
             match self {
                 ErrorCode::FailedToReceiveTransaction => "Failed to write transaction",
                 ErrorCode::ContractNotFound => "Contract not found",
@@ -244,7 +326,12 @@ pub mod reply {
                 ErrorCode::InvalidBlockNumber => "Invalid block number",
                 ErrorCode::ContractError => "Contract error",
             }
-            .to_owned()
+        }
+    }
+
+    impl std::string::ToString for ErrorCode {
+        fn to_string(&self) -> String {
+            self.as_str().to_owned()
         }
     }
 
