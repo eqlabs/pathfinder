@@ -338,13 +338,13 @@ pub(crate) fn deploy_contract(
         crate::state::contract_hash::extract_abi_code_hash(&*contract_definition)
             .context("Compute contract hash")?;
 
-    // TODO: verify contract hash (waiting on contract definition API change).
-    if hash != contract.hash.0 {
-        println!(
-            "!!! hash mismatch for {hash:x}, was supposed to be {:x}, address {:x}",
-            contract.hash.0, contract.address.0
-        );
-    }
+    anyhow::ensure!(
+        hash == contract.hash.0,
+        "Contract hash mismatch on address {}: expected {}, actual {}",
+        contract.address.0,
+        contract.hash.0,
+        hash,
+    );
 
     ContractsTable::insert(
         db,
