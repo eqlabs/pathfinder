@@ -25,12 +25,38 @@ use sha3::Digest;
 /// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py
 /// [cairo-contract]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contracts.cairo#L76-L118
 /// [py-sortkeys]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py#L58-L71
-pub fn compute_contract_hash(contract_definition_dump: &str) -> Result<StarkHash> {
-    use json::EntryPointType::*;
-
-    let mut contract_definition =
-        serde_json::from_str::<json::ContractDefinition>(contract_definition_dump)
+pub fn compute_contract_hash(contract_definition_dump: &[u8]) -> Result<StarkHash> {
+    let contract_definition =
+        serde_json::from_slice::<json::ContractDefinition>(contract_definition_dump)
             .context("Failed to parse contract_definition")?;
+
+    compute_contract_hash0(contract_definition).context("Compute contract hash")
+}
+
+/// Sibling functionality to only [`compute_contract_hash`], returning also the ABI, and bytecode
+/// parts as json bytes.
+pub(crate) fn extract_abi_code_hash(
+    contract_definition_dump: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>, StarkHash)> {
+    let contract_definition =
+        serde_json::from_slice::<json::ContractDefinition>(contract_definition_dump)
+            .context("Failed to parse contract_definition")?;
+
+    // just in case we'd accidentially modify these in the compute_contract_hash0
+    let abi = serde_json::to_vec(&contract_definition.abi)
+        .context("Serialize contract_definition.abi")?;
+    let code = serde_json::to_vec(&contract_definition.program.data)
+        .context("Serialize contract_definition.program.data")?;
+
+    let hash = compute_contract_hash0(contract_definition).context("Compute contract hash")?;
+
+    Ok((abi, code, hash))
+}
+
+fn compute_contract_hash0(
+    mut contract_definition: json::ContractDefinition<'_>,
+) -> Result<StarkHash> {
+    use json::EntryPointType::*;
 
     // the other modification is handled by skipping if the attributes vec is empty
     contract_definition.program.debug_info = None;
@@ -386,9 +412,28 @@ mod json {
             // 500
             // {"code": "StarknetErrorCode.UNINITIALIZED_CONTRACT", "message": "Contract with address 2116724861677265616176388745625154424116334641142188761834194304782006389228 is not deployed."}
 
-            let hash = super::super::compute_contract_hash(&payload).unwrap();
+            let hash = super::super::compute_contract_hash(payload.as_bytes()).unwrap();
 
             assert_eq!(hash, expected);
+        }
+
+        #[test]
+        fn second() {
+            let contract_definition = zstd::decode_all(
+                // opening up a file requires a path relative to the test running
+                &include_bytes!("../../fixtures/contract_definition.json.zst")[..],
+            )
+            .unwrap();
+
+            let hash = super::super::compute_contract_hash(&contract_definition).unwrap();
+
+            assert_eq!(
+                hash,
+                pedersen::StarkHash::from_hex_str(
+                    "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+                )
+                .unwrap()
+            );
         }
     }
 

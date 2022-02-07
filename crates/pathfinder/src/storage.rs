@@ -41,7 +41,7 @@ pub struct Storage {
     ///
     /// [Connection] is !Sync so we wrap it in [Mutex] to get sync back.
     #[cfg(test)]
-    keep_alive: Mutex<Connection>,
+    _keep_alive: Mutex<Connection>,
 }
 
 impl Storage {
@@ -62,7 +62,7 @@ impl Storage {
         #[cfg(test)]
         let storage = Storage {
             database_path,
-            keep_alive: Mutex::new(conn),
+            _keep_alive: Mutex::new(conn),
         };
 
         Ok(storage)

@@ -6,8 +6,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("the input read from stdin is expected to be a contract definition, which is a json blob.");
         std::process::exit(1);
     }
-    let mut s = String::new();
-    std::io::stdin().read_to_string(&mut s).unwrap();
+    let mut s = Vec::new();
+    std::io::stdin().read_to_end(&mut s).unwrap();
     let s = s;
     println!("{:x}", pathfinder_lib::state::compute_contract_hash(&s)?);
     Ok(())

@@ -37,7 +37,7 @@ pub struct ContractRoot(pub StarkHash);
 /// A Starknet contract's bytecode and ABI.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractCode {
-    pub bytecode: Vec<StarkHash>,
+    pub bytecode: Vec<ByteCodeWord>,
     pub abi: String,
 }
 

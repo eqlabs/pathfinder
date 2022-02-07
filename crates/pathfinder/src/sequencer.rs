@@ -5,7 +5,7 @@ pub mod request;
 
 use self::error::StarknetError;
 use crate::{
-    core::{ContractAddress, ContractCode, StarknetTransactionHash, StorageAddress, StorageValue},
+    core::{ContractAddress, StarknetTransactionHash, StorageAddress, StorageValue},
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
 };
@@ -144,32 +144,6 @@ impl Client {
         let url = self.build_query("call_contract", &[(tag, &hash)]);
         let resp = self.inner.post(url).json(&payload).send().await?;
         parse(resp).await
-    }
-
-    /// Gets contract's code and ABI.
-    pub async fn code(
-        &self,
-        contract_addr: ContractAddress,
-        block_hash: BlockHashOrTag,
-    ) -> Result<ContractCode, SequencerError> {
-        let (tag, hash) = block_hash_str(block_hash);
-        let resp = self
-            .inner
-            .get(self.build_query(
-                "get_code",
-                &[
-                    ("contractAddress", &contract_addr.0.to_hex_str()),
-                    (tag, &hash),
-                ],
-            ))
-            .send()
-            .await?;
-        let code = parse::<reply::Code>(resp).await?;
-
-        Ok(ContractCode {
-            bytecode: code.bytecode,
-            abi: code.abi.to_string(),
-        })
     }
 
     /// Gets full contract definition.
@@ -759,72 +733,6 @@ mod tests {
                         },
                         BlockHashOrTag::Tag(Tag::Pending),
                     )
-                    .await
-            )
-            .unwrap();
-        }
-    }
-
-    mod code {
-        use super::*;
-        use pretty_assertions::assert_eq;
-
-        #[tokio::test]
-        async fn invalid_contract_address() {
-            let result = retry_on_rate_limiting!(
-                client()
-                    .code(*INVALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
-                    .await
-            )
-            .unwrap();
-            assert_eq!(
-                result,
-                ContractCode {
-                    abi: String::new(),
-                    bytecode: Vec::new(),
-                }
-            );
-        }
-
-        #[tokio::test]
-        async fn invalid_block_hash() {
-            let error = retry_on_rate_limiting!(
-                client()
-                    .code(*VALID_CONTRACT_ADDR, *INVALID_BLOCK_HASH,)
-                    .await
-            )
-            .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
-            );
-        }
-
-        #[tokio::test]
-        async fn latest_invoke_block() {
-            retry_on_rate_limiting!(
-                client()
-                    .code(*VALID_CONTRACT_ADDR, *INVOKE_CONTRACT_BLOCK_HASH,)
-                    .await
-            )
-            .unwrap();
-        }
-
-        #[tokio::test]
-        async fn latest_block() {
-            retry_on_rate_limiting!(
-                client()
-                    .code(*VALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Latest))
-                    .await
-            )
-            .unwrap();
-        }
-
-        #[tokio::test]
-        async fn pending_block() {
-            retry_on_rate_limiting!(
-                client()
-                    .code(*VALID_CONTRACT_ADDR, BlockHashOrTag::Tag(Tag::Pending))
                     .await
             )
             .unwrap();

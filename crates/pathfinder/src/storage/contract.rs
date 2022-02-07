@@ -1,5 +1,5 @@
 use crate::{
-    core::{ContractAddress, ContractCode, ContractHash},
+    core::{ByteCodeWord, ContractAddress, ContractCode, ContractHash},
     storage::{DB_VERSION_CURRENT, DB_VERSION_EMPTY},
 };
 
@@ -49,14 +49,19 @@ impl ContractsTable {
         transaction: &Transaction,
         address: ContractAddress,
         hash: ContractHash,
-        code: ContractCode,
+        abi: &[u8],
+        bytecode: &[u8],
         definition: &[u8],
     ) -> anyhow::Result<()> {
-        let bytecode = code
-            .bytecode
-            .into_iter()
-            .flat_map(|word| word.to_be_bytes())
-            .collect::<Vec<_>>();
+        let mut compressor = zstd::bulk::Compressor::new(10)
+            .context("Couldn't create zstd compressor for ContractsTable")?;
+        let abi = compressor.compress(abi).context("Failed to compress ABI")?;
+        let bytecode = compressor
+            .compress(bytecode)
+            .context("Failed to compress bytecode")?;
+        let definition = compressor
+            .compress(definition)
+            .context("Failed to compress definition")?;
 
         transaction.execute(
             r"INSERT INTO contracts ( address,  hash, bytecode,   abi,  definition)
@@ -64,8 +69,8 @@ impl ContractsTable {
             named_params! {
                 ":address": &address.0.to_be_bytes()[..],
                 ":hash": &hash.0.to_be_bytes()[..],
-                ":bytecode": &bytecode[..],
-                ":abi": code.abi.as_bytes(),
+                ":bytecode": bytecode,
+                ":abi": abi,
                 ":definition": definition,
             },
         )?;
@@ -97,19 +102,21 @@ impl ContractsTable {
             Some((bytecode, abi)) => (bytecode, abi),
         };
 
-        anyhow::ensure!(
-            (bytecode.len() % 32) == 0,
-            "Bytecode length must be a multiple of 32, but got {}",
-            bytecode.len()
-        );
+        // it might be dangerious to not have some upper bound on the compressed size.
+        // someone could put a very tight bomb to our database, and then have it OOM during
+        // runtime, but if you can already modify our database at will, maybe there's more useful
+        // things to do.
 
-        let bytecode = bytecode
-            .chunks(32)
-            // unwrap is safe because word is guaranteed to be 32 bytes
-            .map(|word| StarkHash::from_be_slice(word).unwrap())
-            .collect();
+        let bytecode = zstd::decode_all(&*bytecode)
+            .context("Corruption: invalid compressed column (bytecode)")?;
 
-        let abi = String::from_utf8(abi).context("Parsing ABI bytes")?;
+        let abi = zstd::decode_all(&*abi).context("Corruption: invalid compressed column (abi)")?;
+
+        let abi =
+            String::from_utf8(abi).context("Corruption: invalid uncompressed column (abi)")?;
+
+        let bytecode = serde_json::from_slice::<Vec<ByteCodeWord>>(&bytecode)
+            .context("Corruption: invalid uncompressed column (bytecode)")?;
 
         Ok(Some(ContractCode { bytecode, abi }))
     }
@@ -159,13 +166,17 @@ mod tests {
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
-        let code = ContractCode {
-            bytecode: Vec::new(),
-            abi: String::new(),
-        };
         let definition = vec![9, 13, 25];
 
-        ContractsTable::insert(&transaction, address, hash, code, &definition[..]).unwrap();
+        ContractsTable::insert(
+            &transaction,
+            address,
+            hash,
+            &[][..],
+            &[][..],
+            &definition[..],
+        )
+        .unwrap();
 
         let result = ContractsTable::get_hash(&transaction, address).unwrap();
 
@@ -181,21 +192,33 @@ mod tests {
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
-        let code = ContractCode {
-            bytecode: vec![
-                StarkHash::from_hex_str("abc").unwrap(),
-                StarkHash::from_hex_str("def").unwrap(),
-                StarkHash::from_hex_str("123").unwrap(),
-                StarkHash::from_hex_str("4567890").unwrap(),
-            ],
-            abi: "This is the ABI".to_string(),
-        };
-        let definition = vec![9, 13, 25];
 
-        ContractsTable::insert(&transaction, address, hash, code.clone(), &definition[..]).unwrap();
+        // list of objects
+        let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
+
+        // this is list of hex
+        let code = br#"["0x40780017fff7fff","0x1","0x208b7fff7fff7ffe"]"#;
+
+        let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
+
+        ContractsTable::insert(
+            &transaction,
+            address,
+            hash,
+            &abi[..],
+            &code[..],
+            &definition[..],
+        )
+        .unwrap();
 
         let result = ContractsTable::get_code(&transaction, address).unwrap();
 
-        assert_eq!(result, Some(code));
+        assert_eq!(
+            result,
+            Some(ContractCode {
+                abi: String::from_utf8(abi.to_vec()).unwrap(),
+                bytecode: serde_json::from_slice::<Vec<ByteCodeWord>>(code).unwrap(),
+            })
+        );
     }
 }
