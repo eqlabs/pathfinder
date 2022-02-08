@@ -19,7 +19,7 @@ use crate::{
     sequencer,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{
-        ContractAddressesTable, ContractsStateTable, ContractsTable, EthereumBlocksTable,
+        ContractCodeTable, ContractsStateTable, ContractsTable, EthereumBlocksTable,
         EthereumTransactionsTable, GlobalStateRecord, GlobalStateTable,
     },
 };
@@ -317,8 +317,8 @@ async fn update_contract_state(
         .context("Apply contract storage tree changes")?;
 
     // Calculate contract state hash, update global state tree and persist pre-image.
-    let contract_hash = ContractAddressesTable::get_hash(db, update.address)
-        .context("Read contract hash from contract addresses table")?
+    let contract_hash = ContractsTable::get_hash(db, update.address)
+        .context("Read contract hash from contracts table")?
         .context("Contract hash is missing from contracts table")?;
     let contract_state_hash = calculate_contract_state_hash(contract_hash, new_contract_root);
 
@@ -328,7 +328,7 @@ async fn update_contract_state(
     Ok(contract_state_hash)
 }
 
-/// Inserts a newly deployed Starknet contract into [ContractsTable].
+/// Inserts a newly deployed Starknet contract into [ContractCodeTable].
 pub(crate) fn deploy_contract(
     contract: DeployedContract,
     db: &Transaction<'_>,
@@ -346,11 +346,11 @@ pub(crate) fn deploy_contract(
         hash,
     );
 
-    ContractsTable::insert(db, contract.hash, &abi, &code, &contract_definition)
-        .context("Inserting contract information into contracts table")?;
+    ContractCodeTable::insert(db, contract.hash, &abi, &code, &contract_definition)
+        .context("Inserting contract information into contract code table")?;
 
-    ContractAddressesTable::insert(db, contract.address, contract.hash)
-        .context("Inserting contract hash into contract addresses table")?;
+    ContractsTable::insert(db, contract.address, contract.hash)
+        .context("Inserting contract hash into contracts table")?;
 
     Ok(())
 }

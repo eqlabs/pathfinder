@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::Mutex;
 
-pub use contract::{ContractAddressesTable, ContractsTable};
+pub use contract::{ContractCodeTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 pub use state::{ContractsStateTable, GlobalStateRecord, GlobalStateTable};
 
@@ -199,20 +199,18 @@ mod tests {
             .execute(
                 r"INSERT INTO contracts_v1 (address, hash, bytecode, abi, definition)
                     SELECT
-                        contract_addresses.address,
-                        contracts.hash,
-                        contracts.bytecode,
-                        contracts.abi,
-                        contracts.definition
-                    FROM contract_addresses
-                    JOIN contracts ON contract_addresses.hash = contracts.hash",
+                        contracts.address,
+                        contract_code.hash,
+                        contract_code.bytecode,
+                        contract_code.abi,
+                        contract_code.definition
+                    FROM contracts
+                    JOIN contract_code ON contracts.hash = contract_code.hash",
                 [],
             )
             .unwrap();
-        transaction
-            .execute("DROP TABLE contract_addresses", [])
-            .unwrap();
         transaction.execute("DROP TABLE contracts", []).unwrap();
+        transaction.execute("DROP TABLE contract_code", []).unwrap();
         transaction
             .execute("ALTER TABLE contracts_v1 RENAME TO contracts", [])
             .unwrap();
