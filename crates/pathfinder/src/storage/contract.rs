@@ -14,7 +14,6 @@ pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<(
 
 /// Stores StarkNet contract information, specifically a contract's
 ///
-/// - [address](ContractAddress)
 /// - [hash](ContractHash)
 /// - byte code
 /// - ABI
@@ -32,8 +31,7 @@ impl ContractsTable {
 
         transaction.execute(
             r"CREATE TABLE contracts (
-                    address    BLOB PRIMARY KEY,
-                    hash       BLOB NOT NULL,
+                    hash       BLOB PRIMARY KEY,
                     bytecode   BLOB,
                     abi        BLOB,
                     definition BLOB
@@ -44,10 +42,11 @@ impl ContractsTable {
         Ok(())
     }
 
-    /// Insert a contract into the table. Will fail if the contract address is already populated.
+    /// Insert a contract into the table.
+    ///
+    /// Does nothing if the contract [hash](ContractHash) is already populated.
     pub fn insert(
         transaction: &Transaction,
-        address: ContractAddress,
         hash: ContractHash,
         abi: &[u8],
         bytecode: &[u8],
@@ -64,10 +63,10 @@ impl ContractsTable {
             .context("Failed to compress definition")?;
 
         transaction.execute(
-            r"INSERT INTO contracts ( address,  hash, bytecode,   abi,  definition)
-                             VALUES (:address, :hash, :bytecode, :abi, :definition)",
+            r"INSERT INTO contracts ( hash,  bytecode,  abi,  definition)
+                             VALUES (:hash, :bytecode, :abi, :definition)
+                             ON CONFLICT DO NOTHING",
             named_params! {
-                ":address": &address.0.to_be_bytes()[..],
                 ":hash": &hash.0.to_be_bytes()[..],
                 ":bytecode": bytecode,
                 ":abi": abi,
@@ -77,14 +76,18 @@ impl ContractsTable {
         Ok(())
     }
 
-    /// Gets the specificed contract's [code](ContractCode).
+    /// Gets the specified contract's [code](ContractCode).
     pub fn get_code(
         transaction: &Transaction,
         address: ContractAddress,
     ) -> anyhow::Result<Option<ContractCode>> {
         let row = transaction
             .query_row(
-                "SELECT bytecode, abi FROM contracts where address = :address",
+                "SELECT contracts.bytecode, contracts.abi
+                FROM contract_addresses
+                JOIN contracts ON contract_addresses.hash = contracts.hash
+                WHERE contract_addresses.address = :address
+                LIMIT 1",
                 named_params! {
                     ":address": &address.0.to_be_bytes()[..]
                 },
@@ -102,7 +105,7 @@ impl ContractsTable {
             Some((bytecode, abi)) => (bytecode, abi),
         };
 
-        // it might be dangerious to not have some upper bound on the compressed size.
+        // It might be dangerious to not have some upper bound on the compressed size.
         // someone could put a very tight bomb to our database, and then have it OOM during
         // runtime, but if you can already modify our database at will, maybe there's more useful
         // things to do.
@@ -120,15 +123,61 @@ impl ContractsTable {
 
         Ok(Some(ContractCode { bytecode, abi }))
     }
+}
 
-    /// Gets the specificed contract's hash.
+/// Stores the mapping from StarkNet contract [address](ContractAddress) to [hash](ContractHash).
+pub struct ContractAddressesTable {}
+
+impl ContractAddressesTable {
+    /// Migrates the [ContractAddressesTable] from the given version to [DB_VERSION_CURRENT].
+    fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
+        match from_version {
+            DB_VERSION_EMPTY => {} // Fresh database, continue to create table.
+            DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
+            other => anyhow::bail!("Unknown database version: {}", other),
+        }
+
+        transaction.execute(
+            r"CREATE TABLE contract_addresses (
+                    address    BLOB PRIMARY KEY,
+                    hash       BLOB NOT NULL,
+
+                    FOREIGN KEY(hash) REFERENCES contracts(hash)
+                )",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    /// Insert a contract into the table.
+    ///
+    /// Will fail if the contract address is already populated.
+    ///
+    /// Note that [hash](ContractHash) must reference a contract stored in [ContractsTable].
+    pub fn insert(
+        transaction: &Transaction,
+        address: ContractAddress,
+        hash: ContractHash,
+    ) -> anyhow::Result<()> {
+        transaction.execute(
+            r"INSERT INTO contract_addresses (address, hash) VALUES (:address, :hash)",
+            named_params! {
+                ":address": &address.0.to_be_bytes()[..],
+                ":hash": &hash.0.to_be_bytes()[..],
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Gets the specified contract's hash.
     pub fn get_hash(
         transaction: &Transaction,
         address: ContractAddress,
     ) -> anyhow::Result<Option<ContractHash>> {
         let bytes: Option<Vec<u8>> = transaction
             .query_row(
-                "SELECT hash FROM contracts WHERE address = :address",
+                "SELECT hash FROM contract_addresses WHERE address = :address",
                 named_params! {
                     ":address": &address.0.to_be_bytes()[..]
                 },
@@ -158,27 +207,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fails_if_contract_hash_missing() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+
+        ContractsTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
+        ContractAddressesTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
+
+        let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
+        let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
+
+        ContractAddressesTable::insert(&transaction, address, hash).unwrap_err();
+    }
+
+    #[test]
     fn get_hash() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
         ContractsTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
+        ContractAddressesTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
         let definition = vec![9, 13, 25];
 
-        ContractsTable::insert(
-            &transaction,
-            address,
-            hash,
-            &[][..],
-            &[][..],
-            &definition[..],
-        )
-        .unwrap();
+        ContractsTable::insert(&transaction, hash, &[][..], &[][..], &definition[..]).unwrap();
+        ContractAddressesTable::insert(&transaction, address, hash).unwrap();
 
-        let result = ContractsTable::get_hash(&transaction, address).unwrap();
+        let result = ContractAddressesTable::get_hash(&transaction, address).unwrap();
 
         assert_eq!(result, Some(hash));
     }
@@ -189,6 +246,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
 
         ContractsTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
+        ContractAddressesTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
@@ -201,15 +259,8 @@ mod tests {
 
         let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
 
-        ContractsTable::insert(
-            &transaction,
-            address,
-            hash,
-            &abi[..],
-            &code[..],
-            &definition[..],
-        )
-        .unwrap();
+        ContractsTable::insert(&transaction, hash, &abi[..], &code[..], &definition[..]).unwrap();
+        ContractAddressesTable::insert(&transaction, address, hash).unwrap();
 
         let result = ContractsTable::get_code(&transaction, address).unwrap();
 

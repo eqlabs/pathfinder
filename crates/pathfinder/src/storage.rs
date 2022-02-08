@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::Mutex;
 
-pub use contract::ContractsTable;
+pub use contract::{ContractAddressesTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 pub use state::{ContractsStateTable, GlobalStateRecord, GlobalStateTable};
 
