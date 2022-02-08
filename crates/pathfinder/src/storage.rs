@@ -20,8 +20,10 @@ use rusqlite::{Connection, Transaction};
 
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
+/// Database version 1.
+const DB_VERSION_1: u32 = DB_VERSION_EMPTY + 1;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = DB_VERSION_EMPTY + 1;
+const DB_VERSION_CURRENT: u32 = DB_VERSION_1 + 1;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -165,9 +167,81 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
+        // 1. Check that migration from empty to latest version works
         migrate_database(&transaction).unwrap();
         let version = schema_version(&transaction).unwrap();
 
+        assert_eq!(version, DB_VERSION_CURRENT);
+
+        // 2. Use the latest version of the db to build a v1 and check if migration from v1 to latest works
+        // Force the schema to v1
+        transaction
+            .pragma_update(None, VERSION_KEY, DB_VERSION_1)
+            .unwrap();
+        // Rework the tables to match v1 schema
+        // - create the contracts_v1 table
+        // - populate it
+        // - remove redundant v2 tables
+        // - rename the contracts_v1 table
+        transaction
+            .execute(
+                r"CREATE TABLE contracts_v1 (
+                        address    BLOB PRIMARY KEY,
+                        hash       BLOB NOT NULL,
+                        bytecode   BLOB,
+                        abi        BLOB,
+                        definition BLOB
+                    )",
+                [],
+            )
+            .unwrap();
+        transaction
+            .execute(
+                r"INSERT INTO contracts_v1 (address, hash, bytecode, abi, definition)
+                    SELECT
+                        contract_addresses.address,
+                        contracts.hash,
+                        contracts.bytecode,
+                        contracts.abi,
+                        contracts.definition
+                    FROM contract_addresses
+                    JOIN contracts ON contract_addresses.hash = contracts.hash",
+                [],
+            )
+            .unwrap();
+        transaction
+            .execute("DROP TABLE contract_addresses", [])
+            .unwrap();
+        transaction.execute("DROP TABLE contracts", []).unwrap();
+        transaction
+            .execute("ALTER TABLE contracts_v1 RENAME TO contracts", [])
+            .unwrap();
+        // Make sure we've got at least the correct number and names of tables in our simulated v1
+        let mut get_tables = transaction
+            .prepare(
+                r"SELECT name FROM sqlite_schema WHERE 
+                type ='table' AND name NOT LIKE 'sqlite_%';",
+            )
+            .unwrap();
+        let v1_tables: Vec<String> = get_tables
+            .query_map([], |row| row.get::<usize, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<String>, rusqlite::Error>>()
+            .unwrap();
+        assert_eq!(
+            v1_tables,
+            vec![
+                "ethereum_blocks",
+                "ethereum_transactions",
+                "global_state",
+                "contract_states",
+                "contracts"
+            ]
+        );
+
+        // Check if migration from v1 to latest works
+        migrate_database(&transaction).unwrap();
+        let version = schema_version(&transaction).unwrap();
         assert_eq!(version, DB_VERSION_CURRENT);
     }
 

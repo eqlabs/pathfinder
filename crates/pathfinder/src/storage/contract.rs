@@ -1,6 +1,6 @@
 use crate::{
     core::{ByteCodeWord, ContractAddress, ContractCode, ContractHash},
-    storage::{DB_VERSION_CURRENT, DB_VERSION_EMPTY},
+    storage::{DB_VERSION_1, DB_VERSION_CURRENT, DB_VERSION_EMPTY},
 };
 
 use anyhow::Context;
@@ -9,7 +9,8 @@ use rusqlite::{named_params, OptionalExtension, Transaction};
 
 /// Migrates the [ContractsTable] to the [current version](DB_VERSION_CURRENT).
 pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-    ContractsTable::migrate(transaction, from_version)
+    ContractsTable::migrate(transaction, from_version)?;
+    ContractAddressesTable::migrate(transaction, from_version)
 }
 
 /// Stores StarkNet contract information, specifically a contract's
@@ -23,21 +24,44 @@ pub struct ContractsTable {}
 impl ContractsTable {
     /// Migrates the [ContractsTable] from the given version to [DB_VERSION_CURRENT].
     fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
+        const CREATE_CONTRACTS_TABLE: &str = r"
+        CREATE TABLE contracts (
+            hash       BLOB PRIMARY KEY,
+            bytecode   BLOB,
+            abi        BLOB,
+            definition BLOB
+        )";
+
         match from_version {
-            DB_VERSION_EMPTY => {} // Fresh database, continue to create table.
+            DB_VERSION_EMPTY => {
+                // Fresh database, just create the table.
+                transaction.execute(CREATE_CONTRACTS_TABLE, [])?;
+            }
+            DB_VERSION_1 => {
+                // Rename the old contracts table
+                transaction.execute(r"ALTER TABLE contracts RENAME TO contracts_v1", [])?;
+                // Create the new contracts table
+                transaction.execute(CREATE_CONTRACTS_TABLE, [])?;
+                // Populate the new contracts table with data
+                transaction.execute(
+                    r"INSERT INTO contracts (hash, bytecode, abi, definition)
+                    SELECT DISTINCT hash, bytecode, abi, definition FROM contracts_v1",
+                    [],
+                )?;
+                // Create the contract addresses table
+                transaction.execute(ContractAddressesTable::CREATE_CONTRACT_ADDRESSES_TABLE, [])?;
+                // Populate it with address to hash mapping taken from the old contracts table
+                transaction.execute(
+                    r"INSERT INTO contract_addresses (address, hash)
+                    SELECT address, hash FROM contracts_v1",
+                    [],
+                )?;
+                // Drop the old contracts table
+                transaction.execute(r"DROP TABLE contracts_v1", [])?;
+            }
             DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
             other => anyhow::bail!("Unknown database version: {}", other),
         }
-
-        transaction.execute(
-            r"CREATE TABLE contracts (
-                    hash       BLOB PRIMARY KEY,
-                    bytecode   BLOB,
-                    abi        BLOB,
-                    definition BLOB
-                )",
-            [],
-        )?;
 
         Ok(())
     }
@@ -129,30 +153,33 @@ impl ContractsTable {
 pub struct ContractAddressesTable {}
 
 impl ContractAddressesTable {
+    /// This statement is reused by [`ContractsTable::migrate`]
+    pub const CREATE_CONTRACT_ADDRESSES_TABLE: &'static str = r"
+    CREATE TABLE contract_addresses (
+        address    BLOB PRIMARY KEY,
+        hash       BLOB NOT NULL,
+
+        FOREIGN KEY(hash) REFERENCES contracts(hash)
+    )";
+
     /// Migrates the [ContractAddressesTable] from the given version to [DB_VERSION_CURRENT].
     fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
         match from_version {
-            DB_VERSION_EMPTY => {} // Fresh database, continue to create table.
+            DB_VERSION_EMPTY => {
+                // Fresh database, just create the table.
+                transaction.execute(Self::CREATE_CONTRACT_ADDRESSES_TABLE, [])?;
+            }
+            DB_VERSION_1 => {} // Handled in ContractsTable::migrate due to foreign key constraints.
             DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
             other => anyhow::bail!("Unknown database version: {}", other),
         }
-
-        transaction.execute(
-            r"CREATE TABLE contract_addresses (
-                    address    BLOB PRIMARY KEY,
-                    hash       BLOB NOT NULL,
-
-                    FOREIGN KEY(hash) REFERENCES contracts(hash)
-                )",
-            [],
-        )?;
 
         Ok(())
     }
 
     /// Insert a contract into the table.
     ///
-    /// Will fail if the contract address is already populated.
+    /// Fails if the contract address is already populated.
     ///
     /// Note that [hash](ContractHash) must reference a contract stored in [ContractsTable].
     pub fn insert(
