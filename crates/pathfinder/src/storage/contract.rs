@@ -44,7 +44,7 @@ impl ContractsTable {
                 transaction.execute(CREATE_CONTRACTS_TABLE, [])?;
                 // Populate the new contracts table with data
                 transaction.execute(
-                    r"INSERT INTO contracts (hash, bytecode, abi, definition)
+                    r"INSERT OR IGNORE INTO contracts (hash, bytecode, abi, definition)
                     SELECT DISTINCT hash, bytecode, abi, definition FROM contracts_v1",
                     [],
                 )?;
