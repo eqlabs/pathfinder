@@ -170,8 +170,20 @@ async fn update<T: Transport>(
         Err(_reorg) => return Err(UpdateError::Reorg),
     };
 
+    let mut global_tree =
+        GlobalStateTree::load(db, global_root).context("Loading global state tree")?;
+
     // Deploy contracts
     for contract in state_update.deployed_contracts {
+        // Add new contract's to global tree, the contract roots are initialized to ZERO.
+        let contract_root = ContractRoot(StarkHash::ZERO);
+        let state_hash = calculate_contract_state_hash(contract.hash, contract_root);
+        global_tree
+            .set(contract.address, state_hash)
+            .context("Adding deployed contract to global state tree")?;
+        ContractsStateTable::insert(db, state_hash, contract.hash, contract_root)
+            .context("Insert constract state hash into contracts state table")?;
+
         let contract_definition = sequencer
             .full_contract(contract.address)
             .await
@@ -180,12 +192,6 @@ async fn update<T: Transport>(
         deploy_contract(contract, db, contract_definition).context("Contract deployment")?;
     }
 
-    // Get the current contract root from global state. The global state stores
-    // the contract state hash. We then lookup the mapping of state hash to contract root.
-    let mut global_tree =
-        GlobalStateTree::load(db, global_root).context("Loading global state tree")?;
-
-    // Update contract state tree
     for contract_update in state_update.contract_updates {
         let contract_state_hash = update_contract_state(&contract_update, &global_tree, db)
             .await
