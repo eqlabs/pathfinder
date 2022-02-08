@@ -162,85 +162,136 @@ mod tests {
         assert_eq!(version, DB_VERSION_EMPTY);
     }
 
-    #[test]
-    fn full_migration() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        let transaction = conn.transaction().unwrap();
+    mod full_migration {
+        use super::*;
+        use pretty_assertions::assert_eq;
+        use rusqlite::params;
 
-        // 1. Check that migration from empty to latest version works
-        migrate_database(&transaction).unwrap();
-        let version = schema_version(&transaction).unwrap();
+        #[test]
+        fn from_empty() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
 
-        assert_eq!(version, DB_VERSION_CURRENT);
+            migrate_database(&transaction).unwrap();
+            let version = schema_version(&transaction).unwrap();
+            assert_eq!(version, DB_VERSION_CURRENT);
+        }
 
-        // 2. Use the latest version of the db to build a v1 and check if migration from v1 to latest works
-        // Force the schema to v1
-        transaction
-            .pragma_update(None, VERSION_KEY, DB_VERSION_1)
-            .unwrap();
-        // Rework the tables to match v1 schema
-        // - create the contracts_v1 table
-        // - populate it
-        // - remove redundant v2 tables
-        // - rename the contracts_v1 table
-        transaction
-            .execute(
-                r"CREATE TABLE contracts_v1 (
-                        address    BLOB PRIMARY KEY,
-                        hash       BLOB NOT NULL,
-                        bytecode   BLOB,
-                        abi        BLOB,
-                        definition BLOB
-                    )",
-                [],
-            )
-            .unwrap();
-        transaction
-            .execute(
-                r"INSERT INTO contracts_v1 (address, hash, bytecode, abi, definition)
-                    SELECT
-                        contracts.address,
-                        contract_code.hash,
-                        contract_code.bytecode,
-                        contract_code.abi,
-                        contract_code.definition
-                    FROM contracts
-                    JOIN contract_code ON contracts.hash = contract_code.hash",
-                [],
-            )
-            .unwrap();
-        transaction.execute("DROP TABLE contracts", []).unwrap();
-        transaction.execute("DROP TABLE contract_code", []).unwrap();
-        transaction
-            .execute("ALTER TABLE contracts_v1 RENAME TO contracts", [])
-            .unwrap();
-        // Make sure we've got at least the correct number and names of tables in our simulated v1
-        let mut get_tables = transaction
-            .prepare(
-                r"SELECT name FROM sqlite_schema WHERE 
-                type ='table' AND name NOT LIKE 'sqlite_%';",
-            )
-            .unwrap();
-        let v1_tables: Vec<String> = get_tables
-            .query_map([], |row| row.get::<usize, String>(0))
-            .unwrap()
-            .collect::<Result<Vec<String>, rusqlite::Error>>()
-            .unwrap();
-        assert_eq!(
-            v1_tables,
-            vec![
-                "ethereum_blocks",
-                "ethereum_transactions",
-                "global_state",
-                "contract_states",
-                "contracts"
-            ]
-        );
+        #[test]
+        fn from_v1() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
 
-        // Check if migration from v1 to latest works
-        migrate_database(&transaction).unwrap();
-        let version = schema_version(&transaction).unwrap();
-        assert_eq!(version, DB_VERSION_CURRENT);
+            // Set up a v1 db
+            enable_foreign_keys(&transaction).unwrap();
+            transaction
+                .pragma_update(None, VERSION_KEY, DB_VERSION_1)
+                .unwrap();
+            transaction
+                .execute(
+                    r"CREATE TABLE contracts (
+                            address    BLOB PRIMARY KEY,
+                            hash       BLOB NOT NULL,
+                            bytecode   BLOB,
+                            abi        BLOB,
+                            definition BLOB
+                        )",
+                    [],
+                )
+                .unwrap();
+            transaction
+                .execute(
+                    r"CREATE TABLE ethereum_blocks (
+                            hash   BLOB PRIMARY KEY,
+                            number INTEGER NOT NULL
+                        )",
+                    [],
+                )
+                .unwrap();
+            transaction
+                .execute(
+                    r"CREATE TABLE ethereum_transactions (
+                            hash       BLOB PRIMARY KEY,
+                            idx        INTEGER NOT NULL,
+                            block_hash BLOB NOT NULL,
+        
+                            FOREIGN KEY(block_hash) REFERENCES ethereum_blocks(hash)
+                        )",
+                    [],
+                )
+                .unwrap();
+            transaction.execute(
+                    r"CREATE TABLE global_state (
+                            starknet_block_hash       BLOB PRIMARY KEY,
+                            starknet_block_number     INTEGER NOT NULL,
+                            starknet_block_timestamp  INTEGER NOT NULL,
+                            starknet_global_root      BLOB NOT NULL,
+                            ethereum_transaction_hash BLOB NOT NULL,
+                            ethereum_log_index        INTEGER NOT NULL,
+        
+                            FOREIGN KEY(ethereum_transaction_hash) REFERENCES ethereum_transactions(hash)
+                        )",
+                    [],
+                ).unwrap();
+            transaction
+                .execute(
+                    r"CREATE TABLE contract_states (
+                            state_hash BLOB PRIMARY KEY,
+                            hash       BLOB NOT NULL,
+                            root       BLOB NOT NULL
+                        )",
+                    [],
+                )
+                .unwrap();
+            // There may be various contract addresses pointing to the very same contract definition
+            let addr1 = vec![12u8];
+            let addr2 = vec![34u8];
+            let hash = vec![56u8, 78];
+            let bytecode = vec![1u8, 2, 3, 4];
+            let abi = vec![5u8, 6, 7];
+            let def = vec![8u8, 9];
+            transaction
+                .execute(
+                    r"INSERT INTO contracts (address, hash, bytecode, abi, definition)
+                VALUES (?1, ?2, ?3, ?4, ?5), (?6, ?7, ?8, ?9, ?10)",
+                    params![addr1, hash, bytecode, abi, def, addr2, hash, bytecode, abi, def],
+                )
+                .unwrap();
+
+            // Check if migration from v1 to latest works
+            migrate_database(&transaction).unwrap();
+            let version = schema_version(&transaction).unwrap();
+            assert_eq!(version, DB_VERSION_CURRENT);
+
+            let mut get_code = transaction
+                .prepare(r"SELECT hash, bytecode, abi, definition FROM contract_code")
+                .unwrap();
+            let code = get_code
+                .query_map([], |row| {
+                    let hash: Vec<u8> = row.get(0)?;
+                    let bytecode: Vec<u8> = row.get(1)?;
+                    let abi: Vec<u8> = row.get(2)?;
+                    let def: Vec<u8> = row.get(3)?;
+                    Ok((hash, bytecode, abi, def))
+                })
+                .unwrap()
+                .collect::<Result<Vec<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)>, rusqlite::Error>>()
+                .unwrap();
+            assert_eq!(code, vec![(hash, bytecode, abi, def)]);
+
+            let mut get_addrs = transaction
+                .prepare(r"SELECT address FROM contracts")
+                .unwrap();
+            let addrs = get_addrs
+                .query_map([], |row| {
+                    let addr: Vec<u8> = row.get(0)?;
+                    Ok(addr)
+                })
+                .unwrap()
+                .collect::<Result<Vec<Vec<u8>>, rusqlite::Error>>()
+                .unwrap();
+            assert_eq!(addrs, vec![addr1, addr2]);
+        }
     }
 
     #[test]
