@@ -1,16 +1,14 @@
-use crate::{
-    core::{ByteCodeWord, ContractAddress, ContractCode, ContractHash},
-    storage::{DB_VERSION_CURRENT, DB_VERSION_EMPTY},
-};
+use crate::core::{ByteCodeWord, ContractAddress, ContractCode, ContractHash};
 
 use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{named_params, OptionalExtension, Transaction};
 
-/// Migrates the [ContractCodeTable] to the [current version](DB_VERSION_CURRENT).
-pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-    ContractCodeTable::migrate(transaction, from_version)?;
-    ContractsTable::migrate(transaction, from_version)
+/// Creates the [ContractsTable] and [ContractCodeTable] for version 1 of the database.
+pub fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
+    ContractCodeTable::migrate_from_0_to_1(transaction)
+        .context("Failed to create contract code table v1")?;
+    ContractsTable::migrate_from_0_to_1(transaction).context("Failed to create contracts table v1")
 }
 
 /// Stores StarkNet contract information, specifically a contract's
@@ -22,25 +20,18 @@ pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<(
 pub struct ContractCodeTable {}
 
 impl ContractCodeTable {
-    /// Migrates the [ContractCodeTable] from the given version to [DB_VERSION_CURRENT].
-    fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-        const CREATE_CONTRACT_CODE_TABLE: &str = r"
-        CREATE TABLE contract_code (
-            hash       BLOB PRIMARY KEY,
-            bytecode   BLOB,
-            abi        BLOB,
-            definition BLOB
-        )";
-
-        match from_version {
-            DB_VERSION_EMPTY => {
-                // Fresh database, just create the table.
-                transaction.execute(CREATE_CONTRACT_CODE_TABLE, [])?;
-            }
-            DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
-            other => anyhow::bail!("Unknown database version: {}", other),
-        }
-
+    /// Creates the [ContractCodeTable] for version 1 of the database.
+    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
+        transaction.execute(
+            r"
+            CREATE TABLE contract_code (
+                hash       BLOB PRIMARY KEY,
+                bytecode   BLOB,
+                abi        BLOB,
+                definition BLOB
+            )",
+            [],
+        )?;
         Ok(())
     }
 
@@ -131,26 +122,18 @@ impl ContractCodeTable {
 pub struct ContractsTable {}
 
 impl ContractsTable {
-    /// This statement is reused by [`ContractCodeTable::migrate`]
-    pub const CREATE_CONTRACTS_TABLE: &'static str = r"
-    CREATE TABLE contracts (
-        address    BLOB PRIMARY KEY,
-        hash       BLOB NOT NULL,
-
-        FOREIGN KEY(hash) REFERENCES contract_code(hash)
-    )";
-
-    /// Migrates the [ContractsTable] from the given version to [DB_VERSION_CURRENT].
-    fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-        match from_version {
-            DB_VERSION_EMPTY => {
-                // Fresh database, just create the table.
-                transaction.execute(Self::CREATE_CONTRACTS_TABLE, [])?;
-            }
-            DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
-            other => anyhow::bail!("Unknown database version: {}", other),
-        }
-
+    /// Creates the [ContractsTable] for version 1 of the database.
+    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
+        transaction.execute(
+            r"
+            CREATE TABLE contracts (
+                address    BLOB PRIMARY KEY,
+                hash       BLOB NOT NULL,
+        
+                FOREIGN KEY(hash) REFERENCES contract_code(hash)
+            )",
+            [],
+        )?;
         Ok(())
     }
 
@@ -215,8 +198,8 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        ContractCodeTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
-        ContractsTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
+        ContractCodeTable::migrate_from_0_to_1(&transaction).unwrap();
+        ContractsTable::migrate_from_0_to_1(&transaction).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
@@ -229,8 +212,8 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        ContractCodeTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
-        ContractsTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
+        ContractCodeTable::migrate_from_0_to_1(&transaction).unwrap();
+        ContractsTable::migrate_from_0_to_1(&transaction).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
@@ -249,8 +232,8 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        ContractCodeTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
-        ContractsTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
+        ContractCodeTable::migrate_from_0_to_1(&transaction).unwrap();
+        ContractsTable::migrate_from_0_to_1(&transaction).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
