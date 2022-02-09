@@ -20,10 +20,8 @@ use rusqlite::{Connection, Transaction};
 
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
-/// Database version 1.
-const DB_VERSION_1: u32 = DB_VERSION_EMPTY + 1;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = DB_VERSION_1 + 1;
+const DB_VERSION_CURRENT: u32 = DB_VERSION_EMPTY + 1;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -165,7 +163,6 @@ mod tests {
     mod full_migration {
         use super::*;
         use pretty_assertions::assert_eq;
-        use rusqlite::params;
 
         #[test]
         fn from_empty() {
@@ -175,122 +172,6 @@ mod tests {
             migrate_database(&transaction).unwrap();
             let version = schema_version(&transaction).unwrap();
             assert_eq!(version, DB_VERSION_CURRENT);
-        }
-
-        #[test]
-        fn from_v1() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
-
-            // Set up a v1 db
-            enable_foreign_keys(&transaction).unwrap();
-            transaction
-                .pragma_update(None, VERSION_KEY, DB_VERSION_1)
-                .unwrap();
-            transaction
-                .execute(
-                    r"CREATE TABLE contracts (
-                            address    BLOB PRIMARY KEY,
-                            hash       BLOB NOT NULL,
-                            bytecode   BLOB,
-                            abi        BLOB,
-                            definition BLOB
-                        )",
-                    [],
-                )
-                .unwrap();
-            transaction
-                .execute(
-                    r"CREATE TABLE ethereum_blocks (
-                            hash   BLOB PRIMARY KEY,
-                            number INTEGER NOT NULL
-                        )",
-                    [],
-                )
-                .unwrap();
-            transaction
-                .execute(
-                    r"CREATE TABLE ethereum_transactions (
-                            hash       BLOB PRIMARY KEY,
-                            idx        INTEGER NOT NULL,
-                            block_hash BLOB NOT NULL,
-        
-                            FOREIGN KEY(block_hash) REFERENCES ethereum_blocks(hash)
-                        )",
-                    [],
-                )
-                .unwrap();
-            transaction.execute(
-                    r"CREATE TABLE global_state (
-                            starknet_block_hash       BLOB PRIMARY KEY,
-                            starknet_block_number     INTEGER NOT NULL,
-                            starknet_block_timestamp  INTEGER NOT NULL,
-                            starknet_global_root      BLOB NOT NULL,
-                            ethereum_transaction_hash BLOB NOT NULL,
-                            ethereum_log_index        INTEGER NOT NULL,
-        
-                            FOREIGN KEY(ethereum_transaction_hash) REFERENCES ethereum_transactions(hash)
-                        )",
-                    [],
-                ).unwrap();
-            transaction
-                .execute(
-                    r"CREATE TABLE contract_states (
-                            state_hash BLOB PRIMARY KEY,
-                            hash       BLOB NOT NULL,
-                            root       BLOB NOT NULL
-                        )",
-                    [],
-                )
-                .unwrap();
-            // There may be various contract addresses pointing to the very same contract definition
-            let addr1 = vec![12u8];
-            let addr2 = vec![34u8];
-            let hash = vec![56u8, 78];
-            let bytecode = vec![1u8, 2, 3, 4];
-            let abi = vec![5u8, 6, 7];
-            let def = vec![8u8, 9];
-            transaction
-                .execute(
-                    r"INSERT INTO contracts (address, hash, bytecode, abi, definition)
-                VALUES (?1, ?2, ?3, ?4, ?5), (?6, ?7, ?8, ?9, ?10)",
-                    params![addr1, hash, bytecode, abi, def, addr2, hash, bytecode, abi, def],
-                )
-                .unwrap();
-
-            // Check if migration from v1 to latest works
-            migrate_database(&transaction).unwrap();
-            let version = schema_version(&transaction).unwrap();
-            assert_eq!(version, DB_VERSION_CURRENT);
-
-            let mut get_code = transaction
-                .prepare(r"SELECT hash, bytecode, abi, definition FROM contract_code")
-                .unwrap();
-            let code = get_code
-                .query_map([], |row| {
-                    let hash: Vec<u8> = row.get(0)?;
-                    let bytecode: Vec<u8> = row.get(1)?;
-                    let abi: Vec<u8> = row.get(2)?;
-                    let def: Vec<u8> = row.get(3)?;
-                    Ok((hash, bytecode, abi, def))
-                })
-                .unwrap()
-                .collect::<Result<Vec<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)>, rusqlite::Error>>()
-                .unwrap();
-            assert_eq!(code, vec![(hash, bytecode, abi, def)]);
-
-            let mut get_addrs = transaction
-                .prepare(r"SELECT address FROM contracts")
-                .unwrap();
-            let addrs = get_addrs
-                .query_map([], |row| {
-                    let addr: Vec<u8> = row.get(0)?;
-                    Ok(addr)
-                })
-                .unwrap()
-                .collect::<Result<Vec<Vec<u8>>, rusqlite::Error>>()
-                .unwrap();
-            assert_eq!(addrs, vec![addr1, addr2]);
         }
     }
 

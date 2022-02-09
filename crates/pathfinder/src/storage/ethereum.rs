@@ -5,7 +5,7 @@ use crate::{
     core::{
         EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex,
     },
-    storage::{DB_VERSION_1, DB_VERSION_CURRENT, DB_VERSION_EMPTY},
+    storage::{DB_VERSION_CURRENT, DB_VERSION_EMPTY},
 };
 
 /// Migrates [GlobalStateTable] and [ContractsStateTable] to the [current version](DB_VERSION_CURRENT).
@@ -29,7 +29,7 @@ impl EthereumBlocksTable {
     fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
         match from_version {
             DB_VERSION_EMPTY => {} // Fresh database, continue to create table.
-            DB_VERSION_1 | DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
+            DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
             other => anyhow::bail!("Unknown database version: {}", other),
         }
 
@@ -79,7 +79,7 @@ impl EthereumTransactionsTable {
     fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
         match from_version {
             DB_VERSION_EMPTY => {} // Fresh database, continue to create table.
-            DB_VERSION_1 | DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
+            DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
             other => anyhow::bail!("Unknown database version: {}", other),
         }
 

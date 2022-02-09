@@ -1,6 +1,6 @@
 use crate::{
     core::{ByteCodeWord, ContractAddress, ContractCode, ContractHash},
-    storage::{DB_VERSION_1, DB_VERSION_CURRENT, DB_VERSION_EMPTY},
+    storage::{DB_VERSION_CURRENT, DB_VERSION_EMPTY},
 };
 
 use anyhow::Context;
@@ -36,28 +36,6 @@ impl ContractCodeTable {
             DB_VERSION_EMPTY => {
                 // Fresh database, just create the table.
                 transaction.execute(CREATE_CONTRACT_CODE_TABLE, [])?;
-            }
-            DB_VERSION_1 => {
-                // Rename the old contracts table
-                transaction.execute(r"ALTER TABLE contracts RENAME TO contracts_v1", [])?;
-                // Create the contract code table
-                transaction.execute(CREATE_CONTRACT_CODE_TABLE, [])?;
-                // Populate the contract code table with data
-                transaction.execute(
-                    r"INSERT OR IGNORE INTO contract_code (hash, bytecode, abi, definition)
-                    SELECT DISTINCT hash, bytecode, abi, definition FROM contracts_v1",
-                    [],
-                )?;
-                // Create the new contracts table
-                transaction.execute(ContractsTable::CREATE_CONTRACTS_TABLE, [])?;
-                // Populate it with address to hash mapping taken from the old contracts table
-                transaction.execute(
-                    r"INSERT INTO contracts (address, hash)
-                    SELECT address, hash FROM contracts_v1",
-                    [],
-                )?;
-                // Drop the old contracts table
-                transaction.execute(r"DROP TABLE contracts_v1", [])?;
             }
             DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
             other => anyhow::bail!("Unknown database version: {}", other),
@@ -169,7 +147,6 @@ impl ContractsTable {
                 // Fresh database, just create the table.
                 transaction.execute(Self::CREATE_CONTRACTS_TABLE, [])?;
             }
-            DB_VERSION_1 => {} // Handled in ContractCodeTable::migrate due to foreign key constraints.
             DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
             other => anyhow::bail!("Unknown database version: {}", other),
         }
