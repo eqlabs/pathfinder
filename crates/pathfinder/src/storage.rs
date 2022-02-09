@@ -178,19 +178,14 @@ mod tests {
         assert_eq!(version, DB_VERSION_EMPTY);
     }
 
-    mod full_migration {
-        use super::*;
-        use pretty_assertions::assert_eq;
+    #[test]
+    fn full_migration() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
 
-        #[test]
-        fn from_empty() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
-
-            migrate_database(&transaction).unwrap();
-            let version = schema_version(&transaction).unwrap();
-            assert_eq!(version, DB_VERSION_CURRENT);
-        }
+        migrate_database(&transaction).unwrap();
+        let version = schema_version(&transaction).unwrap();
+        assert_eq!(version, DB_VERSION_CURRENT);
     }
 
     #[test]

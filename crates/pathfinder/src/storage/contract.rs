@@ -57,8 +57,7 @@ impl ContractCodeTable {
 
         transaction.execute(
             r"INSERT INTO contract_code ( hash,  bytecode,  abi,  definition)
-                             VALUES (:hash, :bytecode, :abi, :definition)
-                             ON CONFLICT DO NOTHING",
+                             VALUES (:hash, :bytecode, :abi, :definition)",
             named_params! {
                 ":hash": &hash.0.to_be_bytes()[..],
                 ":bytecode": bytecode,
