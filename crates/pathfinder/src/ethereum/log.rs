@@ -24,6 +24,27 @@ pub struct StateUpdateLog {
     pub block_number: StarknetBlockNumber,
 }
 
+impl<'a> From<&'a crate::storage::GlobalStateRecord> for StateUpdateLog {
+    fn from(record: &'a crate::storage::GlobalStateRecord) -> Self {
+        use crate::ethereum::{BlockOrigin, TransactionOrigin};
+        StateUpdateLog {
+            origin: EthOrigin {
+                block: BlockOrigin {
+                    hash: record.eth_block_hash,
+                    number: record.eth_block_number,
+                },
+                transaction: TransactionOrigin {
+                    hash: record.eth_tx_hash,
+                    index: record.eth_tx_index,
+                },
+                log_index: record.eth_log_index,
+            },
+            global_root: record.global_root,
+            block_number: record.block_number,
+        }
+    }
+}
+
 /// Links a [StateUpdateLog] event to its data -- which is contained
 /// by a [MemoryPagesHashesLog] fact log.
 ///
