@@ -3,20 +3,17 @@ use pedersen::StarkHash;
 use rusqlite::{named_params, OptionalExtension, Params, Transaction};
 use web3::types::H256;
 
-use crate::{
-    core::{
-        ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
-        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
-        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    },
-    storage::{DB_VERSION_CURRENT, DB_VERSION_EMPTY},
+use crate::core::{
+    ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
+    EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
 };
 
-/// Migrates [GlobalStateTable] and [ContractsStateTable] to the [current version](DB_VERSION_CURRENT).
-pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-    GlobalStateTable::migrate(transaction, from_version)
+/// Creates [GlobalStateTable] and [ContractsStateTable] for version 1 of the database.
+pub fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
+    GlobalStateTable::migrate_from_0_to_1(transaction)
         .context("Failed to migrate the global state table")?;
-    ContractsStateTable::migrate(transaction, from_version)
+    ContractsStateTable::migrate_from_0_to_1(transaction)
         .context("Failed to migrate the contracts state table")
 }
 
@@ -54,14 +51,8 @@ pub struct GlobalStateRecord {
 }
 
 impl GlobalStateTable {
-    /// Migrates the [GlobalStateTable] from the given version to [DB_VERSION_CURRENT].
-    fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-        match from_version {
-            DB_VERSION_EMPTY => {} // Fresh database, continue to create table.
-            DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
-            other => anyhow::bail!("Unknown database version: {}", other),
-        }
-
+    /// Creates [GlobalStateTable] for version 1 of the database.
+    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
         // TODO: consider ON DELETE CASCADE when we start cleaning up. Don't forget to document if we use it.
         transaction.execute(
             r"CREATE TABLE global_state (
@@ -76,7 +67,6 @@ impl GlobalStateTable {
                 )",
             [],
         )?;
-
         Ok(())
     }
 
@@ -270,14 +260,8 @@ impl GlobalStateTable {
 pub struct ContractsStateTable {}
 
 impl ContractsStateTable {
-    /// Migrates the [ContractsStateTable] from the given version to [DB_VERSION_CURRENT].
-    fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-        match from_version {
-            DB_VERSION_EMPTY => {} // Fresh database, continue to create table.
-            DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
-            other => anyhow::bail!("Unknown database version: {}", other),
-        }
-
+    /// Creates [ContractsStateTable] for version 1 of the database.
+    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
         transaction.execute(
             r"CREATE TABLE contract_states (
                     state_hash BLOB PRIMARY KEY,
@@ -286,7 +270,6 @@ impl ContractsStateTable {
                 )",
             [],
         )?;
-
         Ok(())
     }
 
@@ -613,7 +596,7 @@ mod tests {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
 
-            ContractsStateTable::migrate(&transaction, DB_VERSION_EMPTY).unwrap();
+            ContractsStateTable::migrate_from_0_to_1(&transaction).unwrap();
 
             let state_hash = ContractStateHash(StarkHash::from_hex_str("abc").unwrap());
             let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());

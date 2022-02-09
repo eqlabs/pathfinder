@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::Mutex;
 
-pub use contract::ContractsTable;
+pub use contract::{ContractCodeTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 pub use state::{ContractsStateTable, GlobalStateRecord, GlobalStateTable};
 
@@ -116,15 +116,33 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
         DB_VERSION_CURRENT
     );
 
-    // Migrate all the tables.
-    contract::migrate(transaction, version).context("Failed to migrate contracts table")?;
-    ethereum::migrate(transaction, version).context("Failed to migrate Ethereum tables")?;
-    state::migrate(transaction, version).context("Failed to migrate StarkNet state tables")?;
+    // Migrate incrementally, increasing the version by 1 at a time
+    for from_version in version..DB_VERSION_CURRENT {
+        match from_version {
+            DB_VERSION_EMPTY => migrate_from_0_to_1(transaction)?,
+            _ => unreachable!("Database version constraint was already checked!"),
+        }
+    }
 
-    // Update the pragma schema.
-    transaction
-        .pragma_update(None, VERSION_KEY, DB_VERSION_CURRENT)
-        .context("Failed to update the schema version number")
+    // Update the pragma schema if necessary
+    if version < DB_VERSION_CURRENT {
+        transaction
+            .pragma_update(None, VERSION_KEY, DB_VERSION_CURRENT)
+            .context("Failed to update the schema version number")?;
+    }
+
+    Ok(())
+}
+
+/// Creates database tables for version 1
+fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
+    // Migrate all the tables.
+    contract::migrate_from_0_to_1(transaction)
+        .context("Failed to migrate StarkNet contract tables to version 1")?;
+    ethereum::migrate_from_0_to_1(transaction)
+        .context("Failed to migrate Ethereum tables to version 1")?;
+    state::migrate_from_0_to_1(transaction)
+        .context("Failed to migrate StarkNet state tables to version 1")
 }
 
 /// Returns the current schema version of the existing database,
@@ -167,7 +185,6 @@ mod tests {
 
         migrate_database(&transaction).unwrap();
         let version = schema_version(&transaction).unwrap();
-
         assert_eq!(version, DB_VERSION_CURRENT);
     }
 

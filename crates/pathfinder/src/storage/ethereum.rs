@@ -1,18 +1,15 @@
 use anyhow::Context;
 use rusqlite::{named_params, Transaction};
 
-use crate::{
-    core::{
-        EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex,
-    },
-    storage::{DB_VERSION_CURRENT, DB_VERSION_EMPTY},
+use crate::core::{
+    EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex,
 };
 
-/// Migrates [GlobalStateTable] and [ContractsStateTable] to the [current version](DB_VERSION_CURRENT).
-pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-    EthereumBlocksTable::migrate(transaction, from_version)
+/// Creates [EthereumBlocksTable] and [EthereumTransactionsTable] for version 1 of the database.
+pub fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
+    EthereumBlocksTable::migrate_from_0_to_1(transaction)
         .context("Failed to migrate the Ethereum blocks table")?;
-    EthereumTransactionsTable::migrate(transaction, from_version)
+    EthereumTransactionsTable::migrate_from_0_to_1(transaction)
         .context("Failed to migrate the Ethereum transactions table")
 }
 
@@ -25,14 +22,8 @@ pub fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<(
 pub struct EthereumBlocksTable {}
 
 impl EthereumBlocksTable {
-    /// Migrates the [EthereumBlocksTable] from the given version to [DB_VERSION_CURRENT].
-    fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-        match from_version {
-            DB_VERSION_EMPTY => {} // Fresh database, continue to create table.
-            DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
-            other => anyhow::bail!("Unknown database version: {}", other),
-        }
-
+    /// Creates the [EthereumBlocksTable] for version 1 of the database.
+    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
         transaction.execute(
             r"CREATE TABLE ethereum_blocks (
                     hash   BLOB PRIMARY KEY,
@@ -40,7 +31,6 @@ impl EthereumBlocksTable {
                 )",
             [],
         )?;
-
         Ok(())
     }
 
@@ -75,14 +65,8 @@ impl EthereumBlocksTable {
 pub struct EthereumTransactionsTable {}
 
 impl EthereumTransactionsTable {
-    /// Migrates the [EthereumTransactionsTable] from the given version to [DB_VERSION_CURRENT].
-    fn migrate(transaction: &Transaction, from_version: u32) -> anyhow::Result<()> {
-        match from_version {
-            DB_VERSION_EMPTY => {} // Fresh database, continue to create table.
-            DB_VERSION_CURRENT => return Ok(()), // Table is already correct.
-            other => anyhow::bail!("Unknown database version: {}", other),
-        }
-
+    /// Creates the [EthereumTransactionsTable] for version 1 of the database.
+    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
         // TODO: consider ON DELETE CASCADE when we start cleaning up. Don't forget to document if we use it.
         transaction.execute(
             r"CREATE TABLE ethereum_transactions (
@@ -94,7 +78,6 @@ impl EthereumTransactionsTable {
                 )",
             [],
         )?;
-
         Ok(())
     }
 

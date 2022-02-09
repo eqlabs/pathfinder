@@ -19,8 +19,8 @@ use crate::{
     sequencer,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{
-        ContractsStateTable, ContractsTable, EthereumBlocksTable, EthereumTransactionsTable,
-        GlobalStateRecord, GlobalStateTable,
+        ContractCodeTable, ContractsStateTable, ContractsTable, EthereumBlocksTable,
+        EthereumTransactionsTable, GlobalStateRecord, GlobalStateTable,
     },
 };
 
@@ -334,7 +334,7 @@ async fn update_contract_state(
     Ok(contract_state_hash)
 }
 
-/// Inserts a newly deployed Starknet contract into [ContractsTable].
+/// Inserts a newly deployed Starknet contract into [ContractCodeTable].
 pub(crate) fn deploy_contract(
     contract: DeployedContract,
     db: &Transaction<'_>,
@@ -352,15 +352,11 @@ pub(crate) fn deploy_contract(
         hash,
     );
 
-    ContractsTable::insert(
-        db,
-        contract.address,
-        contract.hash,
-        &abi,
-        &code,
-        &contract_definition,
-    )
-    .context("Inserting contract information into contracts table")?;
+    ContractCodeTable::insert(db, contract.hash, &abi, &code, &contract_definition)
+        .context("Inserting contract information into contract code table")?;
+
+    ContractsTable::insert(db, contract.address, contract.hash)
+        .context("Inserting contract hash into contracts table")?;
 
     Ok(())
 }

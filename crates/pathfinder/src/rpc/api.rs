@@ -225,7 +225,7 @@ impl RpcApi {
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let code = storage::ContractsTable::get_code(&tx, contract_address)
+        let code = storage::ContractCodeTable::get_code(&tx, contract_address)
             .context("Fetching code from database")?;
 
         match code {
