@@ -63,14 +63,14 @@ pub async fn sync<T: Transport + 'static>(
 
     // for state updates, there are contracts which were deployed so these contract definitions
     // need to be fetched
-    let (fetched_contracts_tx, fetched_contracts_rx) = mpsc::channel::<Vec<DeployedContract>>(1);
+    let (fetched_contracts_tx, fetched_contracts_rx) =
+        mpsc::channel::<Vec<FetchExtractContract>>(1);
 
     // the fetched contract definitions need to have abi, bytecode, hash extracted and compressed
-    let (compression_tx, compression_rx) = mpsc::channel::<(DeployedContract, bytes::Bytes)>(1);
+    let (compression_tx, compression_rx) = mpsc::channel::<FetchedExtractableContract>(1);
 
     // so that they can be persisted in the database along with the other updates
-    let (ready_tx, ready_contracts_rx) =
-        mpsc::channel::<(DeployedContract, Result<CompressedContract, anyhow::Error>)>(1);
+    let (ready_tx, ready_contracts_rx) = mpsc::channel::<FetchedCompressedContract>(1);
 
     // finally the simplest status display for the progress
     let (block_update_tx, mut block_update_rx) =
@@ -185,21 +185,30 @@ async fn retrieve_state_updates<T: Transport + 'static>(
 
 async fn fetch_contracts(
     sequencer: sequencer::Client,
-    mut fetched_contracts_rx: mpsc::Receiver<Vec<DeployedContract>>,
-    compression_tx: mpsc::Sender<(DeployedContract, bytes::Bytes)>,
+    mut fetched_contracts_rx: mpsc::Receiver<Vec<FetchExtractContract>>,
+    compression_tx: mpsc::Sender<FetchedExtractableContract>,
 ) {
-    while let Some(deployed_contracts) = fetched_contracts_rx.recv().await {
+    while let Some(cmds) = fetched_contracts_rx.recv().await {
         // as for the contracts to deploy, we should really check if we really need to download the
         // contract on the db thread. however we can do the default setting right away, just await for
         // the contracts in the end and deploy them then.
-        for contract in deployed_contracts {
-            let contract_definition = sequencer
-                .full_contract(contract.address)
-                .await
-                .expect("Download contract definition from sequencer");
+        for cmd in cmds {
+            let contract_definition = if cmd.fetch {
+                Some(
+                    sequencer
+                        .full_contract(cmd.deploy_info.address)
+                        .await
+                        .expect("Download contract definition from sequencer"),
+                )
+            } else {
+                None
+            };
 
             compression_tx
-                .send((contract, contract_definition))
+                .send(FetchedExtractableContract {
+                    deploy_info: cmd.deploy_info,
+                    payload: contract_definition,
+                })
                 .await
                 .unwrap();
         }
@@ -210,8 +219,8 @@ fn update_database(
     mut database: Connection,
     initial_state_tx: oneshot::Sender<Option<StateUpdateLog>>,
     mut state_update_rx: mpsc::Receiver<(StateUpdateLog, StateUpdate)>,
-    fetched_contracts_tx: mpsc::Sender<Vec<DeployedContract>>,
-    mut ready_contracts_rx: mpsc::Receiver<(DeployedContract, anyhow::Result<CompressedContract>)>,
+    fetched_contracts_tx: mpsc::Sender<Vec<FetchExtractContract>>,
+    mut ready_contracts_rx: mpsc::Receiver<FetchedCompressedContract>,
     block_update_tx: mpsc::Sender<(u64, std::time::Instant, BlockInfo)>,
 ) {
     let mut previous_state = {
@@ -310,8 +319,8 @@ fn update_database(
 }
 
 fn extract_compress(
-    tx: mpsc::Sender<(DeployedContract, anyhow::Result<CompressedContract>)>,
-    mut rx: mpsc::Receiver<(DeployedContract, bytes::Bytes)>,
+    tx: mpsc::Sender<FetchedCompressedContract>,
+    mut rx: mpsc::Receiver<FetchedExtractableContract>,
 ) {
     let mut compressor = zstd::bulk::Compressor::new(10)
         .context("Couldn't create zstd compressor for ContractsTable")
@@ -341,9 +350,16 @@ fn extract_compress(
         })
     };
 
-    while let Some((deployed_contract, def_bytes)) = rx.blocking_recv() {
-        tx.blocking_send((deployed_contract, process_one(def_bytes)))
-            .unwrap();
+    while let Some(FetchedExtractableContract {
+        deploy_info,
+        payload,
+    }) = rx.blocking_recv()
+    {
+        tx.blocking_send(FetchedCompressedContract {
+            deploy_info,
+            payload: payload.map(|def_bytes| process_one(def_bytes).unwrap()),
+        })
+        .unwrap();
     }
 }
 
@@ -365,6 +381,28 @@ impl std::fmt::Debug for CompressedContract {
     }
 }
 
+/// Command sent from database update thread to the async contract fetcher.
+#[derive(Debug)]
+struct FetchExtractContract {
+    deploy_info: DeployedContract,
+    fetch: bool,
+}
+
+/// Intermediate fetched, but not yet extracted and compressed contract definition.
+#[derive(Debug)]
+struct FetchedExtractableContract {
+    deploy_info: DeployedContract,
+    /// This will be None depeneding on the [`FetchExtractContract::fetch`]
+    payload: Option<bytes::Bytes>,
+}
+
+#[derive(Debug)]
+struct FetchedCompressedContract {
+    deploy_info: DeployedContract,
+    /// This will be None dependending on the [`FetchExtractContract::fetch`]
+    payload: Option<CompressedContract>,
+}
+
 /// Updates the Starknet state with a new block described by [StateUpdateLog].
 ///
 /// Returns the new global root.
@@ -373,67 +411,90 @@ fn update(
     global_root: GlobalRoot,
     update_log: &StateUpdateLog,
     db: &Transaction<'_>,
-    fetched_contracts_tx: &mpsc::Sender<Vec<DeployedContract>>,
-    ready_contracts_rx: &mut mpsc::Receiver<(DeployedContract, anyhow::Result<CompressedContract>)>,
+    fetched_contracts_tx: &mpsc::Sender<Vec<FetchExtractContract>>,
+    ready_contracts_rx: &mut mpsc::Receiver<FetchedCompressedContract>,
 ) -> Result<BlockUpdated, UpdateError> {
     // Download update from L1.
 
     let contract_count = state_update.deployed_contracts.len();
 
-    // TODO: check if the contract has been downloaded already
-    fetched_contracts_tx
-        .blocking_send(state_update.deployed_contracts)
-        .unwrap();
+    let fetch_commands = {
+        let mut stmt = db
+            .prepare("select 1 from contract_code where hash = ?")
+            .unwrap();
+
+        // this could be done with a temporary table as well; however rusqlite does not support
+        // expanding questionmark into many values so "where hash IN (<construct this string>)" up
+        // to parameter limit is not really an option.
+        state_update
+            .deployed_contracts
+            .into_iter()
+            .map(|x| {
+                let known = stmt.exists(&[&x.hash.0.to_be_bytes()[..]])?;
+
+                Ok(FetchExtractContract {
+                    deploy_info: x,
+                    fetch: !known,
+                })
+            })
+            .collect::<Result<Vec<_>, rusqlite::Error>>()
+            .expect("exist queries failed for checking if contracts should be downloaded")
+    };
+
+    fetched_contracts_tx.blocking_send(fetch_commands).unwrap();
 
     let mut global_tree =
         GlobalStateTree::load(db, global_root).context("Loading global state tree")?;
 
     for _ in 0..contract_count {
-        let (contract, compressed) = ready_contracts_rx
+        let FetchedCompressedContract {
+            deploy_info,
+            payload,
+        } = ready_contracts_rx
             .blocking_recv()
             .context("should have gotten all of the compressed")?;
-
-        let compressed = compressed?;
 
         // FIXME: this would only need to be done for contracts, which don't receive updates in this state
         // update log
         {
             let state_hash =
-                calculate_contract_state_hash(contract.hash, ContractRoot(StarkHash::ZERO));
+                calculate_contract_state_hash(deploy_info.hash, ContractRoot(StarkHash::ZERO));
 
             global_tree
-                .set(contract.address, state_hash)
+                .set(deploy_info.address, state_hash)
                 .context("Adding deployed contract to global state tree")?;
 
             // esp thinking about this being waste for most contracts which do receive updates.
             ContractsStateTable::insert(
                 db,
                 state_hash,
-                contract.hash,
+                deploy_info.hash,
                 ContractRoot(StarkHash::ZERO),
             )
             .context("Insert constract state hash into contracts state table")?;
         }
 
-        if compressed.hash != contract.hash.0 {
-            return Err(UpdateError::from(anyhow::anyhow!(
-                "Contract hash mismatch on address {}: expected {}, actual {}",
-                contract.address.0,
-                contract.hash.0,
-                compressed.hash,
-            )));
+        if let Some(compressed) = payload {
+            if compressed.hash != deploy_info.hash.0 {
+                return Err(UpdateError::from(anyhow::anyhow!(
+                    "Contract hash mismatch on address {}: expected {}, actual {}",
+                    deploy_info.address.0,
+                    deploy_info.hash.0,
+                    compressed.hash,
+                )));
+            }
+
+            ContractCodeTable::insert_compressed(
+                db,
+                deploy_info.hash,
+                &compressed.abi,
+                &compressed.bytecode,
+                &compressed.definition,
+            )
+            .context("Inserting contract information into contract code table")?;
         }
 
-        ContractCodeTable::insert_compressed(
-            db,
-            contract.hash,
-            &compressed.abi,
-            &compressed.bytecode,
-            &compressed.definition,
-        )
-        .context("Inserting contract information into contract code table")?;
-
-        ContractsTable::insert(db, contract.address, contract.hash)
+        ContractsTable::insert(db, deploy_info.address, deploy_info.hash)
             .context("Inserting contract hash into contracts table")?;
     }
 
