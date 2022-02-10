@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::HashSet, time::Duration};
 
 use anyhow::Context;
 use pedersen::{pedersen_hash, StarkHash};
@@ -62,7 +62,10 @@ pub async fn sync<T: Transport + 'static>(
     let (state_update_tx, state_update_rx) = mpsc::channel::<(StateUpdateLog, StateUpdate)>(1);
 
     // for state updates, there are contracts which were deployed so these contract definitions
-    // need to be fetched
+    // need to be fetched.
+    //
+    // It is important that these vec entries are processed in fifo order, as
+    // the final step expects to receive the values in the same order as they were sent.
     let (fetched_contracts_tx, fetched_contracts_rx) =
         mpsc::channel::<Vec<FetchExtractContract>>(1);
 
@@ -178,6 +181,7 @@ async fn retrieve_state_updates<T: Transport + 'static>(
             state_update_tx
                 .send((root_log, state_update))
                 .await
+                // FIXME: this has a loooong debug
                 .expect("failed to send state updates");
         }
     }
@@ -382,7 +386,7 @@ impl std::fmt::Debug for CompressedContract {
 }
 
 /// Command sent from database update thread to the async contract fetcher.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct FetchExtractContract {
     deploy_info: DeployedContract,
     fetch: bool,
@@ -418,6 +422,8 @@ fn update(
 
     let contract_count = state_update.deployed_contracts.len();
 
+    let mut already_fetching = HashSet::new();
+
     let fetch_commands = {
         let mut stmt = db
             .prepare("select 1 from contract_code where hash = ?")
@@ -430,7 +436,21 @@ fn update(
             .deployed_contracts
             .into_iter()
             .map(|x| {
-                let known = stmt.exists(&[&x.hash.0.to_be_bytes()[..]])?;
+                let known = already_fetching.contains(&x.hash.0)
+                    || stmt.exists(&[&x.hash.0.to_be_bytes()[..]])?;
+
+                if !known {
+                    // record that even within this batch, we only need to fetch the first
+                    // one, not the following duplicates.
+                    already_fetching.insert(x.hash.0);
+                }
+
+                // it's important to note that since we request that only first one of duplicates
+                // should be fetched in any batch of deployed contracts, we are making a big
+                // assumption that the pipeline goes through in the same order. as in, you cannot
+                // add new multithreaded stages which would process for example compressions as
+                // fast as possible *without* having a new stage which would reorder them back to
+                // the original order.
 
                 Ok(FetchExtractContract {
                     deploy_info: x,
@@ -454,9 +474,10 @@ fn update(
             .blocking_recv()
             .context("should have gotten all of the compressed")?;
 
-        // FIXME: this would only need to be done for contracts, which don't receive updates in this state
-        // update log
+        // this should not be needed
         {
+            // we should only do this for contracts, which didn't get updated to save up on zero
+            // writing
             let state_hash =
                 calculate_contract_state_hash(deploy_info.hash, ContractRoot(StarkHash::ZERO));
 
@@ -474,6 +495,8 @@ fn update(
             .context("Insert constract state hash into contracts state table")?;
         }
 
+        // these we want to store regardless of they receiving updates, since us fetching them
+        // means we didn't have the contract in storage.
         if let Some(compressed) = payload {
             if compressed.hash != deploy_info.hash.0 {
                 return Err(UpdateError::from(anyhow::anyhow!(
@@ -491,14 +514,16 @@ fn update(
                 &compressed.bytecode,
                 &compressed.definition,
             )
-            .context("Inserting contract information into contract code table")?;
+            .with_context(|| format!("Inserting contract {}", deploy_info.hash.0))?;
         }
 
+        // Pretty sure we'll need this regardless, it's for having the information available when
+        // the time to call something comes.
         ContractsTable::insert(db, deploy_info.address, deploy_info.hash)
             .context("Inserting contract hash into contracts table")?;
     }
 
-    let mut contracts_updated = 0;
+    let mut updated_contracts = 0;
     let mut total_updates = 0;
 
     // Update contract state tree
@@ -512,6 +537,8 @@ fn update(
         global_tree
             .set(contract_update.address, contract_state_hash)
             .context("Updating global state tree")?;
+
+        updated_contracts += 1;
     }
 
     // Apply all global tree changes.
@@ -608,7 +635,7 @@ fn update(
         },
         info: BlockInfo {
             deployed_contract_count: contract_count,
-            updated_contracts: contracts_updated,
+            updated_contracts,
             total_updates,
         },
     })
@@ -722,6 +749,127 @@ mod tests {
         let result = calculate_contract_state_hash(hash, root);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn update_requests_fetching_unique_new_contracts() {
+        use super::{update, FetchExtractContract};
+        use crate::core::{
+            ContractAddress, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
+            EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
+            StorageAddress, StorageValue,
+        };
+        use crate::ethereum::{
+            log::StateUpdateLog,
+            state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
+            BlockOrigin, EthOrigin, TransactionOrigin,
+        };
+        use tokio::sync::mpsc;
+        let s = crate::storage::Storage::in_memory().unwrap();
+
+        let shared_hash =
+            ContractHash(StarkHash::from_be_slice(&b"this is shared by multiple"[..]).unwrap());
+        let unique_hash =
+            ContractHash(StarkHash::from_be_slice(&b"this is unique contract"[..]).unwrap());
+
+        let one = ContractAddress(StarkHash::from_hex_str("1").unwrap());
+        let two = ContractAddress(StarkHash::from_hex_str("2").unwrap());
+        let three = ContractAddress(StarkHash::from_hex_str("3").unwrap());
+
+        let one_deploy = DeployedContract {
+            address: one,
+            hash: shared_hash,
+            call_data: vec![],
+        };
+
+        let two_deploy = DeployedContract {
+            address: two,
+            hash: shared_hash,
+            call_data: vec![],
+        };
+
+        let three_deploy = DeployedContract {
+            address: three,
+            hash: unique_hash,
+            call_data: vec![],
+        };
+
+        // neither of these deployed contracts are in database, which is empty
+        let state_update = StateUpdate {
+            deployed_contracts: vec![one_deploy.clone(), two_deploy.clone(), three_deploy.clone()],
+            contract_updates: vec![ContractUpdate {
+                address: one,
+                storage_updates: vec![StorageUpdate {
+                    address: StorageAddress(StarkHash::from_hex_str("1").unwrap()),
+                    value: StorageValue(StarkHash::from_hex_str("dead").unwrap()),
+                }],
+            }],
+        };
+
+        // FIXME: this could be a #[cfg(test)] Default::default()
+        let global_root = GlobalRoot(StarkHash::ZERO);
+
+        // FIXME: this could be a default actually, only accessible in `#[cfg(test)]`
+        let update_log = StateUpdateLog {
+            origin: EthOrigin {
+                block: BlockOrigin {
+                    hash: EthereumBlockHash(web3::types::H256::default()),
+                    number: EthereumBlockNumber(0),
+                },
+                transaction: TransactionOrigin {
+                    hash: EthereumTransactionHash(web3::types::H256::default()),
+                    index: EthereumTransactionIndex(0),
+                },
+                log_index: EthereumLogIndex(0),
+            },
+            global_root: GlobalRoot(StarkHash::ZERO),
+            block_number: StarknetBlockNumber(0),
+        };
+
+        let (c_tx, mut c_rx) = mpsc::channel(1);
+        let (r_tx, mut r_rx) = mpsc::channel(1);
+
+        let jh = std::thread::spawn(move || {
+            let mut conn = s.connection().unwrap();
+            let tx = conn.transaction().unwrap();
+            update(
+                state_update,
+                global_root,
+                &update_log,
+                &tx,
+                &c_tx,
+                &mut r_rx,
+            )
+            .unwrap();
+        });
+
+        let requests = c_rx.blocking_recv().unwrap();
+
+        // since the two deployed contracts share the hash only first of them must be `fetch:
+        // true`, third is unique
+        assert_eq!(
+            requests,
+            vec![
+                FetchExtractContract {
+                    deploy_info: one_deploy,
+                    fetch: true
+                },
+                FetchExtractContract {
+                    deploy_info: two_deploy,
+                    fetch: false
+                },
+                FetchExtractContract {
+                    deploy_info: three_deploy,
+                    fetch: true
+                }
+            ]
+        );
+
+        // this will lead to panic when awaiting for the ready contracts.
+        drop(r_tx);
+
+        // which we assert here; now it could be some other panic as well
+        jh.join().unwrap_err();
     }
 
     /*
