@@ -33,14 +33,6 @@ mod state_tree;
 
 pub use contract_hash::compute_contract_hash;
 
-#[derive(thiserror::Error, Debug)]
-enum UpdateError {
-    #[error("Ethereum chain reorg detected")]
-    Reorg,
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
-
 /// Syncs the Starknet state with L1.
 pub async fn sync<T: Transport + 'static>(
     database: Connection,
@@ -295,7 +287,7 @@ fn update_database(
             Err(UpdateError::Reorg) => todo!("Handle reorg event!"),
             Err(UpdateError::Other(other)) => {
                 panic!(
-                    "Updating to block number {} gave {}",
+                    "Updating to block number {} gave {:?}",
                     root_log.block_number.0, other
                 );
             }
@@ -499,12 +491,12 @@ fn update(
         // means we didn't have the contract in storage.
         if let Some(compressed) = payload {
             if compressed.hash != deploy_info.hash.0 {
-                return Err(UpdateError::from(anyhow::anyhow!(
+                return Err(anyhow::anyhow!(
                     "Contract hash mismatch on address {}: expected {}, actual {}",
                     deploy_info.address.0,
                     deploy_info.hash.0,
                     compressed.hash,
-                )));
+                ));
             }
 
             ContractCodeTable::insert_compressed(
