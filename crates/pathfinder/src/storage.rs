@@ -21,7 +21,7 @@ use rusqlite::{Connection, Transaction};
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = DB_VERSION_EMPTY + 1;
+const DB_VERSION_CURRENT: u32 = 2;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -120,6 +120,7 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
     for from_version in version..DB_VERSION_CURRENT {
         match from_version {
             DB_VERSION_EMPTY => migrate_from_0_to_1(transaction)?,
+            1 => migrate_to_2(transaction)?,
             _ => unreachable!("Database version constraint was already checked!"),
         }
     }
@@ -143,6 +144,131 @@ fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
         .context("Failed to migrate Ethereum tables to version 1")?;
     state::migrate_from_0_to_1(transaction)
         .context("Failed to migrate StarkNet state tables to version 1")
+}
+
+fn migrate_to_2(tx: &Transaction) -> anyhow::Result<()> {
+    use sha3::{Digest, Keccak256};
+
+    tx.execute("alter table contracts rename to contracts_v1", [])?;
+    tx.execute(
+        "create table contract_code (
+            hash       BLOB PRIMARY KEY,
+            bytecode   BLOB,
+            abi        BLOB,
+            definition BLOB
+        )",
+        [],
+    )?;
+
+    // set this to true to have the contracts be dumped into files
+    let dump_duplicate_contracts = false;
+
+    let mut uniq_contracts = 0u32;
+    let todo: u32 = tx
+        .query_row(
+            "select count(1) from (select definition from contracts_v1 group by definition)",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    let mut keccak256 = Keccak256::new();
+    let mut output = vec![0u8; 64];
+
+    let started_at = std::time::Instant::now();
+
+    let mut duplicates = 0;
+
+    // main body of this migration is to split cotracts table into two: contracts and
+    // contracts_code *while* taking care of bug which had mixed up abi and bytecode columns.
+    // the two "faster to access" columns are recreated from the definition.
+    {
+        let mut stmt = tx.prepare("select distinct definition from contracts_v1")?;
+        let mut rows = stmt.query([])?;
+
+        let mut exists = tx.prepare("select 1 from contract_code where hash = ?")?;
+
+        while let Some(r) = rows.next()? {
+            let definition = r.get_ref_unwrap(0).as_blob()?;
+            let raw_definition = zstd::decode_all(definition)?;
+            let (abi, code, hash) =
+                crate::state::contract_hash::extract_abi_code_hash(&raw_definition).with_context(
+                    || format!("Failed to process {} bytes of definition", definition.len()),
+                )?;
+
+            if exists.exists([&hash.to_be_bytes()[..]])? {
+                if dump_duplicate_contracts {
+                    // exists already, this could be a problem
+
+                    keccak256.update(definition);
+                    let cid = <[u8; 32]>::from(keccak256.finalize_reset());
+
+                    hex::encode_to_slice(&cid[..], &mut output[..]).unwrap();
+
+                    let name = std::str::from_utf8(&output[..]).unwrap();
+
+                    let path = format!("duplicate-{:x}-{}.json.zst", hash, name);
+
+                    std::fs::write(path, definition).unwrap();
+                }
+                duplicates += 1;
+            } else {
+                crate::storage::ContractCodeTable::insert(
+                    tx,
+                    crate::core::ContractHash(hash),
+                    &abi,
+                    &code,
+                    &raw_definition,
+                )?;
+                uniq_contracts += 1;
+            }
+
+            let div = 100;
+            if uniq_contracts > 0 && uniq_contracts % div == 0 {
+                let per_one_from_start = started_at.elapsed() / uniq_contracts;
+
+                println!(
+                    "{} more contracts ready, {} to go {:?}, {} duplicates",
+                    div,
+                    todo - uniq_contracts,
+                    (todo - uniq_contracts) * per_one_from_start,
+                    duplicates
+                );
+            }
+        }
+    }
+
+    println!(
+        "{} unique contracts, {} duplicates, {:?}",
+        uniq_contracts,
+        duplicates,
+        started_at.elapsed()
+    );
+
+    tx.execute(
+        "create table contracts (
+            address    BLOB PRIMARY KEY,
+            hash       BLOB NOT NULL,
+
+            FOREIGN KEY(hash) REFERENCES contract_code(hash)
+        )",
+        [],
+    )?;
+
+    // this could had been just an alter table to drop the columns + create the fk
+    let copied_contracts = tx.execute(
+        "insert into contracts (address, hash) select old.address, old.hash from contracts_v1 old",
+        [],
+    )?;
+
+    println!("{copied_contracts} copied from contracts_v1 to contracts");
+
+    let started_at = std::time::Instant::now();
+    tx.execute("drop table contracts_v1", [])?;
+
+    println!("table contracts_v1 dropped in {:?}", started_at.elapsed());
+
+    Ok(())
 }
 
 /// Returns the current schema version of the existing database,
