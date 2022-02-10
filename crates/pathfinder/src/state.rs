@@ -252,7 +252,7 @@ async fn update<T: Transport>(
     let block_hash = block.block_hash.context("Sequencer block hash missing")?;
 
     // Persist new global root et al to database.
-    EthereumBlocksTable::insert(
+    let block_hash_fk = EthereumBlocksTable::insert(
         db,
         update_log.origin.block.hash,
         update_log.origin.block.number,
@@ -261,7 +261,7 @@ async fn update<T: Transport>(
 
     EthereumTransactionsTable::insert(
         db,
-        update_log.origin.block.hash,
+        block_hash_fk,
         update_log.origin.transaction.hash,
         update_log.origin.transaction.index,
     )

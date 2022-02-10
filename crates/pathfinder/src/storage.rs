@@ -4,6 +4,7 @@
 
 mod contract;
 mod ethereum;
+mod foreign_key;
 pub mod merkle_tree;
 mod state;
 
@@ -13,6 +14,7 @@ use std::sync::Mutex;
 
 pub use contract::{ContractCodeTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
+pub use foreign_key::ForeignKey;
 pub use state::{ContractsStateTable, GlobalStateRecord, GlobalStateTable};
 
 use anyhow::Context;

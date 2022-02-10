@@ -1,8 +1,11 @@
 use anyhow::Context;
 use rusqlite::{named_params, Transaction};
 
-use crate::core::{
-    EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex,
+use crate::{
+    core::{
+        EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex,
+    },
+    storage::foreign_key::ForeignKey,
 };
 
 /// Creates [EthereumBlocksTable] and [EthereumTransactionsTable] for version 1 of the database.
@@ -41,7 +44,7 @@ impl EthereumBlocksTable {
         transaction: &Transaction,
         hash: EthereumBlockHash,
         number: EthereumBlockNumber,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ForeignKey<EthereumBlockHash>> {
         transaction.execute(
             r"INSERT INTO ethereum_blocks ( hash,  number)
                                        VALUES (:hash, :number)
@@ -51,7 +54,7 @@ impl EthereumBlocksTable {
                 ":number": number.0,
             },
         )?;
-        Ok(())
+        Ok(ForeignKey(hash))
     }
 }
 
@@ -85,11 +88,11 @@ impl EthereumTransactionsTable {
     ///
     /// Does nothing if the ethereum hash already exists.
     ///
-    /// Note that [block_hash](EthereumBlockHash) must reference an
-    /// Ethereum block stored in [EthereumBlocksTable].
+    /// Note that [block_hash](EthereumBlockHash) is a [ForeignKey] which
+    /// can be obtained from [EthereumBlocksTable].
     pub fn insert(
         transaction: &Transaction,
-        block_hash: EthereumBlockHash,
+        block_hash: ForeignKey<EthereumBlockHash>,
         tx_hash: EthereumTransactionHash,
         tx_index: EthereumTransactionIndex,
     ) -> anyhow::Result<()> {
@@ -100,7 +103,7 @@ impl EthereumTransactionsTable {
             named_params! {
                 ":hash": tx_hash.0.as_bytes(),
                 ":idx": tx_index.0,
-                ":block_hash": block_hash.0.as_bytes(),
+                ":block_hash": block_hash.0.0.as_bytes(),
             },
         )?;
         Ok(())

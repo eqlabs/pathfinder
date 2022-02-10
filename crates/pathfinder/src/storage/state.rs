@@ -403,7 +403,7 @@ mod tests {
                     eth_log_index: EthereumLogIndex(99),
                 };
 
-                storage::EthereumBlocksTable::insert(
+                let eth_block_hash_fk = storage::EthereumBlocksTable::insert(
                     &transaction,
                     record.eth_block_hash,
                     record.eth_block_number,
@@ -412,7 +412,7 @@ mod tests {
 
                 storage::EthereumTransactionsTable::insert(
                     &transaction,
-                    record.eth_block_hash,
+                    eth_block_hash_fk,
                     record.eth_tx_hash,
                     record.eth_tx_index,
                 )
@@ -498,19 +498,19 @@ mod tests {
                 storage::migrate_database(&transaction).unwrap();
 
                 // Insert Ethereum data
-                storage::EthereumBlocksTable::insert(
+                let block_hash_fk_1 = storage::EthereumBlocksTable::insert(
                     &transaction,
                     first.eth_block_hash,
                     first.eth_block_number,
                 )
                 .unwrap();
-                storage::EthereumBlocksTable::insert(
+                let block_hash_fk_2 = storage::EthereumBlocksTable::insert(
                     &transaction,
                     second.eth_block_hash,
                     second.eth_block_number,
                 )
                 .unwrap();
-                storage::EthereumBlocksTable::insert(
+                let block_hash_fk_3 = storage::EthereumBlocksTable::insert(
                     &transaction,
                     third.eth_block_hash,
                     third.eth_block_number,
@@ -519,21 +519,21 @@ mod tests {
 
                 storage::EthereumTransactionsTable::insert(
                     &transaction,
-                    first.eth_block_hash,
+                    block_hash_fk_1,
                     first.eth_tx_hash,
                     first.eth_tx_index,
                 )
                 .unwrap();
                 storage::EthereumTransactionsTable::insert(
                     &transaction,
-                    second.eth_block_hash,
+                    block_hash_fk_2,
                     second.eth_tx_hash,
                     second.eth_tx_index,
                 )
                 .unwrap();
                 storage::EthereumTransactionsTable::insert(
                     &transaction,
-                    third.eth_block_hash,
+                    block_hash_fk_3,
                     third.eth_tx_hash,
                     third.eth_tx_index,
                 )
