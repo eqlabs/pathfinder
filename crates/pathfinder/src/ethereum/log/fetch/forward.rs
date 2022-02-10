@@ -153,7 +153,9 @@ where
                 }
             }
 
-            self.last_known = logs.last().cloned();
+            if let Some(last) = logs.last() {
+                self.last_known = Some(last.clone());
+            }
 
             return Ok(logs);
         }
