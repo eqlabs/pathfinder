@@ -172,7 +172,7 @@ pub mod test {
     ///
     /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
     ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
-    pub async fn create_test_transport(chain: Chain) -> Web3<Http> {
+    pub fn create_test_transport(chain: Chain) -> Web3<Http> {
         let key_prefix = match chain {
             Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
             Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
@@ -201,7 +201,7 @@ pub mod test {
         #[tokio::test]
         async fn goerli() {
             let expected_chain = Chain::Goerli;
-            let transport = create_test_transport(expected_chain).await;
+            let transport = create_test_transport(expected_chain);
             let chain = chain(transport).await.unwrap();
 
             assert_eq!(chain, expected_chain);
@@ -210,7 +210,7 @@ pub mod test {
         #[tokio::test]
         async fn mainnet() {
             let expected_chain = Chain::Mainnet;
-            let transport = create_test_transport(expected_chain).await;
+            let transport = create_test_transport(expected_chain);
             let chain = chain(transport).await.unwrap();
 
             assert_eq!(chain, expected_chain);

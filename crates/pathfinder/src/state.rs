@@ -464,7 +464,7 @@ mod tests {
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
 
         update(
             &transport,

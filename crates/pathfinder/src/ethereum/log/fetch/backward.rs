@@ -221,7 +221,7 @@ mod tests {
             EitherMetaLog::Left(update_log.clone()),
         );
 
-        let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
         let logs = fetcher.fetch(&transport).await.unwrap();
         let mut block_number = update_log.block_number.0 - 1;
         for log in logs {

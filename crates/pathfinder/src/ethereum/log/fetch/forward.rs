@@ -219,7 +219,7 @@ mod tests {
         };
 
         let mut root_fetcher = LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log));
-        let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
         let mut block_number = 1;
 
         let logs = root_fetcher.fetch(&transport).await.unwrap();
