@@ -24,7 +24,7 @@ use crate::{
     },
 };
 
-mod contract_hash;
+pub(crate) mod contract_hash;
 mod merkle_node;
 mod merkle_tree;
 mod state_tree;

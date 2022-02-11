@@ -5,7 +5,11 @@
 mod contract;
 mod ethereum;
 pub mod merkle_tree;
+mod schema;
 mod state;
+
+use schema::revision_0001::migrate_to_1;
+use schema::revision_0002::migrate_to_2;
 
 use std::path::{Path, PathBuf};
 #[cfg(test)]
@@ -21,7 +25,7 @@ use rusqlite::{Connection, Transaction};
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = DB_VERSION_EMPTY + 1;
+const DB_VERSION_CURRENT: u32 = 2;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -119,7 +123,8 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
     // Migrate incrementally, increasing the version by 1 at a time
     for from_version in version..DB_VERSION_CURRENT {
         match from_version {
-            DB_VERSION_EMPTY => migrate_from_0_to_1(transaction)?,
+            DB_VERSION_EMPTY => migrate_to_1(transaction)?,
+            1 => migrate_to_2(transaction)?,
             _ => unreachable!("Database version constraint was already checked!"),
         }
     }
@@ -132,17 +137,6 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-/// Creates database tables for version 1
-fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-    // Migrate all the tables.
-    contract::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate StarkNet contract tables to version 1")?;
-    ethereum::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate Ethereum tables to version 1")?;
-    state::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate StarkNet state tables to version 1")
 }
 
 /// Returns the current schema version of the existing database,

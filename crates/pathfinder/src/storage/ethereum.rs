@@ -1,17 +1,8 @@
-use anyhow::Context;
 use rusqlite::{named_params, Transaction};
 
 use crate::core::{
     EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex,
 };
-
-/// Creates [EthereumBlocksTable] and [EthereumTransactionsTable] for version 1 of the database.
-pub fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-    EthereumBlocksTable::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate the Ethereum blocks table")?;
-    EthereumTransactionsTable::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate the Ethereum transactions table")
-}
 
 /// Stores basic information about an Ethereum block, enough to descibe it as a unique point
 /// of origin. This lets us link StarkNet information to a point in Ethereum's history.
@@ -22,18 +13,6 @@ pub fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
 pub struct EthereumBlocksTable {}
 
 impl EthereumBlocksTable {
-    /// Creates the [EthereumBlocksTable] for version 1 of the database.
-    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-        transaction.execute(
-            r"CREATE TABLE ethereum_blocks (
-                    hash   BLOB PRIMARY KEY,
-                    number INTEGER NOT NULL
-                )",
-            [],
-        )?;
-        Ok(())
-    }
-
     /// Inserts a new Ethereum block with the given [hash](EthereumBlockHash) and [number](EthereumBlockNumber).
     ///
     /// Does nothing if the hash already exists.
@@ -65,22 +44,6 @@ impl EthereumBlocksTable {
 pub struct EthereumTransactionsTable {}
 
 impl EthereumTransactionsTable {
-    /// Creates the [EthereumTransactionsTable] for version 1 of the database.
-    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-        // TODO: consider ON DELETE CASCADE when we start cleaning up. Don't forget to document if we use it.
-        transaction.execute(
-            r"CREATE TABLE ethereum_transactions (
-                    hash       BLOB PRIMARY KEY,
-                    idx        INTEGER NOT NULL,
-                    block_hash BLOB NOT NULL,
-
-                    FOREIGN KEY(block_hash) REFERENCES ethereum_blocks(hash)
-                )",
-            [],
-        )?;
-        Ok(())
-    }
-
     /// Insert a new Ethereum transaction.
     ///
     /// Does nothing if the ethereum hash already exists.
