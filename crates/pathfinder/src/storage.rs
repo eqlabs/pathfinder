@@ -119,7 +119,7 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
     // Migrate incrementally, increasing the version by 1 at a time
     for from_version in version..DB_VERSION_CURRENT {
         match from_version {
-            DB_VERSION_EMPTY => migrate_from_0_to_1(transaction)?,
+            DB_VERSION_EMPTY => migrate_to_1(transaction)?,
             1 => migrate_to_2(transaction)?,
             _ => unreachable!("Database version constraint was already checked!"),
         }
@@ -136,7 +136,7 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
 }
 
 /// Creates database tables for version 1
-fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
+fn migrate_to_1(transaction: &Transaction) -> anyhow::Result<()> {
     // Migrate all the tables.
     contract::migrate_from_0_to_1(transaction)
         .context("Failed to migrate StarkNet contract tables to version 1")?;
