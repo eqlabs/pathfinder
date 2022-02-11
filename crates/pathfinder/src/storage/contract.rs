@@ -4,13 +4,6 @@ use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{named_params, OptionalExtension, Transaction};
 
-/// Creates the [ContractsTable] and [ContractCodeTable] for version 1 of the database.
-pub fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-    ContractCodeTable::migrate_from_0_to_1(transaction)
-        .context("Failed to create contract code table v1")?;
-    ContractsTable::migrate_from_0_to_1(transaction).context("Failed to create contracts table v1")
-}
-
 /// Stores StarkNet contract information, specifically a contract's
 ///
 /// - [hash](ContractHash)
@@ -20,21 +13,6 @@ pub fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
 pub struct ContractCodeTable {}
 
 impl ContractCodeTable {
-    /// Creates the [ContractCodeTable] for version 1 of the database.
-    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-        transaction.execute(
-            r"
-            CREATE TABLE contract_code (
-                hash       BLOB PRIMARY KEY,
-                bytecode   BLOB,
-                abi        BLOB,
-                definition BLOB
-            )",
-            [],
-        )?;
-        Ok(())
-    }
-
     /// Insert a contract into the table.
     ///
     /// Does nothing if the contract [hash](ContractHash) is already populated.
@@ -121,21 +99,6 @@ impl ContractCodeTable {
 pub struct ContractsTable {}
 
 impl ContractsTable {
-    /// Creates the [ContractsTable] for version 1 of the database.
-    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-        transaction.execute(
-            r"
-            CREATE TABLE contracts (
-                address    BLOB PRIMARY KEY,
-                hash       BLOB NOT NULL,
-        
-                FOREIGN KEY(hash) REFERENCES contract_code(hash)
-            )",
-            [],
-        )?;
-        Ok(())
-    }
-
     /// Insert a contract into the table.
     ///
     /// Fails if the contract address is already populated.
@@ -197,8 +160,7 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        ContractCodeTable::migrate_from_0_to_1(&transaction).unwrap();
-        ContractsTable::migrate_from_0_to_1(&transaction).unwrap();
+        crate::storage::migrate_to_1(&transaction).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
@@ -211,8 +173,7 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        ContractCodeTable::migrate_from_0_to_1(&transaction).unwrap();
-        ContractsTable::migrate_from_0_to_1(&transaction).unwrap();
+        crate::storage::migrate_to_1(&transaction).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
@@ -231,8 +192,7 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        ContractCodeTable::migrate_from_0_to_1(&transaction).unwrap();
-        ContractsTable::migrate_from_0_to_1(&transaction).unwrap();
+        crate::storage::migrate_to_1(&transaction).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());

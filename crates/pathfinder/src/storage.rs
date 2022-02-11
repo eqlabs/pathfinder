@@ -137,13 +137,66 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
 
 /// Creates database tables for version 1
 fn migrate_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-    // Migrate all the tables.
-    contract::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate StarkNet contract tables to version 1")?;
-    ethereum::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate Ethereum tables to version 1")?;
-    state::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate StarkNet state tables to version 1")
+    transaction.execute(
+        r"CREATE TABLE contract_code (
+            hash       BLOB PRIMARY KEY,
+            bytecode   BLOB,
+            abi        BLOB,
+            definition BLOB
+        )",
+        [],
+    )?;
+    transaction.execute(
+        r"CREATE TABLE contracts (
+            address    BLOB PRIMARY KEY,
+            hash       BLOB NOT NULL,
+
+            FOREIGN KEY(hash) REFERENCES contract_code(hash)
+        )",
+        [],
+    )?;
+    transaction.execute(
+        r"CREATE TABLE ethereum_blocks (
+            hash   BLOB PRIMARY KEY,
+            number INTEGER NOT NULL
+        )",
+        [],
+    )?;
+    // TODO: consider ON DELETE CASCADE when we start cleaning up. Don't forget to document if we use it.
+    transaction.execute(
+        r"CREATE TABLE ethereum_transactions (
+            hash       BLOB PRIMARY KEY,
+            idx        INTEGER NOT NULL,
+            block_hash BLOB NOT NULL,
+
+            FOREIGN KEY(block_hash) REFERENCES ethereum_blocks(hash)
+        )",
+        [],
+    )?;
+    // TODO: consider ON DELETE CASCADE when we start cleaning up. Don't forget to document if we use it.
+    transaction.execute(
+        r"CREATE TABLE global_state (
+            starknet_block_hash       BLOB PRIMARY KEY,
+            starknet_block_number     INTEGER NOT NULL,
+            starknet_block_timestamp  INTEGER NOT NULL,
+            starknet_global_root      BLOB NOT NULL,
+            ethereum_transaction_hash BLOB NOT NULL,
+            ethereum_log_index        INTEGER NOT NULL,
+
+            FOREIGN KEY(ethereum_transaction_hash) REFERENCES ethereum_transactions(hash)
+        )",
+        [],
+    )?;
+    transaction.execute(
+        r"CREATE TABLE contract_states (
+            state_hash BLOB PRIMARY KEY,
+            hash       BLOB NOT NULL,
+            root       BLOB NOT NULL
+        )",
+        [],
+    )?;
+
+    Ok(())
 }
 
 fn migrate_to_2(tx: &Transaction) -> anyhow::Result<()> {

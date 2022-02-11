@@ -9,14 +9,6 @@ use crate::core::{
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
 };
 
-/// Creates [GlobalStateTable] and [ContractsStateTable] for version 1 of the database.
-pub fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-    GlobalStateTable::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate the global state table")?;
-    ContractsStateTable::migrate_from_0_to_1(transaction)
-        .context("Failed to migrate the contracts state table")
-}
-
 /// Stores descriptions of the global StarkNet state. This data contains
 /// StarkNet block metadata as well as the origin point on Ethereum.
 ///
@@ -51,25 +43,6 @@ pub struct GlobalStateRecord {
 }
 
 impl GlobalStateTable {
-    /// Creates [GlobalStateTable] for version 1 of the database.
-    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-        // TODO: consider ON DELETE CASCADE when we start cleaning up. Don't forget to document if we use it.
-        transaction.execute(
-            r"CREATE TABLE global_state (
-                    starknet_block_hash       BLOB PRIMARY KEY,
-                    starknet_block_number     INTEGER NOT NULL,
-                    starknet_block_timestamp  INTEGER NOT NULL,
-                    starknet_global_root      BLOB NOT NULL,
-                    ethereum_transaction_hash BLOB NOT NULL,
-                    ethereum_log_index        INTEGER NOT NULL,
-
-                    FOREIGN KEY(ethereum_transaction_hash) REFERENCES ethereum_transactions(hash)
-                )",
-            [],
-        )?;
-        Ok(())
-    }
-
     /// Inserts a new StarkNet global state.
     ///
     /// Does nothing if the [StarkNet block hash](StarknetBlockHash) already exists.
@@ -260,19 +233,6 @@ impl GlobalStateTable {
 pub struct ContractsStateTable {}
 
 impl ContractsStateTable {
-    /// Creates [ContractsStateTable] for version 1 of the database.
-    fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
-        transaction.execute(
-            r"CREATE TABLE contract_states (
-                    state_hash BLOB PRIMARY KEY,
-                    hash       BLOB NOT NULL,
-                    root       BLOB NOT NULL
-                )",
-            [],
-        )?;
-        Ok(())
-    }
-
     /// Insert a state hash into the table. Does nothing if the state hash already exists.
     pub fn insert(
         transaction: &Transaction,
@@ -596,7 +556,7 @@ mod tests {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
 
-            ContractsStateTable::migrate_from_0_to_1(&transaction).unwrap();
+            crate::storage::migrate_to_1(&transaction).unwrap();
 
             let state_hash = ContractStateHash(StarkHash::from_hex_str("abc").unwrap());
             let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
