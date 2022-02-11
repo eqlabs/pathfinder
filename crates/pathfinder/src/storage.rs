@@ -149,6 +149,45 @@ fn migrate_from_0_to_1(transaction: &Transaction) -> anyhow::Result<()> {
 fn migrate_to_2(tx: &Transaction) -> anyhow::Result<()> {
     use sha3::{Digest, Keccak256};
 
+    // we had a mishap of forking the schema at version 1 so to really support all combinations of
+    // schema at version 1 we need to make sure that contracts table still looks like:
+    // CREATE TABLE contracts (
+    //     address    BLOB PRIMARY KEY,
+    //     hash       BLOB NOT NULL,
+    //     bytecode   BLOB,
+    //     abi        BLOB,
+    //     definition BLOB
+    // );
+
+    {
+        let migrateable = ["address", "hash", "bytecode", "abi", "definition"];
+        let no_need = ["address", "hash"];
+
+        let mut actual = Vec::with_capacity(5);
+
+        let mut stmt = tx.prepare("select name from pragma_table_info(\"contracts\")")?;
+        let mut rows = stmt.query([])?;
+
+        while let Some(row) = rows.next()? {
+            let name = row
+                .get_ref_unwrap(0)
+                .as_str()
+                .expect("pragma_table_info has column name, for strings");
+            // these are only borrowable for the lifetime of the row
+            actual.push(name.to_owned());
+        }
+
+        if actual == no_need {
+            return Ok(());
+        }
+
+        assert_eq!(
+            &migrateable[..],
+            &actual,
+            "unknown columns for contracts table"
+        );
+    }
+
     tx.execute("alter table contracts rename to contracts_v1", [])?;
     tx.execute(
         "create table contract_code (
