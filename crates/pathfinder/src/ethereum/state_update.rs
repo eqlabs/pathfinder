@@ -138,7 +138,7 @@ mod tests {
             block_number: StarknetBlockNumber(16407),
         };
 
-        let transport = create_test_transport(crate::ethereum::Chain::Goerli).await;
+        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
         let update = StateUpdate::retrieve(&transport, update_log).await.unwrap();
 
         let expected = StateUpdate {

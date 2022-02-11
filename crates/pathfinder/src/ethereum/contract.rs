@@ -100,7 +100,7 @@ mod tests {
                 "/resources/contracts/core_proxy.json"
             ));
 
-            let transport = create_test_transport(Chain::Goerli).await;
+            let transport = create_test_transport(Chain::Goerli);
 
             let core_proxy = web3::contract::Contract::from_json(
                 transport.eth(),
