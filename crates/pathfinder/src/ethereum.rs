@@ -29,52 +29,52 @@ pub enum Chain {
 ///     https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1474.md#error-codes
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum RpcErrorCode {
-    ParseError,
-    InvalidRequest,
-    MethodNotFound,
-    InvalidParams,
-    InternalError,
-    InvalidInput,
-    ResourceNotFound,
-    ResourceUnavailable,
-    TransactionRejected,
-    MethodNotSupported,
+    _ParseError,
+    _InvalidRequest,
+    _MethodNotFound,
+    _InvalidParams,
+    _InternalError,
+    _InvalidInput,
+    _ResourceNotFound,
+    _ResourceUnavailable,
+    _TransactionRejected,
+    _MethodNotSupported,
     LimitExceeded,
-    JsonRpcVersion,
+    _JsonRpcVersion,
 }
 
 impl RpcErrorCode {
     fn code(&self) -> i64 {
         match self {
-            RpcErrorCode::ParseError => -32700,
-            RpcErrorCode::InvalidRequest => -32600,
-            RpcErrorCode::MethodNotFound => -32601,
-            RpcErrorCode::InvalidParams => -32602,
-            RpcErrorCode::InternalError => -32603,
-            RpcErrorCode::InvalidInput => -32000,
-            RpcErrorCode::ResourceNotFound => -32001,
-            RpcErrorCode::ResourceUnavailable => -32002,
-            RpcErrorCode::TransactionRejected => -32003,
-            RpcErrorCode::MethodNotSupported => -32004,
+            RpcErrorCode::_ParseError => -32700,
+            RpcErrorCode::_InvalidRequest => -32600,
+            RpcErrorCode::_MethodNotFound => -32601,
+            RpcErrorCode::_InvalidParams => -32602,
+            RpcErrorCode::_InternalError => -32603,
+            RpcErrorCode::_InvalidInput => -32000,
+            RpcErrorCode::_ResourceNotFound => -32001,
+            RpcErrorCode::_ResourceUnavailable => -32002,
+            RpcErrorCode::_TransactionRejected => -32003,
+            RpcErrorCode::_MethodNotSupported => -32004,
             RpcErrorCode::LimitExceeded => -32005,
-            RpcErrorCode::JsonRpcVersion => -32006,
+            RpcErrorCode::_JsonRpcVersion => -32006,
         }
     }
 
-    fn reason(&self) -> &str {
+    fn _reason(&self) -> &str {
         match self {
-            RpcErrorCode::ParseError => "Invalid JSON",
-            RpcErrorCode::InvalidRequest => "JSON is not a valid request object",
-            RpcErrorCode::MethodNotFound => "Method does not exist",
-            RpcErrorCode::InvalidParams => "Invalid method parameters",
-            RpcErrorCode::InternalError => "Internal JSON-RPC error",
-            RpcErrorCode::InvalidInput => "Missing or invalid parameters",
-            RpcErrorCode::ResourceNotFound => "Requested resource not found",
-            RpcErrorCode::ResourceUnavailable => "Requested resource not available",
-            RpcErrorCode::TransactionRejected => "Transaction creation failed",
-            RpcErrorCode::MethodNotSupported => "Method is not implemented",
+            RpcErrorCode::_ParseError => "Invalid JSON",
+            RpcErrorCode::_InvalidRequest => "JSON is not a valid request object",
+            RpcErrorCode::_MethodNotFound => "Method does not exist",
+            RpcErrorCode::_InvalidParams => "Invalid method parameters",
+            RpcErrorCode::_InternalError => "Internal JSON-RPC error",
+            RpcErrorCode::_InvalidInput => "Missing or invalid parameters",
+            RpcErrorCode::_ResourceNotFound => "Requested resource not found",
+            RpcErrorCode::_ResourceUnavailable => "Requested resource not available",
+            RpcErrorCode::_TransactionRejected => "Transaction creation failed",
+            RpcErrorCode::_MethodNotSupported => "Method is not implemented",
             RpcErrorCode::LimitExceeded => "Request exceeds defined limit",
-            RpcErrorCode::JsonRpcVersion => "Version of JSON-RPC protocol is not supported",
+            RpcErrorCode::_JsonRpcVersion => "Version of JSON-RPC protocol is not supported",
         }
     }
 }
