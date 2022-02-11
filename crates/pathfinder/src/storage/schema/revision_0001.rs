@@ -26,7 +26,6 @@ pub(crate) fn migrate_to_1(transaction: &Transaction) -> anyhow::Result<()> {
         )",
         [],
     )?;
-    // TODO: consider ON DELETE CASCADE when we start cleaning up. Don't forget to document if we use it.
     transaction.execute(
         r"CREATE TABLE ethereum_transactions (
             hash       BLOB PRIMARY KEY,
@@ -37,7 +36,6 @@ pub(crate) fn migrate_to_1(transaction: &Transaction) -> anyhow::Result<()> {
         )",
         [],
     )?;
-    // TODO: consider ON DELETE CASCADE when we start cleaning up. Don't forget to document if we use it.
     transaction.execute(
         r"CREATE TABLE global_state (
             starknet_block_hash       BLOB PRIMARY KEY,
