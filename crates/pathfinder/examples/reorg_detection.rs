@@ -18,7 +18,7 @@ async fn main() {
     /// The maximum amount of blocks to keep.
     const MAX_HISTORY: usize = 128;
 
-    let mut history = VecDeque::with_capacity(MAX_HISTORY + 1);
+    let mut history = VecDeque::with_capacity(MAX_HISTORY);
 
     loop {
         if history.is_empty() {
@@ -31,12 +31,13 @@ async fn main() {
         match get_next_block(&w3, latest_local).await {
             Ok(block) => {
                 let block_no = block.number.unwrap();
-                history.push_back(block);
 
                 // Only keep MAX_HISTORY elements.
-                if history.len() > MAX_HISTORY {
+                if history.len() + 1 > MAX_HISTORY {
                     history.pop_front();
                 }
+
+                history.push_back(block);
 
                 println!(
                     "Downloaded block {} (history length: {})",
