@@ -6,7 +6,7 @@ use crate::{
     },
     rpc::types::{
         reply::{Block, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
-        request::{BlockResponseScope, Call},
+        request::{BlockResponseScope, Call, OverflowingStorageAddress},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
     sequencer::{self, reply as raw},
@@ -17,6 +17,7 @@ use jsonrpsee::types::{
     error::{CallError, Error},
     RpcResult,
 };
+use pedersen::OverflowError;
 use std::convert::TryInto;
 
 /// Helper function.
@@ -104,16 +105,109 @@ impl RpcApi {
     /// `contract_address` is the address of the contract to read from, `key` is the key to the storage value for the given contract,
     /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
     /// of the requested block.
+    ///
+    /// We are using overflowing type for `key` to be able to correctly report
+    /// [`INVALID_STORAGE_KEY`](https://github.com/starkware-libs/starknet-specs/blob/64044c2c8be136b6fdf7f13896ea0422bf211a74/api/starknet_api_openrpc.json#L1043)
+    /// as per
+    /// [StarkNet RPC spec](https://github.com/starkware-libs/starknet-specs/blob/64044c2c8be136b6fdf7f13896ea0422bf211a74/api/starknet_api_openrpc.json#L144),
+    /// otherwise we would report [-32602](https://www.jsonrpc.org/specification#error_object).
     pub async fn get_storage_at(
         &self,
         contract_address: ContractAddress,
-        key: StorageAddress,
+        key: OverflowingStorageAddress,
         block_hash: BlockHashOrTag,
     ) -> RpcResult<StorageValue> {
-        let storage_val = self
-            .sequencer
-            .storage(contract_address, key, block_hash)
-            .await?;
+        use crate::{
+            state::state_tree::{ContractsStateTree, GlobalStateTree},
+            storage::{ContractsStateTable, GlobalStateTable},
+        };
+        use pedersen::StarkHash;
+
+        let key = StorageAddress(StarkHash::from_be_bytes(key.0.to_fixed_bytes()).map_err(
+            // Use explicit typing in closure arg to force compiler error should error variants ever be expanded
+            |_e: OverflowError| Error::from(ErrorCode::InvalidStorageKey),
+        )?);
+
+        if let BlockHashOrTag::Tag(Tag::Pending) = block_hash {
+            // Pending request is always forwarded
+            return Ok(self
+                .sequencer
+                .storage(contract_address, key, block_hash)
+                .await?);
+        }
+
+        // We cannot just return Error::Internal (-32003) in cases which are not covered by starknet RPC API spec
+        // as jsonrpsee reserved it for internal subscription related errors only, so we resort to
+        // CallError::Custom with the same code value and message as Error::Internal. This way we can still provide
+        // an "Internal server error" but with additional context.
+        //
+        // This error is used for all instances of operations that are not explicitly specified in the StarkNet spec.
+        // See https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json
+        let internal_server_error = |e: anyhow::Error| {
+            Error::Call(CallError::Custom {
+                code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
+                message: format!("{}: {}", jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG, e),
+                data: None,
+            })
+        };
+
+        let mut db = self
+            .storage
+            .connection()
+            .context("Opening database connection")
+            .map_err(internal_server_error)?;
+        let tx = db
+            .transaction()
+            .context("Creating database transaction")
+            .map_err(internal_server_error)?;
+
+        // Use internal_server_error to indicate that the process of querying for a particular block failed,
+        // which is not the same as being sure that the block is not in the db.
+        let global_root = match block_hash {
+            BlockHashOrTag::Hash(hash) => GlobalStateTable::get_root_at_block_hash(&tx, hash)
+                .map_err(internal_server_error)?,
+            BlockHashOrTag::Tag(tag) => match tag {
+                Tag::Latest => {
+                    GlobalStateTable::get_latest_root(&tx).map_err(internal_server_error)?
+                }
+                Tag::Pending => unreachable!("Pending has already been handled above"),
+            },
+        }
+        // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
+        // by using a dedicated error code from the RPC API spec
+        .ok_or_else(|| Error::from(ErrorCode::InvalidBlockHash))?;
+
+        let global_state_tree = GlobalStateTree::load(&tx, global_root)
+            .context("Global state tree")
+            .map_err(internal_server_error)?;
+
+        // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
+        let contract_state_hash = global_state_tree
+            .get(contract_address)
+            .map_err(|_| Error::from(ErrorCode::ContractNotFound))?;
+
+        let contract_state_root = ContractsStateTable::get_root(&tx, contract_state_hash)
+            .context("Get contract state root")
+            .map_err(internal_server_error)?
+            .ok_or_else(|| {
+                internal_server_error(anyhow::anyhow!(
+                    "Contract state root not found for contract state hash {}",
+                    contract_state_hash.0
+                ))
+            })?;
+
+        let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root)
+            .context("Load contract state tree")
+            .map_err(internal_server_error)?;
+
+        // ContractsStateTree::get() will return zero if the value is still not found (and we know the key is valid),
+        // which is consistent with the specification:
+        // https://github.com/starkware-libs/starknet-specs/blob/64044c2c8be136b6fdf7f13896ea0422bf211a74/api/starknet_api_openrpc.json#L136)
+        let storage_val = contract_state_tree
+            .get(key)
+            .context("Get value from contract state tree")
+            .map_err(internal_server_error)?;
+
         Ok(storage_val)
     }
 

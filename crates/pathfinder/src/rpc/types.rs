@@ -50,8 +50,20 @@ pub enum BlockNumberOrTag {
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use crate::core::{CallParam, ContractAddress, EntryPoint};
+    use crate::{
+        core::{CallParam, ContractAddress, EntryPoint},
+        rpc::serde::H256AsNoLeadingZerosHexStr,
+    };
     use serde::{Deserialize, Serialize};
+    use serde_with::serde_as;
+
+    /// The address of a storage element for a StarkNet contract.
+    /// __This type is not checked for field elment overflow__ in contrast to [`StorageAddress`](crate::core::StorageAddress).
+    #[serde_as]
+    #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+    pub struct OverflowingStorageAddress(
+        #[serde_as(as = "H256AsNoLeadingZerosHexStr")] pub web3::types::H256,
+    );
 
     /// Contains parameters passed to `starknet_call`.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

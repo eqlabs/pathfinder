@@ -9,7 +9,7 @@ use num_bigint::{BigInt, BigUint, Sign};
 use pedersen::{HexParseError, OverflowError, StarkHash};
 use serde_with::serde_conv;
 use std::str::FromStr;
-use web3::types::H160;
+use web3::types::{H160, H256};
 
 serde_conv!(
     pub CallParamAsDecimalStr,
@@ -72,6 +72,13 @@ serde_with::serde_conv!(
     EthereumAddress,
     |serialize_me: &EthereumAddress| bytes_to_hex_str(serialize_me.0.as_bytes()),
     |s: &str| bytes_from_hex_str::<{ H160::len_bytes() }>(s).map(|b| EthereumAddress(H160::from(b)))
+);
+
+serde_with::serde_conv!(
+    pub H256AsNoLeadingZerosHexStr,
+    H256,
+    |serialize_me: &H256| bytes_to_hex_str(serialize_me.as_bytes()),
+    |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(H256::from)
 );
 
 /// A helper conversion function. Only use with __sequencer API related types__.

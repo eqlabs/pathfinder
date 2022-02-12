@@ -4,10 +4,11 @@ pub mod serde;
 pub mod types;
 
 use crate::{
-    core::{ContractAddress, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress},
+    core::{ContractAddress, StarknetTransactionHash, StarknetTransactionIndex},
     rpc::{
         api::RpcApi,
         types::{
+            request::OverflowingStorageAddress,
             request::{BlockResponseScope, Call},
             BlockHashOrTag, BlockNumberOrTag,
         },
@@ -75,7 +76,8 @@ pub fn run_server(
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
             pub contract_address: ContractAddress,
-            pub key: StorageAddress,
+            // Accept overflowing type here to report INVALID_STORAGE_KEY properly
+            pub key: OverflowingStorageAddress,
             pub block_hash: BlockHashOrTag,
         }
         let params = params.parse::<NamedArgs>()?;
