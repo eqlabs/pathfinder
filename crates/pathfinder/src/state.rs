@@ -71,31 +71,39 @@ pub async fn sync<T: Transport + 'static>(
     let (block_update_tx, mut block_update_rx) =
         mpsc::channel::<(u64, std::time::Instant, BlockInfo)>(1);
 
-    let _jh2 = tokio::task::spawn({
+    // all of the join handles below are gathered for awaiting them, except for the threads.
+
+    let fetch_contracts = tokio::task::spawn({
         let sequencer = sequencer.clone();
         fetch_contracts(sequencer, fetched_contracts_rx, compression_tx)
     });
 
-    let _jh = std::thread::Builder::new()
+    let extract_compress = std::thread::Builder::new()
         .name(String::from("extract-compress"))
-        .spawn(move || extract_compress(ready_tx, compression_rx))
+        // assuming this is too simple to panic
+        .spawn(move || extract_compress(ready_tx, compression_rx).unwrap())
         .context("failed to launch compressor thread")?;
 
+    // tx dropped before sending => panic
+    let (db_ended_tx, mut db_ended_rx) = oneshot::channel();
     let _jh_db = std::thread::Builder::new()
         .name(String::from("database-updater"))
         .spawn(move || {
-            update_database(
+            let res = update_database(
                 database,
                 initial_state_tx,
                 state_update_rx,
                 fetched_contracts_tx,
                 ready_contracts_rx,
                 block_update_tx,
-            )
+            );
+            println!("database updater exited with {:?}", res);
+            // we can't really handle the failure here in at any capacity
+            let _ = db_ended_tx.send(());
         })
         .context("failed to launch database updater thread")?;
 
-    let _jh6 = tokio::task::spawn_local(async move {
+    let progress_reporter = tokio::task::spawn(async move {
         let mut last = None;
 
         // this example uses every block polling, but this could be much more useful stats
@@ -115,32 +123,87 @@ pub async fn sync<T: Transport + 'static>(
     // needed for the web3 things
     let local = tokio::task::LocalSet::new();
 
-    // FIXME: this could just be the sync call?
     local
         .run_until(async move {
-            let _jh5 = tokio::task::spawn_local({
+            let root_fetcher = tokio::task::spawn_local({
                 let transport = transport.clone();
-                retrieve_state_updates(transport, root_logs_rx, state_update_tx)
+
+                async move {
+                    let latest_state_log = initial_state_rx.await.unwrap();
+                    let mut root_fetcher = StateRootFetcher::new(latest_state_log);
+
+                    loop {
+                        match root_fetcher.fetch(&transport).await {
+                            Ok(logs) if logs.is_empty() => {}
+                            Ok(logs) => {
+                                if root_logs_tx.send(logs).await.is_err() {
+                                    break;
+                                }
+                                continue;
+                            }
+                            Err(FetchError::Reorg) => todo!("Handle reorg event!"),
+                            Err(FetchError::Other(other)) => {
+                                println!(
+                                    "{}",
+                                    other.context("Fetching new Starknet roots from L1")
+                                );
+                            }
+                        };
+
+                        tokio::time::sleep(Duration::from_millis(10000)).await;
+                    }
+                }
             });
 
-            let latest_state_log = initial_state_rx.await.unwrap();
-            let mut root_fetcher = StateRootFetcher::new(latest_state_log);
+            let state_updates = tokio::task::spawn_local({
+                let transport = transport.clone();
+                async move {
+                    retrieve_state_updates(transport, root_logs_rx, state_update_tx)
+                        .await
+                        .context("retrieving state updates ended in error")
+                        .unwrap()
+                }
+            });
 
-            loop {
-                match root_fetcher.fetch(&transport).await {
-                    Ok(logs) if logs.is_empty() => {}
-                    Ok(logs) => {
-                        root_logs_tx.send(logs).await.unwrap();
-                        continue;
-                    }
-                    Err(FetchError::Reorg) => todo!("Handle reorg event!"),
-                    Err(FetchError::Other(other)) => {
-                        println!("{}", other.context("Fetching new Starknet roots from L1"));
-                    }
+            // this might be a bit overboard, or the minimal implementation, but it should catch
+            // all of the threads and tasks joining in.
+
+            use futures::stream::StreamExt;
+
+            let mut joinhandles = futures::stream::FuturesUnordered::new();
+            joinhandles.push(state_updates);
+            joinhandles.push(root_fetcher);
+            joinhandles.push(progress_reporter);
+            joinhandles.push(fetch_contracts);
+
+            let mut updater_exited = false;
+
+            while !joinhandles.is_empty() && !updater_exited {
+                tokio::select! {
+                    Some(joined) = joinhandles.next(), if !joinhandles.is_empty() => {
+                        match joined {
+                            Ok(_) => {},
+                            Err(e) => println!("{:?}", e),
+                        }
+                    },
+                    exit = (&mut db_ended_rx), if !updater_exited => {
+                        updater_exited = true;
+                        if exit.is_err() {
+                            println!("database updater panicked");
+                        }
+                    },
                 };
-
-                tokio::time::sleep(Duration::from_millis(10000)).await;
             }
+
+            let database_updater_res = _jh_db.join();
+            let extract_compress_res = extract_compress.join();
+
+            println!(
+                "threads joined, db: {:?}, extract_compress: {:?}",
+                database_updater_res, extract_compress_res
+            );
+
+            todo!("panicked somewhere");
 
             // this is infinite loop, so we never leave. could have a poison message, which would
             // nicely stop all of the above created stages.
@@ -152,31 +215,32 @@ async fn retrieve_state_updates<T: Transport + 'static>(
     transport: Web3<T>,
     mut root_logs_rx: mpsc::Receiver<Vec<StateUpdateLog>>,
     state_update_tx: mpsc::Sender<(StateUpdateLog, StateUpdate)>,
-) {
+) -> anyhow::Result<()> {
     while let Some(root_logs) = root_logs_rx.recv().await {
         for root_log in root_logs {
             let state_update = StateUpdate::retrieve(&transport, root_log.clone())
                 .await
-                .unwrap();
-            /*{
-                Ok(state_update) => state_update,
-                Err(RetrieveStateUpdateError::Other(other)) => {
-                    return Err(anyhow::anyhow!(
-                        "Fetching state update failed. {}",
-                        other
-                    ));
-                }
-                // Treat the rest as a reorg event.
-                Err(_reorg) => { return Err(anyhow::anyhow!("Reorg: {:?}", _reorg)); },
-            };*/
+                .context("Fetching state update failed")?;
 
-            state_update_tx
+            // FIXME: we must handle the reorg
+
+            if state_update_tx
                 .send((root_log, state_update))
                 .await
-                // FIXME: this has a loooong debug
-                .expect("failed to send state updates");
+                .is_err()
+            {
+                // TODO: this has a workaround over loooong debug; but it doesn't make any sense to
+                // get rid of the automatically generated one, maybe this will be handled by a
+                // message type down the line.
+                //
+                // Also noting that failure to send to the channel is regarded now only as a
+                // shutdown message.
+                break;
+            }
         }
     }
+
+    Ok(())
 }
 
 async fn fetch_contracts(
@@ -200,13 +264,15 @@ async fn fetch_contracts(
                 None
             };
 
-            compression_tx
-                .send(FetchedExtractableContract {
-                    deploy_info: cmd.deploy_info,
-                    payload: contract_definition,
-                })
-                .await
-                .unwrap();
+            let response = FetchedExtractableContract {
+                deploy_info: cmd.deploy_info,
+                payload: contract_definition,
+            };
+
+            if compression_tx.send(response).await.is_err() {
+                // just exit cleanly, someone else exited already
+                break;
+            }
         }
     }
 }
@@ -218,13 +284,13 @@ fn update_database(
     fetched_contracts_tx: mpsc::Sender<Vec<FetchExtractContract>>,
     mut ready_contracts_rx: mpsc::Receiver<FetchedCompressedContract>,
     block_update_tx: mpsc::Sender<(u64, std::time::Instant, BlockInfo)>,
-) {
+) -> anyhow::Result<()> {
     let mut previous_state = {
         // Temporary transaction with no side-effects, which will rollback when
         // droppped anyway. Important not to keep this open for no reason, which might prevent
         // other writes.
-        let db_tx = database.transaction().unwrap();
-        GlobalStateTable::get_latest_state(&db_tx).unwrap()
+        let db_tx = database.transaction()?;
+        GlobalStateTable::get_latest_state(&db_tx)?
     };
 
     let mut global_root = previous_state
@@ -233,39 +299,35 @@ fn update_database(
         .unwrap_or(GlobalRoot(StarkHash::ZERO));
 
     let latest_state_log = previous_state.as_ref().map(StateUpdateLog::from);
-    initial_state_tx.send(latest_state_log).unwrap();
+    if initial_state_tx.send(latest_state_log).is_err() {
+        return Ok(());
+    }
 
     while let Some((root_log, state_update)) = state_update_rx.blocking_recv() {
         // Perform each update as an atomic database unit.
-        let db_transaction = database.transaction().unwrap();
-
-        // TODO:
-        /*
-        .with_context(|| {
+        let db_transaction = database.transaction().with_context(|| {
             format!(
                 "Creating database transaction for block number {}",
                 root_log.block_number.0
             )
         })?;
-        */
 
         // Verify database state integretity i.e. latest state should be sequential,
         // and we are the only writer.
-        let previous_state_db = GlobalStateTable::get_latest_state(&db_transaction).unwrap();
-
-        // TODO
-        /*.with_context(|| {
+        let previous_state_db =
+            GlobalStateTable::get_latest_state(&db_transaction).with_context(|| {
                 format!(
                     "Get latest StarkNet state for block number {}",
                     root_log.block_number.0
                 )
             })?;
-        */
 
-        assert_eq!(
-            previous_state_db, previous_state,
+        anyhow::ensure!(
+            previous_state_db == previous_state,
             "State mismatch between database and sync process for block number {}\n{:?}\n\n{:?}",
-            root_log.block_number.0, previous_state, previous_state_db
+            root_log.block_number.0,
+            previous_state,
+            previous_state_db
         );
 
         let next_root = root_log.global_root;
@@ -284,40 +346,43 @@ fn update_database(
                 previous_state = Some(record);
                 block_info = info;
             }
-            Err(UpdateError::Reorg) => todo!("Handle reorg event!"),
-            Err(UpdateError::Other(other)) => {
-                panic!(
+            Err(e) => {
+                println!("erroring out");
+                return Err(anyhow::anyhow!(
                     "Updating to block number {} gave {:?}",
-                    root_log.block_number.0, other
-                );
+                    root_log.block_number.0,
+                    e
+                ));
             }
         };
 
-        db_transaction.commit().unwrap();
-
-        /*with_context(|| {
+        db_transaction.commit().with_context(|| {
             format!(
                 "Committing database transaction for block number {}",
                 root_log.block_number.0
             )
         })?;
-        */
+
         global_root = next_root;
 
-        block_update_tx
-            .blocking_send((
-                root_log.block_number.0,
-                std::time::Instant::now(),
-                block_info,
-            ))
-            .unwrap();
+        let progress = (
+            root_log.block_number.0,
+            std::time::Instant::now(),
+            block_info,
+        );
+
+        if block_update_tx.blocking_send(progress).is_err() {
+            break;
+        }
     }
+
+    Ok(())
 }
 
 fn extract_compress(
     tx: mpsc::Sender<FetchedCompressedContract>,
     mut rx: mpsc::Receiver<FetchedExtractableContract>,
-) {
+) -> anyhow::Result<()> {
     let mut compressor = zstd::bulk::Compressor::new(10)
         .context("Couldn't create zstd compressor for ContractsTable")
         .unwrap();
@@ -351,12 +416,18 @@ fn extract_compress(
         payload,
     }) = rx.blocking_recv()
     {
-        tx.blocking_send(FetchedCompressedContract {
+        let resp = FetchedCompressedContract {
             deploy_info,
-            payload: payload.map(|def_bytes| process_one(def_bytes).unwrap()),
-        })
-        .unwrap();
+            payload: payload
+                .map(|def_bytes| process_one(def_bytes))
+                .transpose()?,
+        };
+        if tx.blocking_send(resp).is_err() {
+            break;
+        }
     }
+
+    Ok(())
 }
 
 struct CompressedContract {
@@ -409,9 +480,7 @@ fn update(
     db: &Transaction<'_>,
     fetched_contracts_tx: &mpsc::Sender<Vec<FetchExtractContract>>,
     ready_contracts_rx: &mut mpsc::Receiver<FetchedCompressedContract>,
-) -> Result<BlockUpdated, UpdateError> {
-    // Download update from L1.
-
+) -> anyhow::Result<BlockUpdated> {
     let contract_count = state_update.deployed_contracts.len();
 
     let mut already_fetching = HashSet::new();
@@ -539,11 +608,10 @@ fn update(
         .context("Applying global state tree updates")?;
 
     // Validate calculated root against the one received from L1.
-    if new_global_root != update_log.global_root {
-        return Err(UpdateError::Other(anyhow::anyhow!(
-            "New global state root did not match L1."
-        )));
-    }
+    anyhow::ensure!(
+        new_global_root == update_log.global_root,
+        "New global state root did not match L1."
+    );
 
     // Download additional block information from sequencer. Use a custom timeout with retry strategy
     // to work-around the sequencer's poor performance (spurious lack of response) for early blocks.
