@@ -427,9 +427,7 @@ fn extract_compress(
     {
         let resp = FetchedCompressedContract {
             deploy_info,
-            payload: payload
-                .map(|def_bytes| process_one(def_bytes))
-                .transpose()?,
+            payload: payload.map(&mut process_one).transpose()?,
         };
         if tx.blocking_send(resp).is_err() {
             break;
@@ -461,6 +459,9 @@ impl std::fmt::Debug for CompressedContract {
 #[derive(Debug, PartialEq)]
 struct FetchExtractContract {
     deploy_info: DeployedContract,
+    /// This boolean will determine whether to actually fetch anything from the database. It's
+    /// crutch; the fetching and tree updating process could be fixed to have better ordering of
+    /// operations to maximize time for the extraction and compression.
     fetch: bool,
 }
 
