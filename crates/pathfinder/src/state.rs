@@ -1003,11 +1003,25 @@ mod tests {
             ContractHash(StarkHash::from_be_slice(&b"this is shared by multiple"[..]).unwrap());
         let unique_hash =
             ContractHash(StarkHash::from_be_slice(&b"this is unique contract"[..]).unwrap());
+        let existing_hash =
+            ContractHash(StarkHash::from_be_slice(&b"used to test contract exists"[..]).unwrap());
 
         let one = ContractAddress(StarkHash::from_hex_str("1").unwrap());
         let two = ContractAddress(StarkHash::from_hex_str("2").unwrap());
         let three = ContractAddress(StarkHash::from_hex_str("3").unwrap());
         let already_deployed = ContractAddress(StarkHash::from_hex_str("4").unwrap());
+        let already_existing = ContractAddress(StarkHash::from_hex_str("5").unwrap());
+
+        db.execute(
+            "insert into contract_code (hash, abi, bytecode, definition) values (?1, ?2, ?3, ?4)",
+            [
+                &existing_hash.0.to_be_bytes()[..],
+                &[][..],
+                &[][..],
+                &[][..],
+            ],
+        )
+        .unwrap();
 
         let one_deploy = DeployedContract {
             address: one,
@@ -1024,6 +1038,12 @@ mod tests {
         let three_deploy = DeployedContract {
             address: three,
             hash: unique_hash,
+            call_data: vec![],
+        };
+
+        let fifth_deploy = DeployedContract {
+            address: already_existing,
+            hash: existing_hash,
             call_data: vec![],
         };
 
@@ -1045,7 +1065,12 @@ mod tests {
 
         // neither of these deployed contracts are in database, which is empty
         let state_update = StateUpdate {
-            deployed_contracts: vec![one_deploy.clone(), two_deploy.clone(), three_deploy.clone()],
+            deployed_contracts: vec![
+                one_deploy.clone(),
+                two_deploy.clone(),
+                three_deploy.clone(),
+                fifth_deploy.clone(),
+            ],
             contract_updates: vec![one_update.clone(), already_deployed_update.clone()],
         };
 
@@ -1060,6 +1085,7 @@ mod tests {
             tree_updates,
             vec![
                 TreeUpdate::Update(Some(already_deployed_update)),
+                TreeUpdate::Deploy(fifth_deploy.clone(), ExistsAlready),
                 TreeUpdate::UpdateDeploy(one_update, one_deploy.clone(), FetchedNth(0)),
                 TreeUpdate::Deploy(two_deploy, UsingNthFetched(0)),
                 TreeUpdate::Deploy(three_deploy.clone(), FetchedNth(1)),
