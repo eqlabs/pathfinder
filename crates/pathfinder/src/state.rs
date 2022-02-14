@@ -495,7 +495,10 @@ fn update(
                 (u.address, Some(u), None, false)
             }
             Deploy(d, fetched) => (d.address, None, Some(d), fetched.implies_fetch()),
-            UpdateDeploy(u, d, fetched) => (u.address, Some(u), Some(d), fetched.implies_fetch()),
+            UpdateDeploy(ud, fetched) => {
+                let (u, d) = ud.split();
+                (u.address, Some(u), Some(d), fetched.implies_fetch())
+            }
         };
 
         if fetched {
@@ -709,8 +712,43 @@ enum TreeUpdate {
     // Option needed to transform this into UpdateDeploy
     Update(Option<ContractUpdate>),
     Deploy(DeployedContract, FetchOrder),
-    // TODO: Could inline the CU and DC to avoid duplicating the field
-    UpdateDeploy(ContractUpdate, DeployedContract, FetchOrder),
+    UpdateDeploy(CombinedUpdateDeploy, FetchOrder),
+}
+
+#[derive(PartialEq)]
+struct CombinedUpdateDeploy {
+    address: crate::core::ContractAddress,
+    hash: ContractHash,
+    call_data: Vec<StarkHash>,
+    storage_updates: Vec<crate::ethereum::state_update::StorageUpdate>,
+}
+
+impl From<(ContractUpdate, DeployedContract)> for CombinedUpdateDeploy {
+    fn from((u, d): (ContractUpdate, DeployedContract)) -> CombinedUpdateDeploy {
+        assert_eq!(u.address.0, d.address.0);
+
+        CombinedUpdateDeploy {
+            address: u.address,
+            hash: d.hash,
+            call_data: d.call_data,
+            storage_updates: u.storage_updates,
+        }
+    }
+}
+
+impl CombinedUpdateDeploy {
+    fn split(self) -> (ContractUpdate, DeployedContract) {
+        let u = ContractUpdate {
+            address: self.address.clone(),
+            storage_updates: self.storage_updates,
+        };
+        let d = DeployedContract {
+            address: self.address,
+            hash: self.hash,
+            call_data: self.call_data,
+        };
+        (u, d)
+    }
 }
 
 impl From<ContractUpdate> for TreeUpdate {
@@ -728,8 +766,8 @@ impl std::fmt::Debug for TreeUpdate {
             Self::Deploy(d, fo) => {
                 write!(f, "Deploy({}, {:?})", d.address.0, fo)
             }
-            Self::UpdateDeploy(_, d, fo) => {
-                write!(f, "UpdateDeploy({}, {:?}", d.address.0, fo)
+            Self::UpdateDeploy(ud, fo) => {
+                write!(f, "UpdateDeploy({}, {:?}", ud.address.0, fo)
             }
         }
     }
@@ -740,9 +778,10 @@ impl TreeUpdate {
         use TreeUpdate::*;
         match self {
             Update(u) => {
-                // FIXME: this belongs to a new type combining the two
-                assert_eq!(u.as_ref().unwrap().address.0, d.address.0);
-                *self = UpdateDeploy(u.take().unwrap(), d, fetch_order)
+                *self = UpdateDeploy(
+                    CombinedUpdateDeploy::from((u.take().unwrap(), d)),
+                    fetch_order,
+                )
             }
             _ => unreachable!(),
         }
@@ -752,9 +791,8 @@ impl TreeUpdate {
         use FetchOrder::FetchedNth;
         use TreeUpdate::*;
         match self {
-            Deploy(d, FetchedNth(_)) | UpdateDeploy(_, d, FetchedNth(_)) => {
-                Some(FetchExtractContract(d.address))
-            }
+            Deploy(d, FetchedNth(_)) => Some(FetchExtractContract(d.address)),
+            UpdateDeploy(ud, FetchedNth(_)) => Some(FetchExtractContract(ud.address)),
             _ => None,
         }
     }
@@ -891,10 +929,10 @@ fn combine_to_tree_updates(
             (Update(_), Update(_)) => Equal,
             (Update(_), _) => Less,
             (_, Update(_)) => Greater,
-            (UpdateDeploy(_, _, l_fo), UpdateDeploy(_, _, r_fo))
+            (UpdateDeploy(_, l_fo), UpdateDeploy(_, r_fo))
             | (Deploy(_, l_fo), Deploy(_, r_fo))
-            | (UpdateDeploy(_, _, l_fo), Deploy(_, r_fo))
-            | (Deploy(_, l_fo), UpdateDeploy(_, _, r_fo)) => l_fo.cmp(r_fo),
+            | (UpdateDeploy(_, l_fo), Deploy(_, r_fo))
+            | (Deploy(_, l_fo), UpdateDeploy(_, r_fo)) => l_fo.cmp(r_fo),
         }
     });
 
@@ -990,7 +1028,10 @@ mod tests {
 
     #[test]
     fn update_requests_fetching_unique_new_contracts() {
-        use super::{combine_to_tree_updates, FetchExtractContract, FetchOrder::*, TreeUpdate};
+        use super::{
+            combine_to_tree_updates, CombinedUpdateDeploy, FetchExtractContract, FetchOrder::*,
+            TreeUpdate,
+        };
         use crate::core::{ContractAddress, StorageAddress, StorageValue};
         use crate::ethereum::state_update::{
             ContractUpdate, DeployedContract, StateUpdate, StorageUpdate,
@@ -1086,7 +1127,10 @@ mod tests {
             vec![
                 TreeUpdate::Update(Some(already_deployed_update)),
                 TreeUpdate::Deploy(fifth_deploy.clone(), ExistsAlready),
-                TreeUpdate::UpdateDeploy(one_update, one_deploy.clone(), FetchedNth(0)),
+                TreeUpdate::UpdateDeploy(
+                    CombinedUpdateDeploy::from((one_update, one_deploy.clone())),
+                    FetchedNth(0)
+                ),
                 TreeUpdate::Deploy(two_deploy, UsingNthFetched(0)),
                 TreeUpdate::Deploy(three_deploy.clone(), FetchedNth(1)),
             ]
