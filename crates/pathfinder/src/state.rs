@@ -42,6 +42,15 @@ pub async fn sync<T: Transport + 'static>(
     // TODO: Track sync progress in some global way, so that RPC can check and react accordingly.
     //       This could either be the database, or a mutable lazy_static thingy.
 
+    // what follows is a simple staging + communication through channels implementation. it does
+    // give us:
+    //
+    // - database operations done outside of async contexts
+    // - some testability for the database update operation
+    //
+    // it should not be considered as the final form, as there's too many things going on for this
+    // to bring any clarity.
+
     // before we start doing anything, the current database state needs to be read from the
     // database, so that we can start reading root logs
     let (initial_state_tx, initial_state_rx) = oneshot::channel();
