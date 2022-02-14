@@ -941,20 +941,19 @@ mod tests {
         jh.join().unwrap_err();
     }
 
-    /*
-    use crate::{
-        core::{
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, StarknetBlockHash, StarknetBlockNumber,
-        },
-        ethereum::test::create_test_transport,
-    };
-    use std::str::FromStr;
-    use web3::types::H256;
     #[tokio::test]
     #[ignore = "Sequencer currently gives 502/503"]
-    #[allow(unused, dead_code)] // broke everything
     async fn genesis() {
+        use crate::core::{
+            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        };
+        use crate::ethereum::{
+            log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
+            TransactionOrigin,
+        };
+        use std::str::FromStr;
+        use web3::types::H256;
         // Georli genesis block values from Alpha taken from Voyager block explorer.
         // https://goerli.voyager.online/block/0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b
 
@@ -996,13 +995,13 @@ mod tests {
             block_number: StarknetBlockNumber(0),
         };
 
-        let sequencer = sequencer::Client::goerli().unwrap();
+        let _sequencer = crate::sequencer::Client::goerli().unwrap();
 
         let storage = crate::storage::Storage::in_memory().unwrap();
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
+        let _transport = create_test_transport(crate::ethereum::Chain::Goerli);
 
         /*
         update(
@@ -1016,8 +1015,10 @@ mod tests {
         .unwrap();
         */
 
+        // TODO: "is this test supposed to be sync for one block?
+
         // Read the new latest state from database.
-        let state = GlobalStateTable::get_latest_state(&transaction)
+        let state = crate::storage::GlobalStateTable::get_latest_state(&transaction)
             .unwrap()
             .unwrap();
 
@@ -1029,7 +1030,7 @@ mod tests {
         assert_eq!(state.eth_tx_hash, genesis.origin.transaction.hash);
         assert_eq!(state.eth_tx_index, genesis.origin.transaction.index);
         assert_eq!(state.eth_log_index, genesis.origin.log_index);
-    }*/
+    }
 
     #[tokio::test]
     #[ignore] // this is manual testing only, but we should really use the binary for this
