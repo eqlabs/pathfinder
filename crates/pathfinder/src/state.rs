@@ -838,10 +838,7 @@ impl std::cmp::Ord for FetchOrder {
 impl FetchOrder {
     /// Returns true if this fetch order implies that a network request should be done
     fn implies_fetch(&self) -> bool {
-        match self {
-            FetchOrder::FetchedNth(_) => true,
-            _ => false,
-        }
+        matches!(self, FetchOrder::FetchedNth(_))
     }
 }
 
