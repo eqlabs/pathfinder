@@ -33,6 +33,22 @@ impl ContractCodeTable {
             .compress(definition)
             .context("Failed to compress definition")?;
 
+        Self::insert_compressed(transaction, hash, &abi, &bytecode, &definition)
+    }
+
+    pub fn insert_compressed(
+        transaction: &Transaction,
+        hash: ContractHash,
+        abi: &[u8],
+        bytecode: &[u8],
+        definition: &[u8],
+    ) -> anyhow::Result<()> {
+        // check magics to verify these are zstd compressed files
+        let magic = &[0x28, 0xb5, 0x2f, 0xfd];
+        assert_eq!(&abi[..4], magic);
+        assert_eq!(&bytecode[..4], magic);
+        assert_eq!(&definition[..4], magic);
+
         transaction.execute(
             r"INSERT INTO contract_code ( hash,  bytecode,  abi,  definition)
                              VALUES (:hash, :bytecode, :abi, :definition)",

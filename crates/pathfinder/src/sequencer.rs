@@ -13,7 +13,7 @@ use reqwest::Url;
 use std::{borrow::Cow, fmt::Debug, result::Result, time::Duration};
 
 /// StarkNet sequencer client using REST API.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Client {
     /// This client is internally refcounted
     inner: reqwest::Client,
