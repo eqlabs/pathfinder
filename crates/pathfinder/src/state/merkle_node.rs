@@ -151,17 +151,6 @@ impl Node {
         }
     }
 
-    /// Returns true if the node represents an empty node -- this is defined as a node
-    /// with the [StarkHash::ZERO].
-    ///
-    /// This can occur for the root node in an empty graph.
-    pub fn is_empty(&self) -> bool {
-        match self {
-            Node::Unresolved(hash) => hash == &StarkHash::ZERO,
-            _ => false,
-        }
-    }
-
     pub fn is_binary(&self) -> bool {
         matches!(self, Node::Binary(..))
     }

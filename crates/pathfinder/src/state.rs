@@ -535,7 +535,7 @@ fn update(
     fetched_contracts_tx.blocking_send(fetch_commands).unwrap();
 
     let mut global_tree =
-        GlobalStateTree::load(db, global_root).context("Loading global state tree")?;
+        GlobalStateTree::load(db, Some(global_root)).context("Loading global state tree")?;
 
     for _ in 0..contract_count {
         let FetchedCompressedContract {
@@ -746,14 +746,15 @@ fn update_contract_state(
     // Update the contract state tree.
     let contract_state_hash = global_tree
         .get(update.address)
-        .context("Get contract state hash from global state tree")?;
+        .context("Get contract state hash from global state tree")?
+        .context("Contract root not found in global state")?;
     let contract_root = ContractsStateTable::get_root(db, contract_state_hash)
         .context("Read contract root from contracts state table")?
-        .unwrap_or(ContractRoot(StarkHash::ZERO));
+        .context("Contract state hash missing from storage")?;
 
     // Load the contract tree and insert the updates.
     let mut contract_tree =
-        ContractsStateTree::load(db, contract_root).context("Load contract state tree")?;
+        ContractsStateTree::load(db, Some(contract_root)).context("Load contract state tree")?;
     for storage_update in &update.storage_updates {
         contract_tree
             .set(storage_update.address, storage_update.value)

@@ -19,16 +19,18 @@ pub struct ContractsStateTree<'a> {
 }
 
 impl<'a> ContractsStateTree<'a> {
-    pub fn load(transaction: &'a Transaction, root: ContractRoot) -> anyhow::Result<Self> {
+    /// Loads a [ContractsStateTree] with the given root. Use [None] to create an empty tree.
+    pub fn load(transaction: &'a Transaction, root: Option<ContractRoot>) -> anyhow::Result<Self> {
         // TODO: move the string into storage.
-        let tree = MerkleTree::load("tree_contracts".to_string(), transaction, root.0)?;
+        let root = root.map(|val| val.0);
+        let tree = MerkleTree::load("tree_contracts".to_string(), transaction, root)?;
 
         Ok(Self { tree })
     }
 
-    pub fn _get(&self, address: StorageAddress) -> anyhow::Result<StorageValue> {
-        let value = self.tree.get(address.0)?;
-        Ok(StorageValue(value))
+    pub fn _get(&self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
+        let value = self.tree.get(address.0)?.map(StorageValue);
+        Ok(value)
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
@@ -49,16 +51,18 @@ pub struct GlobalStateTree<'a> {
 }
 
 impl<'a> GlobalStateTree<'a> {
-    pub fn load(transaction: &'a Transaction, root: GlobalRoot) -> anyhow::Result<Self> {
+    /// Loads a [GlobalStateTree] with the given root. Use [None] to create an empty tree.
+    pub fn load(transaction: &'a Transaction, root: Option<GlobalRoot>) -> anyhow::Result<Self> {
         // TODO: move the string into storage.
-        let tree = MerkleTree::load("tree_global".to_string(), transaction, root.0)?;
+        let root = root.map(|val| val.0);
+        let tree = MerkleTree::load("tree_global".to_string(), transaction, root)?;
 
         Ok(Self { tree })
     }
 
-    pub fn get(&self, address: ContractAddress) -> anyhow::Result<ContractStateHash> {
-        let value = self.tree.get(address.0)?;
-        Ok(ContractStateHash(value))
+    pub fn get(&self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
+        let value = self.tree.get(address.0)?.map(ContractStateHash);
+        Ok(value)
     }
 
     pub fn set(
