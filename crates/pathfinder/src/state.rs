@@ -739,7 +739,7 @@ impl From<(ContractUpdate, DeployedContract)> for CombinedUpdateDeploy {
 impl CombinedUpdateDeploy {
     fn split(self) -> (ContractUpdate, DeployedContract) {
         let u = ContractUpdate {
-            address: self.address.clone(),
+            address: self.address,
             storage_updates: self.storage_updates,
         };
         let d = DeployedContract {
@@ -1126,13 +1126,13 @@ mod tests {
             tree_updates,
             vec![
                 TreeUpdate::Update(Some(already_deployed_update)),
-                TreeUpdate::Deploy(fifth_deploy.clone(), ExistsAlready),
+                TreeUpdate::Deploy(fifth_deploy, ExistsAlready),
                 TreeUpdate::UpdateDeploy(
-                    CombinedUpdateDeploy::from((one_update, one_deploy.clone())),
+                    CombinedUpdateDeploy::from((one_update, one_deploy)),
                     FetchedNth(0)
                 ),
                 TreeUpdate::Deploy(two_deploy, UsingNthFetched(0)),
-                TreeUpdate::Deploy(three_deploy.clone(), FetchedNth(1)),
+                TreeUpdate::Deploy(three_deploy, FetchedNth(1)),
             ]
         );
 
