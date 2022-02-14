@@ -110,6 +110,13 @@ impl StarkHash {
 
         Ok(Self(bytes))
     }
+
+    /// Returns true if the value of [Starkhash] is larger than `2^251 - 1`.
+    /// Every [StarkHash] that is used to traverse a Merkle  Patricia Tree
+    /// must not exceed 251 bits, since 251 is the height of the tree.
+    pub fn has_more_than_251_bits(&self) -> bool {
+        self.0[0] & 0b1111_1000 > 0
+    }
 }
 
 impl std::ops::Add for StarkHash {
@@ -603,6 +610,26 @@ mod tests {
         fn max() {
             let hash = StarkHash::from_hex_str(MAX).unwrap();
             assert_eq!(hash.to_hex_str(), MAX);
+        }
+    }
+
+    mod has_more_than_251_bits {
+        use super::*;
+
+        #[test]
+        fn has_251_bits() {
+            let mut bytes = [0xFFu8; 32];
+            bytes[0] = 0x07;
+            let h = StarkHash::from_be_bytes(bytes).unwrap();
+            assert!(!h.has_more_than_251_bits());
+        }
+
+        #[test]
+        fn has_252_bits() {
+            let mut bytes = [0u8; 32];
+            bytes[0] = 0x08;
+            let h = StarkHash::from_be_bytes(bytes).unwrap();
+            assert!(h.has_more_than_251_bits());
         }
     }
 }

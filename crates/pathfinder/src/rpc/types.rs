@@ -56,14 +56,13 @@ pub mod request {
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
+    use web3::types::H256;
 
     /// The address of a storage element for a StarkNet contract.
-    /// __This type is not checked for field elment overflow__ in contrast to [`StorageAddress`](crate::core::StorageAddress).
+    /// __This type is not checked for 251 bits overflow__ in contrast to [`TruncatedStorageAddress`].
     #[serde_as]
     #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-    pub struct OverflowingStorageAddress(
-        #[serde_as(as = "H256AsNoLeadingZerosHexStr")] pub web3::types::H256,
-    );
+    pub struct OverflowingStorageAddress(#[serde_as(as = "H256AsNoLeadingZerosHexStr")] pub H256);
 
     /// Contains parameters passed to `starknet_call`.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

@@ -124,9 +124,15 @@ impl RpcApi {
         use pedersen::StarkHash;
 
         let key = StorageAddress(StarkHash::from_be_bytes(key.0.to_fixed_bytes()).map_err(
+            // Report that the value is >= than the field modulus
             // Use explicit typing in closure arg to force compiler error should error variants ever be expanded
             |_e: OverflowError| Error::from(ErrorCode::InvalidStorageKey),
         )?);
+
+        if key.0.has_more_than_251_bits() {
+            // Report that the value is more than 251 bits
+            return Err(Error::from(ErrorCode::InvalidStorageKey));
+        }
 
         if let BlockHashOrTag::Tag(Tag::Pending) = block_hash {
             // Pending request is always forwarded

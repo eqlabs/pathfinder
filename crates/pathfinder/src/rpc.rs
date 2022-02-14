@@ -514,44 +514,38 @@ mod tests {
         };
 
         #[tokio::test]
-        async fn invalid_contract() {
-            let params = rpc_params!(
-                *INVALID_CONTRACT_ADDR,
-                *VALID_KEY,
-                BlockHashOrTag::Tag(Tag::Latest)
-            );
-            client_request::<StorageValue>("starknet_getStorageAt", params)
-                .await
-                .unwrap();
-        }
+        async fn overflowing_key() {
+            use std::str::FromStr;
 
-        #[tokio::test]
-        async fn invalid_key() {
             let params = rpc_params!(
                 *VALID_CONTRACT_ADDR,
-                *INVALID_KEY,
+                web3::types::H256::from_str(
+                    "0x0800000000000000000000000000000000000000000000000000000000000000"
+                )
+                .unwrap(),
                 BlockHashOrTag::Tag(Tag::Latest)
             );
-            client_request::<StorageValue>("starknet_getStorageAt", params)
+            let error = client_request::<StorageValue>("starknet_getStorageAt", params)
                 .await
-                .unwrap();
+                .unwrap_err();
+            assert_matches!(
+                error,
+                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_KEY)
+            );
         }
 
         #[tokio::test]
-        async fn invalid_key_is_zero() {
-            // Invalid key of value zero results with storage value of zero
-            let params = rpc_params!(
-                *VALID_CONTRACT_ADDR,
-                *ZERO_KEY,
-                BlockHashOrTag::Tag(Tag::Latest)
-            );
-            client_request::<StorageValue>("starknet_getStorageAt", params)
-                .await
-                .unwrap();
+        async fn non_existent_contract_address() {
+            todo!("Add the test once state mocking is easy");
         }
 
         #[tokio::test]
-        async fn invalid_block_hash() {
+        async fn pre_deploy_block_hash() {
+            todo!("Add the test once state mocking is easy");
+        }
+
+        #[tokio::test]
+        async fn non_existent_block_hash() {
             let params = rpc_params!(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH);
             let error = client_request::<StorageValue>("starknet_getStorageAt", params)
                 .await
@@ -562,43 +556,34 @@ mod tests {
             );
         }
 
-        #[tokio::test]
-        async fn latest_invoke_block() {
-            let params = rpc_params!(
-                *VALID_CONTRACT_ADDR,
-                *VALID_KEY,
-                *INVOKE_CONTRACT_BLOCK_HASH
-            );
-            client_request::<StorageValue>("starknet_getStorageAt", params)
-                .await
-                .unwrap();
-        }
-
         mod latest_block {
             use super::*;
 
             #[tokio::test]
-            async fn positional_args() {
+            async fn real_data() {
+                let storage = Storage::migrate("desync.sqlite".into()).unwrap();
+                let sequencer = sequencer::Client::goerli().unwrap();
+                let (__handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
                 let params = rpc_params!(
                     *VALID_CONTRACT_ADDR,
                     *VALID_KEY,
                     BlockHashOrTag::Tag(Tag::Latest)
                 );
-                client_request::<StorageValue>("starknet_getStorageAt", params)
+                let value = client(addr)
+                    .request::<StorageValue>("starknet_getStorageAt", params)
                     .await
                     .unwrap();
+                assert_eq!(value, StorageValue::from_hex_str("0x123456").unwrap());
+            }
+
+            #[tokio::test]
+            async fn positional_args() {
+                todo!("Add the test once state mocking is easy");
             }
 
             #[tokio::test]
             async fn named_args() {
-                let params = by_name([
-                    ("contract_address", json!(*VALID_CONTRACT_ADDR)),
-                    ("key", json!(*VALID_KEY)),
-                    ("block_hash", json!("latest")),
-                ]);
-                client_request::<StorageValue>("starknet_getStorageAt", params)
-                    .await
-                    .unwrap();
+                todo!("Add the test once state mocking is easy");
             }
         }
 
