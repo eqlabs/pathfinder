@@ -56,6 +56,24 @@ pub enum RetrieveStateUpdateError {
     Other(anyhow::Error),
 }
 
+impl std::fmt::Display for RetrieveStateUpdateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use RetrieveStateUpdateError::*;
+        match self {
+            StateTransitionFactNotFound => write!(f, "Not found: State transition fact"),
+            MemoryPageHashesNotFound => write!(f, "Not found: Memory page hashes"),
+            MemoryPageLogNotFound => write!(f, "Not found: Memory page log"),
+            MemoryPageTransactionNotFound => write!(f, "Not found: Memory page transaction"),
+            Reorg => write!(f, "Reorg event detected"),
+            Other(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for RetrieveStateUpdateError {
+    // no source implementation, because anyhow is not a standard error.
+}
+
 impl From<anyhow::Error> for RetrieveStateUpdateError {
     fn from(err: anyhow::Error) -> Self {
         RetrieveStateUpdateError::Other(err)
