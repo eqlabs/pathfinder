@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use web3::types::{H160, H256};
 
 /// The address of a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct ContractAddress(pub StarkHash);
 
 /// The salt of a StarkNet contract address.

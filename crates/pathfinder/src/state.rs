@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 use anyhow::Context;
 use pedersen::{pedersen_hash, StarkHash};
@@ -261,22 +261,13 @@ async fn fetch_contracts(
         // as for the contracts to deploy, we should really check if we really need to download the
         // contract on the db thread. however we can do the default setting right away, just await for
         // the contracts in the end and deploy them then.
-        for cmd in cmds {
-            let contract_definition = if cmd.fetch {
-                Some(
-                    sequencer
-                        .full_contract(cmd.deploy_info.address)
-                        .await
-                        .expect("Download contract definition from sequencer"),
-                )
-            } else {
-                None
-            };
+        for FetchExtractContract(address) in cmds {
+            let contract_definition = sequencer
+                .full_contract(address)
+                .await
+                .expect("Download contract definition from sequencer");
 
-            let response = FetchedExtractableContract {
-                deploy_info: cmd.deploy_info,
-                payload: contract_definition,
-            };
+            let response = FetchedExtractableContract(address, contract_definition);
 
             if compression_tx.send(response).await.is_err() {
                 // just exit cleanly, someone else exited already
@@ -356,7 +347,6 @@ fn update_database(
                 block_info = info;
             }
             Err(e) => {
-                println!("erroring out");
                 return Err(anyhow::anyhow!(
                     "Updating to block number {} gave {:?}",
                     root_log.block_number.0,
@@ -420,15 +410,8 @@ fn extract_compress(
         })
     };
 
-    while let Some(FetchedExtractableContract {
-        deploy_info,
-        payload,
-    }) = rx.blocking_recv()
-    {
-        let resp = FetchedCompressedContract {
-            deploy_info,
-            payload: payload.map(&mut process_one).transpose()?,
-        };
+    while let Some(FetchedExtractableContract(address, payload)) = rx.blocking_recv() {
+        let resp = FetchedCompressedContract(address, process_one(payload)?);
         if tx.blocking_send(resp).is_err() {
             break;
         }
@@ -457,160 +440,141 @@ impl std::fmt::Debug for CompressedContract {
 
 /// Command sent from database update thread to the async contract fetcher.
 #[derive(Debug, PartialEq)]
-struct FetchExtractContract {
-    deploy_info: DeployedContract,
-    /// This boolean will determine whether to actually fetch anything from the database. It's
-    /// crutch; the fetching and tree updating process could be fixed to have better ordering of
-    /// operations to maximize time for the extraction and compression.
-    fetch: bool,
-}
+struct FetchExtractContract(crate::core::ContractAddress);
 
 /// Intermediate fetched, but not yet extracted and compressed contract definition.
 #[derive(Debug)]
-struct FetchedExtractableContract {
-    deploy_info: DeployedContract,
-    /// This will be None depeneding on the [`FetchExtractContract::fetch`]
-    payload: Option<bytes::Bytes>,
-}
+struct FetchedExtractableContract(crate::core::ContractAddress, bytes::Bytes);
 
 #[derive(Debug)]
-struct FetchedCompressedContract {
-    deploy_info: DeployedContract,
-    /// This will be None dependending on the [`FetchExtractContract::fetch`]
-    payload: Option<CompressedContract>,
-}
+struct FetchedCompressedContract(crate::core::ContractAddress, CompressedContract);
 
 /// Updates the Starknet state with a new block described by [StateUpdateLog].
 ///
 /// Returns the new global root.
 fn update(
     state_update: StateUpdate,
+    // FIXME: rename as "from_root" as there's the new in update_log
     global_root: GlobalRoot,
     update_log: &StateUpdateLog,
     db: &Transaction<'_>,
     fetched_contracts_tx: &mpsc::Sender<Vec<FetchExtractContract>>,
     ready_contracts_rx: &mut mpsc::Receiver<FetchedCompressedContract>,
 ) -> anyhow::Result<BlockUpdated> {
-    let contract_count = state_update.deployed_contracts.len();
+    let tree_updates = combine_to_tree_updates(
+        db,
+        state_update.deployed_contracts,
+        state_update.contract_updates,
+    )
+    .context("Prepare tree updates")?;
 
-    let mut already_fetching = HashSet::new();
+    let fetch_commands = tree_updates
+        .iter()
+        .filter_map(TreeUpdate::as_fetch_command)
+        .collect::<Vec<_>>();
 
-    let fetch_commands = {
-        let mut stmt = db
-            .prepare("select 1 from contract_code where hash = ?")
-            .unwrap();
-
-        // this could be done with a temporary table as well; however rusqlite does not support
-        // expanding questionmark into many values so "where hash IN (<construct this string>)" up
-        // to parameter limit is not really an option.
-        state_update
-            .deployed_contracts
-            .into_iter()
-            .map(|x| {
-                let known = already_fetching.contains(&x.hash.0)
-                    || stmt.exists(&[&x.hash.0.to_be_bytes()[..]])?;
-
-                if !known {
-                    // record that even within this batch, we only need to fetch the first
-                    // one, not the following duplicates.
-                    already_fetching.insert(x.hash.0);
-                }
-
-                // it's important to note that since we request that only first one of duplicates
-                // should be fetched in any batch of deployed contracts, we are making a big
-                // assumption that the pipeline goes through in the same order. as in, you cannot
-                // add new multithreaded stages which would process for example compressions as
-                // fast as possible *without* having a new stage which would reorder them back to
-                // the original order.
-
-                Ok(FetchExtractContract {
-                    deploy_info: x,
-                    fetch: !known,
-                })
-            })
-            .collect::<Result<Vec<_>, rusqlite::Error>>()
-            .expect("exist queries failed for checking if contracts should be downloaded")
-    };
-
+    let fetch_command_count = fetch_commands.len();
     fetched_contracts_tx.blocking_send(fetch_commands).unwrap();
 
     let mut global_tree =
         GlobalStateTree::load(db, global_root).context("Loading global state tree")?;
 
-    for _ in 0..contract_count {
-        let FetchedCompressedContract {
-            deploy_info,
-            payload,
-        } = ready_contracts_rx
-            .blocking_recv()
-            .context("should have gotten all of the compressed")?;
+    let mut updated_contracts = 0;
+    let mut total_updates = 0;
+    let mut deployed_contract_count = 0;
+    let mut awaited = 0;
 
-        // this should not be needed
-        {
-            // we should only do this for contracts, which didn't get updated to save up on zero
-            // writing
-            let state_hash =
-                calculate_contract_state_hash(deploy_info.hash, ContractRoot(StarkHash::ZERO));
+    let mut await_time = std::time::Duration::ZERO;
 
-            global_tree
-                .set(deploy_info.address, state_hash)
-                .context("Adding deployed contract to global state tree")?;
+    for tree_update in tree_updates {
+        use TreeUpdate::*;
 
-            // esp thinking about this being waste for most contracts which do receive updates.
-            ContractsStateTable::insert(
-                db,
-                state_hash,
-                deploy_info.hash,
-                ContractRoot(StarkHash::ZERO),
-            )
-            .context("Insert constract state hash into contracts state table")?;
-        }
+        let (address, update, deploy, fetched) = match tree_update {
+            Update(u) => {
+                let u = u.unwrap();
+                (u.address, Some(u), None, false)
+            }
+            Deploy(d, fetched) => (d.address, None, Some(d), fetched.implies_fetch()),
+            UpdateDeploy(u, d, fetched) => (u.address, Some(u), Some(d), fetched.implies_fetch()),
+        };
 
-        // these we want to store regardless of they receiving updates, since us fetching them
-        // means we didn't have the contract in storage.
-        if let Some(compressed) = payload {
-            if compressed.hash != deploy_info.hash.0 {
-                return Err(anyhow::anyhow!(
+        if fetched {
+            let started_at = std::time::Instant::now();
+            let FetchedCompressedContract(fetched_address, payload) = ready_contracts_rx
+                .blocking_recv()
+                .context("should have gotten all of the compressed")?;
+            await_time += started_at.elapsed();
+
+            {
+                let DeployedContract { hash, address, .. } =
+                    deploy.as_ref().expect("every fetched has a deploy");
+                assert_eq!(fetched_address.0, address.0);
+                anyhow::ensure!(
+                    payload.hash == hash.0,
                     "Contract hash mismatch on address {}: expected {}, actual {}",
-                    deploy_info.address.0,
-                    deploy_info.hash.0,
-                    compressed.hash,
-                ));
+                    address.0,
+                    hash.0,
+                    payload.hash,
+                );
             }
 
             ContractCodeTable::insert_compressed(
                 db,
-                deploy_info.hash,
-                &compressed.abi,
-                &compressed.bytecode,
-                &compressed.definition,
+                ContractHash(payload.hash),
+                &payload.abi,
+                &payload.bytecode,
+                &payload.definition,
             )
-            .with_context(|| format!("Inserting contract {}", deploy_info.hash.0))?;
+            .with_context(|| format!("Inserting contract {}", payload.hash))?;
+
+            awaited += 1;
         }
 
-        // Pretty sure we'll need this regardless, it's for having the information available when
-        // the time to call something comes.
-        ContractsTable::insert(db, deploy_info.address, deploy_info.hash)
-            .context("Inserting contract hash into contracts table")?;
+        if let Some(deploy_info) = deploy {
+            let state_hash =
+                calculate_contract_state_hash(deploy_info.hash, ContractRoot(StarkHash::ZERO));
+
+            global_tree
+                .set(address, state_hash)
+                .context("Adding deployed contract to global state tree")?;
+
+            // if the deployment block has updates for this contract, we can leave out the insert
+            // as one will be provided for it.
+            if update.is_none() {
+                ContractsStateTable::insert(
+                    db,
+                    state_hash,
+                    deploy_info.hash,
+                    ContractRoot(StarkHash::ZERO),
+                )
+                .context("Insert constract state hash into contracts state table")?;
+            }
+
+            ContractsTable::insert(db, address, deploy_info.hash).with_context(|| {
+                format!(
+                    "Inserting into contracts table for {} => {}",
+                    address.0, deploy_info.hash.0
+                )
+            })?;
+
+            deployed_contract_count += 1;
+        }
+
+        if let Some(contract_update) = update {
+            total_updates += contract_update.storage_updates.len();
+
+            let contract_state_hash = update_contract_state(&contract_update, &global_tree, db)
+                .context("Updating contract state")?;
+
+            global_tree
+                .set(address, contract_state_hash)
+                .context("Updating global state tree")?;
+
+            updated_contracts += 1;
+        }
     }
 
-    let mut updated_contracts = 0;
-    let mut total_updates = 0;
-
-    // Update contract state tree
-    for contract_update in state_update.contract_updates {
-        total_updates += contract_update.storage_updates.len();
-
-        let contract_state_hash = update_contract_state(&contract_update, &global_tree, db)
-            .context("Updating contract state")?;
-
-        // Update the global state tree.
-        global_tree
-            .set(contract_update.address, contract_state_hash)
-            .context("Updating global state tree")?;
-
-        updated_contracts += 1;
-    }
+    assert_eq!(fetch_command_count, awaited);
 
     // Apply all global tree changes.
     let new_global_root = global_tree
@@ -704,9 +668,10 @@ fn update(
             eth_log_index: update_log.origin.log_index,
         },
         info: BlockInfo {
-            deployed_contract_count: contract_count,
+            deployed_contract_count,
             updated_contracts,
             total_updates,
+            await_time,
         },
     })
 }
@@ -722,16 +687,218 @@ struct BlockInfo {
     deployed_contract_count: usize,
     updated_contracts: usize,
     total_updates: usize,
+    await_time: std::time::Duration,
 }
 
 impl std::fmt::Display for BlockInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} deployed contracts, {} contracts updated with total of {} updates",
-            self.deployed_contract_count, self.updated_contracts, self.total_updates
+            "{} deployed contracts, {} contracts updated with total of {} updates, awaited {:?}",
+            self.deployed_contract_count,
+            self.updated_contracts,
+            self.total_updates,
+            self.await_time,
         )
     }
+}
+
+/// TreeUpdate represents a per contract update to the trees, and is used to order the updates.
+#[derive(PartialEq)]
+enum TreeUpdate {
+    // Option needed to transform this into UpdateDeploy
+    Update(Option<ContractUpdate>),
+    Deploy(DeployedContract, FetchOrder),
+    // TODO: Could inline the CU and DC to avoid duplicating the field
+    UpdateDeploy(ContractUpdate, DeployedContract, FetchOrder),
+}
+
+impl From<ContractUpdate> for TreeUpdate {
+    fn from(u: ContractUpdate) -> Self {
+        TreeUpdate::Update(Some(u))
+    }
+}
+
+impl std::fmt::Debug for TreeUpdate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Update(u) => {
+                write!(f, "Update({})", u.as_ref().unwrap().address.0)
+            }
+            Self::Deploy(d, fo) => {
+                write!(f, "Deploy({}, {:?})", d.address.0, fo)
+            }
+            Self::UpdateDeploy(_, d, fo) => {
+                write!(f, "UpdateDeploy({}, {:?}", d.address.0, fo)
+            }
+        }
+    }
+}
+
+impl TreeUpdate {
+    fn with_deploy(&mut self, d: DeployedContract, fetch_order: FetchOrder) {
+        use TreeUpdate::*;
+        match self {
+            Update(u) => {
+                // FIXME: this belongs to a new type combining the two
+                assert_eq!(u.as_ref().unwrap().address.0, d.address.0);
+                *self = UpdateDeploy(u.take().unwrap(), d, fetch_order)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn as_fetch_command(&self) -> Option<FetchExtractContract> {
+        use FetchOrder::FetchedNth;
+        use TreeUpdate::*;
+        match self {
+            Deploy(d, FetchedNth(_)) | UpdateDeploy(_, d, FetchedNth(_)) => {
+                Some(FetchExtractContract(d.address))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Records the needs of a [`TreeUpdate`] in relation to contract definition fetching in an update
+/// batch.
+#[derive(PartialEq, Eq, Debug)]
+enum FetchOrder {
+    /// This represents a contract which should be fetched in this order
+    FetchedNth(usize),
+    /// This represents a contract which uses previously fetched
+    UsingNthFetched(usize),
+    /// This represents a contract which we already have
+    ExistsAlready,
+}
+
+impl std::cmp::PartialOrd for FetchOrder {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl std::cmp::Ord for FetchOrder {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering::*;
+        use FetchOrder::*;
+
+        match (self, other) {
+            // we should always handle these first
+            (ExistsAlready, ExistsAlready) => Equal,
+            (ExistsAlready, _) => Less,
+            (_, ExistsAlready) => Greater,
+
+            (FetchedNth(x), FetchedNth(y)) | (UsingNthFetched(x), UsingNthFetched(y)) => x.cmp(y),
+
+            (FetchedNth(x), UsingNthFetched(y)) => x.cmp(y).then(Less),
+            (UsingNthFetched(x), FetchedNth(y)) => x.cmp(y).then(Greater),
+        }
+    }
+}
+
+impl FetchOrder {
+    /// Returns true if this fetch order implies that a network request should be done
+    fn implies_fetch(&self) -> bool {
+        match self {
+            FetchOrder::FetchedNth(_) => true,
+            _ => false,
+        }
+    }
+}
+
+fn combine_to_tree_updates(
+    db: &rusqlite::Transaction,
+    deployed: Vec<DeployedContract>,
+    updated: Vec<ContractUpdate>,
+) -> Result<Vec<TreeUpdate>, rusqlite::Error> {
+    let mut tree_updates = HashMap::with_capacity(deployed.len() + updated.len());
+
+    tree_updates.extend(
+        updated
+            .into_iter()
+            .map(|u| (u.address, TreeUpdate::from(u))),
+    );
+
+    // mapping from already known contract hashes to an option of in which order we will be
+    // fetching this contract, or none, meaning for it already existing in our database
+    //
+    // using the default hashmap here is fine, since we are bound to get deterministic order from
+    // the deployed being a vec, which sets the order for the FetchOrder and so the order for the
+    // fetched contracts on the final sort.
+    let mut already_fetching: HashMap<StarkHash, Option<usize>> =
+        HashMap::with_capacity(deployed.len());
+
+    let mut fetches = 0;
+
+    let mut stmt = db
+        .prepare("select 1 from contract_code where hash = ?")
+        .unwrap();
+
+    for x in deployed {
+        use std::collections::hash_map::Entry::*;
+
+        let fetch_order = match already_fetching.entry(x.hash.0) {
+            Occupied(oe) => match oe.get() {
+                Some(order) => FetchOrder::UsingNthFetched(*order),
+                None => FetchOrder::ExistsAlready,
+            },
+            Vacant(ve) => {
+                let known = stmt.exists(&[&x.hash.0.to_be_bytes()[..]])?;
+
+                if !known {
+                    let order = fetches;
+                    fetches += 1;
+                    ve.insert(Some(order));
+                    FetchOrder::FetchedNth(order)
+                } else {
+                    // we have it our database
+                    ve.insert(None);
+                    FetchOrder::ExistsAlready
+                }
+            }
+        };
+
+        match tree_updates.entry(x.address) {
+            Occupied(mut oe) => {
+                let val = oe.get_mut();
+                val.with_deploy(x, fetch_order);
+            }
+            Vacant(ve) => {
+                ve.insert(TreeUpdate::Deploy(x, fetch_order));
+            }
+        }
+    }
+
+    let mut tree_updates = tree_updates
+        .into_iter()
+        .map(|(_k, v)| v)
+        .collect::<Vec<_>>();
+
+    // we don't really care about the sort between individual contracts. for testing this might be
+    // good to set to the stable sort, but we don't need it in reality.
+    //
+    // NOTE: this sort function should not be set as the PartialOrd or Ord because it doesn't sort
+    // by every field in the graph, just does a quick and easy "sort by type".
+    tree_updates.sort_unstable_by(|l, r| {
+        use std::cmp::Ordering::*;
+        use TreeUpdate::*;
+
+        // for the ordering of TreeUpdates, we want the first be updates of existing contracts then
+        // the deploys and/or updates in the order of their fetches to maximize the work done
+        // before each fetch.
+        match (l, r) {
+            (Update(_), Update(_)) => Equal,
+            (Update(_), _) => Less,
+            (_, Update(_)) => Greater,
+            (UpdateDeploy(_, _, l_fo), UpdateDeploy(_, _, r_fo))
+            | (Deploy(_, l_fo), Deploy(_, r_fo))
+            | (UpdateDeploy(_, _, l_fo), Deploy(_, r_fo))
+            | (Deploy(_, l_fo), UpdateDeploy(_, _, r_fo)) => l_fo.cmp(r_fo),
+        }
+    });
+
+    Ok(tree_updates)
 }
 
 /// Updates a contract's state with the given [storage updates](ContractUpdate). It returns the
@@ -823,19 +990,14 @@ mod tests {
 
     #[test]
     fn update_requests_fetching_unique_new_contracts() {
-        use super::{update, FetchExtractContract};
-        use crate::core::{
-            ContractAddress, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
-            StorageAddress, StorageValue,
+        use super::{combine_to_tree_updates, FetchExtractContract, FetchOrder::*, TreeUpdate};
+        use crate::core::{ContractAddress, StorageAddress, StorageValue};
+        use crate::ethereum::state_update::{
+            ContractUpdate, DeployedContract, StateUpdate, StorageUpdate,
         };
-        use crate::ethereum::{
-            log::StateUpdateLog,
-            state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
-            BlockOrigin, EthOrigin, TransactionOrigin,
-        };
-        use tokio::sync::mpsc;
         let s = crate::storage::Storage::in_memory().unwrap();
+        let mut conn = s.connection().unwrap();
+        let db = conn.transaction().unwrap();
 
         let shared_hash =
             ContractHash(StarkHash::from_be_slice(&b"this is shared by multiple"[..]).unwrap());
@@ -845,6 +1007,7 @@ mod tests {
         let one = ContractAddress(StarkHash::from_hex_str("1").unwrap());
         let two = ContractAddress(StarkHash::from_hex_str("2").unwrap());
         let three = ContractAddress(StarkHash::from_hex_str("3").unwrap());
+        let already_deployed = ContractAddress(StarkHash::from_hex_str("4").unwrap());
 
         let one_deploy = DeployedContract {
             address: one,
@@ -864,82 +1027,62 @@ mod tests {
             call_data: vec![],
         };
 
-        // neither of these deployed contracts are in database, which is empty
-        let state_update = StateUpdate {
-            deployed_contracts: vec![one_deploy.clone(), two_deploy.clone(), three_deploy.clone()],
-            contract_updates: vec![ContractUpdate {
-                address: one,
-                storage_updates: vec![StorageUpdate {
-                    address: StorageAddress(StarkHash::from_hex_str("1").unwrap()),
-                    value: StorageValue(StarkHash::from_hex_str("dead").unwrap()),
-                }],
+        let one_update = ContractUpdate {
+            address: one,
+            storage_updates: vec![StorageUpdate {
+                address: StorageAddress(StarkHash::from_hex_str("1").unwrap()),
+                value: StorageValue(StarkHash::from_hex_str("dead").unwrap()),
             }],
         };
 
-        // FIXME: this could be a #[cfg(test)] Default::default()
-        let global_root = GlobalRoot(StarkHash::ZERO);
-
-        // FIXME: this could be a default actually, only accessible in `#[cfg(test)]`
-        let update_log = StateUpdateLog {
-            origin: EthOrigin {
-                block: BlockOrigin {
-                    hash: EthereumBlockHash(web3::types::H256::default()),
-                    number: EthereumBlockNumber(0),
-                },
-                transaction: TransactionOrigin {
-                    hash: EthereumTransactionHash(web3::types::H256::default()),
-                    index: EthereumTransactionIndex(0),
-                },
-                log_index: EthereumLogIndex(0),
-            },
-            global_root: GlobalRoot(StarkHash::ZERO),
-            block_number: StarknetBlockNumber(0),
+        let already_deployed_update = ContractUpdate {
+            address: already_deployed,
+            storage_updates: vec![StorageUpdate {
+                address: StorageAddress(StarkHash::from_hex_str("cafe").unwrap()),
+                value: StorageValue(StarkHash::from_hex_str("babe").unwrap()),
+            }],
         };
 
-        let (c_tx, mut c_rx) = mpsc::channel(1);
-        let (r_tx, mut r_rx) = mpsc::channel(1);
+        // neither of these deployed contracts are in database, which is empty
+        let state_update = StateUpdate {
+            deployed_contracts: vec![one_deploy.clone(), two_deploy.clone(), three_deploy.clone()],
+            contract_updates: vec![one_update.clone(), already_deployed_update.clone()],
+        };
 
-        let jh = std::thread::spawn(move || {
-            let mut conn = s.connection().unwrap();
-            let tx = conn.transaction().unwrap();
-            update(
-                state_update,
-                global_root,
-                &update_log,
-                &tx,
-                &c_tx,
-                &mut r_rx,
-            )
-            .unwrap();
-        });
+        let tree_updates = combine_to_tree_updates(
+            &db,
+            state_update.deployed_contracts,
+            state_update.contract_updates,
+        )
+        .unwrap();
 
-        let requests = c_rx.blocking_recv().unwrap();
-
-        // since the two deployed contracts share the hash only first of them must be `fetch:
-        // true`, third is unique
         assert_eq!(
-            requests,
+            tree_updates,
             vec![
-                FetchExtractContract {
-                    deploy_info: one_deploy,
-                    fetch: true
-                },
-                FetchExtractContract {
-                    deploy_info: two_deploy,
-                    fetch: false
-                },
-                FetchExtractContract {
-                    deploy_info: three_deploy,
-                    fetch: true
-                }
+                TreeUpdate::Update(Some(already_deployed_update)),
+                TreeUpdate::UpdateDeploy(one_update, one_deploy.clone(), FetchedNth(0)),
+                TreeUpdate::Deploy(two_deploy, UsingNthFetched(0)),
+                TreeUpdate::Deploy(three_deploy.clone(), FetchedNth(1)),
             ]
         );
 
-        // this will lead to panic when awaiting for the ready contracts.
-        drop(r_tx);
+        assert_eq!(
+            tree_updates
+                .iter()
+                .filter_map(TreeUpdate::as_fetch_command)
+                .collect::<Vec<_>>(),
+            vec![FetchExtractContract(one), FetchExtractContract(three)]
+        );
+    }
 
-        // which we assert here; now it could be some other panic as well
-        jh.join().unwrap_err();
+    #[test]
+    fn fetch_order_orderings() {
+        use super::FetchOrder::*;
+
+        assert!(ExistsAlready < FetchedNth(0));
+        assert!(FetchedNth(0) < UsingNthFetched(0));
+        assert!(UsingNthFetched(0) < FetchedNth(1));
+        assert!(FetchedNth(1) > UsingNthFetched(0));
     }
 
     #[tokio::test]
