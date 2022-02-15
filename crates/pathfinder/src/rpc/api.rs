@@ -36,7 +36,7 @@ pub struct RpcApi {
     sequencer: sequencer::Client,
 }
 
-/// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-adrs/blob/master/api/starknet_operator_api_openrpc.json).
+/// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
 impl RpcApi {
     pub fn new(storage: Storage, sequencer: sequencer::Client) -> Self {
         Self { storage, sequencer }
@@ -106,10 +106,8 @@ impl RpcApi {
     /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
     /// of the requested block.
     ///
-    /// We are using overflowing type for `key` to be able to correctly report
-    /// [`INVALID_STORAGE_KEY`](https://github.com/starkware-libs/starknet-specs/blob/64044c2c8be136b6fdf7f13896ea0422bf211a74/api/starknet_api_openrpc.json#L1043)
-    /// as per
-    /// [StarkNet RPC spec](https://github.com/starkware-libs/starknet-specs/blob/64044c2c8be136b6fdf7f13896ea0422bf211a74/api/starknet_api_openrpc.json#L144),
+    /// We are using overflowing type for `key` to be able to correctly report `INVALID_STORAGE_KEY` as per
+    /// [StarkNet RPC spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json),
     /// otherwise we would report [-32602](https://www.jsonrpc.org/specification#error_object).
     pub async fn get_storage_at(
         &self,
@@ -212,8 +210,7 @@ impl RpcApi {
             .map_err(internal_server_error)?;
 
         // ContractsStateTree::get() will return zero if the value is still not found (and we know the key is valid),
-        // which is consistent with the specification:
-        // https://github.com/starkware-libs/starknet-specs/blob/64044c2c8be136b6fdf7f13896ea0422bf211a74/api/starknet_api_openrpc.json#L136)
+        // which is consistent with the specification.
         let storage_val = contract_state_tree
             .get(key)
             .context("Get value from contract state tree")
