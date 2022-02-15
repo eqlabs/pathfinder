@@ -206,7 +206,7 @@ impl HashChain {
 
 /// See:
 /// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
-fn truncated_keccak(mut plain: [u8; 32]) -> StarkHash {
+pub(crate) fn truncated_keccak(mut plain: [u8; 32]) -> StarkHash {
     // python code masks with (2**250 - 1) which starts 0x03 and is followed by 31 0xff in be
     // truncation is needed not to overflow the field element.
     plain[0] &= 0x03;

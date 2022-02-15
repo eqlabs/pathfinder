@@ -45,6 +45,18 @@ pub struct ContractCode {
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EntryPoint(pub StarkHash);
 
+impl EntryPoint {
+    /// Returns a new EntryPoint which has been truncated to fit from Keccak256 digest of input.
+    ///
+    /// See: <https://starknet.io/documentation/contracts/#function_selector>
+    pub fn hashed(input: &[u8]) -> Self {
+        use sha3::Digest;
+        EntryPoint(crate::state::contract_hash::truncated_keccak(
+            <[u8; 32]>::from(sha3::Keccak256::digest(input)),
+        ))
+    }
+}
+
 /// A single parameter passed to a StarkNet `call`.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CallParam(pub StarkHash);
