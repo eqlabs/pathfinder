@@ -50,7 +50,7 @@ pub trait MetaLog: TryFrom<web3::types::Log, Error = anyhow::Error> {
 
 impl MetaLog for StateUpdateLog {
     fn contract_address(chain: Chain) -> H160 {
-        crate::ethereum::contract::addresses(chain).core.0
+        crate::ethereum::contract::addresses(chain).core
     }
 
     fn signature() -> H256 {
@@ -64,7 +64,7 @@ impl MetaLog for StateUpdateLog {
 
 impl MetaLog for StateTransitionFactLog {
     fn contract_address(chain: Chain) -> web3::types::H160 {
-        crate::ethereum::contract::addresses(chain).core.0
+        crate::ethereum::contract::addresses(chain).core
     }
 
     fn signature() -> H256 {
@@ -78,7 +78,7 @@ impl MetaLog for StateTransitionFactLog {
 
 impl MetaLog for MemoryPagesHashesLog {
     fn contract_address(chain: Chain) -> web3::types::H160 {
-        crate::ethereum::contract::addresses(chain).gps.0
+        crate::ethereum::contract::addresses(chain).gps
     }
 
     fn signature() -> H256 {
@@ -92,7 +92,7 @@ impl MetaLog for MemoryPagesHashesLog {
 
 impl MetaLog for MemoryPageFactContinuousLog {
     fn contract_address(chain: Chain) -> web3::types::H160 {
-        crate::ethereum::contract::addresses(chain).mempage.0
+        crate::ethereum::contract::addresses(chain).mempage
     }
 
     fn signature() -> H256 {

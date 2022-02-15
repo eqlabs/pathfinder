@@ -5,43 +5,40 @@ use web3::types::H160;
 
 use crate::ethereum::Chain;
 
-pub struct StarknetCoreAddress(pub H160);
-pub struct StarknetGpsAddress(pub H160);
-pub struct StarknetMempageAddress(pub H160);
-
 /// Groups the Starknet contract addresses for a specific chain.
 pub struct ContractAddresses {
-    pub core: StarknetCoreAddress,
-    pub gps: StarknetGpsAddress,
-    pub mempage: StarknetMempageAddress,
+    pub core: H160,
+    pub gps: H160,
+    pub mempage: H160,
 }
 
 /// Starknet contract addresses on L1 Mainnet.
 const MAINNET_ADDRESSES: ContractAddresses = ContractAddresses {
-    core: StarknetCoreAddress(H160([
+    core: H160([
         198, 98, 196, 16, 192, 236, 247, 71, 84, 63, 91, 169, 6, 96, 246, 171, 235, 217, 200, 196,
-    ])),
-    gps: StarknetGpsAddress(H160([
+    ]),
+    gps: H160([
         71, 49, 36, 80, 179, 172, 139, 91, 142, 36, 122, 107, 182, 213, 35, 231, 96, 91, 219, 96,
-    ])),
-    mempage: StarknetMempageAddress(H160([
+    ]),
+    mempage: H160([
         198, 98, 196, 16, 192, 236, 247, 71, 84, 63, 91, 169, 6, 96, 246, 171, 235, 217, 200, 196,
-    ])),
+    ]),
 };
 
 /// Starknet contract addresses on L1 Goerli.
 const GOERLI_ADDRESSES: ContractAddresses = ContractAddresses {
-    core: StarknetCoreAddress(H160([
+    core: H160([
         222, 41, 208, 96, 212, 89, 1, 251, 25, 237, 108, 110, 149, 158, 178, 45, 134, 38, 112, 142,
-    ])),
-    gps: StarknetGpsAddress(H160([
+    ]),
+    gps: H160([
         94, 243, 201, 128, 191, 151, 15, 206, 91, 188, 33, 120, 53, 116, 62, 169, 240, 56, 143, 79,
-    ])),
-    mempage: StarknetMempageAddress(H160([
+    ]),
+    mempage: H160([
         116, 55, 137, 255, 47, 248, 43, 251, 144, 112, 9, 201, 145, 26, 125, 166, 54, 211, 79, 167,
-    ])),
+    ]),
 };
 
+/// Returns the Starknet contract addresses for the given L1 chain.
 pub fn addresses(chain: Chain) -> ContractAddresses {
     match chain {
         Chain::Mainnet => MAINNET_ADDRESSES,
@@ -144,7 +141,7 @@ mod tests {
 
                 let core_proxy = web3::contract::Contract::from_json(
                     transport.eth(),
-                    GOERLI_ADDRESSES.core.0,
+                    GOERLI_ADDRESSES.core,
                     CORE_PROXY_ABI,
                 )
                 .unwrap();
@@ -183,7 +180,7 @@ mod tests {
 
                 let core_proxy = web3::contract::Contract::from_json(
                     transport.eth(),
-                    MAINNET_ADDRESSES.core.0,
+                    MAINNET_ADDRESSES.core,
                     CORE_PROXY_ABI,
                 )
                 .unwrap();
@@ -214,19 +211,19 @@ mod tests {
             #[test]
             fn core() {
                 let expect = H160::from_str("0xde29d060D45901Fb19ED6C6e959EB22d8626708e").unwrap();
-                assert_eq!(GOERLI_ADDRESSES.core.0, expect);
+                assert_eq!(GOERLI_ADDRESSES.core, expect);
             }
 
             #[test]
             fn gps() {
                 let expect = H160::from_str("0x5EF3C980Bf970FcE5BbC217835743ea9f0388f4F").unwrap();
-                assert_eq!(GOERLI_ADDRESSES.gps.0, expect);
+                assert_eq!(GOERLI_ADDRESSES.gps, expect);
             }
 
             #[test]
             fn mempage() {
                 let expect = H160::from_str("0x743789ff2fF82Bfb907009C9911a7dA636D34FA7").unwrap();
-                assert_eq!(GOERLI_ADDRESSES.mempage.0, expect);
+                assert_eq!(GOERLI_ADDRESSES.mempage, expect);
             }
         }
 
@@ -237,19 +234,19 @@ mod tests {
             #[test]
             fn core() {
                 let expect = H160::from_str("0xc662c410C0ECf747543f5bA90660f6ABeBD9C8c4").unwrap();
-                assert_eq!(MAINNET_ADDRESSES.core.0, expect);
+                assert_eq!(MAINNET_ADDRESSES.core, expect);
             }
 
             #[test]
             fn gps() {
                 let expect = H160::from_str("0x47312450B3Ac8b5b8e247a6bB6d523e7605bDb60").unwrap();
-                assert_eq!(MAINNET_ADDRESSES.gps.0, expect);
+                assert_eq!(MAINNET_ADDRESSES.gps, expect);
             }
 
             #[test]
             fn mempage() {
                 let expect = H160::from_str("0xc662c410C0ECf747543f5bA90660f6ABeBD9C8c4").unwrap();
-                assert_eq!(MAINNET_ADDRESSES.mempage.0, expect);
+                assert_eq!(MAINNET_ADDRESSES.mempage, expect);
             }
         }
     }

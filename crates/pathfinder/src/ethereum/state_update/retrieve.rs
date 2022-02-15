@@ -27,7 +27,7 @@ pub async fn retrieve_transition_fact<T: Transport>(
     // as pairs. So we query the same block.
     let addresses = crate::ethereum::contract::addresses(chain);
     let filter = FilterBuilder::default()
-        .address(vec![addresses.core.0])
+        .address(vec![addresses.core])
         .topics(
             Some(vec![STATE_TRANSITION_FACT_EVENT.signature()]),
             None,
