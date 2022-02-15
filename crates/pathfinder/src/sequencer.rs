@@ -6,6 +6,7 @@ pub mod request;
 use self::error::StarknetError;
 use crate::{
     core::{ContractAddress, StarknetTransactionHash, StorageAddress, StorageValue},
+    ethereum::Chain,
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
 };
@@ -67,21 +68,12 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
 }
 
 impl Client {
-    /// Creates a new sequencer client for the Goerli testnet.
-    pub fn goerli() -> reqwest::Result<Self> {
-        // Unwrap is safe here as this is a valid URL string.
-        Self::new(Url::parse("https://alpha4.starknet.io/").unwrap())
-    }
-
-    /// Creates a new sequencer client for the mainnet.
-    pub fn main() -> reqwest::Result<Self> {
-        // Unwrap is safe here as this is a valid URL string.
-        Self::new(Url::parse("https://alpha-mainnet.starknet.io/").unwrap())
-    }
-
-    /// Creates a new sequencer client, `sequencer_url` needs to be a valid _base URL_.
-    fn new(sequencer_url: Url) -> reqwest::Result<Self> {
-        debug_assert!(!sequencer_url.cannot_be_a_base());
+    /// Creates a new Sequencer client for the given chain.
+    pub fn new(chain: Chain) -> reqwest::Result<Self> {
+        let sequencer_url = match chain {
+            Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
+            Chain::Goerli => Url::parse("https://alpha4.starknet.io/").unwrap(),
+        };
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
@@ -295,7 +287,7 @@ mod tests {
 
     /// Convenience wrapper
     fn client() -> Client {
-        Client::goerli().unwrap()
+        Client::new(Chain::Goerli).unwrap()
     }
 
     /// Convenience macro to allow retrying the test if rate limiting kicks in.

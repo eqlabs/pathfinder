@@ -12,6 +12,7 @@ use crate::{
     ethereum::{
         log::StateUpdateLog,
         state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
+        Chain,
     },
 };
 
@@ -85,12 +86,13 @@ impl StateUpdate {
     pub async fn retrieve<T: Transport>(
         transport: &Web3<T>,
         state_update: StateUpdateLog,
+        chain: Chain,
     ) -> Result<Self, RetrieveStateUpdateError> {
-        let transition_fact = retrieve_transition_fact(transport, state_update).await?;
+        let transition_fact = retrieve_transition_fact(transport, state_update, chain).await?;
 
-        let mempage_hashes = retrieve_mempage_hashes(transport, transition_fact).await?;
+        let mempage_hashes = retrieve_mempage_hashes(transport, transition_fact, chain).await?;
 
-        let mempage_logs = retrieve_memory_page_logs(transport, mempage_hashes).await?;
+        let mempage_logs = retrieve_memory_page_logs(transport, mempage_hashes, chain).await?;
 
         let mempage_data = retrieve_mempage_transaction_data(transport, mempage_logs).await?;
 
@@ -156,8 +158,11 @@ mod tests {
             block_number: StarknetBlockNumber(16407),
         };
 
-        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
-        let update = StateUpdate::retrieve(&transport, update_log).await.unwrap();
+        let chain = crate::ethereum::Chain::Goerli;
+        let transport = create_test_transport(chain);
+        let update = StateUpdate::retrieve(&transport, update_log, chain)
+            .await
+            .unwrap();
 
         let expected = StateUpdate {
             deployed_contracts: vec![DeployedContract {

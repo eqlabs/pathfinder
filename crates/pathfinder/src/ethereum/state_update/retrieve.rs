@@ -8,23 +8,26 @@ use web3::{
 };
 
 use crate::ethereum::{
-    contract::{CORE_CONTRACT_ADDRESS, REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
+    contract::{REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
     log::{
         BackwardFetchError, BackwardLogFetcher, EitherMetaLog, MemoryPageFactContinuousLog,
         MemoryPagesHashesLog, StateTransitionFactLog, StateUpdateLog,
     },
     state_update::RetrieveStateUpdateError,
+    Chain,
 };
 
 /// Retrieves the [StateTransitionFactLog] associated with the given [StateUpdateLog].
 pub async fn retrieve_transition_fact<T: Transport>(
     transport: &Web3<T>,
     state_update: StateUpdateLog,
+    chain: Chain,
 ) -> Result<StateTransitionFactLog, RetrieveStateUpdateError> {
     // StateTransitionFactLog and StateUpdateLog are always emitted
     // as pairs. So we query the same block.
+    let addresses = crate::ethereum::contract::addresses(chain);
     let filter = FilterBuilder::default()
-        .address(vec![*CORE_CONTRACT_ADDRESS])
+        .address(vec![addresses.core])
         .topics(
             Some(vec![STATE_TRANSITION_FACT_EVENT.signature()]),
             None,
@@ -56,11 +59,13 @@ pub async fn retrieve_transition_fact<T: Transport>(
 pub async fn retrieve_mempage_hashes<T: Transport>(
     transport: &Web3<T>,
     fact: StateTransitionFactLog,
+    chain: Chain,
 ) -> Result<MemoryPagesHashesLog, RetrieveStateUpdateError> {
     let fact_hash = fact.fact_hash;
 
     let mut fetcher = BackwardLogFetcher::<StateTransitionFactLog, MemoryPagesHashesLog>::new(
         EitherMetaLog::Left(fact),
+        chain,
     );
 
     loop {
@@ -86,6 +91,7 @@ pub async fn retrieve_mempage_hashes<T: Transport>(
 pub async fn retrieve_memory_page_logs<T: Transport>(
     transport: &Web3<T>,
     mempage_hashes: MemoryPagesHashesLog,
+    chain: Chain,
 ) -> Result<Vec<MemoryPageFactContinuousLog>, RetrieveStateUpdateError> {
     let hashes = mempage_hashes.mempage_hashes.clone();
     let mut required_hashes = hashes.iter().cloned().collect::<HashSet<_>>();
@@ -93,6 +99,7 @@ pub async fn retrieve_memory_page_logs<T: Transport>(
 
     let mut fetcher = BackwardLogFetcher::<MemoryPagesHashesLog, MemoryPageFactContinuousLog>::new(
         EitherMetaLog::Left(mempage_hashes),
+        chain,
     );
 
     loop {

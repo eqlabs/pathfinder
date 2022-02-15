@@ -4,7 +4,10 @@ use web3::{
     Transport, Web3,
 };
 
-use crate::ethereum::log::{fetch::MetaLog, get_logs, GetLogsError};
+use crate::ethereum::{
+    log::{fetch::MetaLog, get_logs, GetLogsError},
+    Chain,
+};
 
 /// Fetches consecutive logs of type T from L1, accounting for chain
 /// reorganisations.
@@ -39,9 +42,9 @@ where
     /// If `last_known` is [None] then the starting point is genesis.
     ///
     /// In other words, the first log returned will be the one after `last_known`.
-    pub fn new(last_known: Option<T>) -> Self {
+    pub fn new(last_known: Option<T>, chain: Chain) -> Self {
         let base_filter = FilterBuilder::default()
-            .address(vec![T::contract_address()])
+            .address(vec![T::contract_address(chain)])
             .topics(Some(vec![T::signature()]), None, None, None);
 
         Self {
@@ -218,8 +221,9 @@ mod tests {
             block_number: StarknetBlockNumber(0),
         };
 
-        let mut root_fetcher = LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log));
-        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
+        let chain = crate::ethereum::Chain::Goerli;
+        let mut root_fetcher = LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), chain);
+        let transport = create_test_transport(chain);
         let mut block_number = 1;
 
         let logs = root_fetcher.fetch(&transport).await.unwrap();

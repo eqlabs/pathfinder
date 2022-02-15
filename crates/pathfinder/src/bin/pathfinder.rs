@@ -9,7 +9,7 @@ async fn main() {
     // TODO: get database path from configuration
     let storage = Storage::migrate("database.sqlite".into()).unwrap();
     // TODO: pick the correct sequencer based on the Ethereum chain.
-    let sequencer = sequencer::Client::goerli().unwrap();
+    let sequencer = sequencer::Client::new(pathfinder_lib::ethereum::Chain::Goerli).unwrap();
 
     let (_handle, local_addr) = rpc::run_server(config.http_rpc_addr, storage, sequencer)
         .expect("⚠️ Failed to start HTTP-RPC server");
