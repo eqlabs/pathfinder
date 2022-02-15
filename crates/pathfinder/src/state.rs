@@ -15,6 +15,7 @@ use crate::{
         state_update::{
             state_root::StateRootFetcher, ContractUpdate, DeployedContract, StateUpdate,
         },
+        Chain,
     },
     sequencer,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
@@ -38,6 +39,7 @@ pub async fn sync<T: Transport + 'static>(
     database: Connection,
     transport: Web3<T>,
     sequencer: &sequencer::Client,
+    chain: Chain,
 ) -> anyhow::Result<()> {
     // TODO: Track sync progress in some global way, so that RPC can check and react accordingly.
     //       This could either be the database, or a mutable lazy_static thingy.
@@ -139,7 +141,7 @@ pub async fn sync<T: Transport + 'static>(
 
                 async move {
                     let latest_state_log = initial_state_rx.await.unwrap();
-                    let mut root_fetcher = StateRootFetcher::new(latest_state_log);
+                    let mut root_fetcher = StateRootFetcher::new(latest_state_log, chain);
 
                     loop {
                         match root_fetcher.fetch(&transport).await {
@@ -167,7 +169,7 @@ pub async fn sync<T: Transport + 'static>(
             let state_updates = tokio::task::spawn_local({
                 let transport = transport.clone();
                 async move {
-                    retrieve_state_updates(transport, root_logs_rx, state_update_tx)
+                    retrieve_state_updates(transport, root_logs_rx, state_update_tx, chain)
                         .await
                         .context("retrieving state updates ended in error")
                         .unwrap()
@@ -224,10 +226,11 @@ async fn retrieve_state_updates<T: Transport + 'static>(
     transport: Web3<T>,
     mut root_logs_rx: mpsc::Receiver<Vec<StateUpdateLog>>,
     state_update_tx: mpsc::Sender<(StateUpdateLog, StateUpdate)>,
+    chain: Chain,
 ) -> anyhow::Result<()> {
     while let Some(root_logs) = root_logs_rx.recv().await {
         for root_log in root_logs {
-            let state_update = StateUpdate::retrieve(&transport, root_log.clone())
+            let state_update = StateUpdate::retrieve(&transport, root_log.clone(), chain)
                 .await
                 .context("Fetching state update failed")?;
 
@@ -996,13 +999,14 @@ mod tests {
             block_number: StarknetBlockNumber(0),
         };
 
-        let _sequencer = crate::sequencer::Client::goerli().unwrap();
+        let chain = crate::ethereum::Chain::Goerli;
+        let _sequencer = crate::sequencer::Client::new(chain).unwrap();
 
         let storage = crate::storage::Storage::in_memory().unwrap();
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let _transport = create_test_transport(crate::ethereum::Chain::Goerli);
+        let _transport = create_test_transport(chain);
 
         /*
         update(
@@ -1039,10 +1043,12 @@ mod tests {
         let database =
             crate::storage::Storage::migrate(std::path::PathBuf::from("test.sqlite")).unwrap();
         let conn = database.connection().unwrap();
-        let transport =
-            crate::ethereum::test::create_test_transport(crate::ethereum::Chain::Goerli);
-        let sequencer = crate::sequencer::Client::goerli().unwrap();
+        let chain = crate::ethereum::Chain::Goerli;
+        let transport = crate::ethereum::test::create_test_transport(chain);
+        let sequencer = crate::sequencer::Client::new(chain).unwrap();
 
-        super::sync(conn, transport, &sequencer).await.unwrap()
+        super::sync(conn, transport, &sequencer, chain)
+            .await
+            .unwrap()
     }
 }

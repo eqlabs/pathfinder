@@ -145,7 +145,7 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
 /// Identifies the Ethereum [Chain] behind the given Ethereum transport.
 ///
 /// Will error if it's not one of the valid Starknet [Chain] variants.
-pub async fn chain<T: Transport>(transport: Web3<T>) -> anyhow::Result<Chain> {
+pub async fn chain<T: Transport>(transport: &Web3<T>) -> anyhow::Result<Chain> {
     match transport.eth().chain_id().await? {
         id if id == U256::from(1u32) => Ok(Chain::Mainnet),
         id if id == U256::from(5u32) => Ok(Chain::Goerli),
@@ -202,7 +202,7 @@ pub mod test {
         async fn goerli() {
             let expected_chain = Chain::Goerli;
             let transport = create_test_transport(expected_chain);
-            let chain = chain(transport).await.unwrap();
+            let chain = chain(&transport).await.unwrap();
 
             assert_eq!(chain, expected_chain);
         }
@@ -211,7 +211,7 @@ pub mod test {
         async fn mainnet() {
             let expected_chain = Chain::Mainnet;
             let transport = create_test_transport(expected_chain);
-            let chain = chain(transport).await.unwrap();
+            let chain = chain(&transport).await.unwrap();
 
             assert_eq!(chain, expected_chain);
         }

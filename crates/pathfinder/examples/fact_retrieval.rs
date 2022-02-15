@@ -39,10 +39,14 @@ use web3::{transports::Http, types::FilterBuilder, Web3};
 async fn main() {
     let (transport, block_hash, block_no) = parse_cli_args();
 
+    let chain = pathfinder_lib::ethereum::chain(&transport)
+        .await
+        .expect("Failed to identify Ethereum network");
+
     // Get the state update event at the given block.
     let filter = FilterBuilder::default()
         .block_hash(block_hash.0)
-        .address(vec![StateUpdateLog::contract_address()])
+        .address(vec![StateUpdateLog::contract_address(chain)])
         .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
         .build();
     let logs = transport.eth().logs(filter).await.unwrap();
@@ -53,7 +57,7 @@ async fn main() {
         .find(|log| log.block_number == block_no)
         .expect("state update log not found");
 
-    let state_update = StateUpdate::retrieve(&transport, update_log)
+    let state_update = StateUpdate::retrieve(&transport, update_log, chain)
         .await
         .expect("Failed to retrieve the state update");
 

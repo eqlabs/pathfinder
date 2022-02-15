@@ -3,9 +3,12 @@ use web3::{
     Transport, Web3,
 };
 
-use crate::ethereum::log::{
-    fetch::{EitherMetaLog, MetaLog},
-    get_logs, GetLogsError,
+use crate::ethereum::{
+    log::{
+        fetch::{EitherMetaLog, MetaLog},
+        get_logs, GetLogsError,
+    },
+    Chain,
 };
 
 #[derive(Debug)]
@@ -56,9 +59,9 @@ where
     /// Creates a [LogFetcher](super::forward::LogFetcher) which fetches logs starting from `last_known`'s origin on L1.
     ///
     /// In other words, the first log returned will be the one *before* `last_known`.
-    pub fn new(last_known: EitherMetaLog<L, R>) -> Self {
+    pub fn new(last_known: EitherMetaLog<L, R>, chain: Chain) -> Self {
         let base_filter = FilterBuilder::default()
-            .address(vec![L::contract_address(), R::contract_address()])
+            .address(vec![L::contract_address(chain), R::contract_address(chain)])
             .topics(Some(vec![L::signature(), R::signature()]), None, None, None);
 
         Self {
@@ -217,11 +220,13 @@ mod tests {
 
         // We use the same log type twice; this shouldn't matter and let's us check
         // the block number sequence.
+        let chain = crate::ethereum::Chain::Goerli;
         let mut fetcher = BackwardLogFetcher::<StateUpdateLog, StateUpdateLog>::new(
             EitherMetaLog::Left(update_log.clone()),
+            chain,
         );
 
-        let transport = create_test_transport(crate::ethereum::Chain::Goerli);
+        let transport = create_test_transport(chain);
         let logs = fetcher.fetch(&transport).await.unwrap();
         let mut block_number = update_log.block_number.0 - 1;
         for log in logs {
