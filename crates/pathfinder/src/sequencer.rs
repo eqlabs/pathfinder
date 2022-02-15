@@ -477,7 +477,6 @@ mod tests {
         }
 
         #[tokio::test]
-        // #[ignore = "Currently gives 502/503"]
         async fn block_without_block_hash_field() {
             retry_on_rate_limiting!(
                 client()
@@ -539,7 +538,6 @@ mod tests {
         }
 
         #[tokio::test]
-        // #[ignore = "Currently gives 502/503"]
         async fn contains_receipts_without_status_field() {
             retry_on_rate_limiting!(
                 client()
@@ -594,7 +592,6 @@ mod tests {
         }
 
         #[tokio::test]
-        // #[ignore = "Currently gives 502/503"]
         async fn contains_receipts_without_status_field() {
             retry_on_rate_limiting!(
                 client()
