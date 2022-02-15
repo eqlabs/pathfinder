@@ -941,8 +941,6 @@ mod tests {
         }
     }
 
-    const INTEGRATION_URL: &str = "https://external.integration.starknet.io/";
-
     mod state_update_matches_on {
         use super::*;
         use pretty_assertions::assert_eq;
@@ -951,7 +949,7 @@ mod tests {
         #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn genesis() {
             let by_number = retry_on_rate_limiting!(
-                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
                     .state_update_by_number(*GENESIS_BLOCK_NUMBER,)
                     .await
@@ -959,7 +957,7 @@ mod tests {
             .unwrap();
 
             let by_hash = retry_on_rate_limiting!(
-                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
                     .state_update_by_hash(*GENESIS_BLOCK_HASH)
                     .await
@@ -973,7 +971,7 @@ mod tests {
         #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn specific_block() {
             let by_number = retry_on_rate_limiting!(
-                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
                     .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1000)))
                     .await
@@ -981,7 +979,7 @@ mod tests {
             .unwrap();
 
             let by_hash = retry_on_rate_limiting!(
-                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
                     .state_update_by_hash(BlockHashOrTag::Hash(
                         StarknetBlockHash::from_hex_str("TODO").unwrap()
@@ -1042,7 +1040,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_hash() {
             let error = retry_on_rate_limiting!(
-                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
                     .state_update_by_hash(*INVALID_BLOCK_HASH)
                     .await

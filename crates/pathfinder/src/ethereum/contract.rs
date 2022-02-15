@@ -43,6 +43,10 @@ pub fn addresses(chain: Chain) -> ContractAddresses {
     match chain {
         Chain::Mainnet => MAINNET_ADDRESSES,
         Chain::Goerli => GOERLI_ADDRESSES,
+        #[cfg(test)]
+        // https://external.integration.starknet.io/feeder_gateway/get_contract_addresses
+        // {"Starknet": "0xd5c325D183C592C94998000C5e0EED9e6655c020", "GpsStatementVerifier": "0xAB43bA48c9edF4C2C4bB01237348D1D7B28ef168"}
+        Chain::Integration => todo!("Add support for integration chain."),
     }
 }
 
