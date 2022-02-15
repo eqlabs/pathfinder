@@ -536,11 +536,13 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "Until the test is actually implemented."]
         async fn non_existent_contract_address() {
             todo!("Add the test once state mocking is easy");
         }
 
         #[tokio::test]
+        #[ignore = "Until the test is actually implemented."]
         async fn pre_deploy_block_hash() {
             todo!("Add the test once state mocking is easy");
         }
@@ -578,11 +580,15 @@ mod tests {
             }
 
             #[tokio::test]
+            #[ignore = "Until the test is actually implemented."]
+
             async fn positional_args() {
                 todo!("Add the test once state mocking is easy");
             }
 
             #[tokio::test]
+            #[ignore = "Until the test is actually implemented."]
+
             async fn named_args() {
                 todo!("Add the test once state mocking is easy");
             }

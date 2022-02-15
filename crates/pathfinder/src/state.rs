@@ -1038,7 +1038,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // this is manual testing only, but we should really use the binary for this
+    #[ignore = "this is manual testing only, but we should really use the binary for this"]
     async fn go_sync() {
         let database =
             crate::storage::Storage::migrate(std::path::PathBuf::from("test.sqlite")).unwrap();
