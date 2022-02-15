@@ -73,6 +73,8 @@ impl Client {
         let sequencer_url = match chain {
             Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
             Chain::Goerli => Url::parse("https://alpha4.starknet.io/").unwrap(),
+            #[cfg(test)]
+            Chain::Integration => Url::parse("https://external.integration.starknet.io/").unwrap(),
         };
         Ok(Self {
             inner: reqwest::Client::builder()
@@ -208,6 +210,34 @@ impl Client {
                 "get_transaction_status",
                 &[("transactionHash", &transaction_hash.0.to_hex_str())],
             ))
+            .send()
+            .await?;
+        parse(resp).await
+    }
+
+    /// Gets state update for a particular block number.
+    pub async fn state_update(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<reply::StateUpdate, SequencerError> {
+        let resp = self
+            .inner
+            .get(self.build_query(
+                "get_state_update",
+                &[("block_number", &block_number_str(block_number))],
+            ))
+            .send()
+            .await?;
+        parse(resp).await
+    }
+
+    /// Gets addresses of the Ethereum contracts crucial to Starknet operation.
+    pub async fn eth_contract_addresses(
+        &self,
+    ) -> Result<reply::EthContractAddresses, SequencerError> {
+        let resp = self
+            .inner
+            .get(self.build_query("get_contract_addresses", &[]))
             .send()
             .await?;
         parse(resp).await
@@ -895,5 +925,74 @@ mod tests {
                 Status::NotReceived
             );
         }
+    }
+
+    mod state_update {
+        use super::*;
+
+        #[tokio::test]
+        #[ignore = "Error reporting does not work on the API side yet."]
+        async fn invalid_number() {
+            let error = retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Integration)
+                    .unwrap()
+                    .state_update(*INVALID_BLOCK_NUMBER,)
+                    .await
+            )
+            .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
+            );
+        }
+
+        #[tokio::test]
+        async fn genesis() {
+            retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Integration)
+                    .unwrap()
+                    .state_update(*GENESIS_BLOCK_NUMBER,)
+                    .await
+            )
+            .unwrap();
+        }
+
+        #[tokio::test]
+        async fn latest() {
+            retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Integration)
+                    .unwrap()
+                    .state_update(BlockNumberOrTag::Tag(Tag::Latest))
+                    .await
+            )
+            .unwrap();
+        }
+
+        #[tokio::test]
+        async fn specific_number() {
+            retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Integration)
+                    .unwrap()
+                    .state_update(BlockNumberOrTag::Number(StarknetBlockNumber(10000)))
+                    .await
+            )
+            .unwrap();
+        }
+
+        #[tokio::test]
+        async fn pending() {
+            retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Integration)
+                    .unwrap()
+                    .state_update(BlockNumberOrTag::Tag(Tag::Pending))
+                    .await
+            )
+            .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn eth_contract_addresses() {
+        retry_on_rate_limiting!(client().eth_contract_addresses().await).unwrap();
     }
 }
