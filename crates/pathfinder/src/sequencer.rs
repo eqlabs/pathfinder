@@ -216,7 +216,7 @@ impl Client {
     }
 
     /// Gets state update for a particular block number.
-    pub async fn state_update(
+    pub async fn state_update_by_number(
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<reply::StateUpdate, SequencerError> {
@@ -927,7 +927,7 @@ mod tests {
         }
     }
 
-    mod state_update {
+    mod state_update_by_number {
         use super::*;
 
         #[tokio::test]
@@ -936,7 +936,7 @@ mod tests {
             let error = retry_on_rate_limiting!(
                 Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
-                    .state_update(*INVALID_BLOCK_NUMBER,)
+                    .state_update_by_number(*INVALID_BLOCK_NUMBER,)
                     .await
             )
             .unwrap_err();
@@ -951,7 +951,7 @@ mod tests {
             retry_on_rate_limiting!(
                 Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
-                    .state_update(*GENESIS_BLOCK_NUMBER,)
+                    .state_update_by_number(*GENESIS_BLOCK_NUMBER,)
                     .await
             )
             .unwrap();
@@ -962,7 +962,7 @@ mod tests {
             retry_on_rate_limiting!(
                 Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
-                    .state_update(BlockNumberOrTag::Tag(Tag::Latest))
+                    .state_update_by_number(BlockNumberOrTag::Tag(Tag::Latest))
                     .await
             )
             .unwrap();
@@ -973,7 +973,7 @@ mod tests {
             retry_on_rate_limiting!(
                 Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
-                    .state_update(BlockNumberOrTag::Number(StarknetBlockNumber(10000)))
+                    .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(10000)))
                     .await
             )
             .unwrap();
@@ -984,7 +984,7 @@ mod tests {
             retry_on_rate_limiting!(
                 Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
-                    .state_update(BlockNumberOrTag::Tag(Tag::Pending))
+                    .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
                     .await
             )
             .unwrap();
