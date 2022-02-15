@@ -26,7 +26,7 @@ impl<'a> ContractsStateTree<'a> {
         Ok(Self { tree })
     }
 
-    pub fn _get(&self, address: StorageAddress) -> anyhow::Result<StorageValue> {
+    pub fn get(&self, address: StorageAddress) -> anyhow::Result<StorageValue> {
         let value = self.tree.get(address.0)?;
         Ok(StorageValue(value))
     }

@@ -220,6 +220,54 @@ impl GlobalStateTable {
             [],
         )
     }
+
+    /// Gets globabl state root for particular block hash.
+    pub fn get_root_at_block_hash(
+        transaction: &Transaction,
+        block: StarknetBlockHash,
+    ) -> anyhow::Result<Option<GlobalRoot>> {
+        let mut statement = transaction.prepare(
+            r"SELECT starknet_global_root FROM global_state
+            WHERE starknet_block_hash = :starknet_block_hash
+            LIMIT 1",
+        )?;
+        let mut rows = statement
+            .query(named_params! { ":starknet_block_hash": &block.0.to_be_bytes()[..] })?;
+        let row = rows
+            .next()
+            .with_context(|| format!("Get global root for block {}", block.0))?;
+        match row {
+            Some(row) => {
+                let bytes = row
+                    .get_ref_unwrap(0)
+                    .as_blob()
+                    .with_context(|| format!("Parse global root for block {}", block.0))?;
+                Ok(Some(GlobalRoot(StarkHash::from_be_slice(bytes)?)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Gets globabl state root for the latest block.
+    pub fn get_latest_root(transaction: &Transaction) -> anyhow::Result<Option<GlobalRoot>> {
+        let mut statement = transaction.prepare(
+            r"SELECT starknet_global_root FROM global_state
+            ORDER BY starknet_block_number DESC
+            LIMIT 1",
+        )?;
+        let mut rows = statement.query([])?;
+        let row = rows.next().context("Get global root for latest block")?;
+        match row {
+            Some(row) => {
+                let bytes = row
+                    .get_ref_unwrap(0)
+                    .as_blob()
+                    .context("Parse global root for latest block")?;
+                Ok(Some(GlobalRoot(StarkHash::from_be_slice(bytes)?)))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 /// Stores the contract state hash along with its preimage. This is useful to
