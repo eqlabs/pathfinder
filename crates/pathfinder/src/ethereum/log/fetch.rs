@@ -1,9 +1,8 @@
-use web3::types::{H160, H256};
+use web3::types::H256;
 
 use crate::ethereum::{
     contract::{
-        CORE_CONTRACT_ADDRESS, GPS_CONTRACT_ADDRESS, MEMORY_PAGE_FACT_CONTINUOUS_EVENT,
-        MEMORY_PAGE_HASHES_EVENT, MEMPAGE_CONTRACT_ADDRESS, STATE_TRANSITION_FACT_EVENT,
+        MEMORY_PAGE_FACT_CONTINUOUS_EVENT, MEMORY_PAGE_HASHES_EVENT, STATE_TRANSITION_FACT_EVENT,
         STATE_UPDATE_EVENT,
     },
     log::{
@@ -42,18 +41,12 @@ where
 ///     - [MemoryPagesHashesLog]
 ///     - [MemoryPageFactContinuousLog]
 pub trait MetaLog: TryFrom<web3::types::Log, Error = anyhow::Error> {
-    fn contract_address() -> H160;
-
     fn signature() -> H256;
 
     fn origin(&self) -> &EthOrigin;
 }
 
 impl MetaLog for StateUpdateLog {
-    fn contract_address() -> H160 {
-        *CORE_CONTRACT_ADDRESS
-    }
-
     fn signature() -> H256 {
         STATE_UPDATE_EVENT.signature()
     }
@@ -64,10 +57,6 @@ impl MetaLog for StateUpdateLog {
 }
 
 impl MetaLog for StateTransitionFactLog {
-    fn contract_address() -> web3::types::H160 {
-        *CORE_CONTRACT_ADDRESS
-    }
-
     fn signature() -> H256 {
         STATE_TRANSITION_FACT_EVENT.signature()
     }
@@ -78,10 +67,6 @@ impl MetaLog for StateTransitionFactLog {
 }
 
 impl MetaLog for MemoryPagesHashesLog {
-    fn contract_address() -> web3::types::H160 {
-        *GPS_CONTRACT_ADDRESS
-    }
-
     fn signature() -> H256 {
         MEMORY_PAGE_HASHES_EVENT.signature()
     }
@@ -92,10 +77,6 @@ impl MetaLog for MemoryPagesHashesLog {
 }
 
 impl MetaLog for MemoryPageFactContinuousLog {
-    fn contract_address() -> web3::types::H160 {
-        *MEMPAGE_CONTRACT_ADDRESS
-    }
-
     fn signature() -> H256 {
         MEMORY_PAGE_FACT_CONTINUOUS_EVENT.signature()
     }

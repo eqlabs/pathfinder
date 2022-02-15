@@ -40,9 +40,8 @@ where
     ///
     /// In other words, the first log returned will be the one after `last_known`.
     pub fn new(last_known: Option<T>) -> Self {
-        let base_filter = FilterBuilder::default()
-            .address(vec![T::contract_address()])
-            .topics(Some(vec![T::signature()]), None, None, None);
+        let base_filter =
+            FilterBuilder::default().topics(Some(vec![T::signature()]), None, None, None);
 
         Self {
             last_known,

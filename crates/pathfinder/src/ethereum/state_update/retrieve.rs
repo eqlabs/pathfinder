@@ -8,7 +8,7 @@ use web3::{
 };
 
 use crate::ethereum::{
-    contract::{CORE_CONTRACT_ADDRESS, REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
+    contract::{REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
     log::{
         BackwardFetchError, BackwardLogFetcher, EitherMetaLog, MemoryPageFactContinuousLog,
         MemoryPagesHashesLog, StateTransitionFactLog, StateUpdateLog,
@@ -24,7 +24,6 @@ pub async fn retrieve_transition_fact<T: Transport>(
     // StateTransitionFactLog and StateUpdateLog are always emitted
     // as pairs. So we query the same block.
     let filter = FilterBuilder::default()
-        .address(vec![*CORE_CONTRACT_ADDRESS])
         .topics(
             Some(vec![STATE_TRANSITION_FACT_EVENT.signature()]),
             None,

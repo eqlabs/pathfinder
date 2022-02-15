@@ -42,7 +42,6 @@ async fn main() {
     // Get the state update event at the given block.
     let filter = FilterBuilder::default()
         .block_hash(block_hash.0)
-        .address(vec![StateUpdateLog::contract_address()])
         .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
         .build();
     let logs = transport.eth().logs(filter).await.unwrap();
