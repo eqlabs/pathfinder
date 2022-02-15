@@ -187,10 +187,15 @@ impl RpcApi {
             .context("Global state tree")
             .map_err(internal_server_error)?;
 
-        // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
         let contract_state_hash = global_state_tree
             .get(contract_address)
-            .map_err(|_| Error::from(ErrorCode::ContractNotFound))?;
+            .context("Get contract state hash from global state tree")
+            .map_err(internal_server_error)?;
+
+        // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
+        if contract_state_hash.0 == StarkHash::ZERO {
+            return Err(Error::from(ErrorCode::ContractNotFound));
+        }
 
         let contract_state_root = ContractsStateTable::get_root(&tx, contract_state_hash)
             .context("Get contract state root")
