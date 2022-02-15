@@ -331,8 +331,9 @@ pub mod transaction {
 
 /// Used to deserialize a reply from [Client::state_update](crate::sequencer::Client::state_update).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct StateUpdate {
+    // At the moment when querying by block hash there is an additional `block_hash` field available.
+    // Which btw is not available when querying by block number, so let's just ignore it.
     new_root: GlobalRoot,
     old_root: GlobalRoot,
     state_diff: state_update::StateDiff,

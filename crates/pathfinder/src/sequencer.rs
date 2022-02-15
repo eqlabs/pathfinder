@@ -215,6 +215,20 @@ impl Client {
         parse(resp).await
     }
 
+    /// Gets state update for a particular block hash.
+    pub async fn state_update_by_hash(
+        &self,
+        block_hash: BlockHashOrTag,
+    ) -> Result<reply::StateUpdate, SequencerError> {
+        let (tag, hash) = block_hash_str(block_hash);
+        let resp = self
+            .inner
+            .get(self.build_query("get_state_update", &[(tag, &hash)]))
+            .send()
+            .await?;
+        parse(resp).await
+    }
+
     /// Gets state update for a particular block number.
     pub async fn state_update_by_number(
         &self,
@@ -927,11 +941,64 @@ mod tests {
         }
     }
 
+    const INTEGRATION_URL: &str = "https://external.integration.starknet.io/";
+
+    mod state_update_matches_on {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
+        async fn genesis() {
+            let by_number = retry_on_rate_limiting!(
+                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                    .unwrap()
+                    .state_update_by_number(*GENESIS_BLOCK_NUMBER,)
+                    .await
+            )
+            .unwrap();
+
+            let by_hash = retry_on_rate_limiting!(
+                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                    .unwrap()
+                    .state_update_by_hash(*GENESIS_BLOCK_HASH)
+                    .await
+            )
+            .unwrap();
+
+            assert_eq!(by_number, by_hash);
+        }
+
+        #[tokio::test]
+        #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
+        async fn specific_block() {
+            let by_number = retry_on_rate_limiting!(
+                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                    .unwrap()
+                    .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1000)))
+                    .await
+            )
+            .unwrap();
+
+            let by_hash = retry_on_rate_limiting!(
+                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                    .unwrap()
+                    .state_update_by_hash(BlockHashOrTag::Hash(
+                        StarknetBlockHash::from_hex_str("TODO").unwrap()
+                    ))
+                    .await
+            )
+            .unwrap();
+
+            assert_eq!(by_number, by_hash);
+        }
+    }
+
     mod state_update_by_number {
         use super::*;
 
         #[tokio::test]
-        #[ignore = "Error reporting does not work on the API side yet."]
+        #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn invalid_number() {
             let error = retry_on_rate_limiting!(
                 Client::new(crate::ethereum::Chain::Integration)
@@ -947,17 +1014,6 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn genesis() {
-            retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
-                    .unwrap()
-                    .state_update_by_number(*GENESIS_BLOCK_NUMBER,)
-                    .await
-            )
-            .unwrap();
-        }
-
-        #[tokio::test]
         async fn latest() {
             retry_on_rate_limiting!(
                 Client::new(crate::ethereum::Chain::Integration)
@@ -969,11 +1025,41 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn specific_number() {
+        async fn pending() {
             retry_on_rate_limiting!(
                 Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
-                    .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(10000)))
+                    .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
+                    .await
+            )
+            .unwrap();
+        }
+    }
+
+    mod state_update_by_hash {
+        use super::*;
+
+        #[tokio::test]
+        async fn invalid_hash() {
+            let error = retry_on_rate_limiting!(
+                Client::new(Url::parse(INTEGRATION_URL).unwrap())
+                    .unwrap()
+                    .state_update_by_hash(*INVALID_BLOCK_HASH)
+                    .await
+            )
+            .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
+            );
+        }
+
+        #[tokio::test]
+        async fn latest() {
+            retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Integration)
+                    .unwrap()
+                    .state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
                     .await
             )
             .unwrap();
@@ -984,7 +1070,7 @@ mod tests {
             retry_on_rate_limiting!(
                 Client::new(crate::ethereum::Chain::Integration)
                     .unwrap()
-                    .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
+                    .state_update_by_hash(BlockHashOrTag::Tag(Tag::Pending))
                     .await
             )
             .unwrap();
