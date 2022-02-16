@@ -1,5 +1,8 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::core::{CallResultValue, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use crate::{
+    core::{CallResultValue, EthereumAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
+    rpc::serde::EthereumAddressAsHexStr,
+};
 use pedersen::StarkHash;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -324,6 +327,63 @@ pub mod transaction {
         pub error_message: String,
         pub tx_id: u64,
     }
+}
+
+/// Used to deserialize a reply from [Client::state_update](crate::sequencer::Client::state_update).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct StateUpdate {
+    // At the moment when querying by block hash there is an additional `block_hash` field available.
+    // Which btw is not available when querying by block number, so let's just ignore it.
+    new_root: GlobalRoot,
+    old_root: GlobalRoot,
+    state_diff: state_update::StateDiff,
+}
+
+/// Types used when deserializing state update related data.
+pub mod state_update {
+    use crate::core::{ContractAddress, ContractHash, StorageAddress, StorageValue};
+    use serde::Deserialize;
+    use serde_with::serde_as;
+    use std::collections::HashMap;
+
+    /// L2 state diff.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct StateDiff {
+        #[serde_as(as = "HashMap<_, Vec<_>>")]
+        storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
+        deployed_contracts: Vec<Contract>,
+    }
+
+    /// L2 storage diff.
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct StorageDiff {
+        key: StorageAddress,
+        value: StorageValue,
+    }
+
+    /// L2 contract data within state diff.
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Contract {
+        address: ContractAddress,
+        contract_hash: ContractHash,
+    }
+}
+
+/// Used to deserialize a reply from [Client::eth_contract_addresses](crate::sequencer::Client::eth_contract_addresses).
+#[serde_as]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EthContractAddresses {
+    #[serde(rename = "Starknet")]
+    #[serde_as(as = "EthereumAddressAsHexStr")]
+    pub starknet: EthereumAddress,
+    #[serde_as(as = "EthereumAddressAsHexStr")]
+    #[serde(rename = "GpsStatementVerifier")]
+    pub gps_statement_verifier: EthereumAddress,
 }
 
 #[cfg(test)]

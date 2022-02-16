@@ -213,6 +213,48 @@ impl Client {
         parse(resp).await
     }
 
+    /// Gets state update for a particular block hash.
+    pub async fn state_update_by_hash(
+        &self,
+        block_hash: BlockHashOrTag,
+    ) -> Result<reply::StateUpdate, SequencerError> {
+        let (tag, hash) = block_hash_str(block_hash);
+        let resp = self
+            .inner
+            .get(self.build_query("get_state_update", &[(tag, &hash)]))
+            .send()
+            .await?;
+        parse(resp).await
+    }
+
+    /// Gets state update for a particular block number.
+    pub async fn state_update_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<reply::StateUpdate, SequencerError> {
+        let resp = self
+            .inner
+            .get(self.build_query(
+                "get_state_update",
+                &[("block_number", &block_number_str(block_number))],
+            ))
+            .send()
+            .await?;
+        parse(resp).await
+    }
+
+    /// Gets addresses of the Ethereum contracts crucial to Starknet operation.
+    pub async fn eth_contract_addresses(
+        &self,
+    ) -> Result<reply::EthContractAddresses, SequencerError> {
+        let resp = self
+            .inner
+            .get(self.build_query("get_contract_addresses", &[]))
+            .send()
+            .await?;
+        parse(resp).await
+    }
+
     /// Helper function that constructs a URL for particular query.
     fn build_query(&self, path_segment: &str, params: &[(&str, &str)]) -> Url {
         let mut query_url = self.sequencer_url.clone();
@@ -895,5 +937,144 @@ mod tests {
                 Status::NotReceived
             );
         }
+    }
+
+    mod state_update_matches_on {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
+        async fn genesis() {
+            let by_number = retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_number(*GENESIS_BLOCK_NUMBER,)
+                    .await
+            )
+            .unwrap();
+
+            let by_hash = retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_hash(*GENESIS_BLOCK_HASH)
+                    .await
+            )
+            .unwrap();
+
+            assert_eq!(by_number, by_hash);
+        }
+
+        #[tokio::test]
+        #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
+        async fn specific_block() {
+            let by_number = retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1000)))
+                    .await
+            )
+            .unwrap();
+
+            let by_hash = retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_hash(BlockHashOrTag::Hash(
+                        StarknetBlockHash::from_hex_str("TODO").unwrap()
+                    ))
+                    .await
+            )
+            .unwrap();
+
+            assert_eq!(by_number, by_hash);
+        }
+    }
+
+    mod state_update_by_number {
+        use super::*;
+
+        #[tokio::test]
+        #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
+        async fn invalid_number() {
+            let error = retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_number(*INVALID_BLOCK_NUMBER,)
+                    .await
+            )
+            .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
+            );
+        }
+
+        #[tokio::test]
+        async fn latest() {
+            retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+                    .await
+            )
+            .unwrap();
+        }
+
+        #[tokio::test]
+        async fn pending() {
+            retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
+                    .await
+            )
+            .unwrap();
+        }
+    }
+
+    mod state_update_by_hash {
+        use super::*;
+
+        #[tokio::test]
+        async fn invalid_hash() {
+            let error = retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_hash(*INVALID_BLOCK_HASH)
+                    .await
+            )
+            .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
+            );
+        }
+
+        #[tokio::test]
+        async fn latest() {
+            retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+                    .await
+            )
+            .unwrap();
+        }
+
+        #[tokio::test]
+        async fn pending() {
+            retry_on_rate_limiting!(
+                Client::new(crate::ethereum::Chain::Goerli)
+                    .unwrap()
+                    .state_update_by_hash(BlockHashOrTag::Tag(Tag::Pending))
+                    .await
+            )
+            .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn eth_contract_addresses() {
+        retry_on_rate_limiting!(client().eth_contract_addresses().await).unwrap();
     }
 }
