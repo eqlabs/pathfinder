@@ -18,9 +18,6 @@ pub enum Chain {
     Mainnet,
     /// The Ethereum Goerli test network chain.
     Goerli,
-    /// Starkware's Integration test network chain.
-    #[cfg(test)]
-    Integration,
 }
 
 /// List of semi-official Ethereum RPC errors taken from EIP-1474 (which is stagnant).
@@ -179,9 +176,6 @@ pub mod test {
         let key_prefix = match chain {
             Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
             Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
-            Chain::Integration => {
-                panic!("I've no idea what the ethereum network for integration is.")
-            }
         };
 
         let url_key = format!("{}_URL", key_prefix);

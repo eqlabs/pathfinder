@@ -73,8 +73,6 @@ impl Client {
         let sequencer_url = match chain {
             Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
             Chain::Goerli => Url::parse("https://alpha4.starknet.io/").unwrap(),
-            #[cfg(test)]
-            Chain::Integration => Url::parse("https://external.integration.starknet.io/").unwrap(),
         };
         Ok(Self {
             inner: reqwest::Client::builder()
@@ -949,7 +947,7 @@ mod tests {
         #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn genesis() {
             let by_number = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_number(*GENESIS_BLOCK_NUMBER,)
                     .await
@@ -957,7 +955,7 @@ mod tests {
             .unwrap();
 
             let by_hash = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_hash(*GENESIS_BLOCK_HASH)
                     .await
@@ -971,7 +969,7 @@ mod tests {
         #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn specific_block() {
             let by_number = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1000)))
                     .await
@@ -979,7 +977,7 @@ mod tests {
             .unwrap();
 
             let by_hash = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_hash(BlockHashOrTag::Hash(
                         StarknetBlockHash::from_hex_str("TODO").unwrap()
@@ -999,7 +997,7 @@ mod tests {
         #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn invalid_number() {
             let error = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_number(*INVALID_BLOCK_NUMBER,)
                     .await
@@ -1014,7 +1012,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_number(BlockNumberOrTag::Tag(Tag::Latest))
                     .await
@@ -1025,7 +1023,7 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
                     .await
@@ -1040,7 +1038,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_hash() {
             let error = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_hash(*INVALID_BLOCK_HASH)
                     .await
@@ -1055,7 +1053,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
                     .await
@@ -1066,7 +1064,7 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Integration)
+                Client::new(crate::ethereum::Chain::Goerli)
                     .unwrap()
                     .state_update_by_hash(BlockHashOrTag::Tag(Tag::Pending))
                     .await
