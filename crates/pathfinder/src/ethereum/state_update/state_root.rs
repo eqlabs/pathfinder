@@ -7,8 +7,8 @@ use crate::ethereum::{
 pub struct StateRootFetcher(LogFetcher<StateUpdateLog>);
 
 impl StateRootFetcher {
-    pub fn new(last_known: Option<StateUpdateLog>, chain: Chain) -> Self {
-        let inner = LogFetcher::<StateUpdateLog>::new(last_known, chain);
+    pub fn new(head: Option<StateUpdateLog>, chain: Chain) -> Self {
+        let inner = LogFetcher::<StateUpdateLog>::new(head, chain);
         Self(inner)
     }
 }

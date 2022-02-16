@@ -46,7 +46,7 @@ where
     L: MetaLog + PartialEq + std::fmt::Debug + Clone,
     R: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
-    last_known: EitherMetaLog<L, R>,
+    tail: EitherMetaLog<L, R>,
     stride: u64,
     base_filter: FilterBuilder,
 }
@@ -56,16 +56,16 @@ where
     L: MetaLog + PartialEq + std::fmt::Debug + Clone,
     R: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
-    /// Creates a [LogFetcher](super::forward::LogFetcher) which fetches logs starting from `last_known`'s origin on L1.
+    /// Creates a [LogFetcher](super::forward::LogFetcher) which fetches logs starting from `tail`'s origin on L1.
     ///
-    /// In other words, the first log returned will be the one *before* `last_known`.
-    pub fn new(last_known: EitherMetaLog<L, R>, chain: Chain) -> Self {
+    /// In other words, the first log returned will be the one __before__ `tail`.
+    pub fn new(tail: EitherMetaLog<L, R>, chain: Chain) -> Self {
         let base_filter = FilterBuilder::default()
             .address(vec![L::contract_address(chain), R::contract_address(chain)])
             .topics(Some(vec![L::signature(), R::signature()]), None, None, None);
 
         Self {
-            last_known,
+            tail,
             stride: 10_000,
             base_filter,
         }
@@ -81,7 +81,7 @@ where
         &mut self,
         transport: &Web3<Tr>,
     ) -> Result<Vec<EitherMetaLog<L, R>>, BackwardFetchError> {
-        let to_block = self.last_known.origin().block.number.0;
+        let to_block = self.tail.origin().block.number.0;
         let base_filter = self
             .base_filter
             .clone()
@@ -118,21 +118,21 @@ where
             // We need to iterate in reverse since that is the direction we are searching in.
             let mut logs = logs.into_iter().rev();
 
-            // Check for reorgs. Only required if there was a last known update to validate.
+            // Check for reorgs.
             //
-            // We queried for logs starting from the same block as last known. We need to account
+            // We queried for logs starting from the same block as tail. We need to account
             // for logs that occurred in the same block and transaction, but with a larger log index.
             //
-            // If the last known log is not in the set then we have a reorg event.
+            // If the tail log is not in the set then we have a reorg event.
             loop {
                 match logs.next().map(EitherMetaLog::try_from) {
                     Some(Ok(log))
-                        if log.origin().block == self.last_known.origin().block
-                            && log.origin().log_index.0 > self.last_known.origin().log_index.0 =>
+                        if log.origin().block == self.tail.origin().block
+                            && log.origin().log_index.0 > self.tail.origin().log_index.0 =>
                     {
                         continue;
                     }
-                    Some(Ok(log)) if log == self.last_known => break,
+                    Some(Ok(log)) if log == self.tail => break,
                     _ => return Err(BackwardFetchError::Reorg),
                 }
             }
@@ -156,7 +156,7 @@ where
             }
 
             // unwrap is safe due to the is_empty check above.
-            self.last_known = logs.last().unwrap().clone();
+            self.tail = logs.last().unwrap().clone();
 
             return Ok(logs);
         }
