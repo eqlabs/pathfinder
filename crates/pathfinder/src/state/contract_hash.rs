@@ -490,3 +490,23 @@ mod json {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn truncated_keccak_matches_pythonic() {
+        use super::truncated_keccak;
+        use pedersen::StarkHash;
+        use sha3::{Digest, Keccak256};
+        let all_set = Keccak256::digest(&[0xffu8; 32]);
+        assert!(all_set[0] > 0xf);
+        let truncated = truncated_keccak(all_set.into());
+        assert_eq!(
+            truncated,
+            StarkHash::from_hex_str(
+                "01c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9"
+            )
+            .unwrap()
+        );
+    }
+}
