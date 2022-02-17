@@ -1,9 +1,7 @@
-from call import do_call, do_loop, SqliteAdapter
+from call import do_loop
 import sqlite3
-import asyncio
 import io
 import json
-from starkware.starknet.business_logic.state import BlockInfo
 
 
 # this is from 64a7f6aed9757d3d8d6c28bd972df73272b0cb0a of cairo-lang
@@ -190,9 +188,6 @@ def populate_test_contract_with_132_on_3(con):
 
 def compile_test_contract():
     from starkware.starknet.compiler.compile import compile_starknet_codes
-    from starkware.starknet.business_logic.state_objects import (
-        ContractDefinitionFact,
-    )
     import zstandard
 
     # FIXME: use crates/pathfinder/fixtures/contract_definition.json.zst here, it's the same.

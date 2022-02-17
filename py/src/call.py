@@ -251,12 +251,12 @@ class NoSuchBlock(Exception):
 
 class NoSuchContract(Exception):
     def __init__(self):
-        super().__init__(f"Could not find the contract")
+        super().__init__("Could not find the contract")
 
 
 class UnexpectedSchemaVersion(Exception):
     def __init__(self):
-        super().__init__(f"Schema mismatch, is this pathfinders database file?")
+        super().__init__("Schema mismatch, is this pathfinders database file?")
 
 
 class InvalidInput(Exception):
