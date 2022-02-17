@@ -134,6 +134,7 @@ mod tests {
     use tokio::sync::oneshot;
 
     #[tokio::test]
+    #[ignore] // these tests require that you've entered into python venv
     async fn call_like_in_python() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -194,13 +195,12 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // these tests require that you've entered into python venv
     async fn call_like_in_python_ten_times() {
         use futures::stream::StreamExt;
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        // in python we recreate the schema, but without foreign keys on the global state
-        // here we cannot do a similar thing... but we can turn them off.
         let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
 
         let mut conn = s.connection().unwrap();
@@ -224,7 +224,9 @@ mod tests {
         .await
         .unwrap();
 
-        let mut jhs = (0..10)
+        let count = 10;
+
+        let mut jhs = (0..count)
             .map(move |_| {
                 tokio::task::spawn({
                     let handle = handle.clone();
@@ -251,7 +253,7 @@ mod tests {
             })
             .collect::<futures::stream::FuturesUnordered<_>>();
 
-        for _ in 0..10 {
+        for _ in 0..count {
             jhs.next().await.unwrap().unwrap();
         }
 

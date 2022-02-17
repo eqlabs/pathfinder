@@ -74,21 +74,34 @@ jobs:
       - name: Prepare py/
         run: |
           cd py
+          python -m venv .venv
+          source .venv/bin/activate
           pip install --upgrade pip
           pip install --requirement requirements-dev.txt
           pip install cairo-lang==0.7.1
 
       - name: Test (python)
         run: |
+          source py/.venv/bin/activate
           cd py
           pytest
 
       - name: Formatting (python)
         run: |
+          source py/.venv/bin/activate
           cd py
           black --check src/
 
       - name: Lints (python)
         run: |
+          source py/.venv/bin/activate
           cd py
           flake8 src/
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v1
+
+      - name: Integration (rust)
+        run: |
+          source py/.venv/bin/activate
+          timeout 5m cargo test -p pathfinder -- cairo::ext_py --ignored
