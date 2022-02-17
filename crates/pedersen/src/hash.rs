@@ -111,8 +111,9 @@ impl StarkHash {
         Ok(Self(bytes))
     }
 
-    /// Returns true if the value of [Starkhash] is larger than `2^251 - 1`.
-    /// Every [StarkHash] that is used to traverse a Merkle  Patricia Tree
+    /// Returns `true` if the value of [`StarkHash`] is larger than `2^251 - 1`.
+    ///
+    /// Every [`StarkHash`] that is used to traverse a Merkle-Patricia Tree
     /// must not exceed 251 bits, since 251 is the height of the tree.
     pub fn has_more_than_251_bits(&self) -> bool {
         self.0[0] & 0b1111_1000 > 0

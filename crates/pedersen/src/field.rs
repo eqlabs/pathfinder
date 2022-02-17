@@ -1,7 +1,9 @@
 use bitvec::{array::BitArray, order::Lsb0};
 use ff::PrimeField;
 
-/// The field primitive used by [PedersenHash]
+/// The field primitive used by Starkware's curve.
+///
+/// It's main use is to allow [`pedersen_hash`](crate::hash::pedersen_hash).
 #[derive(PrimeField)]
 #[PrimeFieldModulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
 #[PrimeFieldGenerator = "7"]
