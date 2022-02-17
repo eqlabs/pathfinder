@@ -18,9 +18,9 @@
 //!
 //! The data is stored as a single table with three columns:
 //!
-//! `key`: BLOB (PK)
-//! `data`: BLOB
-//! `ref_count`: INTEGER
+//! - `key`: BLOB (PK)
+//! - `data`: BLOB
+//! - `ref_count`: INTEGER
 //!
 //! ## Serialization format
 //!
