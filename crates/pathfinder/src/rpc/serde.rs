@@ -86,7 +86,7 @@ fn starkhash_from_biguint(b: BigUint) -> Result<StarkHash, OverflowError> {
 }
 
 /// A helper conversion function. Only use with __sequencer API related types__.
-pub fn starkhash_to_dec_str(h: &StarkHash) -> String {
+pub(crate) fn starkhash_to_dec_str(h: &StarkHash) -> String {
     let b = h.to_be_bytes();
     let b = BigUint::from_bytes_be(&b);
     b.to_str_radix(10)
@@ -139,7 +139,7 @@ fn bytes_from_hex_str<const N: usize>(hex_str: &str) -> Result<[u8; N], HexParse
 }
 
 /// A convenience function which produces a "0x" prefixed hex string from a byte slice.
-fn bytes_to_hex_str(bytes: &[u8]) -> String {
+pub(crate) fn bytes_to_hex_str(bytes: &[u8]) -> String {
     if !bytes.iter().any(|b| *b != 0) {
         return "0x0".to_string();
     }

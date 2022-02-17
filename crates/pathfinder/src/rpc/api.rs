@@ -1,9 +1,10 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
     core::{
-        CallResultValue, ContractAddress, ContractCode, StarknetChainId, StarknetProtocolVersion,
+        CallResultValue, ContractAddress, ContractCode, StarknetProtocolVersion,
         StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
     },
+    ethereum::Chain,
     rpc::types::{
         reply::{Block, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
         request::{BlockResponseScope, Call, OverflowingStorageAddress},
@@ -26,12 +27,17 @@ use std::convert::TryInto;
 pub struct RpcApi {
     storage: Storage,
     sequencer: sequencer::Client,
+    chain: Chain,
 }
 
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
 impl RpcApi {
-    pub fn new(storage: Storage, sequencer: sequencer::Client) -> Self {
-        Self { storage, sequencer }
+    pub fn new(storage: Storage, sequencer: sequencer::Client, chain: Chain) -> Self {
+        Self {
+            storage,
+            sequencer,
+            chain,
+        }
     }
 
     /// Helper function.
@@ -391,8 +397,13 @@ impl RpcApi {
     }
 
     /// Return the currently configured StarkNet chain id.
-    pub async fn chain_id(&self) -> RpcResult<StarknetChainId> {
-        todo!("Figure out where to take it from.")
+    pub async fn chain_id(&self) -> RpcResult<String> {
+        use super::serde::bytes_to_hex_str;
+
+        Ok(bytes_to_hex_str(match self.chain {
+            Chain::Goerli => b"SN_GOERLI",
+            Chain::Mainnet => b"SN_MAIN",
+        }))
     }
 
     /// Returns the transactions in the transaction pool, recognized by this sequencer.

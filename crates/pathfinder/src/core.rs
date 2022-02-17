@@ -134,10 +134,6 @@ pub struct EventData(pub StarkHash);
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EventKey(pub StarkHash);
 
-/// StarkNet chain id.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-pub struct StarknetChainId(pub H256);
-
 /// StarkNet protocol version.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetProtocolVersion(pub H256);
