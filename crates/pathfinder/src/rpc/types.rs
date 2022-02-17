@@ -59,7 +59,9 @@ pub mod request {
     use web3::types::H256;
 
     /// The address of a storage element for a StarkNet contract.
-    /// __This type is not checked for 251 bits overflow__ in contrast to [`TruncatedStorageAddress`].
+    ///
+    /// __This type is not checked for 251 bits overflow__ in contrast to
+    /// [`StarkHash`](pedersen::StarkHash).
     #[serde_as]
     #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
     pub struct OverflowingStorageAddress(#[serde_as(as = "H256AsNoLeadingZerosHexStr")] pub H256);
