@@ -561,7 +561,7 @@ mod tests {
             use super::*;
 
             #[tokio::test]
-            #[ignore = "this is actually a manual test"]
+            #[ignore = "This is a manual test and will be removed once state mocking facilities are ready."]
             async fn real_data() {
                 let storage = Storage::migrate("desync.sqlite".into()).unwrap();
                 let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
@@ -580,14 +580,12 @@ mod tests {
 
             #[tokio::test]
             #[ignore = "Until the test is actually implemented."]
-
             async fn positional_args() {
                 todo!("Add the test once state mocking is easy");
             }
 
             #[tokio::test]
             #[ignore = "Until the test is actually implemented."]
-
             async fn named_args() {
                 todo!("Add the test once state mocking is easy");
             }
