@@ -1,4 +1,4 @@
-//! Starknet utilises a custom Binary Merkle-Patrica Tree to store and organise its state.
+//! Starknet utilises a custom Binary Merkle-Patricia Tree to store and organise its state.
 //!
 //! From an external perspective the tree is similar to a key-value store, where both key
 //! and value are [StarkHashes](StarkHash). The difference is that each tree is immutable,
