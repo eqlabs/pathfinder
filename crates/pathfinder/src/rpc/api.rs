@@ -20,14 +20,6 @@ use jsonrpsee::types::{
 use pedersen::OverflowError;
 use std::convert::TryInto;
 
-/// Helper function.
-fn transaction_index_not_found(index: usize) -> Error {
-    Error::Call(CallError::InvalidParams(anyhow::anyhow!(
-        "transaction index {} not found",
-        index
-    )))
-}
-
 /// Implements JSON-RPC endpoints.
 ///
 /// __TODO__ directly calls [sequencer::Client](crate::sequencer::Client) until storage is implemented.
@@ -259,10 +251,13 @@ impl RpcApi {
             .try_into()
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
 
-        block.transactions.into_iter().nth(index).map_or(
-            Err(transaction_index_not_found(index)),
-            |txn| Ok(txn.into()),
-        )
+        block
+            .transactions
+            .into_iter()
+            .nth(index)
+            .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
+                Ok(txn.into())
+            })
     }
 
     /// Get the details of a transaction by a given block number and index.
@@ -280,10 +275,13 @@ impl RpcApi {
             .try_into()
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
 
-        block.transactions.into_iter().nth(index).map_or(
-            Err(transaction_index_not_found(index)),
-            |txn| Ok(txn.into()),
-        )
+        block
+            .transactions
+            .into_iter()
+            .nth(index)
+            .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
+                Ok(txn.into())
+            })
     }
 
     /// Get the transaction receipt by the transaction hash.
@@ -305,13 +303,11 @@ impl RpcApi {
                     .transaction_receipts
                     .into_iter()
                     .nth(index)
-                    .map_or(Err(transaction_index_not_found(index)), |receipt| {
+                    .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |receipt| {
                         Ok(TransactionReceipt::with_status(receipt, block.status))
                     })
             } else {
-                Err(Error::Call(CallError::InvalidParams(anyhow::anyhow!(
-                    "transaction index not found"
-                ))))
+                Err(ErrorCode::InvalidTransactionIndex.into())
             }
         } else {
             Err(ErrorCode::InvalidBlockHash.into())
