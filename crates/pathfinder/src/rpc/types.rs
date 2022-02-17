@@ -239,6 +239,7 @@ pub mod reply {
         InvalidBlockHash = 24,
         InvalidTransactionHash = 25,
         InvalidBlockNumber = 26,
+        InvalidTransactionIndex = 27,
         ContractError = 40,
     }
 
@@ -318,6 +319,7 @@ pub mod reply {
                 24 => InvalidBlockHash,
                 25 => InvalidTransactionHash,
                 26 => InvalidBlockNumber,
+                27 => InvalidTransactionIndex,
                 40 => ContractError,
                 x => return Err(x),
             })
@@ -335,6 +337,7 @@ pub mod reply {
                 ErrorCode::InvalidBlockHash => "Invalid block hash",
                 ErrorCode::InvalidTransactionHash => "Invalid transaction hash",
                 ErrorCode::InvalidBlockNumber => "Invalid block number",
+                ErrorCode::InvalidTransactionIndex => "Invalid transaction index",
                 ErrorCode::ContractError => "Contract error",
             }
         }
@@ -594,7 +597,6 @@ pub mod reply {
 
     /// Starknet's syncing status substructures.
     pub mod syncing {
-        use super::BlockStatus;
         use crate::core::StarknetBlockHash;
         use serde::{Deserialize, Serialize};
 
@@ -604,7 +606,7 @@ pub mod reply {
         pub struct Status {
             starting_block: StarknetBlockHash,
             current_block: StarknetBlockHash,
-            highest_block: BlockStatus,
+            highest_block: StarknetBlockHash,
         }
     }
 }
