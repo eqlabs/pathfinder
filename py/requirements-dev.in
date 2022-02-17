@@ -1,5 +1,5 @@
 # see README.md
-# cairo-lang==0.7.0
+# cairo-lang==0.7.1
 pip-tools==6.4.0
 pytest==6.2.5
 flake8==4.0.1

@@ -31,7 +31,7 @@ $ PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
 Finally install the only real dependency, which cannot currently be managed by lock files:
 
 ```bash
-$ PIP_REQUIRE_VIRTUALENV=true pip install cairo-lang==0.7.0
+$ PIP_REQUIRE_VIRTUALENV=true pip install cairo-lang==0.7.1
 ```
 
 ## Testing
