@@ -330,8 +330,8 @@ impl<'a> MerkleTree<'a> {
 
     /// Deletes a leaf node from the tree.
     ///
-    /// This is not an external facing API; the functionality is instead
-    /// accessed by calling [Mpt::set] with value set to [StarkHash::ZERO].
+    /// This is not an external facing API; the functionality is instead accessed by calling
+    /// [`MerkleTree::set`] with value set to [StarkHash::ZERO].
     fn delete_leaf(&mut self, key: StarkHash) -> anyhow::Result<()> {
         // Algorithm explanation:
         //

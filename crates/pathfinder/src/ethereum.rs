@@ -20,13 +20,12 @@ pub enum Chain {
     Goerli,
 }
 
-/// List of semi-official Ethereum RPC errors taken from EIP-1474 (which is stagnant).
+/// List of semi-official Ethereum RPC errors taken from [EIP-1474] (which is stagnant).
 ///
 /// The issue of standardizing the Ethereum RPC seems to now be taking
-/// place here: https://github.com/eea-oasis/eth1.x-JSON-RPC-API-standard/issues.
+/// place here: <https://github.com/eea-oasis/eth1.x-JSON-RPC-API-standard/issues>.
 ///
-/// EIP-1474:
-///     https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1474.md#error-codes
+/// [EIP-1474]: https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1474.md#error-codes
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum RpcErrorCode {
     _ParseError,

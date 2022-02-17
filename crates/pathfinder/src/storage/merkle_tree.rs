@@ -1,6 +1,7 @@
 //! Contains the Sqlite persistent storage abstraction for a Starknet Binary Merkle Patricia Tree.
 //!
-//! For more information on the structure of the tree, see [MerkleTree](super::MerkleTree).
+//! For more information on the structure of the tree, see
+//! [`crate::state::merkle_tree::MerkleTree`].
 //!
 //! ## Overview
 //!

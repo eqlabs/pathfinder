@@ -1,7 +1,8 @@
 //! Contains constructs for describing the nodes in a Binary Merkle Patricia Tree
 //! used by Starknet.
 //!
-//! For more information about how these Starknet trees are structured, see [MerkleTree](super::MerkleTree).
+//! For more information about how these Starknet trees are structured, see
+//! [`MerkleTree`](super::merkle_tree::MerkleTree).
 
 use std::{cell::RefCell, rc::Rc};
 
