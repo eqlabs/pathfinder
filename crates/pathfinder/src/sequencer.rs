@@ -416,37 +416,40 @@ mod tests {
         }};
     }
 
-    #[tokio::test]
-    #[ignore = "Currently gives 502/503"]
-    async fn genesis_block() {
-        let by_hash =
-            retry_on_rate_limiting!(client().block_by_hash(*GENESIS_BLOCK_HASH).await).unwrap();
-        let by_number =
-            retry_on_rate_limiting!(client().block_by_number(*GENESIS_BLOCK_NUMBER).await).unwrap();
-        assert_eq!(by_hash, by_number);
-    }
+    mod block_by_number_matches_by_hash_on {
+        use super::*;
 
-    #[tokio::test]
-    // Temporary replacement for the `genesis_block` test, which essentially does the same
-    async fn block_number_matches_block_hash() {
-        let by_hash = retry_on_rate_limiting!(
-            client()
-                .block_by_hash(BlockHashOrTag::Hash(
-                    StarknetBlockHash::from_hex_str(
-                        "0x07187d565e5563658f2b88a9000c6eb84692dcd90a8ab7d8fe75d768205d9b66"
-                    )
-                    .unwrap()
-                ))
-                .await
-        )
-        .unwrap();
-        let by_number = retry_on_rate_limiting!(
-            client()
-                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(50000)))
-                .await
-        )
-        .unwrap();
-        assert_eq!(by_hash, by_number);
+        #[tokio::test]
+        async fn genesis() {
+            let by_hash =
+                retry_on_rate_limiting!(client().block_by_hash(*GENESIS_BLOCK_HASH).await).unwrap();
+            let by_number =
+                retry_on_rate_limiting!(client().block_by_number(*GENESIS_BLOCK_NUMBER).await)
+                    .unwrap();
+            assert_eq!(by_hash, by_number);
+        }
+
+        #[tokio::test]
+        async fn specific_block() {
+            let by_hash = retry_on_rate_limiting!(
+                client()
+                    .block_by_hash(BlockHashOrTag::Hash(
+                        StarknetBlockHash::from_hex_str(
+                            "0x07187d565e5563658f2b88a9000c6eb84692dcd90a8ab7d8fe75d768205d9b66"
+                        )
+                        .unwrap()
+                    ))
+                    .await
+            )
+            .unwrap();
+            let by_number = retry_on_rate_limiting!(
+                client()
+                    .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(50000)))
+                    .await
+            )
+            .unwrap();
+            assert_eq!(by_hash, by_number);
+        }
     }
 
     mod block_by_hash {
@@ -474,7 +477,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "Currently gives 502/503"]
         async fn block_without_block_hash_field() {
             retry_on_rate_limiting!(
                 client()
@@ -536,7 +538,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "Currently gives 502/503"]
         async fn contains_receipts_without_status_field() {
             retry_on_rate_limiting!(
                 client()
@@ -591,7 +592,6 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "Currently gives 502/503"]
         async fn contains_receipts_without_status_field() {
             retry_on_rate_limiting!(
                 client()
@@ -939,7 +939,7 @@ mod tests {
         }
     }
 
-    mod state_update_matches_on {
+    mod state_update_by_number_matches_by_hash_on {
         use super::*;
         use pretty_assertions::assert_eq;
 

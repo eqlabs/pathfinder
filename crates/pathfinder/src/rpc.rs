@@ -302,7 +302,6 @@ mod tests {
         use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(*GENESIS_BLOCK_HASH);
             client_request::<Block>("starknet_getBlockByHash", params)
@@ -391,7 +390,6 @@ mod tests {
         use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockNumberOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(*GENESIS_BLOCK_NUMBER);
             client_request::<Block>("starknet_getBlockByNumber", params)
@@ -536,11 +534,13 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "Until the test is actually implemented."]
         async fn non_existent_contract_address() {
             todo!("Add the test once state mocking is easy");
         }
 
         #[tokio::test]
+        #[ignore = "Until the test is actually implemented."]
         async fn pre_deploy_block_hash() {
             todo!("Add the test once state mocking is easy");
         }
@@ -561,6 +561,7 @@ mod tests {
             use super::*;
 
             #[tokio::test]
+            #[ignore = "This is a manual test and will be removed once state mocking facilities are ready."]
             async fn real_data() {
                 let storage = Storage::migrate("desync.sqlite".into()).unwrap();
                 let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
@@ -574,15 +575,17 @@ mod tests {
                     .request::<StorageValue>("starknet_getStorageAt", params)
                     .await
                     .unwrap();
-                assert_eq!(value, StorageValue::from_hex_str("0x123456").unwrap());
+                assert_eq!(value, StorageValue::from_hex_str("0x1E240").unwrap());
             }
 
             #[tokio::test]
+            #[ignore = "Until the test is actually implemented."]
             async fn positional_args() {
                 todo!("Add the test once state mocking is easy");
             }
 
             #[tokio::test]
+            #[ignore = "Until the test is actually implemented."]
             async fn named_args() {
                 todo!("Add the test once state mocking is easy");
             }
@@ -643,7 +646,6 @@ mod tests {
         use crate::rpc::types::{reply::Transaction, BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(*GENESIS_BLOCK_HASH, *VALID_TX_INDEX);
             client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
@@ -709,7 +711,6 @@ mod tests {
         use crate::rpc::types::{reply::Transaction, BlockNumberOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(*GENESIS_BLOCK_NUMBER, *VALID_TX_INDEX);
             client_request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
@@ -956,7 +957,6 @@ mod tests {
         use crate::rpc::types::{BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(*GENESIS_BLOCK_HASH);
             client_request::<u64>("starknet_getBlockTransactionCountByHash", params)
@@ -1010,7 +1010,6 @@ mod tests {
         use crate::rpc::types::{BlockNumberOrTag, Tag};
 
         #[tokio::test]
-        #[ignore = "Currently gives 502/503"]
         async fn genesis() {
             let params = rpc_params!(*GENESIS_BLOCK_NUMBER);
             client_request::<u64>("starknet_getBlockTransactionCountByNumber", params)
