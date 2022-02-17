@@ -153,3 +153,15 @@ pub struct EthereumTransactionIndex(pub u64);
 /// An Ethereum log's index within a block.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub struct EthereumLogIndex(pub u64);
+
+impl StarknetBlockNumber {
+    pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber(0);
+
+    pub fn increment(&self) -> Self {
+        Self(self.0 + 1)
+    }
+
+    pub fn decrement(&self) -> Self {
+        Self(self.0 - 1)
+    }
+}
