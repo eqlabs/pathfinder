@@ -231,7 +231,7 @@ mod tests {
             // Restart the server each time (and implicitly the sequencer client, which actually does the job)
             let storage = Storage::in_memory().unwrap();
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-            let api = RpcApi::new(storage, sequencer);
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             match client(addr).request::<Out>(method, params.clone()).await {
                 Ok(r) => return Ok(r),
@@ -561,7 +561,7 @@ mod tests {
             async fn real_data() {
                 let storage = Storage::migrate("desync.sqlite".into()).unwrap();
                 let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-                let api = RpcApi::new(storage, sequencer);
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = rpc_params!(
                     *VALID_CONTRACT_ADDR,
@@ -832,7 +832,7 @@ mod tests {
         async fn returns_not_found_if_we_dont_know_about_the_contract() {
             let storage = Storage::in_memory().unwrap();
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-            let api = RpcApi::new(storage, sequencer);
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
 
             let not_found = client(addr)
@@ -902,7 +902,7 @@ mod tests {
             }
 
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-            let api = RpcApi::new(storage, sequencer);
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
 
             let client = client(addr);
@@ -1218,41 +1218,44 @@ mod tests {
 
     #[tokio::test]
     async fn block_number() {
-        let storage = Storage::in_memory().unwrap();
-        let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let api = RpcApi::new(storage, sequencer);
-        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-        let params = rpc_params!();
-        client(addr)
-            .request::<u64>("starknet_blockNumber", params)
+        client_request::<u64>("starknet_blockNumber", rpc_params!())
             .await
             .unwrap();
     }
 
     #[tokio::test]
-    #[should_panic]
     async fn chain_id() {
-        let storage = Storage::in_memory().unwrap();
-        let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let api = RpcApi::new(storage, sequencer);
-        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-        let params = rpc_params!();
-        client(addr)
-            .request::<StarknetChainId>("starknet_chainId", params)
-            .await
-            .unwrap();
+        use futures::stream::StreamExt;
+
+        assert_eq!(
+            [Chain::Goerli, Chain::Mainnet]
+                .iter()
+                .map(|set_chain| async {
+                    let storage = Storage::in_memory().unwrap();
+                    let sequencer = sequencer::Client::new(*set_chain).unwrap();
+                    let api = RpcApi::new(storage, sequencer, *set_chain);
+                    let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                    let params = rpc_params!();
+                    client(addr)
+                        .request::<StarknetChainId>("starknet_chainId", params)
+                        .await
+                        .unwrap()
+                        .0
+                })
+                .collect::<futures::stream::FuturesOrdered<_>>()
+                .collect::<Vec<_>>()
+                .await,
+            vec![
+                format!("0x{}", hex::encode("SN_GOERLI")),
+                format!("0x{}", hex::encode("SN_MAIN")),
+            ]
+        );
     }
 
     #[tokio::test]
     #[should_panic]
     async fn pending_transactions() {
-        let storage = Storage::in_memory().unwrap();
-        let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let api = RpcApi::new(storage, sequencer);
-        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-        let params = rpc_params!();
-        client(addr)
-            .request::<()>("starknet_pendingTransactions", params)
+        client_request::<StarknetChainId>("starknet_pendingTransactions", rpc_params!())
             .await
             .unwrap();
     }
@@ -1260,13 +1263,7 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn protocol_version() {
-        let storage = Storage::in_memory().unwrap();
-        let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let api = RpcApi::new(storage, sequencer);
-        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-        let params = rpc_params!();
-        client(addr)
-            .request::<StarknetProtocolVersion>("starknet_protocolVersion", params)
+        client_request::<StarknetChainId>("starknet_protocolVersion", rpc_params!())
             .await
             .unwrap();
     }
@@ -1274,14 +1271,7 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn syncing() {
-        let storage = Storage::in_memory().unwrap();
-        let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let api = RpcApi::new(storage, sequencer);
-        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-        let params = rpc_params!();
-        use crate::rpc::types::reply::Syncing;
-        client(addr)
-            .request::<Syncing>("starknet_syncing", params)
+        client_request::<types::reply::Syncing>("starknet_syncing", rpc_params!())
             .await
             .unwrap();
     }
