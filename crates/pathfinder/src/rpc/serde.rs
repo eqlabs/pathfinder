@@ -4,8 +4,7 @@ use crate::core::{
     CallParam, CallSignatureElem, ConstructorParam, EthereumAddress, EventData, EventKey,
     L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionSignatureElem,
 };
-use bigdecimal::BigDecimal;
-use num_bigint::{BigInt, BigUint, Sign};
+use num_bigint::BigUint;
 use pedersen::{HexParseError, OverflowError, StarkHash};
 use serde_with::serde_conv;
 use std::str::FromStr;
@@ -89,9 +88,8 @@ fn starkhash_from_biguint(b: BigUint) -> Result<StarkHash, OverflowError> {
 /// A helper conversion function. Only use with __sequencer API related types__.
 pub fn starkhash_to_dec_str(h: &StarkHash) -> String {
     let b = h.to_be_bytes();
-    let b = BigInt::from_bytes_be(Sign::Plus, &b);
-    let b = BigDecimal::from(b);
-    b.to_string()
+    let b = BigUint::from_bytes_be(&b);
+    b.to_str_radix(10)
 }
 
 /// A helper conversion function. Only use with __sequencer API related types__.
