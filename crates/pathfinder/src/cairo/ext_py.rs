@@ -102,7 +102,7 @@ enum SubProcessEvent {
     CommandHandled(u32, Option<Timings>, Status),
 }
 
-/// The reason the [`launch_python`] exited.
+/// The reason the [`sub_process::launch_python`] exited.
 #[derive(Debug)]
 enum SubprocessExitReason {
     ClosedChannel,
