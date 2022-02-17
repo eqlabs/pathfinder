@@ -13,8 +13,6 @@ use crate::{
             BlockHashOrTag, BlockNumberOrTag,
         },
     },
-    sequencer,
-    storage::Storage,
 };
 use ::serde::Deserialize;
 use jsonrpsee::{
@@ -24,14 +22,9 @@ use jsonrpsee::{
 use std::{net::SocketAddr, result::Result};
 
 /// Starts the HTTP-RPC server.
-pub fn run_server(
-    addr: SocketAddr,
-    storage: Storage,
-    sequencer: sequencer::Client,
-) -> Result<(HttpServerHandle, SocketAddr), Error> {
+pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, SocketAddr), Error> {
     let server = HttpServerBuilder::default().build(addr)?;
     let local_addr = server.local_addr()?;
-    let api = RpcApi::new(storage, sequencer);
     let mut module = RpcModule::new(api);
     module.register_async_method("starknet_getBlockByHash", |params, context| async move {
         #[derive(Debug, Deserialize)]
@@ -204,7 +197,9 @@ mod tests {
         core::{StarknetChainId, StarknetProtocolVersion},
         ethereum::Chain,
         rpc::run_server,
+        sequencer,
         sequencer::test_utils::*,
+        storage::Storage,
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{
@@ -236,7 +231,8 @@ mod tests {
             // Restart the server each time (and implicitly the sequencer client, which actually does the job)
             let storage = Storage::in_memory().unwrap();
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-            let (__handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
+            let api = RpcApi::new(storage, sequencer);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             match client(addr).request::<Out>(method, params.clone()).await {
                 Ok(r) => return Ok(r),
                 Err(e) => match &e {
@@ -564,7 +560,8 @@ mod tests {
             async fn real_data() {
                 let storage = Storage::migrate("desync.sqlite".into()).unwrap();
                 let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-                let (__handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
+                let api = RpcApi::new(storage, sequencer);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = rpc_params!(
                     *VALID_CONTRACT_ADDR,
                     *VALID_KEY,
@@ -834,12 +831,8 @@ mod tests {
         async fn returns_not_found_if_we_dont_know_about_the_contract() {
             let storage = Storage::in_memory().unwrap();
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-            let (__handle, addr) = run_server(
-                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
-                storage,
-                sequencer,
-            )
-            .unwrap();
+            let api = RpcApi::new(storage, sequencer);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
 
             let not_found = client(addr)
                 .request::<Code>(
@@ -908,12 +901,8 @@ mod tests {
             }
 
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-            let (__handle, addr) = run_server(
-                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
-                storage,
-                sequencer,
-            )
-            .unwrap();
+            let api = RpcApi::new(storage, sequencer);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
 
             let client = client(addr);
 
@@ -1232,7 +1221,8 @@ mod tests {
     async fn block_number() {
         let storage = Storage::in_memory().unwrap();
         let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
+        let api = RpcApi::new(storage, sequencer);
+        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
         let params = rpc_params!();
         client(addr)
             .request::<u64>("starknet_blockNumber", params)
@@ -1245,7 +1235,8 @@ mod tests {
     async fn chain_id() {
         let storage = Storage::in_memory().unwrap();
         let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
+        let api = RpcApi::new(storage, sequencer);
+        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
         let params = rpc_params!();
         client(addr)
             .request::<StarknetChainId>("starknet_chainId", params)
@@ -1258,7 +1249,8 @@ mod tests {
     async fn pending_transactions() {
         let storage = Storage::in_memory().unwrap();
         let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
+        let api = RpcApi::new(storage, sequencer);
+        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
         let params = rpc_params!();
         client(addr)
             .request::<()>("starknet_pendingTransactions", params)
@@ -1271,7 +1263,8 @@ mod tests {
     async fn protocol_version() {
         let storage = Storage::in_memory().unwrap();
         let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
+        let api = RpcApi::new(storage, sequencer);
+        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
         let params = rpc_params!();
         client(addr)
             .request::<StarknetProtocolVersion>("starknet_protocolVersion", params)
@@ -1284,7 +1277,8 @@ mod tests {
     async fn syncing() {
         let storage = Storage::in_memory().unwrap();
         let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
-        let (_handle, addr) = run_server(*LOCALHOST, storage, sequencer).unwrap();
+        let api = RpcApi::new(storage, sequencer);
+        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
         let params = rpc_params!();
         use crate::rpc::types::reply::Syncing;
         client(addr)
