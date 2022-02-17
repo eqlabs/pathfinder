@@ -53,7 +53,7 @@ pub(super) async fn launch_python(
 
         tokio::pin!(command);
 
-        let (call, at_block, response) = tokio::select! {
+        let (call, at_block, mut response) = tokio::select! {
             // locking is not cancellation safe BUT if the race is lost we don't retry so no
             // worries on that.
             maybe_command = &mut command => match maybe_command {
@@ -70,6 +70,11 @@ pub(super) async fn launch_python(
                 break SubprocessExitReason::Shutdown;
             },
         };
+
+        if response.is_closed() {
+            // quickly loadshed, as the caller has already left.
+            continue;
+        }
 
         command_buffer.clear();
 
@@ -104,6 +109,16 @@ pub(super) async fn launch_python(
                 // no need to await for child dying here, because the event would close the childs
                 // stdout and thus break our read_line and thus return a SubprocessError::IO and
                 // we'd break out.
+                _ = response.closed() => {
+                    // attempt to guard against a call that essentially freezes up the python for
+                    // how many minutes. by keeping our eye on this, we'll give the higher level a
+                    // chance to set timeouts, which will drop the futures.
+                    //
+                    // breaking out here will end up killing the python. it's probably the safest
+                    // way to not cancel processing, because you can can't rely on SIGINT not being
+                    // handled in a `expect Exception:` branch.
+                    break SubprocessExitReason::Cancellation;
+                }
             }
         };
 

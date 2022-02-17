@@ -109,6 +109,7 @@ enum SubprocessExitReason {
     UnrecoverableIO,
     Shutdown,
     Death,
+    Cancellation,
 }
 
 /// Errors which can happen during an RPC alike round with the subprocess.
