@@ -47,9 +47,8 @@ where
     T: ::serde::de::DeserializeOwned,
 {
     let resp = parse_raw(resp).await?;
-    let resp = resp.text().await?;
     // Attempt to deserialize the actual data we are looking for
-    let resp = serde_json::from_str::<T>(resp.as_str())?;
+    let resp = resp.json::<T>().await?;
     Ok(resp)
 }
 
@@ -58,8 +57,7 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
     // Starknet specific errors end with a 500 status code
     // but the body contains a JSON object with the error description
     if resp.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
-        let resp = resp.text().await?;
-        let starknet_error = serde_json::from_str::<StarknetError>(resp.as_str())?;
+        let starknet_error = resp.json::<StarknetError>().await?;
         return Err(SequencerError::StarknetError(starknet_error));
     }
     // Status codes <400;499> and <501;599> are mapped to SequencerError::TransportError
