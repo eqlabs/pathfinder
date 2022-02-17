@@ -1,7 +1,7 @@
 //! Contains the Sqlite persistent storage abstraction for a Starknet Binary Merkle Patricia Tree.
 //!
 //! For more information on the structure of the tree, see
-//! [`crate::state::merkle_tree::MerkleTree`].
+//! [`MerkleTree`](crate::state::merkle_tree::MerkleTree).
 //!
 //! ## Overview
 //!
@@ -264,6 +264,7 @@ impl<'a> RcNodeStorage<'a> {
     ///
     /// Does not perform rollback on failure. This implies that you should rollback the [RcNodeStorage's](RcNodeStorage) transaction
     /// if this call returns an error to prevent database corruption.
+    #[allow(unused)]
     fn delete_node(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
@@ -293,6 +294,7 @@ impl<'a> RcNodeStorage<'a> {
 
     /// Decrements the reference count of the node and automatically deletes it
     /// if the count becomes zero.
+    #[allow(unused)] // We are not decrementing yet, because we are not deleting.
     pub fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
