@@ -1,17 +1,14 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
     core::{
-        CallResultValue, ContractAddress, ContractCode, StarknetChainId, StarknetProtocolVersion,
+        CallResultValue, ContractAddress, ContractCode, StarknetProtocolVersion,
         StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
     },
     ethereum::Chain,
-    rpc::{
-        serde::H256AsNoLeadingZerosHexStr,
-        types::{
-            reply::{Block, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
-            request::{BlockResponseScope, Call, OverflowingStorageAddress},
-            BlockHashOrTag, BlockNumberOrTag, Tag,
-        },
+    rpc::types::{
+        reply::{Block, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
+        request::{BlockResponseScope, Call, OverflowingStorageAddress},
+        BlockHashOrTag, BlockNumberOrTag, Tag,
     },
     sequencer::{self, reply as raw},
     storage::{self, Storage},
@@ -22,8 +19,6 @@ use jsonrpsee::types::{
     RpcResult,
 };
 use pedersen::OverflowError;
-use serde::Serialize;
-use serde_with::serde_as;
 use std::convert::TryInto;
 
 /// Implements JSON-RPC endpoints.
@@ -402,13 +397,13 @@ impl RpcApi {
     }
 
     /// Return the currently configured StarkNet chain id.
-    pub async fn chain_id(&self) -> RpcResult<StarknetChainId> {
+    pub async fn chain_id(&self) -> RpcResult<String> {
         use super::serde::bytes_to_hex_str;
 
-        Ok(StarknetChainId(bytes_to_hex_str(match self.chain {
+        Ok(bytes_to_hex_str(match self.chain {
             Chain::Goerli => b"SN_GOERLI",
             Chain::Mainnet => b"SN_MAIN",
-        })))
+        }))
     }
 
     /// Returns the transactions in the transaction pool, recognized by this sequencer.

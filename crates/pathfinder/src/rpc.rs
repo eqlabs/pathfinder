@@ -194,12 +194,8 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
 mod tests {
     use super::*;
     use crate::{
-        core::{StarknetChainId, StarknetProtocolVersion},
-        ethereum::Chain,
-        rpc::run_server,
-        sequencer,
-        sequencer::test_utils::*,
-        storage::Storage,
+        core::StarknetProtocolVersion, ethereum::Chain, rpc::run_server, sequencer,
+        sequencer::test_utils::*, storage::Storage,
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{
@@ -1237,10 +1233,9 @@ mod tests {
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let params = rpc_params!();
                     client(addr)
-                        .request::<StarknetChainId>("starknet_chainId", params)
+                        .request::<String>("starknet_chainId", params)
                         .await
                         .unwrap()
-                        .0
                 })
                 .collect::<futures::stream::FuturesOrdered<_>>()
                 .collect::<Vec<_>>()
@@ -1255,7 +1250,7 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn pending_transactions() {
-        client_request::<StarknetChainId>("starknet_pendingTransactions", rpc_params!())
+        client_request::<()>("starknet_pendingTransactions", rpc_params!())
             .await
             .unwrap();
     }
@@ -1263,7 +1258,7 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn protocol_version() {
-        client_request::<StarknetChainId>("starknet_protocolVersion", rpc_params!())
+        client_request::<StarknetProtocolVersion>("starknet_protocolVersion", rpc_params!())
             .await
             .unwrap();
     }
