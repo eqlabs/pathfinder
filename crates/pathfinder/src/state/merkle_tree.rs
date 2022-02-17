@@ -42,7 +42,7 @@
 //! tree, the immutable tree still exists in storage. One can therefore think of the in-memory tree as containing
 //! the state changes between tree `N` and `N + 1`.
 //!
-//! The in-memory tree is built using a graph of [Rc<RefCell<Node>>] which is a bit painful.
+//! The in-memory tree is built using a graph of `Rc<RefCell<Node>>` which is a bit painful.
 
 use anyhow::Context;
 use bitvec::prelude::BitVec;
