@@ -96,7 +96,6 @@ pub mod request {
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
     use super::request::BlockResponseScope;
-    pub use crate::sequencer::reply::Code;
     use crate::{
         core::{
             CallParam, ContractAddress, EntryPoint, GlobalRoot, StarknetBlockHash,
