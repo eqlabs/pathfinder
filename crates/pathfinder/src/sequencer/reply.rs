@@ -266,7 +266,8 @@ pub mod transaction {
     }
 }
 
-/// Used to deserialize a reply from [Client::state_update](crate::sequencer::Client::state_update).
+/// Used to deserialize a reply from
+/// [`Client::state_update_by_hash`](crate::sequencer::Client::state_update_by_hash).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct StateUpdate {
     // At the moment when querying by block hash there is an additional `block_hash` field available.
