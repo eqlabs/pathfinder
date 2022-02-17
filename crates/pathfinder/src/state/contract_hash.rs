@@ -206,7 +206,7 @@ impl HashChain {
 
 /// See:
 /// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
-fn truncated_keccak(mut plain: [u8; 32]) -> StarkHash {
+pub(crate) fn truncated_keccak(mut plain: [u8; 32]) -> StarkHash {
     // python code masks with (2**250 - 1) which starts 0x03 and is followed by 31 0xff in be
     // truncation is needed not to overflow the field element.
     plain[0] &= 0x03;
@@ -488,5 +488,25 @@ mod json {
 
             assert_eq!(output, r#"{"debug_info":null}"#);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn truncated_keccak_matches_pythonic() {
+        use super::truncated_keccak;
+        use pedersen::StarkHash;
+        use sha3::{Digest, Keccak256};
+        let all_set = Keccak256::digest(&[0xffu8; 32]);
+        assert!(all_set[0] > 0xf);
+        let truncated = truncated_keccak(all_set.into());
+        assert_eq!(
+            truncated,
+            StarkHash::from_hex_str(
+                "01c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9"
+            )
+            .unwrap()
+        );
     }
 }

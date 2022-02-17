@@ -11,8 +11,10 @@ async fn main() {
     // TODO: pick the correct sequencer based on the Ethereum chain.
     let sequencer = sequencer::Client::new(pathfinder_lib::ethereum::Chain::Goerli).unwrap();
 
-    let (_handle, local_addr) = rpc::run_server(config.http_rpc_addr, storage, sequencer)
-        .expect("⚠️ Failed to start HTTP-RPC server");
+    let api = rpc::api::RpcApi::new(storage, sequencer);
+
+    let (_handle, local_addr) =
+        rpc::run_server(config.http_rpc_addr, api).expect("⚠️ Failed to start HTTP-RPC server");
     println!("📡 HTTP-RPC server started on: {}", local_addr);
     let () = std::future::pending().await;
 }
