@@ -83,7 +83,7 @@ pub struct GlobalRoot(pub StarkHash);
 pub struct StarknetBlockHash(pub StarkHash);
 
 /// A StarkNet block number.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockNumber(pub u64);
 
 /// The timestamp of a Starknet block.
@@ -163,5 +163,11 @@ impl StarknetBlockNumber {
 
     pub fn decrement(&self) -> Self {
         Self(self.0 - 1)
+    }
+}
+
+impl From<EthereumBlockNumber> for web3::types::BlockId {
+    fn from(number: EthereumBlockNumber) -> Self {
+        web3::types::BlockId::Number(web3::types::BlockNumber::Number(number.0.into()))
     }
 }

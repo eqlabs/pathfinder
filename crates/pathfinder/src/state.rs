@@ -29,6 +29,7 @@ use tokio::sync::{mpsc, oneshot};
 
 pub(crate) mod contract_hash;
 mod ethereum;
+mod ethereum_mockall;
 mod merkle_node;
 mod merkle_tree;
 pub(crate) mod state_tree;

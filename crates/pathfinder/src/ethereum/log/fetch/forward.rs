@@ -54,6 +54,14 @@ where
         }
     }
 
+    pub fn set_head(&mut self, head: Option<T>) {
+        self.head = head;
+    }
+
+    pub fn head(&self) -> &Option<T> {
+        &self.head
+    }
+
     /// Fetches the next set of logs from L1. This set may be empty, in which
     /// case we have reached the current end of the L1 chain.
     pub async fn fetch<Tr: Transport>(
