@@ -111,7 +111,7 @@ pub(super) async fn launch_python(
                 // we'd break out.
                 _ = response.closed() => {
                     // attempt to guard against a call that essentially freezes up the python for
-                    // how many minutes. by keeping our eye on this, we'll give the higher level a
+                    // how many minutes. by keeping our eye on this, we'll give the caller a
                     // chance to set timeouts, which will drop the futures.
                     //
                     // breaking out here will end up killing the python. it's probably the safest

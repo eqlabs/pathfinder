@@ -118,7 +118,7 @@ enum SubprocessError {
     IO,
     /// Python sent us invalid response
     InvalidJson(serde_json::Error),
-    /// Python sent us a reseponse we couldn't understand
+    /// Python sent us a response we couldn't understand
     InvalidResponse,
 }
 
