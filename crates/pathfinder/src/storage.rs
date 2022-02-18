@@ -104,6 +104,10 @@ impl Storage {
 
         Self::migrate(database_path)
     }
+
+    pub fn path(&self) -> &Path {
+        &self.database_path
+    }
 }
 
 /// Migrates the database to the latest version. This __MUST__ be called

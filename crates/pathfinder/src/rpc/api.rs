@@ -1,5 +1,6 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
+    cairo::ext_py,
     core::{
         CallResultValue, ContractAddress, ContractCode, StarknetProtocolVersion,
         StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
@@ -28,6 +29,7 @@ pub struct RpcApi {
     storage: Storage,
     sequencer: sequencer::Client,
     chain: Chain,
+    call_handle: Option<ext_py::Handle>,
 }
 
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
@@ -37,6 +39,14 @@ impl RpcApi {
             storage,
             sequencer,
             chain,
+            call_handle: None,
+        }
+    }
+
+    pub fn with_call_handling(self, call_handle: ext_py::Handle) -> Self {
+        Self {
+            call_handle: Some(call_handle),
+            ..self
         }
     }
 
@@ -380,8 +390,47 @@ impl RpcApi {
         request: Call,
         block_hash: BlockHashOrTag,
     ) -> RpcResult<Vec<CallResultValue>> {
-        let call = self.sequencer.call(request.into(), block_hash).await?;
-        Ok(call.result)
+        use futures::future::TryFutureExt;
+        let seq = self
+            .sequencer
+            .call(request.clone().into(), block_hash)
+            .map_ok(|x| x.result)
+            .map_err(Error::from);
+
+        match self.call_handle.as_ref() {
+            Some(h) => {
+                let local = h.call(request, block_hash).map_err(Error::from);
+                let (local, seq) = tokio::join!(local, seq);
+
+                match (local, seq) {
+                    (Ok(x), Ok(y)) if x == y => {
+                        println!("got equal to sequencer response: {x:?}");
+                        Ok(x)
+                    }
+                    (Ok(x), Ok(y)) => {
+                        println!("got different ok responses: \nours: {x:?}\ntheir: {y:?}");
+                        Ok(x)
+                    }
+                    (Err(x), Ok(y)) => {
+                        println!("we errored but sequencer did not: {x:?} -- {y:?}");
+                        Ok(y)
+                    }
+                    (Ok(_), Err(y)) => {
+                        println!("we didn't error but sequencer did: {y:?}");
+                        Err(y)
+                    }
+                    (Err(x), Err(y)) if x.to_string() == y.to_string() => {
+                        println!("we errored the same! {x:?}");
+                        Err(y)
+                    }
+                    (Err(x), Err(y)) => {
+                        println!("we errored differently! {x:?} vs. {y:?}");
+                        Err(y)
+                    }
+                }
+            }
+            None => seq.await,
+        }
     }
 
     /// Get the most recent accepted block number.
@@ -419,5 +468,27 @@ impl RpcApi {
     /// Returns an object about the sync status, or false if the node is not synching.
     pub async fn syncing(&self) -> RpcResult<Syncing> {
         todo!("Figure out where to take it from.")
+    }
+}
+
+impl From<ext_py::CallFailure> for jsonrpsee::types::Error {
+    fn from(e: ext_py::CallFailure) -> Self {
+        match e {
+            ext_py::CallFailure::NoSuchBlock => Error::from(ErrorCode::InvalidBlockHash),
+            ext_py::CallFailure::NoSuchContract => Error::from(ErrorCode::ContractNotFound),
+            ext_py::CallFailure::ExecutionFailed(e) => Error::Call(CallError::Custom {
+                code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
+                message: format!("{}: {}", jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG, e),
+                data: None,
+            }),
+            // Intentionally hide the message under Internal
+            ext_py::CallFailure::Internal(_) | ext_py::CallFailure::Shutdown => {
+                Error::Call(CallError::Custom {
+                    code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
+                    message: jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG.to_owned(),
+                    data: None,
+                })
+            }
+        }
     }
 }
