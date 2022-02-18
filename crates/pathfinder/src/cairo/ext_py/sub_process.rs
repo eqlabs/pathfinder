@@ -51,6 +51,8 @@ pub(super) async fn launch_python(
 
     let mut command_buffer = Vec::new();
 
+    // TODO: Why not have an outer loop to respawn a process fast? The idea occured during review.
+    // Currently the "policy" over respawning is controlled by the "service" in `super::start`.
     let exit_reason = loop {
         let command = async {
             let mut locked = commands.lock().await;
