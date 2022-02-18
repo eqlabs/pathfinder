@@ -261,10 +261,9 @@ async fn spawn(
         .spawn()
         .context("Failed to spawn the new python process; this should only happen when the session is at it's process limit on unix.")?;
 
-    let pid = match child.id() {
-        Some(pid) => pid,
-        None => todo!("child spawned but exited before reading pid"),
-    };
+    // why care about the pid? it could be logged, and used to identify process activity, thought
+    // these should be easy to spot otherwise as well.
+    let pid = child.id().expect("The child pid should had been available after a successful start before waiting for it's status");
 
     let input = child.stdin.take().expect("stdin was piped");
     let output = child.stdout.take().expect("stdout was piped");
