@@ -77,7 +77,8 @@ impl<'a> MerkleTree<'a> {
     ///
     /// This allows for multiple instances of the same tree state to be committed,
     /// without deleting all of them in a single call.
-    pub fn _delete(self) -> anyhow::Result<()> {
+    #[cfg(test)]
+    pub fn delete(self) -> anyhow::Result<()> {
         match self.root.borrow().hash() {
             Some(hash) if hash != StarkHash::ZERO => self
                 .storage
@@ -1030,7 +1031,7 @@ mod tests {
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
-                uut._delete().unwrap();
+                uut.delete().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
                 assert_eq!(uut.get(key0).unwrap(), val0);
@@ -1118,7 +1119,7 @@ mod tests {
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
-                uut._delete().unwrap();
+                uut.delete().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
                 assert_eq!(uut.get(key0).unwrap(), val0);
@@ -1157,19 +1158,19 @@ mod tests {
             assert_eq!(root0, root2);
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-            uut._delete().unwrap();
+            uut.delete().unwrap();
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
             assert_eq!(uut.get(key).unwrap(), val);
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-            uut._delete().unwrap();
+            uut.delete().unwrap();
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
             assert_eq!(uut.get(key).unwrap(), val);
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-            uut._delete().unwrap();
+            uut.delete().unwrap();
 
             // This should fail since the root has been deleted.
             MerkleTree::load("test".to_string(), &transaction, root0).unwrap_err();

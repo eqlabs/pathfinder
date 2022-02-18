@@ -264,7 +264,7 @@ impl<'a> RcNodeStorage<'a> {
     ///
     /// Does not perform rollback on failure. This implies that you should rollback the [RcNodeStorage's](RcNodeStorage) transaction
     /// if this call returns an error to prevent database corruption.
-    #[allow(unused)]
+    #[cfg(test)]
     fn delete_node(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
@@ -294,7 +294,7 @@ impl<'a> RcNodeStorage<'a> {
 
     /// Decrements the reference count of the node and automatically deletes it
     /// if the count becomes zero.
-    #[allow(unused)] // We are not decrementing yet, because we are not deleting.
+    #[cfg(test)]
     pub fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
