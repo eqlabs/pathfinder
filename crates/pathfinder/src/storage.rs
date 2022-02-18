@@ -4,7 +4,7 @@
 
 mod contract;
 mod ethereum;
-pub mod merkle_tree;
+pub(crate) mod merkle_tree;
 mod schema;
 mod state;
 

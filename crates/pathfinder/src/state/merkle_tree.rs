@@ -1,4 +1,4 @@
-//! Starknet utilises a custom Binary Merkle-Patrica Tree to store and organise its state.
+//! Starknet utilises a custom Binary Merkle-Patricia Tree to store and organise its state.
 //!
 //! From an external perspective the tree is similar to a key-value store, where both key
 //! and value are [StarkHashes](StarkHash). The difference is that each tree is immutable,
@@ -42,7 +42,7 @@
 //! tree, the immutable tree still exists in storage. One can therefore think of the in-memory tree as containing
 //! the state changes between tree `N` and `N + 1`.
 //!
-//! The in-memory tree is built using a graph of [Rc<RefCell<Node>>] which is a bit painful.
+//! The in-memory tree is built using a graph of `Rc<RefCell<Node>>` which is a bit painful.
 
 use anyhow::Context;
 use bitvec::prelude::BitVec;
@@ -77,7 +77,8 @@ impl<'a> MerkleTree<'a> {
     ///
     /// This allows for multiple instances of the same tree state to be committed,
     /// without deleting all of them in a single call.
-    pub fn _delete(self) -> anyhow::Result<()> {
+    #[cfg(test)]
+    pub fn delete(self) -> anyhow::Result<()> {
         match self.root.borrow().hash() {
             Some(hash) if hash != StarkHash::ZERO => self
                 .storage
@@ -330,8 +331,8 @@ impl<'a> MerkleTree<'a> {
 
     /// Deletes a leaf node from the tree.
     ///
-    /// This is not an external facing API; the functionality is instead
-    /// accessed by calling [Mpt::set] with value set to [StarkHash::ZERO].
+    /// This is not an external facing API; the functionality is instead accessed by calling
+    /// [`MerkleTree::set`] with value set to [`StarkHash::ZERO`].
     fn delete_leaf(&mut self, key: StarkHash) -> anyhow::Result<()> {
         // Algorithm explanation:
         //
@@ -1030,7 +1031,7 @@ mod tests {
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
-                uut._delete().unwrap();
+                uut.delete().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
                 assert_eq!(uut.get(key0).unwrap(), val0);
@@ -1118,7 +1119,7 @@ mod tests {
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
-                uut._delete().unwrap();
+                uut.delete().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
                 assert_eq!(uut.get(key0).unwrap(), val0);
@@ -1157,19 +1158,19 @@ mod tests {
             assert_eq!(root0, root2);
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-            uut._delete().unwrap();
+            uut.delete().unwrap();
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
             assert_eq!(uut.get(key).unwrap(), val);
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-            uut._delete().unwrap();
+            uut.delete().unwrap();
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
             assert_eq!(uut.get(key).unwrap(), val);
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-            uut._delete().unwrap();
+            uut.delete().unwrap();
 
             // This should fail since the root has been deleted.
             MerkleTree::load("test".to_string(), &transaction, root0).unwrap_err();

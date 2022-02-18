@@ -3,8 +3,7 @@ use crate::{
     core::{CallResultValue, EthereumAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
     rpc::serde::EthereumAddressAsHexStr,
 };
-use pedersen::StarkHash;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_with::serde_as;
 
 /// Used to deserialize replies to [Client::block_by_hash](crate::sequencer::Client::block_by_hash) and
@@ -67,68 +66,6 @@ pub mod call {
     pub struct Problems {
         #[serde_as(as = "HashMap<_, _>")]
         pub calldata: HashMap<u64, Vec<String>>,
-    }
-}
-
-/// Used to deserialize a reply from [Client::code](crate::sequencer::Client::code).
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Code {
-    pub abi: Box<serde_json::value::RawValue>,
-    pub bytecode: Vec<StarkHash>,
-}
-
-/// Types used when deserializing L2 contract related data.
-pub mod code {
-    use serde::{Deserialize, Serialize};
-
-    /// Represents deserialized L2 contract Application Blockchain Interface element.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
-    pub struct Abi {
-        #[serde(default)]
-        pub inputs: Option<Vec<abi::Input>>,
-        #[serde(default)]
-        pub members: Option<Vec<abi::Member>>,
-        pub name: String,
-        #[serde(default)]
-        pub outputs: Option<Vec<abi::Output>>,
-        pub r#type: String,
-        #[serde(default)]
-        pub size: Option<u64>,
-        #[serde(rename = "stateMutability")]
-        #[serde(default)]
-        pub state_mutability: Option<String>,
-    }
-
-    /// Types used when deserializing L2 contract ABI related data.
-    pub mod abi {
-        use serde::{Deserialize, Serialize};
-
-        /// Represents deserialized L2 contract ABI input element.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-        #[serde(deny_unknown_fields)]
-        pub struct Input {
-            pub name: String,
-            pub r#type: String,
-        }
-
-        /// Represents deserialized L2 contract ABI member element.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-        #[serde(deny_unknown_fields)]
-        pub struct Member {
-            pub name: String,
-            pub offset: u64,
-            pub r#type: String,
-        }
-
-        /// Represents deserialized L2 contract ABI output element.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-        #[serde(deny_unknown_fields)]
-        pub struct Output {
-            pub name: String,
-            pub r#type: String,
-        }
     }
 }
 
@@ -329,7 +266,8 @@ pub mod transaction {
     }
 }
 
-/// Used to deserialize a reply from [Client::state_update](crate::sequencer::Client::state_update).
+/// Used to deserialize a reply from
+/// [`Client::state_update_by_hash`](crate::sequencer::Client::state_update_by_hash).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct StateUpdate {
     // At the moment when querying by block hash there is an additional `block_hash` field available.
@@ -384,25 +322,4 @@ pub struct EthContractAddresses {
     #[serde_as(as = "EthereumAddressAsHexStr")]
     #[serde(rename = "GpsStatementVerifier")]
     pub gps_statement_verifier: EthereumAddress,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn code() {
-        let abi = r#"[{"inputs": [{"name": "amount", "type": "felt"}], "name": "increase_balance", "outputs": [], "type": "function"}, {"inputs": [], "name": "get_balance", "outputs": [{"name": "res", "type": "felt"}], "stateMutability": "view", "type": "function"}]"#;
-        let bytecode = vec![
-            StarkHash::from_hex_str("0x123").unwrap(),
-            StarkHash::from_hex_str("0x4567890").unwrap(),
-        ];
-        let encoded_bytecode = serde_json::to_string(&bytecode).unwrap();
-        let encoded = format!("{{ \"abi\": {}, \"bytecode\": {} }}", abi, encoded_bytecode);
-
-        let code = serde_json::from_str::<Code>(&encoded).unwrap();
-
-        assert_eq!(code.bytecode, bytecode);
-        assert_eq!(code.abi.get(), abi);
-    }
 }

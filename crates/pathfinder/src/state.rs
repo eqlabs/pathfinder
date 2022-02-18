@@ -29,7 +29,7 @@ use tokio::sync::{mpsc, oneshot};
 
 pub(crate) mod contract_hash;
 mod merkle_node;
-mod merkle_tree;
+pub(crate) mod merkle_tree;
 pub(crate) mod state_tree;
 
 pub use contract_hash::compute_contract_hash;

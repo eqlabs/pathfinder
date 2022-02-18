@@ -812,12 +812,13 @@ mod tests {
 
     mod get_code {
         use super::*;
-        use crate::{rpc::types::reply::ErrorCode, sequencer::reply::Code};
+        use crate::core::ContractCode;
+        use crate::rpc::types::reply::ErrorCode;
 
         #[tokio::test]
         async fn invalid_contract_address() {
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
-            let e = client_request::<Code>("starknet_getCode", params)
+            let e = client_request::<ContractCode>("starknet_getCode", params)
                 .await
                 .unwrap_err();
 
@@ -832,7 +833,7 @@ mod tests {
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
 
             let not_found = client(addr)
-                .request::<Code>(
+                .request::<ContractCode>(
                     "starknet_getCode",
                     rpc_params!(
                         "0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc"

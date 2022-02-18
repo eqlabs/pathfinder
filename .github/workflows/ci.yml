@@ -45,6 +45,16 @@ jobs:
       - uses: Swatinem/rust-cache@v1
       - run: cargo fmt --all -- --check
 
+  doc:
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v1
+      - run: cargo doc --no-deps --document-private-items
+
   dep-sort:
     runs-on: ubuntu-latest
     steps:
