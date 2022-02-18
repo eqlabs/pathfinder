@@ -130,9 +130,43 @@ impl From<std::io::Error> for SubprocessError {
 
 #[cfg(test)]
 mod tests {
+    use super::{sub_process::launch_python, SubProcessEvent};
     use pedersen::StarkHash;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
+
+    #[tokio::test]
+    #[ignore]
+    async fn start_with_wrong_database_schema_fails() {
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+
+        let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
+
+        {
+            let conn = s.connection().unwrap();
+            conn.execute("pragma user_version = 0", []).unwrap();
+        }
+
+        let (_work_tx, work_rx) = tokio::sync::mpsc::channel::<super::Command>(1);
+        let work_rx = tokio::sync::Mutex::new(work_rx);
+        let (status_tx, mut status_rx) = tokio::sync::mpsc::channel(1);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
+
+        let no_info = launch_python(
+            db_file.path().into(),
+            work_rx.into(),
+            status_tx,
+            shutdown_rx,
+        )
+        .await;
+
+        assert!(no_info.is_none(), "{no_info:?}");
+
+        // this is actually daft to wait for this instead of the exit status. FIXME added, will fix
+        // on next PR.
+        let failure = status_rx.try_recv().unwrap();
+        assert!(matches!(failure, SubProcessEvent::Failure(None, _)));
+    }
 
     #[tokio::test]
     #[ignore] // these tests require that you've entered into python venv
