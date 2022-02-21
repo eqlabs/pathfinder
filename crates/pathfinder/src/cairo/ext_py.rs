@@ -98,7 +98,6 @@ type Command = (
 #[derive(Debug)]
 enum SubProcessEvent {
     ProcessLaunched(u32),
-    Failure(Option<u32>, anyhow::Error),
     CommandHandled(u32, Option<Timings>, Status),
 }
 
@@ -130,7 +129,7 @@ impl From<std::io::Error> for SubprocessError {
 
 #[cfg(test)]
 mod tests {
-    use super::{sub_process::launch_python, SubProcessEvent};
+    use super::sub_process::launch_python;
     use pedersen::StarkHash;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
@@ -149,10 +148,10 @@ mod tests {
 
         let (_work_tx, work_rx) = tokio::sync::mpsc::channel::<super::Command>(1);
         let work_rx = tokio::sync::Mutex::new(work_rx);
-        let (status_tx, mut status_rx) = tokio::sync::mpsc::channel(1);
+        let (status_tx, _status_rx) = tokio::sync::mpsc::channel(1);
         let (_shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
 
-        let no_info = launch_python(
+        let err = launch_python(
             db_file.path().into(),
             work_rx.into(),
             status_tx,
@@ -160,12 +159,7 @@ mod tests {
         )
         .await;
 
-        assert!(no_info.is_none(), "{no_info:?}");
-
-        // this is actually daft to wait for this instead of the exit status. FIXME added, will fix
-        // on next PR.
-        let failure = status_rx.try_recv().unwrap();
-        assert!(matches!(failure, SubProcessEvent::Failure(None, _)));
+        println!("{:?}", err.unwrap_err());
     }
 
     #[tokio::test]

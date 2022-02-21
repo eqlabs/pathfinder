@@ -1,6 +1,7 @@
 //! Starting and maintaining processes, and the main entry point
 
 use super::{sub_process::launch_python, Command, Handle, SharedReceiver, SubProcessEvent};
+use anyhow::Context;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};
@@ -20,6 +21,8 @@ pub async fn start(
     count: std::num::NonZeroUsize,
     stop_flag: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> anyhow::Result<(Handle, tokio::task::JoinHandle<()>)> {
+    use futures::stream::StreamExt;
+
     // channel sizes are conservative but probably enough for many workers; should investigate mpmc
     // if the lock overhead on command_rx before making these deeper.
     let (command_tx, command_rx) = mpsc::channel(1);
@@ -40,25 +43,34 @@ pub async fn start(
 
     joinhandles.push(jh);
 
-    match status_rx.recv().await {
-        Some(SubProcessEvent::ProcessLaunched(_pid)) => {
-            // good, now we can launch the other processes requested later
+    // race the process launched notification or the task completion from joinhandles
+    tokio::select! {
+        Some(evt) = status_rx.recv() => {
+            match evt {
+                SubProcessEvent::ProcessLaunched(_pid) => {
+                    // good, now we can launch the other processes requested later
+                },
+                SubProcessEvent::CommandHandled(..) => {
+                    unreachable!("first message must not be CommandHandled");
+                },
+            }
+        },
+        Some(res) = &mut joinhandles.next() => {
+            match res {
+                Ok(Ok(t)) => unreachable!("first subprocess should not have exited successfully: {:?}", t),
+                // this is the failure to start
+                Ok(Err(e)) => return Err(e),
+                // this is the failure to join, panic or cancellation
+                Err(e) => return Err(e).context("Launch first python executor"),
+            }
         }
-        Some(SubProcessEvent::Failure(_maybe_pid, e)) => {
-            return Err(e.context("Launch first python executor"));
-        }
-        Some(SubProcessEvent::CommandHandled(..)) => {
-            unreachable!("first message must not be CommandHandled");
-        }
-        None => unreachable!("the status_tx exists"),
-    }
+    };
 
     let handle = Handle {
         command_tx: command_tx.clone(),
     };
 
     let jh = tokio::task::spawn(async move {
-        use futures::stream::StreamExt;
         const WAIT_BEFORE_SPAWN: std::time::Duration = std::time::Duration::from_secs(1);
 
         // use a sleep activated periodically before launching new processes
@@ -84,7 +96,6 @@ pub async fn start(
                         SubProcessEvent::CommandHandled(_pid, timings, status) => {
                             println!("{status:?}: {timings:?}");
                         },
-                        SubProcessEvent::Failure(..) => { /* this is really needed just for startup */ },
                     }
                 },
                 Some(_maybe_info) = joinhandles.next() => {
