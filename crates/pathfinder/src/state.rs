@@ -955,15 +955,10 @@ mod tests {
     #[test]
     fn update_requests_fetching_unique_new_contracts() {
         use super::{update, FetchExtractContract};
-        use crate::core::{
-            ContractAddress, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
-            StorageAddress, StorageValue,
-        };
+        use crate::core::{ContractAddress, GlobalRoot, StorageAddress, StorageValue};
         use crate::ethereum::{
             log::StateUpdateLog,
             state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
-            BlockOrigin, EthOrigin, TransactionOrigin,
         };
         use tokio::sync::mpsc;
         let s = crate::storage::Storage::in_memory().unwrap();
@@ -1007,25 +1002,8 @@ mod tests {
             }],
         };
 
-        // FIXME: this could be a #[cfg(test)] Default::default()
-        let global_root = GlobalRoot(StarkHash::ZERO);
-
-        // FIXME: this could be a default actually, only accessible in `#[cfg(test)]`
-        let update_log = StateUpdateLog {
-            origin: EthOrigin {
-                block: BlockOrigin {
-                    hash: EthereumBlockHash(web3::types::H256::default()),
-                    number: EthereumBlockNumber(0),
-                },
-                transaction: TransactionOrigin {
-                    hash: EthereumTransactionHash(web3::types::H256::default()),
-                    index: EthereumTransactionIndex(0),
-                },
-                log_index: EthereumLogIndex(0),
-            },
-            global_root: GlobalRoot(StarkHash::ZERO),
-            block_number: StarknetBlockNumber(0),
-        };
+        let global_root = GlobalRoot::default();
+        let update_log = StateUpdateLog::default();
 
         let (c_tx, mut c_rx) = mpsc::channel(1);
         let (r_tx, mut r_rx) = mpsc::channel(1);
