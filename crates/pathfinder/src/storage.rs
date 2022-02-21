@@ -36,8 +36,10 @@ const VERSION_KEY: &str = "user_version";
 /// - Pass the [Storage] (or clones thereof) to components which require database access.
 /// - Use [Storage::connection] to create connection's to the database, which can in turn
 ///   be used to interact with the various [tables](self).
-#[cfg_attr(not(test), derive(Clone))]
-pub struct Storage {
+#[derive(Clone)]
+pub struct Storage(std::sync::Arc<Inner>);
+
+struct Inner {
     database_path: PathBuf,
     /// Required to keep the in-memory variant alive. Sqlite drops in-memory databases
     /// as soon as all living connections are dropped, so we prevent this by storing
@@ -62,19 +64,21 @@ impl Storage {
         tx.commit().context("Commiting migration transaction")?;
 
         #[cfg(not(test))]
-        let storage = Storage { database_path };
+        let inner = Inner { database_path };
         #[cfg(test)]
-        let storage = Storage {
+        let inner = Inner {
             database_path,
             _keep_alive: Mutex::new(conn),
         };
+
+        let storage = Storage(std::sync::Arc::new(inner));
 
         Ok(storage)
     }
 
     /// Returns a new Sqlite [Connection] to the database.
     pub fn connection(&self) -> anyhow::Result<Connection> {
-        Self::open_connection(&self.database_path)
+        Self::open_connection(&self.0.database_path)
     }
 
     /// Opens a connection the given database path.
@@ -106,7 +110,7 @@ impl Storage {
     }
 
     pub fn path(&self) -> &Path {
-        &self.database_path
+        &self.0.database_path
     }
 }
 
