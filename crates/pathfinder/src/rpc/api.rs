@@ -476,19 +476,34 @@ impl From<ext_py::CallFailure> for jsonrpsee::types::Error {
         match e {
             ext_py::CallFailure::NoSuchBlock => Error::from(ErrorCode::InvalidBlockHash),
             ext_py::CallFailure::NoSuchContract => Error::from(ErrorCode::ContractNotFound),
-            ext_py::CallFailure::ExecutionFailed(e) => Error::Call(CallError::Custom {
-                code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
-                message: format!("{}: {}", jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG, e),
-                data: None,
-            }),
+            ext_py::CallFailure::ExecutionFailed(e) => internal_server_error(e),
             // Intentionally hide the message under Internal
             ext_py::CallFailure::Internal(_) | ext_py::CallFailure::Shutdown => {
-                Error::Call(CallError::Custom {
-                    code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
-                    message: jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG.to_owned(),
-                    data: None,
-                })
+                static_internal_server_error()
             }
         }
     }
+}
+
+// We cannot just return Error::Internal (-32003) in cases which are not covered by starknet RPC API spec
+// as jsonrpsee reserved it for internal subscription related errors only, so we resort to
+// CallError::Custom with the same code value and message as Error::Internal. This way we can still provide
+// an "Internal server error" but with additional context.
+//
+// This error is used for all instances of operations that are not explicitly specified in the StarkNet spec.
+// See <https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json>
+fn internal_server_error(e: impl std::fmt::Display) -> jsonrpsee::types::Error {
+    Error::Call(CallError::Custom {
+        code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
+        message: format!("{}: {}", jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG, e),
+        data: None,
+    })
+}
+
+fn static_internal_server_error() -> jsonrpsee::types::Error {
+    Error::Call(CallError::Custom {
+        code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
+        message: jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG.to_owned(),
+        data: None,
+    })
 }
