@@ -620,6 +620,8 @@ fn update(
         .apply()
         .context("Applying global state tree updates")?;
 
+    eprintln!("{:X}", new_global_root.0);
+
     // Validate calculated root against the one received from L1.
     anyhow::ensure!(
         new_global_root == update_log.global_root,
@@ -714,13 +716,15 @@ fn update(
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Default))]
 struct BlockUpdated {
     record: GlobalStateRecord,
     info: BlockInfo,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Default))]
 struct BlockInfo {
     deployed_contract_count: usize,
     updated_contracts: usize,
@@ -822,6 +826,130 @@ mod tests {
         let result = calculate_contract_state_hash(hash, root);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn init_deployed_contracts_root_to_zero_regression() {
+        // This is a regression test for a bug that we encountered at block 47047 on alpha4/goerli.
+        // It resulted in a global root mismatch due to the fact that we did not initialize
+        // the contract root to zero when a contract was deployed.
+        use super::{
+            update, BlockInfo, BlockUpdated, CompressedContract, FetchExtractContract,
+            FetchedCompressedContract, GlobalStateRecord,
+        };
+        use crate::{
+            core::{ContractAddress, GlobalRoot, StarknetBlockHash},
+            ethereum::{
+                log::StateUpdateLog,
+                state_update::{DeployedContract, StateUpdate},
+            },
+        };
+        use tokio::sync::mpsc;
+
+        let s = crate::storage::Storage::in_memory().unwrap();
+
+        let contract_hash = ContractHash(StarkHash::from_hex_str("0x11").unwrap());
+        let contract_addr = ContractAddress(StarkHash::from_hex_str("1").unwrap());
+        let contract_deploy = DeployedContract {
+            address: contract_addr,
+            hash: contract_hash,
+            call_data: vec![],
+        };
+
+        let state_update = StateUpdate {
+            deployed_contracts: vec![contract_deploy.clone()],
+            contract_updates: vec![],
+        };
+
+        // The global root that we start with
+        let global_root = GlobalRoot::default();
+
+        // The global root that we end with
+        let expected_global_root = GlobalRoot(
+            StarkHash::from_hex_str(
+                "04BA80F86439D380FF9EC91EE316C9FEA4C5AD2CAEFA8D5CC098AED72DE445B8",
+            )
+            .unwrap(),
+        );
+
+        let update_log = StateUpdateLog {
+            global_root: expected_global_root,
+            ..Default::default()
+        };
+
+        let (c_tx, mut c_rx) = mpsc::channel(1);
+        let (r_tx, mut r_rx) = mpsc::channel(1);
+
+        // Run the code that we want to test
+        let jh = std::thread::spawn(move || {
+            let mut conn = s.connection().unwrap();
+            let tx = conn.transaction().unwrap();
+            update(
+                state_update,
+                global_root,
+                &update_log,
+                &tx,
+                &c_tx,
+                &mut r_rx,
+            )
+            .unwrap()
+        });
+
+        // Consume update's request to fetch the contract to proceed futher
+        let requests = c_rx.blocking_recv().unwrap();
+
+        assert_eq!(
+            requests,
+            vec![FetchExtractContract {
+                deploy_info: contract_deploy,
+                fetch: true
+            }]
+        );
+
+        // We need to set the magic bytes for zstd compression to simulate a compressed
+        // contract definition, as this is asserted for internally
+        let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+        let contract_fetched_compressed = FetchedCompressedContract {
+            deploy_info: DeployedContract {
+                address: contract_addr,
+                call_data: vec![],
+                hash: contract_hash,
+            },
+            payload: Some(CompressedContract {
+                abi: zstd_magic.clone(),
+                bytecode: zstd_magic.clone(),
+                definition: zstd_magic,
+                hash: contract_hash.0,
+            }),
+        };
+
+        // Send simulated fetched and compressed contract definition to
+        // trigger global state tree update.
+        r_tx.blocking_send(contract_fetched_compressed).unwrap();
+
+        // Before the fix we would get a global root mismatch error here.
+        let block_updated = jh.join().unwrap();
+
+        let expected_block_updated = BlockUpdated {
+            record: GlobalStateRecord {
+                block_hash: StarknetBlockHash(
+                    StarkHash::from_hex_str(
+                        "0x00275921A89D44EF9D4EE74BFFF189D6F995DD07CFF9D0B8637B5C4619E9A05D",
+                    )
+                    .unwrap(),
+                ),
+                global_root: expected_global_root,
+                ..Default::default()
+            },
+            info: BlockInfo {
+                deployed_contract_count: 1,
+                ..Default::default()
+            },
+        };
+
+        // There should not be a global root mismatch anymore
+        assert_eq!(block_updated, expected_block_updated);
     }
 
     #[test]
