@@ -148,83 +148,78 @@ impl RpcApi {
                 .await?);
         }
 
-        // We cannot just return Error::Internal (-32003) in cases which are not covered by starknet RPC API spec
-        // as jsonrpsee reserved it for internal subscription related errors only, so we resort to
-        // CallError::Custom with the same code value and message as Error::Internal. This way we can still provide
-        // an "Internal server error" but with additional context.
-        //
-        // This error is used for all instances of operations that are not explicitly specified in the StarkNet spec.
-        // See https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json
-        let internal_server_error = |e: anyhow::Error| {
-            Error::Call(CallError::Custom {
-                code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
-                message: format!("{}: {}", jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG, e),
-                data: None,
-            })
-        };
+        let storage = self.storage.clone();
 
-        let mut db = self
-            .storage
-            .connection()
-            .context("Opening database connection")
-            .map_err(internal_server_error)?;
-        let tx = db
-            .transaction()
-            .context("Creating database transaction")
-            .map_err(internal_server_error)?;
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
 
-        // Use internal_server_error to indicate that the process of querying for a particular block failed,
-        // which is not the same as being sure that the block is not in the db.
-        let global_root = match block_hash {
-            BlockHashOrTag::Hash(hash) => GlobalStateTable::get_root_at_block_hash(&tx, hash)
-                .map_err(internal_server_error)?,
-            BlockHashOrTag::Tag(tag) => match tag {
-                Tag::Latest => {
-                    GlobalStateTable::get_latest_root(&tx).map_err(internal_server_error)?
-                }
-                Tag::Pending => unreachable!("Pending has already been handled above"),
-            },
-        }
-        // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
-        // by using a dedicated error code from the RPC API spec
-        .ok_or_else(|| Error::from(ErrorCode::InvalidBlockHash))?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
 
-        let global_state_tree = GlobalStateTree::load(&tx, global_root)
-            .context("Global state tree")
-            .map_err(internal_server_error)?;
+            // Use internal_server_error to indicate that the process of querying for a particular block failed,
+            // which is not the same as being sure that the block is not in the db.
+            let global_root = match block_hash {
+                BlockHashOrTag::Hash(hash) => GlobalStateTable::get_root_at_block_hash(&tx, hash)
+                    .map_err(internal_server_error)?,
+                BlockHashOrTag::Tag(tag) => match tag {
+                    Tag::Latest => {
+                        GlobalStateTable::get_latest_root(&tx).map_err(internal_server_error)?
+                    }
+                    Tag::Pending => unreachable!("Pending has already been handled above"),
+                },
+            }
+            // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
+            // by using a dedicated error code from the RPC API spec
+            .ok_or_else(|| Error::from(ErrorCode::InvalidBlockHash))?;
 
-        let contract_state_hash = global_state_tree
-            .get(contract_address)
-            .context("Get contract state hash from global state tree")
-            .map_err(internal_server_error)?;
+            let global_state_tree = GlobalStateTree::load(&tx, global_root)
+                .context("Global state tree")
+                .map_err(internal_server_error)?;
 
-        // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
-        if contract_state_hash.0 == StarkHash::ZERO {
-            return Err(Error::from(ErrorCode::ContractNotFound));
-        }
+            let contract_state_hash = global_state_tree
+                .get(contract_address)
+                .context("Get contract state hash from global state tree")
+                .map_err(internal_server_error)?;
 
-        let contract_state_root = ContractsStateTable::get_root(&tx, contract_state_hash)
-            .context("Get contract state root")
-            .map_err(internal_server_error)?
-            .ok_or_else(|| {
-                internal_server_error(anyhow::anyhow!(
-                    "Contract state root not found for contract state hash {}",
-                    contract_state_hash.0
-                ))
-            })?;
+            // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
+            if contract_state_hash.0 == StarkHash::ZERO {
+                return Err(Error::from(ErrorCode::ContractNotFound));
+            }
 
-        let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root)
-            .context("Load contract state tree")
-            .map_err(internal_server_error)?;
+            let contract_state_root = ContractsStateTable::get_root(&tx, contract_state_hash)
+                .context("Get contract state root")
+                .map_err(internal_server_error)?
+                .ok_or_else(|| {
+                    internal_server_error(anyhow::anyhow!(
+                        "Contract state root not found for contract state hash {}",
+                        contract_state_hash.0
+                    ))
+                })?;
 
-        // ContractsStateTree::get() will return zero if the value is still not found (and we know the key is valid),
-        // which is consistent with the specification.
-        let storage_val = contract_state_tree
-            .get(key)
-            .context("Get value from contract state tree")
-            .map_err(internal_server_error)?;
+            let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root)
+                .context("Load contract state tree")
+                .map_err(internal_server_error)?;
 
-        Ok(storage_val)
+            // ContractsStateTree::get() will return zero if the value is still not found (and we know the key is valid),
+            // which is consistent with the specification.
+            let storage_val = contract_state_tree
+                .get(key)
+                .context("Get value from contract state tree")
+                .map_err(internal_server_error)?;
+
+            Ok(storage_val)
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            // flatten is unstable
+            .and_then(|x| x)
     }
 
     /// Helper function.
@@ -333,19 +328,27 @@ impl RpcApi {
     /// Get the code of a specific contract.
     /// `contract_address` is the address of the contract to read from.
     pub async fn get_code(&self, contract_address: ContractAddress) -> RpcResult<ContractCode> {
-        let mut db = self
-            .storage
-            .connection()
-            .context("Opening database connection")?;
-        let tx = db.transaction().context("Creating database transaction")?;
+        let storage = self.storage.clone();
 
-        let code = storage::ContractCodeTable::get_code(&tx, contract_address)
-            .context("Fetching code from database")?;
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")?;
+            let tx = db.transaction().context("Creating database transaction")?;
 
-        match code {
-            Some(code) => Ok(code),
-            None => Err(ErrorCode::ContractNotFound.into()),
-        }
+            let code = storage::ContractCodeTable::get_code(&tx, contract_address)
+                .context("Fetching code from database")?;
+
+            match code {
+                Some(code) => Ok(code),
+                None => Err(ErrorCode::ContractNotFound.into()),
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
     }
 
     /// Get the number of transactions in a block given a block hash.
