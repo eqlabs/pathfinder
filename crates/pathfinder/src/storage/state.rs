@@ -9,7 +9,7 @@ use crate::{
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
         StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
     },
-    ethereum::log::StateUpdateLog,
+    ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
     sequencer::reply::transaction,
 };
 
@@ -82,6 +82,81 @@ impl L1StateTable {
             .optional()?;
 
         Ok(root)
+    }
+
+    pub fn get(connection: &Connection, block: BlockId) -> anyhow::Result<Option<StateUpdateLog>> {
+        let mut statement = match block {
+            BlockId::Number(_) => {
+                connection.prepare("SELECT * FROM l1_state WHERE starknet_block_number = ?")
+            }
+            BlockId::Latest => connection
+                .prepare("SELECT * FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1"),
+        }?;
+
+        let mut rows = match block {
+            BlockId::Number(number) => statement.query(params![number.0]),
+            BlockId::Latest => statement.query([]),
+        }?;
+
+        let row = rows.next()?;
+        let row = match row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let starknet_block_number = row
+            .get_ref_unwrap("starknet_block_number")
+            .as_i64()
+            .unwrap() as u64;
+        let starknet_block_number = StarknetBlockNumber(starknet_block_number);
+
+        let starknet_global_root = row
+            .get_ref_unwrap("starknet_global_root")
+            .as_blob()
+            .unwrap();
+        let starknet_global_root = StarkHash::from_be_slice(starknet_global_root).unwrap();
+        let starknet_global_root = GlobalRoot(starknet_global_root);
+
+        let ethereum_block_hash = row.get_ref_unwrap("ethereum_block_hash").as_blob().unwrap();
+        let ethereum_block_hash = EthereumBlockHash(H256(ethereum_block_hash.try_into().unwrap()));
+
+        let ethereum_block_number = row
+            .get_ref_unwrap("ethereum_block_number")
+            .as_i64()
+            .unwrap() as u64;
+        let ethereum_block_number = EthereumBlockNumber(ethereum_block_number);
+
+        let ethereum_transaction_hash = row
+            .get_ref_unwrap("ethereum_transaction_hash")
+            .as_blob()
+            .unwrap();
+        let ethereum_transaction_hash =
+            EthereumTransactionHash(H256(ethereum_transaction_hash.try_into().unwrap()));
+
+        let ethereum_transaction_index = row
+            .get_ref_unwrap("ethereum_transaction_index")
+            .as_i64()
+            .unwrap() as u64;
+        let ethereum_transaction_index = EthereumTransactionIndex(ethereum_transaction_index);
+
+        let ethereum_log_index = row.get_ref_unwrap("ethereum_log_index").as_i64().unwrap() as u64;
+        let ethereum_log_index = EthereumLogIndex(ethereum_log_index);
+
+        Ok(Some(StateUpdateLog {
+            origin: EthOrigin {
+                block: BlockOrigin {
+                    hash: ethereum_block_hash,
+                    number: ethereum_block_number,
+                },
+                transaction: TransactionOrigin {
+                    hash: ethereum_transaction_hash,
+                    index: ethereum_transaction_index,
+                },
+                log_index: ethereum_log_index,
+            },
+            global_root: starknet_global_root,
+            block_number: starknet_block_number,
+        }))
     }
 }
 

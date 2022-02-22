@@ -1,8 +1,11 @@
+mod l1;
+
 use crate::{
     core::{ContractRoot, GlobalRoot, StarknetBlockNumber, StarknetBlockTimestamp},
     ethereum::{
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
+        Chain,
     },
     sequencer::reply::Block,
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
@@ -15,18 +18,21 @@ use crate::{
 use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{Connection, Transaction};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
+use web3::{transports::Http, Web3};
 
 /// The sync events which are emitted by the L1 and L2 sync processes.
+#[derive(Debug)]
 enum SyncEvent {
     L1Update(Vec<StateUpdateLog>),
     L2Update(Block, StateUpdate),
     L1Reorg(StarknetBlockNumber),
     L2Reorg(StarknetBlockNumber),
     // TODO: queries required by L1 and L2 sync processes.
+    QueryL1Update(StarknetBlockNumber, oneshot::Sender<Option<StateUpdateLog>>),
 }
 
-pub fn sync(storage: Storage) -> anyhow::Result<()> {
+pub fn sync(storage: Storage, transport: Web3<Http>, chain: Chain) -> anyhow::Result<()> {
     // TODO: should this be owning a Storage, or just take in a Connection?
     let mut db_conn = storage
         .connection()
@@ -34,8 +40,11 @@ pub fn sync(storage: Storage) -> anyhow::Result<()> {
 
     let (tx_events, mut rx_events) = mpsc::channel(1);
 
-    let l1_process = tokio::spawn(l1_sync(tx_events.clone()));
-    let l2_process = tokio::spawn(l1_sync(tx_events));
+    let l1_head =
+        L1StateTable::get(&db_conn, BlockId::Latest).context("Query L1 head from database")?;
+
+    let l1_process = tokio::spawn(l1::sync(tx_events.clone(), transport, chain, l1_head));
+    let l2_process = tokio::spawn(l2_sync(tx_events));
 
     while let Some(event) = rx_events.blocking_recv() {
         match event {
@@ -51,15 +60,17 @@ pub fn sync(storage: Storage) -> anyhow::Result<()> {
             SyncEvent::L2Reorg(reorg_tail) => {
                 l2_reorg(&mut db_conn, reorg_tail).context("Reorg L2 state")?;
             }
+            SyncEvent::QueryL1Update(block, tx) => {
+                let update = L1StateTable::get(&db_conn, block.into())
+                    .with_context(|| format!("Query L1 state for block {:?}", block))?;
+                let _ = tx.send(update);
+            }
         }
     }
 
     Ok(())
 }
 
-async fn l1_sync(tx_events: mpsc::Sender<SyncEvent>) -> anyhow::Result<()> {
-    todo!();
-}
 async fn l2_sync(tx_events: mpsc::Sender<SyncEvent>) -> anyhow::Result<()> {
     todo!();
 }
