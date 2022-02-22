@@ -71,6 +71,11 @@ impl StarkHash {
         self.0
     }
 
+    /// Big-endian representation of this [StarkHash].
+    pub fn as_be_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
     /// Convenience function which extends [StarkHash::from_be_bytes] to work with slices.
     pub fn from_be_slice(bytes: &[u8]) -> Result<Self, OverflowError> {
         if bytes.len() > 32 {
