@@ -1,9 +1,6 @@
 use anyhow::Context;
 use pedersen::StarkHash;
-use rusqlite::{
-    named_params, Connection, OptionalExtension, Params,
-    Transaction,
-};
+use rusqlite::{named_params, params, Connection, OptionalExtension, Params, Transaction};
 use web3::types::H256;
 
 use crate::{
@@ -51,6 +48,16 @@ impl L1StateTable {
             )
             .context("Insert L1 state update")?;
 
+        Ok(())
+    }
+
+    /// Deletes all rows from __head down-to reorg_tail__
+    /// i.e. it deletes all rows where `block number >= reorg_tail`.
+    pub fn reorg(connection: &Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
+        connection.execute(
+            "DELETE FROM l1_state WHERE starknet_block_number >= ?",
+            params![reorg_tail.0],
+        )?;
         Ok(())
     }
 }

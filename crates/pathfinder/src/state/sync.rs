@@ -32,10 +32,12 @@ pub fn sync(storage: Storage) -> anyhow::Result<()> {
     while let Some(event) = rx_events.blocking_recv() {
         match event {
             SyncEvent::L1Update(updates) => {
-                l1_update(&mut db_conn, updates).context("Update L1 state")?
+                l1_update(&mut db_conn, updates).context("Update L1 state")?;
             }
             SyncEvent::L2Update(_, _) => todo!(),
-            SyncEvent::L1Reorg(_) => todo!(),
+            SyncEvent::L1Reorg(reorg_tail) => {
+                l1_reorg(&mut db_conn, reorg_tail).context("Reorg L1 state")?;
+            }
             SyncEvent::L2Reorg(_) => todo!(),
         }
     }
@@ -59,7 +61,7 @@ fn l1_update(connection: &mut Connection, updates: Vec<StateUpdateLog>) -> anyho
         L1StateTable::insert(&transaction, update).context("Insert into database")?;
     }
 
-    // Track combined L1 and L2 state. This can also be tracked externally to save on database reads.
+    // Track combined L1 and L2 state.
     let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
     let expected_next = l1_l2_head
         .map(|head| head + 1)
@@ -91,3 +93,25 @@ fn l1_update(connection: &mut Connection, updates: Vec<StateUpdateLog>) -> anyho
     transaction.commit().context("Commit database transaction")
 }
 
+fn l1_reorg(connection: &mut Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
+    let transaction = connection
+        .transaction()
+        .context("Create database transaction")?;
+
+    L1StateTable::reorg(&transaction, reorg_tail).context("Delete L1 state from database")?;
+
+    // Track combined L1 and L2 state.
+    let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
+    match l1_l2_head {
+        Some(head) if head >= reorg_tail => {
+            let new_head = match reorg_tail {
+                StarknetBlockNumber::GENESIS => None,
+                other => Some(other - 1),
+            };
+            RefsTable::set_l1_l2_head(&transaction, new_head).context("Update L1-L2 head")?;
+        }
+        _ => {}
+    }
+
+    transaction.commit().context("Commit database transaction")
+}
