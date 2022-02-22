@@ -620,8 +620,6 @@ fn update(
         .apply()
         .context("Applying global state tree updates")?;
 
-    eprintln!("{:X}", new_global_root.0);
-
     // Validate calculated root against the one received from L1.
     anyhow::ensure!(
         new_global_root == update_log.global_root,
@@ -901,7 +899,7 @@ mod tests {
         assert_eq!(
             requests,
             vec![FetchExtractContract {
-                deploy_info: contract_deploy,
+                deploy_info: contract_deploy.clone(),
                 fetch: true
             }]
         );
@@ -911,11 +909,7 @@ mod tests {
         let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
         let contract_fetched_compressed = FetchedCompressedContract {
-            deploy_info: DeployedContract {
-                address: contract_addr,
-                call_data: vec![],
-                hash: contract_hash,
-            },
+            deploy_info: contract_deploy,
             payload: Some(CompressedContract {
                 abi: zstd_magic.clone(),
                 bytecode: zstd_magic.clone(),
