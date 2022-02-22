@@ -875,8 +875,6 @@ mod tests {
         );
 
         let update_log = StateUpdateLog {
-            global_root: expected_global_root,
-            block_number: StarknetBlockNumber(0),
             origin: EthOrigin {
                 block: BlockOrigin {
                     hash: EthereumBlockHash(H256::zero()),
@@ -888,6 +886,8 @@ mod tests {
                 },
                 log_index: EthereumLogIndex(0),
             },
+            global_root: expected_global_root,
+            block_number: StarknetBlockNumber(0),
         };
 
         let (c_tx, mut c_rx) = mpsc::channel(1);
@@ -1016,8 +1016,6 @@ mod tests {
 
         let global_root = GlobalRoot(StarkHash::ZERO);
         let update_log = StateUpdateLog {
-            global_root: GlobalRoot(StarkHash::ZERO),
-            block_number: StarknetBlockNumber(0),
             origin: EthOrigin {
                 block: BlockOrigin {
                     hash: EthereumBlockHash(H256::zero()),
@@ -1029,6 +1027,8 @@ mod tests {
                 },
                 log_index: EthereumLogIndex(0),
             },
+            global_root: GlobalRoot(StarkHash::ZERO),
+            block_number: StarknetBlockNumber(0),
         };
 
         let (c_tx, mut c_rx) = mpsc::channel(1);
