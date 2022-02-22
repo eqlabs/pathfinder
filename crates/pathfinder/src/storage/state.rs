@@ -5,11 +5,12 @@ use web3::types::H256;
 
 use crate::{
     core::{
-    ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
-    EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
+        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
+        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
     },
     ethereum::log::StateUpdateLog,
+    sequencer::reply::transaction,
 };
 
 /// Contains the [L1 Starknet update logs](StateUpdateLog).
@@ -60,6 +61,28 @@ impl L1StateTable {
         )?;
         Ok(())
     }
+
+    pub fn get_root(
+        connection: &Connection,
+        block: StarknetBlockNumber,
+    ) -> anyhow::Result<Option<GlobalRoot>> {
+        let root = connection
+            .query_row(
+                "SELECT root FROM l1_state WHERE starknet_block_number = ?",
+                params![block.0],
+                |row| {
+                    let root = row.get_ref_unwrap(0).as_blob()?;
+                    // unwrap is safe, unless database is corrupted.
+                    let root = StarkHash::from_be_slice(root).unwrap();
+                    let root = GlobalRoot(root);
+
+                    Ok(root)
+                },
+            )
+            .optional()?;
+
+        Ok(root)
+    }
 }
 
 pub struct RefsTable {}
@@ -70,7 +93,6 @@ impl RefsTable {
             connection.query_row("SELECT l1_l2_head FROM refs LIMIT 1", [], |row| {
                 let block_number = row
                     .get_ref_unwrap(0)
-                    // This is worrisome... type not u64
                     .as_i64_or_null()
                     .unwrap()
                     .map(|x| StarknetBlockNumber(x as u64));
@@ -96,27 +118,91 @@ impl RefsTable {
 /// Stores all knowm [StarknetBlocks][StarknetBlock].
 pub struct StarknetBlocksTable {}
 impl StarknetBlocksTable {
-    pub fn get_root(
-        connection: &Connection,
-        block: StarknetBlockNumber,
-    ) -> anyhow::Result<Option<GlobalRoot>> {
-        let root = connection
-            .query_row(
-                "SELECT root FROM starknet_blocks WHERE number = ?",
-                params![block.0],
-                |row| {
-                    let root = row.get_ref_unwrap(0).as_blob()?;
-                    // unwrap is safe, unless database is corrupted.
-                    let root = StarkHash::from_be_slice(root).unwrap();
-                    let root = GlobalRoot(root);
+    pub fn insert(connection: &Connection, block: &StarknetBlock) -> anyhow::Result<()> {
+        let transactions =
+            serde_json::ser::to_vec(&block.transactions).context("Serialize transactions")?;
+        let receipts = serde_json::ser::to_vec(&block.transaction_receipts)
+            .context("Serialize transaction receipts")?;
 
-                    Ok(root)
-                },
-            )
-            .optional()?;
+        // TODO: compress transactions...
 
-        Ok(root)
+        connection.execute(
+        r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  transactions,  transaction_receipts)
+                               VALUES (:number, :hash, :root, :timestamp, :transactions, :transaction_receipts)",
+        named_params! {
+                ":number": block.number.0,
+                ":hash": &block.hash.0.as_be_bytes()[..],
+                ":root": &block.root.0.as_be_bytes()[..],
+                ":timestamp": block.timestamp.0,
+                ":transactions": &transactions,
+                ":transaction_receipts": &receipts,
+            },
+        )?;
+
+        Ok(())
     }
+
+    /// Deletes all rows from __head down-to reorg_tail__
+    /// i.e. it deletes all rows where `block number >= reorg_tail`.
+    pub fn reorg(connection: &Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
+        connection.execute(
+            "DELETE FROM starknet_blocks WHERE starknet_block_number >= ?",
+            params![reorg_tail.0],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_root(connection: &Connection, block: BlockId) -> anyhow::Result<Option<GlobalRoot>> {
+        let mut statement = match block {
+            BlockId::Number(_) => {
+                connection.prepare("SELECT root FROM starknet_blocks WHERE number = ?")
+            }
+            BlockId::Latest => {
+                connection.prepare("SELECT root FROM starknet_blocks ORDER BY number DESC LIMIT 1")
+            }
+        }?;
+
+        let mut rows = match block {
+            BlockId::Number(number) => statement.query(params![number.0]),
+            BlockId::Latest => statement.query([]),
+        }?;
+
+        let root = rows.next().context("Iterate rows")?;
+
+        match root {
+            Some(row) => {
+                // unwrap is safe as the first column must exist from the query.
+                let root = row.get_ref_unwrap(0).as_blob()?;
+                // unwrap is safe, unless database is corrupted.
+                let root = StarkHash::from_be_slice(root).unwrap();
+                let root = GlobalRoot(root);
+                Ok(Some(root))
+            }
+            None => Ok(None),
+        }
+    }
+}
+
+pub enum BlockId {
+    Number(StarknetBlockNumber),
+    Latest,
+}
+
+impl From<StarknetBlockNumber> for BlockId {
+    fn from(number: StarknetBlockNumber) -> Self {
+        BlockId::Number(number)
+    }
+}
+
+/// Describes a Starknet block.
+#[derive(Debug, Clone)]
+pub struct StarknetBlock {
+    pub number: StarknetBlockNumber,
+    pub hash: StarknetBlockHash,
+    pub root: GlobalRoot,
+    pub timestamp: StarknetBlockTimestamp,
+    pub transaction_receipts: Vec<transaction::Receipt>,
+    pub transactions: Vec<transaction::Transaction>,
 }
 
 /// Stores descriptions of the global StarkNet state. This data contains
