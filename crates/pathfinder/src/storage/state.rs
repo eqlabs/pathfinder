@@ -1,13 +1,116 @@
 use anyhow::Context;
 use pedersen::StarkHash;
-use rusqlite::{named_params, OptionalExtension, Params, Transaction};
+use rusqlite::{
+    named_params, Connection, OptionalExtension, Params,
+    Transaction,
+};
 use web3::types::H256;
 
-use crate::core::{
+use crate::{
+    core::{
     ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
     EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    },
+    ethereum::log::StateUpdateLog,
 };
+
+/// Contains the [L1 Starknet update logs](StateUpdateLog).
+pub struct L1StateTable {}
+
+impl L1StateTable {
+    pub fn insert(connection: &Connection, update: &StateUpdateLog) -> anyhow::Result<()> {
+        connection
+            .execute(
+                r"INSERT INTO l1_state (
+                        starknet_block_number,
+                        starknet_global_root,
+                        ethereum_block_hash,
+                        ethereum_block_number,
+                        ethereum_transaction_hash,
+                        ethereum_transaction_index,
+                        ethereum_log_index,
+                    ) VALUES (
+                        :starknet_block_number,
+                        :starknet_global_root,
+                        :ethereum_block_hash,
+                        :ethereum_block_number,
+                        :ethereum_transaction_hash,
+                        :ethereum_transaction_index,
+                        :ethereum_log_index
+                    )",
+                named_params! {
+                    ":starknet_block_number": update.block_number.0,
+                    ":starknet_global_root": &update.global_root.0.as_be_bytes()[..],
+                    ":ethereum_block_hash,": &update.origin.block.hash.0[..],
+                    ":ethereum_block_number,": update.origin.block.number.0,
+                    ":ethereum_transaction_hash": &update.origin.transaction.hash.0[..],
+                    ":ethereum_transaction_index": update.origin.transaction.index.0,
+                    ":ethereum_log_index": update.origin.log_index.0,
+                },
+            )
+            .context("Insert L1 state update")?;
+
+        Ok(())
+    }
+}
+
+pub struct RefsTable {}
+impl RefsTable {
+    pub fn get_l1_l2_head(connection: &Connection) -> anyhow::Result<Option<StarknetBlockNumber>> {
+        // This table always contains exactly one row.
+        let block_number =
+            connection.query_row("SELECT l1_l2_head FROM refs LIMIT 1", [], |row| {
+                let block_number = row
+                    .get_ref_unwrap(0)
+                    // This is worrisome... type not u64
+                    .as_i64_or_null()
+                    .unwrap()
+                    .map(|x| StarknetBlockNumber(x as u64));
+
+                Ok(block_number)
+            })?;
+
+        Ok(block_number)
+    }
+
+    pub fn set_l1_l2_head(
+        connection: &Connection,
+        head: Option<StarknetBlockNumber>,
+    ) -> anyhow::Result<()> {
+        match head {
+            Some(number) => connection.execute("SET l1_l2_head = ? LIMIT 1", [number.0]),
+            None => connection.execute("SET l1_l2_head = NULL LIMIT 1", []),
+        }?;
+
+        Ok(())
+    }
+}
+/// Stores all knowm [StarknetBlocks][StarknetBlock].
+pub struct StarknetBlocksTable {}
+impl StarknetBlocksTable {
+    pub fn get_root(
+        connection: &Connection,
+        block: StarknetBlockNumber,
+    ) -> anyhow::Result<Option<GlobalRoot>> {
+        let root = connection
+            .query_row(
+                "SELECT root FROM starknet_blocks WHERE number = ?",
+                params![block.0],
+                |row| {
+                    let root = row.get_ref_unwrap(0).as_blob()?;
+                    // unwrap is safe, unless database is corrupted.
+                    let root = StarkHash::from_be_slice(root).unwrap();
+                    let root = GlobalRoot(root);
+
+                    Ok(root)
+                },
+            )
+            .optional()?;
+
+        Ok(root)
+    }
+}
 
 /// Stores descriptions of the global StarkNet state. This data contains
 /// StarkNet block metadata as well as the origin point on Ethereum.
