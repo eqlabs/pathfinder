@@ -714,13 +714,13 @@ fn update(
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct BlockUpdated {
     record: GlobalStateRecord,
     info: BlockInfo,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct BlockInfo {
     deployed_contract_count: usize,
     updated_contracts: usize,
@@ -796,8 +796,25 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
 #[cfg(test)]
 mod tests {
     use super::calculate_contract_state_hash;
-    use crate::core::{ContractHash, ContractRoot, ContractStateHash};
+    use super::{
+        update, BlockInfo, BlockUpdated, CompressedContract, FetchExtractContract,
+        FetchedCompressedContract, GlobalStateRecord,
+    };
+    use crate::{
+        core::{
+            ContractAddress, ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash,
+            EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        },
+        ethereum::{
+            log::StateUpdateLog,
+            state_update::{DeployedContract, StateUpdate},
+            BlockOrigin, EthOrigin, TransactionOrigin,
+        },
+    };
     use pedersen::StarkHash;
+    use tokio::sync::mpsc;
+    use web3::types::H256;
 
     #[test]
     fn hash() {
@@ -825,19 +842,137 @@ mod tests {
     }
 
     #[test]
+    fn init_deployed_contracts_root_to_zero_regression() {
+        // This is a regression test for a bug that we encountered at block 47047 on alpha4/goerli.
+        // It resulted in a global root mismatch due to the fact that we did not initialize
+        // the contract root to zero when a contract was deployed.
+        use crate::core::StarknetBlockTimestamp;
+
+        let s = crate::storage::Storage::in_memory().unwrap();
+
+        let contract_hash = ContractHash(StarkHash::from_hex_str("0x11").unwrap());
+        let contract_addr = ContractAddress(StarkHash::from_hex_str("1").unwrap());
+        let contract_deploy = DeployedContract {
+            address: contract_addr,
+            hash: contract_hash,
+            call_data: vec![],
+        };
+
+        let state_update = StateUpdate {
+            deployed_contracts: vec![contract_deploy.clone()],
+            contract_updates: vec![],
+        };
+
+        // The global root that we start with
+        let global_root = GlobalRoot(StarkHash::ZERO);
+
+        // The global root that we end with
+        let expected_global_root = GlobalRoot(
+            StarkHash::from_hex_str(
+                "04BA80F86439D380FF9EC91EE316C9FEA4C5AD2CAEFA8D5CC098AED72DE445B8",
+            )
+            .unwrap(),
+        );
+
+        let update_log = StateUpdateLog {
+            origin: EthOrigin {
+                block: BlockOrigin {
+                    hash: EthereumBlockHash(H256::zero()),
+                    number: EthereumBlockNumber(0),
+                },
+                transaction: TransactionOrigin {
+                    hash: EthereumTransactionHash(H256::zero()),
+                    index: EthereumTransactionIndex(0),
+                },
+                log_index: EthereumLogIndex(0),
+            },
+            global_root: expected_global_root,
+            block_number: StarknetBlockNumber(0),
+        };
+
+        let (c_tx, mut c_rx) = mpsc::channel(1);
+        let (r_tx, mut r_rx) = mpsc::channel(1);
+
+        // Run the code that we want to test
+        let jh = std::thread::spawn(move || {
+            let mut conn = s.connection().unwrap();
+            let tx = conn.transaction().unwrap();
+            update(
+                state_update,
+                global_root,
+                &update_log,
+                &tx,
+                &c_tx,
+                &mut r_rx,
+            )
+            .unwrap()
+        });
+
+        // Consume update's request to fetch the contract to proceed futher
+        let requests = c_rx.blocking_recv().unwrap();
+
+        assert_eq!(
+            requests,
+            vec![FetchExtractContract {
+                deploy_info: contract_deploy.clone(),
+                fetch: true
+            }]
+        );
+
+        // We need to set the magic bytes for zstd compression to simulate a compressed
+        // contract definition, as this is asserted for internally
+        let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+        let contract_fetched_compressed = FetchedCompressedContract {
+            deploy_info: contract_deploy,
+            payload: Some(CompressedContract {
+                abi: zstd_magic.clone(),
+                bytecode: zstd_magic.clone(),
+                definition: zstd_magic,
+                hash: contract_hash.0,
+            }),
+        };
+
+        // Send simulated fetched and compressed contract definition to
+        // trigger global state tree update.
+        r_tx.blocking_send(contract_fetched_compressed).unwrap();
+
+        // Before the fix we would get a global root mismatch error here.
+        let block_updated = jh.join().unwrap();
+
+        let expected_block_updated = BlockUpdated {
+            record: GlobalStateRecord {
+                block_hash: StarknetBlockHash(
+                    StarkHash::from_hex_str(
+                        "0x00275921A89D44EF9D4EE74BFFF189D6F995DD07CFF9D0B8637B5C4619E9A05D",
+                    )
+                    .unwrap(),
+                ),
+                global_root: expected_global_root,
+                block_number: StarknetBlockNumber(0),
+                block_timestamp: StarknetBlockTimestamp(0),
+                eth_block_hash: EthereumBlockHash(H256::zero()),
+                eth_block_number: EthereumBlockNumber(0),
+                eth_log_index: EthereumLogIndex(0),
+                eth_tx_hash: EthereumTransactionHash(H256::zero()),
+                eth_tx_index: EthereumTransactionIndex(0),
+            },
+            info: BlockInfo {
+                deployed_contract_count: 1,
+                total_updates: 0,
+                updated_contracts: 0,
+            },
+        };
+
+        // There should not be a global root mismatch anymore
+        assert_eq!(block_updated, expected_block_updated);
+    }
+
+    #[test]
     fn update_requests_fetching_unique_new_contracts() {
-        use super::{update, FetchExtractContract};
-        use crate::core::{
-            ContractAddress, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
-            StorageAddress, StorageValue,
-        };
-        use crate::ethereum::{
-            log::StateUpdateLog,
-            state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
-            BlockOrigin, EthOrigin, TransactionOrigin,
-        };
-        use tokio::sync::mpsc;
+        use crate::core::{StorageAddress, StorageValue};
+        use crate::ethereum::state_update::{ContractUpdate, StorageUpdate};
+
         let s = crate::storage::Storage::in_memory().unwrap();
 
         let shared_hash =
@@ -879,18 +1014,15 @@ mod tests {
             }],
         };
 
-        // FIXME: this could be a #[cfg(test)] Default::default()
         let global_root = GlobalRoot(StarkHash::ZERO);
-
-        // FIXME: this could be a default actually, only accessible in `#[cfg(test)]`
         let update_log = StateUpdateLog {
             origin: EthOrigin {
                 block: BlockOrigin {
-                    hash: EthereumBlockHash(web3::types::H256::default()),
+                    hash: EthereumBlockHash(H256::zero()),
                     number: EthereumBlockNumber(0),
                 },
                 transaction: TransactionOrigin {
-                    hash: EthereumTransactionHash(web3::types::H256::default()),
+                    hash: EthereumTransactionHash(H256::zero()),
                     index: EthereumTransactionIndex(0),
                 },
                 log_index: EthereumLogIndex(0),
