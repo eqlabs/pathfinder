@@ -24,19 +24,11 @@ pub(super) async fn launch_python(
     commands: SharedReceiver<Command>,
     status_updates: mpsc::Sender<SubProcessEvent>,
     mut shutdown_rx: broadcast::Receiver<()>,
-) -> Option<(u32, Option<std::process::ExitStatus>, SubprocessExitReason)> {
+) -> anyhow::Result<(u32, Option<std::process::ExitStatus>, SubprocessExitReason)> {
     let (mut child, pid, mut input, mut output, mut buffer) = match spawn(database_path).await {
         Ok(tuple) => tuple,
         Err(e) => {
-            // the idea of notifying with this is instead of SubprocessExitReason was that it would
-            // be distinguisable from simply the joinhandle returning.. I don't think it makes any
-            // sense.
-            //
-            // what's more, it might be blocking other progress events.
-            // FIXME: use a task return value instead.
-            let e = e.context("Failed to start python subprocess");
-            let _ = status_updates.send(SubProcessEvent::Failure(None, e)).await;
-            return None;
+            return Err(e.context("Failed to start python subprocess"));
         }
     };
 
@@ -46,7 +38,7 @@ pub(super) async fn launch_python(
         .is_err()
     {
         drop(input);
-        return None;
+        return Err(anyhow::anyhow!("Failed to notify of start"));
     }
 
     let mut command_buffer = Vec::new();
@@ -209,7 +201,7 @@ pub(super) async fn launch_python(
         }
     };
 
-    Some((pid, exit_status, exit_reason))
+    Ok((pid, exit_status, exit_reason))
 }
 
 async fn spawn(
