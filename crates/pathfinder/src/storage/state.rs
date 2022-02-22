@@ -20,7 +20,6 @@ pub struct GlobalStateTable {}
 ///
 /// Essentially this represents a Starknet block and its meta-data.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(test, derive(Default))]
 pub struct GlobalStateRecord {
     /// The StarkNet block number of this state.
     pub block_number: StarknetBlockNumber,

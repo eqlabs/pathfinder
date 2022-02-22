@@ -88,22 +88,18 @@ pub struct StorageValue(pub StarkHash);
 /// A commitment root of the global StarkNet state. This is the entry-point
 /// for the global state at a specific point in time via the global state tree.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(test, derive(Default))]
 pub struct GlobalRoot(pub StarkHash);
 
 /// A StarkNet block hash.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(test, derive(Default))]
 pub struct StarknetBlockHash(pub StarkHash);
 
 /// A StarkNet block number.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(test, derive(Default))]
 pub struct StarknetBlockNumber(pub u64);
 
 /// The timestamp of a Starknet block.
 #[derive(Debug, Copy, Clone, PartialEq)]
-#[cfg_attr(test, derive(Default))]
 pub struct StarknetBlockTimestamp(pub u64);
 
 /// A StarkNet transaction hash.
@@ -148,25 +144,20 @@ pub struct EthereumAddress(pub H160);
 
 /// An Ethereum block hash.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
-#[cfg_attr(test, derive(Default))]
 pub struct EthereumBlockHash(pub H256);
 
 /// An Ethereum block number.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
-#[cfg_attr(test, derive(Default))]
 pub struct EthereumBlockNumber(pub u64);
 
 /// An Ethereum transaction hash.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
-#[cfg_attr(test, derive(Default))]
 pub struct EthereumTransactionHash(pub H256);
 
 /// An Ethereum transaction's index within a block.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
-#[cfg_attr(test, derive(Default))]
 pub struct EthereumTransactionIndex(pub u64);
 
 /// An Ethereum log's index within a block.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
-#[cfg_attr(test, derive(Default))]
 pub struct EthereumLogIndex(pub u64);

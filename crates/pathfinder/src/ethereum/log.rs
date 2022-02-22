@@ -18,7 +18,6 @@ use crate::{
 ///
 /// This is emitted by the Starknet core contract.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(test, derive(Default))]
 pub struct StateUpdateLog {
     pub origin: EthOrigin,
     pub global_root: GlobalRoot,

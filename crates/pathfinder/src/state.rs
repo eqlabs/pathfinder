@@ -715,14 +715,12 @@ fn update(
 }
 
 #[derive(Debug, PartialEq)]
-#[cfg_attr(test, derive(Default))]
 struct BlockUpdated {
     record: GlobalStateRecord,
     info: BlockInfo,
 }
 
 #[derive(Debug, PartialEq)]
-#[cfg_attr(test, derive(Default))]
 struct BlockInfo {
     deployed_contract_count: usize,
     updated_contracts: usize,
@@ -798,8 +796,25 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
 #[cfg(test)]
 mod tests {
     use super::calculate_contract_state_hash;
-    use crate::core::{ContractHash, ContractRoot, ContractStateHash};
+    use super::{
+        update, BlockInfo, BlockUpdated, CompressedContract, FetchExtractContract,
+        FetchedCompressedContract, GlobalStateRecord,
+    };
+    use crate::{
+        core::{
+            ContractAddress, ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash,
+            EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        },
+        ethereum::{
+            log::StateUpdateLog,
+            state_update::{DeployedContract, StateUpdate},
+            BlockOrigin, EthOrigin, TransactionOrigin,
+        },
+    };
     use pedersen::StarkHash;
+    use tokio::sync::mpsc;
+    use web3::types::H256;
 
     #[test]
     fn hash() {
@@ -831,18 +846,7 @@ mod tests {
         // This is a regression test for a bug that we encountered at block 47047 on alpha4/goerli.
         // It resulted in a global root mismatch due to the fact that we did not initialize
         // the contract root to zero when a contract was deployed.
-        use super::{
-            update, BlockInfo, BlockUpdated, CompressedContract, FetchExtractContract,
-            FetchedCompressedContract, GlobalStateRecord,
-        };
-        use crate::{
-            core::{ContractAddress, GlobalRoot, StarknetBlockHash},
-            ethereum::{
-                log::StateUpdateLog,
-                state_update::{DeployedContract, StateUpdate},
-            },
-        };
-        use tokio::sync::mpsc;
+        use crate::core::StarknetBlockTimestamp;
 
         let s = crate::storage::Storage::in_memory().unwrap();
 
@@ -860,7 +864,7 @@ mod tests {
         };
 
         // The global root that we start with
-        let global_root = GlobalRoot::default();
+        let global_root = GlobalRoot(StarkHash::ZERO);
 
         // The global root that we end with
         let expected_global_root = GlobalRoot(
@@ -872,7 +876,18 @@ mod tests {
 
         let update_log = StateUpdateLog {
             global_root: expected_global_root,
-            ..Default::default()
+            block_number: StarknetBlockNumber(0),
+            origin: EthOrigin {
+                block: BlockOrigin {
+                    hash: EthereumBlockHash(H256::zero()),
+                    number: EthereumBlockNumber(0),
+                },
+                transaction: TransactionOrigin {
+                    hash: EthereumTransactionHash(H256::zero()),
+                    index: EthereumTransactionIndex(0),
+                },
+                log_index: EthereumLogIndex(0),
+            },
         };
 
         let (c_tx, mut c_rx) = mpsc::channel(1);
@@ -934,11 +949,18 @@ mod tests {
                     .unwrap(),
                 ),
                 global_root: expected_global_root,
-                ..Default::default()
+                block_number: StarknetBlockNumber(0),
+                block_timestamp: StarknetBlockTimestamp(0),
+                eth_block_hash: EthereumBlockHash(H256::zero()),
+                eth_block_number: EthereumBlockNumber(0),
+                eth_log_index: EthereumLogIndex(0),
+                eth_tx_hash: EthereumTransactionHash(H256::zero()),
+                eth_tx_index: EthereumTransactionIndex(0),
             },
             info: BlockInfo {
                 deployed_contract_count: 1,
-                ..Default::default()
+                total_updates: 0,
+                updated_contracts: 0,
             },
         };
 
@@ -948,13 +970,9 @@ mod tests {
 
     #[test]
     fn update_requests_fetching_unique_new_contracts() {
-        use super::{update, FetchExtractContract};
-        use crate::core::{ContractAddress, GlobalRoot, StorageAddress, StorageValue};
-        use crate::ethereum::{
-            log::StateUpdateLog,
-            state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
-        };
-        use tokio::sync::mpsc;
+        use crate::core::{StorageAddress, StorageValue};
+        use crate::ethereum::state_update::{ContractUpdate, StorageUpdate};
+
         let s = crate::storage::Storage::in_memory().unwrap();
 
         let shared_hash =
@@ -996,8 +1014,22 @@ mod tests {
             }],
         };
 
-        let global_root = GlobalRoot::default();
-        let update_log = StateUpdateLog::default();
+        let global_root = GlobalRoot(StarkHash::ZERO);
+        let update_log = StateUpdateLog {
+            global_root: GlobalRoot(StarkHash::ZERO),
+            block_number: StarknetBlockNumber(0),
+            origin: EthOrigin {
+                block: BlockOrigin {
+                    hash: EthereumBlockHash(H256::zero()),
+                    number: EthereumBlockNumber(0),
+                },
+                transaction: TransactionOrigin {
+                    hash: EthereumTransactionHash(H256::zero()),
+                    index: EthereumTransactionIndex(0),
+                },
+                log_index: EthereumLogIndex(0),
+            },
+        };
 
         let (c_tx, mut c_rx) = mpsc::channel(1);
         let (r_tx, mut r_rx) = mpsc::channel(1);

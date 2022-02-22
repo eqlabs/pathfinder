@@ -79,14 +79,12 @@ impl RpcErrorCode {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
-#[cfg_attr(test, derive(Default))]
 pub struct BlockOrigin {
     pub hash: EthereumBlockHash,
     pub number: EthereumBlockNumber,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
-#[cfg_attr(test, derive(Default))]
 pub struct TransactionOrigin {
     pub hash: EthereumTransactionHash,
     pub index: EthereumTransactionIndex,
@@ -94,7 +92,6 @@ pub struct TransactionOrigin {
 
 /// An Ethereum origin point.
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
-#[cfg_attr(test, derive(Default))]
 pub struct EthOrigin {
     pub block: BlockOrigin,
     pub transaction: TransactionOrigin,
