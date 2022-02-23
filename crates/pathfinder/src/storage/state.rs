@@ -242,6 +242,55 @@ impl StarknetBlocksTable {
         Ok(())
     }
 
+    pub fn get_without_tx(
+        connection: &Connection,
+        block: BlockId,
+    ) -> anyhow::Result<Option<StarknetBlockWithoutTx>> {
+        let mut statement = match block {
+            BlockId::Number(_) => {
+                connection.prepare("SELECT hash, number, root, timestamp FROM starknet_blocks WHERE number = ?")
+            }
+            BlockId::Latest => {
+                connection.prepare("SELECT hash, number, root, timestamp FROM starknet_blocks ORDER BY number DESC LIMIT 1")
+            }
+        }?;
+
+        let mut rows = match block {
+            BlockId::Number(number) => statement.query(params![number.0]),
+            BlockId::Latest => statement.query([]),
+        }?;
+
+        let row = rows.next().context("Iterate rows")?;
+
+        match row {
+            Some(row) => {
+                let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
+                let number = StarknetBlockNumber(number);
+
+                let hash = row.get_ref_unwrap("hash").as_blob().unwrap();
+                let hash = StarkHash::from_be_slice(hash).unwrap();
+                let hash = StarknetBlockHash(hash);
+
+                let root = row.get_ref_unwrap("root").as_blob().unwrap();
+                let root = StarkHash::from_be_slice(root).unwrap();
+                let root = GlobalRoot(root);
+
+                let timestamp = row.get_ref_unwrap("timestamp").as_i64().unwrap() as u64;
+                let timestamp = StarknetBlockTimestamp(timestamp);
+
+                let block = StarknetBlockWithoutTx {
+                    number,
+                    hash,
+                    root,
+                    timestamp,
+                };
+
+                Ok(Some(block))
+            }
+            None => Ok(None),
+        }
+    }
+
     /// Deletes all rows from __head down-to reorg_tail__
     /// i.e. it deletes all rows where `block number >= reorg_tail`.
     pub fn reorg(connection: &Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
@@ -250,69 +299,6 @@ impl StarknetBlocksTable {
             params![reorg_tail.0],
         )?;
         Ok(())
-    }
-
-    pub fn get_hash(
-        connection: &Connection,
-        block: BlockId,
-    ) -> anyhow::Result<Option<StarknetBlockHash>> {
-        let mut statement = match block {
-            BlockId::Number(_) => {
-                connection.prepare("SELECT hash FROM starknet_blocks WHERE number = ?")
-            }
-            BlockId::Latest => {
-                connection.prepare("SELECT hash FROM starknet_blocks ORDER BY number DESC LIMIT 1")
-            }
-        }?;
-
-        let mut rows = match block {
-            BlockId::Number(number) => statement.query(params![number.0]),
-            BlockId::Latest => statement.query([]),
-        }?;
-
-        let root = rows.next().context("Iterate rows")?;
-
-        match root {
-            Some(row) => {
-                // unwrap is safe as the first column must exist from the query.
-                let hash = row.get_ref_unwrap(0).as_blob()?;
-                // unwrap is safe, unless database is corrupted.
-                let hash = StarkHash::from_be_slice(hash).unwrap();
-                let hash = StarknetBlockHash(hash);
-                Ok(Some(hash))
-            }
-            None => Ok(None),
-        }
-    }
-
-    pub fn get_root(connection: &Connection, block: BlockId) -> anyhow::Result<Option<GlobalRoot>> {
-        let mut statement = match block {
-            BlockId::Number(_) => {
-                connection.prepare("SELECT root FROM starknet_blocks WHERE number = ?")
-            }
-            BlockId::Latest => {
-                connection.prepare("SELECT root FROM starknet_blocks ORDER BY number DESC LIMIT 1")
-            }
-        }?;
-
-        let mut rows = match block {
-            BlockId::Number(number) => statement.query(params![number.0]),
-            BlockId::Latest => statement.query([]),
-        }?;
-
-        let root = rows.next().context("Iterate rows")?;
-
-        match root {
-            Some(row) => {
-                // unwrap is safe as the first column must exist from the query.
-                let root = row.get_ref_unwrap(0).as_blob()?;
-                // unwrap is safe, unless database is corrupted.
-                let root = StarkHash::from_be_slice(root).unwrap();
-                let root = GlobalRoot(root);
-                Ok(Some(root))
-            }
-            None => Ok(None),
-        }
     }
 }
 
@@ -336,6 +322,15 @@ pub struct StarknetBlock {
     pub timestamp: StarknetBlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
+}
+
+/// Same as [StarknetBlock] but without the expensive transaction data.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StarknetBlockWithoutTx {
+    pub number: StarknetBlockNumber,
+    pub hash: StarknetBlockHash,
+    pub root: GlobalRoot,
+    pub timestamp: StarknetBlockTimestamp,
 }
 
 /// Stores descriptions of the global StarkNet state. This data contains
@@ -1238,20 +1233,16 @@ mod tests {
                     StarknetBlocksTable::insert(&connection, block).unwrap();
                 }
 
-                for (idx, block) in blocks.iter().enumerate() {
-                    assert_eq!(
-                        StarknetBlocksTable::get_root(&connection, block.number.into()).unwrap(),
-                        Some(block.root),
-                        "Update {}",
-                        idx
-                    );
+                for block in blocks {
+                    let result =
+                        StarknetBlocksTable::get_without_tx(&connection, block.number.into())
+                            .unwrap()
+                            .unwrap();
 
-                    assert_eq!(
-                        StarknetBlocksTable::get_hash(&connection, block.number.into()).unwrap(),
-                        Some(block.hash),
-                        "Update {}",
-                        idx
-                    );
+                    assert_eq!(result.hash, block.hash);
+                    assert_eq!(result.number, block.number);
+                    assert_eq!(result.root, block.root);
+                    assert_eq!(result.timestamp, block.timestamp);
                 }
             }
 
@@ -1267,11 +1258,7 @@ mod tests {
 
                 let non_existent = blocks.last().unwrap().number + 1;
                 assert_eq!(
-                    StarknetBlocksTable::get_root(&connection, non_existent.into()).unwrap(),
-                    None
-                );
-                assert_eq!(
-                    StarknetBlocksTable::get_hash(&connection, non_existent.into()).unwrap(),
+                    StarknetBlocksTable::get_without_tx(&connection, non_existent.into()).unwrap(),
                     None
                 );
             }
@@ -1289,15 +1276,20 @@ mod tests {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
 
-                    let latest_root = StarknetBlocksTable::get_root(&connection, BlockId::Latest)
-                        .unwrap()
+                    let expected = blocks
+                        .last()
+                        .map(|block| StarknetBlockWithoutTx {
+                            number: block.number,
+                            hash: block.hash,
+                            root: block.root,
+                            timestamp: block.timestamp,
+                        })
                         .unwrap();
-                    assert_eq!(latest_root, blocks.last().unwrap().root);
 
-                    let latest_hash = StarknetBlocksTable::get_hash(&connection, BlockId::Latest)
+                    let latest = StarknetBlocksTable::get_without_tx(&connection, BlockId::Latest)
                         .unwrap()
                         .unwrap();
-                    assert_eq!(latest_hash, blocks.last().unwrap().hash);
+                    assert_eq!(latest, expected);
                 }
 
                 #[test]
@@ -1306,12 +1298,8 @@ mod tests {
                     let connection = storage.connection().unwrap();
 
                     let latest_root =
-                        StarknetBlocksTable::get_root(&connection, BlockId::Latest).unwrap();
+                        StarknetBlocksTable::get_without_tx(&connection, BlockId::Latest).unwrap();
                     assert_eq!(latest_root, None);
-
-                    let latest_hash =
-                        StarknetBlocksTable::get_hash(&connection, BlockId::Latest).unwrap();
-                    assert_eq!(latest_hash, None);
                 }
             }
         }
@@ -1332,7 +1320,7 @@ mod tests {
                 StarknetBlocksTable::reorg(&connection, StarknetBlockNumber::GENESIS).unwrap();
 
                 assert_eq!(
-                    StarknetBlocksTable::get_root(&connection, BlockId::Latest).unwrap(),
+                    StarknetBlocksTable::get_without_tx(&connection, BlockId::Latest).unwrap(),
                     None
                 );
             }
@@ -1350,11 +1338,16 @@ mod tests {
                 let reorg_tail = blocks[1].number;
                 StarknetBlocksTable::reorg(&connection, reorg_tail).unwrap();
 
+                let expected = StarknetBlockWithoutTx {
+                    number: blocks[0].number,
+                    hash: blocks[0].hash,
+                    root: blocks[0].root,
+                    timestamp: blocks[0].timestamp,
+                };
+
                 assert_eq!(
-                    StarknetBlocksTable::get_root(&connection, BlockId::Latest)
-                        .unwrap()
-                        .as_ref(),
-                    Some(&blocks[0].root)
+                    StarknetBlocksTable::get_without_tx(&connection, BlockId::Latest).unwrap(),
+                    Some(expected)
                 );
             }
         }

@@ -110,11 +110,11 @@ pub mod transaction {
             L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
         },
     };
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
 
     /// Represents deserialized L2 transaction entry point values.
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
@@ -124,7 +124,7 @@ pub mod transaction {
     }
 
     /// Represents execution resources for L2 transaction.
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
         builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
@@ -134,10 +134,10 @@ pub mod transaction {
 
     /// Types used when deserializing L2 execution resources related data.
     pub mod execution_resources {
-        use serde::Deserialize;
+        use serde::{Deserialize, Serialize};
 
         /// Sometimes `builtin_instance_counter` JSON object is returned empty.
-        #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(untagged)]
         #[serde(deny_unknown_fields)]
         pub enum BuiltinInstanceCounter {
@@ -145,7 +145,7 @@ pub mod transaction {
             Empty(EmptyBuiltinInstanceCounter),
         }
 
-        #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct NormalBuiltinInstanceCounter {
             bitwise_builtin: u64,
@@ -156,13 +156,13 @@ pub mod transaction {
             range_check_builtin: u64,
         }
 
-        #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
         pub struct EmptyBuiltinInstanceCounter {}
     }
 
     /// Represents deserialized L1 to L2 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct L1ToL2Message {
         #[serde_as(as = "EthereumAddressAsHexStr")]
@@ -177,7 +177,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 to L1 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         pub from_address: ContractAddress,
@@ -189,7 +189,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 transaction receipt data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
         pub events: Vec<Event>,
@@ -202,7 +202,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 transaction event data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Event {
         #[serde_as(as = "Vec<EventDataAsDecimalStr>")]
@@ -223,7 +223,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 transaction data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Transaction {
         #[serde_as(as = "Option<Vec<CallParamAsDecimalStr>>")]
@@ -247,7 +247,7 @@ pub mod transaction {
     }
 
     /// Describes L2 transaction types.
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub enum Type {
         #[serde(rename = "DEPLOY")]
@@ -272,9 +272,9 @@ pub mod transaction {
 pub struct StateUpdate {
     // At the moment when querying by block hash there is an additional `block_hash` field available.
     // Which btw is not available when querying by block number, so let's just ignore it.
-    new_root: GlobalRoot,
-    old_root: GlobalRoot,
-    state_diff: state_update::StateDiff,
+    pub new_root: GlobalRoot,
+    pub old_root: GlobalRoot,
+    pub state_diff: state_update::StateDiff,
 }
 
 /// Types used when deserializing state update related data.
@@ -290,24 +290,24 @@ pub mod state_update {
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
-        storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
-        deployed_contracts: Vec<Contract>,
+        pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
+        pub deployed_contracts: Vec<Contract>,
     }
 
     /// L2 storage diff.
     #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct StorageDiff {
-        key: StorageAddress,
-        value: StorageValue,
+        pub key: StorageAddress,
+        pub value: StorageValue,
     }
 
     /// L2 contract data within state diff.
     #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Contract {
-        address: ContractAddress,
-        contract_hash: ContractHash,
+        pub address: ContractAddress,
+        pub contract_hash: ContractHash,
     }
 }
 

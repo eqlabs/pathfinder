@@ -1,4 +1,7 @@
+#![allow(dead_code)]
+
 mod l1;
+mod l2;
 
 use crate::{
     core::{
@@ -10,7 +13,7 @@ use crate::{
         state_update::{DeployedContract, StateUpdate},
         Chain,
     },
-    sequencer::reply::Block,
+    sequencer::{self, reply::Block},
     state::{
         calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state,
         CompressedContract,
@@ -43,7 +46,12 @@ enum SyncEvent {
     QueryL2ContractExistance(Vec<ContractHash>, oneshot::Sender<Vec<bool>>),
 }
 
-pub fn sync(storage: Storage, transport: Web3<Http>, chain: Chain) -> anyhow::Result<()> {
+pub fn sync(
+    storage: Storage,
+    transport: Web3<Http>,
+    chain: Chain,
+    sequencer: sequencer::Client,
+) -> anyhow::Result<()> {
     // TODO: should this be owning a Storage, or just take in a Connection?
     let mut db_conn = storage
         .connection()
@@ -54,8 +62,12 @@ pub fn sync(storage: Storage, transport: Web3<Http>, chain: Chain) -> anyhow::Re
     let l1_head =
         L1StateTable::get(&db_conn, BlockId::Latest).context("Query L1 head from database")?;
 
+    let l2_head = StarknetBlocksTable::get_without_tx(&db_conn, BlockId::Latest)
+        .context("Query L2 head from database")?
+        .map(|block| (block.number, block.hash));
+
     let l1_process = tokio::spawn(l1::sync(tx_events.clone(), transport, chain, l1_head));
-    let l2_process = tokio::spawn(l2_sync(tx_events));
+    let l2_process = tokio::spawn(l2::sync(tx_events, sequencer, l2_head));
 
     while let Some(event) = rx_events.blocking_recv() {
         match event {
@@ -92,8 +104,9 @@ pub fn sync(storage: Storage, transport: Web3<Http>, chain: Chain) -> anyhow::Re
                 let _ = tx.send(update);
             }
             SyncEvent::QueryL2Hash(block, tx) => {
-                let hash = StarknetBlocksTable::get_hash(&db_conn, block.into())
-                    .with_context(|| format!("Query L2 block hash for block {:?}", block))?;
+                let hash = StarknetBlocksTable::get_without_tx(&db_conn, block.into())
+                    .with_context(|| format!("Query L2 block hash for block {:?}", block))?
+                    .map(|block| block.hash);
                 let _ = tx.send(hash);
             }
             SyncEvent::QueryL2ContractExistance(contracts, tx) => {
@@ -106,11 +119,10 @@ pub fn sync(storage: Storage, transport: Web3<Http>, chain: Chain) -> anyhow::Re
         }
     }
 
-    Ok(())
-}
+    l1_process.abort();
+    l2_process.abort();
 
-async fn l2_sync(tx_events: mpsc::Sender<SyncEvent>) -> anyhow::Result<()> {
-    todo!();
+    Ok(())
 }
 
 fn l1_update(connection: &mut Connection, updates: Vec<StateUpdateLog>) -> anyhow::Result<()> {
@@ -133,8 +145,9 @@ fn l1_update(connection: &mut Connection, updates: Vec<StateUpdateLog>) -> anyho
             let mut next_head = None;
             for update in updates {
                 let l2_root =
-                    StarknetBlocksTable::get_root(&transaction, update.block_number.into())
-                    .context("Query L2 root")?;
+                    StarknetBlocksTable::get_without_tx(&transaction, update.block_number.into())
+                        .context("Query L2 root")?
+                        .map(|block| block.root);
 
                 match l2_root {
                     Some(l2_root) if l2_root == update.global_root => {
@@ -254,8 +267,9 @@ fn update_starknet_state(
     transaction: &Transaction,
     diff: StateUpdate,
 ) -> anyhow::Result<GlobalRoot> {
-    let global_root = StarknetBlocksTable::get_root(transaction, BlockId::Latest)
+    let global_root = StarknetBlocksTable::get_without_tx(transaction, BlockId::Latest)
         .context("Query latest state root")?
+        .map(|block| block.root)
         .unwrap_or(GlobalRoot(StarkHash::ZERO));
     let mut global_tree =
         GlobalStateTree::load(transaction, global_root).context("Loading global state tree")?;

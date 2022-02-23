@@ -18,7 +18,7 @@ pub struct ContractAddressSalt(pub StarkHash);
 /// deployment properties e.g. code and ABI.
 ///
 /// Not to be confused with [ContractStateHash].
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ContractHash(pub StarkHash);
 
 /// A StarkNet contract's state hash. This is the value stored
@@ -95,7 +95,7 @@ pub struct GlobalRoot(pub StarkHash);
 pub struct StarknetBlockHash(pub StarkHash);
 
 /// A StarkNet block number.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockNumber(pub u64);
 
 /// The timestamp of a Starknet block.
