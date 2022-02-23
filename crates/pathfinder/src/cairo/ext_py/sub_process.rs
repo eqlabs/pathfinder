@@ -287,8 +287,8 @@ async fn spawn(
 /// Run a round of writing out the request, and reading a sane response type.
 async fn rpc_round<'a>(
     cmd: &[u8],
-    input: &mut tokio::process::ChildStdin,
-    output: &mut tokio::io::BufReader<tokio::process::ChildStdout>,
+    stdin: &mut tokio::process::ChildStdin,
+    stdout: &mut tokio::io::BufReader<tokio::process::ChildStdout>,
     buffer: &'a mut String,
 ) -> Result<RefinedChildResponse<'a>, SubprocessError> {
     // TODO: using a vectored write here would make most sense, but alas, advancing [IoSlice]'s is
@@ -296,14 +296,14 @@ async fn rpc_round<'a>(
     //
     // note: write_all are not cancellation safe, and we call this from tokio::select! see callsite
     // for more discussion.
-    input.write_all(cmd).await?;
-    input.write_all(&b"\n"[..]).await?;
-    input.flush().await?;
+    stdin.write_all(cmd).await?;
+    stdin.write_all(&b"\n"[..]).await?;
+    stdin.flush().await?;
 
     // the read buffer is cleared very late to allow logging the output in case of an error.
     buffer.clear();
 
-    let read = output.read_line(buffer).await?;
+    let read = stdout.read_line(buffer).await?;
 
     if read == 0 {
         // EOF
