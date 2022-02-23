@@ -276,7 +276,7 @@ mod tests {
 
         let non_existent = ContractHash(StarkHash::from_hex_str("456").unwrap());
 
-        let result = ContractCodeTable::exists(&transaction, &vec![hash, non_existent]).unwrap();
+        let result = ContractCodeTable::exists(&transaction, &[hash, non_existent]).unwrap();
         let expected = vec![true, false];
 
         assert_eq!(result, expected);
