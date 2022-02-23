@@ -278,12 +278,10 @@ mod tests {
                         if sleep_time_ms > MAX_SLEEP_TIME_MS {
                             return Err(e);
                         }
+                        let d = Duration::from_millis(sleep_time_ms);
                         // Give the sequencer api some slack and then retry
-                        eprintln!(
-                            "Got HTTP 429, retrying after {} seconds...",
-                            sleep_time_ms / 1000
-                        );
-                        tokio::time::sleep(Duration::from_millis(sleep_time_ms)).await;
+                        eprintln!("Got HTTP 429, retrying after {:?} ...", d);
+                        tokio::time::sleep(d).await;
                         sleep_time_ms *= 2;
                     }
                     _ => return Err(e),
