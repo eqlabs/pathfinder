@@ -91,10 +91,21 @@ pub async fn start(
                 let mut spawn = false;
                 tokio::select! {
                     _ = &mut stop_flag => {
+                        trace!("Starting shutdown");
                         // this should be enough to kick everyone off the locking, queue receiving
                         let _ = child_shutdown_tx.send(());
-                        let _ = joinhandles.into_future().await;
-                        // just exit
+
+                        loop {
+                            match joinhandles.next().await {
+                                Some(Ok(_)) => {}
+                                Some(Err(error)) => {
+                                    // these should all be bugs
+                                    warn!(%error, "Joined subprocess had failed");
+                                },
+                                None => break,
+                            }
+                        }
+                        info!("Shutdown complete");
                         return;
                     }
                     Some(evt) = status_rx.recv() => {
