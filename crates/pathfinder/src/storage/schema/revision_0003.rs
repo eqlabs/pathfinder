@@ -1,4 +1,4 @@
-use rusqlite::Transaction;
+use rusqlite::{params, OptionalExtension, Transaction};
 
 /// This schema migration splits the global state table into
 /// separate tables containing L1 and L2 data.
@@ -76,20 +76,20 @@ pub(crate) fn migrate_to_3(transaction: &Transaction) -> anyhow::Result<()> {
         [],
     )?;
 
-    // Insert the latest known starknet block. Since the old data ran L1 and L2 in lockstep,
-    // the L1 and L2 states were always in sync.
-    let rows = transaction.execute(
-        "INSERT INTO refs (starknet_block_number_l1_l2_match)
-        SELECT old.starknet_block_number
-        FROM global_state old
-        ORDER BY old.starknet_block_number DESC
+    // Get the latest starknet block number and set the L1-L2 head reference to it.
+    // This will default to null if no such number exists at all.
+    //
+    // This latest block is the L1-L2 head because schema 2 tracked L1 and L2 in lock-step.
+    let latest: Option<u64> = transaction
+        .query_row(
+            r"SELECT starknet_block_number FROM global_state
+        ORDER BY starknet_block_number DESC
         LIMIT 1",
-        [],
-    )?;
-    // If there was no update, insert a row with null so that there is always a single row.
-    if rows == 0 {
-        transaction.execute("INSERT INTO refs (l1_l2_head) NULL", [])?;
-    }
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    transaction.execute("INSERT INTO refs (l1_l2_head) VALUES (?)", params![latest])?;
 
     // drop the old state table and ethereum tables.
     transaction.execute("DROP TABLE global_state", [])?;
@@ -97,4 +97,206 @@ pub(crate) fn migrate_to_3(transaction: &Transaction) -> anyhow::Result<()> {
     transaction.execute("DROP TABLE ethereum_blocks", [])?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::{named_params, params, Connection};
+
+    use crate::storage::schema::{revision_0001::migrate_to_1, revision_0002::migrate_to_2};
+
+    use super::*;
+
+    #[test]
+    fn empty() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+
+        migrate_to_1(&transaction).unwrap();
+        migrate_to_2(&transaction).unwrap();
+        migrate_to_3(&transaction).unwrap();
+
+        // Check that the L1_L2_head is NULL
+        let mut statement = transaction.prepare("SELECT l1_l2_head FROM refs").unwrap();
+        let mut rows = statement.query([]).unwrap();
+        let row = rows.next().unwrap().unwrap();
+        let l1_l2_head = row.get_ref_unwrap(0).as_i64_or_null().unwrap();
+        assert_eq!(l1_l2_head, None);
+    }
+
+    #[test]
+    fn stateful() {
+        // Insert data into schema 2 tables, then migrate to schema 3 and
+        // check that the data survived and is correct.
+        let mut conn = Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+
+        migrate_to_1(&transaction).unwrap();
+        migrate_to_2(&transaction).unwrap();
+
+        struct EthereumData {
+            block_hash: Vec<u8>,
+            block_number: u64,
+            tx_hash: Vec<u8>,
+            tx_index: u64,
+            log_index: u64,
+        }
+        struct StarknetData {
+            block_number: u64,
+            block_hash: Vec<u8>,
+            root: Vec<u8>,
+            timestamp: u64,
+        }
+
+        struct Data {
+            starknet: StarknetData,
+            ethereum: EthereumData,
+        }
+
+        // Generate some data we can insert into schema 2 tables, and then
+        // comapre against after migrating to schema 3.
+        let original = (0..2)
+            .map(|i| {
+                let ethereum = EthereumData {
+                    block_hash: vec![0x1 + i, 0x2 + i, 0x3 + i],
+                    block_number: 20 + i as u64,
+                    tx_hash: vec![100 + i, 101 + i, 102 + i],
+                    tx_index: 33 + i as u64,
+                    log_index: 50 + i as u64,
+                };
+
+                let starknet = StarknetData {
+                    block_number: 66 + i as u64,
+                    block_hash: vec![0x50 + i, 0x51 + i, 0x52 + i],
+                    root: vec![0x60 + i, 0x61 + i, 0x62 + i],
+                    timestamp: 99 + i as u64,
+                };
+
+                Data { starknet, ethereum }
+            })
+            .collect::<Vec<_>>();
+
+        // Insert the data into the schema 2 tables.
+        for data in &original {
+            transaction
+                .execute(
+                    "INSERT INTO ethereum_blocks (hash, number) VALUES (?1, ?2)",
+                    params![&data.ethereum.block_hash[..], data.ethereum.block_number],
+                )
+                .unwrap();
+
+            transaction
+                .execute(
+                    "INSERT INTO ethereum_transactions (hash, idx, block_hash) VALUES (?1, ?2, ?3)",
+                    params![
+                        &data.ethereum.tx_hash[..],
+                        data.ethereum.tx_index,
+                        &data.ethereum.block_hash[..]
+                    ],
+                )
+                .unwrap();
+
+            transaction
+            .execute(
+                r"INSERT INTO global_state (
+                        starknet_block_hash,
+                        starknet_block_number,
+                        starknet_block_timestamp,
+                        starknet_global_root,
+                        ethereum_transaction_hash,
+                        ethereum_log_index
+                    )
+                    VALUES (:starknet_block_hash, :starknet_block_number, :starknet_block_timestamp,
+                            :starknet_global_root, :ethereum_transaction_hash, :ethereum_log_index)",
+                named_params![
+                    ":starknet_block_hash": &data.starknet.block_hash[..],
+                    ":starknet_block_number": data.starknet.block_number,
+                    ":starknet_block_timestamp": data.starknet.timestamp,
+                    ":starknet_global_root": &data.starknet.root[..],
+                    ":ethereum_transaction_hash": &data.ethereum.tx_hash[..],
+                    ":ethereum_log_index": data.ethereum.log_index,
+                ],
+            )
+            .unwrap();
+        }
+
+        migrate_to_3(&transaction).unwrap();
+
+        // Check that the data made it to schema 3 starknet_blocks table.
+        let mut statement = transaction
+            .prepare("SELECT * FROM starknet_blocks")
+            .unwrap();
+        let mut rows = statement.query([]).unwrap();
+
+        for data in &original {
+            let row = rows.next().unwrap().unwrap();
+
+            let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
+            let hash = row.get_ref_unwrap("hash").as_blob().unwrap();
+            let root = row.get_ref_unwrap("root").as_blob().unwrap();
+            let timestamp = row.get_ref_unwrap("timestamp").as_i64().unwrap() as u64;
+            let transactions = row
+                .get_ref_unwrap("transactions")
+                .as_blob_or_null()
+                .unwrap();
+            let transaction_receipts = row
+                .get_ref_unwrap("transaction_receipts")
+                .as_blob_or_null()
+                .unwrap();
+
+            assert_eq!(number, data.starknet.block_number);
+            assert_eq!(hash, &data.starknet.block_hash[..]);
+            assert_eq!(root, &data.starknet.root[..]);
+            assert_eq!(timestamp, data.starknet.timestamp);
+            assert_eq!(transactions, None);
+            assert_eq!(transaction_receipts, None);
+        }
+        assert!(rows.next().unwrap().is_none());
+
+        // Check that the data made it to schema 3 l1_state table.
+        let mut statement = transaction.prepare("SELECT * FROM l1_state").unwrap();
+        let mut rows = statement.query([]).unwrap();
+        for data in &original {
+            let row = rows.next().unwrap().unwrap();
+            let starknet_block_number = row
+                .get_ref_unwrap("starknet_block_number")
+                .as_i64()
+                .unwrap() as u64;
+            let starknet_global_root = row
+                .get_ref_unwrap("starknet_global_root")
+                .as_blob()
+                .unwrap();
+            let ethereum_block_hash = row.get_ref_unwrap("ethereum_block_hash").as_blob().unwrap();
+            let ethereum_block_number = row
+                .get_ref_unwrap("ethereum_block_number")
+                .as_i64()
+                .unwrap() as u64;
+            let ethereum_transaction_hash = row
+                .get_ref_unwrap("ethereum_transaction_hash")
+                .as_blob()
+                .unwrap();
+            let ethereum_transaction_index = row
+                .get_ref_unwrap("ethereum_transaction_index")
+                .as_i64()
+                .unwrap() as u64;
+            let ethereum_log_index =
+                row.get_ref_unwrap("ethereum_log_index").as_i64().unwrap() as u64;
+
+            assert_eq!(starknet_block_number, data.starknet.block_number);
+            assert_eq!(starknet_global_root, &data.starknet.root);
+            assert_eq!(ethereum_block_hash, &data.ethereum.block_hash);
+            assert_eq!(ethereum_block_number, data.ethereum.block_number);
+            assert_eq!(ethereum_transaction_hash, &data.ethereum.tx_hash);
+            assert_eq!(ethereum_transaction_index, data.ethereum.tx_index);
+            assert_eq!(ethereum_log_index, data.ethereum.log_index);
+        }
+        assert!(rows.next().unwrap().is_none());
+
+        // Check the L1_L2_head
+        let mut statement = transaction.prepare("SELECT l1_l2_head FROM refs").unwrap();
+        let mut rows = statement.query([]).unwrap();
+        let row = rows.next().unwrap().unwrap();
+        let l1_l2_head = row.get_ref_unwrap(0).as_i64_or_null().unwrap().unwrap() as u64;
+        assert_eq!(l1_l2_head, original.last().unwrap().starknet.block_number);
+    }
 }
