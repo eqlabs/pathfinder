@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{broadcast, mpsc};
-use tracing::{error, warn};
+use tracing::{error, info, trace, warn, Instrument};
 
 /// Launches a python subprocess, and executes calls on it until shutdown is initiated.
 ///
@@ -20,9 +20,10 @@ use tracing::{error, warn};
 /// Launching happens in two stages, similar to the python process. Initially we only launch, then
 /// read `"ready\n"` from the subprocess and after that enter the loop where we contend for the
 /// commands.
+#[tracing::instrument(name = "subproc", skip_all, fields(pid))]
 pub(super) async fn launch_python(
     database_path: PathBuf,
-    commands: SharedReceiver<Command>,
+    commands: SharedReceiver<(Command, tracing::Span)>,
     status_updates: mpsc::Sender<SubProcessEvent>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> anyhow::Result<(u32, Option<std::process::ExitStatus>, SubprocessExitReason)> {
@@ -42,6 +43,8 @@ pub(super) async fn launch_python(
         return Err(anyhow::anyhow!("Failed to notify of start"));
     }
 
+    info!("Subprocess launched");
+
     let mut command_buffer = Vec::new();
 
     // TODO: Why not have an outer loop to respawn a process fast? The idea occured during review.
@@ -54,7 +57,7 @@ pub(super) async fn launch_python(
 
         tokio::pin!(command);
 
-        let command = tokio::select! {
+        let (command, span) = tokio::select! {
             // locking is not cancellation safe BUT if the race is lost we don't retry so no
             // worries on that.
             maybe_command = &mut command => match maybe_command {
@@ -77,6 +80,8 @@ pub(super) async fn launch_python(
             continue;
         }
 
+        span.record("pid", &pid);
+
         let (timings, status) = {
             let op = process(
                 command,
@@ -84,7 +89,8 @@ pub(super) async fn launch_python(
                 &mut stdin,
                 &mut stdout,
                 &mut buffer,
-            );
+            )
+            .instrument(span);
 
             tokio::pin!(op);
 
@@ -117,6 +123,8 @@ pub(super) async fn launch_python(
             break SubprocessExitReason::UnrecoverableIO;
         }
     };
+
+    trace!(?exit_reason, "Starting to exit");
 
     // important to close up the stdin not to deadlock
     drop(stdin);
@@ -204,6 +212,11 @@ async fn spawn(
     // why care about the pid? it could be logged, and used to identify process activity, thought
     // these should be easy to spot otherwise as well.
     let pid = child.id().expect("The child pid should had been available after a successful start before waiting for it's status");
+
+    {
+        let span = tracing::Span::current();
+        span.record("pid", &pid);
+    }
 
     let stdin = child.stdin.take().expect("stdin was piped");
     let stdout = child.stdout.take().expect("stdout was piped");
@@ -321,6 +334,10 @@ async fn process(
             return Err(Some(SubprocessExitReason::UnrecoverableIO));
         }
     };
+
+    // This will demo that the span is correctly combined to the callers span, but unnecessary
+    // let result = response.send(sent_response).map_err(|_| ());
+    // trace!(?result, "Call result sent");
 
     let _ = response.send(sent_response);
 
