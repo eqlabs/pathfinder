@@ -165,7 +165,7 @@ impl RefsTable {
     pub fn get_l1_l2_head(connection: &Connection) -> anyhow::Result<Option<StarknetBlockNumber>> {
         // This table always contains exactly one row.
         let block_number =
-            connection.query_row("SELECT l1_l2_head FROM refs LIMIT 1", [], |row| {
+            connection.query_row("SELECT l1_l2_head FROM refs WHERE rowid = 1", [], |row| {
                 let block_number = row
                     .get_ref_unwrap(0)
                     .as_i64_or_null()
@@ -183,8 +183,8 @@ impl RefsTable {
         head: Option<StarknetBlockNumber>,
     ) -> anyhow::Result<()> {
         match head {
-            Some(number) => connection.execute("SET l1_l2_head = ? LIMIT 1", [number.0]),
-            None => connection.execute("SET l1_l2_head = NULL LIMIT 1", []),
+            Some(number) => connection.execute("UPDATE refs SET l1_l2_head = ? WHERE rowid = 1", [number.0]),
+            None => connection.execute("UPDATE refs SET l1_l2_head = NULL WHERE rowid = 1", []),
         }?;
 
         Ok(())
@@ -886,6 +886,41 @@ mod tests {
             let result = ContractsStateTable::get_root(&transaction, state_hash).unwrap();
 
             assert_eq!(result, Some(root));
+        }
+    }
+
+    mod refs {
+        use super::*;
+
+        mod l1_l2_head {
+            use super::*;
+            use crate::storage::Storage;
+
+            #[test]
+            fn fresh_is_none() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let l1_l2_head = RefsTable::get_l1_l2_head(&connection).unwrap();
+                assert_eq!(l1_l2_head, None);
+            }
+
+            #[test]
+            fn set_get() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let expected = Some(StarknetBlockNumber(22));
+                RefsTable::set_l1_l2_head(&connection, expected).unwrap();
+                assert_eq!(expected, RefsTable::get_l1_l2_head(&connection).unwrap());
+
+                let expected = Some(StarknetBlockNumber(25));
+                RefsTable::set_l1_l2_head(&connection, expected).unwrap();
+                assert_eq!(expected, RefsTable::get_l1_l2_head(&connection).unwrap());
+
+                RefsTable::set_l1_l2_head(&connection, None).unwrap();
+                assert_eq!(None, RefsTable::get_l1_l2_head(&connection).unwrap());
+            }
         }
     }
 }
