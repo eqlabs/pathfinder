@@ -1,7 +1,7 @@
 //! Launching and communication with the subprocess
 
 use super::{
-    de::{ChildResponse, RefinedChildResponse, Status},
+    de::{ChildResponse, RefinedChildResponse, Status, Timings},
     ser::ChildCommand,
     CallFailure, Command, SharedReceiver, SubProcessEvent, SubprocessError, SubprocessExitReason,
 };
@@ -53,7 +53,7 @@ pub(super) async fn launch_python(
 
         tokio::pin!(command);
 
-        let (call, at_block, mut response) = tokio::select! {
+        let command = tokio::select! {
             // locking is not cancellation safe BUT if the race is lost we don't retry so no
             // worries on that.
             maybe_command = &mut command => match maybe_command {
@@ -71,90 +71,35 @@ pub(super) async fn launch_python(
             },
         };
 
-        if response.is_closed() {
+        if command.2.is_closed() {
             // quickly loadshed, as the caller has already left.
             continue;
         }
 
-        command_buffer.clear();
+        let (timings, status) = {
+            let op = process(
+                command,
+                &mut command_buffer,
+                &mut stdin,
+                &mut stdout,
+                &mut buffer,
+            );
 
-        let cmd = ChildCommand {
-            contract_address: &call.contract_address,
-            calldata: &call.calldata,
-            entry_point_selector: &call.entry_point_selector,
-            at_block: &at_block,
-        };
-
-        let mut cursor = std::io::Cursor::new(&mut command_buffer);
-
-        if let Err(e) = serde_json::to_writer(&mut cursor, &cmd) {
-            eprintln!("Failed to render command {cmd:?} as json: {e:?}");
-            let _ = response.send(Err(CallFailure::Internal(
-                "Failed to render command as json",
-            )));
-            continue;
-        }
-
-        // using tokio::select to race against the shutdown_rx requires additional block to release
-        // the &mut borrow on buffer to have it printed/logged
-        let res = {
-            // AsyncWriteExt::write_all used in the rpc_round is not cancellation safe, but
-            // similar to above, if we lose the race, will kill the subprocess and get out.
-            let rpc_op = rpc_round(&command_buffer, &mut stdin, &mut stdout, &mut buffer);
-            tokio::pin!(rpc_op);
+            tokio::pin!(op);
 
             tokio::select! {
-                res = &mut rpc_op => res,
+                res = &mut op => {
+                    match res {
+                        Ok(t) => t,
+                        Err(None) => continue,
+                        Err(Some(e)) => break e,
+                    }
+                },
                 _ = shutdown_rx.recv() => {
                     break SubprocessExitReason::Shutdown;
                 },
-                // no need to await for child dying here, because the event would close the childs
-                // stdout and thus break our read_line and thus return a SubprocessError::IO and
-                // we'd break out.
-                _ = response.closed() => {
-                    // attempt to guard against a call that essentially freezes up the python for
-                    // how many minutes. by keeping our eye on this, we'll give the caller a
-                    // chance to set timeouts, which will drop the futures.
-                    //
-                    // breaking out here will end up killing the python. it's probably the safest
-                    // way to not cancel processing, because you can can't rely on SIGINT not being
-                    // handled in a `expect Exception:` branch.
-                    break SubprocessExitReason::Cancellation;
-                }
             }
         };
-
-        let (timings, status, sent_response) = match res {
-            Ok(resp) => resp.into_messages(),
-            Err(SubprocessError::InvalidJson(e)) => {
-                // buffer still holds the response... might be good for debugging
-                // this doesn't however mess up our line at once, so no worries.
-                // TODO: log better
-                eprintln!("failed to parse json: {e} on buffer: {buffer:?}");
-                (
-                    None,
-                    Status::Failed,
-                    Err(CallFailure::Internal("Invalid json received")),
-                )
-            }
-            Err(SubprocessError::InvalidResponse) => {
-                eprintln!("failed to understand parsed json on buffer: {buffer:?}");
-                (
-                    None,
-                    Status::Failed,
-                    Err(CallFailure::Internal("Invalid json received")),
-                )
-            }
-            Err(SubprocessError::IO) => {
-                let error = CallFailure::Internal("Input/output");
-                let _ = response.send(Err(error));
-
-                // TODO: consider if we'd just retry; put this back into the queue?
-                break SubprocessExitReason::UnrecoverableIO;
-            }
-        };
-
-        let _ = response.send(sent_response);
 
         let send_res = status_updates
             .send(SubProcessEvent::CommandHandled(pid, timings, status))
@@ -284,6 +229,102 @@ async fn spawn(
     buffer.clear();
 
     Ok((child, pid, stdin, stdout, buffer))
+}
+
+/// Process a single command with the external process.
+///
+/// Returns:
+/// - Ok(_) on succesful completion
+/// - Err(None) if nothing was done
+/// - Err(Some(_)) if the process can no longer be reused
+async fn process(
+    command: Command,
+    command_buffer: &mut Vec<u8>,
+    stdin: &mut ChildStdin,
+    stdout: &mut BufReader<ChildStdout>,
+    buffer: &mut String,
+) -> Result<(Option<Timings>, Status), Option<SubprocessExitReason>> {
+    let (call, at_block, mut response) = command;
+    command_buffer.clear();
+
+    let cmd = ChildCommand {
+        contract_address: &call.contract_address,
+        calldata: &call.calldata,
+        entry_point_selector: &call.entry_point_selector,
+        at_block: &at_block,
+    };
+
+    let mut cursor = std::io::Cursor::new(command_buffer);
+
+    if let Err(e) = serde_json::to_writer(&mut cursor, &cmd) {
+        eprintln!("Failed to render command {cmd:?} as json: {e:?}");
+        let _ = response.send(Err(CallFailure::Internal(
+            "Failed to render command as json",
+        )));
+        return Err(None);
+    }
+
+    let command_buffer = cursor.into_inner();
+
+    // using tokio::select to race against the shutdown_rx requires additional block to release
+    // the &mut borrow on buffer to have it printed/logged
+    let res = {
+        // AsyncWriteExt::write_all used in the rpc_round is not cancellation safe, but
+        // similar to above, if we lose the race, will kill the subprocess and get out.
+        let rpc_op = rpc_round(command_buffer, stdin, stdout, buffer);
+        tokio::pin!(rpc_op);
+
+        tokio::select! {
+            res = &mut rpc_op => res,
+            // no need to await for child dying here, because the event would close the childs
+            // stdout and thus break our read_line and thus return a SubprocessError::IO and
+            // we'd break out.
+            _ = response.closed() => {
+                // attempt to guard against a call that essentially freezes up the python for
+                // how many minutes. by keeping our eye on this, we'll give the caller a
+                // chance to set timeouts, which will drop the futures.
+                //
+                // breaking out here will end up killing the python. it's probably the safest
+                // way to not cancel processing, because you can can't rely on SIGINT not being
+                // handled in a `expect Exception:` branch.
+                return Err(Some(SubprocessExitReason::Cancellation));
+            }
+        }
+    };
+
+    let (timings, status, sent_response) = match res {
+        Ok(resp) => resp.into_messages(),
+        Err(SubprocessError::InvalidJson(e)) => {
+            // buffer still holds the response... might be good for debugging
+            // this doesn't however mess up our line at once, so no worries.
+            // TODO: log better
+            eprintln!("failed to parse json: {e} on buffer: {buffer:?}");
+            (
+                None,
+                Status::Failed,
+                Err(CallFailure::Internal("Invalid json received")),
+            )
+        }
+        Err(SubprocessError::InvalidResponse) => {
+            eprintln!("failed to understand parsed json on buffer: {buffer:?}");
+            (
+                None,
+                Status::Failed,
+                Err(CallFailure::Internal("Invalid json received")),
+            )
+        }
+        Err(SubprocessError::IO) => {
+            let error = CallFailure::Internal("Input/output");
+            let _ = response.send(Err(error));
+
+            // TODO: consider if we'd just retry; put this back into the queue?
+            return Err(Some(SubprocessExitReason::UnrecoverableIO));
+        }
+    };
+
+    let _ = response.send(sent_response);
+
+    Ok((timings, status))
 }
 
 /// Run a round of writing out the request, and reading a sane response type.
