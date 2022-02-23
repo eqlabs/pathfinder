@@ -154,11 +154,11 @@ pub(super) async fn launch_python(
 
         let _ = response.send(sent_response);
 
-        if status_updates
+        let send_res = status_updates
             .send(SubProcessEvent::CommandHandled(pid, timings, status))
-            .await
-            .is_err()
-        {
+            .await;
+
+        if send_res.is_err() {
             break SubprocessExitReason::ClosedChannel;
         }
 
