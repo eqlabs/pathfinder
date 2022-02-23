@@ -1,8 +1,11 @@
 use pathfinder_lib::{cairo, config, rpc, sequencer, storage::Storage};
+use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    println!("🏁 Starting node.");
+    tracing_subscriber::fmt::init();
+
+    info!("🏁 Starting node.");
     let config =
         config::Configuration::parse_cmd_line_and_cfg_file().expect("Configuration failed");
 
@@ -26,6 +29,6 @@ async fn main() {
 
     let (_handle, local_addr) =
         rpc::run_server(config.http_rpc_addr, api).expect("⚠️ Failed to start HTTP-RPC server");
-    println!("📡 HTTP-RPC server started on: {}", local_addr);
+    info!("📡 HTTP-RPC server started on: {}", local_addr);
     let () = std::future::pending().await;
 }
