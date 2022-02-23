@@ -137,7 +137,7 @@ mod tests {
     use std::path::PathBuf;
     use tokio::sync::oneshot;
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore]
     async fn start_with_wrong_database_schema_fails() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
@@ -165,7 +165,7 @@ mod tests {
         println!("{:?}", err.unwrap_err());
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore] // these tests require that you've entered into python venv
     async fn call_like_in_python_ten_times() {
         use futures::stream::StreamExt;
