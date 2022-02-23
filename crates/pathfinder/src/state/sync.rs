@@ -176,7 +176,7 @@ fn l2_update(
 
     if expected_next == block.number {
         let l1_root =
-            L1StateTable::get_root(&transaction, block.number).context("Query L1 root")?;
+            L1StateTable::get_root(&transaction, block.number.into()).context("Query L1 root")?;
         if l1_root == Some(block.root) {
             RefsTable::set_l1_l2_head(&transaction, Some(block.number))
                 .context("Update L1-L2 head")?;

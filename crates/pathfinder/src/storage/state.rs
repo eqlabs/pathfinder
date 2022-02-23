@@ -27,7 +27,7 @@ impl L1StateTable {
                         ethereum_block_number,
                         ethereum_transaction_hash,
                         ethereum_transaction_index,
-                        ethereum_log_index,
+                        ethereum_log_index
                     ) VALUES (
                         :starknet_block_number,
                         :starknet_global_root,
@@ -40,8 +40,8 @@ impl L1StateTable {
                 named_params! {
                     ":starknet_block_number": update.block_number.0,
                     ":starknet_global_root": &update.global_root.0.as_be_bytes()[..],
-                    ":ethereum_block_hash,": &update.origin.block.hash.0[..],
-                    ":ethereum_block_number,": update.origin.block.number.0,
+                    ":ethereum_block_hash": &update.origin.block.hash.0[..],
+                    ":ethereum_block_number": update.origin.block.number.0,
                     ":ethereum_transaction_hash": &update.origin.transaction.hash.0[..],
                     ":ethereum_transaction_index": update.origin.transaction.index.0,
                     ":ethereum_log_index": update.origin.log_index.0,
@@ -62,35 +62,58 @@ impl L1StateTable {
         Ok(())
     }
 
-    pub fn get_root(
-        connection: &Connection,
-        block: StarknetBlockNumber,
-    ) -> anyhow::Result<Option<GlobalRoot>> {
-        let root = connection
-            .query_row(
-                "SELECT root FROM l1_state WHERE starknet_block_number = ?",
-                params![block.0],
-                |row| {
-                    let root = row.get_ref_unwrap(0).as_blob()?;
-                    // unwrap is safe, unless database is corrupted.
-                    let root = StarkHash::from_be_slice(root).unwrap();
-                    let root = GlobalRoot(root);
+    pub fn get_root(connection: &Connection, block: BlockId) -> anyhow::Result<Option<GlobalRoot>> {
+        let mut statement = match block {
+            BlockId::Number(_) => {
+                connection.prepare("SELECT starknet_global_root FROM l1_state WHERE starknet_block_number = ?")
+            }
+            BlockId::Latest => connection
+                .prepare("SELECT starknet_global_root FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1"),
+        }?;
 
-                    Ok(root)
-                },
-            )
-            .optional()?;
+        let mut rows = match block {
+            BlockId::Number(number) => statement.query(params![number.0]),
+            BlockId::Latest => statement.query([]),
+        }?;
 
-        Ok(root)
+        let row = rows.next()?;
+        let row = match row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let starknet_global_root = row
+            .get_ref_unwrap("starknet_global_root")
+            .as_blob()
+            .unwrap();
+        let starknet_global_root = StarkHash::from_be_slice(starknet_global_root).unwrap();
+        let starknet_global_root = GlobalRoot(starknet_global_root);
+
+        Ok(Some(starknet_global_root))
     }
 
     pub fn get(connection: &Connection, block: BlockId) -> anyhow::Result<Option<StateUpdateLog>> {
         let mut statement = match block {
-            BlockId::Number(_) => {
-                connection.prepare("SELECT * FROM l1_state WHERE starknet_block_number = ?")
-            }
-            BlockId::Latest => connection
-                .prepare("SELECT * FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1"),
+            BlockId::Number(_) => connection.prepare(
+                r"SELECT starknet_block_number,
+                    starknet_global_root,
+                    ethereum_block_hash,
+                    ethereum_block_number,
+                    ethereum_transaction_hash,
+                    ethereum_transaction_index,
+                    ethereum_log_index
+                FROM l1_state WHERE starknet_block_number = ?",
+            ),
+            BlockId::Latest => connection.prepare(
+                r"SELECT starknet_block_number,
+                    starknet_global_root,
+                    ethereum_block_hash,
+                    ethereum_block_number,
+                    ethereum_transaction_hash,
+                    ethereum_transaction_index,
+                    ethereum_log_index
+                FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1",
+            ),
         }?;
 
         let mut rows = match block {
@@ -183,7 +206,9 @@ impl RefsTable {
         head: Option<StarknetBlockNumber>,
     ) -> anyhow::Result<()> {
         match head {
-            Some(number) => connection.execute("UPDATE refs SET l1_l2_head = ? WHERE rowid = 1", [number.0]),
+            Some(number) => {
+                connection.execute("UPDATE refs SET l1_l2_head = ? WHERE rowid = 1", [number.0])
+            }
             None => connection.execute("UPDATE refs SET l1_l2_head = NULL WHERE rowid = 1", []),
         }?;
 
@@ -608,6 +633,7 @@ impl ContractsStateTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::Storage;
 
     mod global {
         use std::str::FromStr;
@@ -894,7 +920,6 @@ mod tests {
 
         mod l1_l2_head {
             use super::*;
-            use crate::storage::Storage;
 
             #[test]
             fn fresh_is_none() {
@@ -920,6 +945,227 @@ mod tests {
 
                 RefsTable::set_l1_l2_head(&connection, None).unwrap();
                 assert_eq!(None, RefsTable::get_l1_l2_head(&connection).unwrap());
+            }
+        }
+    }
+
+    mod l1_state_table {
+        use super::*;
+
+        /// Creates a set of consecutive [StateUpdateLog]s starting from L2 genesis,
+        /// with arbitrary other values.
+        fn create_updates() -> [StateUpdateLog; 3] {
+            (0..3)
+                .map(|i| StateUpdateLog {
+                    origin: EthOrigin {
+                        block: BlockOrigin {
+                            hash: EthereumBlockHash(H256::from_low_u64_le(i + 33)),
+                            number: EthereumBlockNumber(i + 12_000),
+                        },
+                        transaction: TransactionOrigin {
+                            hash: EthereumTransactionHash(H256::from_low_u64_le(i + 999)),
+                            index: EthereumTransactionIndex(i + 20_000),
+                        },
+                        log_index: EthereumLogIndex(i + 500),
+                    },
+                    global_root: GlobalRoot(
+                        StarkHash::from_hex_str(&"3".repeat(i as usize + 1)).unwrap(),
+                    ),
+                    block_number: StarknetBlockNumber(i),
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
+        }
+
+        mod get {
+            use super::*;
+
+            #[test]
+            fn none() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let updates = create_updates();
+                for update in &updates {
+                    L1StateTable::insert(&connection, update).unwrap();
+                }
+
+                let non_existant = updates.last().unwrap().block_number + 1;
+                assert_eq!(
+                    L1StateTable::get(&connection, non_existant.into()).unwrap(),
+                    None
+                );
+            }
+
+            #[test]
+            fn some() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let updates = create_updates();
+                for update in &updates {
+                    L1StateTable::insert(&connection, update).unwrap();
+                }
+
+                for (idx, update) in updates.iter().enumerate() {
+                    assert_eq!(
+                        L1StateTable::get(&connection, update.block_number.into())
+                            .unwrap()
+                            .as_ref(),
+                        Some(update),
+                        "Update {}",
+                        idx
+                    );
+                }
+            }
+
+            mod latest {
+                use super::*;
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    assert_eq!(
+                        L1StateTable::get(&connection, BlockId::Latest).unwrap(),
+                        None
+                    );
+                }
+
+                #[test]
+                fn some() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let updates = create_updates();
+                    for update in &updates {
+                        L1StateTable::insert(&connection, update).unwrap();
+                    }
+
+                    assert_eq!(
+                        L1StateTable::get(&connection, BlockId::Latest)
+                            .unwrap()
+                            .as_ref(),
+                        updates.last()
+                    );
+                }
+            }
+        }
+
+        mod get_root {
+            use super::*;
+
+            #[test]
+            fn none() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let updates = create_updates();
+                for update in &updates {
+                    L1StateTable::insert(&connection, update).unwrap();
+                }
+
+                let non_existant = updates.last().unwrap().block_number + 1;
+                assert_eq!(
+                    L1StateTable::get_root(&connection, non_existant.into()).unwrap(),
+                    None
+                );
+            }
+
+            #[test]
+            fn some() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let updates = create_updates();
+                for update in &updates {
+                    L1StateTable::insert(&connection, update).unwrap();
+                }
+
+                for (idx, update) in updates.iter().enumerate() {
+                    assert_eq!(
+                        L1StateTable::get_root(&connection, update.block_number.into()).unwrap(),
+                        Some(update.global_root),
+                        "Update {}",
+                        idx
+                    );
+                }
+            }
+
+            mod latest {
+                use super::*;
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    assert_eq!(
+                        L1StateTable::get_root(&connection, BlockId::Latest).unwrap(),
+                        None
+                    );
+                }
+
+                #[test]
+                fn some() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let updates = create_updates();
+                    for update in &updates {
+                        L1StateTable::insert(&connection, update).unwrap();
+                    }
+
+                    assert_eq!(
+                        L1StateTable::get_root(&connection, BlockId::Latest).unwrap(),
+                        Some(updates.last().unwrap().global_root)
+                    );
+                }
+            }
+        }
+
+        mod reorg {
+            use super::*;
+
+            #[test]
+            fn full() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let updates = create_updates();
+                for update in &updates {
+                    L1StateTable::insert(&connection, update).unwrap();
+                }
+
+                L1StateTable::reorg(&connection, StarknetBlockNumber::GENESIS).unwrap();
+
+                assert_eq!(
+                    L1StateTable::get(&connection, BlockId::Latest).unwrap(),
+                    None
+                );
+            }
+
+            #[test]
+            fn partial() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let updates = create_updates();
+                for update in &updates {
+                    L1StateTable::insert(&connection, update).unwrap();
+                }
+
+                let reorg_tail = updates[1].block_number;
+                L1StateTable::reorg(&connection, reorg_tail).unwrap();
+
+                assert_eq!(
+                    L1StateTable::get(&connection, BlockId::Latest)
+                        .unwrap()
+                        .as_ref(),
+                    Some(&updates[0])
+                );
             }
         }
     }
