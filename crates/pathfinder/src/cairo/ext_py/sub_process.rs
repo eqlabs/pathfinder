@@ -85,7 +85,9 @@ pub(super) async fn launch_python(
             at_block: &at_block,
         };
 
-        if let Err(e) = serde_json::to_writer(std::io::Cursor::new(&mut command_buffer), &cmd) {
+        let mut cursor = std::io::Cursor::new(&mut command_buffer);
+
+        if let Err(e) = serde_json::to_writer(&mut cursor, &cmd) {
             eprintln!("Failed to render command {cmd:?} as json: {e:?}");
             let _ = response.send(Err(CallFailure::Internal(
                 "Failed to render command as json",
