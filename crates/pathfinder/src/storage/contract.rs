@@ -116,6 +116,19 @@ impl ContractCodeTable {
 
         Ok(Some(ContractCode { bytecode, abi }))
     }
+
+    /// Returns true for each [ContractHash] if the contract definition already exists in the table.
+    pub fn exists(
+        connection: &Connection,
+        contracts: &[ContractHash],
+    ) -> anyhow::Result<Vec<bool>> {
+        let mut stmt = connection.prepare("select 1 from contract_code where hash = ?")?;
+
+        Ok(contracts
+            .iter()
+            .map(|hash| stmt.exists(&[&hash.0.to_be_bytes()[..]]))
+            .collect::<Result<Vec<_>, _>>()?)
+    }
 }
 
 /// Stores the mapping from StarkNet contract [address](ContractAddress) to [hash](ContractHash).
@@ -176,6 +189,8 @@ impl ContractsTable {
 
 #[cfg(test)]
 mod tests {
+    use crate::storage::Storage;
+
     use super::*;
 
     #[test]
@@ -241,5 +256,29 @@ mod tests {
                 bytecode: serde_json::from_slice::<Vec<ByteCodeWord>>(code).unwrap(),
             })
         );
+    }
+
+    #[test]
+    fn contracts_exist() {
+        let storage = Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+
+        let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
+
+        // list of objects
+        let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
+        // this is list of hex
+        let code = br#"["0x40780017fff7fff","0x1","0x208b7fff7fff7ffe"]"#;
+        let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
+        ContractCodeTable::insert(&transaction, hash, &abi[..], &code[..], &definition[..])
+            .unwrap();
+
+        let non_existent = ContractHash(StarkHash::from_hex_str("456").unwrap());
+
+        let result = ContractCodeTable::exists(&transaction, &vec![hash, non_existent]).unwrap();
+        let expected = vec![true, false];
+
+        assert_eq!(result, expected);
     }
 }
