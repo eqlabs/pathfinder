@@ -246,7 +246,7 @@ impl StarknetBlocksTable {
     /// i.e. it deletes all rows where `block number >= reorg_tail`.
     pub fn reorg(connection: &Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
         connection.execute(
-            "DELETE FROM starknet_blocks WHERE starknet_block_number >= ?",
+            "DELETE FROM starknet_blocks WHERE number >= ?",
             params![reorg_tail.0],
         )?;
         Ok(())
@@ -971,7 +971,7 @@ mod tests {
                     global_root: GlobalRoot(
                         StarkHash::from_hex_str(&"3".repeat(i as usize + 1)).unwrap(),
                     ),
-                    block_number: StarknetBlockNumber(i),
+                    block_number: StarknetBlockNumber::GENESIS + i,
                 })
                 .collect::<Vec<_>>()
                 .try_into()
@@ -991,9 +991,9 @@ mod tests {
                     L1StateTable::insert(&connection, update).unwrap();
                 }
 
-                let non_existant = updates.last().unwrap().block_number + 1;
+                let non_existent = updates.last().unwrap().block_number + 1;
                 assert_eq!(
-                    L1StateTable::get(&connection, non_existant.into()).unwrap(),
+                    L1StateTable::get(&connection, non_existent.into()).unwrap(),
                     None
                 );
             }
@@ -1067,9 +1067,9 @@ mod tests {
                     L1StateTable::insert(&connection, update).unwrap();
                 }
 
-                let non_existant = updates.last().unwrap().block_number + 1;
+                let non_existent = updates.last().unwrap().block_number + 1;
                 assert_eq!(
-                    L1StateTable::get_root(&connection, non_existant.into()).unwrap(),
+                    L1StateTable::get_root(&connection, non_existent.into()).unwrap(),
                     None
                 );
             }
@@ -1165,6 +1165,143 @@ mod tests {
                         .unwrap()
                         .as_ref(),
                     Some(&updates[0])
+                );
+            }
+        }
+    }
+
+    mod starknet_blocks {
+        use super::*;
+
+        /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
+        /// with arbitrary other values.
+        fn create_blocks() -> [StarknetBlock; 3] {
+            (0..3)
+                .map(|i| StarknetBlock {
+                    number: StarknetBlockNumber::GENESIS + i,
+                    hash: StarknetBlockHash(
+                        StarkHash::from_hex_str(&"a".repeat(i as usize + 3)).unwrap(),
+                    ),
+                    root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
+                    timestamp: StarknetBlockTimestamp(i + 500),
+                    transaction_receipts: Vec::new(),
+                    transactions: Vec::new(),
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
+        }
+
+        mod get_root {
+            use super::*;
+
+            #[test]
+            fn some() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let blocks = create_blocks();
+                for block in &blocks {
+                    StarknetBlocksTable::insert(&connection, block).unwrap();
+                }
+
+                for (idx, block) in blocks.iter().enumerate() {
+                    assert_eq!(
+                        StarknetBlocksTable::get_root(&connection, block.number.into()).unwrap(),
+                        Some(block.root),
+                        "Update {}",
+                        idx
+                    );
+                }
+            }
+
+            #[test]
+            fn none() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let blocks = create_blocks();
+                for block in &blocks {
+                    StarknetBlocksTable::insert(&connection, block).unwrap();
+                }
+
+                let non_existent = blocks.last().unwrap().number + 1;
+                assert_eq!(
+                    StarknetBlocksTable::get_root(&connection, non_existent.into()).unwrap(),
+                    None
+                );
+            }
+
+            mod latest {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    let latest = StarknetBlocksTable::get_root(&connection, BlockId::Latest)
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(latest, blocks.last().unwrap().root);
+                }
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let latest =
+                        StarknetBlocksTable::get_root(&connection, BlockId::Latest).unwrap();
+                    assert_eq!(latest, None);
+                }
+            }
+        }
+
+        mod reorg {
+            use super::*;
+
+            #[test]
+            fn full() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let blocks = create_blocks();
+                for block in &blocks {
+                    StarknetBlocksTable::insert(&connection, block).unwrap();
+                }
+
+                StarknetBlocksTable::reorg(&connection, StarknetBlockNumber::GENESIS).unwrap();
+
+                assert_eq!(
+                    StarknetBlocksTable::get_root(&connection, BlockId::Latest).unwrap(),
+                    None
+                );
+            }
+
+            #[test]
+            fn partial() {
+                let storage = Storage::in_memory().unwrap();
+                let connection = storage.connection().unwrap();
+
+                let blocks = create_blocks();
+                for block in &blocks {
+                    StarknetBlocksTable::insert(&connection, block).unwrap();
+                }
+
+                let reorg_tail = blocks[1].number;
+                StarknetBlocksTable::reorg(&connection, reorg_tail).unwrap();
+
+                assert_eq!(
+                    StarknetBlocksTable::get_root(&connection, BlockId::Latest)
+                        .unwrap()
+                        .as_ref(),
+                    Some(&blocks[0].root)
                 );
             }
         }
