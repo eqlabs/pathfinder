@@ -248,23 +248,13 @@ mod tests {
         let (abi, bytecode, hash) =
             crate::state::contract_hash::extract_abi_code_hash(&*contract_definition).unwrap();
 
-        assert_eq!(hash, expected_hash);
+        assert_eq!(hash.0, expected_hash);
 
-        crate::storage::ContractCodeTable::insert(
-            tx,
-            crate::core::ContractHash(hash),
-            &abi,
-            &bytecode,
-            &contract_definition,
-        )
-        .unwrap();
+        crate::storage::ContractCodeTable::insert(tx, hash, &abi, &bytecode, &contract_definition)
+            .unwrap();
 
-        crate::storage::ContractsTable::insert(
-            tx,
-            crate::core::ContractAddress(address),
-            crate::core::ContractHash(hash),
-        )
-        .unwrap();
+        crate::storage::ContractsTable::insert(tx, crate::core::ContractAddress(address), hash)
+            .unwrap();
 
         // this will create the table, not created by migration
         crate::state::state_tree::ContractsStateTree::load(

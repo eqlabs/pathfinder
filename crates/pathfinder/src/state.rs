@@ -441,11 +441,11 @@ fn extract_compress(
     Ok(())
 }
 
-struct CompressedContract {
-    abi: Vec<u8>,
-    bytecode: Vec<u8>,
-    definition: Vec<u8>,
-    hash: StarkHash,
+pub struct CompressedContract {
+    pub abi: Vec<u8>,
+    pub bytecode: Vec<u8>,
+    pub definition: Vec<u8>,
+    pub hash: ContractHash,
 }
 
 impl std::fmt::Debug for CompressedContract {
@@ -454,7 +454,7 @@ impl std::fmt::Debug for CompressedContract {
             f,
             "CompressedContract {{ sizes: {:?}, hash: {} }}",
             (self.abi.len(), self.bytecode.len(), self.definition.len()),
-            self.hash
+            self.hash.0
         )
     }
 }
@@ -573,23 +573,17 @@ fn update(
         // these we want to store regardless of they receiving updates, since us fetching them
         // means we didn't have the contract in storage.
         if let Some(compressed) = payload {
-            if compressed.hash != deploy_info.hash.0 {
+            if compressed.hash != deploy_info.hash {
                 return Err(anyhow::anyhow!(
                     "Contract hash mismatch on address {}: expected {}, actual {}",
                     deploy_info.address.0,
                     deploy_info.hash.0,
-                    compressed.hash,
+                    compressed.hash.0,
                 ));
             }
 
-            ContractCodeTable::insert_compressed(
-                db,
-                deploy_info.hash,
-                &compressed.abi,
-                &compressed.bytecode,
-                &compressed.definition,
-            )
-            .with_context(|| format!("Inserting contract {}", deploy_info.hash.0))?;
+            ContractCodeTable::insert_compressed(db, &compressed)
+                .with_context(|| format!("Inserting contract {}", deploy_info.hash.0))?;
         }
 
         // Pretty sure we'll need this regardless, it's for having the information available when

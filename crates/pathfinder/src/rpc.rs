@@ -876,11 +876,11 @@ mod tests {
                     crate::state::contract_hash::extract_abi_code_hash(&*contract_definition)
                         .unwrap();
 
-                assert_eq!(hash, expected_hash);
+                assert_eq!(hash.0, expected_hash);
 
                 crate::storage::ContractCodeTable::insert(
                     &tx,
-                    crate::core::ContractHash(hash),
+                    hash,
                     &abi,
                     &bytecode,
                     &contract_definition,
@@ -891,7 +891,7 @@ mod tests {
                 crate::storage::ContractsTable::insert(
                     &tx,
                     crate::core::ContractAddress(address),
-                    crate::core::ContractHash(hash),
+                    hash,
                 )
                 .unwrap();
 

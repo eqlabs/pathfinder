@@ -3,6 +3,8 @@ use pedersen::{pedersen_hash, StarkHash};
 use serde::Serialize;
 use sha3::Digest;
 
+use crate::core::ContractHash;
+
 /// Computes the starknet contract hash for given contract definition json blob.
 ///
 /// The structure of the blob is not strictly defined, so it lives in privacy under `json` module
@@ -25,7 +27,7 @@ use sha3::Digest;
 /// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py
 /// [cairo-contract]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contracts.cairo#L76-L118
 /// [py-sortkeys]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py#L58-L71
-pub fn compute_contract_hash(contract_definition_dump: &[u8]) -> Result<StarkHash> {
+pub fn compute_contract_hash(contract_definition_dump: &[u8]) -> Result<ContractHash> {
     let contract_definition =
         serde_json::from_slice::<json::ContractDefinition>(contract_definition_dump)
             .context("Failed to parse contract_definition")?;
@@ -37,7 +39,7 @@ pub fn compute_contract_hash(contract_definition_dump: &[u8]) -> Result<StarkHas
 /// parts as json bytes.
 pub(crate) fn extract_abi_code_hash(
     contract_definition_dump: &[u8],
-) -> Result<(Vec<u8>, Vec<u8>, StarkHash)> {
+) -> Result<(Vec<u8>, Vec<u8>, ContractHash)> {
     let contract_definition =
         serde_json::from_slice::<json::ContractDefinition>(contract_definition_dump)
             .context("Failed to parse contract_definition")?;
@@ -55,7 +57,7 @@ pub(crate) fn extract_abi_code_hash(
 
 fn compute_contract_hash0(
     mut contract_definition: json::ContractDefinition<'_>,
-) -> Result<StarkHash> {
+) -> Result<ContractHash> {
     use json::EntryPointType::*;
 
     // the other modification is handled by skipping if the attributes vec is empty
@@ -164,7 +166,7 @@ fn compute_contract_hash0(
 
     outer.update(bytecodes.finalize());
 
-    Ok(outer.finalize())
+    Ok(ContractHash(outer.finalize()))
 }
 
 /// HashChain is the structure used over at cairo side to represent the hash construction needed
@@ -414,7 +416,7 @@ mod json {
 
             let hash = super::super::compute_contract_hash(payload.as_bytes()).unwrap();
 
-            assert_eq!(hash, expected);
+            assert_eq!(hash.0, expected);
         }
 
         #[test]
@@ -428,7 +430,7 @@ mod json {
             let hash = super::super::compute_contract_hash(&contract_definition).unwrap();
 
             assert_eq!(
-                hash,
+                hash.0,
                 pedersen::StarkHash::from_hex_str(
                     "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
                 )
