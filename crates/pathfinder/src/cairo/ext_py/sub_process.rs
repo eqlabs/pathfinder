@@ -25,7 +25,7 @@ pub(super) async fn launch_python(
     status_updates: mpsc::Sender<SubProcessEvent>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> anyhow::Result<(u32, Option<std::process::ExitStatus>, SubprocessExitReason)> {
-    let (mut child, pid, mut input, mut output, mut buffer) = match spawn(database_path).await {
+    let (mut child, pid, mut stdin, mut stdout, mut buffer) = match spawn(database_path).await {
         Ok(tuple) => tuple,
         Err(e) => {
             return Err(e.context("Failed to start python subprocess"));
@@ -37,7 +37,7 @@ pub(super) async fn launch_python(
         .await
         .is_err()
     {
-        drop(input);
+        drop(stdin);
         return Err(anyhow::anyhow!("Failed to notify of start"));
     }
 
@@ -98,7 +98,7 @@ pub(super) async fn launch_python(
         let res = {
             // AsyncWriteExt::write_all used in the rpc_round is not cancellation safe, but
             // similar to above, if we lose the race, will kill the subprocess and get out.
-            let rpc_op = rpc_round(&command_buffer, &mut input, &mut output, &mut buffer);
+            let rpc_op = rpc_round(&command_buffer, &mut stdin, &mut stdout, &mut buffer);
             tokio::pin!(rpc_op);
 
             tokio::select! {
@@ -162,7 +162,7 @@ pub(super) async fn launch_python(
             break SubprocessExitReason::ClosedChannel;
         }
 
-        if !output.buffer().is_empty() {
+        if !stdout.buffer().is_empty() {
             // some garbage was left in, it shouldn't have; there are extra printlns and we must
             // assume we've gone out of sync now.
             // FIXME: log this, hasn't happened.
@@ -171,8 +171,8 @@ pub(super) async fn launch_python(
     };
 
     // important to close up the stdin not to deadlock
-    drop(input);
-    drop(output);
+    drop(stdin);
+    drop(stdout);
 
     // give the subprocess a bit of time, since it might be less risky/better for sqlite to
     // exit/cleanup properly
@@ -257,18 +257,18 @@ async fn spawn(
     // these should be easy to spot otherwise as well.
     let pid = child.id().expect("The child pid should had been available after a successful start before waiting for it's status");
 
-    let input = child.stdin.take().expect("stdin was piped");
-    let output = child.stdout.take().expect("stdout was piped");
+    let stdin = child.stdin.take().expect("stdin was piped");
+    let stdout = child.stdout.take().expect("stdout was piped");
 
     // default buffer is fine for us ... but this is double buffering, for no good reason
     // it could actually be destroyed even between runs, because the buffer should be empty
-    let mut output = BufReader::new(output);
+    let mut stdout = BufReader::new(stdout);
     let mut buffer = String::new();
 
     // reasons for this part to error out:
     // - invalid schema version
     // - some other pythonic thing happens, for example, no call.py found
-    let read = output
+    let read = stdout
         .read_line(&mut buffer)
         .await
         .context("Failed to read 'ready' from python process")?;
@@ -281,7 +281,7 @@ async fn spawn(
     );
     buffer.clear();
 
-    Ok((child, pid, input, output, buffer))
+    Ok((child, pid, stdin, stdout, buffer))
 }
 
 /// Run a round of writing out the request, and reading a sane response type.
