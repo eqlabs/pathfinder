@@ -252,6 +252,39 @@ impl StarknetBlocksTable {
         Ok(())
     }
 
+    pub fn get_hash(
+        connection: &Connection,
+        block: BlockId,
+    ) -> anyhow::Result<Option<StarknetBlockHash>> {
+        let mut statement = match block {
+            BlockId::Number(_) => {
+                connection.prepare("SELECT hash FROM starknet_blocks WHERE number = ?")
+            }
+            BlockId::Latest => {
+                connection.prepare("SELECT hash FROM starknet_blocks ORDER BY number DESC LIMIT 1")
+            }
+        }?;
+
+        let mut rows = match block {
+            BlockId::Number(number) => statement.query(params![number.0]),
+            BlockId::Latest => statement.query([]),
+        }?;
+
+        let root = rows.next().context("Iterate rows")?;
+
+        match root {
+            Some(row) => {
+                // unwrap is safe as the first column must exist from the query.
+                let hash = row.get_ref_unwrap(0).as_blob()?;
+                // unwrap is safe, unless database is corrupted.
+                let hash = StarkHash::from_be_slice(hash).unwrap();
+                let hash = StarknetBlockHash(hash);
+                Ok(Some(hash))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub fn get_root(connection: &Connection, block: BlockId) -> anyhow::Result<Option<GlobalRoot>> {
         let mut statement = match block {
             BlockId::Number(_) => {
@@ -1192,7 +1225,7 @@ mod tests {
                 .unwrap()
         }
 
-        mod get_root {
+        mod get {
             use super::*;
 
             #[test]
@@ -1209,6 +1242,13 @@ mod tests {
                     assert_eq!(
                         StarknetBlocksTable::get_root(&connection, block.number.into()).unwrap(),
                         Some(block.root),
+                        "Update {}",
+                        idx
+                    );
+
+                    assert_eq!(
+                        StarknetBlocksTable::get_hash(&connection, block.number.into()).unwrap(),
+                        Some(block.hash),
                         "Update {}",
                         idx
                     );
@@ -1230,6 +1270,10 @@ mod tests {
                     StarknetBlocksTable::get_root(&connection, non_existent.into()).unwrap(),
                     None
                 );
+                assert_eq!(
+                    StarknetBlocksTable::get_hash(&connection, non_existent.into()).unwrap(),
+                    None
+                );
             }
 
             mod latest {
@@ -1245,10 +1289,15 @@ mod tests {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
 
-                    let latest = StarknetBlocksTable::get_root(&connection, BlockId::Latest)
+                    let latest_root = StarknetBlocksTable::get_root(&connection, BlockId::Latest)
                         .unwrap()
                         .unwrap();
-                    assert_eq!(latest, blocks.last().unwrap().root);
+                    assert_eq!(latest_root, blocks.last().unwrap().root);
+
+                    let latest_hash = StarknetBlocksTable::get_hash(&connection, BlockId::Latest)
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(latest_hash, blocks.last().unwrap().hash);
                 }
 
                 #[test]
@@ -1256,9 +1305,13 @@ mod tests {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let latest =
+                    let latest_root =
                         StarknetBlocksTable::get_root(&connection, BlockId::Latest).unwrap();
-                    assert_eq!(latest, None);
+                    assert_eq!(latest_root, None);
+
+                    let latest_hash =
+                        StarknetBlocksTable::get_hash(&connection, BlockId::Latest).unwrap();
+                    assert_eq!(latest_hash, None);
                 }
             }
         }
