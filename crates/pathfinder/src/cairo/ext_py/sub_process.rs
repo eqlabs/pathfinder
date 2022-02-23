@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{broadcast, mpsc};
+use tracing::{error, warn};
 
 /// Launches a python subprocess, and executes calls on it until shutdown is initiated.
 ///
@@ -130,15 +131,15 @@ pub(super) async fn launch_python(
         _ = &mut sleep => {
             match child.kill().await {
                 Ok(()) => {}
-                Err(e) => println!("Killing python subprocess failed, possibly a race? {e:?}"),
+                Err(error) => warn!(%error, "Killing python subprocess failed"),
             }
 
             // kill already await the child, so there's not much to await here, we should just get the
             // fused response.
             match child.wait().await {
                 Ok(status) => Some(status),
-                Err(e) => {
-                    eprintln!("wait on child pid failed: {e:?}");
+                Err(error) => {
+                    warn!(%error, "Wait on child pid failed");
                     None
                 }
             }
@@ -257,7 +258,7 @@ async fn process(
     let mut cursor = std::io::Cursor::new(command_buffer);
 
     if let Err(e) = serde_json::to_writer(&mut cursor, &cmd) {
-        eprintln!("Failed to render command {cmd:?} as json: {e:?}");
+        error!(command=?cmd, error=%e, "Failed to render command as json");
         let _ = response.send(Err(CallFailure::Internal(
             "Failed to render command as json",
         )));
@@ -294,11 +295,10 @@ async fn process(
 
     let (timings, status, sent_response) = match res {
         Ok(resp) => resp.into_messages(),
-        Err(SubprocessError::InvalidJson(e)) => {
+        Err(SubprocessError::InvalidJson(error)) => {
             // buffer still holds the response... might be good for debugging
             // this doesn't however mess up our line at once, so no worries.
-            // TODO: log better
-            eprintln!("failed to parse json: {e} on buffer: {buffer:?}");
+            error!(%error, ?buffer, "Failed to parse json from subprocess");
             (
                 None,
                 Status::Failed,
@@ -306,7 +306,7 @@ async fn process(
             )
         }
         Err(SubprocessError::InvalidResponse) => {
-            eprintln!("failed to understand parsed json on buffer: {buffer:?}");
+            error!(?buffer, "Failed to understand parsed json from subprocess");
             (
                 None,
                 Status::Failed,

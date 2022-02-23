@@ -5,6 +5,8 @@ use anyhow::Context;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};
+use tracing::Instrument;
+use tracing::{info, trace, warn};
 
 /// Starts to maintain a pool of `count` sub-processes which execute the calls.
 ///
@@ -94,14 +96,28 @@ pub async fn start(
                     match evt {
                         SubProcessEvent::ProcessLaunched(_) => {},
                         SubProcessEvent::CommandHandled(_pid, timings, status) => {
-                            println!("{status:?}: {timings:?}");
+                            trace!(?status, ?timings, "Command handled");
                         },
                     }
                 },
-                Some(_maybe_info) = joinhandles.next() => {
-                    println!("one of our python processes have expired: {_maybe_info:?}");
+                Some(res) = joinhandles.next() => {
+                    let allow_spawn_right_away = match res {
+                        Ok(Ok((pid, exit_status, exit_reason))) => {
+                            info!(%pid, ?exit_status, ?exit_reason, "Subprocess exited");
+                            true
+                        },
+                        Ok(Err(error)) => {
+                            warn!(error = %error, "Subprocess failed");
+                            true
+                        },
+                        Err(join_error) => {
+                            warn!(error = %join_error, "Subprocess exited unexpectedly");
+                            false
+                        },
+                    };
+                    // println!("one of our python processes have expired: {_maybe_info:?}");
                     // we should spawn it immediatedly if empty
-                    spawn = joinhandles.is_empty();
+                    spawn = allow_spawn_right_away && joinhandles.is_empty();
                 }
                 _ = &mut wait_before_spawning => {
                     // spawn if needed
