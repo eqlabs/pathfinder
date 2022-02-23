@@ -1,17 +1,23 @@
 mod l1;
 
 use crate::{
-    core::{ContractRoot, GlobalRoot, StarknetBlockNumber, StarknetBlockTimestamp},
+    core::{
+        ContractHash, ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp,
+    },
     ethereum::{
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
         Chain,
     },
     sequencer::reply::Block,
-    state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
+    state::{
+        calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state,
+        CompressedContract,
+    },
     storage::{
-        BlockId, ContractsStateTable, ContractsTable, L1StateTable, RefsTable, StarknetBlock,
-        StarknetBlocksTable, Storage,
+        BlockId, ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, RefsTable,
+        StarknetBlock, StarknetBlocksTable, Storage,
     },
 };
 
@@ -28,8 +34,13 @@ enum SyncEvent {
     L2Update(Block, StateUpdate),
     L1Reorg(StarknetBlockNumber),
     L2Reorg(StarknetBlockNumber),
-    // TODO: queries required by L1 and L2 sync processes.
+    L2NewContract(CompressedContract),
     QueryL1Update(StarknetBlockNumber, oneshot::Sender<Option<StateUpdateLog>>),
+    QueryL2Hash(
+        StarknetBlockNumber,
+        oneshot::Sender<Option<StarknetBlockHash>>,
+    ),
+    QueryL2ContractExistance(Vec<ContractHash>, oneshot::Sender<Vec<bool>>),
 }
 
 pub fn sync(storage: Storage, transport: Web3<Http>, chain: Chain) -> anyhow::Result<()> {
@@ -49,21 +60,48 @@ pub fn sync(storage: Storage, transport: Web3<Http>, chain: Chain) -> anyhow::Re
     while let Some(event) = rx_events.blocking_recv() {
         match event {
             SyncEvent::L1Update(updates) => {
-                l1_update(&mut db_conn, updates).context("Update L1 state")?;
+                let first = updates.first().map(|u| u.block_number.0);
+                let last = updates.last().map(|u| u.block_number.0);
+
+                l1_update(&mut db_conn, updates).with_context(|| {
+                    format!("Update L1 state with blocks {:?}-{:?}", first, last)
+                })?;
             }
             SyncEvent::L2Update(block, diff) => {
-                l2_update(&mut db_conn, block, diff).context("Update L2 state")?;
+                // unwrap is safe as only pending query blocks are None.
+                let block_num = block.block_number.unwrap().0;
+                l2_update(&mut db_conn, block, diff)
+                    .with_context(|| format!("Update L2 state to {}", block_num))?;
             }
             SyncEvent::L1Reorg(reorg_tail) => {
-                l1_reorg(&mut db_conn, reorg_tail).context("Reorg L1 state")?;
+                l1_reorg(&mut db_conn, reorg_tail)
+                    .with_context(|| format!("Reorg L1 state to {:?}", reorg_tail))?;
             }
             SyncEvent::L2Reorg(reorg_tail) => {
-                l2_reorg(&mut db_conn, reorg_tail).context("Reorg L2 state")?;
+                l2_reorg(&mut db_conn, reorg_tail)
+                    .with_context(|| format!("Reorg L2 state to {:?}", reorg_tail))?;
+            }
+            SyncEvent::L2NewContract(contract) => {
+                ContractCodeTable::insert_compressed(&db_conn, &contract).with_context(|| {
+                    format!("Insert contract definition with hash: {:?}", contract.hash)
+                })?;
             }
             SyncEvent::QueryL1Update(block, tx) => {
                 let update = L1StateTable::get(&db_conn, block.into())
                     .with_context(|| format!("Query L1 state for block {:?}", block))?;
                 let _ = tx.send(update);
+            }
+            SyncEvent::QueryL2Hash(block, tx) => {
+                let hash = StarknetBlocksTable::get_hash(&db_conn, block.into())
+                    .with_context(|| format!("Query L2 block hash for block {:?}", block))?;
+                let _ = tx.send(hash);
+            }
+            SyncEvent::QueryL2ContractExistance(contracts, tx) => {
+                let exists =
+                    ContractCodeTable::exists(&db_conn, &contracts).with_context(|| {
+                        format!("Query storage for existance of contracts {:?}", contracts)
+                    })?;
+                let _ = tx.send(exists);
             }
         }
     }
@@ -227,7 +265,7 @@ fn update_starknet_state(
     }
 
     for update in diff.contract_updates {
-        let contract_state_hash = update_contract_state(&update, &mut global_tree, &transaction)
+        let contract_state_hash = update_contract_state(&update, &global_tree, transaction)
             .context("Update contract state")?;
 
         // Update the global state tree.
@@ -258,4 +296,3 @@ fn deploy_contract(
     ContractsTable::insert(transaction, contract.address, contract.hash)
         .context("Inserting contract hash into contracts table")
 }
-
