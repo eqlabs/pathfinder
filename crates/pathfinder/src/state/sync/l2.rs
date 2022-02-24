@@ -276,18 +276,20 @@ async fn download_and_compress_contract(
     contract: &Contract,
     sequencer: &sequencer::Client,
 ) -> anyhow::Result<CompressedContract> {
-    let mut compressor = zstd::bulk::Compressor::new(10)
-        .context("Couldn't create zstd compressor for ContractsTable")
-        .unwrap();
-
     let contract_definition = sequencer
         .full_contract(contract.address)
         .await
         .context("Download contract from sequencer")?;
 
-    // Perform the extraction and compression.
-    let (abi, bytecode, hash) =
-        extract_abi_code_hash(&contract_definition).context("Compute contract hash")?;
+    // Parse the contract definition for ABI, code and calculate the contract hash. This can
+    // be expensive, so perform in a blocking task.
+    let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let (abi, bytecode, hash) = extract_abi_code_hash(&contract_definition)?;
+        Ok((contract_definition, abi, bytecode, hash))
+    });
+    let (contract_definition, abi, bytecode, hash) = extract
+        .await
+        .context("Parse contract definition and compute hash")??;
 
     // Sanity check.
     anyhow::ensure!(
@@ -296,15 +298,20 @@ async fn download_and_compress_contract(
         contract.address
     );
 
-    let abi = compressor
-        .compress(&abi)
-        .context("Failed to compress ABI")?;
-    let bytecode = compressor
-        .compress(&bytecode)
-        .context("Failed to compress bytecode")?;
-    let definition = compressor
-        .compress(&*contract_definition)
-        .context("Failed to compress definition")?;
+    let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+
+        let abi = compressor.compress(&abi).context("Compress ABI")?;
+        let bytecode = compressor
+            .compress(&bytecode)
+            .context("Compress bytecode")?;
+        let definition = compressor
+            .compress(&*contract_definition)
+            .context("Compress definition")?;
+
+        Ok((abi, bytecode, definition))
+    });
+    let (abi, bytecode, definition) = compress.await.context("Compress contract")??;
 
     Ok(CompressedContract {
         abi,
