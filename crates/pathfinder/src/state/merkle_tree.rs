@@ -57,14 +57,26 @@ use crate::storage::merkle_tree::{
 
 use pedersen::StarkHash;
 
+/// Backing storage for [`MerkleTree`].
+///
+/// Default implementation and persistent implementation is the [`RcNodeStorage`]. Testing/future
+/// implementations include [`HashMap`](std::collections::HashMap) and `()` based implementations
+/// where the backing storage is not persistent, or doesn't exist at all. The nodes will still be
+/// visitable in-memory.
 pub trait NodeStorage {
+    /// Find a persistent node during a traversal from the storage.
     fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>>;
 
+    /// Insert or ignore if already exists `node` to storage under the given `key`.
+    ///
+    /// This does not imply incrementing the nodes ref count.
     fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()>;
 
+    /// Decrement previously stored `key`'s reference count. This shouldn't fail for key not found.
     #[cfg(test)]
     fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
 
+    /// Increment previously stored `key`'s reference count. This shouldn't fail for key not found.
     fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
 }
 
