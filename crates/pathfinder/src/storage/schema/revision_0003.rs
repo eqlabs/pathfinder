@@ -36,7 +36,10 @@ pub(crate) fn migrate_to_3(transaction: &Transaction) -> anyhow::Result<()> {
 
     // Add new L1 L2 state table. This will track the latest Starknet block
     // for which L1 and L2 agree.
-    transaction.execute("CREATE TABLE refs (l1_l2_head BLOB)", [])?;
+    transaction.execute(
+        "CREATE TABLE refs (idx INTEGER PRIMARY KEY, l1_l2_head BLOB)",
+        [],
+    )?;
 
     // Migrate existing L1 data.
     transaction.execute(
@@ -89,7 +92,10 @@ pub(crate) fn migrate_to_3(transaction: &Transaction) -> anyhow::Result<()> {
             |row| row.get(0),
         )
         .optional()?;
-    transaction.execute("INSERT INTO refs (l1_l2_head) VALUES (?)", params![latest])?;
+    transaction.execute(
+        "INSERT INTO refs (idx, l1_l2_head) VALUES (?, ?)",
+        params![1, latest],
+    )?;
 
     // drop the old state table and ethereum tables.
     transaction.execute("DROP TABLE global_state", [])?;
@@ -117,10 +123,14 @@ mod tests {
         migrate_to_3(&transaction).unwrap();
 
         // Check that the L1_L2_head is NULL
-        let mut statement = transaction.prepare("SELECT l1_l2_head FROM refs").unwrap();
+        let mut statement = transaction
+            .prepare("SELECT idx, l1_l2_head FROM refs")
+            .unwrap();
         let mut rows = statement.query([]).unwrap();
         let row = rows.next().unwrap().unwrap();
-        let l1_l2_head = row.get_ref_unwrap(0).as_i64_or_null().unwrap();
+        let row_id = row.get_ref_unwrap("idx").as_i64().unwrap();
+        let l1_l2_head = row.get_ref_unwrap("l1_l2_head").as_i64_or_null().unwrap();
+        assert_eq!(row_id, 1);
         assert_eq!(l1_l2_head, None);
     }
 
@@ -293,10 +303,18 @@ mod tests {
         assert!(rows.next().unwrap().is_none());
 
         // Check the L1_L2_head
-        let mut statement = transaction.prepare("SELECT l1_l2_head FROM refs").unwrap();
+        let mut statement = transaction
+            .prepare("SELECT idx, l1_l2_head FROM refs")
+            .unwrap();
         let mut rows = statement.query([]).unwrap();
         let row = rows.next().unwrap().unwrap();
-        let l1_l2_head = row.get_ref_unwrap(0).as_i64_or_null().unwrap().unwrap() as u64;
+        let row_id = row.get_ref_unwrap("idx").as_i64().unwrap();
+        let l1_l2_head = row
+            .get_ref_unwrap("l1_l2_head")
+            .as_i64_or_null()
+            .unwrap()
+            .unwrap() as u64;
+        assert_eq!(row_id, 1);
         assert_eq!(l1_l2_head, original.last().unwrap().starknet.block_number);
     }
 }

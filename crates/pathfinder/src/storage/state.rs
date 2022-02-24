@@ -188,7 +188,7 @@ impl RefsTable {
     pub fn get_l1_l2_head(connection: &Connection) -> anyhow::Result<Option<StarknetBlockNumber>> {
         // This table always contains exactly one row.
         let block_number =
-            connection.query_row("SELECT l1_l2_head FROM refs WHERE rowid = 1", [], |row| {
+            connection.query_row("SELECT l1_l2_head FROM refs WHERE idx = 1", [], |row| {
                 let block_number = row
                     .get_ref_unwrap(0)
                     .as_i64_or_null()
@@ -207,9 +207,9 @@ impl RefsTable {
     ) -> anyhow::Result<()> {
         match head {
             Some(number) => {
-                connection.execute("UPDATE refs SET l1_l2_head = ? WHERE rowid = 1", [number.0])
+                connection.execute("UPDATE refs SET l1_l2_head = ? WHERE idx = 1", [number.0])
             }
-            None => connection.execute("UPDATE refs SET l1_l2_head = NULL WHERE rowid = 1", []),
+            None => connection.execute("UPDATE refs SET l1_l2_head = NULL WHERE idx = 1", []),
         }?;
 
         Ok(())
