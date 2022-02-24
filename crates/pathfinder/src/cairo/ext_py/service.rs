@@ -5,6 +5,8 @@ use anyhow::Context;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};
+use tracing::Instrument;
+use tracing::{info, trace, warn};
 
 /// Starts to maintain a pool of `count` sub-processes which execute the calls.
 ///
@@ -16,6 +18,7 @@ use tokio::sync::{broadcast, mpsc, Mutex};
 /// - user has compatible python, 3.7+ should work just fine
 ///
 /// Returns an error if executing calls in a sub-process is not supported.
+#[tracing::instrument(name = "ext_py", skip_all, fields(%count))]
 pub async fn start(
     database_path: PathBuf,
     count: std::num::NonZeroUsize,
@@ -29,17 +32,20 @@ pub async fn start(
     let (status_tx, mut status_rx) = mpsc::channel(1);
     // this will never need to become deeper
     let (child_shutdown_tx, _) = broadcast::channel(1);
-    let command_rx: SharedReceiver<Command> = Arc::new(Mutex::new(command_rx));
+    let command_rx: SharedReceiver<(Command, tracing::Span)> = Arc::new(Mutex::new(command_rx));
 
     // TODO: might be better to use tokio's JoinSet?
     let mut joinhandles = futures::stream::FuturesUnordered::new();
 
-    let jh = tokio::task::spawn(launch_python(
-        database_path.clone(),
-        Arc::clone(&command_rx),
-        status_tx.clone(),
-        child_shutdown_tx.subscribe(),
-    ));
+    let jh = tokio::task::spawn(
+        launch_python(
+            database_path.clone(),
+            Arc::clone(&command_rx),
+            status_tx.clone(),
+            child_shutdown_tx.subscribe(),
+        )
+        .in_current_span(),
+    );
 
     joinhandles.push(jh);
 
@@ -70,61 +76,92 @@ pub async fn start(
         command_tx: command_tx.clone(),
     };
 
-    let jh = tokio::task::spawn(async move {
-        const WAIT_BEFORE_SPAWN: std::time::Duration = std::time::Duration::from_secs(1);
+    let jh = tokio::task::spawn(
+        async move {
+            const WAIT_BEFORE_SPAWN: std::time::Duration = std::time::Duration::from_secs(1);
 
-        // use a sleep activated periodically before launching new processes
-        // not to overwhelm the system
-        let wait_before_spawning = tokio::time::sleep(WAIT_BEFORE_SPAWN);
-        tokio::pin!(wait_before_spawning);
+            // use a sleep activated periodically before launching new processes
+            // not to overwhelm the system
+            let wait_before_spawning = tokio::time::sleep(WAIT_BEFORE_SPAWN);
+            tokio::pin!(wait_before_spawning);
 
-        tokio::pin!(stop_flag);
+            tokio::pin!(stop_flag);
 
-        loop {
-            let mut spawn = false;
-            tokio::select! {
-                _ = &mut stop_flag => {
-                    // this should be enough to kick everyone off the locking, queue receiving
-                    let _ = child_shutdown_tx.send(());
-                    let _ = joinhandles.into_future().await;
-                    // just exit
-                    return;
-                }
-                Some(evt) = status_rx.recv() => {
-                    match evt {
-                        SubProcessEvent::ProcessLaunched(_) => {},
-                        SubProcessEvent::CommandHandled(_pid, timings, status) => {
-                            println!("{status:?}: {timings:?}");
-                        },
+            loop {
+                let mut spawn = false;
+                tokio::select! {
+                    _ = &mut stop_flag => {
+                        trace!("Starting shutdown");
+                        // this should be enough to kick everyone off the locking, queue receiving
+                        let _ = child_shutdown_tx.send(());
+
+                        loop {
+                            match joinhandles.next().await {
+                                Some(Ok(_)) => {}
+                                Some(Err(error)) => {
+                                    // these should all be bugs
+                                    warn!(%error, "Joined subprocess had failed");
+                                },
+                                None => break,
+                            }
+                        }
+                        info!("Shutdown complete");
+                        return;
                     }
-                },
-                Some(_maybe_info) = joinhandles.next() => {
-                    println!("one of our python processes have expired: {_maybe_info:?}");
-                    // we should spawn it immediatedly if empty
-                    spawn = joinhandles.is_empty();
+                    Some(evt) = status_rx.recv() => {
+                        match evt {
+                            SubProcessEvent::ProcessLaunched(_) => {},
+                            SubProcessEvent::CommandHandled(pid, timings, status) => {
+                                trace!(%pid, ?status, ?timings, "Command handled");
+                            },
+                        }
+                    },
+                    Some(res) = joinhandles.next() => {
+                        let allow_spawn_right_away = match res {
+                            Ok(Ok((pid, exit_status, exit_reason))) => {
+                                info!(%pid, ?exit_status, ?exit_reason, "Subprocess exited");
+                                true
+                            },
+                            Ok(Err(error)) => {
+                                warn!(error = %error, "Subprocess failed");
+                                true
+                            },
+                            Err(join_error) => {
+                                warn!(error = %join_error, "Subprocess exited unexpectedly");
+                                false
+                            },
+                        };
+                        // println!("one of our python processes have expired: {_maybe_info:?}");
+                        // we should spawn it immediatedly if empty
+                        spawn = allow_spawn_right_away && joinhandles.is_empty();
+                    }
+                    _ = &mut wait_before_spawning => {
+                        // spawn if needed
+                        spawn = count.get() > joinhandles.len();
+                    }
                 }
-                _ = &mut wait_before_spawning => {
-                    // spawn if needed
-                    spawn = count.get() > joinhandles.len();
+
+                if spawn {
+                    let jh = tokio::task::spawn(
+                        launch_python(
+                            database_path.clone(),
+                            Arc::clone(&command_rx),
+                            status_tx.clone(),
+                            child_shutdown_tx.subscribe(),
+                        )
+                        .in_current_span(),
+                    );
+
+                    joinhandles.push(jh);
+                } else if count.get() > joinhandles.len() && wait_before_spawning.is_elapsed() {
+                    wait_before_spawning
+                        .as_mut()
+                        .reset(tokio::time::Instant::now() + WAIT_BEFORE_SPAWN);
                 }
-            }
-
-            if spawn {
-                let jh = tokio::task::spawn(launch_python(
-                    database_path.clone(),
-                    Arc::clone(&command_rx),
-                    status_tx.clone(),
-                    child_shutdown_tx.subscribe(),
-                ));
-
-                joinhandles.push(jh);
-            } else if count.get() > joinhandles.len() && wait_before_spawning.is_elapsed() {
-                wait_before_spawning
-                    .as_mut()
-                    .reset(tokio::time::Instant::now() + WAIT_BEFORE_SPAWN);
             }
         }
-    });
+        .in_current_span(),
+    );
 
     Ok((handle, jh))
 }

@@ -21,11 +21,50 @@ use jsonrpsee::{
 };
 use std::{net::SocketAddr, result::Result};
 
+/// Helper wrapper for attaching spans to rpc method implementations
+struct RpcModuleWrapper<Context>(jsonrpsee::RpcModule<Context>);
+
+impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
+    /// This wrapper helper adds a tracing span around all rpc methods with name = method_name.
+    ///
+    /// It could do more, for example trace the outputs, durations.
+    ///
+    /// This is the only one method provided at the moment, because it's the only one used. If you
+    /// need to use some other `register_*` method from [`jsonrpsee::RpcModule`], just add it to
+    /// this wrapper.
+    fn register_async_method<R, Fun, Fut>(
+        &mut self,
+        method_name: &'static str,
+        callback: Fun,
+    ) -> Result<jsonrpsee::utils::server::rpc_module::MethodResourcesBuilder, jsonrpsee::types::Error>
+    where
+        R: ::serde::Serialize + Send + Sync + 'static,
+        Fut: std::future::Future<Output = Result<R, Error>> + Send,
+        Fun: (Fn(jsonrpsee::types::v2::Params<'static>, std::sync::Arc<Context>) -> Fut)
+            + Copy
+            + Send
+            + Sync
+            + 'static,
+    {
+        use tracing::Instrument;
+
+        self.0.register_async_method(method_name, move |p, c| {
+            // why info here? it's the same used in warp tracing filter for example.
+            let span = tracing::info_span!("rpc_method", name = method_name);
+            callback(p, c).instrument(span)
+        })
+    }
+
+    fn into_inner(self) -> jsonrpsee::RpcModule<Context> {
+        self.0
+    }
+}
+
 /// Starts the HTTP-RPC server.
 pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, SocketAddr), Error> {
     let server = HttpServerBuilder::default().build(addr)?;
     let local_addr = server.local_addr()?;
-    let mut module = RpcModule::new(api);
+    let mut module = RpcModuleWrapper(RpcModule::new(api));
     module.register_async_method("starknet_getBlockByHash", |params, context| async move {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
@@ -187,6 +226,7 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
     module.register_async_method("starknet_syncing", |_, context| async move {
         context.chain_id().await
     })?;
+    let module = module.into_inner();
     server.start(module).map(|handle| (handle, local_addr))
 }
 
@@ -238,12 +278,10 @@ mod tests {
                         if sleep_time_ms > MAX_SLEEP_TIME_MS {
                             return Err(e);
                         }
+                        let d = Duration::from_millis(sleep_time_ms);
                         // Give the sequencer api some slack and then retry
-                        eprintln!(
-                            "Got HTTP 429, retrying after {} seconds...",
-                            sleep_time_ms / 1000
-                        );
-                        tokio::time::sleep(Duration::from_millis(sleep_time_ms)).await;
+                        eprintln!("Got HTTP 429, retrying after {:?} ...", d);
+                        tokio::time::sleep(d).await;
                         sleep_time_ms *= 2;
                     }
                     _ => return Err(e),

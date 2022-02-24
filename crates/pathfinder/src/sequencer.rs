@@ -81,6 +81,7 @@ impl Client {
     }
 
     /// Gets block by number.
+    #[tracing::instrument(skip(self))]
     pub async fn block_by_number(
         &self,
         block_number: BlockNumberOrTag,
@@ -95,6 +96,7 @@ impl Client {
     }
 
     /// Gets block by number with the specified timeout.
+    #[tracing::instrument(skip(self))]
     pub async fn block_by_number_with_timeout(
         &self,
         block_number: BlockNumberOrTag,
@@ -111,6 +113,7 @@ impl Client {
     }
 
     /// Get block by hash.
+    #[tracing::instrument(skip(self))]
     pub async fn block_by_hash(
         &self,
         block_hash: BlockHashOrTag,
@@ -125,6 +128,7 @@ impl Client {
     }
 
     /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
+    #[tracing::instrument(skip(self))]
     pub async fn call(
         &self,
         payload: request::Call,
@@ -137,6 +141,7 @@ impl Client {
     }
 
     /// Gets full contract definition.
+    #[tracing::instrument(skip(self))]
     pub async fn full_contract(
         &self,
         contract_addr: ContractAddress,
@@ -155,6 +160,7 @@ impl Client {
     }
 
     /// Gets storage value associated with a `key` for a prticular contract.
+    #[tracing::instrument(skip(self))]
     pub async fn storage(
         &self,
         contract_addr: ContractAddress,
@@ -180,6 +186,7 @@ impl Client {
     }
 
     /// Gets transaction by hash.
+    #[tracing::instrument(skip(self))]
     pub async fn transaction(
         &self,
         transaction_hash: StarknetTransactionHash,
@@ -196,6 +203,7 @@ impl Client {
     }
 
     /// Gets transaction status by transaction hash.
+    #[tracing::instrument(skip(self))]
     pub async fn transaction_status(
         &self,
         transaction_hash: StarknetTransactionHash,
@@ -212,6 +220,7 @@ impl Client {
     }
 
     /// Gets state update for a particular block hash.
+    #[tracing::instrument(skip(self))]
     pub async fn state_update_by_hash(
         &self,
         block_hash: BlockHashOrTag,
@@ -226,6 +235,7 @@ impl Client {
     }
 
     /// Gets state update for a particular block number.
+    #[tracing::instrument(skip(self))]
     pub async fn state_update_by_number(
         &self,
         block_number: BlockNumberOrTag,
@@ -242,6 +252,7 @@ impl Client {
     }
 
     /// Gets addresses of the Ethereum contracts crucial to Starknet operation.
+    #[tracing::instrument(skip(self))]
     pub async fn eth_contract_addresses(
         &self,
     ) -> Result<reply::EthContractAddresses, SequencerError> {
@@ -261,6 +272,7 @@ impl Client {
             .expect("Base URL is valid")
             .extend(&["feeder_gateway", path_segment]);
         query_url.query_pairs_mut().extend_pairs(params);
+        tracing::trace!(%query_url);
         query_url
     }
 }

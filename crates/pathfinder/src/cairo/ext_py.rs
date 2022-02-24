@@ -32,7 +32,7 @@ pub use service::start;
 /// Handle to the python executors work queue. Cloneable and shareable.
 #[derive(Clone)]
 pub struct Handle {
-    command_tx: mpsc::Sender<Command>,
+    command_tx: mpsc::Sender<(Command, tracing::Span)>,
 }
 
 impl Handle {
@@ -42,10 +42,13 @@ impl Handle {
         call: Call,
         at_block: BlockHashOrTag,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
+        use tracing::field::Empty;
         let (tx, rx) = oneshot::channel();
 
+        let continued_span = tracing::info_span!("ext_py_call", pid = Empty);
+
         self.command_tx
-            .send((call, at_block, tx))
+            .send(((call, at_block, tx), continued_span))
             .await
             .map_err(|_| CallFailure::Shutdown)?;
 
@@ -134,7 +137,7 @@ mod tests {
     use std::path::PathBuf;
     use tokio::sync::oneshot;
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore]
     async fn start_with_wrong_database_schema_fails() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
@@ -146,7 +149,7 @@ mod tests {
             conn.execute("pragma user_version = 0", []).unwrap();
         }
 
-        let (_work_tx, work_rx) = tokio::sync::mpsc::channel::<super::Command>(1);
+        let (_work_tx, work_rx) = tokio::sync::mpsc::channel(1);
         let work_rx = tokio::sync::Mutex::new(work_rx);
         let (status_tx, _status_rx) = tokio::sync::mpsc::channel(1);
         let (_shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
@@ -162,7 +165,7 @@ mod tests {
         println!("{:?}", err.unwrap_err());
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[ignore] // these tests require that you've entered into python venv
     async fn call_like_in_python_ten_times() {
         use futures::stream::StreamExt;

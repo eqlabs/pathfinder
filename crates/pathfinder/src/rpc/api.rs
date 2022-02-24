@@ -21,6 +21,7 @@ use jsonrpsee::types::{
 };
 use pedersen::OverflowError;
 use std::convert::TryInto;
+use tracing::{trace, warn};
 
 /// Implements JSON-RPC endpoints.
 ///
@@ -407,28 +408,28 @@ impl RpcApi {
 
                 match (local, seq) {
                     (Ok(x), Ok(y)) if x == y => {
-                        println!("got equal to sequencer response: {x:?}");
+                        trace!(response=?x, "got equal to sequencer response");
                         Ok(x)
                     }
-                    (Ok(x), Ok(y)) => {
-                        println!("got different ok responses: \nours: {x:?}\ntheir: {y:?}");
-                        Ok(x)
+                    (Ok(our), Ok(sequencer)) => {
+                        warn!(?our, ?sequencer, "got different ok responses");
+                        Ok(sequencer)
                     }
-                    (Err(x), Ok(y)) => {
-                        println!("we errored but sequencer did not: {x:?} -- {y:?}");
-                        Ok(y)
+                    (Err(our), Ok(sequencer)) => {
+                        warn!(%our, ?sequencer, "we errored but sequencer did not");
+                        Ok(sequencer)
                     }
-                    (Ok(_), Err(y)) => {
-                        println!("we didn't error but sequencer did: {y:?}");
-                        Err(y)
+                    (Ok(our), Err(sequencer)) => {
+                        warn!(?our, %sequencer, "we didn't error but sequencer did");
+                        Err(sequencer)
                     }
-                    (Err(x), Err(y)) if x.to_string() == y.to_string() => {
-                        println!("we errored the same! {x:?}");
-                        Err(y)
+                    (Err(error), Err(s)) if error.to_string() == s.to_string() => {
+                        trace!(%error, "we errored the same!");
+                        Err(error)
                     }
-                    (Err(x), Err(y)) => {
-                        println!("we errored differently! {x:?} vs. {y:?}");
-                        Err(y)
+                    (Err(our), Err(sequencer)) => {
+                        warn!(%our, %sequencer, "we errored differently!");
+                        Err(sequencer)
                     }
                 }
             }
