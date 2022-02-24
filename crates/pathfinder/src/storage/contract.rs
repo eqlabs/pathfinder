@@ -1,8 +1,11 @@
-use crate::core::{ByteCodeWord, ContractAddress, ContractCode, ContractHash};
+use crate::{
+    core::{ByteCodeWord, ContractAddress, ContractCode, ContractHash},
+    state::CompressedContract,
+};
 
 use anyhow::Context;
 use pedersen::StarkHash;
-use rusqlite::{named_params, OptionalExtension, Transaction};
+use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
 /// Stores StarkNet contract information, specifically a contract's
 ///
@@ -33,30 +36,34 @@ impl ContractCodeTable {
             .compress(definition)
             .context("Failed to compress definition")?;
 
-        Self::insert_compressed(transaction, hash, &abi, &bytecode, &definition)
+        let contract = CompressedContract {
+            abi,
+            bytecode,
+            definition,
+            hash,
+        };
+
+        Self::insert_compressed(transaction, &contract)
     }
 
     pub fn insert_compressed(
-        transaction: &Transaction,
-        hash: ContractHash,
-        abi: &[u8],
-        bytecode: &[u8],
-        definition: &[u8],
+        connection: &Connection,
+        contract: &CompressedContract,
     ) -> anyhow::Result<()> {
         // check magics to verify these are zstd compressed files
         let magic = &[0x28, 0xb5, 0x2f, 0xfd];
-        assert_eq!(&abi[..4], magic);
-        assert_eq!(&bytecode[..4], magic);
-        assert_eq!(&definition[..4], magic);
+        assert_eq!(&contract.abi[..4], magic);
+        assert_eq!(&contract.bytecode[..4], magic);
+        assert_eq!(&contract.definition[..4], magic);
 
-        transaction.execute(
+        connection.execute(
             r"INSERT INTO contract_code ( hash,  bytecode,  abi,  definition)
                              VALUES (:hash, :bytecode, :abi, :definition)",
             named_params! {
-                ":hash": &hash.0.to_be_bytes()[..],
-                ":bytecode": bytecode,
-                ":abi": abi,
-                ":definition": definition,
+                ":hash": &contract.hash.0.to_be_bytes()[..],
+                ":bytecode": &contract.bytecode[..],
+                ":abi": &contract.abi[..],
+                ":definition": &contract.definition[..],
             },
         )?;
         Ok(())
@@ -108,6 +115,19 @@ impl ContractCodeTable {
             .context("Corruption: invalid uncompressed column (bytecode)")?;
 
         Ok(Some(ContractCode { bytecode, abi }))
+    }
+
+    /// Returns true for each [ContractHash] if the contract definition already exists in the table.
+    pub fn exists(
+        connection: &Connection,
+        contracts: &[ContractHash],
+    ) -> anyhow::Result<Vec<bool>> {
+        let mut stmt = connection.prepare("select 1 from contract_code where hash = ?")?;
+
+        Ok(contracts
+            .iter()
+            .map(|hash| stmt.exists(&[&hash.0.to_be_bytes()[..]]))
+            .collect::<Result<Vec<_>, _>>()?)
     }
 }
 
@@ -169,6 +189,8 @@ impl ContractsTable {
 
 #[cfg(test)]
 mod tests {
+    use crate::storage::Storage;
+
     use super::*;
 
     #[test]
@@ -234,5 +256,29 @@ mod tests {
                 bytecode: serde_json::from_slice::<Vec<ByteCodeWord>>(code).unwrap(),
             })
         );
+    }
+
+    #[test]
+    fn contracts_exist() {
+        let storage = Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+
+        let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
+
+        // list of objects
+        let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
+        // this is list of hex
+        let code = br#"["0x40780017fff7fff","0x1","0x208b7fff7fff7ffe"]"#;
+        let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
+        ContractCodeTable::insert(&transaction, hash, &abi[..], &code[..], &definition[..])
+            .unwrap();
+
+        let non_existent = ContractHash(StarkHash::from_hex_str("456").unwrap());
+
+        let result = ContractCodeTable::exists(&transaction, &[hash, non_existent]).unwrap();
+        let expected = vec![true, false];
+
+        assert_eq!(result, expected);
     }
 }

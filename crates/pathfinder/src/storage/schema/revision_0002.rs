@@ -89,7 +89,7 @@ pub(crate) fn migrate_to_2(tx: &Transaction) -> anyhow::Result<()> {
                     || format!("Failed to process {} bytes of definition", definition.len()),
                 )?;
 
-            if exists.exists([&hash.to_be_bytes()[..]])? {
+            if exists.exists([&hash.0.to_be_bytes()[..]])? {
                 if dump_duplicate_contracts {
                     // exists already, this could be a problem
 
@@ -100,19 +100,13 @@ pub(crate) fn migrate_to_2(tx: &Transaction) -> anyhow::Result<()> {
 
                     let name = std::str::from_utf8(&output[..]).unwrap();
 
-                    let path = format!("duplicate-{:x}-{}.json.zst", hash, name);
+                    let path = format!("duplicate-{:x}-{}.json.zst", hash.0, name);
 
                     std::fs::write(path, definition).unwrap();
                 }
                 duplicates += 1;
             } else {
-                crate::storage::ContractCodeTable::insert(
-                    tx,
-                    crate::core::ContractHash(hash),
-                    &abi,
-                    &code,
-                    &raw_definition,
-                )?;
+                crate::storage::ContractCodeTable::insert(tx, hash, &abi, &code, &raw_definition)?;
                 uniq_contracts += 1;
             }
 

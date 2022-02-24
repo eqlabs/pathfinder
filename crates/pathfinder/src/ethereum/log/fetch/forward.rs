@@ -15,7 +15,7 @@ pub struct LogFetcher<T>
 where
     T: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
-    last_known: Option<T>,
+    head: Option<T>,
     stride: u64,
     base_filter: FilterBuilder,
 }
@@ -38,20 +38,28 @@ impl<T> LogFetcher<T>
 where
     T: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
-    /// Creates a [LogFetcher] which fetches logs starting from `last_known`'s origin on L1.
-    /// If `last_known` is [None] then the starting point is genesis.
+    /// Creates a [LogFetcher] which fetches logs starting from `head`'s origin on L1.
+    /// If `head` is [None] then the starting point is genesis.
     ///
-    /// In other words, the first log returned will be the one after `last_known`.
-    pub fn new(last_known: Option<T>, chain: Chain) -> Self {
+    /// In other words, the first log returned will be the one after `head`.
+    pub fn new(head: Option<T>, chain: Chain) -> Self {
         let base_filter = FilterBuilder::default()
             .address(vec![T::contract_address(chain)])
             .topics(Some(vec![T::signature()]), None, None, None);
 
         Self {
-            last_known,
+            head,
             stride: 10_000,
             base_filter,
         }
+    }
+
+    pub fn set_head(&mut self, head: Option<T>) {
+        self.head = head;
+    }
+
+    pub fn head(&self) -> &Option<T> {
+        &self.head
     }
 
     /// Fetches the next set of logs from L1. This set may be empty, in which
@@ -75,7 +83,7 @@ where
         // data.
 
         let from_block = self
-            .last_known
+            .head
             .as_ref()
             .map(|update| update.origin().block.number.0)
             .unwrap_or_default();
@@ -114,22 +122,22 @@ where
 
             let mut logs = logs.into_iter();
 
-            // Check for reorgs. Only required if there was a last known update to validate.
+            // Check for reorgs. Only required if there was a head to validate.
             //
-            // We queried for logs starting from the same block as last known. We need to account
+            // We queried for logs starting from the same block as head. We need to account
             // for logs that occurred in the same block and transaction, but with a smaller log index.
             //
-            // If the last known log is not in the set then we have a reorg event.
-            if let Some(last) = self.last_known.as_ref() {
+            // If the head log is not in the set then we have a reorg event.
+            if let Some(head) = self.head.as_ref() {
                 loop {
                     match logs.next().map(T::try_from) {
                         Some(Ok(log))
-                            if log.origin().block == last.origin().block
-                                && log.origin().log_index.0 < last.origin().log_index.0 =>
+                            if log.origin().block == head.origin().block
+                                && log.origin().log_index.0 < head.origin().log_index.0 =>
                         {
                             continue
                         }
-                        Some(Ok(log)) if &log == last => break,
+                        Some(Ok(log)) if &log == head => break,
                         _ => return Err(FetchError::Reorg),
                     }
                 }
@@ -140,14 +148,14 @@ where
             // If there are no new logs, then either we have reached the end of L1,
             // or we need to increase our query range.
             if logs.is_empty() {
-                let latest_on_chain = transport
+                let chain_head = transport
                     .eth()
                     .block_number()
                     .await
                     .context("Get latest block number from L1")?
                     .as_u64();
 
-                if to_block < latest_on_chain {
+                if to_block < chain_head {
                     match stride_cap {
                         Some(max) => self.stride = (self.stride.saturating_add(max + 1)) / 2,
                         None => self.stride = self.stride.saturating_mul(2),
@@ -156,8 +164,8 @@ where
                 }
             }
 
-            if let Some(last) = logs.last() {
-                self.last_known = Some(last.clone());
+            if let Some(head) = logs.last() {
+                self.head = Some(head.clone());
             }
 
             return Ok(logs);

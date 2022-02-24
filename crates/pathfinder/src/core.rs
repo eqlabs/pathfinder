@@ -18,7 +18,7 @@ pub struct ContractAddressSalt(pub StarkHash);
 /// deployment properties e.g. code and ABI.
 ///
 /// Not to be confused with [ContractStateHash].
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ContractHash(pub StarkHash);
 
 /// A StarkNet contract's state hash. This is the value stored
@@ -95,7 +95,7 @@ pub struct GlobalRoot(pub StarkHash);
 pub struct StarknetBlockHash(pub StarkHash);
 
 /// A StarkNet block number.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockNumber(pub u64);
 
 /// The timestamp of a Starknet block.
@@ -161,3 +161,59 @@ pub struct EthereumTransactionIndex(pub u64);
 /// An Ethereum log's index within a block.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub struct EthereumLogIndex(pub u64);
+
+impl StarknetBlockNumber {
+    pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber(0);
+}
+
+impl std::cmp::PartialOrd for StarknetBlockNumber {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl std::ops::Add<u64> for StarknetBlockNumber {
+    type Output = StarknetBlockNumber;
+
+    fn add(self, rhs: u64) -> Self::Output {
+        Self(self.0 + rhs)
+    }
+}
+
+impl std::ops::AddAssign<u64> for StarknetBlockNumber {
+    fn add_assign(&mut self, rhs: u64) {
+        self.0 += rhs;
+    }
+}
+
+impl std::ops::Sub<u64> for StarknetBlockNumber {
+    type Output = StarknetBlockNumber;
+
+    fn sub(self, rhs: u64) -> Self::Output {
+        Self(self.0 - rhs)
+    }
+}
+
+impl std::ops::SubAssign<u64> for StarknetBlockNumber {
+    fn sub_assign(&mut self, rhs: u64) {
+        self.0 -= rhs;
+    }
+}
+
+impl From<EthereumBlockNumber> for web3::types::BlockId {
+    fn from(number: EthereumBlockNumber) -> Self {
+        web3::types::BlockId::Number(web3::types::BlockNumber::Number(number.0.into()))
+    }
+}
+
+impl From<StarknetBlockNumber> for crate::rpc::types::BlockNumberOrTag {
+    fn from(number: StarknetBlockNumber) -> Self {
+        crate::rpc::types::BlockNumberOrTag::Number(number)
+    }
+}
+
+impl From<StarknetBlockHash> for crate::rpc::types::BlockHashOrTag {
+    fn from(hash: StarknetBlockHash) -> Self {
+        crate::rpc::types::BlockHashOrTag::Hash(hash)
+    }
+}

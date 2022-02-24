@@ -83,13 +83,22 @@ def inmemory_with_tables():
             ethereum_transaction_hash BLOB NOT NULL,
             ethereum_log_index        INTEGER NOT NULL
         );
+
+        CREATE TABLE starknet_blocks (
+            number               INTEGER PRIMARY KEY,
+            hash                 BLOB    NOT NULL,
+            root                 BLOB    NOT NULL,
+            timestamp            INTEGER NOT NULL,
+            transactions         BLOB,
+            transaction_receipts BLOB
+        );
         """
     )
 
     # strangely this cannot be pulled into the script, maybe pragmas have
     # different kind of semantics than what is normally executed, would explain
     # the similar behaviour of sqlite3 .dump and restore.
-    cur.execute("pragma user_version = 2;")
+    cur.execute("pragma user_version = 3;")
 
     con.commit()
     return con
@@ -171,14 +180,12 @@ def populate_test_contract_with_132_on_3(con):
     )
 
     cur.execute(
-        """insert into global_state (starknet_block_hash, starknet_block_number, starknet_block_timestamp, starknet_global_root, ethereum_transaction_hash, ethereum_log_index)
-        values (?, 1, 1, ?, ?, 1)""",
+        """insert into starknet_blocks (hash, number, timestamp, root) values (?, 1, 1, ?)""",
         [
             pad(b"some blockhash somewhere"),
             bytes.fromhex(
                 "0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd"
             ),
-            pad(b"some ethereum hash"),
         ],
     )
 
@@ -301,7 +308,7 @@ def test_no_such_block():
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
 
-    con.execute("delete from global_state")
+    con.execute("delete from starknet_blocks")
     con.commit()
 
     output = default_132_on_3_scenario(
