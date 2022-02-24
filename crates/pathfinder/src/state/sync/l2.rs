@@ -124,7 +124,18 @@ async fn download_block(
     sequencer: &sequencer::Client,
 ) -> anyhow::Result<DownloadBlock> {
     use sequencer::error::StarknetErrorCode::BlockNotFound;
-    match sequencer.block_by_number(block.into()).await {
+
+    let result = loop {
+        match sequencer
+            .block_by_number_with_timeout(block.into(), Duration::from_secs(3))
+            .await
+        {
+            Err(SequencerError::TransportError(err)) if err.is_timeout() => continue,
+            non_timeout => break non_timeout,
+        }
+    };
+
+    match result {
         Ok(block) => Ok(DownloadBlock::Block(block)),
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound => {
             // This would occur if we queried past the head of the chain. We now need to check that
