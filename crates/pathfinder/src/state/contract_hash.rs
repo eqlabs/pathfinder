@@ -340,7 +340,7 @@ mod json {
     #[derive(serde::Deserialize, serde::Serialize)]
     #[serde(deny_unknown_fields)]
     pub struct Program<'a> {
-        #[serde(skip_serializing_if = "Vec::is_empty")]
+        #[serde(skip_serializing_if = "Vec::is_empty", default)]
         pub attributes: Vec<serde_json::Value>,
 
         #[serde(borrow)]
@@ -434,6 +434,26 @@ mod json {
                 )
                 .unwrap()
             );
+        }
+
+        #[tokio::test]
+        async fn genesis_contract() {
+            use pedersen::StarkHash;
+            let contract = StarkHash::from_hex_str(
+                "0x0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3",
+            )
+            .unwrap();
+            let contract = crate::core::ContractAddress(contract);
+
+            let chain = crate::ethereum::Chain::Goerli;
+            let sequencer = crate::sequencer::Client::new(chain).unwrap();
+            let contract_definition = sequencer
+                .full_contract(contract)
+                .await
+                .expect("Download contract from sequencer");
+
+            let _ = crate::state::contract_hash::compute_contract_hash(&contract_definition)
+                .expect("Extract and compute  hash");
         }
     }
 
