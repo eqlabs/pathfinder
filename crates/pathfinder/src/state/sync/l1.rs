@@ -14,7 +14,7 @@ use crate::{
     state::sync::SyncEvent,
 };
 
-/// Syncs L1 state update logs. Emits [Events](Event) which should be handled
+/// Syncs L1 state update logs. Emits [sync events](SyncEvent) which should be handled
 /// to update storage and respond to queries.
 pub(super) async fn sync(
     tx_event: mpsc::Sender<SyncEvent>,
@@ -78,9 +78,9 @@ impl EthereumApi for EthereumImpl {
     }
 }
 
-/// Sends [Events](Event) on its channel.
+/// Sends [sync events](SyncEvent) on its channel.
 ///
-/// Main purpose is to simplify the code in [sync_ethereum_state_impl] by abstracting
+/// Main purpose is to simplify the code in [sync_impl] by abstracting
 /// out the error mapping and oneshot channel receives.
 struct EventSender(mpsc::Sender<SyncEvent>);
 
@@ -88,7 +88,7 @@ struct EventSender(mpsc::Sender<SyncEvent>);
 struct ChannelClosedError;
 
 impl EventSender {
-    /// Sends [Event::GetUpdate] on its channel and returns the result.
+    /// Sends [SyncEvent::QueryL1Update] on its channel and returns the result.
     async fn get_update(
         &self,
         block: StarknetBlockNumber,
@@ -102,7 +102,7 @@ impl EventSender {
         rx.await.map_err(|_recv_err| ChannelClosedError)
     }
 
-    /// Sends [Event::Updates] on its channel.
+    /// Sends [SyncEvent::L1Update] on its channel.
     async fn updates(&self, updates: Vec<StateUpdateLog>) -> Result<(), ChannelClosedError> {
         self.0
             .send(SyncEvent::L1Update(updates))
@@ -110,7 +110,7 @@ impl EventSender {
             .map_err(|_send_err| ChannelClosedError)
     }
 
-    /// Sends [Event::Reorg] on its channel.
+    /// Sends [SyncEvent::L1Reorg] on its channel.
     async fn reorg(&self, block: StarknetBlockNumber) -> Result<(), ChannelClosedError> {
         self.0
             .send(SyncEvent::L1Reorg(block))
