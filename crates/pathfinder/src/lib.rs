@@ -2,6 +2,7 @@ pub mod cairo;
 pub mod config;
 pub mod core;
 pub mod ethereum;
+pub mod retry;
 pub mod rpc;
 pub mod sequencer;
 pub mod state;
