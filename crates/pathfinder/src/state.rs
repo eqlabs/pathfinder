@@ -363,93 +363,94 @@ mod tests {
     #[tokio::test]
     #[ignore = "Sequencer currently gives 502/503"]
     async fn genesis() {
-        use crate::core::{
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-        };
-        use crate::ethereum::{
-            log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
-            TransactionOrigin,
-        };
-        use std::str::FromStr;
-        use web3::types::H256;
-        // Georli genesis block values from Alpha taken from Voyager block explorer.
-        // https://goerli.voyager.online/block/0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b
+        todo!("Update me to new sync process when possible");
+        // use crate::core::{
+        //     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+        //     EthereumTransactionIndex, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        // };
+        // use crate::ethereum::{
+        //     log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
+        //     TransactionOrigin,
+        // };
+        // use std::str::FromStr;
+        // use web3::types::H256;
+        // // Georli genesis block values from Alpha taken from Voyager block explorer.
+        // // https://goerli.voyager.online/block/0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b
 
-        let starknet_block_hash = StarknetBlockHash(
-            StarkHash::from_hex_str(
-                "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
-            )
-            .unwrap(),
-        );
+        // let starknet_block_hash = StarknetBlockHash(
+        //     StarkHash::from_hex_str(
+        //         "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+        //     )
+        //     .unwrap(),
+        // );
 
-        let genesis = StateUpdateLog {
-            origin: EthOrigin {
-                block: BlockOrigin {
-                    hash: EthereumBlockHash(
-                        H256::from_str(
-                            "a3c7bb4baa81bb8bc5cc75ace7d8296b2668ccc2fd5ac9d22b5eefcfbf7f3444",
-                        )
-                        .unwrap(),
-                    ),
-                    number: EthereumBlockNumber(5854324),
-                },
-                transaction: TransactionOrigin {
-                    hash: EthereumTransactionHash(
-                        H256::from_str(
-                            "97ee44ba80d1ad5cff4a5adc02311f6e19490f48ea5a57c7f510e469cae7e65b",
-                        )
-                        .unwrap(),
-                    ),
-                    index: EthereumTransactionIndex(4),
-                },
-                log_index: EthereumLogIndex(23),
-            },
-            global_root: GlobalRoot(
-                StarkHash::from_hex_str(
-                    "02c2bb91714f8448ed814bdac274ab6fcdbafc22d835f9e847e5bee8c2e5444e",
-                )
-                .unwrap(),
-            ),
-            block_number: StarknetBlockNumber(0),
-        };
+        // let genesis = StateUpdateLog {
+        //     origin: EthOrigin {
+        //         block: BlockOrigin {
+        //             hash: EthereumBlockHash(
+        //                 H256::from_str(
+        //                     "a3c7bb4baa81bb8bc5cc75ace7d8296b2668ccc2fd5ac9d22b5eefcfbf7f3444",
+        //                 )
+        //                 .unwrap(),
+        //             ),
+        //             number: EthereumBlockNumber(5854324),
+        //         },
+        //         transaction: TransactionOrigin {
+        //             hash: EthereumTransactionHash(
+        //                 H256::from_str(
+        //                     "97ee44ba80d1ad5cff4a5adc02311f6e19490f48ea5a57c7f510e469cae7e65b",
+        //                 )
+        //                 .unwrap(),
+        //             ),
+        //             index: EthereumTransactionIndex(4),
+        //         },
+        //         log_index: EthereumLogIndex(23),
+        //     },
+        //     global_root: GlobalRoot(
+        //         StarkHash::from_hex_str(
+        //             "02c2bb91714f8448ed814bdac274ab6fcdbafc22d835f9e847e5bee8c2e5444e",
+        //         )
+        //         .unwrap(),
+        //     ),
+        //     block_number: StarknetBlockNumber(0),
+        // };
 
-        let chain = crate::ethereum::Chain::Goerli;
-        let _sequencer = crate::sequencer::Client::new(chain).unwrap();
+        // let chain = crate::ethereum::Chain::Goerli;
+        // let _sequencer = crate::sequencer::Client::new(chain).unwrap();
 
-        let storage = crate::storage::Storage::in_memory().unwrap();
-        let mut conn = storage.connection().unwrap();
-        let transaction = conn.transaction().unwrap();
+        // let storage = crate::storage::Storage::in_memory().unwrap();
+        // let mut conn = storage.connection().unwrap();
+        // let transaction = conn.transaction().unwrap();
 
-        let _transport = create_test_transport(chain);
+        // let _transport = create_test_transport(chain);
 
-        /*
-        update(
-            &transport,
-            GlobalRoot(StarkHash::ZERO),
-            &genesis,
-            &transaction,
-            &sequencer,
-        )
-        .await
-        .unwrap();
-        */
+        // /*
+        // update(
+        //     &transport,
+        //     GlobalRoot(StarkHash::ZERO),
+        //     &genesis,
+        //     &transaction,
+        //     &sequencer,
+        // )
+        // .await
+        // .unwrap();
+        // */
 
-        // TODO: "is this test supposed to be sync for one block?
+        // // TODO: "is this test supposed to be sync for one block?
 
-        // Read the new latest state from database.
-        let state = crate::storage::GlobalStateTable::get_latest_state(&transaction)
-            .unwrap()
-            .unwrap();
+        // // Read the new latest state from database.
+        // let state = crate::storage::GlobalStateTable::get_latest_state(&transaction)
+        //     .unwrap()
+        //     .unwrap();
 
-        assert_eq!(state.block_hash, starknet_block_hash);
-        assert_eq!(state.global_root, genesis.global_root);
-        assert_eq!(state.block_number, genesis.block_number);
-        assert_eq!(state.eth_block_hash, genesis.origin.block.hash);
-        assert_eq!(state.eth_block_number, genesis.origin.block.number);
-        assert_eq!(state.eth_tx_hash, genesis.origin.transaction.hash);
-        assert_eq!(state.eth_tx_index, genesis.origin.transaction.index);
-        assert_eq!(state.eth_log_index, genesis.origin.log_index);
+        // assert_eq!(state.block_hash, starknet_block_hash);
+        // assert_eq!(state.global_root, genesis.global_root);
+        // assert_eq!(state.block_number, genesis.block_number);
+        // assert_eq!(state.eth_block_hash, genesis.origin.block.hash);
+        // assert_eq!(state.eth_block_number, genesis.origin.block.number);
+        // assert_eq!(state.eth_tx_hash, genesis.origin.transaction.hash);
+        // assert_eq!(state.eth_tx_index, genesis.origin.transaction.index);
+        // assert_eq!(state.eth_log_index, genesis.origin.log_index);
     }
 
     #[tokio::test]
