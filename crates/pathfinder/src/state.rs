@@ -123,6 +123,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn init_deployed_contracts_root_to_zero_regression() {
         todo!("Update me to new sync process when possible");
         // This is a regression test for a bug that we encountered at block 47047 on alpha4/goerli.
@@ -251,6 +252,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn update_requests_fetching_unique_new_contracts() {
         todo!("Update me to new sync process when possible");
         // use crate::core::{StorageAddress, StorageValue};
