@@ -104,4 +104,5 @@ jobs:
       - name: Integration (rust)
         run: |
           source py/.venv/bin/activate
+          cargo test --no-run -p pathfinder
           timeout 5m cargo test -p pathfinder -- cairo::ext_py --ignored
