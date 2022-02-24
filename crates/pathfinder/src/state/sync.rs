@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod l1;
 mod l2;
 
@@ -114,7 +112,10 @@ pub fn sync(
                     format!("Insert contract definition with hash: {:?}", contract.hash)
                 })?;
 
-                println!("Inserted new contract with hash: {}", contract.hash.0.to_hex_str());
+                println!(
+                    "Inserted new contract with hash: {}",
+                    contract.hash.0.to_hex_str()
+                );
             }
             SyncEvent::QueryL1Update(block, tx) => {
                 let update = L1StateTable::get(&db_conn, block.into())
