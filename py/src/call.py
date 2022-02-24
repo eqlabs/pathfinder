@@ -206,7 +206,7 @@ def check_schema(connection):
     assert cursor is not None, "there has to be an user_version defined in the database"
 
     [version] = next(cursor)
-    return version == 2
+    return version == 3
 
 
 def resolve_block(connection, at_block):
@@ -216,11 +216,11 @@ def resolve_block(connection, at_block):
 
     if at_block == "latest":
         cursor = connection.execute(
-            "select starknet_block_number, starknet_block_timestamp, starknet_global_root from global_state order by starknet_block_number desc limit 1"
+            "select number, timestamp, root from starknet_blocks order by number desc limit 1"
         )
     elif type(at_block) == int:
         cursor = connection.execute(
-            "select starknet_block_number, starknet_block_timestamp, starknet_global_root from global_state where starknet_block_number = ?",
+            "select number, timestamp, root from starknet_blocks where number = ?",
             [at_block],
         )
     else:
@@ -230,7 +230,7 @@ def resolve_block(connection, at_block):
             at_block = b"\x00" * (32 - len(at_block)) + at_block
 
         cursor = connection.execute(
-            "select starknet_block_number, starknet_block_timestamp, starknet_global_root from global_state where starknet_block_hash = ?",
+            "select number, timestamp, root from starknet_blocks where hash = ?",
             [at_block],
         )
 

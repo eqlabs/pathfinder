@@ -298,12 +298,14 @@ mod tests {
         .unwrap();
 
         tx.execute(
-            "insert into global_state (starknet_block_hash, starknet_block_number, starknet_block_timestamp, starknet_global_root, ethereum_transaction_hash, ethereum_log_index) values (?1, 1, 1, ?, ?, 1)",
+            "insert into starknet_blocks (hash, number, timestamp, root) values (?1, 1, 1, ?)",
             rusqlite::params![
-                &StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap().to_be_bytes()[..],
-                &hex::decode("0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd").unwrap()[..],
-                &StarkHash::from_be_slice(&b"some ethereum hash"[..]).unwrap().to_be_bytes()[..],
-            ]
+                &StarkHash::from_be_slice(&b"some blockhash somewhere"[..])
+                    .unwrap()
+                    .to_be_bytes()[..],
+                &hex::decode("0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd")
+                    .unwrap()[..],
+            ],
         )
         .unwrap();
 
