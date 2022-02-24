@@ -61,6 +61,25 @@ pub struct RcNodeStorage<'a> {
     table: String,
 }
 
+impl<'a> crate::state::merkle_tree::NodeStorage for RcNodeStorage<'a> {
+    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
+        self.get(key)
+    }
+
+    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
+        self.upsert(key, node)
+    }
+
+    #[cfg(test)]
+    fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
+        RcNodeStorage::decrement_ref_count(self, key)
+    }
+
+    fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
+        self.increment_ref_count(key)
+    }
+}
+
 /// A binary node which can be read / written from an [RcNodeStorage].
 #[derive(Debug, Clone, PartialEq)]
 pub struct PersistedBinaryNode {

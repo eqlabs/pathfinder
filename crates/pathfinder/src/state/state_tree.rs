@@ -10,12 +10,13 @@ use crate::{
         ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
     },
     state::merkle_tree::MerkleTree,
+    storage::merkle_tree::RcNodeStorage,
 };
 
 /// A Binary Merkle-Patricia Tree which contains
 /// the storage state of all StarkNet contracts.
 pub struct ContractsStateTree<'a> {
-    tree: MerkleTree<'a>,
+    tree: MerkleTree<RcNodeStorage<'a>>,
 }
 
 impl<'a> ContractsStateTree<'a> {
@@ -45,7 +46,7 @@ impl<'a> ContractsStateTree<'a> {
 /// A Binary Merkle-Patricia Tree which contains
 /// the global state of StarkNet.
 pub struct GlobalStateTree<'a> {
-    tree: MerkleTree<'a>,
+    tree: MerkleTree<RcNodeStorage<'a>>,
 }
 
 impl<'a> GlobalStateTree<'a> {

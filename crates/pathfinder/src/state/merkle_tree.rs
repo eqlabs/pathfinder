@@ -57,37 +57,29 @@ use crate::storage::merkle_tree::{
 
 use pedersen::StarkHash;
 
+pub trait NodeStorage {
+    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>>;
+
+    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()>;
+
+    #[cfg(test)]
+    fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
+
+    fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
+}
+
 /// A Starknet binary Merkle-Patricia tree with a specific root entry-point and storage.
 ///
 /// This is used to update, mutate and access global Starknet state as well as individual contract states.
 ///
 /// For more information on how this functions internally, see [here](super::merkle_tree).
 #[derive(Debug, Clone)]
-pub struct MerkleTree<'a> {
-    storage: RcNodeStorage<'a>,
+pub struct MerkleTree<T> {
+    storage: T,
     root: Rc<RefCell<Node>>,
 }
 
-impl<'a> MerkleTree<'a> {
-    /// Removes one instance of the tree and its root from persistent storage.
-    ///
-    /// This implies decrementing the root's reference count. The root will
-    /// only get deleted if the reference count reaches zero. This will in turn
-    /// delete all internal nodes and leaves which no longer have a root to connect to.
-    ///
-    /// This allows for multiple instances of the same tree state to be committed,
-    /// without deleting all of them in a single call.
-    #[cfg(test)]
-    pub fn delete(self) -> anyhow::Result<()> {
-        match self.root.borrow().hash() {
-            Some(hash) if hash != StarkHash::ZERO => self
-                .storage
-                .decrement_ref_count(hash)
-                .context("Failed to delete tree root"),
-            _ => Ok(()),
-        }
-    }
-
+impl<'a> MerkleTree<RcNodeStorage<'a>> {
     /// Loads an existing tree or creates a new one if it does not yet exist.
     ///
     /// Use the [StarkHash::ZERO] as root if the tree does not yet exist, will otherwise
@@ -108,15 +100,48 @@ impl<'a> MerkleTree<'a> {
         root: StarkHash,
     ) -> anyhow::Result<Self> {
         let storage = RcNodeStorage::open(table, transaction)?;
+        Self::new(storage, root)
+    }
+}
 
-        // Create a tree with root node unresolved, so we can use the resolve function.
-        // Bit clumsy, but oh well.
+impl<T: NodeStorage + Default> Default for MerkleTree<T> {
+    /// Initializes a fresh empty MerkleTree on the defined storage implementation.
+    fn default() -> Self {
+        Self::new(Default::default(), StarkHash::ZERO).expect(
+            "Since called with ZERO as root, there should not had been a query, and thus no error",
+        )
+    }
+}
+
+impl<T: NodeStorage> MerkleTree<T> {
+    /// Removes one instance of the tree and its root from persistent storage.
+    ///
+    /// This implies decrementing the root's reference count. The root will
+    /// only get deleted if the reference count reaches zero. This will in turn
+    /// delete all internal nodes and leaves which no longer have a root to connect to.
+    ///
+    /// This allows for multiple instances of the same tree state to be committed,
+    /// without deleting all of them in a single call.
+    #[cfg(test)]
+    pub fn delete(self) -> anyhow::Result<()> {
+        match self.root.borrow().hash() {
+            Some(hash) if hash != StarkHash::ZERO => self
+                .storage
+                .decrement_ref_count(hash)
+                .context("Failed to delete tree root"),
+            _ => Ok(()),
+        }
+    }
+
+    /// Less visible initialization for `MerkleTree<T>` as the main entry points should be
+    /// [`MerkleTree::<RcNodeStorage>::load`] for persistent trees and [`MerkleTree::default`] for
+    /// transient ones.
+    fn new(storage: T, root: StarkHash) -> anyhow::Result<Self> {
         let root_node = Rc::new(RefCell::new(Node::Unresolved(root)));
         let mut tree = Self {
             storage,
             root: root_node,
         };
-
         if root != StarkHash::ZERO {
             // Resolve non-zero root node to check that it does exist.
             let root_node = tree
@@ -124,7 +149,6 @@ impl<'a> MerkleTree<'a> {
                 .context("Failed to resolve root node")?;
             tree.root = Rc::new(RefCell::new(root_node));
         }
-
         Ok(tree)
     }
 
@@ -519,6 +543,28 @@ impl<'a> MerkleTree<'a> {
             parent.child = child_edge.child;
         }
 
+        Ok(())
+    }
+}
+
+#[cfg(any(test, fuzzing))]
+impl NodeStorage for () {
+    fn get(&self, _key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
+        // the rc<refcell> impl will do just fine by without any backing for transaction tree
+        // building
+        Ok(None)
+    }
+
+    fn upsert(&self, _key: StarkHash, _node: PersistedNode) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn increment_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
         Ok(())
     }
 }
