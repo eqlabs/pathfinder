@@ -924,7 +924,7 @@ mod tests {
                 abi: zstd_magic.clone(),
                 bytecode: zstd_magic.clone(),
                 definition: zstd_magic,
-                hash: contract_hash.0,
+                hash: contract_hash,
             }),
         };
 

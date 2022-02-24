@@ -78,25 +78,43 @@ pub fn sync(
                 l1_update(&mut db_conn, updates).with_context(|| {
                     format!("Update L1 state with blocks {:?}-{:?}", first, last)
                 })?;
+
+                println!("Updated L1 state with blocks {:?}-{:?}", first, last);
             }
             SyncEvent::L2Update(block, diff) => {
                 // unwrap is safe as only pending query blocks are None.
                 let block_num = block.block_number.unwrap().0;
                 l2_update(&mut db_conn, block, diff)
                     .with_context(|| format!("Update L2 state to {}", block_num))?;
+
+                println!("Updated L2 state to block {}", block_num);
             }
             SyncEvent::L1Reorg(reorg_tail) => {
                 l1_reorg(&mut db_conn, reorg_tail)
-                    .with_context(|| format!("Reorg L1 state to {:?}", reorg_tail))?;
+                    .with_context(|| format!("Reorg L1 state to block {}", reorg_tail.0))?;
+
+                let new_head = match reorg_tail {
+                    StarknetBlockNumber::GENESIS => None,
+                    other => Some(other - 1),
+                };
+                println!("L1 reorg occurred, new L1 head is {:?}", new_head);
             }
             SyncEvent::L2Reorg(reorg_tail) => {
                 l2_reorg(&mut db_conn, reorg_tail)
                     .with_context(|| format!("Reorg L2 state to {:?}", reorg_tail))?;
+
+                let new_head = match reorg_tail {
+                    StarknetBlockNumber::GENESIS => None,
+                    other => Some(other - 1),
+                };
+                println!("L2 reorg occurred, new L2 head is {:?}", new_head);
             }
             SyncEvent::L2NewContract(contract) => {
                 ContractCodeTable::insert_compressed(&db_conn, &contract).with_context(|| {
                     format!("Insert contract definition with hash: {:?}", contract.hash)
                 })?;
+
+                println!("Inserted new contract with hash: {}", contract.hash.0.to_hex_str());
             }
             SyncEvent::QueryL1Update(block, tx) => {
                 let update = L1StateTable::get(&db_conn, block.into())
