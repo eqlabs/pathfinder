@@ -120,7 +120,7 @@ impl<T: NodeStorage + Default> Default for MerkleTree<T> {
     /// Initializes a fresh empty MerkleTree on the defined storage implementation.
     fn default() -> Self {
         Self::new(Default::default(), StarkHash::ZERO).expect(
-            "Since called with ZERO as root, there should not had been a query, and thus no error",
+            "Since called with ZERO as root, there should not have been a query, and therefore no error",
         )
     }
 }
