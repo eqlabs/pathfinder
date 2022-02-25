@@ -394,45 +394,16 @@ impl RpcApi {
         block_hash: BlockHashOrTag,
     ) -> RpcResult<Vec<CallResultValue>> {
         use futures::future::TryFutureExt;
-        let seq = self
-            .sequencer
-            .call(request.clone().into(), block_hash)
-            .map_ok(|x| x.result)
-            .map_err(Error::from);
 
         match self.call_handle.as_ref() {
-            Some(h) => {
-                let local = h.call(request, block_hash).map_err(Error::from);
-                let (local, seq) = tokio::join!(local, seq);
-
-                match (local, seq) {
-                    (Ok(x), Ok(y)) if x == y => {
-                        trace!(response=?x, "got equal to sequencer response");
-                        Ok(x)
-                    }
-                    (Ok(our), Ok(sequencer)) => {
-                        warn!(?our, ?sequencer, "got different ok responses");
-                        Ok(sequencer)
-                    }
-                    (Err(our), Ok(sequencer)) => {
-                        warn!(%our, ?sequencer, "we errored but sequencer did not");
-                        Ok(sequencer)
-                    }
-                    (Ok(our), Err(sequencer)) => {
-                        warn!(?our, %sequencer, "we didn't error but sequencer did");
-                        Err(sequencer)
-                    }
-                    (Err(error), Err(s)) if error.to_string() == s.to_string() => {
-                        trace!(%error, "we errored the same!");
-                        Err(error)
-                    }
-                    (Err(our), Err(sequencer)) => {
-                        warn!(%our, %sequencer, "we errored differently!");
-                        Err(sequencer)
-                    }
-                }
+            Some(h) => h.call(request, block_hash).map_err(Error::from).await,
+            None => {
+                self.sequencer
+                    .call(request.into(), block_hash)
+                    .map_ok(|x| x.result)
+                    .map_err(Error::from)
+                    .await
             }
-            None => seq.await,
         }
     }
 
