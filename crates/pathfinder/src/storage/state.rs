@@ -259,6 +259,42 @@ impl StarknetBlocksTable {
         Ok(())
     }
 
+    pub fn get_root(
+        connection: &Connection,
+        block: StarknetBlocksBlockId,
+    ) -> anyhow::Result<Option<GlobalRoot>> {
+        let mut statement = match block {
+            StarknetBlocksBlockId::Number(_) => {
+                connection.prepare("SELECT root FROM starknet_blocks WHERE number = ?")
+            }
+            StarknetBlocksBlockId::Hash(_) => {
+                connection.prepare("SELECT root FROM starknet_blocks WHERE hash = ?")
+            }
+            StarknetBlocksBlockId::Latest => {
+                connection.prepare("SELECT root FROM starknet_blocks ORDER BY number DESC LIMIT 1")
+            }
+        }?;
+
+        let mut rows = match block {
+            StarknetBlocksBlockId::Number(number) => statement.query(params![number.0]),
+            StarknetBlocksBlockId::Hash(hash) => {
+                statement.query(params![&hash.0.as_be_bytes()[..]])
+            }
+            StarknetBlocksBlockId::Latest => statement.query([]),
+        }?;
+
+        let row = rows.next().context("Iterate rows")?;
+        match row {
+            Some(row) => {
+                let root = row.get_ref_unwrap("root").as_blob().unwrap();
+                let root = StarkHash::from_be_slice(root).unwrap();
+                let root = GlobalRoot(root);
+                Ok(Some(root))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub fn get_without_tx(
         connection: &Connection,
         block: StarknetBlocksBlockId,
@@ -862,11 +898,130 @@ mod tests {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let latest_root = StarknetBlocksTable::get_without_tx(
+                    let latest = StarknetBlocksTable::get_without_tx(
                         &connection,
                         StarknetBlocksBlockId::Latest,
                     )
                     .unwrap();
+                    assert_eq!(latest, None);
+                }
+            }
+        }
+
+        mod get_root {
+            use super::*;
+
+            mod by_number {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    for block in blocks {
+                        let root = StarknetBlocksTable::get_root(&connection, block.number.into())
+                            .unwrap()
+                            .unwrap();
+
+                        assert_eq!(root, block.root);
+                    }
+                }
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    let non_existent = blocks.last().unwrap().number + 1;
+                    assert_eq!(
+                        StarknetBlocksTable::get_root(&connection, non_existent.into()).unwrap(),
+                        None
+                    );
+                }
+            }
+
+            mod by_hash {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    for block in blocks {
+                        let root = StarknetBlocksTable::get_root(&connection, block.hash.into())
+                            .unwrap()
+                            .unwrap();
+
+                        assert_eq!(root, block.root);
+                    }
+                }
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    let non_existent =
+                        StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                    assert_eq!(
+                        StarknetBlocksTable::get_root(&connection, non_existent.into()).unwrap(),
+                        None
+                    );
+                }
+            }
+
+            mod latest {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    let expected = blocks.last().map(|block| block.root).unwrap();
+
+                    let latest =
+                        StarknetBlocksTable::get_root(&connection, StarknetBlocksBlockId::Latest)
+                            .unwrap()
+                            .unwrap();
+                    assert_eq!(latest, expected);
+                }
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let latest_root =
+                        StarknetBlocksTable::get_root(&connection, StarknetBlocksBlockId::Latest)
+                            .unwrap();
                     assert_eq!(latest_root, None);
                 }
             }
