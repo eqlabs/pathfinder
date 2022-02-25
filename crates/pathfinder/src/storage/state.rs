@@ -16,6 +16,7 @@ use crate::{
 /// Contains the [L1 Starknet update logs](StateUpdateLog).
 pub struct L1StateTable {}
 
+/// Identifies block in some [L1StateTable] queries.
 pub enum L1TableBlockId {
     Number(StarknetBlockNumber),
     Latest,
@@ -28,6 +29,7 @@ impl From<StarknetBlockNumber> for L1TableBlockId {
 }
 
 impl L1StateTable {
+    /// Inserts a new [update](StateUpdateLog), fails if it already exists.
     pub fn insert(connection: &Connection, update: &StateUpdateLog) -> anyhow::Result<()> {
         connection
             .execute(
@@ -73,6 +75,7 @@ impl L1StateTable {
         Ok(())
     }
 
+    /// Returns the [root](GlobalRoot) of the given block.
     pub fn get_root(
         connection: &Connection,
         block: L1TableBlockId,
@@ -106,6 +109,7 @@ impl L1StateTable {
         Ok(Some(starknet_global_root))
     }
 
+    /// Returns the [update](StateUpdateLog) of the given block.
     pub fn get(
         connection: &Connection,
         block: L1TableBlockId,
@@ -202,6 +206,7 @@ impl L1StateTable {
 
 pub struct RefsTable {}
 impl RefsTable {
+    /// Returns the current L1-L2 head. This indicates the latest block for which L1 and L2 agree.
     pub fn get_l1_l2_head(connection: &Connection) -> anyhow::Result<Option<StarknetBlockNumber>> {
         // This table always contains exactly one row.
         let block_number =
@@ -218,6 +223,7 @@ impl RefsTable {
         Ok(block_number)
     }
 
+    /// Sets the current L1-L2 head. This should indicate the latest block for which L1 and L2 agree.
     pub fn set_l1_l2_head(
         connection: &Connection,
         head: Option<StarknetBlockNumber>,
@@ -235,6 +241,7 @@ impl RefsTable {
 /// Stores all knowm [StarknetBlocks][StarknetBlock].
 pub struct StarknetBlocksTable {}
 impl StarknetBlocksTable {
+    /// Insert a new [StarknetBlock]. Fails if the block number is not unique.
     pub fn insert(connection: &Connection, block: &StarknetBlock) -> anyhow::Result<()> {
         let transactions =
             serde_json::ser::to_vec(&block.transactions).context("Serialize transactions")?;
@@ -259,6 +266,7 @@ impl StarknetBlocksTable {
         Ok(())
     }
 
+    /// Returns the [root](GlobalRoot) of the given block.
     pub fn get_root(
         connection: &Connection,
         block: StarknetBlocksBlockId,
@@ -295,6 +303,7 @@ impl StarknetBlocksTable {
         }
     }
 
+    /// Returns the [Starknet block](StarknetBlocksBlockId) of the given block.
     pub fn get_without_tx(
         connection: &Connection,
         block: StarknetBlocksBlockId,
@@ -361,6 +370,7 @@ impl StarknetBlocksTable {
     }
 }
 
+/// Identifies block in some [StarknetBlocksTable] queries.
 pub enum StarknetBlocksBlockId {
     Number(StarknetBlockNumber),
     Hash(StarknetBlockHash),
