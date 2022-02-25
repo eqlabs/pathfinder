@@ -86,8 +86,6 @@ async fn get_logs<T: Transport>(
             Err(web3::Error::Decoder(err)) if err == DECODER_ERR => {
                 // This is a fix for a spurious decoder error which seems to occur when using
                 // an Infura endpoint. We simply retry the call again.
-
-                // TODO: add tracing log for this event (warn probably?)
                 continue;
             }
             Err(other) => {
