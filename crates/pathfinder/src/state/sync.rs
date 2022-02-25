@@ -17,8 +17,8 @@ use crate::{
         CompressedContract,
     },
     storage::{
-        BlockId, ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, RefsTable,
-        StarknetBlock, StarknetBlocksTable, Storage,
+        ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
+        RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, Storage,
     },
 };
 
@@ -57,10 +57,10 @@ pub fn sync(
 
     let (tx_events, mut rx_events) = mpsc::channel(1);
 
-    let l1_head =
-        L1StateTable::get(&db_conn, BlockId::Latest).context("Query L1 head from database")?;
+    let l1_head = L1StateTable::get(&db_conn, L1TableBlockId::Latest)
+        .context("Query L1 head from database")?;
 
-    let l2_head = StarknetBlocksTable::get_without_tx(&db_conn, BlockId::Latest)
+    let l2_head = StarknetBlocksTable::get_without_tx(&db_conn, StarknetBlocksBlockId::Latest)
         .context("Query L2 head from database")?
         .map(|block| (block.number, block.hash));
 
@@ -286,10 +286,11 @@ fn update_starknet_state(
     transaction: &Transaction,
     diff: StateUpdate,
 ) -> anyhow::Result<GlobalRoot> {
-    let global_root = StarknetBlocksTable::get_without_tx(transaction, BlockId::Latest)
-        .context("Query latest state root")?
-        .map(|block| block.root)
-        .unwrap_or(GlobalRoot(StarkHash::ZERO));
+    let global_root =
+        StarknetBlocksTable::get_without_tx(transaction, StarknetBlocksBlockId::Latest)
+            .context("Query latest state root")?
+            .map(|block| block.root)
+            .unwrap_or(GlobalRoot(StarkHash::ZERO));
     let mut global_tree =
         GlobalStateTree::load(transaction, global_root).context("Loading global state tree")?;
 
