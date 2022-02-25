@@ -21,7 +21,6 @@ def main():
     with sqlite3.connect(db) as connection:
         connection.isolation_level = None
 
-        # TODO: add a "command" of sorts for initial checkup
         connection.execute("BEGIN")
         if not check_schema(connection):
             sys.exit(1)
