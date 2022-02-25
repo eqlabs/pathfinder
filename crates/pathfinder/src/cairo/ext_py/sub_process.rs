@@ -240,7 +240,6 @@ async fn spawn(
         .await
         .context("Failed to read 'ready' from python process")?;
 
-    anyhow::ensure!(read == 6, "failed to read ready from python process");
     anyhow::ensure!(
         // buffer will contain the newline, which doesn't bother serde_json
         buffer.trim() == "ready",
