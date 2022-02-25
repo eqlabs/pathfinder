@@ -20,7 +20,6 @@ use jsonrpsee::types::{
     RpcResult,
 };
 use std::convert::TryInto;
-use tracing::{trace, warn};
 
 /// Implements JSON-RPC endpoints.
 ///
