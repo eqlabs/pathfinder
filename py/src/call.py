@@ -299,8 +299,9 @@ class SqliteAdapter:
         assert False, f"unknown prefix: {prefix}"
 
     def fetch_patricia_node(self, suffix):
+        # tree_global is much smaller table than tree_contracts
         cursor = self.connection.execute(
-            "select data from tree_contracts where hash = ?", [suffix]
+            "select data from tree_global where hash = ?", [suffix]
         )
 
         [only] = next(cursor, [None])
@@ -308,7 +309,7 @@ class SqliteAdapter:
         if only is None:
             # maybe UNION could be used here?
             cursor = self.connection.execute(
-                "select data from tree_global where hash = ?", [suffix]
+                "select data from tree_contracts where hash = ?", [suffix]
             )
             [only] = next(cursor, [None])
 
