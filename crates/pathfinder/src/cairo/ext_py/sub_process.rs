@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{broadcast, mpsc};
-use tracing::{error, info, trace, warn, Instrument};
+use tracing::{debug, error, info, trace, warn, Instrument};
 
 /// Launches a python subprocess, and executes calls on it until shutdown is initiated.
 ///
@@ -215,10 +215,13 @@ async fn spawn(
 
             loop {
                 buffer.clear();
-                let read = reader.read_line(&mut buffer).await.unwrap();
-                if read == 0 {
-                    // EOF
-                    break;
+                match reader.read_line(&mut buffer).await {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(e) => {
+                        debug!(error=%e, "stderr read failed, stopping reading");
+                        break;
+                    }
                 }
 
                 trace!("{:?}", buffer.trim());
