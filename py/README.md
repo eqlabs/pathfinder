@@ -11,7 +11,8 @@ See files for usage instructions.
 
 ## Development
 
-Setup development environment by creating a virtual environment and entering it:
+Setup development environment by creating a virtual environment and entering it.
+Call this after entering the `$CHECKOUT_ROOT/py`:
 
 ```bash
 $ python3 -m venv .venv
