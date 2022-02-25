@@ -19,7 +19,8 @@ use std::sync::Mutex;
 pub use contract::{ContractCodeTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 pub use state::{
-    BlockId, ContractsStateTable, L1StateTable, RefsTable, StarknetBlock, StarknetBlocksTable,
+    ContractsStateTable, L1StateTable, L1TableBlockId, RefsTable, StarknetBlock,
+    StarknetBlocksBlockId, StarknetBlocksTable,
 };
 
 use anyhow::Context;

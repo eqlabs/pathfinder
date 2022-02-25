@@ -16,6 +16,17 @@ use crate::{
 /// Contains the [L1 Starknet update logs](StateUpdateLog).
 pub struct L1StateTable {}
 
+pub enum L1TableBlockId {
+    Number(StarknetBlockNumber),
+    Latest,
+}
+
+impl From<StarknetBlockNumber> for L1TableBlockId {
+    fn from(number: StarknetBlockNumber) -> Self {
+        L1TableBlockId::Number(number)
+    }
+}
+
 impl L1StateTable {
     pub fn insert(connection: &Connection, update: &StateUpdateLog) -> anyhow::Result<()> {
         connection
@@ -62,18 +73,21 @@ impl L1StateTable {
         Ok(())
     }
 
-    pub fn get_root(connection: &Connection, block: BlockId) -> anyhow::Result<Option<GlobalRoot>> {
+    pub fn get_root(
+        connection: &Connection,
+        block: L1TableBlockId,
+    ) -> anyhow::Result<Option<GlobalRoot>> {
         let mut statement = match block {
-            BlockId::Number(_) => {
+            L1TableBlockId::Number(_) => {
                 connection.prepare("SELECT starknet_global_root FROM l1_state WHERE starknet_block_number = ?")
             }
-            BlockId::Latest => connection
+            L1TableBlockId::Latest => connection
                 .prepare("SELECT starknet_global_root FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1"),
         }?;
 
         let mut rows = match block {
-            BlockId::Number(number) => statement.query(params![number.0]),
-            BlockId::Latest => statement.query([]),
+            L1TableBlockId::Number(number) => statement.query(params![number.0]),
+            L1TableBlockId::Latest => statement.query([]),
         }?;
 
         let row = rows.next()?;
@@ -92,9 +106,12 @@ impl L1StateTable {
         Ok(Some(starknet_global_root))
     }
 
-    pub fn get(connection: &Connection, block: BlockId) -> anyhow::Result<Option<StateUpdateLog>> {
+    pub fn get(
+        connection: &Connection,
+        block: L1TableBlockId,
+    ) -> anyhow::Result<Option<StateUpdateLog>> {
         let mut statement = match block {
-            BlockId::Number(_) => connection.prepare(
+            L1TableBlockId::Number(_) => connection.prepare(
                 r"SELECT starknet_block_number,
                     starknet_global_root,
                     ethereum_block_hash,
@@ -104,7 +121,7 @@ impl L1StateTable {
                     ethereum_log_index
                 FROM l1_state WHERE starknet_block_number = ?",
             ),
-            BlockId::Latest => connection.prepare(
+            L1TableBlockId::Latest => connection.prepare(
                 r"SELECT starknet_block_number,
                     starknet_global_root,
                     ethereum_block_hash,
@@ -117,8 +134,8 @@ impl L1StateTable {
         }?;
 
         let mut rows = match block {
-            BlockId::Number(number) => statement.query(params![number.0]),
-            BlockId::Latest => statement.query([]),
+            L1TableBlockId::Number(number) => statement.query(params![number.0]),
+            L1TableBlockId::Latest => statement.query([]),
         }?;
 
         let row = rows.next()?;
@@ -244,20 +261,20 @@ impl StarknetBlocksTable {
 
     pub fn get_without_tx(
         connection: &Connection,
-        block: BlockId,
+        block: StarknetBlocksBlockId,
     ) -> anyhow::Result<Option<StarknetBlockWithoutTx>> {
         let mut statement = match block {
-            BlockId::Number(_) => {
+            StarknetBlocksBlockId::Number(_) => {
                 connection.prepare("SELECT hash, number, root, timestamp FROM starknet_blocks WHERE number = ?")
             }
-            BlockId::Latest => {
+            StarknetBlocksBlockId::Latest => {
                 connection.prepare("SELECT hash, number, root, timestamp FROM starknet_blocks ORDER BY number DESC LIMIT 1")
             }
         }?;
 
         let mut rows = match block {
-            BlockId::Number(number) => statement.query(params![number.0]),
-            BlockId::Latest => statement.query([]),
+            StarknetBlocksBlockId::Number(number) => statement.query(params![number.0]),
+            StarknetBlocksBlockId::Latest => statement.query([]),
         }?;
 
         let row = rows.next().context("Iterate rows")?;
@@ -302,14 +319,14 @@ impl StarknetBlocksTable {
     }
 }
 
-pub enum BlockId {
+pub enum StarknetBlocksBlockId {
     Number(StarknetBlockNumber),
     Latest,
 }
 
-impl From<StarknetBlockNumber> for BlockId {
+impl From<StarknetBlockNumber> for StarknetBlocksBlockId {
     fn from(number: StarknetBlockNumber) -> Self {
-        BlockId::Number(number)
+        StarknetBlocksBlockId::Number(number)
     }
 }
 
@@ -538,7 +555,7 @@ mod tests {
                     let connection = storage.connection().unwrap();
 
                     assert_eq!(
-                        L1StateTable::get(&connection, BlockId::Latest).unwrap(),
+                        L1StateTable::get(&connection, L1TableBlockId::Latest).unwrap(),
                         None
                     );
                 }
@@ -554,7 +571,7 @@ mod tests {
                     }
 
                     assert_eq!(
-                        L1StateTable::get(&connection, BlockId::Latest)
+                        L1StateTable::get(&connection, L1TableBlockId::Latest)
                             .unwrap()
                             .as_ref(),
                         updates.last()
@@ -612,7 +629,7 @@ mod tests {
                     let connection = storage.connection().unwrap();
 
                     assert_eq!(
-                        L1StateTable::get_root(&connection, BlockId::Latest).unwrap(),
+                        L1StateTable::get_root(&connection, L1TableBlockId::Latest).unwrap(),
                         None
                     );
                 }
@@ -628,7 +645,7 @@ mod tests {
                     }
 
                     assert_eq!(
-                        L1StateTable::get_root(&connection, BlockId::Latest).unwrap(),
+                        L1StateTable::get_root(&connection, L1TableBlockId::Latest).unwrap(),
                         Some(updates.last().unwrap().global_root)
                     );
                 }
@@ -651,7 +668,7 @@ mod tests {
                 L1StateTable::reorg(&connection, StarknetBlockNumber::GENESIS).unwrap();
 
                 assert_eq!(
-                    L1StateTable::get(&connection, BlockId::Latest).unwrap(),
+                    L1StateTable::get(&connection, L1TableBlockId::Latest).unwrap(),
                     None
                 );
             }
@@ -670,7 +687,7 @@ mod tests {
                 L1StateTable::reorg(&connection, reorg_tail).unwrap();
 
                 assert_eq!(
-                    L1StateTable::get(&connection, BlockId::Latest)
+                    L1StateTable::get(&connection, L1TableBlockId::Latest)
                         .unwrap()
                         .as_ref(),
                     Some(&updates[0])
@@ -767,9 +784,12 @@ mod tests {
                         })
                         .unwrap();
 
-                    let latest = StarknetBlocksTable::get_without_tx(&connection, BlockId::Latest)
-                        .unwrap()
-                        .unwrap();
+                    let latest = StarknetBlocksTable::get_without_tx(
+                        &connection,
+                        StarknetBlocksBlockId::Latest,
+                    )
+                    .unwrap()
+                    .unwrap();
                     assert_eq!(latest, expected);
                 }
 
@@ -778,8 +798,11 @@ mod tests {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let latest_root =
-                        StarknetBlocksTable::get_without_tx(&connection, BlockId::Latest).unwrap();
+                    let latest_root = StarknetBlocksTable::get_without_tx(
+                        &connection,
+                        StarknetBlocksBlockId::Latest,
+                    )
+                    .unwrap();
                     assert_eq!(latest_root, None);
                 }
             }
@@ -801,7 +824,8 @@ mod tests {
                 StarknetBlocksTable::reorg(&connection, StarknetBlockNumber::GENESIS).unwrap();
 
                 assert_eq!(
-                    StarknetBlocksTable::get_without_tx(&connection, BlockId::Latest).unwrap(),
+                    StarknetBlocksTable::get_without_tx(&connection, StarknetBlocksBlockId::Latest)
+                        .unwrap(),
                     None
                 );
             }
@@ -827,7 +851,8 @@ mod tests {
                 };
 
                 assert_eq!(
-                    StarknetBlocksTable::get_without_tx(&connection, BlockId::Latest).unwrap(),
+                    StarknetBlocksTable::get_without_tx(&connection, StarknetBlocksBlockId::Latest)
+                        .unwrap(),
                     Some(expected)
                 );
             }
