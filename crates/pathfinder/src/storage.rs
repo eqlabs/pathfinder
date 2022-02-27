@@ -25,7 +25,7 @@ pub use state::{
 };
 
 use anyhow::Context;
-use rusqlite::{Connection, Transaction};
+use rusqlite::Connection;
 
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
@@ -64,9 +64,7 @@ impl Storage {
     /// May be cloned safely.
     pub fn migrate(database_path: PathBuf) -> anyhow::Result<Self> {
         let mut conn = Self::open_connection(&database_path)?;
-        let tx = conn.transaction().context("Create database transaction")?;
-        migrate_database(&tx).context("Migrating database")?;
-        tx.commit().context("Commiting migration transaction")?;
+        migrate_database(&mut conn).context("Migrate database")?;
 
         #[cfg(not(test))]
         let inner = Inner { database_path };
@@ -121,9 +119,9 @@ impl Storage {
 
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
-fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
-    enable_foreign_keys(transaction).context("Failed to enable foreign key support")?;
-    let version = schema_version(transaction)?;
+fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
+    enable_foreign_keys(connection).context("Failed to enable foreign key support")?;
+    let version = schema_version(connection)?;
 
     // Check that the database is not newer than this application knows of.
     anyhow::ensure!(
@@ -135,20 +133,22 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
 
     // Migrate incrementally, increasing the version by 1 at a time
     for from_version in version..DB_VERSION_CURRENT {
+        let transaction = connection
+            .transaction()
+            .context("Create database transaction")?;
         match from_version {
-            DB_VERSION_EMPTY => migrate_to_1(transaction)?,
-            1 => migrate_to_2(transaction)?,
-            2 => migrate_to_3(transaction)?,
-            3 => migrate_to_4(transaction)?,
+            DB_VERSION_EMPTY => migrate_to_1(&transaction)?,
+            1 => migrate_to_2(&transaction)?,
+            2 => migrate_to_3(&transaction)?,
+            3 => migrate_to_4(&transaction)?,
             _ => unreachable!("Database version constraint was already checked!"),
         }
-    }
-
-    // Update the pragma schema if necessary
-    if version < DB_VERSION_CURRENT {
         transaction
-            .pragma_update(None, VERSION_KEY, DB_VERSION_CURRENT)
+            .pragma_update(None, VERSION_KEY, from_version + 1)
             .context("Failed to update the schema version number")?;
+        transaction
+            .commit()
+            .context("Commit migration transaction")?;
     }
 
     Ok(())
@@ -156,10 +156,10 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
 
 /// Returns the current schema version of the existing database,
 /// or [DB_VERSION_EMPTY] if database does not yet exist.
-fn schema_version(transaction: &Transaction) -> anyhow::Result<u32> {
+fn schema_version(connection: &Connection) -> anyhow::Result<u32> {
     // We store the schema version in the Sqlite provided PRAGMA "user_version",
     // which stores an INTEGER and defaults to 0.
-    let version = transaction.query_row(
+    let version = connection.query_row(
         &format!("SELECT {} FROM pragma_user_version;", VERSION_KEY),
         [],
         |row| row.get::<_, u32>(0),
@@ -168,9 +168,9 @@ fn schema_version(transaction: &Transaction) -> anyhow::Result<u32> {
 }
 
 /// Enables foreign key support for the database.
-fn enable_foreign_keys(transaction: &Transaction) -> anyhow::Result<()> {
+fn enable_foreign_keys(connection: &Connection) -> anyhow::Result<()> {
     use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
-    transaction.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
+    connection.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
     Ok(())
 }
 
@@ -190,46 +190,39 @@ mod tests {
     #[test]
     fn full_migration() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        let transaction = conn.transaction().unwrap();
-
-        migrate_database(&transaction).unwrap();
-        let version = schema_version(&transaction).unwrap();
+        migrate_database(&mut conn).unwrap();
+        let version = schema_version(&conn).unwrap();
         assert_eq!(version, DB_VERSION_CURRENT);
     }
 
     #[test]
     fn migration_fails_if_db_is_newer() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        let transaction = conn.transaction().unwrap();
 
         // Force the schema to a newer version
-        transaction
-            .pragma_update(None, VERSION_KEY, DB_VERSION_CURRENT + 1)
+        conn.pragma_update(None, VERSION_KEY, DB_VERSION_CURRENT + 1)
             .unwrap();
 
         // Migration should fail.
-        migrate_database(&transaction).unwrap_err();
+        migrate_database(&mut conn).unwrap_err();
     }
 
     #[test]
     fn foreign_keys_are_enforced() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        let transaction = conn.transaction().unwrap();
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
 
         // We first disable foreign key support. Sqlite currently enables this by default,
         // but this may change in the future. So we disable to check that our enable function
         // works regardless of what Sqlite's default is.
         use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
-        transaction
-            .set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, false)
+        conn.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, false)
             .unwrap();
 
         // Enable foreign key support.
-        enable_foreign_keys(&transaction).unwrap();
+        enable_foreign_keys(&conn).unwrap();
 
         // Create tables with a parent-child foreign key requirement.
-        transaction
-            .execute_batch(
+        conn.execute_batch(
                 r"
                     CREATE TABLE parent(
                         id INTEGER PRIMARY KEY
@@ -244,14 +237,11 @@ mod tests {
             .unwrap();
 
         // Check that foreign keys are enforced.
-        transaction
-            .execute("INSERT INTO parent (id) VALUES (2)", [])
+        conn.execute("INSERT INTO parent (id) VALUES (2)", [])
             .unwrap();
-        transaction
-            .execute("INSERT INTO child (id, parent_id) VALUES (0, 2)", [])
+        conn.execute("INSERT INTO child (id, parent_id) VALUES (0, 2)", [])
             .unwrap();
-        transaction
-            .execute("INSERT INTO child (id, parent_id) VALUES (1, 1)", [])
+        conn.execute("INSERT INTO child (id, parent_id) VALUES (1, 1)", [])
             .unwrap_err();
     }
 }
