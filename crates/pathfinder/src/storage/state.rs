@@ -248,7 +248,13 @@ impl StarknetBlocksTable {
         let receipts = serde_json::ser::to_vec(&block.transaction_receipts)
             .context("Serialize transaction receipts")?;
 
-        // TODO: compress transactions...
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+        let transactions = compressor
+            .compress(&transactions)
+            .context("Compress transactions")?;
+        let receipts = compressor
+            .compress(&receipts)
+            .context("Compress transaction receipts")?;
 
         connection.execute(
         r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  transactions,  transaction_receipts)

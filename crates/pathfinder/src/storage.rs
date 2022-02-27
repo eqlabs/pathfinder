@@ -11,6 +11,7 @@ mod state;
 use schema::revision_0001::migrate_to_1;
 use schema::revision_0002::migrate_to_2;
 use schema::revision_0003::migrate_to_3;
+use schema::revision_0004::migrate_to_4;
 
 use std::path::{Path, PathBuf};
 #[cfg(test)]
@@ -29,7 +30,7 @@ use rusqlite::{Connection, Transaction};
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = 3;
+const DB_VERSION_CURRENT: u32 = 4;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -138,6 +139,7 @@ fn migrate_database(transaction: &Transaction) -> anyhow::Result<()> {
             DB_VERSION_EMPTY => migrate_to_1(transaction)?,
             1 => migrate_to_2(transaction)?,
             2 => migrate_to_3(transaction)?,
+            3 => migrate_to_4(transaction)?,
             _ => unreachable!("Database version constraint was already checked!"),
         }
     }
