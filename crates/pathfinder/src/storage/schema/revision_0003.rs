@@ -1,12 +1,14 @@
 use rusqlite::{params, OptionalExtension, Transaction};
 
+use crate::storage::schema::PostMigrationAction;
+
 /// This schema migration splits the global state table into
 /// separate tables containing L1 and L2 data.
 ///
 /// In addition, it also adds a refs table which only contains a single column.
 /// This columns references the latest Starknet block for which the L1 and L2
 /// states are the same.
-pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<()> {
+pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
     // Create the new L1 table.
     transaction.execute(
         r"CREATE TABLE l1_state (
@@ -102,13 +104,13 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<()> {
     transaction.execute("DROP TABLE ethereum_transactions", [])?;
     transaction.execute("DROP TABLE ethereum_blocks", [])?;
 
-    Ok(())
+    Ok(PostMigrationAction::None)
 }
 
 #[cfg(test)]
 mod tests {
-    use rusqlite::{named_params, params, Connection};
     use crate::storage::schema;
+    use rusqlite::{named_params, params, Connection};
 
     use super::*;
 

@@ -2,14 +2,16 @@ use anyhow::Context;
 use rusqlite::{params, Transaction};
 use tracing::info;
 
+use crate::storage::schema::PostMigrationAction;
+
 /// This schema migration adds ZTSD compression to the Starknet transaction and transaction receipts.
 /// There are no physical changes to the actual schema, but simply the data in these two columns.
-pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<()> {
+pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
     let todo: u32 = transaction
         .query_row("SELECT count(1) FROM starknet_blocks", [], |r| r.get(0))
         .unwrap();
     if todo == 0 {
-        return Ok(());
+        return Ok(PostMigrationAction::None);
     }
 
     info!("Compressing {} rows of transaction data", todo);
@@ -37,5 +39,6 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<()> {
         assert_eq!(diff_count, 1);
     }
 
-    Ok(())
+    // Database should be vacuum'd to take advantage of the compression savings.
+    Ok(PostMigrationAction::Vacuum)
 }

@@ -2,7 +2,9 @@ use anyhow::Context;
 use rusqlite::Transaction;
 use sha3::{Digest, Keccak256};
 
-pub(crate) fn migrate(tx: &Transaction) -> anyhow::Result<()> {
+use crate::storage::schema::PostMigrationAction;
+
+pub(crate) fn migrate(tx: &Transaction) -> anyhow::Result<PostMigrationAction> {
     // we had a mishap of forking the schema at version 1 so to really support all combinations of
     // schema at version 1 we need to make sure that contracts table still looks like:
     // CREATE TABLE contracts (
@@ -32,7 +34,7 @@ pub(crate) fn migrate(tx: &Transaction) -> anyhow::Result<()> {
         }
 
         if actual == no_need {
-            return Ok(());
+            return Ok(PostMigrationAction::None);
         }
 
         assert_eq!(
@@ -155,5 +157,5 @@ pub(crate) fn migrate(tx: &Transaction) -> anyhow::Result<()> {
 
     println!("table contracts_v1 dropped in {:?}", started_at.elapsed());
 
-    Ok(())
+    Ok(PostMigrationAction::None)
 }

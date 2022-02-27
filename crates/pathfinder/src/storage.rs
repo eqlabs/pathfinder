@@ -21,6 +21,7 @@ pub use state::{
 
 use anyhow::Context;
 use rusqlite::Connection;
+use tracing::info;
 
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
@@ -115,6 +116,8 @@ impl Storage {
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
 fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
+    use schema::PostMigrationAction;
+
     enable_foreign_keys(connection).context("Failed to enable foreign key support")?;
     let version = schema_version(connection)?;
 
@@ -126,17 +129,23 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
         DB_VERSION_CURRENT
     );
 
+    let mut post_action = PostMigrationAction::None;
+
     // Migrate incrementally, increasing the version by 1 at a time
     for from_version in version..DB_VERSION_CURRENT {
         let transaction = connection
             .transaction()
             .context("Create database transaction")?;
-        match from_version {
+        let action = match from_version {
             DB_VERSION_EMPTY => schema::revision_0001::migrate(&transaction)?,
             1 => schema::revision_0002::migrate(&transaction)?,
             2 => schema::revision_0003::migrate(&transaction)?,
             3 => schema::revision_0004::migrate(&transaction)?,
             _ => unreachable!("Database version constraint was already checked!"),
+        };
+        // If any migration action requires vacuuming, we should vacuum.
+        if action == PostMigrationAction::Vacuum {
+            post_action = PostMigrationAction::Vacuum;
         }
         transaction
             .pragma_update(None, VERSION_KEY, from_version + 1)
@@ -144,6 +153,16 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
         transaction
             .commit()
             .context("Commit migration transaction")?;
+    }
+
+    match post_action {
+        PostMigrationAction::Vacuum => {
+            info!("Performing database vacuum. This may take a while.");
+            connection
+                .execute("VACUUM", [])
+                .context("Vacuum database")?;
+        }
+        PostMigrationAction::None => {}
     }
 
     Ok(())
