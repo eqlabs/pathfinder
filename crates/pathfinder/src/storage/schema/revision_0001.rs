@@ -1,6 +1,6 @@
 use rusqlite::Transaction;
 
-pub(crate) fn migrate_to_1(transaction: &Transaction) -> anyhow::Result<()> {
+pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<()> {
     transaction.execute(
         r"CREATE TABLE contract_code (
             hash       BLOB PRIMARY KEY,

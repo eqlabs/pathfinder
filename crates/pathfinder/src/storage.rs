@@ -8,11 +8,6 @@ pub(crate) mod merkle_tree;
 mod schema;
 mod state;
 
-use schema::revision_0001::migrate_to_1;
-use schema::revision_0002::migrate_to_2;
-use schema::revision_0003::migrate_to_3;
-use schema::revision_0004::migrate_to_4;
-
 use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::Mutex;
@@ -137,10 +132,10 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
             .transaction()
             .context("Create database transaction")?;
         match from_version {
-            DB_VERSION_EMPTY => migrate_to_1(&transaction)?,
-            1 => migrate_to_2(&transaction)?,
-            2 => migrate_to_3(&transaction)?,
-            3 => migrate_to_4(&transaction)?,
+            DB_VERSION_EMPTY => schema::revision_0001::migrate(&transaction)?,
+            1 => schema::revision_0002::migrate(&transaction)?,
+            2 => schema::revision_0003::migrate(&transaction)?,
+            3 => schema::revision_0004::migrate(&transaction)?,
             _ => unreachable!("Database version constraint was already checked!"),
         }
         transaction
@@ -223,7 +218,7 @@ mod tests {
 
         // Create tables with a parent-child foreign key requirement.
         conn.execute_batch(
-                r"
+            r"
                     CREATE TABLE parent(
                         id INTEGER PRIMARY KEY
                     );
@@ -233,8 +228,8 @@ mod tests {
                         parent_id INTEGER NOT NULL REFERENCES parent(id)
                     );
                 ",
-            )
-            .unwrap();
+        )
+        .unwrap();
 
         // Check that foreign keys are enforced.
         conn.execute("INSERT INTO parent (id) VALUES (2)", [])

@@ -195,10 +195,9 @@ mod tests {
 
     #[test]
     fn fails_if_contract_hash_missing() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let storage = Storage::in_memory().unwrap();
+        let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
-
-        crate::storage::migrate_to_1(&transaction).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
@@ -208,10 +207,9 @@ mod tests {
 
     #[test]
     fn get_hash() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let storage = Storage::in_memory().unwrap();
+        let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
-
-        crate::storage::migrate_to_1(&transaction).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
@@ -227,10 +225,9 @@ mod tests {
 
     #[test]
     fn get_code() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let storage = Storage::in_memory().unwrap();
+        let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
-
-        crate::storage::migrate_to_1(&transaction).unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());

@@ -4,7 +4,7 @@ use tracing::info;
 
 /// This schema migration adds ZTSD compression to the Starknet transaction and transaction receipts.
 /// There are no physical changes to the actual schema, but simply the data in these two columns.
-pub(crate) fn migrate_to_4(transaction: &Transaction) -> anyhow::Result<()> {
+pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<()> {
     let todo: u32 = transaction
         .query_row("SELECT count(1) FROM starknet_blocks", [], |r| r.get(0))
         .unwrap();

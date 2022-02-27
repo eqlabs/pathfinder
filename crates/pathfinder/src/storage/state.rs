@@ -489,10 +489,9 @@ mod tests {
 
         #[test]
         fn get_root() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
-
-            crate::storage::migrate_to_1(&transaction).unwrap();
+            let storage = Storage::in_memory().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let transaction = connection.transaction().unwrap();
 
             let state_hash = ContractStateHash(StarkHash::from_hex_str("abc").unwrap());
             let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
