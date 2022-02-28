@@ -13,9 +13,10 @@ pub(crate) mod contract_hash;
 mod merkle_node;
 pub(crate) mod merkle_tree;
 pub(crate) mod state_tree;
-pub mod sync;
+mod sync;
 
 pub use contract_hash::compute_contract_hash;
+pub use sync::sync;
 
 pub struct CompressedContract {
     pub abi: Vec<u8>,
