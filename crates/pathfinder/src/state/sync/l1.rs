@@ -11,13 +11,28 @@ use crate::{
         state_update::state_root::StateRootFetcher,
         Chain,
     },
-    state::sync::SyncEvent,
 };
 
-/// Syncs L1 state update logs. Emits [sync events](SyncEvent) which should be handled
+/// Events and queries emitted by L1 sync process.
+#[derive(Debug)]
+pub enum Event {
+    /// New L1 [update logs](StateUpdateLog) found.
+    Update(Vec<StateUpdateLog>),
+    /// An L1 reorg was detected, contains the reorg-tail which
+    /// indicates the oldest block which is now invalid
+    /// i.e. reorg-tail + 1 should be the new head.
+    Reorg(StarknetBlockNumber),
+    /// Query for the [update log](StateUpdateLog) of the given block.
+    ///
+    /// The receiver should return the [update log](StateUpdateLog) using the
+    /// [oneshot::channel].
+    QueryUpdate(StarknetBlockNumber, oneshot::Sender<Option<StateUpdateLog>>),
+}
+
+/// Syncs L1 state update logs. Emits [sync events](Event) which should be handled
 /// to update storage and respond to queries.
 pub(super) async fn sync(
-    tx_event: mpsc::Sender<SyncEvent>,
+    tx_event: mpsc::Sender<Event>,
     transport: Web3<Http>,
     chain: Chain,
     head: Option<StateUpdateLog>,
@@ -78,42 +93,42 @@ impl EthereumApi for EthereumImpl {
     }
 }
 
-/// Sends [sync events](SyncEvent) on its channel.
+/// Sends [sync events](Event) on its channel.
 ///
 /// Main purpose is to simplify the code in [sync_impl] by abstracting
 /// out the error mapping and oneshot channel receives.
-struct EventSender(mpsc::Sender<SyncEvent>);
+struct EventSender(mpsc::Sender<Event>);
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct ChannelClosedError;
 
 impl EventSender {
-    /// Sends [SyncEvent::QueryL1Update] on its channel and returns the result.
+    /// Sends [Event::QueryUpdate] on its channel and returns the result.
     async fn get_update(
         &self,
         block: StarknetBlockNumber,
     ) -> Result<Option<StateUpdateLog>, ChannelClosedError> {
         let (tx, rx) = oneshot::channel();
         self.0
-            .send(SyncEvent::QueryL1Update(block, tx))
+            .send(Event::QueryUpdate(block, tx))
             .await
             .map_err(|_send_err| ChannelClosedError)?;
 
         rx.await.map_err(|_recv_err| ChannelClosedError)
     }
 
-    /// Sends [SyncEvent::L1Update] on its channel.
+    /// Sends [Event::Update] on its channel.
     async fn updates(&self, updates: Vec<StateUpdateLog>) -> Result<(), ChannelClosedError> {
         self.0
-            .send(SyncEvent::L1Update(updates))
+            .send(Event::Update(updates))
             .await
             .map_err(|_send_err| ChannelClosedError)
     }
 
-    /// Sends [SyncEvent::L1Reorg] on its channel.
+    /// Sends [Event::Reorg] on its channel.
     async fn reorg(&self, block: StarknetBlockNumber) -> Result<(), ChannelClosedError> {
         self.0
-            .send(SyncEvent::L1Reorg(block))
+            .send(Event::Reorg(block))
             .await
             .map_err(|_send_err| ChannelClosedError)
     }
@@ -121,7 +136,7 @@ impl EventSender {
 
 async fn sync_impl(
     mut eth_api: impl EthereumApi,
-    tx_event: mpsc::Sender<SyncEvent>,
+    tx_event: mpsc::Sender<Event>,
 ) -> anyhow::Result<()> {
     let event_sender = EventSender(tx_event);
     loop {
@@ -295,12 +310,12 @@ mod tests {
             tokio::spawn(sync_impl(mock_fetcher, tx_event));
 
             match rx_event.recv().await.unwrap() {
-                SyncEvent::L1Update(recv) => assert_eq!(recv, logs1),
+                Event::Update(recv) => assert_eq!(recv, logs1),
                 _other => panic!("Expected Updates event"),
             }
 
             match rx_event.recv().await.unwrap() {
-                SyncEvent::L1Update(recv) => assert_eq!(recv, logs2),
+                Event::Update(recv) => assert_eq!(recv, logs2),
                 _other => panic!("Expected Updates event"),
             }
         }
@@ -418,7 +433,7 @@ mod tests {
 
                 // Receive first log update event.
                 match rx_event.recv().await.unwrap() {
-                    SyncEvent::L1Update(recv) => assert_eq!(recv, logs),
+                    Event::Update(recv) => assert_eq!(recv, logs),
                     _other => panic!("Expected Updates event"),
                 }
 
@@ -426,7 +441,7 @@ mod tests {
                 for i in 0..REORG_COUNT + 1 {
                     let log = logs[logs.len() - 2 - i].clone();
                     match rx_event.recv().await.unwrap() {
-                        SyncEvent::QueryL1Update(block, tx) => {
+                        Event::QueryUpdate(block, tx) => {
                             assert_eq!(block, log.block_number);
                             tx.send(Some(log.clone())).unwrap();
                         }
@@ -436,7 +451,7 @@ mod tests {
 
                 // We now expect a reorg event to be emitted.
                 match rx_event.recv().await.unwrap() {
-                    SyncEvent::L1Reorg(recv_tail) => {
+                    Event::Reorg(recv_tail) => {
                         assert_eq!(recv_tail, expected_tail.block_number)
                     }
                     _other => panic!("Expected Reorg event, got {:?}", _other),
@@ -506,14 +521,14 @@ mod tests {
 
                 // Receive the first log update event.
                 match rx_event.recv().await.unwrap() {
-                    SyncEvent::L1Update(recv) => assert_eq!(recv, logs),
+                    Event::Update(recv) => assert_eq!(recv, logs),
                     _other => panic!("Expected Updates event"),
                 }
 
                 // Answer the GetUpdate queries.
                 for log in logs.iter().rev().skip(1) {
                     match rx_event.recv().await.unwrap() {
-                        SyncEvent::QueryL1Update(block, tx) => {
+                        Event::QueryUpdate(block, tx) => {
                             assert_eq!(block, log.block_number);
                             tx.send(Some(log.clone())).unwrap();
                         }
@@ -523,7 +538,7 @@ mod tests {
 
                 // We now expect a reorg event to be emitted.
                 match rx_event.recv().await.unwrap() {
-                    SyncEvent::L1Reorg(recv_tail) => {
+                    Event::Reorg(recv_tail) => {
                         assert_eq!(recv_tail, StarknetBlockNumber::GENESIS)
                     }
                     _other => panic!("Expected Reorg event"),
@@ -590,14 +605,14 @@ mod tests {
 
                 // First log batch event.
                 match rx_event.recv().await.unwrap() {
-                    SyncEvent::L1Update(recv) => assert_eq!(recv, logs),
+                    Event::Update(recv) => assert_eq!(recv, logs),
                     _other => panic!("Expected Updates event"),
                 }
 
                 for i in 0..4 {
                     let log = logs[logs.len() - 2 - i].clone();
                     match rx_event.recv().await.unwrap() {
-                        SyncEvent::QueryL1Update(block, tx) => {
+                        Event::QueryUpdate(block, tx) => {
                             assert_eq!(block, log.block_number);
                             tx.send(Some(log.clone())).unwrap();
                         }
@@ -605,7 +620,7 @@ mod tests {
                     }
                 }
                 match rx_event.recv().await.unwrap() {
-                    SyncEvent::QueryL1Update(_, tx) => {
+                    Event::QueryUpdate(_, tx) => {
                         tx.send(None).unwrap();
                     }
                     _other => panic!("Expected GetUpdate event"),
@@ -613,7 +628,7 @@ mod tests {
 
                 // We expect a reorg event up to genesis.
                 match rx_event.recv().await.unwrap() {
-                    SyncEvent::L1Reorg(recv_tail) => {
+                    Event::Reorg(recv_tail) => {
                         assert_eq!(recv_tail, StarknetBlockNumber::GENESIS)
                     }
                     _other => panic!("Expected Reorg event, got {:?}", _other),

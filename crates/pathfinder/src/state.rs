@@ -455,7 +455,7 @@ mod tests {
         // assert_eq!(state.eth_log_index, genesis.origin.log_index);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[ignore = "this is manual testing only, but we should really use the binary for this"]
     async fn go_sync() {
         let storage =
@@ -464,10 +464,8 @@ mod tests {
         let transport = crate::ethereum::test::create_test_transport(chain);
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
 
-        let handle = tokio::task::spawn_blocking(move || {
-            sync::sync(storage, transport, chain, sequencer).unwrap()
-        });
-
-        handle.await.unwrap();
+        sync::sync(storage, transport, chain, sequencer)
+            .await
+            .unwrap();
     }
 }

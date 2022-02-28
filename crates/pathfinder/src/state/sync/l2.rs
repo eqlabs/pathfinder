@@ -5,7 +5,7 @@ use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    core::{StarknetBlockHash, StarknetBlockNumber},
+    core::{ContractHash, StarknetBlockHash, StarknetBlockNumber},
     ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
     rpc::types::{BlockNumberOrTag, Tag},
     sequencer::{
@@ -16,11 +16,44 @@ use crate::{
             Block,
         },
     },
-    state::{contract_hash::extract_abi_code_hash, sync::SyncEvent, CompressedContract},
+    state::{contract_hash::extract_abi_code_hash, CompressedContract},
 };
 
-pub(super) async fn sync(
-    tx_event: mpsc::Sender<SyncEvent>,
+#[derive(Debug, Clone, Copy)]
+pub struct Timings {
+    pub block_download: Duration,
+    pub state_diff_download: Duration,
+    pub contract_deployment: Duration,
+}
+
+/// Events and queries emitted by L2 sync process.
+#[derive(Debug)]
+pub enum Event {
+    /// New L2 [block update](StateUpdate) found.
+    Update(Block, StateUpdate, Timings),
+    /// An L@ reorg was detected, contains the reorg-tail which
+    /// indicates the oldest block which is now invalid
+    /// i.e. reorg-tail + 1 should be the new head.
+    Reorg(StarknetBlockNumber),
+    /// A new unique L2 [contract](CompressedContract) was found.
+    NewContract(CompressedContract),
+    /// Query for the [block hash](StarknetBlockHash) of the given block.
+    ///
+    /// The receiver should return the [block hash](StarknetBlockHash) using the
+    /// [oneshot::channel].
+    QueryHash(
+        StarknetBlockNumber,
+        oneshot::Sender<Option<StarknetBlockHash>>,
+    ),
+    /// Query for the existance of the the given [contracts](ContractHash) in storage.
+    ///
+    /// The receiver should return true (if the contract exists) or false (if it does not exist)
+    /// for each contract using the [oneshot::channel].
+    QueryContractExistance(Vec<ContractHash>, oneshot::Sender<Vec<bool>>),
+}
+
+pub async fn sync(
+    tx_event: mpsc::Sender<Event>,
     sequencer: sequencer::Client,
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash)>,
 ) -> anyhow::Result<()> {
@@ -31,6 +64,7 @@ pub(super) async fn sync(
             None => StarknetBlockNumber::GENESIS,
         };
 
+        let t_block = std::time::Instant::now();
         let block = loop {
             match download_block(next, &sequencer).await? {
                 DownloadBlock::Block(block) => break block,
@@ -45,6 +79,7 @@ pub(super) async fn sync(
                 }
             }
         };
+        let t_block = t_block.elapsed();
 
         if let Some(some_head) = head {
             if some_head.1 != block.parent_block_hash {
@@ -57,14 +92,18 @@ pub(super) async fn sync(
         }
 
         // unwrap is safe as the block hash always exists (unless we query for pending).
+        let t_update = std::time::Instant::now();
         let state_update = sequencer
             .state_update_by_hash(block.block_hash.unwrap().into())
             .await
             .with_context(|| format!("Fetch state diff for block {:?} from sequencer", next))?;
+        let t_update = t_update.elapsed();
 
+        let t_deploy = std::time::Instant::now();
         deploy_contracts(&tx_event, &sequencer, &state_update.state_diff)
             .await
             .with_context(|| format!("Deploying new contracts for block {:?}", next))?;
+        let t_deploy = t_deploy.elapsed();
 
         // Map from sequencer type to the actual type... we should declutter these types.
         let deployed_contracts = state_update
@@ -106,10 +145,16 @@ pub(super) async fn sync(
 
         head = Some((next, block.block_hash.unwrap()));
 
+        let timings = Timings {
+            block_download: t_block,
+            state_diff_download: t_update,
+            contract_deployment: t_deploy,
+        };
+
         tx_event
-            .send(SyncEvent::L2Update(block, update))
+            .send(Event::Update(block, update, timings))
             .await
-            .context("SyncEvent channel closed")?;
+            .context("Event channel closed")?;
     }
 }
 
@@ -152,13 +197,13 @@ async fn download_block(
                 Ok(DownloadBlock::Reorg)
             }
         }
-        Err(other) => Err(other.into()),
+        Err(other) => Err(other).context("Download block from sequencer"),
     }
 }
 
 async fn reorg(
     head: (StarknetBlockNumber, StarknetBlockHash),
-    tx_event: &mpsc::Sender<SyncEvent>,
+    tx_event: &mpsc::Sender<Event>,
     sequencer: &sequencer::Client,
 ) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash)>> {
     // Go back in history until we find an L2 block that does still exist.
@@ -174,9 +219,9 @@ async fn reorg(
 
         let (tx, rx) = oneshot::channel();
         tx_event
-            .send(SyncEvent::QueryL2Hash(previous_block_number, tx))
+            .send(Event::QueryHash(previous_block_number, tx))
             .await
-            .context("SyncEvent channel closed")?;
+            .context("Event channel closed")?;
 
         let previous_hash = match rx.await.context("Oneshot channel closed")? {
             Some(hash) => hash,
@@ -201,15 +246,15 @@ async fn reorg(
         .unwrap_or(StarknetBlockNumber::GENESIS);
 
     tx_event
-        .send(SyncEvent::L2Reorg(reorg_tail))
+        .send(Event::Reorg(reorg_tail))
         .await
-        .context("SyncEvent channel closed")?;
+        .context("Event channel closed")?;
 
     Ok(new_head)
 }
 
 async fn deploy_contracts(
-    tx_event: &mpsc::Sender<SyncEvent>,
+    tx_event: &mpsc::Sender<Event>,
     sequencer: &sequencer::Client,
     state_diff: &StateDiff,
 ) -> anyhow::Result<()> {
@@ -224,12 +269,9 @@ async fn deploy_contracts(
     // Query database to see which of these contracts still needs downloading.
     let (tx, rx) = oneshot::channel();
     tx_event
-        .send(SyncEvent::QueryL2ContractExistance(
-            unique_contracts.clone(),
-            tx,
-        ))
+        .send(Event::QueryContractExistance(unique_contracts.clone(), tx))
         .await
-        .context("SyncEvent channel closed")?;
+        .context("Event channel closed")?;
     let already_downloaded = rx.await.context("Oneshot channel closed")?;
     anyhow::ensure!(
         already_downloaded.len() == unique_contracts.len(),
@@ -264,9 +306,9 @@ async fn deploy_contracts(
             .with_context(|| format!("Download and compress contract {:?}", contract.address))?;
 
         tx_event
-            .send(SyncEvent::L2NewContract(contract))
+            .send(Event::NewContract(contract))
             .await
-            .context("SyncEvent channel closed")?;
+            .context("Event channel closed")?;
     }
 
     Ok(())
