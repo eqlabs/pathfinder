@@ -19,11 +19,18 @@ use crate::{
     state::{contract_hash::extract_abi_code_hash, CompressedContract},
 };
 
+#[derive(Debug, Clone, Copy)]
+pub struct Timings {
+    pub block_download: Duration,
+    pub state_diff_download: Duration,
+    pub contract_deployment: Duration,
+}
+
 /// Events and queries emitted by L2 sync process.
 #[derive(Debug)]
 pub enum Event {
     /// New L2 [block update](StateUpdate) found.
-    Update(Block, StateUpdate),
+    Update(Block, StateUpdate, Timings),
     /// An L@ reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
@@ -57,6 +64,7 @@ pub async fn sync(
             None => StarknetBlockNumber::GENESIS,
         };
 
+        let t_block = std::time::Instant::now();
         let block = loop {
             match download_block(next, &sequencer).await? {
                 DownloadBlock::Block(block) => break block,
@@ -71,6 +79,7 @@ pub async fn sync(
                 }
             }
         };
+        let t_block = t_block.elapsed();
 
         if let Some(some_head) = head {
             if some_head.1 != block.parent_block_hash {
@@ -83,14 +92,18 @@ pub async fn sync(
         }
 
         // unwrap is safe as the block hash always exists (unless we query for pending).
+        let t_update = std::time::Instant::now();
         let state_update = sequencer
             .state_update_by_hash(block.block_hash.unwrap().into())
             .await
             .with_context(|| format!("Fetch state diff for block {:?} from sequencer", next))?;
+        let t_update = t_update.elapsed();
 
+        let t_deploy = std::time::Instant::now();
         deploy_contracts(&tx_event, &sequencer, &state_update.state_diff)
             .await
             .with_context(|| format!("Deploying new contracts for block {:?}", next))?;
+        let t_deploy = t_deploy.elapsed();
 
         // Map from sequencer type to the actual type... we should declutter these types.
         let deployed_contracts = state_update
@@ -132,8 +145,14 @@ pub async fn sync(
 
         head = Some((next, block.block_hash.unwrap()));
 
+        let timings = Timings {
+            block_download: t_block,
+            state_diff_download: t_update,
+            contract_deployment: t_deploy,
+        };
+
         tx_event
-            .send(Event::Update(block, update))
+            .send(Event::Update(block, update, timings))
             .await
             .context("Event channel closed")?;
     }

@@ -24,7 +24,7 @@ use rusqlite::{Connection, Transaction};
 use tokio::sync::mpsc;
 use web3::{transports::Http, Web3};
 
-pub fn sync(
+pub async fn sync(
     storage: Storage,
     transport: Web3<Http>,
     chain: Chain,
@@ -38,15 +38,24 @@ pub fn sync(
     let (tx_l1, mut rx_l1) = mpsc::channel(1);
     let (tx_l2, mut rx_l2) = mpsc::channel(1);
 
-    let l1_head = L1StateTable::get(&db_conn, L1TableBlockId::Latest)
-        .context("Query L1 head from database")?;
+    let (l1_head, l2_head) = tokio::task::block_in_place(|| -> anyhow::Result<_> {
+        let l1_head = L1StateTable::get(&db_conn, L1TableBlockId::Latest)
+            .context("Query L1 head from database")?;
+        let l2_head = StarknetBlocksTable::get_without_tx(&db_conn, StarknetBlocksBlockId::Latest)
+            .context("Query L2 head from database")?
+            .map(|block| (block.number, block.hash));
 
-    let l2_head = StarknetBlocksTable::get_without_tx(&db_conn, StarknetBlocksBlockId::Latest)
-        .context("Query L2 head from database")?
-        .map(|block| (block.number, block.hash));
+        Ok((l1_head, l2_head))
+    })?;
 
-    tokio::spawn(l1::sync(tx_l1.clone(), transport.clone(), chain, l1_head));
-    tokio::spawn(l2::sync(tx_l2.clone(), sequencer.clone(), l2_head));
+    let mut l1_handle = tokio::spawn(l1::sync(tx_l1, transport.clone(), chain, l1_head));
+    let mut l2_handle = tokio::spawn(l2::sync(tx_l2, sequencer.clone(), l2_head));
+
+    let mut existed = (0, 0);
+
+    let mut last_block_start = std::time::Instant::now();
+    let mut block_time_avg = std::time::Duration::ZERO;
+    const BLOCK_TIME_WEIGHT: f32 = 0.05;
 
     loop {
         use tokio::sync::mpsc::error::TryRecvError;
@@ -59,7 +68,7 @@ pub fn sync(
                 let first = updates.first().map(|u| u.block_number.0);
                 let last = updates.last().map(|u| u.block_number.0);
 
-                l1_update(&mut db_conn, updates).with_context(|| {
+                l1_update(&mut db_conn, updates).await.with_context(|| {
                     format!("Update L1 state with blocks {:?}-{:?}", first, last)
                 })?;
 
@@ -67,6 +76,7 @@ pub fn sync(
             }
             Ok(l1::Event::Reorg(reorg_tail)) => {
                 l1_reorg(&mut db_conn, reorg_tail)
+                    .await
                     .with_context(|| format!("Reorg L1 state to block {}", reorg_tail.0))?;
 
                 let new_head = match reorg_tail {
@@ -76,31 +86,71 @@ pub fn sync(
                 println!("L1 reorg occurred, new L1 head is {:?}", new_head);
             }
             Ok(l1::Event::QueryUpdate(block, tx)) => {
-                let update = L1StateTable::get(&db_conn, block.into())
-                    .with_context(|| format!("Query L1 state for block {:?}", block))?;
+                let update =
+                    tokio::task::block_in_place(|| L1StateTable::get(&db_conn, block.into()))
+                        .with_context(|| format!("Query L1 state table for block {:?}", block))?;
+
                 let _ = tx.send(update);
             }
             Err(TryRecvError::Empty) => l1_did_emit = false,
             Err(TryRecvError::Disconnected) => {
                 // L1 sync process failed; restart it.
-                println!("L1 sync process failed, restarting it");
-                let l1_head = L1StateTable::get(&db_conn, L1TableBlockId::Latest)
-                    .context("Query L1 head from database")?;
-                tokio::spawn(l1::sync(tx_l1.clone(), transport.clone(), chain, l1_head));
+                match l1_handle.await.context("Join L2 sync process handle")? {
+                    Ok(()) => {
+                        println!("L1 sync process terminated wihtout an error. This is unexpected.")
+                    }
+                    Err(e) => println!("L1 sync process terminated with: {:?}", e),
+                }
+                let l1_head = tokio::task::block_in_place(|| {
+                    L1StateTable::get(&db_conn, L1TableBlockId::Latest)
+                })
+                .context("Query L1 head from database")?;
+
+                let (new_tx, new_rx) = mpsc::channel(1);
+                rx_l1 = new_rx;
+
+                l1_handle = tokio::spawn(l1::sync(new_tx, transport.clone(), chain, l1_head));
+                println!("L1 sync process restarted");
             }
         };
 
         match rx_l2.try_recv() {
-            Ok(l2::Event::Update(block, diff)) => {
+            Ok(l2::Event::Update(block, diff, timings)) => {
                 // unwrap is safe as only pending query blocks are None.
                 let block_num = block.block_number.unwrap().0;
+                let storage_updates: usize = diff
+                    .contract_updates
+                    .iter()
+                    .map(|u| u.storage_updates.len())
+                    .sum();
+                let update_t = std::time::Instant::now();
                 l2_update(&mut db_conn, block, diff)
+                    .await
                     .with_context(|| format!("Update L2 state to {}", block_num))?;
+                let block_time = last_block_start.elapsed();
+                let update_t = update_t.elapsed();
+                last_block_start = std::time::Instant::now();
 
-                println!("Updated L2 state to block {}", block_num);
+                block_time_avg = block_time_avg.mul_f32(1.0 - BLOCK_TIME_WEIGHT)
+                    + block_time.mul_f32(BLOCK_TIME_WEIGHT);
+
+                println!(
+                    "Updated L2 state to block {} in {:2}s ({:2}s avg). {} ({} new) contracts deployed ({:2}s) and {} storage updates ({:2}s). Block downloaded in {:2}s and state diff in {:2}s",
+                    block_num,
+                    block_time.as_secs_f32(),
+                    block_time_avg.as_secs_f32(),
+                    existed.0,
+                    existed.0 - existed.1,
+                    timings.contract_deployment.as_secs_f32(),
+                    storage_updates,
+                    update_t.as_secs_f32(),
+                    timings.block_download.as_secs_f32(),
+                    timings.state_diff_download.as_secs_f32(),
+                );
             }
             Ok(l2::Event::Reorg(reorg_tail)) => {
                 l2_reorg(&mut db_conn, reorg_tail)
+                    .await
                     .with_context(|| format!("Reorg L2 state to {:?}", reorg_tail))?;
 
                 let new_head = match reorg_tail {
@@ -110,7 +160,10 @@ pub fn sync(
                 println!("L2 reorg occurred, new L2 head is {:?}", new_head);
             }
             Ok(l2::Event::NewContract(contract)) => {
-                ContractCodeTable::insert_compressed(&db_conn, &contract).with_context(|| {
+                tokio::task::block_in_place(|| {
+                    ContractCodeTable::insert_compressed(&db_conn, &contract)
+                })
+                .with_context(|| {
                     format!("Insert contract definition with hash: {:?}", contract.hash)
                 })?;
 
@@ -120,27 +173,49 @@ pub fn sync(
                 );
             }
             Ok(l2::Event::QueryHash(block, tx)) => {
-                let hash = StarknetBlocksTable::get_without_tx(&db_conn, block.into())
-                    .with_context(|| format!("Query L2 block hash for block {:?}", block))?
-                    .map(|block| block.hash);
+                let hash = tokio::task::block_in_place(|| {
+                    StarknetBlocksTable::get_without_tx(&db_conn, block.into())
+                })
+                .with_context(|| format!("Query L2 block hash for block {:?}", block))?
+                .map(|block| block.hash);
                 let _ = tx.send(hash);
             }
             Ok(l2::Event::QueryContractExistance(contracts, tx)) => {
                 let exists =
-                    ContractCodeTable::exists(&db_conn, &contracts).with_context(|| {
-                        format!("Query storage for existance of contracts {:?}", contracts)
-                    })?;
+                    tokio::task::block_in_place(|| ContractCodeTable::exists(&db_conn, &contracts))
+                        .with_context(|| {
+                            format!("Query storage for existance of contracts {:?}", contracts)
+                        })?;
+                let count = exists.iter().filter(|b| **b).count();
+
+                existed = (contracts.len(), count);
+
                 let _ = tx.send(exists);
             }
-            Err(TryRecvError::Empty) => l2_did_emit = false,
+            Err(TryRecvError::Empty) => {
+                println!("nothing from L2");
+                l2_did_emit = false;
+            }
             Err(TryRecvError::Disconnected) => {
                 // L2 sync process failed; restart it.
-                println!("L2 sync process failed, restarting it");
-                let l2_head =
+                match l2_handle.await.context("Join L2 sync process")? {
+                    Ok(()) => {
+                        println!("L2 sync process terminated wihtout an error. This is unexpected.")
+                    }
+                    Err(e) => println!("L2 sync process terminated with: {:?}", e),
+                }
+
+                let l2_head = tokio::task::block_in_place(|| {
                     StarknetBlocksTable::get_without_tx(&db_conn, StarknetBlocksBlockId::Latest)
-                        .context("Query L2 head from database")?
-                        .map(|block| (block.number, block.hash));
-                tokio::spawn(l2::sync(tx_l2.clone(), sequencer.clone(), l2_head));
+                })
+                .context("Query L2 head from database")?
+                .map(|block| (block.number, block.hash));
+
+                let (new_tx, new_rx) = mpsc::channel(1);
+                rx_l2 = new_rx;
+
+                l2_handle = tokio::spawn(l2::sync(new_tx, sequencer.clone(), l2_head));
+                println!("L2 sync process restarted.");
             }
         }
 
@@ -151,142 +226,161 @@ pub fn sync(
     }
 }
 
-fn l1_update(connection: &mut Connection, updates: Vec<StateUpdateLog>) -> anyhow::Result<()> {
-    let transaction = connection
-        .transaction()
-        .context("Create database transaction")?;
+async fn l1_update(
+    connection: &mut Connection,
+    updates: Vec<StateUpdateLog>,
+) -> anyhow::Result<()> {
+    tokio::task::block_in_place(move || {
+        let transaction = connection
+            .transaction()
+            .context("Create database transaction")?;
 
-    for update in &updates {
-        L1StateTable::insert(&transaction, update).context("Insert update")?;
-    }
+        for update in &updates {
+            L1StateTable::insert(&transaction, update).context("Insert update")?;
+        }
 
-    // Track combined L1 and L2 state.
-    let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
-    let expected_next = l1_l2_head
-        .map(|head| head + 1)
-        .unwrap_or(StarknetBlockNumber::GENESIS);
+        // Track combined L1 and L2 state.
+        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
+        let expected_next = l1_l2_head
+            .map(|head| head + 1)
+            .unwrap_or(StarknetBlockNumber::GENESIS);
 
-    match updates.first() {
-        Some(update) if update.block_number == expected_next => {
-            let mut next_head = None;
-            for update in updates {
-                let l2_root =
-                    StarknetBlocksTable::get_without_tx(&transaction, update.block_number.into())
-                        .context("Query L2 root")?
-                        .map(|block| block.root);
+        match updates.first() {
+            Some(update) if update.block_number == expected_next => {
+                let mut next_head = None;
+                for update in updates {
+                    let l2_root = StarknetBlocksTable::get_without_tx(
+                        &transaction,
+                        update.block_number.into(),
+                    )
+                    .context("Query L2 root")?
+                    .map(|block| block.root);
 
-                match l2_root {
-                    Some(l2_root) if l2_root == update.global_root => {
-                        next_head = Some(update.block_number);
+                    match l2_root {
+                        Some(l2_root) if l2_root == update.global_root => {
+                            next_head = Some(update.block_number);
+                        }
+                        _ => break,
                     }
-                    _ => break,
+                }
+
+                if let Some(next_head) = next_head {
+                    RefsTable::set_l1_l2_head(&transaction, Some(next_head))
+                        .context("Update L1-L2 head")?;
                 }
             }
+            _ => {}
+        }
 
-            if let Some(next_head) = next_head {
-                RefsTable::set_l1_l2_head(&transaction, Some(next_head))
-                    .context("Update L1-L2 head")?;
+        transaction.commit().context("Commit database transaction")
+    })
+}
+
+async fn l1_reorg(
+    connection: &mut Connection,
+    reorg_tail: StarknetBlockNumber,
+) -> anyhow::Result<()> {
+    tokio::task::block_in_place(move || {
+        let transaction = connection
+            .transaction()
+            .context("Create database transaction")?;
+
+        L1StateTable::reorg(&transaction, reorg_tail).context("Delete L1 state from database")?;
+
+        // Track combined L1 and L2 state.
+        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
+        match l1_l2_head {
+            Some(head) if head >= reorg_tail => {
+                let new_head = match reorg_tail {
+                    StarknetBlockNumber::GENESIS => None,
+                    other => Some(other - 1),
+                };
+                RefsTable::set_l1_l2_head(&transaction, new_head).context("Update L1-L2 head")?;
             }
+            _ => {}
         }
-        _ => {}
-    }
 
-    transaction.commit().context("Commit database transaction")
+        transaction.commit().context("Commit database transaction")
+    })
 }
 
-fn l1_reorg(connection: &mut Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
-    let transaction = connection
-        .transaction()
-        .context("Create database transaction")?;
-
-    L1StateTable::reorg(&transaction, reorg_tail).context("Delete L1 state from database")?;
-
-    // Track combined L1 and L2 state.
-    let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
-    match l1_l2_head {
-        Some(head) if head >= reorg_tail => {
-            let new_head = match reorg_tail {
-                StarknetBlockNumber::GENESIS => None,
-                other => Some(other - 1),
-            };
-            RefsTable::set_l1_l2_head(&transaction, new_head).context("Update L1-L2 head")?;
-        }
-        _ => {}
-    }
-
-    transaction.commit().context("Commit database transaction")
-}
-
-fn l2_update(
+async fn l2_update(
     connection: &mut Connection,
     block: Block,
     state_diff: StateUpdate,
 ) -> anyhow::Result<()> {
-    let transaction = connection
-        .transaction()
-        .context("Create database transaction")?;
+    tokio::task::block_in_place(move || {
+        let transaction = connection
+            .transaction()
+            .context("Create database transaction")?;
 
-    let new_root =
-        update_starknet_state(&transaction, state_diff).context("Updating Starknet state")?;
+        let new_root =
+            update_starknet_state(&transaction, state_diff).context("Updating Starknet state")?;
 
-    // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
-    anyhow::ensure!(new_root == block.state_root.unwrap(), "State root mismatch");
+        // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
+        anyhow::ensure!(new_root == block.state_root.unwrap(), "State root mismatch");
 
-    // Update L2 database. These types shouldn't be options at this level,
-    // but for now the unwraps are "safe" in that these should only ever be
-    // None for pending queries to the sequencer, but we aren't using those here.
-    let block = StarknetBlock {
-        number: block.block_number.unwrap(),
-        hash: block.block_hash.unwrap(),
-        root: block.state_root.unwrap(),
-        timestamp: StarknetBlockTimestamp(block.timestamp),
-        transaction_receipts: block.transaction_receipts,
-        transactions: block.transactions,
-    };
-    StarknetBlocksTable::insert(&transaction, &block).context("Insert update")?;
+        // Update L2 database. These types shouldn't be options at this level,
+        // but for now the unwraps are "safe" in that these should only ever be
+        // None for pending queries to the sequencer, but we aren't using those here.
+        let block = StarknetBlock {
+            number: block.block_number.unwrap(),
+            hash: block.block_hash.unwrap(),
+            root: block.state_root.unwrap(),
+            timestamp: StarknetBlockTimestamp(block.timestamp),
+            transaction_receipts: block.transaction_receipts,
+            transactions: block.transactions,
+        };
+        StarknetBlocksTable::insert(&transaction, &block).context("Insert update")?;
 
-    // Track combined L1 and L2 state.
-    let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
-    let expected_next = l1_l2_head
-        .map(|head| head + 1)
-        .unwrap_or(StarknetBlockNumber::GENESIS);
+        // Track combined L1 and L2 state.
+        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
+        let expected_next = l1_l2_head
+            .map(|head| head + 1)
+            .unwrap_or(StarknetBlockNumber::GENESIS);
 
-    if expected_next == block.number {
-        let l1_root =
-            L1StateTable::get_root(&transaction, block.number.into()).context("Query L1 root")?;
-        if l1_root == Some(block.root) {
-            RefsTable::set_l1_l2_head(&transaction, Some(block.number))
-                .context("Update L1-L2 head")?;
+        if expected_next == block.number {
+            let l1_root = L1StateTable::get_root(&transaction, block.number.into())
+                .context("Query L1 root")?;
+            if l1_root == Some(block.root) {
+                RefsTable::set_l1_l2_head(&transaction, Some(block.number))
+                    .context("Update L1-L2 head")?;
+            }
         }
-    }
 
-    transaction.commit().context("Commit database transaction")
+        transaction.commit().context("Commit database transaction")
+    })
 }
 
-fn l2_reorg(connection: &mut Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
-    let transaction = connection
-        .transaction()
-        .context("Create database transaction")?;
+async fn l2_reorg(
+    connection: &mut Connection,
+    reorg_tail: StarknetBlockNumber,
+) -> anyhow::Result<()> {
+    tokio::task::block_in_place(move || {
+        let transaction = connection
+            .transaction()
+            .context("Create database transaction")?;
 
-    // TODO: clean up state tree's as well...
+        // TODO: clean up state tree's as well...
 
-    StarknetBlocksTable::reorg(&transaction, reorg_tail)
-        .context("Delete L1 state from database")?;
+        StarknetBlocksTable::reorg(&transaction, reorg_tail)
+            .context("Delete L1 state from database")?;
 
-    // Track combined L1 and L2 state.
-    let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
-    match l1_l2_head {
-        Some(head) if head >= reorg_tail => {
-            let new_head = match reorg_tail {
-                StarknetBlockNumber::GENESIS => None,
-                other => Some(other - 1),
-            };
-            RefsTable::set_l1_l2_head(&transaction, new_head).context("Update L1-L2 head")?;
+        // Track combined L1 and L2 state.
+        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
+        match l1_l2_head {
+            Some(head) if head >= reorg_tail => {
+                let new_head = match reorg_tail {
+                    StarknetBlockNumber::GENESIS => None,
+                    other => Some(other - 1),
+                };
+                RefsTable::set_l1_l2_head(&transaction, new_head).context("Update L1-L2 head")?;
+            }
+            _ => {}
         }
-        _ => {}
-    }
 
-    transaction.commit().context("Commit database transaction")
+        transaction.commit().context("Commit database transaction")
+    })
 }
 
 fn update_starknet_state(
