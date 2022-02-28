@@ -248,7 +248,13 @@ impl StarknetBlocksTable {
         let receipts = serde_json::ser::to_vec(&block.transaction_receipts)
             .context("Serialize transaction receipts")?;
 
-        // TODO: compress transactions...
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+        let transactions = compressor
+            .compress(&transactions)
+            .context("Compress transactions")?;
+        let receipts = compressor
+            .compress(&receipts)
+            .context("Compress transaction receipts")?;
 
         connection.execute(
         r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  transactions,  transaction_receipts)
@@ -483,10 +489,9 @@ mod tests {
 
         #[test]
         fn get_root() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
-
-            crate::storage::migrate_to_1(&transaction).unwrap();
+            let storage = Storage::in_memory().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let transaction = connection.transaction().unwrap();
 
             let state_hash = ContractStateHash(StarkHash::from_hex_str("abc").unwrap());
             let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());

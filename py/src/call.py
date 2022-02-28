@@ -205,7 +205,7 @@ def check_schema(connection):
     assert cursor is not None, "there has to be an user_version defined in the database"
 
     [version] = next(cursor)
-    return version == 3
+    return version == 4
 
 
 def resolve_block(connection, at_block):

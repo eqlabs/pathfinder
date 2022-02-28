@@ -1,12 +1,14 @@
 use rusqlite::{params, OptionalExtension, Transaction};
 
+use crate::storage::schema::PostMigrationAction;
+
 /// This schema migration splits the global state table into
 /// separate tables containing L1 and L2 data.
 ///
 /// In addition, it also adds a refs table which only contains a single column.
 /// This columns references the latest Starknet block for which the L1 and L2
 /// states are the same.
-pub(crate) fn migrate_to_3(transaction: &Transaction) -> anyhow::Result<()> {
+pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
     // Create the new L1 table.
     transaction.execute(
         r"CREATE TABLE l1_state (
@@ -102,14 +104,13 @@ pub(crate) fn migrate_to_3(transaction: &Transaction) -> anyhow::Result<()> {
     transaction.execute("DROP TABLE ethereum_transactions", [])?;
     transaction.execute("DROP TABLE ethereum_blocks", [])?;
 
-    Ok(())
+    Ok(PostMigrationAction::None)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::storage::schema;
     use rusqlite::{named_params, params, Connection};
-
-    use crate::storage::schema::{revision_0001::migrate_to_1, revision_0002::migrate_to_2};
 
     use super::*;
 
@@ -118,9 +119,9 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        migrate_to_1(&transaction).unwrap();
-        migrate_to_2(&transaction).unwrap();
-        migrate_to_3(&transaction).unwrap();
+        schema::revision_0001::migrate(&transaction).unwrap();
+        schema::revision_0002::migrate(&transaction).unwrap();
+        schema::revision_0003::migrate(&transaction).unwrap();
 
         // Check that the L1_L2_head is NULL
         let mut statement = transaction
@@ -141,9 +142,8 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        migrate_to_1(&transaction).unwrap();
-        migrate_to_2(&transaction).unwrap();
-
+        schema::revision_0001::migrate(&transaction).unwrap();
+        schema::revision_0002::migrate(&transaction).unwrap();
         struct EthereumData {
             block_hash: Vec<u8>,
             block_number: u64,
@@ -230,7 +230,7 @@ mod tests {
             .unwrap();
         }
 
-        migrate_to_3(&transaction).unwrap();
+        migrate(&transaction).unwrap();
 
         // Check that the data made it to schema 3 starknet_blocks table.
         let mut statement = transaction
