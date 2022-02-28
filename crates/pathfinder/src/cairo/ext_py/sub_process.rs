@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{broadcast, mpsc};
-use tracing::{error, info, trace, warn, Instrument};
+use tracing::{debug, error, info, trace, warn, Instrument};
 
 /// Launches a python subprocess, and executes calls on it until shutdown is initiated.
 ///
@@ -186,24 +186,8 @@ async fn spawn(
         .env("VIRTUAL_ENV", virtual_env)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-
-    let _inherit_stderr = false;
-
-    #[cfg(debug_assertions)]
-    let _inherit_stderr = true;
-
-    if _inherit_stderr {
-        // in case the file doesn't exist it would be reported here ... probably cannot leave it
-        // like this. exit code 2 is for the python file not being found.
-        //
-        // debug info is a great upside, but for example CTRL-C gets to the child processses as
-        // well, and python will print a stacktrace when an SIGINT happens, which might be
-        // confusing for users, who had just ran a rust program.
-        command.stderr(std::process::Stdio::inherit());
-    } else {
-        command.stderr(std::process::Stdio::null());
-    }
 
     let mut child = command
         .spawn()
@@ -221,6 +205,31 @@ async fn spawn(
     let stdin = child.stdin.take().expect("stdin was piped");
     let stdout = child.stdout.take().expect("stdout was piped");
 
+    // spawn the stderr out, just forget it it will die down once the process has been torn down
+    let _forget = tokio::task::spawn({
+        let stderr = child.stderr.take().expect("stderr was piped");
+        let span = tracing::trace_span!("stderr");
+        async move {
+            let mut buffer = String::new();
+            let mut reader = BufReader::new(stderr);
+
+            loop {
+                buffer.clear();
+                match reader.read_line(&mut buffer).await {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(e) => {
+                        debug!(error=%e, "stderr read failed, stopping reading");
+                        break;
+                    }
+                }
+
+                trace!("{:?}", buffer.trim());
+            }
+        }
+        .instrument(span)
+    });
+
     // default buffer is fine for us ... but this is double buffering, for no good reason
     // it could actually be destroyed even between runs, because the buffer should be empty
     let mut stdout = BufReader::new(stdout);
@@ -229,12 +238,11 @@ async fn spawn(
     // reasons for this part to error out:
     // - invalid schema version
     // - some other pythonic thing happens, for example, no call.py found
-    let read = stdout
+    let _read = stdout
         .read_line(&mut buffer)
         .await
         .context("Failed to read 'ready' from python process")?;
 
-    anyhow::ensure!(read == 6, "failed to read ready from python process");
     anyhow::ensure!(
         // buffer will contain the newline, which doesn't bother serde_json
         buffer.trim() == "ready",

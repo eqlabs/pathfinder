@@ -21,7 +21,6 @@ def main():
     with sqlite3.connect(db) as connection:
         connection.isolation_level = None
 
-        # TODO: add a "command" of sorts for initial checkup
         connection.execute("BEGIN")
         if not check_schema(connection):
             sys.exit(1)
@@ -212,9 +211,9 @@ def check_schema(connection):
 def resolve_block(connection, at_block):
     from starkware.starknet.business_logic.state import BlockInfo
 
-    # FIXME: at least latest is wrong, and will be more wrong in the upcoming changes to schema
-
     if at_block == "latest":
+        # latest is questionable, but the rust side cannot use it at the moment at least,
+        # should probably be removed.
         cursor = connection.execute(
             "select number, timestamp, root from starknet_blocks order by number desc limit 1"
         )
@@ -236,6 +235,8 @@ def resolve_block(connection, at_block):
 
     try:
         [(block_number, block_time, global_root)] = cursor
+        # NOTE: this assumes the rust side to serialize starknet_blocks::timestamp as compatible
+        # for blocks before 0.7.0
         return (
             BlockInfo(block_number, block_time),
             global_root,
@@ -300,8 +301,9 @@ class SqliteAdapter:
         assert False, f"unknown prefix: {prefix}"
 
     def fetch_patricia_node(self, suffix):
+        # tree_global is much smaller table than tree_contracts
         cursor = self.connection.execute(
-            "select data from tree_contracts where hash = ?", [suffix]
+            "select data from tree_global where hash = ?", [suffix]
         )
 
         [only] = next(cursor, [None])
@@ -309,7 +311,7 @@ class SqliteAdapter:
         if only is None:
             # maybe UNION could be used here?
             cursor = self.connection.execute(
-                "select data from tree_global where hash = ?", [suffix]
+                "select data from tree_contracts where hash = ?", [suffix]
             )
             [only] = next(cursor, [None])
 
@@ -360,7 +362,7 @@ class SqliteAdapter:
         only = decompressor.decompress(only)
 
         # cairo-lang expects a ContractDefinitionFact, however we store just
-        # the contract definition over at pathfinder (from get_full_contract)
+        # the contract definition over at pathfinder (from full_contract)
         # so we need to wrap it up here. itertools is suggested by the manuals,
         # so lets hope it's the most efficient thing.
         #
