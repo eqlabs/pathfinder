@@ -89,21 +89,21 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
             .get_block_by_number(params.block_number, params.requested_scope)
             .await
     })?;
-    module.register_async_method(
-        "starknet_getStateUpdateByHash",
-        |params, context| async move {
-            let hash = if params.is_object() {
-                #[derive(Debug, Deserialize)]
-                pub struct NamedArgs {
-                    pub block_hash: BlockHashOrTag,
-                }
-                params.parse::<NamedArgs>()?.block_hash
-            } else {
-                params.one::<BlockHashOrTag>()?
-            };
-            context.get_state_update_by_hash(hash).await
-        },
-    )?;
+    // module.register_async_method(
+    //     "starknet_getStateUpdateByHash",
+    //     |params, context| async move {
+    //         let hash = if params.is_object() {
+    //             #[derive(Debug, Deserialize)]
+    //             pub struct NamedArgs {
+    //                 pub block_hash: BlockHashOrTag,
+    //             }
+    //             params.parse::<NamedArgs>()?.block_hash
+    //         } else {
+    //             params.one::<BlockHashOrTag>()?
+    //         };
+    //         context.get_state_update_by_hash(hash).await
+    //     },
+    // )?;
     module.register_async_method("starknet_getStorageAt", |params, context| async move {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
@@ -217,12 +217,12 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
     module.register_async_method("starknet_chainId", |_, context| async move {
         context.chain_id().await
     })?;
-    module.register_async_method("starknet_pendingTransactions", |_, context| async move {
-        context.pending_transactions().await
-    })?;
-    module.register_async_method("starknet_protocolVersion", |_, context| async move {
-        context.protocol_version().await
-    })?;
+    // module.register_async_method("starknet_pendingTransactions", |_, context| async move {
+    //     context.pending_transactions().await
+    // })?;
+    // module.register_async_method("starknet_protocolVersion", |_, context| async move {
+    //     context.protocol_version().await
+    // })?;
     module.register_async_method("starknet_syncing", |_, context| async move {
         context.chain_id().await
     })?;

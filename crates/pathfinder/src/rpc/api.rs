@@ -200,22 +200,22 @@ impl RpcApi {
             .and_then(|x| x)
     }
 
-    /// Get the information about the result of executing the requested block.
-    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    /// of the requested block.
-    pub async fn get_state_update_by_hash(
-        &self,
-        block_hash: BlockHashOrTag,
-    ) -> RpcResult<StateUpdate> {
-        // TODO get this from storage or directly from L1
-        match block_hash {
-            BlockHashOrTag::Tag(Tag::Latest) => todo!("Implement L1 state diff retrieval."),
-            BlockHashOrTag::Tag(Tag::Pending) => {
-                todo!("Implement when sequencer support for pending tag available.")
-            }
-            BlockHashOrTag::Hash(_) => todo!("Implement L1 state diff retrieval."),
-        }
-    }
+    // /// Get the information about the result of executing the requested block.
+    // /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
+    // /// of the requested block.
+    // pub async fn get_state_update_by_hash(
+    //     &self,
+    //     block_hash: BlockHashOrTag,
+    // ) -> RpcResult<StateUpdate> {
+    //     // TODO get this from storage or directly from L1
+    //     match block_hash {
+    //         BlockHashOrTag::Tag(Tag::Latest) => todo!("Implement L1 state diff retrieval."),
+    //         BlockHashOrTag::Tag(Tag::Pending) => {
+    //             todo!("Implement when sequencer support for pending tag available.")
+    //         }
+    //         BlockHashOrTag::Hash(_) => todo!("Implement L1 state diff retrieval."),
+    //     }
+    // }
 
     /// Get the value of the storage at the given address and key.
     /// `contract_address` is the address of the contract to read from, `key` is the key to the storage value for the given contract,
@@ -552,15 +552,15 @@ impl RpcApi {
         }))
     }
 
-    /// Returns the transactions in the transaction pool, recognized by this sequencer.
-    pub async fn pending_transactions(&self) -> RpcResult<Vec<Transaction>> {
-        todo!("Figure out where to take them from.")
-    }
+    // /// Returns the transactions in the transaction pool, recognized by this sequencer.
+    // pub async fn pending_transactions(&self) -> RpcResult<Vec<Transaction>> {
+    //     todo!("Figure out where to take them from.")
+    // }
 
-    /// Returns the current starknet protocol version identifier, as supported by this node.
-    pub async fn protocol_version(&self) -> RpcResult<StarknetProtocolVersion> {
-        todo!("Figure out where to take it from.")
-    }
+    // /// Returns the current starknet protocol version identifier, as supported by this node.
+    // pub async fn protocol_version(&self) -> RpcResult<StarknetProtocolVersion> {
+    //     todo!("Figure out where to take it from.")
+    // }
 
     /// Returns an object about the sync status, or false if the node is not synching.
     pub async fn syncing(&self) -> RpcResult<Syncing> {
