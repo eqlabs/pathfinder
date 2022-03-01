@@ -103,6 +103,7 @@ pub mod reply {
             CallParam, ContractAddress, EntryPoint, GlobalRoot, StarknetBlockHash,
             StarknetBlockNumber, StarknetTransactionHash,
         },
+        rpc::api::RawBlock,
         sequencer::reply as seq,
         sequencer::reply::Status as SeqStatus,
     };
@@ -172,7 +173,58 @@ pub mod reply {
     }
 
     impl Block {
-        pub fn from_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
+        pub fn from_raw_scoped(block: RawBlock, scope: BlockResponseScope) -> Self {
+            Self {
+                block_hash: Some(block.hash),
+                parent_hash: block.parent_hash,
+                block_number: Some(block.number),
+                status: block.status,
+                // TODO should be sequencer identity
+                sequencer: H160::zero(),
+                new_root: Some(block.root),
+                old_root: block.parent_root,
+                accepted_time: block.timestamp.0,
+                transactions: match scope {
+                    BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
+                        block
+                            .transactions
+                            .into_iter()
+                            .map(|t| t.transaction_hash)
+                            .collect(),
+                    ),
+                    BlockResponseScope::FullTransactions => Transactions::Full(
+                        block.transactions.into_iter().map(|t| t.into()).collect(),
+                    ),
+                    BlockResponseScope::FullTransactionsAndReceipts => {
+                        Transactions::FullWithReceipts(
+                            block
+                                .transactions
+                                .into_iter()
+                                .zip(block.transaction_receipts.into_iter())
+                                .map(|(t, r)| {
+                                    let t: Transaction = t.into();
+                                    let r = TransactionReceipt::with_status(r, block.status);
+
+                                    TransactionAndReceipt {
+                                        txn_hash: t.txn_hash,
+                                        contract_address: t.contract_address,
+                                        entry_point_selector: t.entry_point_selector,
+                                        calldata: t.calldata,
+                                        status: r.status,
+                                        status_data: r.status_data,
+                                        messages_sent: r.messages_sent,
+                                        l1_origin_message: r.l1_origin_message,
+                                        events: r.events,
+                                    }
+                                })
+                                .collect(),
+                        )
+                    }
+                },
+            }
+        }
+
+        pub fn from_sequencer_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
             Self {
                 block_hash: block.block_hash,
                 parent_hash: block.parent_block_hash,
@@ -204,7 +256,7 @@ pub mod reply {
                                 .zip(block.transaction_receipts.into_iter())
                                 .map(|(t, r)| {
                                     let t: Transaction = t.into();
-                                    let r = TransactionReceipt::with_status(r, block.status);
+                                    let r = TransactionReceipt::with_status(r, block.status.into());
 
                                     TransactionAndReceipt {
                                         txn_hash: t.txn_hash,
@@ -453,7 +505,7 @@ pub mod reply {
     }
 
     impl TransactionReceipt {
-        pub fn with_status(receipt: seq::transaction::Receipt, status: seq::Status) -> Self {
+        pub fn with_status(receipt: seq::transaction::Receipt, status: BlockStatus) -> Self {
             Self {
                 txn_hash: receipt.transaction_hash,
                 status: status.into(),
@@ -583,6 +635,18 @@ pub mod reply {
                 SeqStatus::Rejected => TransactionStatus::Rejected,
                 SeqStatus::Reverted => TransactionStatus::Unknown,
                 SeqStatus::Aborted => TransactionStatus::Unknown,
+            }
+        }
+    }
+
+    impl From<BlockStatus> for TransactionStatus {
+        fn from(status: BlockStatus) -> Self {
+            match status {
+                BlockStatus::Pending => TransactionStatus::Pending,
+                BlockStatus::Proven => TransactionStatus::Received,
+                BlockStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnL2,
+                BlockStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
+                BlockStatus::Rejected => TransactionStatus::Rejected,
             }
         }
     }

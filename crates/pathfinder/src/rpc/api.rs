@@ -2,23 +2,30 @@
 use crate::{
     cairo::ext_py,
     core::{
-        CallResultValue, ContractAddress, ContractCode, StarknetProtocolVersion,
+        CallResultValue, ContractAddress, ContractCode, GlobalRoot, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetProtocolVersion,
         StarknetTransactionHash, StarknetTransactionIndex, StorageValue,
     },
     ethereum::Chain,
     rpc::types::{
-        reply::{Block, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt},
+        reply::{
+            Block, BlockStatus, ErrorCode, StateUpdate, Syncing, Transaction, TransactionReceipt,
+        },
         request::{BlockResponseScope, Call, OverflowingStorageAddress},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
-    sequencer::{self, reply as raw},
-    storage::Storage,
+    sequencer::{
+        self,
+        reply::{self as raw, transaction},
+    },
+    storage::{RefsTable, StarknetBlocksBlockId, Storage},
 };
 use anyhow::Context;
 use jsonrpsee::types::{
     error::{CallError, Error},
     RpcResult,
 };
+use pedersen::StarkHash;
 use std::convert::TryInto;
 
 /// Implements JSON-RPC endpoints.
@@ -29,6 +36,19 @@ pub struct RpcApi {
     sequencer: sequencer::Client,
     chain: Chain,
     call_handle: Option<ext_py::Handle>,
+}
+
+#[derive(Debug)]
+pub struct RawBlock {
+    pub number: StarknetBlockNumber,
+    pub hash: StarknetBlockHash,
+    pub root: GlobalRoot,
+    pub parent_hash: StarknetBlockHash,
+    pub parent_root: GlobalRoot,
+    pub timestamp: StarknetBlockTimestamp,
+    pub transaction_receipts: Vec<transaction::Receipt>,
+    pub transactions: Vec<transaction::Transaction>,
+    pub status: BlockStatus,
 }
 
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
@@ -49,13 +69,6 @@ impl RpcApi {
         }
     }
 
-    /// Helper function.
-    async fn get_raw_block_by_hash(&self, block_hash: BlockHashOrTag) -> RpcResult<raw::Block> {
-        // TODO get this from storage
-        let block = self.sequencer.block_by_hash(block_hash).await?;
-        Ok(block)
-    }
-
     /// Get block information given the block hash.
     /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
     /// of the requested block.
@@ -64,18 +77,26 @@ impl RpcApi {
         block_hash: BlockHashOrTag,
         requested_scope: Option<BlockResponseScope>,
     ) -> RpcResult<Block> {
-        let block = self.get_raw_block_by_hash(block_hash).await?;
-        let scope = requested_scope.unwrap_or_default();
-        Ok(Block::from_scoped(block, scope))
-    }
+        let block_id = match block_hash {
+            BlockHashOrTag::Tag(Tag::Pending) => {
+                let block = self
+                    .sequencer
+                    .block_by_hash(block_hash)
+                    .await
+                    .context("Fetch block from sequencer")
+                    .map_err(internal_server_error)?;
 
-    /// Helper function.
-    async fn get_raw_block_by_number(
-        &self,
-        block_number: BlockNumberOrTag,
-    ) -> RpcResult<raw::Block> {
-        let block = self.sequencer.block_by_number(block_number).await?;
-        Ok(block)
+                let scope = requested_scope.unwrap_or_default();
+
+                return Ok(Block::from_sequencer_scoped(block, scope));
+            }
+            BlockHashOrTag::Hash(hash) => hash.into(),
+            BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
+        };
+
+        let block = self.get_raw_block(block_id).await?;
+        let scope = requested_scope.unwrap_or_default();
+        Ok(Block::from_raw_scoped(block, scope))
     }
 
     /// Get block information given the block number (its height).
@@ -86,9 +107,97 @@ impl RpcApi {
         block_number: BlockNumberOrTag,
         requested_scope: Option<BlockResponseScope>,
     ) -> RpcResult<Block> {
-        let block = self.get_raw_block_by_number(block_number).await?;
+        let block_id = match block_number {
+            BlockNumberOrTag::Number(number) => number.into(),
+            BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
+            BlockNumberOrTag::Tag(Tag::Pending) => {
+                // We have no reasonable way of geting all the data required.
+                // self.sequencer
+                let block = self
+                    .sequencer
+                    .block_by_number(block_number)
+                    .await
+                    .context("Fetch block from sequencer")
+                    .map_err(internal_server_error)?;
+
+                let scope = requested_scope.unwrap_or_default();
+
+                return Ok(Block::from_sequencer_scoped(block, scope));
+            }
+        };
+
+        let block = self.get_raw_block(block_id).await?;
         let scope = requested_scope.unwrap_or_default();
-        Ok(Block::from_scoped(block, scope))
+        Ok(Block::from_raw_scoped(block, scope))
+    }
+
+    /// Fetches a [RawBlock] from storage.
+    async fn get_raw_block(&self, block_id: StarknetBlocksBlockId) -> RpcResult<RawBlock> {
+        use crate::storage::StarknetBlocksTable;
+
+        let storage = self.storage.clone();
+
+        let handle = tokio::task::spawn_blocking(move || {
+            let mut connection = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let transaction = connection
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            let block = StarknetBlocksTable::get(&transaction, block_id)
+                .context("Read block from database")
+                .map_err(internal_server_error)?
+                .ok_or_else(|| Error::from(ErrorCode::InvalidBlockHash))?;
+
+            // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
+            let l1_l2_head = RefsTable::get_l1_l2_head(&transaction)
+                .context("Read latest L1 head from database")
+                .map_err(internal_server_error)?;
+            let block_status = match l1_l2_head {
+                Some(number) if number >= block.number => BlockStatus::AcceptedOnL1,
+                _ => BlockStatus::AcceptedOnL2,
+            };
+
+            let (parent_hash, parent_root) = match block.number {
+                StarknetBlockNumber::GENESIS => (
+                    StarknetBlockHash(StarkHash::ZERO),
+                    GlobalRoot(StarkHash::ZERO),
+                ),
+                other => {
+                    let parent_block = StarknetBlocksTable::get(&transaction, (other - 1).into())
+                        .context("Read parent block from database")
+                        .map_err(internal_server_error)?
+                        .context("Parent block missing")?;
+
+                    (parent_block.hash, parent_block.root)
+                }
+            };
+
+            let block = RawBlock {
+                number: block.number,
+                hash: block.hash,
+                root: block.root,
+                parent_hash,
+                parent_root,
+                timestamp: block.timestamp,
+                transaction_receipts: block.transaction_receipts,
+                transactions: block.transactions,
+                status: block_status,
+            };
+
+            Ok(block)
+        });
+
+        handle
+            .await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            // flatten is unstable
+            .and_then(|x| x)
     }
 
     /// Get the information about the result of executing the requested block.
@@ -125,9 +234,9 @@ impl RpcApi {
         use crate::{
             core::StorageAddress,
             state::state_tree::{ContractsStateTree, GlobalStateTree},
-            storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable},
+            storage::{ContractsStateTable, StarknetBlocksTable},
         };
-        use pedersen::{OverflowError, StarkHash};
+        use pedersen::OverflowError;
 
         let key = StorageAddress(StarkHash::from_be_bytes(key.0.to_fixed_bytes()).map_err(
             // Report that the value is >= than the field modulus
@@ -250,8 +359,12 @@ impl RpcApi {
         block_hash: BlockHashOrTag,
         index: StarknetTransactionIndex,
     ) -> RpcResult<Transaction> {
-        // TODO get this from storage
-        let block = self.get_raw_block_by_hash(block_hash).await?;
+        let block_id = match block_hash {
+            BlockHashOrTag::Hash(hash) => StarknetBlocksBlockId::Hash(hash),
+            BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
+            BlockHashOrTag::Tag(Tag::Pending) => todo!(),
+        };
+        let block = self.get_raw_block(block_id).await?;
         let index: usize = index
             .0
             .try_into()
@@ -274,8 +387,12 @@ impl RpcApi {
         block_number: BlockNumberOrTag,
         index: StarknetTransactionIndex,
     ) -> RpcResult<Transaction> {
-        // TODO get this from storage
-        let block = self.get_raw_block_by_number(block_number).await?;
+        let block_id = match block_number {
+            BlockNumberOrTag::Number(hash) => StarknetBlocksBlockId::Number(hash),
+            BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
+            BlockNumberOrTag::Tag(Tag::Pending) => todo!(),
+        };
+        let block = self.get_raw_block(block_id).await?;
         let index: usize = index
             .0
             .try_into()
@@ -296,11 +413,12 @@ impl RpcApi {
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> RpcResult<TransactionReceipt> {
+        // TODO: this requires that we store Starknet transactions in a separate table.
         let txn = self.get_raw_transaction_by_hash(transaction_hash).await?;
         if let Some(block_hash) = txn.block_hash {
             if let Some(index) = txn.transaction_index {
                 let block = self
-                    .get_raw_block_by_hash(BlockHashOrTag::Hash(block_hash))
+                    .get_raw_block(StarknetBlocksBlockId::Hash(block_hash))
                     .await?;
                 let index: usize = index
                     .try_into()
@@ -355,8 +473,12 @@ impl RpcApi {
         &self,
         block_hash: BlockHashOrTag,
     ) -> RpcResult<u64> {
-        // TODO get this from storage
-        let block = self.get_raw_block_by_hash(block_hash).await?;
+        let block_id = match block_hash {
+            BlockHashOrTag::Hash(hash) => hash.into(),
+            BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
+            BlockHashOrTag::Tag(Tag::Pending) => todo!("sequencer call instead"),
+        };
+        let block = self.get_raw_block(block_id).await?;
         let len: u64 = block
             .transactions
             .len()
@@ -372,8 +494,12 @@ impl RpcApi {
         &self,
         block_number: BlockNumberOrTag,
     ) -> RpcResult<u64> {
-        // TODO get this from storage
-        let block = self.get_raw_block_by_number(block_number).await?;
+        let block_id = match block_number {
+            BlockNumberOrTag::Number(number) => number.into(),
+            BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
+            BlockNumberOrTag::Tag(Tag::Pending) => todo!("sequencer call instead"),
+        };
+        let block = self.get_raw_block(block_id).await?;
         let len: u64 = block
             .transactions
             .len()
