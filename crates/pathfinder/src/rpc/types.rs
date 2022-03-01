@@ -173,54 +173,18 @@ pub mod reply {
     }
 
     impl Block {
-        pub fn from_raw_scoped(block: RawBlock, scope: BlockResponseScope) -> Self {
+        pub fn from_raw(block: RawBlock, transactions: Transactions) -> Self {
             Self {
                 block_hash: Some(block.hash),
                 parent_hash: block.parent_hash,
                 block_number: Some(block.number),
                 status: block.status,
-                // TODO should be sequencer identity
+                // This only matters once the sequencers are distributed.
                 sequencer: H160::zero(),
                 new_root: Some(block.root),
                 old_root: block.parent_root,
                 accepted_time: block.timestamp.0,
-                transactions: match scope {
-                    BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
-                        block
-                            .transactions
-                            .into_iter()
-                            .map(|t| t.transaction_hash)
-                            .collect(),
-                    ),
-                    BlockResponseScope::FullTransactions => Transactions::Full(
-                        block.transactions.into_iter().map(|t| t.into()).collect(),
-                    ),
-                    BlockResponseScope::FullTransactionsAndReceipts => {
-                        Transactions::FullWithReceipts(
-                            block
-                                .transactions
-                                .into_iter()
-                                .zip(block.transaction_receipts.into_iter())
-                                .map(|(t, r)| {
-                                    let t: Transaction = t.into();
-                                    let r = TransactionReceipt::with_status(r, block.status);
-
-                                    TransactionAndReceipt {
-                                        txn_hash: t.txn_hash,
-                                        contract_address: t.contract_address,
-                                        entry_point_selector: t.entry_point_selector,
-                                        calldata: t.calldata,
-                                        status: r.status,
-                                        status_data: r.status_data,
-                                        messages_sent: r.messages_sent,
-                                        l1_origin_message: r.l1_origin_message,
-                                        events: r.events,
-                                    }
-                                })
-                                .collect(),
-                        )
-                    }
-                },
+                transactions,
             }
         }
 
@@ -230,9 +194,8 @@ pub mod reply {
                 parent_hash: block.parent_block_hash,
                 block_number: block.block_number,
                 status: block.status.into(),
-                // TODO should be sequencer identity
+                // This only matters once the sequencers are distributed.
                 sequencer: H160::zero(),
-                // TODO check if state_root is the new root
                 new_root: block.state_root,
                 // TODO where to get it from
                 old_root: GlobalRoot(StarkHash::ZERO),
@@ -458,12 +421,12 @@ pub mod reply {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
-        txn_hash: StarknetTransactionHash,
-        contract_address: ContractAddress,
+        pub txn_hash: StarknetTransactionHash,
+        pub contract_address: ContractAddress,
         /// Absent for "deploy" transactions
-        entry_point_selector: Option<EntryPoint>,
+        pub entry_point_selector: Option<EntryPoint>,
         /// Absent for "deploy" transactions
-        calldata: Option<Vec<CallParam>>,
+        pub calldata: Option<Vec<CallParam>>,
     }
 
     impl TryFrom<seq::Transaction> for Transaction {
@@ -496,12 +459,12 @@ pub mod reply {
     /// L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionReceipt {
-        txn_hash: StarknetTransactionHash,
-        status: TransactionStatus,
-        status_data: String,
-        messages_sent: Vec<transaction_receipt::MessageToL1>,
-        l1_origin_message: Option<transaction_receipt::MessageToL2>,
-        events: Vec<transaction_receipt::Event>,
+        pub txn_hash: StarknetTransactionHash,
+        pub status: TransactionStatus,
+        pub status_data: String,
+        pub messages_sent: Vec<transaction_receipt::MessageToL1>,
+        pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
+        pub events: Vec<transaction_receipt::Event>,
     }
 
     impl TransactionReceipt {
@@ -592,17 +555,17 @@ pub mod reply {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionAndReceipt {
-        txn_hash: StarknetTransactionHash,
-        contract_address: ContractAddress,
+        pub txn_hash: StarknetTransactionHash,
+        pub contract_address: ContractAddress,
         /// Absent in "deploy" transaction
-        entry_point_selector: Option<EntryPoint>,
+        pub entry_point_selector: Option<EntryPoint>,
         /// Absent in "deploy" transaction
-        calldata: Option<Vec<CallParam>>,
-        status: TransactionStatus,
-        status_data: String,
-        messages_sent: Vec<transaction_receipt::MessageToL1>,
-        l1_origin_message: Option<transaction_receipt::MessageToL2>,
-        events: Vec<transaction_receipt::Event>,
+        pub calldata: Option<Vec<CallParam>>,
+        pub status: TransactionStatus,
+        pub status_data: String,
+        pub messages_sent: Vec<transaction_receipt::MessageToL1>,
+        pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
+        pub events: Vec<transaction_receipt::Event>,
     }
 
     /// Represents transaction status.

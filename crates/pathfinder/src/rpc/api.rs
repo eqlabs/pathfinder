@@ -14,9 +14,11 @@ use crate::{
     },
     sequencer::{
         self,
-        reply::{self as raw, transaction},
+        reply::{self as raw},
     },
-    storage::{RefsTable, StarknetBlocksBlockId, Storage},
+    storage::{
+        RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
+    },
 };
 use anyhow::Context;
 use jsonrpsee::types::{
@@ -42,8 +44,6 @@ pub struct RawBlock {
     pub parent_hash: StarknetBlockHash,
     pub parent_root: GlobalRoot,
     pub timestamp: StarknetBlockTimestamp,
-    pub transaction_receipts: Vec<transaction::Receipt>,
-    pub transactions: Vec<transaction::Transaction>,
     pub status: BlockStatus,
 }
 
@@ -90,9 +90,97 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
         };
 
+        // Need to get the block status. This also tests that the block hash is valid.
         let block = self.get_raw_block(block_id).await?;
         let scope = requested_scope.unwrap_or_default();
-        Ok(Block::from_raw_scoped(block, scope))
+
+        let transactions = self.get_block_transactions(block.number, scope).await?;
+
+        Ok(Block::from_raw(block, transactions))
+    }
+
+    /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
+    pub async fn get_block_transactions(
+        &self,
+        block_number: StarknetBlockNumber,
+        scope: BlockResponseScope,
+    ) -> RpcResult<super::types::reply::Transactions> {
+        let storage = self.storage.clone();
+        let jh = tokio::task::spawn_blocking(move || -> RpcResult<_> {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let db_tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            let transactions_receipts = StarknetTransactionsTable::get_transaction_data_for_block(
+                &db_tx,
+                block_number.into(),
+            )
+            .context("Reading transactions from database")
+            .map_err(internal_server_error)?;
+
+            // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
+            let l1_l2_head = RefsTable::get_l1_l2_head(&db_tx)
+                .context("Read latest L1 head from database")
+                .map_err(internal_server_error)?;
+            let block_status = match l1_l2_head {
+                Some(number) if number >= block_number => BlockStatus::AcceptedOnL1,
+                _ => BlockStatus::AcceptedOnL2,
+            };
+
+            Ok((transactions_receipts, block_status))
+        });
+
+        let (transactions_receipts, block_status) = jh
+            .await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)??;
+
+        use super::types::reply;
+        let transactions = match scope {
+            BlockResponseScope::TransactionHashes => reply::Transactions::HashesOnly(
+                transactions_receipts
+                    .into_iter()
+                    .map(|(t, _)| t.transaction_hash)
+                    .collect(),
+            ),
+            BlockResponseScope::FullTransactions => reply::Transactions::Full(
+                transactions_receipts
+                    .into_iter()
+                    .map(|(t, _)| t.into())
+                    .collect(),
+            ),
+            BlockResponseScope::FullTransactionsAndReceipts => {
+                reply::Transactions::FullWithReceipts(
+                    transactions_receipts
+                        .into_iter()
+                        .map(|(t, r)| {
+                            let t: Transaction = t.into();
+                            let r = TransactionReceipt::with_status(r, block_status);
+
+                            reply::TransactionAndReceipt {
+                                txn_hash: t.txn_hash,
+                                contract_address: t.contract_address,
+                                entry_point_selector: t.entry_point_selector,
+                                calldata: t.calldata,
+                                status: r.status,
+                                status_data: r.status_data,
+                                messages_sent: r.messages_sent,
+                                l1_origin_message: r.l1_origin_message,
+                                events: r.events,
+                            }
+                        })
+                        .collect(),
+                )
+            }
+        };
+
+        Ok(transactions)
     }
 
     /// Get block information given the block number (its height).
@@ -120,15 +208,17 @@ impl RpcApi {
             }
         };
 
+        // Need to get the block status. This also tests that the block hash is valid.
         let block = self.get_raw_block(block_id).await?;
         let scope = requested_scope.unwrap_or_default();
-        Ok(Block::from_raw_scoped(block, scope))
+
+        let transactions = self.get_block_transactions(block.number, scope).await?;
+
+        Ok(Block::from_raw(block, transactions))
     }
 
     /// Fetches a [RawBlock] from storage.
     async fn get_raw_block(&self, block_id: StarknetBlocksBlockId) -> RpcResult<RawBlock> {
-        use crate::storage::StarknetBlocksTable;
-
         let storage = self.storage.clone();
 
         let handle = tokio::task::spawn_blocking(move || {
@@ -178,8 +268,6 @@ impl RpcApi {
                 parent_hash,
                 parent_root,
                 timestamp: block.timestamp,
-                transaction_receipts: block.transaction_receipts,
-                transactions: block.transactions,
                 status: block_status,
             };
 
@@ -228,7 +316,7 @@ impl RpcApi {
         use crate::{
             core::StorageAddress,
             state::state_tree::{ContractsStateTree, GlobalStateTree},
-            storage::{ContractsStateTable, StarknetBlocksTable},
+            storage::ContractsStateTable,
         };
         use pedersen::OverflowError;
 
@@ -378,14 +466,44 @@ impl RpcApi {
                     });
             }
         };
-        let block = self.get_raw_block(block_id).await?;
-        block
-            .transactions
-            .into_iter()
-            .nth(index)
-            .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                Ok(txn.into())
-            })
+
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let db_tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            // Get the transaction from storage.
+            match StarknetTransactionsTable::get_transaction_at_block(&db_tx, block_id, index)
+                .context("Reading transaction from database")?
+            {
+                Some(transaction) => Ok(transaction.into()),
+                None => {
+                    // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
+                    // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
+                    //
+                    // get_root is cheaper than querying the full block.
+                    match StarknetBlocksTable::get_root(&db_tx, block_id)
+                        .context("Reading block from database")?
+                    {
+                        Some(_) => Err(ErrorCode::InvalidTransactionIndex.into()),
+                        None => Err(ErrorCode::InvalidBlockHash.into()),
+                    }
+                }
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
     }
 
     /// Get the details of a transaction by a given block number and index.
@@ -422,14 +540,43 @@ impl RpcApi {
             }
         };
 
-        let block = self.get_raw_block(block_id).await?;
-        block
-            .transactions
-            .into_iter()
-            .nth(index)
-            .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                Ok(txn.into())
-            })
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let db_tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            // Get the transaction from storage.
+            match StarknetTransactionsTable::get_transaction_at_block(&db_tx, block_id, index)
+                .context("Reading transaction from database")?
+            {
+                Some(transaction) => Ok(transaction.into()),
+                None => {
+                    // We now need to check whether it was the block number or transaction index which were invalid. We do this by checking if the block exists
+                    // at all. If no, then the block number is invalid. If yes, then the index is invalid.
+                    //
+                    // get_root is cheaper than querying the full block.
+                    match StarknetBlocksTable::get_root(&db_tx, block_id)
+                        .context("Reading block from database")?
+                    {
+                        Some(_) => Err(ErrorCode::InvalidTransactionIndex.into()),
+                        None => Err(ErrorCode::InvalidBlockNumber.into()),
+                    }
+                }
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
     }
 
     /// Get the transaction receipt by the transaction hash.
@@ -438,29 +585,50 @@ impl RpcApi {
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> RpcResult<TransactionReceipt> {
-        // TODO: this requires that we store Starknet transactions in a separate table.
-        let txn = self.get_raw_transaction_by_hash(transaction_hash).await?;
-        if let Some(block_hash) = txn.block_hash {
-            if let Some(index) = txn.transaction_index {
-                let block = self
-                    .get_raw_block(StarknetBlocksBlockId::Hash(block_hash))
-                    .await?;
-                let index: usize = index
-                    .try_into()
-                    .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
-                block
-                    .transaction_receipts
-                    .into_iter()
-                    .nth(index)
-                    .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |receipt| {
-                        Ok(TransactionReceipt::with_status(receipt, block.status))
-                    })
-            } else {
-                Err(ErrorCode::InvalidTransactionIndex.into())
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let db_tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            match StarknetTransactionsTable::get_receipt(&db_tx, transaction_hash)
+                .context("Reading transaction receipt from database")
+                .map_err(internal_server_error)?
+            {
+                Some((receipt, block_hash)) => {
+                    // We require the block status here as well..
+                    let block = StarknetBlocksTable::get(&db_tx, block_hash.into())
+                        .context("Reading block from database")
+                        .map_err(internal_server_error)?
+                        .context("Block missing from database")
+                        .map_err(internal_server_error)?;
+
+                    // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
+                    let l1_l2_head = RefsTable::get_l1_l2_head(&db_tx)
+                        .context("Read latest L1 head from database")
+                        .map_err(internal_server_error)?;
+                    let block_status = match l1_l2_head {
+                        Some(number) if number >= block.number => BlockStatus::AcceptedOnL1,
+                        _ => BlockStatus::AcceptedOnL2,
+                    };
+
+                    Ok(TransactionReceipt::with_status(receipt, block_status))
+                }
+                None => Err(ErrorCode::InvalidTransactionIndex.into()),
             }
-        } else {
-            Err(ErrorCode::InvalidBlockHash.into())
-        }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
     }
 
     /// Get the code of a specific contract.
@@ -473,11 +641,16 @@ impl RpcApi {
         let jh = tokio::task::spawn_blocking(move || {
             let mut db = storage
                 .connection()
-                .context("Opening database connection")?;
-            let tx = db.transaction().context("Creating database transaction")?;
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
 
             let code = ContractCodeTable::get_code(&tx, contract_address)
-                .context("Fetching code from database")?;
+                .context("Fetching code from database")
+                .map_err(internal_server_error)?;
 
             match code {
                 Some(code) => Ok(code),
@@ -517,13 +690,43 @@ impl RpcApi {
                 return Ok(len);
             }
         };
-        let block = self.get_raw_block(block_id).await?;
-        let len: u64 = block
-            .transactions
-            .len()
-            .try_into()
-            .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
-        Ok(len)
+
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            match StarknetTransactionsTable::get_transaction_count(&tx, block_id)
+                .context("Reading transaction count from database")
+                .map_err(internal_server_error)?
+            {
+                0 => {
+                    // We need to check if the value was 0 because there were no transactions, or because the block hash
+                    // is invalid.
+                    //
+                    // get_root is cheaper than querying the full block.
+                    match StarknetBlocksTable::get_root(&tx, block_id)
+                        .context("Reading block from database")?
+                    {
+                        Some(_) => Ok(0),
+                        None => Err(ErrorCode::InvalidBlockHash.into()),
+                    }
+                }
+                other => Ok(other as u64),
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
     }
 
     /// Get the number of transactions in a block given a block hash.
@@ -552,13 +755,43 @@ impl RpcApi {
                 return Ok(len);
             }
         };
-        let block = self.get_raw_block(block_id).await?;
-        let len: u64 = block
-            .transactions
-            .len()
-            .try_into()
-            .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
-        Ok(len)
+
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            match StarknetTransactionsTable::get_transaction_count(&tx, block_id)
+                .context("Reading transaction count from database")
+                .map_err(internal_server_error)?
+            {
+                0 => {
+                    // We need to check if the value was 0 because there were no transactions, or because the block number
+                    // is invalid.
+                    //
+                    // get_root is cheaper than querying the full block.
+                    match StarknetBlocksTable::get_root(&tx, block_id)
+                        .context("Reading block from database")?
+                    {
+                        Some(_) => Ok(0),
+                        None => Err(ErrorCode::InvalidBlockNumber.into()),
+                    }
+                }
+                other => Ok(other as u64),
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
     }
 
     /// Call a starknet function without creating a StarkNet transaction.

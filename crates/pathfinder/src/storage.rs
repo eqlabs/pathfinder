@@ -16,7 +16,7 @@ pub use contract::{ContractCodeTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 pub use state::{
     ContractsStateTable, L1StateTable, L1TableBlockId, RefsTable, StarknetBlock,
-    StarknetBlocksBlockId, StarknetBlocksTable,
+    StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable,
 };
 
 use anyhow::Context;
