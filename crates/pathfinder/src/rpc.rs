@@ -234,8 +234,16 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
 mod tests {
     use super::*;
     use crate::{
-        core::StarknetProtocolVersion, ethereum::Chain, rpc::run_server, sequencer,
-        sequencer::test_utils::*, storage::Storage,
+        core::{
+            GlobalRoot, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StarknetProtocolVersion,
+        },
+        ethereum::Chain,
+        rpc::run_server,
+        sequencer,
+        sequencer::test_utils::*,
+        storage::Storage,
+        storage::{StarknetBlock, StarknetBlocksTable},
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{
@@ -243,8 +251,7 @@ mod tests {
         rpc_params,
         types::{traits::Client, v2::ParamsSer, DeserializeOwned},
     };
-    // TODO re-enable me
-    //use pretty_assertions::assert_eq;
+    use pedersen::StarkHash;
     use serde_json::json;
     #[allow(unused_imports)]
     use std::assert_eq as dont_use_std_assert_eq;
@@ -253,6 +260,8 @@ mod tests {
         net::{Ipv4Addr, SocketAddrV4},
         time::Duration,
     };
+    // TODO re-enable me
+    //use pretty_assertions::assert_eq;
 
     /// Helper wrapper to allow retrying the test if rate limiting kicks in on the sequencer API side.
     ///
@@ -322,6 +331,7 @@ mod tests {
             pub static ref INVALID_BLOCK_HASH: (i64, String) = (24, "Invalid block hash".to_owned());
             pub static ref INVALID_TX_HASH: (i64, String) = (25, "Invalid transaction hash".to_owned());
             pub static ref INVALID_BLOCK_NUMBER: (i64, String) = (26, "Invalid block number".to_owned());
+            pub static ref INVALID_TX_INDEX: (i64, String) = (27, "Invalid transaction index in a block".to_owned());
         }
     }
 
@@ -333,20 +343,22 @@ mod tests {
         )
     }
 
-    use crate::core::{GlobalRoot, StarknetBlockTimestamp};
     use crate::{
-        core::{StarknetBlockHash, StarknetBlockNumber},
-        storage::{StarknetBlock, StarknetBlocksTable},
+        core::ContractAddress,
+        sequencer::reply::transaction::{
+            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+            ExecutionResources, Receipt, Transaction, Type,
+        },
     };
-    use pedersen::StarkHash;
 
     // Local test helper
-    fn setup_storage() -> (Storage, StarknetBlockHash) {
+    fn setup_storage() -> Storage {
         let storage = Storage::in_memory().unwrap();
         let connection = storage.connection().unwrap();
+        let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
         let block_0 = StarknetBlock {
             number: StarknetBlockNumber(0),
-            hash: StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap()),
+            hash: genesis_hash,
             root: GlobalRoot(StarkHash::ZERO),
             timestamp: StarknetBlockTimestamp(0),
         };
@@ -359,7 +371,7 @@ mod tests {
         };
         StarknetBlocksTable::insert(&connection, &block_0).unwrap();
         StarknetBlocksTable::insert(&connection, &block_1).unwrap();
-        (storage, latest_hash)
+        storage
     }
 
     mod get_block_by_hash {
@@ -374,25 +386,18 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let storage = Storage::in_memory().unwrap();
-            let connection = storage.connection().unwrap();
-            let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
-            let block = StarknetBlock {
-                number: StarknetBlockNumber(0),
-                hash: genesis_hash,
-                root: GlobalRoot(StarkHash::ZERO),
-                timestamp: StarknetBlockTimestamp(0),
-            };
-            StarknetBlocksTable::insert(&connection, &block).unwrap();
+            let storage = setup_storage();
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let genesis_hash =
+                StarknetTransactionHash(StarkHash::from_be_slice(b"genesis").unwrap());
             let params = rpc_params!(genesis_hash);
-            client(addr)
+            let block = client(addr)
                 .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
-            // TODO add test for conversions between RawBlock and so on !!!
+            assert_eq!(block.block_number, Some(StarknetBlockNumber(0)))
         }
 
         mod latest {
@@ -404,11 +409,12 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let (storage, latest_hash) = setup_storage();
+                    let storage = setup_storage();
                     let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
+                    let latest_hash =
+                        StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = rpc_params!(
                         BlockHashOrTag::Tag(Tag::Latest),
                         BlockResponseScope::TransactionHashes
@@ -422,11 +428,12 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let (storage, latest_hash) = setup_storage();
+                    let storage = setup_storage();
                     let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
+                    let latest_hash =
+                        StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
                     let block = client(addr)
                         .request::<Block>("starknet_getBlockByHash", params)
@@ -443,11 +450,12 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let (storage, latest_hash) = setup_storage();
+                    let storage = setup_storage();
                     let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
+                    let latest_hash =
+                        StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = by_name([
                         ("block_hash", json!("latest")),
                         ("requested_scope", json!("FULL_TXN_AND_RECEIPTS")),
@@ -461,11 +469,12 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let (storage, latest_hash) = setup_storage();
+                    let storage = setup_storage();
                     let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
+                    let latest_hash =
+                        StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = by_name([("block_hash", json!("latest"))]);
                     let block = client(addr)
                         .request::<Block>("starknet_getBlockByHash", params)
@@ -482,7 +491,6 @@ mod tests {
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
             let params = rpc_params!(
                 BlockHashOrTag::Tag(Tag::Pending),
                 BlockResponseScope::FullTransactions
@@ -499,7 +507,6 @@ mod tests {
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO));
             let error = client(addr)
                 .request::<Block>("starknet_getBlockByHash", params)
@@ -518,11 +525,10 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (storage, _) = setup_storage();
+            let storage = setup_storage();
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
             let params = rpc_params!(StarknetBlockNumber(0));
             client(addr)
                 .request::<Block>("starknet_getBlockByNumber", params)
@@ -538,11 +544,10 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let (storage, _) = setup_storage();
+                    let storage = setup_storage();
                     let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
                     let params = rpc_params!(
                         BlockNumberOrTag::Tag(Tag::Latest),
                         BlockResponseScope::TransactionHashes
@@ -556,11 +561,10 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let (storage, _) = setup_storage();
+                    let storage = setup_storage();
                     let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
                     let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
                     let block = client(addr)
                         .request::<Block>("starknet_getBlockByNumber", params)
@@ -576,11 +580,10 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let (storage, _) = setup_storage();
+                    let storage = setup_storage();
                     let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
                     let params = by_name([
                         ("block_number", json!("latest")),
                         ("requested_scope", json!("FULL_TXN_AND_RECEIPTS")),
@@ -594,11 +597,10 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let (storage, _) = setup_storage();
+                    let storage = setup_storage();
                     let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
                     let params = by_name([("block_number", json!("latest"))]);
                     let block = client(addr)
                         .request::<Block>("starknet_getBlockByNumber", params)
@@ -615,7 +617,6 @@ mod tests {
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
             let params = rpc_params!(
                 BlockNumberOrTag::Tag(Tag::Pending),
                 BlockResponseScope::FullTransactions
@@ -632,7 +633,6 @@ mod tests {
             let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
             let params = rpc_params!(StarknetBlockNumber(123));
             let error = client(addr)
                 .request::<Block>("starknet_getBlockByNumber", params)
@@ -820,10 +820,20 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let params = rpc_params!(*GENESIS_BLOCK_HASH, *VALID_TX_INDEX);
-            client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
+            let storage = setup_storage();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
+            let params = rpc_params!(genesis_hash, 0);
+            let txn = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap();
+            assert_eq!(
+                txn.txn_hash,
+                StarknetTransactionHash(StarkHash::from_be_slice(b"block 0 txn 0").unwrap())
+            )
         }
 
         mod latest {
@@ -831,39 +841,63 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest), *VALID_TX_INDEX);
-                client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
+                let storage = setup_storage();
+                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest), 0);
+                let txn = client(addr)
+                    .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                     .await
                     .unwrap();
+                assert_eq!(
+                    txn.txn_hash,
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 1 txn 0").unwrap())
+                );
             }
 
             #[tokio::test]
             async fn named_args() {
-                let params = by_name([
-                    ("block_hash", json!("latest")),
-                    ("index", json!(*VALID_TX_INDEX)),
-                ]);
-                client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
+                let storage = setup_storage();
+                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let params = by_name([("block_hash", json!("latest")), ("index", json!(0))]);
+                let txn = client(addr)
+                    .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                     .await
                     .unwrap();
+                assert_eq!(
+                    txn.txn_hash,
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 1 txn 0").unwrap())
+                );
             }
         }
 
         #[tokio::test]
         async fn pending() {
-            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending), *VALID_TX_INDEX);
-            client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending), 0);
+            client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_block() {
-            let params = rpc_params!(*INVALID_BLOCK_HASH, *VALID_TX_INDEX);
-            let error =
-                client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
-                    .await
-                    .unwrap_err();
+            let storage = setup_storage();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO), 0);
+            let error = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_BLOCK_HASH)
@@ -872,10 +906,20 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_transaction_index() {
-            let params = rpc_params!(*DEPLOY_CONTRACT_BLOCK_HASH, *INVALID_TX_INDEX);
-            client_request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
+            let storage = setup_storage();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
+            let params = rpc_params!(genesis_hash, 123);
+            let error = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                error,
+                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_TX_INDEX)
+            );
         }
     }
 
