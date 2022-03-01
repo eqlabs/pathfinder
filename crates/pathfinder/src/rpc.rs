@@ -243,7 +243,11 @@ mod tests {
         rpc_params,
         types::{traits::Client, v2::ParamsSer, DeserializeOwned},
     };
+    // TODO re-enable me
+    //use pretty_assertions::assert_eq;
     use serde_json::json;
+    #[allow(unused_imports)]
+    use std::assert_eq as dont_use_std_assert_eq;
     use std::{
         collections::BTreeMap,
         net::{Ipv4Addr, SocketAddrV4},
@@ -253,6 +257,8 @@ mod tests {
     /// Helper wrapper to allow retrying the test if rate limiting kicks in on the sequencer API side.
     ///
     /// Necessary until we move to mocking whatever the RPC api will call when the first release is ready.
+    ///
+    /// TODO remove this wrapper when retry::Retry is used in the sequencer::Client
     async fn client_request<'a, Out>(
         method: &str,
         params: Option<ParamsSer<'a>>,
@@ -327,16 +333,66 @@ mod tests {
         )
     }
 
+    use crate::core::{GlobalRoot, StarknetBlockTimestamp};
+    use crate::{
+        core::{StarknetBlockHash, StarknetBlockNumber},
+        storage::{StarknetBlock, StarknetBlocksTable},
+    };
+    use pedersen::StarkHash;
+
+    // Local test helper
+    fn setup_storage() -> (Storage, StarknetBlockHash) {
+        let storage = Storage::in_memory().unwrap();
+        let connection = storage.connection().unwrap();
+        let block_0 = StarknetBlock {
+            number: StarknetBlockNumber(0),
+            hash: StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap()),
+            root: GlobalRoot(StarkHash::ZERO),
+            timestamp: StarknetBlockTimestamp(0),
+        };
+        let latest_hash = StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
+        let block_1 = StarknetBlock {
+            number: StarknetBlockNumber(1),
+            hash: latest_hash,
+            root: GlobalRoot(StarkHash::ZERO),
+            timestamp: StarknetBlockTimestamp(0),
+        };
+        StarknetBlocksTable::insert(&connection, &block_0).unwrap();
+        StarknetBlocksTable::insert(&connection, &block_1).unwrap();
+        (storage, latest_hash)
+    }
+
     mod get_block_by_hash {
         use super::*;
+        use crate::core::{GlobalRoot, StarknetBlockTimestamp};
         use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockHashOrTag, Tag};
+        use crate::{
+            core::{StarknetBlockHash, StarknetBlockNumber},
+            storage::{StarknetBlock, StarknetBlocksTable},
+        };
+        use pedersen::StarkHash;
 
         #[tokio::test]
         async fn genesis() {
-            let params = rpc_params!(*GENESIS_BLOCK_HASH);
-            client_request::<Block>("starknet_getBlockByHash", params)
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+            let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
+            let block = StarknetBlock {
+                number: StarknetBlockNumber(0),
+                hash: genesis_hash,
+                root: GlobalRoot(StarkHash::ZERO),
+                timestamp: StarknetBlockTimestamp(0),
+            };
+            StarknetBlocksTable::insert(&connection, &block).unwrap();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(genesis_hash);
+            client(addr)
+                .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
+            // TODO add test for conversions between RawBlock and so on !!!
         }
 
         mod latest {
@@ -344,68 +400,109 @@ mod tests {
 
             mod positional_args {
                 use super::*;
+                use pretty_assertions::assert_eq;
 
                 #[tokio::test]
                 async fn all() {
+                    let (storage, latest_hash) = setup_storage();
+                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                    let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
                     let params = rpc_params!(
                         BlockHashOrTag::Tag(Tag::Latest),
                         BlockResponseScope::TransactionHashes
                     );
-                    client_request::<Block>("starknet_getBlockByHash", params)
+                    let block = client(addr)
+                        .request::<Block>("starknet_getBlockByHash", params)
                         .await
                         .unwrap();
+                    assert_eq!(block.block_hash, Some(latest_hash));
                 }
 
                 #[tokio::test]
                 async fn only_mandatory() {
+                    let (storage, latest_hash) = setup_storage();
+                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                    let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
                     let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
-                    client_request::<Block>("starknet_getBlockByHash", params)
+                    let block = client(addr)
+                        .request::<Block>("starknet_getBlockByHash", params)
                         .await
                         .unwrap();
+                    assert_eq!(block.block_hash, Some(latest_hash));
                 }
             }
 
             mod named_args {
                 use super::*;
+                use pretty_assertions::assert_eq;
+                use serde_json::json;
 
                 #[tokio::test]
                 async fn all() {
-                    use serde_json::json;
+                    let (storage, latest_hash) = setup_storage();
+                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                    let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
                     let params = by_name([
                         ("block_hash", json!("latest")),
                         ("requested_scope", json!("FULL_TXN_AND_RECEIPTS")),
                     ]);
-                    client_request::<Block>("starknet_getBlockByHash", params)
+                    let block = client(addr)
+                        .request::<Block>("starknet_getBlockByHash", params)
                         .await
                         .unwrap();
+                    assert_eq!(block.block_hash, Some(latest_hash));
                 }
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    use serde_json::json;
+                    let (storage, latest_hash) = setup_storage();
+                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                    let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
                     let params = by_name([("block_hash", json!("latest"))]);
-                    client_request::<Block>("starknet_getBlockByHash", params)
+                    let block = client(addr)
+                        .request::<Block>("starknet_getBlockByHash", params)
                         .await
                         .unwrap();
+                    assert_eq!(block.block_hash, Some(latest_hash));
                 }
             }
         }
 
         #[tokio::test]
         async fn pending() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
             let params = rpc_params!(
                 BlockHashOrTag::Tag(Tag::Pending),
                 BlockResponseScope::FullTransactions
             );
-            client_request::<Block>("starknet_getBlockByHash", params)
+            client(addr)
+                .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let params = rpc_params!(*INVALID_BLOCK_HASH);
-            let error = client_request::<Block>("starknet_getBlockByHash", params)
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+            let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO));
+            let error = client(addr)
+                .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -421,8 +518,14 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let params = rpc_params!(*GENESIS_BLOCK_NUMBER);
-            client_request::<Block>("starknet_getBlockByNumber", params)
+            let (storage, _) = setup_storage();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+            let params = rpc_params!(StarknetBlockNumber(0));
+            client(addr)
+                .request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
         }
@@ -435,65 +538,104 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
+                    let (storage, _) = setup_storage();
+                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                    let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
                     let params = rpc_params!(
                         BlockNumberOrTag::Tag(Tag::Latest),
                         BlockResponseScope::TransactionHashes
                     );
-                    client_request::<Block>("starknet_getBlockByNumber", params)
+                    let block = client(addr)
+                        .request::<Block>("starknet_getBlockByNumber", params)
                         .await
                         .unwrap();
+                    assert_eq!(block.block_number, Some(StarknetBlockNumber(1)));
                 }
 
                 #[tokio::test]
                 async fn only_mandatory() {
+                    let (storage, _) = setup_storage();
+                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                    let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
                     let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
-                    client_request::<Block>("starknet_getBlockByNumber", params)
+                    let block = client(addr)
+                        .request::<Block>("starknet_getBlockByNumber", params)
                         .await
                         .unwrap();
+                    assert_eq!(block.block_number, Some(StarknetBlockNumber(1)));
                 }
             }
 
             mod named_args {
                 use super::*;
+                use serde_json::json;
 
                 #[tokio::test]
                 async fn all() {
-                    use serde_json::json;
+                    let (storage, _) = setup_storage();
+                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                    let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
                     let params = by_name([
                         ("block_number", json!("latest")),
                         ("requested_scope", json!("FULL_TXN_AND_RECEIPTS")),
                     ]);
-                    client_request::<Block>("starknet_getBlockByNumber", params)
+                    let block = client(addr)
+                        .request::<Block>("starknet_getBlockByNumber", params)
                         .await
                         .unwrap();
+                    assert_eq!(block.block_number, Some(StarknetBlockNumber(1)));
                 }
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    use serde_json::json;
+                    let (storage, _) = setup_storage();
+                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                    let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
                     let params = by_name([("block_number", json!("latest"))]);
-                    client_request::<Block>("starknet_getBlockByNumber", params)
+                    let block = client(addr)
+                        .request::<Block>("starknet_getBlockByNumber", params)
                         .await
                         .unwrap();
+                    assert_eq!(block.block_number, Some(StarknetBlockNumber(1)));
                 }
             }
         }
 
         #[tokio::test]
         async fn pending() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
             let params = rpc_params!(
                 BlockNumberOrTag::Tag(Tag::Pending),
                 BlockResponseScope::FullTransactions
             );
-            client_request::<Block>("starknet_getBlockByNumber", params)
+            client(addr)
+                .request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_number() {
-            let params = rpc_params!(*INVALID_BLOCK_NUMBER);
-            let error = client_request::<Block>("starknet_getBlockByNumber", params)
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+            let params = rpc_params!(StarknetBlockNumber(123));
+            let error = client(addr)
+                .request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap_err();
             assert_matches!(

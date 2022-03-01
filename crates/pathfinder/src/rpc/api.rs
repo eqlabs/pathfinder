@@ -91,7 +91,7 @@ impl RpcApi {
         };
 
         // Need to get the block status. This also tests that the block hash is valid.
-        let block = self.get_raw_block(block_id).await?;
+        let block = self.get_raw_block_by_hash(block_id).await?;
         let scope = requested_scope.unwrap_or_default();
 
         let transactions = self.get_block_transactions(block.number, scope).await?;
@@ -209,7 +209,7 @@ impl RpcApi {
         };
 
         // Need to get the block status. This also tests that the block hash is valid.
-        let block = self.get_raw_block(block_id).await?;
+        let block = self.get_raw_block_by_number(block_id).await?;
         let scope = requested_scope.unwrap_or_default();
 
         let transactions = self.get_block_transactions(block.number, scope).await?;
@@ -218,7 +218,37 @@ impl RpcApi {
     }
 
     /// Fetches a [RawBlock] from storage.
-    async fn get_raw_block(&self, block_id: StarknetBlocksBlockId) -> RpcResult<RawBlock> {
+    ///
+    /// Returns [`jsonrpsee::types::Error::Call`] with code [`ErrorCode::InvalidBlockHash`]
+    /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
+    async fn get_raw_block_by_hash(&self, block_id: StarknetBlocksBlockId) -> RpcResult<RawBlock> {
+        self.get_raw_block(block_id, ErrorCode::InvalidBlockHash)
+            .await
+    }
+
+    /// Fetches a [RawBlock] from storage.
+    ///
+    /// Returns [`jsonrpsee::types::Error::Call`] with code [`ErrorCode::InvalidBlockNumber`]
+    /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
+    async fn get_raw_block_by_number(
+        &self,
+        block_id: StarknetBlocksBlockId,
+    ) -> RpcResult<RawBlock> {
+        self.get_raw_block(block_id, ErrorCode::InvalidBlockNumber)
+            .await
+    }
+
+    /// Fetches a [RawBlock] from storage.
+    ///
+    /// `error_code_for_latest` is the error code when the `latest` block is missing,
+    /// ie. when the storage is empty.
+    async fn get_raw_block(
+        &self,
+        block_id: StarknetBlocksBlockId,
+        error_code_for_latest: ErrorCode,
+    ) -> RpcResult<RawBlock> {
+        use crate::storage::StarknetBlocksTable;
+
         let storage = self.storage.clone();
 
         let handle = tokio::task::spawn_blocking(move || {
@@ -235,7 +265,7 @@ impl RpcApi {
             let block = StarknetBlocksTable::get(&transaction, block_id)
                 .context("Read block from database")
                 .map_err(internal_server_error)?
-                .ok_or_else(|| Error::from(ErrorCode::InvalidBlockHash))?;
+                .ok_or_else(|| Error::from(error_code_for_latest))?;
 
             // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
             let l1_l2_head = RefsTable::get_l1_l2_head(&transaction)
@@ -520,7 +550,7 @@ impl RpcApi {
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
 
         let block_id = match block_number {
-            BlockNumberOrTag::Number(hash) => StarknetBlocksBlockId::Number(hash),
+            BlockNumberOrTag::Number(number) => StarknetBlocksBlockId::Number(number),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
             BlockNumberOrTag::Tag(Tag::Pending) => {
                 let block = self

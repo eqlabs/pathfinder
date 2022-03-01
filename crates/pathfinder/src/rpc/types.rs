@@ -161,9 +161,9 @@ pub mod reply {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Block {
-        block_hash: Option<StarknetBlockHash>,
+        pub block_hash: Option<StarknetBlockHash>,
         parent_hash: StarknetBlockHash,
-        block_number: Option<StarknetBlockNumber>,
+        pub block_number: Option<StarknetBlockNumber>,
         status: BlockStatus,
         sequencer: H160,
         new_root: Option<GlobalRoot>,
