@@ -427,7 +427,60 @@ impl StarknetTransactionsTable {
         connection: &Connection,
         block: StarknetBlocksBlockId,
     ) -> anyhow::Result<Vec<(transaction::Transaction, transaction::Receipt)>> {
-        todo!();
+        // Identify block hash
+        let block_hash = match block {
+            StarknetBlocksBlockId::Number(number) => {
+                match StarknetBlocksTable::get(connection, number.into())? {
+                    Some(block) => block.hash,
+                    None => return Ok(Vec::new()),
+                }
+            }
+            StarknetBlocksBlockId::Hash(hash) => hash,
+            StarknetBlocksBlockId::Latest => {
+                match StarknetBlocksTable::get(connection, StarknetBlocksBlockId::Latest)? {
+                    Some(block) => block.hash,
+                    None => return Ok(Vec::new()),
+                }
+            }
+        };
+
+        let mut stmt = connection
+            .prepare(
+                "SELECT tx, receipt FROM starknet_transactions WHERE hash = ? ORDER BY idx ASC",
+            )
+            .context("Preparing statement")?;
+
+        let mut rows = stmt
+            .query(params![&block_hash.0.as_be_bytes()[..]])
+            .context("Executing query")?;
+
+        let mut decompressor = zstd::bulk::Decompressor::new().context("Creating decompressor")?;
+        let mut data = Vec::new();
+        while let Some(row) = rows.next()? {
+            let receipt = row
+                .get_ref_unwrap("receipt")
+                .as_blob_or_null()?
+                .context("Receipt data missing")?;
+            let receipt = decompressor
+                .decompress(receipt, 1000 * 1000 * 10)
+                .context("Decompressing transaction receipt")?;
+            let receipt = serde_json::de::from_slice(&receipt)
+                .context("Deserializing transaction receipt")?;
+
+            let transaction = row
+                .get_ref_unwrap("tx")
+                .as_blob_or_null()?
+                .context("Transaction data missing")?;
+            let transaction = decompressor
+                .decompress(transaction, 1000 * 1000 * 10)
+                .context("Decompressing transaction")?;
+            let transaction =
+                serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
+
+            data.push((transaction, receipt));
+        }
+
+        Ok(data)
     }
 
     pub fn get_transaction_at_block(
@@ -435,28 +488,142 @@ impl StarknetTransactionsTable {
         block: StarknetBlocksBlockId,
         index: usize,
     ) -> anyhow::Result<Option<transaction::Transaction>> {
-        todo!();
+        // Identify block hash
+        let block_hash = match block {
+            StarknetBlocksBlockId::Number(number) => {
+                match StarknetBlocksTable::get(connection, number.into())? {
+                    Some(block) => block.hash,
+                    None => return Ok(None),
+                }
+            }
+            StarknetBlocksBlockId::Hash(hash) => hash,
+            StarknetBlocksBlockId::Latest => {
+                match StarknetBlocksTable::get(connection, StarknetBlocksBlockId::Latest)? {
+                    Some(block) => block.hash,
+                    None => return Ok(None),
+                }
+            }
+        };
+
+        let mut stmt = connection
+            .prepare("SELECT tx FROM starknet_transactions WHERE hash = ? AND idx = ?")
+            .context("Preparing statement")?;
+
+        let mut rows = stmt
+            .query(params![&block_hash.0.as_be_bytes()[..], index])
+            .context("Executing query")?;
+
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let transaction = match row.get_ref_unwrap(0).as_blob_or_null()? {
+            Some(data) => data,
+            None => return Ok(None),
+        };
+
+        let transaction = zstd::bulk::decompress(transaction, 1000 * 1000 * 10)
+            .context("Decompressing transaction")?;
+        let transaction =
+            serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
+
+        Ok(Some(transaction))
     }
 
     pub fn get_receipt(
         connection: &Connection,
         transaction: StarknetTransactionHash,
     ) -> anyhow::Result<Option<(transaction::Receipt, StarknetBlockHash)>> {
-        todo!();
+        let mut stmt = connection
+            .prepare("SELECT receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
+            .context("Preparing statement")?;
+
+        let mut rows = stmt
+            .query(params![&transaction.0.as_be_bytes()[..]])
+            .context("Executing query")?;
+
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let receipt = match row.get_ref_unwrap("receipt").as_blob_or_null()? {
+            Some(data) => data,
+            None => return Ok(None),
+        };
+        let receipt = zstd::bulk::decompress(receipt, 1000 * 1000 * 10)
+            .context("Decompressing transaction")?;
+        let receipt = serde_json::de::from_slice(&receipt).context("Deserializing transaction")?;
+
+        let block_hash = row.get_ref_unwrap("block_hash").as_blob()?;
+        let block_hash =
+            StarkHash::from_be_slice(block_hash).context("Deserializing block hash")?;
+        let block_hash = StarknetBlockHash(block_hash);
+
+        Ok(Some((receipt, block_hash)))
     }
 
     pub fn get_transaction(
         connection: &Connection,
         transaction: StarknetTransactionHash,
     ) -> anyhow::Result<Option<transaction::Transaction>> {
-        todo!();
+        let mut stmt = connection
+            .prepare("SELECT tx FROM starknet_transactions WHERE hash = ?1")
+            .context("Preparing statement")?;
+
+        let mut rows = stmt
+            .query(params![&transaction.0.as_be_bytes()[..]])
+            .context("Executing query")?;
+
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let transaction = match row.get_ref_unwrap(0).as_blob_or_null()? {
+            Some(data) => data,
+            None => return Ok(None),
+        };
+
+        let transaction = zstd::bulk::decompress(transaction, 1000 * 1000 * 10)
+            .context("Decompressing transaction")?;
+        let transaction =
+            serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
+
+        Ok(Some(transaction))
     }
 
     pub fn get_transaction_count(
         connection: &Connection,
         block: StarknetBlocksBlockId,
     ) -> anyhow::Result<usize> {
-        todo!();
+        match block {
+            StarknetBlocksBlockId::Number(number) => connection
+                .query_row(
+                    "SELECT COUNT(*) FROM starknet_transactions WHERE number = ?1",
+                    params![number.0],
+                    |row| row.get(0),
+                )
+                .context("Counting transactions"),
+            StarknetBlocksBlockId::Hash(hash) => connection
+                .query_row(
+                    "SELECT COUNT(*) FROM starknet_transactions WHERE hash = ?1",
+                    params![&hash.0.as_be_bytes()[..]],
+                    |row| row.get(0),
+                )
+                .context("Counting transactions"),
+            StarknetBlocksBlockId::Latest => {
+                // First get the latest block
+                let block =
+                    match StarknetBlocksTable::get(connection, StarknetBlocksBlockId::Latest)? {
+                        Some(block) => block.number,
+                        None => return Ok(0),
+                    };
+
+                Self::get_transaction_count(connection, block.into())
+            }
+        }
     }
 }
 
