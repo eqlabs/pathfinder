@@ -193,7 +193,6 @@ pub async fn sync(
                 let _ = tx.send(exists);
             }
             Err(TryRecvError::Empty) => {
-                println!("nothing from L2");
                 l2_did_emit = false;
             }
             Err(TryRecvError::Disconnected) => {
