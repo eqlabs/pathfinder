@@ -58,7 +58,7 @@ pub async fn sync(
         Ok((l1_head, l2_head))
     })?;
 
-    // Initialize sync status process. This process
+    // Start update sync-status process.
     let starting_block = l2_head
         .map(|(_, hash)| hash)
         .unwrap_or(StarknetBlockHash(StarkHash::ZERO));
