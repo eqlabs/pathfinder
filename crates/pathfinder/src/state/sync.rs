@@ -326,8 +326,6 @@ async fn l2_update(
             hash: block.block_hash.unwrap(),
             root: block.state_root.unwrap(),
             timestamp: StarknetBlockTimestamp(block.timestamp),
-            // transaction_receipts: block.transaction_receipts,
-            // transactions: block.transactions,
         };
         StarknetBlocksTable::insert(&transaction, &starknet_block)
             .context("Insert block into database")?;
