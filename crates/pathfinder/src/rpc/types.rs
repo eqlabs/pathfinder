@@ -632,9 +632,9 @@ pub mod reply {
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Status {
-            starting_block: StarknetBlockHash,
-            current_block: StarknetBlockHash,
-            highest_block: StarknetBlockHash,
+            pub starting_block: StarknetBlockHash,
+            pub current_block: StarknetBlockHash,
+            pub highest_block: StarknetBlockHash,
         }
     }
 }

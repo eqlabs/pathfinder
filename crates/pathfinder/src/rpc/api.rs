@@ -850,7 +850,11 @@ impl RpcApi {
 
     /// Returns an object about the sync status, or false if the node is not synching.
     pub async fn syncing(&self) -> RpcResult<Syncing> {
-        todo!("This still needs to be populated by state::sync")
+        // Scoped so I don't have to think too hard about mutex guard drop semantics.
+        let value = {
+            crate::state::SYNC_STATUS.lock().await.clone()
+        };
+        Ok(value)
     }
 }
 
