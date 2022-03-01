@@ -4,12 +4,15 @@ mod l2;
 use std::time::Duration;
 
 use crate::{
-    core::{ContractRoot, GlobalRoot, StarknetBlockNumber, StarknetBlockTimestamp},
+    core::{
+        ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    },
     ethereum::{
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
         Chain,
     },
+    rpc::types::reply::syncing,
     sequencer::{self, reply::Block},
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
@@ -22,8 +25,15 @@ use crate::{
 use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{Connection, Transaction};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use web3::{transports::Http, Web3};
+
+use crate::rpc::types::reply::Syncing as SyncStatus;
+
+lazy_static::lazy_static!(
+    // TODO: consider using a broadcast channel instead for easier testing.
+    pub static ref SYNC_STATUS: Mutex<SyncStatus> = Mutex::new(SyncStatus::False(false));
+);
 
 pub async fn sync(
     storage: Storage,
@@ -45,10 +55,16 @@ pub async fn sync(
         let l2_head = StarknetBlocksTable::get(&db_conn, StarknetBlocksBlockId::Latest)
             .context("Query L2 head from database")?
             .map(|block| (block.number, block.hash));
-
         Ok((l1_head, l2_head))
     })?;
 
+    // Start update sync-status process.
+    let starting_block = l2_head
+        .map(|(_, hash)| hash)
+        .unwrap_or(StarknetBlockHash(StarkHash::ZERO));
+    let _status_sync = tokio::spawn(update_sync_status_latest(sequencer.clone(), starting_block));
+
+    // Start L1 and L2 sync processes.
     let mut l1_handle = tokio::spawn(l1::sync(tx_l1, transport.clone(), chain, l1_head));
     let mut l2_handle = tokio::spawn(l2::sync(tx_l2, sequencer.clone(), l2_head));
 
@@ -119,6 +135,7 @@ pub async fn sync(
             Ok(l2::Event::Update(block, diff, timings)) => {
                 // unwrap is safe as only pending query blocks are None.
                 let block_num = block.block_number.unwrap().0;
+                let block_hash = block.block_hash.unwrap();
                 let storage_updates: usize = diff
                     .contract_updates
                     .iter()
@@ -134,6 +151,15 @@ pub async fn sync(
 
                 block_time_avg = block_time_avg.mul_f32(1.0 - BLOCK_TIME_WEIGHT)
                     + block_time.mul_f32(BLOCK_TIME_WEIGHT);
+
+                // Update sync status
+                let sync_status = SYNC_STATUS.lock().await;
+                match *sync_status {
+                    SyncStatus::False(_) => {}
+                    SyncStatus::Status(mut status) => {
+                        status.current_block = block_hash;
+                    }
+                }
 
                 println!(
                     "Updated L2 state to block {} in {:2}s ({:2}s avg). {} ({} new) contracts deployed ({:2}s) and {} storage updates ({:2}s). Block downloaded in {:2}s and state diff in {:2}s",
@@ -223,6 +249,45 @@ pub async fn sync(
         if !l1_did_emit && !l2_did_emit {
             std::thread::sleep(Duration::from_millis(100));
         }
+    }
+}
+
+/// Periodically updates [static@SYNC_STATUS] with the latest block height.
+async fn update_sync_status_latest(
+    sequencer: sequencer::Client,
+    starting_block: StarknetBlockHash,
+) -> anyhow::Result<()> {
+    use crate::rpc::types::{BlockNumberOrTag, Tag};
+    loop {
+        // Work-around the sequencer block fetch being flakey.
+        let latest = loop {
+            if let Ok(block) = sequencer
+                .block_by_number_with_timeout(
+                    BlockNumberOrTag::Tag(Tag::Latest),
+                    Duration::from_secs(3),
+                )
+                .await
+            {
+                // Unwrap is safe as only pending blocks have None.
+                break block.block_hash.unwrap();
+            }
+        };
+
+        // Update the sync status.
+        let mut sync_status = SYNC_STATUS.lock().await;
+        match *sync_status {
+            SyncStatus::False(_) => {
+                *sync_status = SyncStatus::Status(syncing::Status {
+                    starting_block,
+                    current_block: starting_block,
+                    highest_block: latest,
+                });
+            }
+            SyncStatus::Status(mut status) => status.highest_block = latest,
+        }
+
+        // Update once every 10 seconds at most.
+        tokio::time::sleep(Duration::from_secs(10)).await;
     }
 }
 

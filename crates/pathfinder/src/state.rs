@@ -17,6 +17,7 @@ mod sync;
 
 pub use contract_hash::compute_contract_hash;
 pub use sync::sync;
+pub use sync::SYNC_STATUS;
 
 pub struct CompressedContract {
     pub abi: Vec<u8>,
