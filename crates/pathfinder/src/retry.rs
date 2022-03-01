@@ -29,9 +29,9 @@ where
         Self {
             future_factory,
             strategy: Strategy {
-                initial_backoff_secs: base_secs,
+                base_secs,
                 factor: NonZeroU64::new(1).unwrap(),
-                max_delay_secs: None,
+                max_delay: None,
                 max_num_retries: None,
             },
         }
@@ -45,9 +45,9 @@ where
         self
     }
 
-    /// Saturate backoff at `max_delay_secs` seconds.
-    pub fn max_delay_secs(mut self, max_delay_secs: NonZeroU64) -> Self {
-        self.strategy.max_delay_secs = Some(max_delay_secs);
+    /// Saturate backoff at `max_delay`.
+    pub fn max_delay(mut self, max_delay: Duration) -> Self {
+        self.strategy.max_delay = Some(max_delay);
         self
     }
 
@@ -79,9 +79,9 @@ where
 }
 
 struct Strategy {
-    initial_backoff_secs: NonZeroU64,
+    base_secs: NonZeroU64,
     factor: NonZeroU64,
-    max_delay_secs: Option<NonZeroU64>,
+    max_delay: Option<Duration>,
     max_num_retries: Option<NonZeroUsize>,
 }
 
@@ -105,17 +105,21 @@ impl From<Strategy> for MaybeLimited {
     fn from(s: Strategy) -> Self {
         // We use milliseconds in tests
         #[cfg(test)]
-        const FACTOR: u64 = 1;
+        const FACTOR: u32 = 1;
 
         // We use seconds in production
         #[cfg(not(test))]
-        const FACTOR: u64 = 1000;
+        const FACTOR: u32 = 1000;
 
-        let backoff = ExponentialBackoff::from_millis(s.initial_backoff_secs.get())
-            .factor(FACTOR * s.factor.get());
-        let backoff = match s.max_delay_secs {
-            Some(max_delay_secs) => {
-                backoff.max_delay(Duration::from_millis(max_delay_secs.get() * FACTOR))
+        let backoff = ExponentialBackoff::from_millis(s.base_secs.get()).factor(
+            s.factor
+                .get()
+                .checked_mul(FACTOR as u64)
+                .unwrap_or(u64::MAX),
+        );
+        let backoff = match s.max_delay {
+            Some(max_delay) => {
+                backoff.max_delay(max_delay.checked_mul(FACTOR).unwrap_or(Duration::MAX))
             }
             None => backoff,
         };
@@ -239,7 +243,7 @@ mod tests {
         async fn saturate_delay() {
             let uut = Uut::new([Err(Failure::Fatal); 10]);
             Retry::exponential(|| uut.do_work(), NonZeroU64::new(2).unwrap())
-                .max_delay_secs(NonZeroU64::new(128).unwrap())
+                .max_delay(Duration::from_millis(128))
                 .max_num_retries(NonZeroUsize::new(9).unwrap())
                 .on_any_err()
                 .await
@@ -319,7 +323,7 @@ mod tests {
         async fn saturate_delay() {
             let uut = Uut::new([Err(Failure::Retryable); 10]);
             Retry::exponential(|| uut.do_work(), NonZeroU64::new(2).unwrap())
-                .max_delay_secs(NonZeroU64::new(128).unwrap())
+                .max_delay(Duration::from_millis(128))
                 .max_num_retries(NonZeroUsize::new(9).unwrap())
                 .when(|e| *e == Failure::Retryable)
                 .await
