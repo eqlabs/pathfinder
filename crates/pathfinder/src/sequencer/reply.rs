@@ -127,9 +127,9 @@ pub mod transaction {
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
-        builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
-        n_steps: u64,
-        n_memory_holes: u64,
+        pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
+        pub n_steps: u64,
+        pub n_memory_holes: u64,
     }
 
     /// Types used when deserializing L2 execution resources related data.

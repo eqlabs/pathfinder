@@ -272,6 +272,92 @@ impl StarknetBlocksTable {
         Ok(())
     }
 
+    /// Returns the requested [StarknetBlock].
+    pub fn get(
+        connection: &Connection,
+        block: StarknetBlocksBlockId,
+    ) -> anyhow::Result<Option<StarknetBlock>> {
+        let mut statement = match block {
+            StarknetBlocksBlockId::Number(_) => {
+                connection.prepare("SELECT number, hash, root, timestamp, transactions, transaction_receipts FROM starknet_blocks WHERE number = ?")
+            }
+            StarknetBlocksBlockId::Hash(_) => {
+                connection.prepare("SELECT number, hash, root, timestamp, transactions, transaction_receipts FROM starknet_blocks WHERE hash = ?")
+            }
+            StarknetBlocksBlockId::Latest => {
+                connection.prepare("SELECT number, hash, root, timestamp, transactions, transaction_receipts FROM starknet_blocks ORDER BY number DESC LIMIT 1")
+            }
+        }?;
+
+        let mut rows = match block {
+            StarknetBlocksBlockId::Number(number) => statement.query(params![number.0]),
+            StarknetBlocksBlockId::Hash(hash) => {
+                statement.query(params![&hash.0.as_be_bytes()[..]])
+            }
+            StarknetBlocksBlockId::Latest => statement.query([]),
+        }?;
+
+        let row = rows.next().context("Iterate rows")?;
+        match row {
+            Some(row) => {
+                let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
+                let number = StarknetBlockNumber(number);
+
+                let hash = row.get_ref_unwrap("hash").as_blob().unwrap();
+                let hash = StarkHash::from_be_slice(hash).unwrap();
+                let hash = StarknetBlockHash(hash);
+
+                let root = row.get_ref_unwrap("root").as_blob().unwrap();
+                let root = StarkHash::from_be_slice(root).unwrap();
+                let root = GlobalRoot(root);
+
+                let timestamp = row.get_ref_unwrap("timestamp").as_i64().unwrap() as u64;
+                let timestamp = StarknetBlockTimestamp(timestamp);
+
+                let transactions = row
+                    .get_ref_unwrap("transactions")
+                    .as_blob_or_null()
+                    .unwrap()
+                    .unwrap_or_default();
+
+                let transaction_receipts = row
+                    .get_ref_unwrap("transaction_receipts")
+                    .as_blob_or_null()
+                    .unwrap()
+                    .unwrap_or_default();
+
+                let mut decompressor =
+                    zstd::bulk::Decompressor::new().context("Create zstd decompressor")?;
+                // FIXME: what should this value actually be?
+                const HUNDRED_MEGABYTES: usize = 1000 * 1000 * 100;
+
+                let transactions = decompressor
+                    .decompress(transactions, HUNDRED_MEGABYTES)
+                    .context("Decompressing transactions")?;
+                let transaction_receipts = decompressor
+                    .decompress(transaction_receipts, HUNDRED_MEGABYTES)
+                    .context("Decompressing transactions")?;
+
+                let transactions = serde_json::de::from_slice(&transactions)
+                    .context("Deserializing transactions")?;
+                let transaction_receipts = serde_json::de::from_slice(&transaction_receipts)
+                    .context("Deserializing transaction receipts")?;
+
+                let block = StarknetBlock {
+                    number,
+                    hash,
+                    root,
+                    timestamp,
+                    transaction_receipts,
+                    transactions,
+                };
+
+                Ok(Some(block))
+            }
+            None => Ok(None),
+        }
+    }
+
     /// Returns the [root](GlobalRoot) of the given block.
     pub fn get_root(
         connection: &Connection,
@@ -396,7 +482,7 @@ impl From<StarknetBlockHash> for StarknetBlocksBlockId {
 }
 
 /// Describes a Starknet block.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StarknetBlock {
     pub number: StarknetBlockNumber,
     pub hash: StarknetBlockHash,
@@ -762,6 +848,11 @@ mod tests {
 
     mod starknet_blocks {
         use super::*;
+        use crate::core::{ContractAddress, StarknetTransactionHash, StarknetTransactionIndex};
+        use crate::sequencer::reply::transaction::{
+            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+            ExecutionResources,
+        };
 
         /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
         /// with arbitrary other values.
@@ -774,8 +865,37 @@ mod tests {
                     ),
                     root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
                     timestamp: StarknetBlockTimestamp(i + 500),
-                    transaction_receipts: Vec::new(),
-                    transactions: Vec::new(),
+                    transaction_receipts: vec![transaction::Receipt {
+                        events: Vec::new(),
+                        execution_resources: ExecutionResources {
+                            builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                                EmptyBuiltinInstanceCounter {},
+                            ),
+                            n_steps: i + 987,
+                            n_memory_holes: i + 1177,
+                        },
+                        l1_to_l2_consumed_message: None,
+                        l2_to_l1_messages: Vec::new(),
+                        transaction_hash: StarknetTransactionHash(
+                            StarkHash::from_hex_str(&"ee".repeat(i as usize + 3)).unwrap(),
+                        ),
+                        transaction_index: StarknetTransactionIndex(i + 2311),
+                    }],
+                    transactions: vec![transaction::Transaction {
+                        calldata: None,
+                        constructor_calldata: None,
+                        contract_address: ContractAddress(
+                            StarkHash::from_hex_str(&"23".repeat(i as usize + 3)).unwrap(),
+                        ),
+                        contract_address_salt: None,
+                        entry_point_type: None,
+                        entry_point_selector: None,
+                        signature: None,
+                        transaction_hash: StarknetTransactionHash(
+                            StarkHash::from_hex_str(&"fe".repeat(i as usize + 3)).unwrap(),
+                        ),
+                        r#type: transaction::Type::InvokeFunction,
+                    }],
                 })
                 .collect::<Vec<_>>()
                 .try_into()
@@ -783,6 +903,125 @@ mod tests {
         }
 
         mod get {
+            use super::*;
+
+            mod by_number {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    for block in blocks {
+                        let result = StarknetBlocksTable::get(&connection, block.number.into())
+                            .unwrap()
+                            .unwrap();
+
+                        assert_eq!(result, block);
+                    }
+                }
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    let non_existent = blocks.last().unwrap().number + 1;
+                    assert_eq!(
+                        StarknetBlocksTable::get(&connection, non_existent.into()).unwrap(),
+                        None
+                    );
+                }
+            }
+
+            mod by_hash {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    for block in blocks {
+                        let result = StarknetBlocksTable::get(&connection, block.hash.into())
+                            .unwrap()
+                            .unwrap();
+
+                        assert_eq!(result, block);
+                    }
+                }
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    let non_existent =
+                        StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                    assert_eq!(
+                        StarknetBlocksTable::get(&connection, non_existent.into()).unwrap(),
+                        None
+                    );
+                }
+            }
+
+            mod latest {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let blocks = create_blocks();
+                    for block in &blocks {
+                        StarknetBlocksTable::insert(&connection, block).unwrap();
+                    }
+
+                    let expected = blocks.last().unwrap();
+
+                    let latest =
+                        StarknetBlocksTable::get(&connection, StarknetBlocksBlockId::Latest)
+                            .unwrap()
+                            .unwrap();
+                    assert_eq!(&latest, expected);
+                }
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let connection = storage.connection().unwrap();
+
+                    let latest =
+                        StarknetBlocksTable::get(&connection, StarknetBlocksBlockId::Latest)
+                            .unwrap();
+                    assert_eq!(latest, None);
+                }
+            }
+        }
+
+        mod get_without_tx {
             use super::*;
 
             mod by_number {
