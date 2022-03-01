@@ -98,7 +98,7 @@ def inmemory_with_tables():
     # strangely this cannot be pulled into the script, maybe pragmas have
     # different kind of semantics than what is normally executed, would explain
     # the similar behaviour of sqlite3 .dump and restore.
-    cur.execute("pragma user_version = 4;")
+    cur.execute("pragma user_version = 5;")
 
     con.commit()
     return con

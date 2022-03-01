@@ -14,7 +14,8 @@ use crate::{
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
-        RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, Storage,
+        RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
+        StarknetTransactionsTable, Storage,
     },
 };
 
@@ -41,7 +42,7 @@ pub async fn sync(
     let (l1_head, l2_head) = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let l1_head = L1StateTable::get(&db_conn, L1TableBlockId::Latest)
             .context("Query L1 head from database")?;
-        let l2_head = StarknetBlocksTable::get_without_tx(&db_conn, StarknetBlocksBlockId::Latest)
+        let l2_head = StarknetBlocksTable::get(&db_conn, StarknetBlocksBlockId::Latest)
             .context("Query L2 head from database")?
             .map(|block| (block.number, block.hash));
 
@@ -174,7 +175,7 @@ pub async fn sync(
             }
             Ok(l2::Event::QueryHash(block, tx)) => {
                 let hash = tokio::task::block_in_place(|| {
-                    StarknetBlocksTable::get_without_tx(&db_conn, block.into())
+                    StarknetBlocksTable::get(&db_conn, block.into())
                 })
                 .with_context(|| format!("Query L2 block hash for block {:?}", block))?
                 .map(|block| block.hash);
@@ -205,7 +206,7 @@ pub async fn sync(
                 }
 
                 let l2_head = tokio::task::block_in_place(|| {
-                    StarknetBlocksTable::get_without_tx(&db_conn, StarknetBlocksBlockId::Latest)
+                    StarknetBlocksTable::get(&db_conn, StarknetBlocksBlockId::Latest)
                 })
                 .context("Query L2 head from database")?
                 .map(|block| (block.number, block.hash));
@@ -248,12 +249,10 @@ async fn l1_update(
             Some(update) if update.block_number == expected_next => {
                 let mut next_head = None;
                 for update in updates {
-                    let l2_root = StarknetBlocksTable::get_without_tx(
-                        &transaction,
-                        update.block_number.into(),
-                    )
-                    .context("Query L2 root")?
-                    .map(|block| block.root);
+                    let l2_root =
+                        StarknetBlocksTable::get(&transaction, update.block_number.into())
+                            .context("Query L2 root")?
+                            .map(|block| block.root);
 
                     match l2_root {
                         Some(l2_root) if l2_root == update.global_root => {
@@ -322,15 +321,33 @@ async fn l2_update(
         // Update L2 database. These types shouldn't be options at this level,
         // but for now the unwraps are "safe" in that these should only ever be
         // None for pending queries to the sequencer, but we aren't using those here.
-        let block = StarknetBlock {
+        let starknet_block = StarknetBlock {
             number: block.block_number.unwrap(),
             hash: block.block_hash.unwrap(),
             root: block.state_root.unwrap(),
             timestamp: StarknetBlockTimestamp(block.timestamp),
-            transaction_receipts: block.transaction_receipts,
-            transactions: block.transactions,
         };
-        StarknetBlocksTable::insert(&transaction, &block).context("Insert update")?;
+        StarknetBlocksTable::insert(&transaction, &starknet_block)
+            .context("Insert block into database")?;
+
+        // Insert the transactions.
+        anyhow::ensure!(
+            block.transactions.len() == block.transaction_receipts.len(),
+            "Transactions and receipts mismatch. There were {} transactions and {} receipts.",
+            block.transactions.len(),
+            block.transaction_receipts.len()
+        );
+        let transaction_data = block
+            .transactions
+            .into_iter()
+            .zip(block.transaction_receipts.into_iter())
+            .collect::<Vec<_>>();
+        StarknetTransactionsTable::insert_block_transactions(
+            &transaction,
+            starknet_block.hash,
+            &transaction_data,
+        )
+        .context("Insert transaction data into database")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
@@ -338,11 +355,11 @@ async fn l2_update(
             .map(|head| head + 1)
             .unwrap_or(StarknetBlockNumber::GENESIS);
 
-        if expected_next == block.number {
-            let l1_root = L1StateTable::get_root(&transaction, block.number.into())
+        if expected_next == starknet_block.number {
+            let l1_root = L1StateTable::get_root(&transaction, starknet_block.number.into())
                 .context("Query L1 root")?;
-            if l1_root == Some(block.root) {
-                RefsTable::set_l1_l2_head(&transaction, Some(block.number))
+            if l1_root == Some(starknet_block.root) {
+                RefsTable::set_l1_l2_head(&transaction, Some(starknet_block.number))
                     .context("Update L1-L2 head")?;
             }
         }
@@ -386,11 +403,10 @@ fn update_starknet_state(
     transaction: &Transaction,
     diff: StateUpdate,
 ) -> anyhow::Result<GlobalRoot> {
-    let global_root =
-        StarknetBlocksTable::get_without_tx(transaction, StarknetBlocksBlockId::Latest)
-            .context("Query latest state root")?
-            .map(|block| block.root)
-            .unwrap_or(GlobalRoot(StarkHash::ZERO));
+    let global_root = StarknetBlocksTable::get(transaction, StarknetBlocksBlockId::Latest)
+        .context("Query latest state root")?
+        .map(|block| block.root)
+        .unwrap_or(GlobalRoot(StarkHash::ZERO));
     let mut global_tree =
         GlobalStateTree::load(transaction, global_root).context("Loading global state tree")?;
 
