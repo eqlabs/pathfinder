@@ -252,7 +252,7 @@ pub async fn sync(
     }
 }
 
-/// Periodically updates [SYNC_STATUS] with the latest block height.
+/// Periodically updates [static@SYNC_STATUS] with the latest block height.
 async fn update_sync_status_latest(
     sequencer: sequencer::Client,
     starting_block: StarknetBlockHash,
