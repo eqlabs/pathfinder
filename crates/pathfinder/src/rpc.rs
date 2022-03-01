@@ -929,10 +929,19 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let params = rpc_params!(*GENESIS_BLOCK_NUMBER, *VALID_TX_INDEX);
-            client_request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
+            let storage = setup_storage();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(0, 0);
+            let txn = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
                 .await
                 .unwrap();
+            assert_eq!(
+                txn.txn_hash,
+                StarknetTransactionHash(StarkHash::from_be_slice(b"block 0 txn 0").unwrap())
+            );
         }
 
         mod latest {
@@ -940,47 +949,63 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest), *VALID_TX_INDEX);
-                client_request::<Transaction>(
-                    "starknet_getTransactionByBlockNumberAndIndex",
-                    params,
-                )
-                .await
-                .unwrap();
+                let storage = setup_storage();
+                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest), 0);
+                let txn = client(addr)
+                    .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    txn.txn_hash,
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 1 txn 0").unwrap())
+                );
             }
 
             #[tokio::test]
             async fn named_args() {
-                let params = by_name([
-                    ("block_number", json!("latest")),
-                    ("index", json!(*VALID_TX_INDEX)),
-                ]);
-                client_request::<Transaction>(
-                    "starknet_getTransactionByBlockNumberAndIndex",
-                    params,
-                )
-                .await
-                .unwrap();
+                let storage = setup_storage();
+                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let params = by_name([("block_number", json!("latest")), ("index", json!(0))]);
+                let txn = client(addr)
+                    .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    txn.txn_hash,
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 1 txn 0").unwrap())
+                );
             }
         }
 
         #[tokio::test]
         async fn pending() {
-            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending), *VALID_TX_INDEX);
-            client_request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending), 0);
+            client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_block() {
-            let params = rpc_params!(*INVALID_BLOCK_NUMBER, *VALID_TX_INDEX);
-            let error = client_request::<Transaction>(
-                "starknet_getTransactionByBlockNumberAndIndex",
-                params,
-            )
-            .await
-            .unwrap_err();
+            let storage = setup_storage();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(123, 0);
+            let error = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_BLOCK_NUMBER)
@@ -989,10 +1014,19 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_transaction_index() {
-            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest), *INVALID_TX_INDEX);
-            client_request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
+            let storage = setup_storage();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(0, 123);
+            let error = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
                 .await
                 .unwrap_err();
+            assert_matches!(
+                error,
+                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_TX_INDEX)
+            );
         }
     }
 
@@ -1005,28 +1039,49 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let params = rpc_params!(*VALID_TX_HASH);
-                client_request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
+                let storage = setup_storage();
+                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let txn_hash =
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 0 txn 0").unwrap());
+                let params = rpc_params!(txn_hash);
+                let receipt = client(addr)
+                    .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                     .await
                     .unwrap();
+                assert_eq!(receipt.txn_hash, txn_hash);
             }
 
             #[tokio::test]
             async fn named_args() {
-                let params = by_name([("transaction_hash", json!(*VALID_TX_HASH))]);
-                client_request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
+                let storage = setup_storage();
+                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let txn_hash =
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 0 txn 0").unwrap());
+                let params = by_name([("transaction_hash", json!(txn_hash))]);
+                let receipt = client(addr)
+                    .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                     .await
                     .unwrap();
+                assert_eq!(receipt.txn_hash, txn_hash);
             }
         }
 
         #[tokio::test]
         async fn invalid() {
-            let params = rpc_params!(*INVALID_TX_HASH);
-            let error =
-                client_request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
-                    .await
-                    .unwrap_err();
+            let storage = setup_storage();
+            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"not found").unwrap());
+            let params = rpc_params!(txn_hash);
+            let error = client(addr)
+                .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_TX_HASH)
