@@ -1357,9 +1357,7 @@ mod tests {
             let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-            let params = rpc_params!(StarknetBlockHash(
-                StarkHash::from_be_slice(b"genesis").unwrap()
-            ));
+            let params = rpc_params!(0);
             let count = client(addr)
                 .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
                 .await
@@ -1401,8 +1399,13 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending));
-            client_request::<u64>("starknet_getBlockTransactionCountByNumber", params)
+            client(addr)
+                .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
                 .await
                 .unwrap();
         }
@@ -1413,7 +1416,7 @@ mod tests {
             let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-            let params = rpc_params!(*INVALID_BLOCK_NUMBER);
+            let params = rpc_params!(123);
             let error = client(addr)
                 .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
                 .await

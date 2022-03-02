@@ -601,7 +601,9 @@ impl StarknetTransactionsTable {
         match block {
             StarknetBlocksBlockId::Number(number) => connection
                 .query_row(
-                    "SELECT COUNT(*) FROM starknet_transactions WHERE number = ?1",
+                    "SELECT COUNT(*) FROM starknet_transactions
+                    JOIN starknet_blocks ON starknet_transactions.block_hash = starknet_blocks.hash
+                    WHERE number = ?1",
                     params![number.0],
                     |row| row.get(0),
                 )
