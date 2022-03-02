@@ -506,7 +506,7 @@ impl StarknetTransactionsTable {
         };
 
         let mut stmt = connection
-            .prepare("SELECT tx FROM starknet_transactions WHERE hash = ? AND idx = ?")
+            .prepare("SELECT tx FROM starknet_transactions WHERE block_hash = ? AND idx = ?")
             .context("Preparing statement")?;
 
         let mut rows = stmt

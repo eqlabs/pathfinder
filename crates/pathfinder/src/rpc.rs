@@ -235,15 +235,20 @@ mod tests {
     use super::*;
     use crate::{
         core::{
-            GlobalRoot, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetProtocolVersion,
+            ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+            StarknetBlockTimestamp, StarknetProtocolVersion,
         },
         ethereum::Chain,
         rpc::run_server,
-        sequencer,
-        sequencer::test_utils::*,
-        storage::Storage,
-        storage::{StarknetBlock, StarknetBlocksTable},
+        sequencer::{
+            reply::transaction::{
+                execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+                ExecutionResources, Receipt, Transaction, Type,
+            },
+            test_utils::*,
+            Client as SeqClient,
+        },
+        storage::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage},
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{
@@ -252,6 +257,7 @@ mod tests {
         types::{traits::Client, v2::ParamsSer, DeserializeOwned},
     };
     use pedersen::StarkHash;
+    use rusqlite::Connection;
     use serde_json::json;
     #[allow(unused_imports)]
     use std::assert_eq as dont_use_std_assert_eq;
@@ -281,7 +287,7 @@ mod tests {
         loop {
             // Restart the server each time (and implicitly the sequencer client, which actually does the job)
             let storage = Storage::in_memory().unwrap();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             match client(addr).request::<Out>(method, params.clone()).await {
@@ -343,18 +349,12 @@ mod tests {
         )
     }
 
-    use crate::{
-        core::ContractAddress,
-        sequencer::reply::transaction::{
-            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-            ExecutionResources, Receipt, Transaction, Type,
-        },
-    };
-
     // Local test helper
     fn setup_storage() -> Storage {
         let storage = Storage::in_memory().unwrap();
-        let connection = storage.connection().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let db_txn = connection.transaction().unwrap();
+
         let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
         let block_0 = StarknetBlock {
             number: StarknetBlockNumber(0),
@@ -369,8 +369,57 @@ mod tests {
             root: GlobalRoot(StarkHash::ZERO),
             timestamp: StarknetBlockTimestamp(0),
         };
-        StarknetBlocksTable::insert(&connection, &block_0).unwrap();
-        StarknetBlocksTable::insert(&connection, &block_1).unwrap();
+        StarknetBlocksTable::insert(&db_txn, &block_0).unwrap();
+        StarknetBlocksTable::insert(&db_txn, &block_1).unwrap();
+
+        let txn0_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
+        let txn0 = Transaction {
+            calldata: None,
+            constructor_calldata: None,
+            contract_address: ContractAddress(StarkHash::ZERO),
+            contract_address_salt: None,
+            entry_point_type: None,
+            entry_point_selector: None,
+            signature: None,
+            transaction_hash: txn0_hash,
+            r#type: Type::Deploy,
+        };
+        let receipt0 = Receipt {
+            events: vec![],
+            execution_resources: ExecutionResources {
+                builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                    EmptyBuiltinInstanceCounter {},
+                ),
+                n_memory_holes: 0,
+                n_steps: 0,
+            },
+            l1_to_l2_consumed_message: None,
+            l2_to_l1_messages: vec![],
+            transaction_hash: txn0_hash,
+            transaction_index: StarknetTransactionIndex(0),
+        };
+        let txn1_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 1").unwrap());
+        let mut txn1 = txn0.clone();
+        txn1.transaction_hash = txn1_hash;
+        let mut receipt1 = receipt0.clone();
+        receipt1.transaction_hash = txn1_hash;
+        let transaction_data0 = [(txn0, receipt0)];
+        let transaction_data1 = [(txn1, receipt1)];
+        StarknetTransactionsTable::insert_block_transactions(
+            &db_txn,
+            genesis_hash,
+            &transaction_data0,
+        )
+        .unwrap();
+        StarknetTransactionsTable::insert_block_transactions(
+            &db_txn,
+            latest_hash,
+            &transaction_data1,
+        )
+        .unwrap();
+
+        db_txn.commit().unwrap();
+
         storage
     }
 
@@ -387,7 +436,7 @@ mod tests {
         #[tokio::test]
         async fn genesis() {
             let storage = setup_storage();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let genesis_hash =
@@ -410,7 +459,7 @@ mod tests {
                 #[tokio::test]
                 async fn all() {
                     let storage = setup_storage();
-                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let latest_hash =
@@ -429,7 +478,7 @@ mod tests {
                 #[tokio::test]
                 async fn only_mandatory() {
                     let storage = setup_storage();
-                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let latest_hash =
@@ -451,7 +500,7 @@ mod tests {
                 #[tokio::test]
                 async fn all() {
                     let storage = setup_storage();
-                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let latest_hash =
@@ -470,7 +519,7 @@ mod tests {
                 #[tokio::test]
                 async fn only_mandatory() {
                     let storage = setup_storage();
-                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let latest_hash =
@@ -488,7 +537,7 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let storage = Storage::in_memory().unwrap();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
@@ -504,7 +553,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_block_hash() {
             let storage = Storage::in_memory().unwrap();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO));
@@ -526,7 +575,7 @@ mod tests {
         #[tokio::test]
         async fn genesis() {
             let storage = setup_storage();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(StarknetBlockNumber(0));
@@ -545,7 +594,7 @@ mod tests {
                 #[tokio::test]
                 async fn all() {
                     let storage = setup_storage();
-                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let params = rpc_params!(
@@ -562,7 +611,7 @@ mod tests {
                 #[tokio::test]
                 async fn only_mandatory() {
                     let storage = setup_storage();
-                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
@@ -581,7 +630,7 @@ mod tests {
                 #[tokio::test]
                 async fn all() {
                     let storage = setup_storage();
-                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let params = by_name([
@@ -598,7 +647,7 @@ mod tests {
                 #[tokio::test]
                 async fn only_mandatory() {
                     let storage = setup_storage();
-                    let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                    let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let params = by_name([("block_number", json!("latest"))]);
@@ -614,7 +663,7 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let storage = Storage::in_memory().unwrap();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
@@ -630,7 +679,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_number() {
             let storage = Storage::in_memory().unwrap();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(StarknetBlockNumber(123));
@@ -736,7 +785,7 @@ mod tests {
             #[ignore = "This is a manual test and will be removed once state mocking facilities are ready."]
             async fn real_data() {
                 let storage = Storage::migrate("desync.sqlite".into()).unwrap();
-                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = rpc_params!(
@@ -821,7 +870,7 @@ mod tests {
         #[tokio::test]
         async fn genesis() {
             let storage = setup_storage();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
@@ -832,7 +881,7 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 txn.txn_hash,
-                StarknetTransactionHash(StarkHash::from_be_slice(b"block 0 txn 0").unwrap())
+                StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap())
             )
         }
 
@@ -842,7 +891,7 @@ mod tests {
             #[tokio::test]
             async fn positional_args() {
                 let storage = setup_storage();
-                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest), 0);
@@ -852,14 +901,14 @@ mod tests {
                     .unwrap();
                 assert_eq!(
                     txn.txn_hash,
-                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 1 txn 0").unwrap())
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"txn 1").unwrap())
                 );
             }
 
             #[tokio::test]
             async fn named_args() {
                 let storage = setup_storage();
-                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = by_name([("block_hash", json!("latest")), ("index", json!(0))]);
@@ -869,7 +918,7 @@ mod tests {
                     .unwrap();
                 assert_eq!(
                     txn.txn_hash,
-                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 1 txn 0").unwrap())
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"txn 1").unwrap())
                 );
             }
         }
@@ -877,7 +926,7 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let storage = Storage::in_memory().unwrap();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending), 0);
@@ -890,7 +939,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_block() {
             let storage = setup_storage();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO), 0);
@@ -907,7 +956,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_transaction_index() {
             let storage = setup_storage();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
@@ -930,7 +979,7 @@ mod tests {
         #[tokio::test]
         async fn genesis() {
             let storage = setup_storage();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(0, 0);
@@ -940,7 +989,7 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 txn.txn_hash,
-                StarknetTransactionHash(StarkHash::from_be_slice(b"block 0 txn 0").unwrap())
+                StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap())
             );
         }
 
@@ -950,7 +999,7 @@ mod tests {
             #[tokio::test]
             async fn positional_args() {
                 let storage = setup_storage();
-                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest), 0);
@@ -960,14 +1009,14 @@ mod tests {
                     .unwrap();
                 assert_eq!(
                     txn.txn_hash,
-                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 1 txn 0").unwrap())
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"txn 1").unwrap())
                 );
             }
 
             #[tokio::test]
             async fn named_args() {
                 let storage = setup_storage();
-                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = by_name([("block_number", json!("latest")), ("index", json!(0))]);
@@ -977,7 +1026,7 @@ mod tests {
                     .unwrap();
                 assert_eq!(
                     txn.txn_hash,
-                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 1 txn 0").unwrap())
+                    StarknetTransactionHash(StarkHash::from_be_slice(b"txn 1").unwrap())
                 );
             }
         }
@@ -985,7 +1034,7 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let storage = Storage::in_memory().unwrap();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending), 0);
@@ -998,7 +1047,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_block() {
             let storage = setup_storage();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(123, 0);
@@ -1015,7 +1064,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_transaction_index() {
             let storage = setup_storage();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(0, 123);
@@ -1040,11 +1089,10 @@ mod tests {
             #[tokio::test]
             async fn positional_args() {
                 let storage = setup_storage();
-                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-                let txn_hash =
-                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 0 txn 0").unwrap());
+                let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let params = rpc_params!(txn_hash);
                 let receipt = client(addr)
                     .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
@@ -1056,11 +1104,10 @@ mod tests {
             #[tokio::test]
             async fn named_args() {
                 let storage = setup_storage();
-                let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-                let txn_hash =
-                    StarknetTransactionHash(StarkHash::from_be_slice(b"block 0 txn 0").unwrap());
+                let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let params = by_name([("transaction_hash", json!(txn_hash))]);
                 let receipt = client(addr)
                     .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
@@ -1073,7 +1120,7 @@ mod tests {
         #[tokio::test]
         async fn invalid() {
             let storage = setup_storage();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"not found").unwrap());
@@ -1107,7 +1154,7 @@ mod tests {
         #[tokio::test]
         async fn returns_not_found_if_we_dont_know_about_the_contract() {
             let storage = Storage::in_memory().unwrap();
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
 
@@ -1177,7 +1224,7 @@ mod tests {
                 tx.commit().unwrap();
             }
 
-            let sequencer = sequencer::Client::new(Chain::Goerli).unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
 
@@ -1508,7 +1555,7 @@ mod tests {
                 .iter()
                 .map(|set_chain| async {
                     let storage = Storage::in_memory().unwrap();
-                    let sequencer = sequencer::Client::new(*set_chain).unwrap();
+                    let sequencer = SeqClient::new(*set_chain).unwrap();
                     let api = RpcApi::new(storage, sequencer, *set_chain);
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let params = rpc_params!();
