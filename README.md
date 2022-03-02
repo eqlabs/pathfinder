@@ -71,7 +71,7 @@ cargo build --release --bin pathfinder
 
 Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup). For the `pathfinder` environment this is done by running:
 ```bash
-$ source <path-to-pathfinder-repo>/py/.venv/bin/activate
+source <path-to-pathfinder-repo>/py/.venv/bin/activate
 ```
 If you are already in another virtual environment, you can exit it by running `deactivate` and then activating the `pathfinder` one.
 
