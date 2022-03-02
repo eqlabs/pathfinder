@@ -91,24 +91,16 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
     }
 
     // Remove transaction columns from blocks table.
-    let rows_altered = transaction
+    transaction
         .execute("ALTER TABLE starknet_blocks DROP COLUMN transactions", [])
         .context("Dropping transactions from starknet_blocks table")?;
-    anyhow::ensure!(
-        rows_altered == todo,
-        "Number of altered rows did not match expectation when dropping transactions column"
-    );
 
-    let rows_altered = transaction
+    transaction
         .execute(
             "ALTER TABLE starknet_blocks DROP COLUMN transaction_receipts",
             [],
         )
         .context("Dropping transaction receipts from starknet_blocks table")?;
-    anyhow::ensure!(
-        rows_altered == todo,
-        "Number of altered rows did not match expectation when dropping transaction receipts column"
-    );
 
     // Database should be vacuum'd to defrag removal of transaction columns.
     Ok(PostMigrationAction::Vacuum)
@@ -191,24 +183,39 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let tx = serde_json::ser::to_vec(&tx_original).unwrap();
-        let receipts = serde_json::ser::to_vec(&receipts_original).unwrap();
+        let tx0 = serde_json::ser::to_vec(&tx_original[..5]).unwrap();
+        let tx1 = serde_json::ser::to_vec(&tx_original[5..]).unwrap();
+        let receipts0 = serde_json::ser::to_vec(&receipts_original[..5]).unwrap();
+        let receipts1 = serde_json::ser::to_vec(&receipts_original[5..]).unwrap();
 
         let mut compressor = zstd::bulk::Compressor::new(10).unwrap();
         let mut decompressor = zstd::bulk::Decompressor::new().unwrap();
-        let tx = compressor.compress(&tx).unwrap();
-        let receipts = compressor.compress(&receipts).unwrap();
+        let tx0 = compressor.compress(&tx0).unwrap();
+        let tx1 = compressor.compress(&tx1).unwrap();
+        let receipts0 = compressor.compress(&receipts0).unwrap();
+        let receipts1 = compressor.compress(&receipts1).unwrap();
 
         transaction.execute(r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  transactions,  transaction_receipts)
                                                    VALUES (:number, :hash, :root, :timestamp, :transactions, :transaction_receipts)",
         named_params! {
                 ":number": 123, // This doesn't matter
                 ":hash": &block_hash,
-                ":root": &vec![12u8, 33, 55],   // This doesn't matter
+                ":root": &vec![12u8, 33, 55], // This doesn't matter
                 ":timestamp": 200, // This doesn't matter
-                ":transactions": &tx,
-                ":transaction_receipts": &receipts,
+                ":transactions": &tx0,
+                ":transaction_receipts": &receipts0,
             }).unwrap();
+
+        transaction.execute(r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  transactions,  transaction_receipts)
+            VALUES (:number, :hash, :root, :timestamp, :transactions, :transaction_receipts)",
+        named_params! {
+                ":number": 124, // This doesn't matter
+                ":hash": &block_hash,
+                ":root": &vec![12u8, 33, 56], // This doesn't matter
+                ":timestamp": 200, // This doesn't matter
+                ":transactions": &tx1,
+                ":transaction_receipts": &receipts1,
+        }).unwrap();
 
         // Perform this migration
         super::migrate(&transaction).unwrap();
@@ -242,7 +249,7 @@ mod tests {
             let rx_i = serde_json::de::from_slice::<transaction::Receipt>(&rx_i).unwrap();
 
             assert_eq!(tx.transaction_hash, hash);
-            assert_eq!(i, idx);
+            assert_eq!(i % 5, idx);
             assert_eq!(block_hash, b_hash);
             assert_eq!(tx, &tx_i);
             assert_eq!(rx, &rx_i);
