@@ -1,14 +1,21 @@
 # Welcome to Pathfinder
 
-A StarkNet full node giving you a trusted view into the StarkNet network.
+A StarkNet full node giving you a trusted view of the StarkNet.
 
-Pathfinder is currently in alpha but is already usable today.
+Pathfinder is currently in alpha so expect some rough edges but it is already usable today!
 
 ## Features
 
-## Roadmap
+- access the full StarkNet state history
+- verifies state using L1
+- Ethereum-like RPC API
+- call StarkNet functions locally
 
 ## Feedback
+
+We appreciate any feedback, especially during this alpha period. This includes any documentation issues, feature requests and bugs that you may encounter.
+
+For help or to submit bug reports or feature requests, please open an issue or alternatively visit the StarkNet [discord channel](https://discord.com/invite/uJ9HZTUk2Y).
 
 ## Installation
 
@@ -126,7 +133,33 @@ The StarkNet network is based on the provided Ethereum endpoint. If the Ethereum
 
 ## API
 
+Here is an overview of the JSON-RPC calls which are supported. The full specification is available [here](https://github.com/starkware-libs/starknet-specs), but please note that we currently only support the subset listed here.
 
+```bash
+# Block information
+starknet_getBlockByHash
+starknet_getBlockByNumber
+# Value of a storage at a given address and key
+starknet_getStorageAt                         # Value of a storage at the given address and key
+# Transaction information
+starknet_getTransactionByHash
+starknet_getTransactionByBlockHashAndIndex
+starknet_getTransactionByBlockNumberAndIndex
+starknet_getTransactionReceipt
+# Block transaction counts
+starknet_getBlockTransactionCountByHash
+starknet_getBlockTransactionCountByNumber
+# The code of a specific contract
+starknet_getCode
+# Call a StarkNet function without creating a transaction
+starknet_call
+# The latest StarkNet block height
+starknet_blockNumber
+# The StarkNet chain this node is on
+starknet_chainId
+# The node's sync status
+starknet_syncing
+```
 
 ## License
 
