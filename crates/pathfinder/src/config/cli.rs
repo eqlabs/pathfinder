@@ -54,10 +54,8 @@ where
 ///
 /// Sets the argument names, help strings etc.
 fn clap_app() -> clap::App<'static, 'static> {
-    use super::{file::DEFAULT_FILEPATH, DEFAULT_HTTP_RPC_ADDR};
+    use super::DEFAULT_HTTP_RPC_ADDR;
     lazy_static::lazy_static! {
-        static ref CFG_LONG_HELP: String =
-            format!("Path to the toml configuration file. Defaults to {}", DEFAULT_FILEPATH.to_string_lossy());
         static ref HTTP_RPC_HELP: String =
             format!("HTTP-RPC listening address [default: {}]", DEFAULT_HTTP_RPC_ADDR);
     }
@@ -69,8 +67,7 @@ fn clap_app() -> clap::App<'static, 'static> {
             Arg::with_name(CONFIG_KEY)
                 .short("c")
                 .long(CONFIG_KEY)
-                .help("Path to the configuration file")
-                .long_help(&CFG_LONG_HELP)
+                .help("Path to the configuration file.")
                 .value_name("FILE")
                 .takes_value(true),
         )
@@ -91,23 +88,19 @@ fn clap_app() -> clap::App<'static, 'static> {
         .arg(
             Arg::with_name(ETH_URL_KEY)
                 .long(ETH_URL_KEY)
-                .help("Ethereum API URL")
+                .help("Ethereum API endpoint")
                 .takes_value(true)
-                .value_name("HTTP URL")
-                .long_help(r#"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum light client or a hosted gateway service such as Infura or Cloudflare.
+                .value_name("HTTP(s) URL")
+                .long_help(r"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura or Cloudflare.
 Examples:
     infura: https://goerli.infura.io/v3/<PROJECT_ID>
-    geth:   https://localhost:8545"#))
+    geth:   https://localhost:8545"))
         .arg(
             Arg::with_name(HTTP_RPC_ADDR_KEY)
                 .long(HTTP_RPC_ADDR_KEY)
                 .help(&HTTP_RPC_HELP)
                 .takes_value(true)
                 .value_name("IP:PORT")
-                .long_help(r#"This should point to a valid network interface address and selected port.
-Example:
-    Specific interface and port:    192.168.0.1:1234
-    All interfaces and random port: 0.0.0.0:0"#),
         )
 }
 

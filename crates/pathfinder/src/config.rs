@@ -58,8 +58,7 @@ impl Configuration {
     /// Creates a [node configuration](Configuration) based on the options specified
     /// via the command-line and config file.
     ///
-    /// The config filepath may be specified as a command-line parameter, otherwise
-    /// it defaults to `$HOME/.starknet/config.toml`.
+    /// The config filepath may be specified as a command-line parameter.
     ///
     /// Options from the command-line and config file will be merged, with the
     /// command-line taking precedence. It is valid for no configuration file to exist,
@@ -75,8 +74,7 @@ impl Configuration {
         // users config filepath (if supplied).
         let (cfg_filepath, cli_cfg) = cli::parse_cmd_line();
 
-        // Parse configuration file - user specified path, or default path.
-        // Default path is allowed to not exist.
+        // Parse configuration file if specified.
         let file_cfg = match cfg_filepath {
             Some(filepath) => {
                 let filepath = PathBuf::from_str(&filepath).map_err(|err| {
@@ -84,11 +82,7 @@ impl Configuration {
                 })?;
                 Some(file::config_from_filepath(&filepath)?)
             }
-            None => match file::config_from_default_filepath() {
-                Ok(config) => Some(config),
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-                Err(err) => return Err(err),
-            },
+            None => None,
         };
 
         let cfg = match file_cfg {

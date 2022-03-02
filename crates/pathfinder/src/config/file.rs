@@ -1,16 +1,7 @@
 //! TOML configuration file parsing
-use std::{path::PathBuf, str::FromStr};
-
 use serde::Deserialize;
 
 use crate::config::builder::ConfigBuilder;
-
-lazy_static::lazy_static! {
-    pub static ref DEFAULT_FILEPATH: PathBuf = home::home_dir()
-            .unwrap_or_else(|| PathBuf::from_str("~/").unwrap())
-            .join(".starknet")
-            .join("config.toml");
-}
 
 #[derive(Deserialize, Debug, PartialEq)]
 struct EthereumConfig {
@@ -44,11 +35,6 @@ impl FileConfig {
 pub fn config_from_filepath(filepath: &std::path::Path) -> std::io::Result<ConfigBuilder> {
     let file_contents = std::fs::read_to_string(filepath)?;
     config_from_str(&file_contents)
-}
-
-/// Parses a [ConfigBuilder] from a toml format file at `~/.starknet/config.toml` (see [DEFAULT_FILEPATH](static@DEFAULT_FILEPATH)).
-pub fn config_from_default_filepath() -> std::io::Result<ConfigBuilder> {
-    config_from_filepath(&DEFAULT_FILEPATH)
 }
 
 fn config_from_str(s: &str) -> std::io::Result<ConfigBuilder> {

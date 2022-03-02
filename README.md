@@ -1,115 +1,164 @@
 # Welcome to Pathfinder
 
-A [StarkNet](https://starkware.co/starknet/) full node written in Rust.
+A StarkNet full node giving you a trusted view of the StarkNet.
 
-This project is a work-in-progress and is not yet usable.
+Pathfinder is currently in alpha so expect some rough edges but it is already usable today!
 
-A first release will be made with the completion of [Milestone I](#milestone-i).
+## Features
 
-## Table of Contents
-- [Roadmap](#roadmap)
-  - [Milestone I](#milestone-i)
-  - [Milestone II](#milestone-ii)
-  - [Milestone III](#milestone-iii)
-- [Developers](#developers)
-  - [Getting started](#getting-started)
-  - [Building](#building)
-  - [Testing](#testing)
-- [License](#license)
-- [Contribution](#contribution)
+- access the full StarkNet state history
+- verifies state using L1
+- Ethereum-like RPC API
+- call StarkNet functions locally
 
-## Roadmap
+## Feedback
 
-The end goal is to have a node which
+We appreciate any feedback, especially during this alpha period. This includes any documentation issues, feature requests and bugs that you may encounter.
 
-- holds the full StarkNet state
-- synchronises StarkNet state from both L1 and L2 (p2p)
-- verifies L2 state against L1
-- provides an RPC API for interacting with StarkNet state
-- participates in the L2 StarkNet network
-  - propagating state
-  - propagating transactions
+For help or to submit bug reports or feature requests, please open an issue or alternatively visit the StarkNet [discord channel](https://discord.com/invite/uJ9HZTUk2Y).
 
-The roadmap has been split into milestones, with goals in the later milestones being less certain and well-defined.
+## Installation
 
-### Milestone I
+### Prerequisites
 
-A node which has no p2p capabilities. It synchronises network state using L1 and L2 (StarkNet gateway), and provides an HTTP RPC API.
+Currently only supports Linux. Windows and MacOS support is planned.
 
-- [x] retrieve state updates from L1
-  - [x] state root
-  - [x] contract deployments
-  - [x] contract updates
-- [x] retrieve state from StarkNet sequencer gateway
-  - [x] blocks
-  - [x] transactions
-  - [x] contract code
-- [x] serve RPC API
-- [ ] storage
-  - [ ] global state
-  - [x] contract definitions
-  - [x] transactions
-  - [x] blocks
-- [x] basic user configuration
-- [ ] sync state from L1 and L2
-- [ ] run `starknet_call` locally
-- [ ] validate contract code against L1
-- [ ] integrate various components
-- [ ] documentation
+We need access to a full archive Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
 
-### Milestone II
+`pathfinder` depends on Rust and some Python.
 
-Establish p2p network, state is now propagated between nodes.
+- Install Rust by following the [official instructions](https://www.rust-lang.org/tools/install)
+- Ensure you have at least python 3.7 installed
 
-Add support for syncing completely from L1.
+### Clone `pathfinder`
 
-### Milestone III
+Checkout the latest `pathfinder` release by cloning this repo and checking out the latest version tag. Take care not to be on our `main` branch as we do actively develop in it.
 
-Create a transaction mempool, transactions are now propagated between nodes.
+### Python setup
 
-Add contract calls to RPC API: `invoke` and `deploy`.
-
-## Developers
-
-Note that this project is currently only built on linux; but we do plan on supporting MacOs and Windows in the future.
-
-### Getting started
-
-Install Rust, by following the [official Rust instructions](https://www.rust-lang.org/tools/install).
-
-`git clone` this project and you should be good to go.
-
-### Building
-
-Invoke `cargo build -p pathfinder` from the project root.
-
-### Testing
-
-Some of our tests require access to an __archive__ Ethereum node on the Goerli chain. To run these tests you will need to set the following environment variables:
+Create a python virtual environment in the `py` folder. This is important as the node relies on this relative pathing.
 
 ```bash
-PATHFINDER_ETHEREUM_HTTP_GOERLI_URL       # HTTP(S) endpoint for Goerli chain
-PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD  # HTTP(S) password for Goerli chain (optional)
+# Enter the `<repo>/py` directory
+$ cd py
+# Create the virtual environment and activate it
+$ python3 -m venv .venv
+$ source .venv/bin/activate
+```
+Next install the python tooling and dependencies
+```bash
+$ PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
+$ PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+```
+Finally, run our python tests to make sure you were succesful.
+```bash
+# This should run the tests (and they should pass).
+$ pytest
 ```
 
-Infura provides such nodes for free (on Goerli testnet), and is what we currently use for our own CI.
+### Compiling `pathfinder`
 
-In addition, the tests also require access to a __non-archive__ Ethereum node on Mainnet. To run these tests you will need to set the following environment variables:
+You should now be able to compile `pathfinder` by running (from within the `pathfinder` repo):
+```bash
+cargo build --release --bin pathfinder
+```
+
+## Running the node
+
+Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup). For the `pathfinder` environment this is done by running:
+```bash
+$ source <path-to-pathdfinder-repo>/py/.venv/bin/activate
+```
+If you are already in another virtual environment, you can exit it by running `deactivate` and then activating the `pathfinder` one.
+
+This step is always required when running `pathfinder`.
+
+Finally, you can start the node:
+```bash
+cargo run --release <path-to-pathfinder-repo> --bin pathfinder -- <pathfinder options>
+```
+Note the extra "`--`" which separate the Rust `cargo` command options from the options for our node. For more information on these options see the [Configuration](#configuration) section.
+
+It may take a while to first compile the node on the first invocation if you didn't do the [compilation step](#compiling-pathfinder).
+
+`pathfinder` runs relative to the current directory. This means things like the database will be created and searched for within the current directory.
+
+### Configuration
+
+The `pathfinder` node options can be configured via the command line as well as a configuration file. The command line configuration overrides the options from the file.
+
+The command line options are passed in after the after the `cargo run` options, as follows:
+```bash
+cargo run --release <path-to-pathfinder-repo> --bin pathfinder -- <pathfinder options>
+```
+
+Using `--help` will display the `pathfinder` options:
+```bash
+cargo run --release <path-to-pathfinder-repo> --bin pathfinder -- --help
+```
+
+The configuration file uses the `toml` format:
+```toml
+# The address we will host the RPC API at. Defaults to "127.0.0.1:9545"
+http-rpc = "127.0.0.1:1235"
+
+[ethereum]
+# This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
+url      = "https://goerli.infura.io/v3/..." #
+# The optional password for your Ethereum endpoint.
+password = "..."
+# The optional user-agent for your Ethereum endpoint.
+user     = "..."
+```
+
+### Logging
+
+Logging can be configured using the `RUST_LOG` environment variable. We recommend setting it when you invoke the run command:
 
 ```bash
-PATHFINDER_ETHEREUM_HTTP_MAINNET_URL       # HTTP(S) endpoint for Mainnet chain
-PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD  # HTTP(S) password for Mainnet chain (optional)
+RUST_LOG=<log level> cargo run --release <path-to-pathfinder-repo> --bin pathfinder ...
+```
+The following log levels are supported, from most to least verbose:
+```bash
+trace
+debug
+info  # default
+warn
+error
 ```
 
-Example with an Infura node:
-```
-export PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=https://goerli.infura.io/ws/v3/<project-id>
-export PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=https://mainnet.infura.io/ws/v3/<project-id>
-```
+### Network Selection
 
-Run the tests (invoke from project root):
-```
-cargo test
+The StarkNet network is based on the provided Ethereum endpoint. If the Ethereum endpoint is on the Goerli network, then the it will be the StarkNet testnet on Goerli. If the Ethereum endpoint is on mainnet, then it will be StarkNet Mainnet.
+
+## API
+
+Here is an overview of the JSON-RPC calls which are supported. The full specification is available [here](https://github.com/starkware-libs/starknet-specs), but please note that we currently only support the subset listed here.
+
+```bash
+# Block information
+starknet_getBlockByHash
+starknet_getBlockByNumber
+# Value of a storage at a given address and key
+starknet_getStorageAt                         # Value of a storage at the given address and key
+# Transaction information
+starknet_getTransactionByHash
+starknet_getTransactionByBlockHashAndIndex
+starknet_getTransactionByBlockNumberAndIndex
+starknet_getTransactionReceipt
+# Block transaction counts
+starknet_getBlockTransactionCountByHash
+starknet_getBlockTransactionCountByNumber
+# The code of a specific contract
+starknet_getCode
+# Call a StarkNet function without creating a transaction
+starknet_call
+# The latest StarkNet block height
+starknet_blockNumber
+# The StarkNet chain this node is on
+starknet_chainId
+# The node's sync status
+starknet_syncing
 ```
 
 ## License
