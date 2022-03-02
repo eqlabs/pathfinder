@@ -359,6 +359,24 @@ impl StarknetBlocksTable {
         )?;
         Ok(())
     }
+
+    /// Returns the [number](StarknetBlockNumber) of the latest block.
+    pub fn get_latest_number(
+        connection: &Connection,
+    ) -> anyhow::Result<Option<StarknetBlockNumber>> {
+        let mut statement = connection
+            .prepare("SELECT number FROM starknet_blocks ORDER BY number DESC LIMIT 1")?;
+        let mut rows = statement.query([])?;
+        let row = rows.next().context("Iterate rows")?;
+        match row {
+            Some(row) => {
+                let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
+                let number = StarknetBlockNumber(number);
+                Ok(Some(number))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 /// Identifies block in some [StarknetBlocksTable] queries.
@@ -506,7 +524,7 @@ impl StarknetTransactionsTable {
         };
 
         let mut stmt = connection
-            .prepare("SELECT tx FROM starknet_transactions WHERE hash = ? AND idx = ?")
+            .prepare("SELECT tx FROM starknet_transactions WHERE block_hash = ? AND idx = ?")
             .context("Preparing statement")?;
 
         let mut rows = stmt
@@ -601,14 +619,16 @@ impl StarknetTransactionsTable {
         match block {
             StarknetBlocksBlockId::Number(number) => connection
                 .query_row(
-                    "SELECT COUNT(*) FROM starknet_transactions WHERE number = ?1",
+                    "SELECT COUNT(*) FROM starknet_transactions
+                    JOIN starknet_blocks ON starknet_transactions.block_hash = starknet_blocks.hash
+                    WHERE number = ?1",
                     params![number.0],
                     |row| row.get(0),
                 )
                 .context("Counting transactions"),
             StarknetBlocksBlockId::Hash(hash) => connection
                 .query_row(
-                    "SELECT COUNT(*) FROM starknet_transactions WHERE hash = ?1",
+                    "SELECT COUNT(*) FROM starknet_transactions WHERE block_hash = ?1",
                     params![&hash.0.as_be_bytes()[..]],
                     |row| row.get(0),
                 )

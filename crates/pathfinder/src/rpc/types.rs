@@ -161,9 +161,9 @@ pub mod reply {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Block {
-        block_hash: Option<StarknetBlockHash>,
+        pub block_hash: Option<StarknetBlockHash>,
         parent_hash: StarknetBlockHash,
-        block_number: Option<StarknetBlockNumber>,
+        pub block_number: Option<StarknetBlockNumber>,
         status: BlockStatus,
         sequencer: H160,
         new_root: Option<GlobalRoot>,
@@ -353,7 +353,7 @@ pub mod reply {
                 ErrorCode::InvalidBlockHash => "Invalid block hash",
                 ErrorCode::InvalidTransactionHash => "Invalid transaction hash",
                 ErrorCode::InvalidBlockNumber => "Invalid block number",
-                ErrorCode::InvalidTransactionIndex => "Invalid transaction index",
+                ErrorCode::InvalidTransactionIndex => "Invalid transaction index in a block",
                 ErrorCode::ContractError => "Contract error",
             }
         }
@@ -418,7 +418,6 @@ pub mod reply {
     }
 
     /// L2 transaction as returned by the RPC API.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
         pub txn_hash: StarknetTransactionHash,
