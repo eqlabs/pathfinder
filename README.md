@@ -1,15 +1,19 @@
 # Welcome to Pathfinder
 
-A StarkNet full node giving you a trusted view of the StarkNet.
+A StarkNet full node giving you a safe view into StarkNet.
 
 Pathfinder is currently in alpha so expect some rough edges but it is already usable today!
 
 ## Features
 
 - access the full StarkNet state history
+  - includes contract code and storage, and transactions
 - verifies state using L1
+  - calculates the StarkNet state's Patricia-Merkle Trie root on a block-by-block basis and confirms it against L1
+  - this means the contract code and storage are now locally verified
 - Ethereum-like RPC API
-- call StarkNet functions locally
+- run StarkNet functions without requiring a StarkNet transaction
+  - executed against the local state
 
 ## Feedback
 
@@ -137,7 +141,7 @@ The StarkNet network is based on the provided Ethereum endpoint. If the Ethereum
 
 ## API
 
-Here is an overview of the JSON-RPC calls which are supported. The full specification is available [here](https://github.com/starkware-libs/starknet-specs), but please note that we currently only support the subset listed here.
+The full specification is available [here](https://github.com/starkware-libs/starknet-specs). Note that we currently only support a subset of these. Here is an overview of the JSON-RPC calls which we support.
 
 ```bash
 # Block information
