@@ -60,9 +60,10 @@ fn clap_app() -> clap::App<'static, 'static> {
             format!("HTTP-RPC listening address [default: {}]", DEFAULT_HTTP_RPC_ADDR);
     }
 
-    clap::App::new("Pathfinder StarkNet Node")
-        .version(crate_version!())
-        .about("A StarkNet node implemented by Equilibrium. https://github.com/eqlabs/pathfinder")
+    let version = concat!(crate_version!(), "-alpha");
+    clap::App::new("Pathfinder")
+        .version(version)
+        .about("A StarkNet node implemented by Equilibrium. Submit bug reports and issues at https://github.com/eqlabs/pathfinder.")
         .arg(
             Arg::with_name(CONFIG_KEY)
                 .short("c")

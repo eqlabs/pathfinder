@@ -19,10 +19,10 @@ async fn main() -> anyhow::Result<()> {
         .compact()
         .init();
 
-    info!("🏁 Starting node.");
     let config =
         config::Configuration::parse_cmd_line_and_cfg_file().expect("Configuration failed");
 
+    info!("🏁 Starting node.");
     let eth_transport = ethereum_transport(config.ethereum)
         .await
         .context("Create Ethereum transport")?;
