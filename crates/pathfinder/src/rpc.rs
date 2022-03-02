@@ -257,17 +257,13 @@ mod tests {
         types::{traits::Client, v2::ParamsSer, DeserializeOwned},
     };
     use pedersen::StarkHash;
-    use rusqlite::Connection;
+    use pretty_assertions::assert_eq;
     use serde_json::json;
-    #[allow(unused_imports)]
-    use std::assert_eq as dont_use_std_assert_eq;
     use std::{
         collections::BTreeMap,
         net::{Ipv4Addr, SocketAddrV4},
         time::Duration,
     };
-    // TODO re-enable me
-    //use pretty_assertions::assert_eq;
 
     /// Helper wrapper to allow retrying the test if rate limiting kicks in on the sequencer API side.
     ///
@@ -430,13 +426,10 @@ mod tests {
 
     mod get_block_by_hash {
         use super::*;
-        use crate::core::{GlobalRoot, StarknetBlockTimestamp};
+        use crate::core::{StarknetBlockHash, StarknetBlockNumber};
         use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockHashOrTag, Tag};
-        use crate::{
-            core::{StarknetBlockHash, StarknetBlockNumber},
-            storage::{StarknetBlock, StarknetBlocksTable},
-        };
         use pedersen::StarkHash;
+        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn genesis() {
@@ -576,6 +569,7 @@ mod tests {
     mod get_block_by_number {
         use super::*;
         use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockNumberOrTag, Tag};
+        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn genesis() {
@@ -595,6 +589,7 @@ mod tests {
 
             mod positional_args {
                 use super::*;
+                use pretty_assertions::assert_eq;
 
                 #[tokio::test]
                 async fn all() {
@@ -630,6 +625,7 @@ mod tests {
 
             mod named_args {
                 use super::*;
+                use pretty_assertions::assert_eq;
                 use serde_json::json;
 
                 #[tokio::test]
@@ -737,6 +733,7 @@ mod tests {
             core::StorageValue,
             rpc::types::{BlockHashOrTag, Tag},
         };
+        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn overflowing_key() {
@@ -785,6 +782,7 @@ mod tests {
 
         mod latest_block {
             use super::*;
+            use pretty_assertions::assert_eq;
 
             #[tokio::test]
             #[ignore = "This is a manual test and will be removed once state mocking facilities are ready."]
@@ -834,6 +832,7 @@ mod tests {
     mod get_transaction_by_hash {
         use super::*;
         use crate::rpc::types::reply::Transaction;
+        use pretty_assertions::assert_eq;
 
         mod accepted {
             use super::*;
@@ -871,6 +870,7 @@ mod tests {
     mod get_transaction_by_block_hash_and_index {
         use super::*;
         use crate::rpc::types::{reply::Transaction, BlockHashOrTag, Tag};
+        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn genesis() {
@@ -892,6 +892,7 @@ mod tests {
 
         mod latest {
             use super::*;
+            use pretty_assertions::assert_eq;
 
             #[tokio::test]
             async fn positional_args() {
@@ -980,6 +981,7 @@ mod tests {
     mod get_transaction_by_block_number_and_index {
         use super::*;
         use crate::rpc::types::{reply::Transaction, BlockNumberOrTag, Tag};
+        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn genesis() {
@@ -1000,6 +1002,7 @@ mod tests {
 
         mod latest {
             use super::*;
+            use pretty_assertions::assert_eq;
 
             #[tokio::test]
             async fn positional_args() {
@@ -1087,9 +1090,11 @@ mod tests {
     mod get_transaction_receipt {
         use super::*;
         use crate::rpc::types::reply::TransactionReceipt;
+        use pretty_assertions::assert_eq;
 
         mod accepted {
             use super::*;
+            use pretty_assertions::assert_eq;
 
             #[tokio::test]
             async fn positional_args() {
@@ -1145,6 +1150,7 @@ mod tests {
         use super::*;
         use crate::core::ContractCode;
         use crate::rpc::types::reply::ErrorCode;
+        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn invalid_contract_address() {
@@ -1267,6 +1273,7 @@ mod tests {
     mod get_block_transaction_count_by_hash {
         use super::*;
         use crate::rpc::types::{BlockHashOrTag, Tag};
+        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn genesis() {
@@ -1286,6 +1293,7 @@ mod tests {
 
         mod latest {
             use super::*;
+            use pretty_assertions::assert_eq;
 
             #[tokio::test]
             async fn positional_args() {
@@ -1350,6 +1358,7 @@ mod tests {
     mod get_block_transaction_count_by_number {
         use super::*;
         use crate::rpc::types::{BlockNumberOrTag, Tag};
+        use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn genesis() {
@@ -1367,6 +1376,7 @@ mod tests {
 
         mod latest {
             use super::*;
+            use pretty_assertions::assert_eq;
 
             #[tokio::test]
             async fn positional_args() {
@@ -1434,6 +1444,7 @@ mod tests {
             core::{CallParam, CallResultValue},
             rpc::types::{request::Call, BlockHashOrTag, Tag},
         };
+        use pretty_assertions::assert_eq;
 
         lazy_static::lazy_static! {
             static ref CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("1234").unwrap()];

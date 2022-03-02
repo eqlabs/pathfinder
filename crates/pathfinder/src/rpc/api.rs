@@ -247,8 +247,6 @@ impl RpcApi {
         block_id: StarknetBlocksBlockId,
         error_code_for_latest: ErrorCode,
     ) -> RpcResult<RawBlock> {
-        use crate::storage::StarknetBlocksTable;
-
         let storage = self.storage.clone();
 
         let handle = tokio::task::spawn_blocking(move || {
