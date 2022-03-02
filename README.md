@@ -44,20 +44,20 @@ Create a python virtual environment in the `py` folder. This is important as the
 
 ```bash
 # Enter the `<repo>/py` directory
-$ cd py
+cd py
 # Create the virtual environment and activate it
-$ python3 -m venv .venv
-$ source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 Next install the python tooling and dependencies
 ```bash
-$ PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
-$ PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
+PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
 ```
 Finally, run our python tests to make sure you were succesful.
 ```bash
 # This should run the tests (and they should pass).
-$ pytest
+pytest
 ```
 
 ### Compiling `pathfinder`
@@ -71,7 +71,7 @@ cargo build --release --bin pathfinder
 
 Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup). For the `pathfinder` environment this is done by running:
 ```bash
-$ source <path-to-pathdfinder-repo>/py/.venv/bin/activate
+$ source <path-to-pathfinder-repo>/py/.venv/bin/activate
 ```
 If you are already in another virtual environment, you can exit it by running `deactivate` and then activating the `pathfinder` one.
 
