@@ -846,14 +846,30 @@ impl RpcApi {
 
     /// Get the most recent accepted block number.
     pub async fn block_number(&self) -> RpcResult<u64> {
-        let block = self
-            .sequencer
-            .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
-            .await?;
-        let number = block.block_number.ok_or(anyhow::anyhow!(
-            "Block number field missing in latest block."
-        ))?;
-        Ok(number.0)
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            StarknetBlocksTable::get_latest_number(&tx)
+                .context("Reading latest block number from database")
+                .map_err(internal_server_error)?
+                .context("Database is empty")
+                .map_err(internal_server_error)
+                .map(|number| number.0)
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
     }
 
     /// Return the currently configured StarkNet chain id.

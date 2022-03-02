@@ -359,6 +359,24 @@ impl StarknetBlocksTable {
         )?;
         Ok(())
     }
+
+    /// Returns the [number](StarknetBlockNumber) of the latest block.
+    pub fn get_latest_number(
+        connection: &Connection,
+    ) -> anyhow::Result<Option<StarknetBlockNumber>> {
+        let mut statement = connection
+            .prepare("SELECT number FROM starknet_blocks ORDER BY number DESC LIMIT 1")?;
+        let mut rows = statement.query([])?;
+        let row = rows.next().context("Iterate rows")?;
+        match row {
+            Some(row) => {
+                let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
+                let number = StarknetBlockNumber(number);
+                Ok(Some(number))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 /// Identifies block in some [StarknetBlocksTable] queries.

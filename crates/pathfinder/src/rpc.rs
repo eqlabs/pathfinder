@@ -1615,9 +1615,15 @@ mod tests {
 
     #[tokio::test]
     async fn block_number() {
-        client_request::<u64>("starknet_blockNumber", rpc_params!())
+        let storage = setup_storage();
+        let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+        let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+        let number = client(addr)
+            .request::<u64>("starknet_blockNumber", rpc_params!())
             .await
             .unwrap();
+        assert_eq!(number, 1);
     }
 
     #[tokio::test]
