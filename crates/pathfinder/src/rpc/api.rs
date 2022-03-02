@@ -651,7 +651,7 @@ impl RpcApi {
 
                     Ok(TransactionReceipt::with_status(receipt, block_status))
                 }
-                None => Err(ErrorCode::InvalidTransactionIndex.into()),
+                None => Err(ErrorCode::InvalidTransactionHash.into()),
             }
         });
 

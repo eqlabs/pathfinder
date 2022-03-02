@@ -608,7 +608,7 @@ impl StarknetTransactionsTable {
                 .context("Counting transactions"),
             StarknetBlocksBlockId::Hash(hash) => connection
                 .query_row(
-                    "SELECT COUNT(*) FROM starknet_transactions WHERE hash = ?1",
+                    "SELECT COUNT(*) FROM starknet_transactions WHERE block_hash = ?1",
                     params![&hash.0.as_be_bytes()[..]],
                     |row| row.get(0),
                 )
