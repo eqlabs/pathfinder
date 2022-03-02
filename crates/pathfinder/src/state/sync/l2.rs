@@ -266,6 +266,10 @@ async fn deploy_contracts(
         .into_iter()
         .collect::<Vec<_>>();
 
+    if unique_contracts.is_empty() {
+        return Ok(());
+    }
+
     // Query database to see which of these contracts still needs downloading.
     let (tx, rx) = oneshot::channel();
     tx_event
