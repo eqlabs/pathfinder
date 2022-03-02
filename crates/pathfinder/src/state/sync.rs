@@ -182,19 +182,31 @@ pub async fn sync(
                     }
                 }
 
-                tracing::info!("Updated StarkNet state with block {}", block_num);
-                tracing::debug!("Updated StarkNet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts deployed ({:2}s) and {} storage updates ({:2}s). Block downloaded in {:2}s and state diff in {:2}s",
-                    block_num,
-                    block_time.as_secs_f32(),
-                    block_time_avg.as_secs_f32(),
-                    existed.0,
-                    existed.0 - existed.1,
-                    timings.contract_deployment.as_secs_f32(),
-                    storage_updates,
-                    update_t.as_secs_f32(),
-                    timings.block_download.as_secs_f32(),
-                    timings.state_diff_download.as_secs_f32(),
-                );
+                // Give a simple log under INFO level, and a more verbose log
+                // with timing information under DEBUG+ level.
+                //
+                // This should be removed if we have a configurable log level.
+                // See the docs for LevelFilter for more information.
+                match tracing::level_filters::LevelFilter::current().into_level() {
+                    None => {}
+                    Some(level) if level <= tracing::Level::INFO => {
+                        tracing::info!("Updated StarkNet state with block {}", block_num)
+                    }
+                    Some(_) => {
+                        tracing::debug!("Updated StarkNet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
+                            block_num,
+                            block_time.as_secs_f32(),
+                            block_time_avg.as_secs_f32(),
+                            existed.0,
+                            existed.0 - existed.1,
+                            timings.contract_deployment.as_secs_f32(),
+                            storage_updates,
+                            update_t.as_secs_f32(),
+                            timings.block_download.as_secs_f32(),
+                            timings.state_diff_download.as_secs_f32(),
+                        );
+                    }
+                }
             }
             Ok(l2::Event::Reorg(reorg_tail)) => {
                 l2_reorg(&mut db_conn, reorg_tail)
