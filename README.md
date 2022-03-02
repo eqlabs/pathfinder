@@ -126,6 +126,10 @@ info  # default
 warn
 error
 ```
+At the more verbose log levels (`trace`, `debug`), you may find the logs a bit noisy as our dependencies also add their own logging to the mix. You can restrict the logs to only `pathfinder` specific ones using `RUST_LOG=pathfinder=<level>` instead. For example:
+```bash
+RUST_LOG=pathfinder=<log level> cargo run --release <path-to-pathfinder-repo> --bin pathfinder ...
+```
 
 ### Network Selection
 
