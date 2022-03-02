@@ -274,9 +274,8 @@ async fn update_sync_status_latest(
         };
 
         // Update the sync status.
-        let mut sync_status = SYNC_STATUS.lock().await;
-        match *sync_status {
-            SyncStatus::False(_) => {
+        match &mut *SYNC_STATUS.lock().await {
+            sync_status @ SyncStatus::False(_) => {
                 *sync_status = SyncStatus::Status(syncing::Status {
                     starting_block,
                     current_block: starting_block,
