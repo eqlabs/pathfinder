@@ -153,8 +153,15 @@ pub mod reply {
     #[serde(untagged)]
     pub enum Transactions {
         HashesOnly(Vec<StarknetTransactionHash>),
-        Full(Vec<Transaction>),
+        // __Extremely important!!!__
+        // This variant needs to come __before__ `Full`
+        // as it contains a structure which has the same fields
+        // as `Full` plus some additional fields.
+        // Which means that `serde` would always wrongly deserialize
+        // to the smaller variant if the order here was swapped
+        // (ie. smaller variant first, bigger next).
         FullWithReceipts(Vec<TransactionAndReceipt>),
+        Full(Vec<Transaction>),
     }
 
     /// L2 Block as returned by the RPC API.
@@ -162,14 +169,14 @@ pub mod reply {
     #[serde(deny_unknown_fields)]
     pub struct Block {
         pub block_hash: Option<StarknetBlockHash>,
-        parent_hash: StarknetBlockHash,
+        pub parent_hash: StarknetBlockHash,
         pub block_number: Option<StarknetBlockNumber>,
-        status: BlockStatus,
-        sequencer: H160,
-        new_root: Option<GlobalRoot>,
-        old_root: GlobalRoot,
-        accepted_time: u64,
-        transactions: Transactions,
+        pub status: BlockStatus,
+        pub sequencer: H160,
+        pub new_root: Option<GlobalRoot>,
+        pub old_root: GlobalRoot,
+        pub accepted_time: u64,
+        pub transactions: Transactions,
     }
 
     impl Block {

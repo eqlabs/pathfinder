@@ -427,7 +427,11 @@ mod tests {
     mod get_block_by_hash {
         use super::*;
         use crate::core::{StarknetBlockHash, StarknetBlockNumber};
-        use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockHashOrTag, Tag};
+        use crate::rpc::types::{
+            reply::{Block, Transactions},
+            request::BlockResponseScope,
+            BlockHashOrTag, Tag,
+        };
         use pedersen::StarkHash;
         use pretty_assertions::assert_eq;
 
@@ -444,7 +448,11 @@ mod tests {
                 .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
-            assert_eq!(block.block_number, Some(StarknetBlockNumber(0)))
+            assert_eq!(block.block_number, Some(StarknetBlockNumber(0)));
+            assert_matches!(
+                block.transactions,
+                Transactions::HashesOnly(t) => assert_eq!(t.len(), 1)
+            );
         }
 
         mod latest {
@@ -464,13 +472,17 @@ mod tests {
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = rpc_params!(
                         BlockHashOrTag::Tag(Tag::Latest),
-                        BlockResponseScope::TransactionHashes
+                        BlockResponseScope::FullTransactions
                     );
                     let block = client(addr)
                         .request::<Block>("starknet_getBlockByHash", params)
                         .await
                         .unwrap();
                     assert_eq!(block.block_hash, Some(latest_hash));
+                    assert_matches!(
+                        block.transactions,
+                        Transactions::Full(t) => assert_eq!(t.len(), 2)
+                    );
                 }
 
                 #[tokio::test]
@@ -487,6 +499,10 @@ mod tests {
                         .await
                         .unwrap();
                     assert_eq!(block.block_hash, Some(latest_hash));
+                    assert_matches!(
+                        block.transactions,
+                        Transactions::HashesOnly(t) => assert_eq!(t.len(), 2)
+                    );
                 }
             }
 
@@ -512,6 +528,10 @@ mod tests {
                         .await
                         .unwrap();
                     assert_eq!(block.block_hash, Some(latest_hash));
+                    assert_matches!(
+                        block.transactions,
+                        Transactions::FullWithReceipts(t) => assert_eq!(t.len(), 2)
+                    );
                 }
 
                 #[tokio::test]
@@ -528,6 +548,10 @@ mod tests {
                         .await
                         .unwrap();
                     assert_eq!(block.block_hash, Some(latest_hash));
+                    assert_matches!(
+                        block.transactions,
+                        Transactions::HashesOnly(t) => assert_eq!(t.len(), 2)
+                    );
                 }
             }
         }
@@ -542,10 +566,14 @@ mod tests {
                 BlockHashOrTag::Tag(Tag::Pending),
                 BlockResponseScope::FullTransactions
             );
-            client(addr)
+            let block = client(addr)
                 .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
+            assert_matches!(
+                block.transactions,
+                Transactions::Full(_) => ()
+            );
         }
 
         #[tokio::test]
@@ -568,7 +596,11 @@ mod tests {
 
     mod get_block_by_number {
         use super::*;
-        use crate::rpc::types::{reply::Block, request::BlockResponseScope, BlockNumberOrTag, Tag};
+        use crate::rpc::types::{
+            reply::{Block, Transactions},
+            request::BlockResponseScope,
+            BlockNumberOrTag, Tag,
+        };
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -578,10 +610,15 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, Chain::Goerli);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(StarknetBlockNumber(0));
-            client(addr)
+            let block = client(addr)
                 .request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
+            assert_eq!(block.block_number, Some(StarknetBlockNumber(0)));
+            assert_matches!(
+                block.transactions,
+                Transactions::HashesOnly(t) => assert_eq!(t.len(), 1)
+            );
         }
 
         mod latest {
@@ -599,13 +636,17 @@ mod tests {
                     let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                     let params = rpc_params!(
                         BlockNumberOrTag::Tag(Tag::Latest),
-                        BlockResponseScope::TransactionHashes
+                        BlockResponseScope::FullTransactions
                     );
                     let block = client(addr)
                         .request::<Block>("starknet_getBlockByNumber", params)
                         .await
                         .unwrap();
                     assert_eq!(block.block_number, Some(StarknetBlockNumber(1)));
+                    assert_matches!(
+                        block.transactions,
+                        Transactions::Full(t) => assert_eq!(t.len(), 2)
+                    );
                 }
 
                 #[tokio::test]
@@ -620,6 +661,10 @@ mod tests {
                         .await
                         .unwrap();
                     assert_eq!(block.block_number, Some(StarknetBlockNumber(1)));
+                    assert_matches!(
+                        block.transactions,
+                        Transactions::HashesOnly(t) => assert_eq!(t.len(), 2)
+                    );
                 }
             }
 
@@ -643,6 +688,10 @@ mod tests {
                         .await
                         .unwrap();
                     assert_eq!(block.block_number, Some(StarknetBlockNumber(1)));
+                    assert_matches!(
+                        block.transactions,
+                        Transactions::FullWithReceipts(t) => assert_eq!(t.len(), 2)
+                    );
                 }
 
                 #[tokio::test]
@@ -657,6 +706,10 @@ mod tests {
                         .await
                         .unwrap();
                     assert_eq!(block.block_number, Some(StarknetBlockNumber(1)));
+                    assert_matches!(
+                        block.transactions,
+                        Transactions::HashesOnly(t) => assert_eq!(t.len(), 2)
+                    );
                 }
             }
         }
@@ -671,10 +724,14 @@ mod tests {
                 BlockNumberOrTag::Tag(Tag::Pending),
                 BlockResponseScope::FullTransactions
             );
-            client(addr)
+            let block = client(addr)
                 .request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
+            assert_matches!(
+                block.transactions,
+                Transactions::Full(_) => ()
+            );
         }
 
         #[tokio::test]
