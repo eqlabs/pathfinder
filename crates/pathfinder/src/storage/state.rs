@@ -464,7 +464,7 @@ impl StarknetTransactionsTable {
 
         let mut stmt = connection
             .prepare(
-                "SELECT tx, receipt FROM starknet_transactions WHERE hash = ? ORDER BY idx ASC",
+                "SELECT tx, receipt FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC",
             )
             .context("Preparing statement")?;
 
