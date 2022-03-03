@@ -177,7 +177,7 @@ pub async fn sync(
                 // Update sync status
                 match &mut *SYNC_STATUS.lock().await {
                     SyncStatus::False(_) => {}
-                    SyncStatus::Status(mut status) => {
+                    SyncStatus::Status(status) => {
                         status.current_block = block_hash;
                     }
                 }
@@ -323,7 +323,7 @@ async fn update_sync_status_latest(
                     highest_block: latest,
                 });
             }
-            SyncStatus::Status(mut status) => status.highest_block = latest,
+            SyncStatus::Status(status) => status.highest_block = latest,
         }
 
         tracing::debug!(

@@ -224,7 +224,7 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
     //     context.protocol_version().await
     // })?;
     module.register_async_method("starknet_syncing", |_, context| async move {
-        context.chain_id().await
+        context.syncing().await
     })?;
     let module = module.into_inner();
     server.start(module).map(|handle| (handle, local_addr))
@@ -1727,11 +1727,59 @@ mod tests {
             .unwrap();
     }
 
-    #[tokio::test]
-    #[should_panic]
-    async fn syncing() {
-        client_request::<types::reply::Syncing>("starknet_syncing", rpc_params!())
-            .await
-            .unwrap();
+    mod syncing {
+        use crate::{
+            rpc::types::reply::{syncing, Syncing},
+            state::SYNC_STATUS,
+        };
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+
+        #[tokio::test]
+        async fn not_syncing() {
+            // Set the syncing status and drop the guard.
+            {
+                let mut status = SYNC_STATUS.lock().await;
+                *status = Syncing::False(false);
+            }
+
+            let storage = setup_storage();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let syncing = client(addr)
+                .request::<Syncing>("starknet_syncing", rpc_params!())
+                .await
+                .unwrap();
+
+            assert_eq!(syncing, Syncing::False(false));
+        }
+
+        #[tokio::test]
+        async fn syncing() {
+            let expected = Syncing::Status(syncing::Status {
+                starting_block: StarknetBlockHash(StarkHash::from_be_slice(b"starting").unwrap()),
+                current_block: StarknetBlockHash(StarkHash::from_be_slice(b"current").unwrap()),
+                highest_block: StarknetBlockHash(StarkHash::from_be_slice(b"highest").unwrap()),
+            });
+
+            // Set the syncing status and drop the guard.
+            {
+                let mut status = SYNC_STATUS.lock().await;
+                *status = expected.clone();
+            }
+
+            let storage = setup_storage();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let syncing = client(addr)
+                .request::<Syncing>("starknet_syncing", rpc_params!())
+                .await
+                .unwrap();
+
+            assert_eq!(syncing, expected);
+        }
     }
 }
