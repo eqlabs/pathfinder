@@ -57,17 +57,17 @@ pub async fn start(
                     // good, now we can launch the other processes requested later
                 },
                 SubProcessEvent::CommandHandled(..) => {
-                    unreachable!("first message must not be CommandHandled");
+                    unreachable!("First message must not be CommandHandled");
                 },
             }
         },
         Some(res) = &mut joinhandles.next() => {
             match res {
-                Ok(Ok(t)) => unreachable!("first subprocess should not have exited successfully: {:?}", t),
+                Ok(Ok(t)) => unreachable!("First subprocess should not have exited successfully: {:?}", t),
                 // this is the failure to start
                 Ok(Err(e)) => return Err(e),
                 // this is the failure to join, panic or cancellation
-                Err(e) => return Err(e).context("Launch first python executor"),
+                Err(e) => return Err(e).context("Launching first python executor"),
             }
         }
     };

@@ -20,16 +20,16 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config =
-        config::Configuration::parse_cmd_line_and_cfg_file().expect("Configuration failed");
+        config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
 
     info!("🏁 Starting node.");
     let eth_transport = ethereum_transport(config.ethereum)
         .await
-        .context("Create Ethereum transport")?;
+        .context("Creating Ethereum transport")?;
 
     let network_chain = ethereum::chain(&eth_transport)
         .await
-        .context("Determine Ethereum chain")?;
+        .context("Determining Ethereum chain")?;
 
     let database_path = match network_chain {
         ethereum::Chain::Mainnet => "mainnet.sqlite",
@@ -54,13 +54,13 @@ async fn main() -> anyhow::Result<()> {
         futures::future::pending(),
     )
     .await
-    .context("Create python process for call handling")?;
+    .context("Creating python process for call handling. Have you setup and activate the python `VIRTUAL_ENV` in the `py` directory?")?;
 
     let api =
         rpc::api::RpcApi::new(storage, sequencer, network_chain).with_call_handling(call_handle);
 
     let (_rpc_handle, local_addr) =
-        rpc::run_server(config.http_rpc_addr, api).context("Start the RPC server")?;
+        rpc::run_server(config.http_rpc_addr, api).context("Starting the RPC server")?;
     info!("📡 HTTP-RPC server started on: {}", local_addr);
     let () = std::future::pending().await;
 
@@ -80,11 +80,11 @@ async fn ethereum_transport(config: EthereumConfig) -> anyhow::Result<Web3<Http>
         None => client,
     }
     .build()
-    .context("Create HTTP client")?;
+    .context("Creating HTTP client")?;
 
     let mut url = config.url;
     url.set_password(config.password.as_deref())
-        .map_err(|_| anyhow::anyhow!("Set password"))?;
+        .map_err(|_| anyhow::anyhow!("Setting password"))?;
 
     let client = Http::with_client(client, url);
 

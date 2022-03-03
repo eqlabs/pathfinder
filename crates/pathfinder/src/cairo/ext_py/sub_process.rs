@@ -164,8 +164,7 @@ async fn spawn(
     database_path: PathBuf,
 ) -> anyhow::Result<(Child, u32, ChildStdin, BufReader<ChildStdout>, String)> {
     // there is not intentionally any std::fs::exists calls to avoid bringing any TOCTOU issues.
-    let virtual_env = std::env::var_os("VIRTUAL_ENV")
-        .context("VIRTUAL_ENV is not defined; has the user activated virtual environment")?;
+    let virtual_env = std::env::var_os("VIRTUAL_ENV").context("VIRTUAL_ENV is not defined")?;
 
     // FIXME: use choom, add something over /proc/self/oom_score_adj ?
     let mut python_exe = PathBuf::from(&virtual_env);
@@ -246,7 +245,7 @@ async fn spawn(
     anyhow::ensure!(
         // buffer will contain the newline, which doesn't bother serde_json
         buffer.trim() == "ready",
-        "failed to read ready from python process, read: {buffer:?}"
+        "Failed to read 'ready' from python process, read: {buffer:?}"
     );
     buffer.clear();
 
