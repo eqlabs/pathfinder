@@ -10,7 +10,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    environment: CI
     env:
       # An Ethereum access point is required for some L1 StarkNet contract tests.
       # This sets it to secret values stored in the repository, which prevents
