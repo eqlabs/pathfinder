@@ -16,8 +16,7 @@ pub(crate) mod state_tree;
 mod sync;
 
 pub use contract_hash::compute_contract_hash;
-pub use sync::sync;
-pub use sync::SYNC_STATUS;
+pub use sync::{sync, State as SyncState};
 
 pub struct CompressedContract {
     pub abi: Vec<u8>,
@@ -465,8 +464,9 @@ mod tests {
         let chain = crate::ethereum::Chain::Goerli;
         let transport = crate::ethereum::test::create_test_transport(chain);
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
+        let state = std::sync::Arc::new(sync::State::default());
 
-        sync::sync(storage, transport, chain, sequencer)
+        sync::sync(storage, transport, chain, sequencer, state)
             .await
             .unwrap();
     }

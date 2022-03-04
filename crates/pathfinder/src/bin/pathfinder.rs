@@ -5,6 +5,7 @@ use pathfinder_lib::{
     ethereum, rpc, sequencer, state,
     storage::Storage,
 };
+use std::sync::Arc;
 use tracing::info;
 use web3::{transports::Http, Web3};
 
@@ -38,12 +39,14 @@ async fn main() -> anyhow::Result<()> {
 
     let storage = Storage::migrate(database_path.into()).unwrap();
     let sequencer = sequencer::Client::new(network_chain).unwrap();
+    let sync_state = Arc::new(state::SyncState::default());
 
     let _sync_handle = tokio::spawn(state::sync(
         storage.clone(),
         eth_transport,
         network_chain,
         sequencer.clone(),
+        sync_state.clone(),
     ));
 
     // TODO: the error could be recovered, but currently it's required for startup. There should
@@ -56,8 +59,8 @@ async fn main() -> anyhow::Result<()> {
     .await
     .context("Creating python process for call handling. Have you setup and activate the python `VIRTUAL_ENV` in the `py` directory?")?;
 
-    let api =
-        rpc::api::RpcApi::new(storage, sequencer, network_chain).with_call_handling(call_handle);
+    let api = rpc::api::RpcApi::new(storage, sequencer, network_chain, sync_state)
+        .with_call_handling(call_handle);
 
     let (_rpc_handle, local_addr) =
         rpc::run_server(config.http_rpc_addr, api).context("Starting the RPC server")?;

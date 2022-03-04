@@ -16,6 +16,7 @@ use crate::{
         self,
         reply::{self as raw},
     },
+    state::SyncState,
     storage::{
         RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     },
@@ -27,6 +28,7 @@ use jsonrpsee::types::{
 };
 use pedersen::StarkHash;
 use std::convert::TryInto;
+use std::sync::Arc;
 
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
@@ -34,6 +36,7 @@ pub struct RpcApi {
     sequencer: sequencer::Client,
     chain: Chain,
     call_handle: Option<ext_py::Handle>,
+    sync_state: Arc<SyncState>,
 }
 
 #[derive(Debug)]
@@ -49,12 +52,18 @@ pub struct RawBlock {
 
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
 impl RpcApi {
-    pub fn new(storage: Storage, sequencer: sequencer::Client, chain: Chain) -> Self {
+    pub fn new(
+        storage: Storage,
+        sequencer: sequencer::Client,
+        chain: Chain,
+        sync_state: Arc<SyncState>,
+    ) -> Self {
         Self {
             storage,
             sequencer,
             chain,
             call_handle: None,
+            sync_state,
         }
     }
 
@@ -895,7 +904,7 @@ impl RpcApi {
     /// Returns an object about the sync status, or false if the node is not synching.
     pub async fn syncing(&self) -> RpcResult<Syncing> {
         // Scoped so I don't have to think too hard about mutex guard drop semantics.
-        let value = { crate::state::SYNC_STATUS.lock().await.clone() };
+        let value = { self.sync_state.status.read().await.clone() };
         Ok(value)
     }
 }
