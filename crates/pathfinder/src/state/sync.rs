@@ -1,6 +1,7 @@
 mod l1;
 mod l2;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::{
@@ -25,21 +26,29 @@ use crate::{
 use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{Connection, Transaction};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, RwLock};
 use web3::{transports::Http, Web3};
 
 use crate::rpc::types::reply::Syncing as SyncStatus;
 
-lazy_static::lazy_static!(
-    // TODO: consider using a broadcast channel instead for easier testing.
-    pub static ref SYNC_STATUS: Mutex<SyncStatus> = Mutex::new(SyncStatus::False(false));
-);
+pub struct State {
+    pub status: RwLock<SyncStatus>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            status: RwLock::new(SyncStatus::False(false)),
+        }
+    }
+}
 
 pub async fn sync(
     storage: Storage,
     transport: Web3<Http>,
     chain: Chain,
     sequencer: sequencer::Client,
+    state: Arc<State>,
 ) -> anyhow::Result<()> {
     // TODO: should this be owning a Storage, or just take in a Connection?
     let mut db_conn = storage
@@ -62,7 +71,11 @@ pub async fn sync(
     let starting_block = l2_head
         .map(|(_, hash)| hash)
         .unwrap_or(StarknetBlockHash(StarkHash::ZERO));
-    let _status_sync = tokio::spawn(update_sync_status_latest(sequencer.clone(), starting_block));
+    let _status_sync = tokio::spawn(update_sync_status_latest(
+        Arc::clone(&state),
+        sequencer.clone(),
+        starting_block,
+    ));
 
     // Start L1 and L2 sync processes.
     let mut l1_handle = tokio::spawn(l1::sync(tx_l1, transport.clone(), chain, l1_head));
@@ -175,7 +188,7 @@ pub async fn sync(
                     + block_time.mul_f32(BLOCK_TIME_WEIGHT);
 
                 // Update sync status
-                match &mut *SYNC_STATUS.lock().await {
+                match &mut *state.status.write().await {
                     SyncStatus::False(_) => {}
                     SyncStatus::Status(status) => {
                         status.current_block = block_hash;
@@ -293,8 +306,9 @@ pub async fn sync(
     }
 }
 
-/// Periodically updates [static@SYNC_STATUS] with the latest block height.
+/// Periodically updates sync state with the latest block height.
 async fn update_sync_status_latest(
+    state: Arc<State>,
     sequencer: sequencer::Client,
     starting_block: StarknetBlockHash,
 ) -> anyhow::Result<()> {
@@ -315,7 +329,7 @@ async fn update_sync_status_latest(
         };
 
         // Update the sync status.
-        match &mut *SYNC_STATUS.lock().await {
+        match &mut *state.status.write().await {
             sync_status @ SyncStatus::False(_) => {
                 *sync_status = SyncStatus::Status(syncing::Status {
                     starting_block,
