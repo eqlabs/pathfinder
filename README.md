@@ -39,12 +39,12 @@ sudo apt install git
 
 ### Install Rust
 
-`pathfinder` requires Rust version `3.58` or later. The easiest way to install Rust is by following the [official instructions](https://www.rust-lang.org/tools/install).
+`pathfinder` requires Rust version `1.58` or later. The easiest way to install Rust is by following the [official instructions](https://www.rust-lang.org/tools/install).
 
 
 If you already have Rust installed, verify the version:
 ```bash
-cargo --version # must be 3.58 or higher
+cargo --version # must be 1.58 or higher
 ```
 To update your Rust version, use the `rustup` tool that came with the official instructions:
 ```bash
@@ -53,7 +53,7 @@ rustup update
 
 ### Install Python
 
-`pathfinder` requires Python version `3.7` or later.
+`pathfinder` requires Python version `3.7` or `3.8`. (In particular, `cairo-lang` 0.7.1 seems incompatible with Python 3.10.)
 
 ```bash
 sudo apt install python3
@@ -62,7 +62,7 @@ sudo apt install python3-dev
 ```
 Verify the python version. Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
 ```bash
-python3 --version # must be 3.7 or later
+python3 --version # must be 3.7 or 3.8
 ```
 
 ### Install build dependencies
@@ -81,7 +81,7 @@ Checkout the latest `pathfinder` release by cloning this repo and checking out t
 
 ### Python setup
 
-Create a python virtual environment in the `py` folder. This is important as the node relies on this relative pathing.
+Create a python virtual environment in the `py` folder.
 
 ```bash
 # Enter the `<repo>/py` directory

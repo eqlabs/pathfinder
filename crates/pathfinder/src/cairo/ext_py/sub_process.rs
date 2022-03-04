@@ -6,7 +6,7 @@ use super::{
     CallFailure, Command, SharedReceiver, SubProcessEvent, SubprocessError, SubprocessExitReason,
 };
 use anyhow::Context;
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{broadcast, mpsc};
@@ -160,29 +160,23 @@ pub(super) async fn launch_python(
     Ok((pid, exit_status, exit_reason))
 }
 
+const PYTHON_SCRIPT_SOURCE: &str = include_str!("../../../../../py/src/call.py");
+
 async fn spawn(
     database_path: PathBuf,
 ) -> anyhow::Result<(Child, u32, ChildStdin, BufReader<ChildStdout>, String)> {
-    // there is not intentionally any std::fs::exists calls to avoid bringing any TOCTOU issues.
-    let virtual_env = std::env::var_os("VIRTUAL_ENV").context("VIRTUAL_ENV is not defined")?;
+    let script_file = tempfile::NamedTempFile::new()
+        .context("Failed to create temporary file for Python script")?;
+    script_file
+        .as_file()
+        .write_all(PYTHON_SCRIPT_SOURCE.as_bytes())
+        .context("Failed to write temporary file for Python script")?;
 
     // FIXME: use choom, add something over /proc/self/oom_score_adj ?
-    let mut python_exe = PathBuf::from(&virtual_env);
-    python_exe.push("bin");
-    python_exe.push("python");
-
-    // we assume that VIRTUAL_ENV is at the base of the `py/` directory
-    let mut call_py = PathBuf::from(&virtual_env);
-    call_py.push("..");
-    call_py.push("src");
-    call_py.push("call.py");
-
-    let mut command = tokio::process::Command::new(python_exe);
-
+    let mut command = tokio::process::Command::new("python3");
     command
-        .arg(call_py)
+        .arg(script_file.path())
         .arg(database_path)
-        .env("VIRTUAL_ENV", virtual_env)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

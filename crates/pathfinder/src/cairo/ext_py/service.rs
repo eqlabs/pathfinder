@@ -10,12 +10,14 @@ use tracing::{info, trace, warn};
 
 /// Starts to maintain a pool of `count` sub-processes which execute the calls.
 ///
-/// In general, the launching currently assumes:
+/// In general, the launching currently assumes `python3` is a compatible Python
+/// interpreter in an environment where our Python dependencies are set up properly.
 ///
-/// - user has entered the python virtual environment created for this project per instructions
-/// under `$REPO_ROOT/py/README.md`
-/// - `call.py` can be found from the `$VIRTUAL_ENV/../src/call.py`
-/// - user has compatible python, 3.7+ should work just fine
+/// This can usually be done in two ways:
+/// - Creating a virtualenv, installing dependencies in that and activating it (as described
+/// in `$REPO_ROOT/py/README.md`)
+/// - By installing Python dependencies in a way that the _global_ `python3` interpreter can
+/// import them.
 ///
 /// Returns an error if executing calls in a sub-process is not supported.
 #[tracing::instrument(name = "ext_py", skip_all, fields(%count))]
