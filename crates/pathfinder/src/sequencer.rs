@@ -11,7 +11,7 @@ use crate::{
     sequencer::error::SequencerError,
 };
 use reqwest::Url;
-use std::{borrow::Cow, fmt::Debug, result::Result, time::Duration};
+use std::{borrow::Cow, fmt::Debug, future::Future, result::Result, time::Duration};
 
 /// StarkNet sequencer client using REST API.
 #[derive(Debug, Clone)]
@@ -65,6 +65,49 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
     Ok(resp)
 }
 
+/// Used to specify which errors to retry on.
+fn retry_condition(error: &SequencerError) -> bool {
+    use reqwest::StatusCode;
+
+    match error {
+        SequencerError::TransportError(te) if te.is_timeout() => {
+            tracing::debug!("Retrying due to timeout");
+            true
+        }
+        SequencerError::TransportError(te) => match te.status() {
+            Some(
+                status @ (StatusCode::TOO_MANY_REQUESTS
+                | StatusCode::BAD_GATEWAY
+                | StatusCode::SERVICE_UNAVAILABLE
+                | StatusCode::GATEWAY_TIMEOUT),
+            ) => {
+                tracing::debug!("Retrying due to: {status}");
+                true
+            }
+            Some(_) | None => false,
+        },
+        _ => false,
+    }
+}
+
+/// Wrapper function to allow retrying sequencer queries in an exponential manner.
+///
+/// Initial backoff time is 2 seconds. Retrying stops after approximately 4 minutes in total.
+async fn retry<T, Fut, FutureFactory>(future_factory: FutureFactory) -> Result<T, SequencerError>
+where
+    Fut: Future<Output = Result<T, SequencerError>>,
+    FutureFactory: FnMut() -> Fut,
+{
+    use crate::retry::Retry;
+    use std::num::{NonZeroU64, NonZeroUsize};
+
+    Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
+        // Max number of retries of 7 gives a total accumulated timeout of 4 minutes and 15 seconds (2^8-1)
+        .max_num_retries(NonZeroUsize::new(7).unwrap())
+        .when(retry_condition)
+        .await
+}
+
 impl Client {
     /// Creates a new Sequencer client for the given chain.
     pub fn new(chain: Chain) -> reqwest::Result<Self> {
@@ -87,12 +130,15 @@ impl Client {
         block_number: BlockNumberOrTag,
     ) -> Result<reply::Block, SequencerError> {
         let number = block_number_str(block_number);
-        let resp = self
-            .inner
-            .get(self.build_query("get_block", &[("blockNumber", &number)]))
-            .send()
-            .await?;
-        parse::<reply::Block>(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query("get_block", &[("blockNumber", &number)]))
+                .send()
+                .await?;
+            parse::<reply::Block>(resp).await
+        })
+        .await
     }
 
     /// Gets block by number with the specified timeout.
@@ -103,13 +149,16 @@ impl Client {
         timeout: Duration,
     ) -> Result<reply::Block, SequencerError> {
         let number = block_number_str(block_number);
-        let resp = self
-            .inner
-            .get(self.build_query("get_block", &[("blockNumber", &number)]))
-            .timeout(timeout)
-            .send()
-            .await?;
-        parse::<reply::Block>(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query("get_block", &[("blockNumber", &number)]))
+                .timeout(timeout)
+                .send()
+                .await?;
+            parse::<reply::Block>(resp).await
+        })
+        .await
     }
 
     /// Get block by hash.
@@ -119,12 +168,15 @@ impl Client {
         block_hash: BlockHashOrTag,
     ) -> Result<reply::Block, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
-        let resp = self
-            .inner
-            .get(self.build_query("get_block", &[(tag, &hash)]))
-            .send()
-            .await?;
-        parse::<reply::Block>(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query("get_block", &[(tag, &hash)]))
+                .send()
+                .await?;
+            parse::<reply::Block>(resp).await
+        })
+        .await
     }
 
     /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
@@ -135,9 +187,16 @@ impl Client {
         block_hash: BlockHashOrTag,
     ) -> Result<reply::Call, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
-        let url = self.build_query("call_contract", &[(tag, &hash)]);
-        let resp = self.inner.post(url).json(&payload).send().await?;
-        parse(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .post(self.build_query("call_contract", &[(tag, &hash)]))
+                .json(&payload)
+                .send()
+                .await?;
+            parse(resp).await
+        })
+        .await
     }
 
     /// Gets full contract definition.
@@ -146,17 +205,20 @@ impl Client {
         &self,
         contract_addr: ContractAddress,
     ) -> Result<bytes::Bytes, SequencerError> {
-        let resp = self
-            .inner
-            .get(self.build_query(
-                "get_full_contract",
-                &[("contractAddress", &contract_addr.0.to_hex_str())],
-            ))
-            .send()
-            .await?;
-        let resp = parse_raw(resp).await?;
-        let resp = resp.bytes().await?;
-        Ok(resp)
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query(
+                    "get_full_contract",
+                    &[("contractAddress", &contract_addr.0.to_hex_str())],
+                ))
+                .send()
+                .await?;
+            let resp = parse_raw(resp).await?;
+            let resp = resp.bytes().await?;
+            Ok(resp)
+        })
+        .await
     }
 
     /// Gets storage value associated with a `key` for a prticular contract.
@@ -170,19 +232,22 @@ impl Client {
         use crate::rpc::serde::starkhash_to_dec_str;
 
         let (tag, hash) = block_hash_str(block_hash);
-        let resp = self
-            .inner
-            .get(self.build_query(
-                "get_storage_at",
-                &[
-                    ("contractAddress", &contract_addr.0.to_hex_str()),
-                    ("key", &starkhash_to_dec_str(&key.0)),
-                    (tag, &hash),
-                ],
-            ))
-            .send()
-            .await?;
-        parse::<StorageValue>(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query(
+                    "get_storage_at",
+                    &[
+                        ("contractAddress", &contract_addr.0.to_hex_str()),
+                        ("key", &starkhash_to_dec_str(&key.0)),
+                        (tag, &hash),
+                    ],
+                ))
+                .send()
+                .await?;
+            parse::<StorageValue>(resp).await
+        })
+        .await
     }
 
     /// Gets transaction by hash.
@@ -191,15 +256,18 @@ impl Client {
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError> {
-        let resp = self
-            .inner
-            .get(self.build_query(
-                "get_transaction",
-                &[("transactionHash", &transaction_hash.0.to_hex_str())],
-            ))
-            .send()
-            .await?;
-        parse(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query(
+                    "get_transaction",
+                    &[("transactionHash", &transaction_hash.0.to_hex_str())],
+                ))
+                .send()
+                .await?;
+            parse(resp).await
+        })
+        .await
     }
 
     /// Gets transaction status by transaction hash.
@@ -208,15 +276,18 @@ impl Client {
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::TransactionStatus, SequencerError> {
-        let resp = self
-            .inner
-            .get(self.build_query(
-                "get_transaction_status",
-                &[("transactionHash", &transaction_hash.0.to_hex_str())],
-            ))
-            .send()
-            .await?;
-        parse(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query(
+                    "get_transaction_status",
+                    &[("transactionHash", &transaction_hash.0.to_hex_str())],
+                ))
+                .send()
+                .await?;
+            parse(resp).await
+        })
+        .await
     }
 
     /// Gets state update for a particular block hash.
@@ -226,12 +297,15 @@ impl Client {
         block_hash: BlockHashOrTag,
     ) -> Result<reply::StateUpdate, SequencerError> {
         let (tag, hash) = block_hash_str(block_hash);
-        let resp = self
-            .inner
-            .get(self.build_query("get_state_update", &[(tag, &hash)]))
-            .send()
-            .await?;
-        parse(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query("get_state_update", &[(tag, &hash)]))
+                .send()
+                .await?;
+            parse(resp).await
+        })
+        .await
     }
 
     /// Gets state update for a particular block number.
@@ -240,15 +314,18 @@ impl Client {
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<reply::StateUpdate, SequencerError> {
-        let resp = self
-            .inner
-            .get(self.build_query(
-                "get_state_update",
-                &[("block_number", &block_number_str(block_number))],
-            ))
-            .send()
-            .await?;
-        parse(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query(
+                    "get_state_update",
+                    &[("block_number", &block_number_str(block_number))],
+                ))
+                .send()
+                .await?;
+            parse(resp).await
+        })
+        .await
     }
 
     /// Gets addresses of the Ethereum contracts crucial to Starknet operation.
@@ -256,12 +333,15 @@ impl Client {
     pub async fn eth_contract_addresses(
         &self,
     ) -> Result<reply::EthContractAddresses, SequencerError> {
-        let resp = self
-            .inner
-            .get(self.build_query("get_contract_addresses", &[]))
-            .send()
-            .await?;
-        parse(resp).await
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query("get_contract_addresses", &[]))
+                .send()
+                .await?;
+            parse(resp).await
+        })
+        .await
     }
 
     /// Helper function that constructs a URL for particular query.
