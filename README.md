@@ -37,6 +37,10 @@ We need access to a full archive Ethereum node operating on the network matching
 ```bash
 sudo apt-get install libgmp-dev
 ```
+- Ensure you have pkg-config installed
+```bash
+sudo apt-get install pkg-config
+```
 
 ### Clone `pathfinder`
 
