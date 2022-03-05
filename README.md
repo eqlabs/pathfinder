@@ -33,6 +33,10 @@ We need access to a full archive Ethereum node operating on the network matching
 
 - Install Rust by following the [official instructions](https://www.rust-lang.org/tools/install)
 - Ensure you have at least python 3.7 installed
+- Ensure you have libgmp installed
+```bash
+sudo apt-get install libgmp-dev
+```
 
 ### Clone `pathfinder`
 
