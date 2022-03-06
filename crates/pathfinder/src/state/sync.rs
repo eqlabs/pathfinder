@@ -301,7 +301,7 @@ pub async fn sync(
 
         // Sleep a bit if neither sync process had any events.
         if !l1_did_emit && !l2_did_emit {
-            std::thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 }
