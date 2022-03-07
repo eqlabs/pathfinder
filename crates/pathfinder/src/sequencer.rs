@@ -93,7 +93,7 @@ where
                     | StatusCode::SERVICE_UNAVAILABLE
                     | StatusCode::GATEWAY_TIMEOUT),
                 ) => {
-                    tracing::debug!("Retrying due to: {status}");
+                    tracing::debug!("Retrying due to {status}");
                     true
                 }
                 Some(_) | None => false,
@@ -1168,6 +1168,7 @@ mod tests {
         use assert_matches::assert_matches;
         use http::StatusCode;
         use pretty_assertions::assert_eq;
+        use tracing_test::traced_test;
 
         async fn run_retry(
             statuses: Vec<(StatusCode, &'static str)>,
@@ -1202,6 +1203,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[traced_test]
         async fn stop_on_ok() {
             let ends_with_ok = vec![
                 (StatusCode::OK, r#""Finally!""#),
@@ -1217,6 +1219,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[traced_test]
         async fn stop_on_fatal() {
             let ends_with_ok = vec![
                 (
@@ -1238,6 +1241,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[traced_test]
         async fn stop_on_max_retry_count() {
             let ends_with_ok = vec![
                 (StatusCode::SERVICE_UNAVAILABLE, ""),
