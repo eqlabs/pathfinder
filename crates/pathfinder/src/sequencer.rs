@@ -88,7 +88,6 @@ where
             SequencerError::TransportError(te) => match te.status() {
                 Some(
                     status @ (StatusCode::TOO_MANY_REQUESTS
-                    | StatusCode::REQUEST_TIMEOUT
                     | StatusCode::BAD_GATEWAY
                     | StatusCode::SERVICE_UNAVAILABLE
                     | StatusCode::GATEWAY_TIMEOUT),
@@ -1168,10 +1167,11 @@ mod tests {
         use assert_matches::assert_matches;
         use http::StatusCode;
         use pretty_assertions::assert_eq;
+        use std::collections::VecDeque;
         use tracing_test::traced_test;
 
         async fn run_retry(
-            statuses: Vec<(StatusCode, &'static str)>,
+            statuses: VecDeque<(StatusCode, &'static str)>,
         ) -> Result<String, SequencerError> {
             use http::response::Builder;
             use std::{
@@ -1184,7 +1184,7 @@ mod tests {
             let any = warp::any().map(move || {
                 let s = statuses.clone();
                 let s = s.lock().unwrap();
-                let s = s.borrow_mut().pop().unwrap();
+                let s = s.borrow_mut().pop_front().unwrap();
                 Builder::new().status(s.0).body(s.1)
             });
 
@@ -1205,35 +1205,39 @@ mod tests {
         #[tokio::test]
         #[traced_test]
         async fn stop_on_ok() {
-            let ends_with_ok = vec![
-                (StatusCode::OK, r#""Finally!""#),
-                (StatusCode::REQUEST_TIMEOUT, ""),
-                (StatusCode::GATEWAY_TIMEOUT, ""),
-                (StatusCode::SERVICE_UNAVAILABLE, ""),
-                (StatusCode::BAD_GATEWAY, ""),
+            let statuses = VecDeque::from([
                 (StatusCode::TOO_MANY_REQUESTS, ""),
-            ];
+                (StatusCode::BAD_GATEWAY, ""),
+                (StatusCode::SERVICE_UNAVAILABLE, ""),
+                (StatusCode::GATEWAY_TIMEOUT, ""),
+                (StatusCode::OK, r#""Finally!""#),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+                (StatusCode::BAD_GATEWAY, ""),
+                (StatusCode::SERVICE_UNAVAILABLE, ""),
+            ]);
 
-            let result = run_retry(ends_with_ok).await.unwrap();
+            let result = run_retry(statuses).await.unwrap();
             assert_eq!(result, "Finally!");
         }
 
         #[tokio::test]
         #[traced_test]
         async fn stop_on_fatal() {
-            let ends_with_ok = vec![
+            let statuses = VecDeque::from([
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+                (StatusCode::BAD_GATEWAY, ""),
+                (StatusCode::SERVICE_UNAVAILABLE, ""),
+                (StatusCode::GATEWAY_TIMEOUT, ""),
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     r#"{"code":"StarknetErrorCode.BLOCK_NOT_FOUND","message":""}"#,
                 ),
-                (StatusCode::REQUEST_TIMEOUT, ""),
-                (StatusCode::GATEWAY_TIMEOUT, ""),
-                (StatusCode::SERVICE_UNAVAILABLE, ""),
-                (StatusCode::BAD_GATEWAY, ""),
                 (StatusCode::TOO_MANY_REQUESTS, ""),
-            ];
+                (StatusCode::BAD_GATEWAY, ""),
+                (StatusCode::SERVICE_UNAVAILABLE, ""),
+            ]);
 
-            let error = run_retry(ends_with_ok).await.unwrap_err();
+            let error = run_retry(statuses).await.unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(se) => assert_eq!(se.code, StarknetErrorCode::BlockNotFound)
@@ -1243,18 +1247,21 @@ mod tests {
         #[tokio::test]
         #[traced_test]
         async fn stop_on_max_retry_count() {
-            let ends_with_ok = vec![
-                (StatusCode::SERVICE_UNAVAILABLE, ""),
-                (StatusCode::REQUEST_TIMEOUT, ""),
-                (StatusCode::GATEWAY_TIMEOUT, ""),
+            let statuses = VecDeque::from([
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
                 (StatusCode::BAD_GATEWAY, ""),
+                (StatusCode::GATEWAY_TIMEOUT, ""),
+                (StatusCode::SERVICE_UNAVAILABLE, ""),
                 (StatusCode::TOO_MANY_REQUESTS, ""),
                 (StatusCode::TOO_MANY_REQUESTS, ""),
                 (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-            ];
+            ]);
 
-            let error = run_retry(ends_with_ok).await.unwrap_err();
+            let error = run_retry(statuses).await.unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::TransportError(te) => assert_eq!(te.status(), Some(StatusCode::SERVICE_UNAVAILABLE))
