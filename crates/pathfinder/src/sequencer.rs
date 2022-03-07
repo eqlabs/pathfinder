@@ -65,31 +65,6 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
     Ok(resp)
 }
 
-/// Used to specify which errors to retry on.
-fn retry_condition(error: &SequencerError) -> bool {
-    use reqwest::StatusCode;
-
-    match error {
-        SequencerError::TransportError(te) if te.is_timeout() => {
-            tracing::debug!("Retrying due to timeout");
-            true
-        }
-        SequencerError::TransportError(te) => match te.status() {
-            Some(
-                status @ (StatusCode::TOO_MANY_REQUESTS
-                | StatusCode::BAD_GATEWAY
-                | StatusCode::SERVICE_UNAVAILABLE
-                | StatusCode::GATEWAY_TIMEOUT),
-            ) => {
-                tracing::debug!("Retrying due to: {status}");
-                true
-            }
-            Some(_) | None => false,
-        },
-        _ => false,
-    }
-}
-
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
 ///
 /// Initial backoff time is 2 seconds. Retrying stops after approximately 4 minutes in total.
@@ -99,12 +74,32 @@ where
     FutureFactory: FnMut() -> Fut,
 {
     use crate::retry::Retry;
+    use reqwest::StatusCode;
     use std::num::{NonZeroU64, NonZeroUsize};
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
         // Max number of retries of 7 gives a total accumulated timeout of 4 minutes and 15 seconds (2^8-1)
         .max_num_retries(NonZeroUsize::new(7).unwrap())
-        .when(retry_condition)
+        .when(|e| match e {
+            SequencerError::TransportError(te) if te.is_timeout() => {
+                tracing::debug!("Retrying due to timeout");
+                true
+            }
+            SequencerError::TransportError(te) => match te.status() {
+                Some(
+                    status @ (StatusCode::TOO_MANY_REQUESTS
+                    | StatusCode::REQUEST_TIMEOUT
+                    | StatusCode::BAD_GATEWAY
+                    | StatusCode::SERVICE_UNAVAILABLE
+                    | StatusCode::GATEWAY_TIMEOUT),
+                ) => {
+                    tracing::debug!("Retrying due to: {status}");
+                    true
+                }
+                Some(_) | None => false,
+            },
+            _ => false,
+        })
         .await
 }
 
@@ -1166,5 +1161,100 @@ mod tests {
     #[tokio::test]
     async fn eth_contract_addresses() {
         retry_on_rate_limiting!(client().eth_contract_addresses().await).unwrap();
+    }
+
+    mod retry {
+        use super::{SequencerError, StarknetErrorCode};
+        use assert_matches::assert_matches;
+        use http::StatusCode;
+        use pretty_assertions::assert_eq;
+
+        async fn run_retry(
+            statuses: Vec<(StatusCode, &'static str)>,
+        ) -> Result<String, SequencerError> {
+            use http::response::Builder;
+            use std::{
+                cell::RefCell,
+                sync::{Arc, Mutex},
+            };
+            use warp::Filter;
+
+            let statuses = Arc::new(Mutex::new(RefCell::new(statuses)));
+            let any = warp::any().map(move || {
+                let s = statuses.clone();
+                let s = s.lock().unwrap();
+                let s = s.borrow_mut().pop().unwrap();
+                Builder::new().status(s.0).body(s.1)
+            });
+
+            let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
+            let _jh = tokio::spawn(run_srv);
+
+            // super::retry is the UUT here
+            let result = super::retry(|| async {
+                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                url.set_port(Some(addr.port())).unwrap();
+                let resp = reqwest::get(url).await.unwrap();
+                super::parse::<String>(resp).await
+            })
+            .await;
+            result
+        }
+
+        #[tokio::test]
+        async fn stop_on_ok() {
+            let ends_with_ok = vec![
+                (StatusCode::OK, r#""Finally!""#),
+                (StatusCode::REQUEST_TIMEOUT, ""),
+                (StatusCode::GATEWAY_TIMEOUT, ""),
+                (StatusCode::SERVICE_UNAVAILABLE, ""),
+                (StatusCode::BAD_GATEWAY, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+            ];
+
+            let result = run_retry(ends_with_ok).await.unwrap();
+            assert_eq!(result, "Finally!");
+        }
+
+        #[tokio::test]
+        async fn stop_on_fatal() {
+            let ends_with_ok = vec![
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    r#"{"code":"StarknetErrorCode.BLOCK_NOT_FOUND","message":""}"#,
+                ),
+                (StatusCode::REQUEST_TIMEOUT, ""),
+                (StatusCode::GATEWAY_TIMEOUT, ""),
+                (StatusCode::SERVICE_UNAVAILABLE, ""),
+                (StatusCode::BAD_GATEWAY, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+            ];
+
+            let error = run_retry(ends_with_ok).await.unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(se) => assert_eq!(se.code, StarknetErrorCode::BlockNotFound)
+            );
+        }
+
+        #[tokio::test]
+        async fn stop_on_max_retry_count() {
+            let ends_with_ok = vec![
+                (StatusCode::SERVICE_UNAVAILABLE, ""),
+                (StatusCode::REQUEST_TIMEOUT, ""),
+                (StatusCode::GATEWAY_TIMEOUT, ""),
+                (StatusCode::BAD_GATEWAY, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+                (StatusCode::TOO_MANY_REQUESTS, ""),
+            ];
+
+            let error = run_retry(ends_with_ok).await.unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::TransportError(te) => assert_eq!(te.status(), Some(StatusCode::SERVICE_UNAVAILABLE))
+            );
+        }
     }
 }
