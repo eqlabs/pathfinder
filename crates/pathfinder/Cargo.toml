@@ -41,8 +41,11 @@ zstd = "0.10"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
+http = "0.2.6"
 mockall = "0.11.0"
 pretty_assertions = "1.0.0"
 tempfile = "3"
 # log crate should be handled through tracing-subscriber if needed
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
+tracing-test = "0.2.1"
+warp = "0.3.2"
