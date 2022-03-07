@@ -138,6 +138,9 @@ pub async fn start(
                     _ = &mut wait_before_spawning => {
                         // spawn if needed
                         spawn = count.get() > joinhandles.len();
+                        wait_before_spawning
+                            .as_mut()
+                            .reset(tokio::time::Instant::now() + WAIT_BEFORE_SPAWN);
                     }
                 }
 
@@ -153,10 +156,6 @@ pub async fn start(
                     );
 
                     joinhandles.push(jh);
-                } else if count.get() > joinhandles.len() && wait_before_spawning.is_elapsed() {
-                    wait_before_spawning
-                        .as_mut()
-                        .reset(tokio::time::Instant::now() + WAIT_BEFORE_SPAWN);
                 }
             }
         }
