@@ -148,7 +148,7 @@ The full specification is available [here](https://github.com/starkware-libs/sta
 starknet_getBlockByHash
 starknet_getBlockByNumber
 # Value of a storage at a given address and key
-starknet_getStorageAt                         # Value of a storage at the given address and key
+starknet_getStorageAt
 # Transaction information
 starknet_getTransactionByHash
 starknet_getTransactionByBlockHashAndIndex
