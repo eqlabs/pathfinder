@@ -10,21 +10,28 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      # An Ethereum access point is required for some L1 StarkNet contract tests.
-      # This sets it to secret values stored in the repository, which prevents
-      # leaking it in code.
-      PATHFINDER_ETHEREUM_HTTP_GOERLI_URL:       ${{ secrets.PATHFINDER_ETHEREUM_HTTP_GOERLI_URL }}
-      PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD:  ${{ secrets.PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD }}
-      PATHFINDER_ETHEREUM_HTTP_MAINNET_URL:      ${{ secrets.PATHFINDER_ETHEREUM_HTTP_MAINNET_URL }}
-      PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD: ${{ secrets.PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD }}
     steps:
       - uses: actions/checkout@v2
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v1
       - run: |
           cargo test --no-run --workspace
-          timeout 5m cargo test -p pathfinder -- --skip rpc::tests --skip sequencer::tests
+          timeout 5m cargo test -p pathfinder -- --skip rpc::tests --skip sequencer::tests --skip ethereum::
+
+          # Run Ethereum tests using Infura endpoint
+          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.INFURA_GOERLI_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.INFURA_GOERLI_PASSWORD }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.INFURA_MAINNET_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.INFURA_MAINNET_PASSWORD }} \
+            timeout 3m cargo test -p pathfinder -- ethereum::
+
+          # Run Ethereum tests using Alchemy endpoint
+          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.ALCHEMY_GOERLI_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.ALCHEMY_GOERLI_PASSWORD }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.ALCHEMY_MAINNET_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.ALCHEMY_MAINNET_PASSWORD }} \
+            timeout 3m cargo test -p pathfinder -- ethereum::
+
           timeout 3m cargo test -p pedersen --benches
   clippy:
     runs-on: ubuntu-latest
