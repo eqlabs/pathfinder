@@ -112,6 +112,7 @@ where
 
                     continue;
                 }
+                Err(GetLogsError::UnknownBlock) => return Err(BackwardFetchError::Reorg),
                 Err(GetLogsError::Other(other)) => return Err(BackwardFetchError::Other(other)),
             };
 

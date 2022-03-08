@@ -117,6 +117,25 @@ where
 
                     continue;
                 }
+                Err(GetLogsError::UnknownBlock) => {
+                    // This implies either:
+                    //  - the `to_block` exceeds the current chain state, or
+                    //  - both `from_block` and `to_block` exceed the current chain state which indicates a reorg occurred.
+                    // so lets check this by querying for the `to_block`.
+                    let chain_head = transport
+                        .eth()
+                        .block_number()
+                        .await
+                        .context("Get latest block number from L1")?
+                        .as_u64();
+
+                    if from_block <= chain_head {
+                        self.stride = (chain_head - from_block).max(1);
+                        continue;
+                    } else {
+                        return Err(FetchError::Reorg);
+                    }
+                }
                 Err(GetLogsError::Other(other)) => return Err(FetchError::Other(other)),
             };
 

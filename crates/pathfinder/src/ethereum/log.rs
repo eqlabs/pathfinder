@@ -61,10 +61,10 @@ pub struct MemoryPageFactContinuousLog {
 #[derive(Debug)]
 enum GetLogsError {
     /// Query exceeded limits (time or result length).
-    ///
-    /// In particular, this can occur when connecting to an
-    /// Infura endpoint.
     QueryLimit,
+    /// One of the blocks specified in the filter is unknown. Currently only
+    /// known to occur for Alchemy endpoints.
+    UnknownBlock,
     Other(anyhow::Error),
 }
 
@@ -79,6 +79,10 @@ async fn get_logs<T: Transport>(
     /// time to time. It appears that the returned value is simply empty.
     const DECODER_ERR: &str =
         "Error(\"invalid type: null, expected a sequence\", line: 0, column: 0)";
+    const ALCHEMY_UNKNOWN_BLOCK_ERR: &str =
+        "One of the blocks specified in filter (fromBlock, toBlock or blockHash) cannot be found.";
+    const ALCHEMY_QUERY_TIMEOUT_ERR: &str =
+        "Query timeout exceeded. Consider reducing your block range.";
     loop {
         match transport.eth().logs(filter.clone()).await {
             Ok(logs) => return Ok(logs),
@@ -90,6 +94,18 @@ async fn get_logs<T: Transport>(
                     && err.message.starts_with("Log response size exceeded") =>
             {
                 // Handle Alchemy query limit error response. Uses InvalidParams which is unusual.
+                return Err(GetLogsError::QueryLimit);
+            }
+            Err(Rpc(err))
+                if err.code.code() == InvalidInput.code()
+                    && err.message == ALCHEMY_UNKNOWN_BLOCK_ERR =>
+            {
+                return Err(GetLogsError::UnknownBlock);
+            }
+            Err(Rpc(err))
+                if err.code.code() == InvalidInput.code()
+                    && err.message == ALCHEMY_QUERY_TIMEOUT_ERR =>
+            {
                 return Err(GetLogsError::QueryLimit);
             }
             Err(Decoder(err)) if err == DECODER_ERR => {
@@ -150,6 +166,31 @@ mod tests {
 
             let result = get_logs(&transport, filter).await;
             assert_matches!(result, Err(GetLogsError::QueryLimit));
+        }
+
+        #[tokio::test]
+        async fn unknown_block() {
+            // This test covers the scenario where we query a block range which exceeds the current
+            // Ethereum chain.
+            //
+            // Infura and Alchemy handle this differently.
+            //  - Infura accepts the query as valid and simply returns logs for whatever part of the range it has.
+            //  - Alchemy throws a RPC::ServerError which `get_logs` maps to `UnknownBlock`.
+            let transport = test_transport(crate::ethereum::Chain::Goerli);
+            let latest = transport.eth().block_number().await.unwrap().as_u64();
+
+            let filter = FilterBuilder::default()
+                .from_block(BlockNumber::Number((latest + 10).into()))
+                .to_block(BlockNumber::Number((latest + 20).into()))
+                .build();
+
+            let result = get_logs(&transport, filter).await;
+            match result {
+                // This occurs for an Infura endpoint
+                Ok(logs) => assert!(logs.is_empty()),
+                // This occurs for an Alchemy endpoint
+                Err(e) => assert_matches!(e, GetLogsError::UnknownBlock),
+            }
         }
     }
 }
