@@ -188,8 +188,7 @@ mod tests {
             EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
         },
         ethereum::{
-            log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
-            TransactionOrigin,
+            log::StateUpdateLog, test_transport, BlockOrigin, EthOrigin, TransactionOrigin,
         },
     };
 
@@ -231,7 +230,7 @@ mod tests {
 
         let chain = crate::ethereum::Chain::Goerli;
         let mut root_fetcher = LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), chain);
-        let transport = create_test_transport(chain);
+        let transport = test_transport(chain);
         let mut block_number = 1;
 
         let logs = root_fetcher.fetch(&transport).await.unwrap();

@@ -153,46 +153,43 @@ pub async fn chain<T: Transport>(transport: &Web3<T>) -> anyhow::Result<Chain> {
 }
 
 #[cfg(test)]
+/// Creates a [Web3<Http>] transport from the Ethereum endpoint specified by the relevant environment variables.
+///
+/// Requires an environment variable for both the URL and (optional) password.
+///
+/// Panics if the environment variables are not specified.
+///
+/// Goerli:  PATHFINDER_ETHEREUM_HTTP_GOERLI_URL
+///          PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD (optional)
+///
+/// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
+///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
+pub fn test_transport(chain: Chain) -> Web3<web3::transports::Http> {
+    let key_prefix = match chain {
+        Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
+        Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
+    };
+
+    let url_key = format!("{}_URL", key_prefix);
+    let password_key = format!("{}_PASSWORD", key_prefix);
+
+    let url = std::env::var(&url_key)
+        .unwrap_or_else(|_| panic!("Ethereum URL environment var not set {url_key}"));
+
+    let password = std::env::var(password_key).ok();
+
+    let mut url = url.parse::<reqwest::Url>().expect("Bad Ethereum URL");
+    url.set_password(password.as_deref()).unwrap();
+
+    let client = reqwest::Client::builder().build().unwrap();
+    let transport = web3::transports::Http::with_client(client, url);
+
+    Web3::new(transport)
+}
+
+#[cfg(test)]
 pub mod test {
     use super::*;
-
-    use reqwest::Url;
-    use web3::transports::Http;
-    use web3::Web3;
-
-    /// Creates a [Web3<Http>] transport from the Ethereum endpoint specified by the relevant environment variables.
-    ///
-    /// Requires an environment variable for both the URL and (optional) password.
-    ///
-    /// Panics if the environment variables are not specified.
-    ///
-    /// Goerli:  PATHFINDER_ETHEREUM_HTTP_GOERLI_URL
-    ///          PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD (optional)
-    ///
-    /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
-    ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
-    pub fn create_test_transport(chain: Chain) -> Web3<Http> {
-        let key_prefix = match chain {
-            Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
-            Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
-        };
-
-        let url_key = format!("{}_URL", key_prefix);
-        let password_key = format!("{}_PASSWORD", key_prefix);
-
-        let url = std::env::var(&url_key)
-            .unwrap_or_else(|_| panic!("Ethereum URL environment var not set {url_key}"));
-
-        let password = std::env::var(password_key).ok();
-
-        let mut url = url.parse::<Url>().expect("Bad Ethereum URL");
-        url.set_password(password.as_deref()).unwrap();
-
-        let client = reqwest::Client::builder().build().unwrap();
-        let transport = Http::with_client(client, url);
-
-        Web3::new(transport)
-    }
 
     mod chain {
         use super::*;
@@ -200,7 +197,7 @@ pub mod test {
         #[tokio::test]
         async fn goerli() {
             let expected_chain = Chain::Goerli;
-            let transport = create_test_transport(expected_chain);
+            let transport = test_transport(expected_chain);
             let chain = chain(&transport).await.unwrap();
 
             assert_eq!(chain, expected_chain);
@@ -209,7 +206,7 @@ pub mod test {
         #[tokio::test]
         async fn mainnet() {
             let expected_chain = Chain::Mainnet;
-            let transport = create_test_transport(expected_chain);
+            let transport = test_transport(expected_chain);
             let chain = chain(&transport).await.unwrap();
 
             assert_eq!(chain, expected_chain);

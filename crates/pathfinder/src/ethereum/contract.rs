@@ -98,7 +98,7 @@ mod tests {
             types::{BlockId, BlockNumber},
         };
 
-        use crate::ethereum::{test::create_test_transport, Chain};
+        use crate::ethereum::{test_transport, Chain};
 
         use super::*;
 
@@ -137,7 +137,7 @@ mod tests {
                     "/resources/contracts/core_proxy.json"
                 ));
 
-                let transport = create_test_transport(Chain::Goerli);
+                let transport = test_transport(Chain::Goerli);
 
                 let core_proxy = web3::contract::Contract::from_json(
                     transport.eth(),
@@ -176,7 +176,7 @@ mod tests {
                     "/resources/contracts/core_proxy.json"
                 ));
 
-                let transport = create_test_transport(Chain::Mainnet);
+                let transport = test_transport(Chain::Mainnet);
 
                 let core_proxy = web3::contract::Contract::from_json(
                     transport.eth(),
