@@ -14,11 +14,8 @@ async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var("RUST_LOG", "info");
     }
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_target(false)
-        .compact()
-        .init();
+
+    setup_tracing();
 
     let config =
         config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
@@ -92,4 +89,33 @@ async fn ethereum_transport(config: EthereumConfig) -> anyhow::Result<Web3<Http>
     let client = Http::with_client(client, url);
 
     Ok(Web3::new(client))
+}
+
+#[cfg(feature = "tokio-console")]
+fn setup_tracing() {
+    use tracing_subscriber::prelude::*;
+
+    // EnvFilter isn't really a Filter, so this we need this ugly workaround for filtering with it.
+    // See https://github.com/tokio-rs/tracing/issues/1868 for more details.
+    let env_filter = Arc::new(tracing_subscriber::EnvFilter::from_default_env());
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_target(false)
+        .compact()
+        .with_filter(tracing_subscriber::filter::dynamic_filter_fn(
+            move |m, c| env_filter.enabled(m, c.clone()),
+        ));
+    let console_layer = console_subscriber::spawn();
+    tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(console_layer)
+        .init();
+}
+
+#[cfg(not(feature = "tokio-console"))]
+fn setup_tracing() {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_target(false)
+        .compact()
+        .init();
 }
