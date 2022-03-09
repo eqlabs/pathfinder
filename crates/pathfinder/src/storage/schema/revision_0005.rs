@@ -6,6 +6,9 @@ use crate::{sequencer::reply::transaction, storage::schema::PostMigrationAction}
 
 /// This schema migration moves the Starknet transactions and transaction receipts into
 /// their own table. These tables are indexed by the origin Starknet block hash.
+///
+/// This migration has a non-fatal bug where it fails to drop the columns if the table is empty.
+/// This bug is fixed in [schema revision 6](super::revision_0006::migrate).
 pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
     // Create the new transaction and transaction receipt tables.
     transaction

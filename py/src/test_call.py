@@ -37,6 +37,7 @@ end
 """
 
 
+# This only contains the tables required for call.
 def inmemory_with_tables():
     con = sqlite3.connect(":memory:")
     con.isolation_level = None
@@ -88,9 +89,7 @@ def inmemory_with_tables():
             number               INTEGER PRIMARY KEY,
             hash                 BLOB    NOT NULL,
             root                 BLOB    NOT NULL,
-            timestamp            INTEGER NOT NULL,
-            transactions         BLOB,
-            transaction_receipts BLOB
+            timestamp            INTEGER NOT NULL
         );
         """
     )
@@ -98,7 +97,7 @@ def inmemory_with_tables():
     # strangely this cannot be pulled into the script, maybe pragmas have
     # different kind of semantics than what is normally executed, would explain
     # the similar behaviour of sqlite3 .dump and restore.
-    cur.execute("pragma user_version = 5;")
+    cur.execute("pragma user_version = 6")
 
     con.commit()
     return con
