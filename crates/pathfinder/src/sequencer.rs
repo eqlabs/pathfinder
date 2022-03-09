@@ -135,26 +135,6 @@ impl Client {
         .await
     }
 
-    /// Gets block by number with the specified timeout.
-    #[tracing::instrument(skip(self))]
-    pub async fn block_by_number_with_timeout(
-        &self,
-        block_number: BlockNumberOrTag,
-        timeout: Duration,
-    ) -> Result<reply::Block, SequencerError> {
-        let number = block_number_str(block_number);
-        retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query("get_block", &[("blockNumber", &number)]))
-                .timeout(timeout)
-                .send()
-                .await?;
-            parse::<reply::Block>(resp).await
-        })
-        .await
-    }
-
     /// Get block by hash.
     #[tracing::instrument(skip(self))]
     pub async fn block_by_hash(
@@ -626,63 +606,6 @@ mod tests {
             retry_on_rate_limiting!(
                 client()
                     .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1716)))
-                    .await
-            )
-            .unwrap();
-        }
-    }
-
-    mod block_by_number_with_timeout {
-        use super::*;
-
-        #[tokio::test]
-        async fn latest() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_number_with_timeout(
-                        BlockNumberOrTag::Tag(Tag::Latest),
-                        Duration::from_secs(120)
-                    )
-                    .await
-            )
-            .unwrap();
-        }
-
-        #[tokio::test]
-        async fn pending() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_number_with_timeout(
-                        BlockNumberOrTag::Tag(Tag::Pending),
-                        Duration::from_secs(120)
-                    )
-                    .await
-            )
-            .unwrap();
-        }
-
-        #[tokio::test]
-        async fn invalid() {
-            let error = retry_on_rate_limiting!(
-                client()
-                    .block_by_number_with_timeout(*INVALID_BLOCK_NUMBER, Duration::from_secs(120))
-                    .await
-            )
-            .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
-            );
-        }
-
-        #[tokio::test]
-        async fn contains_receipts_without_status_field() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_number_with_timeout(
-                        BlockNumberOrTag::Number(StarknetBlockNumber(1716)),
-                        Duration::from_secs(120)
-                    )
                     .await
             )
             .unwrap();

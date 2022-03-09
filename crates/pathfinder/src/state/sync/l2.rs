@@ -170,9 +170,7 @@ async fn download_block(
 ) -> anyhow::Result<DownloadBlock> {
     use sequencer::error::StarknetErrorCode::BlockNotFound;
 
-    let result = sequencer
-        .block_by_number_with_timeout(block.into(), Duration::from_secs(3))
-        .await;
+    let result = sequencer.block_by_number(block.into()).await;
 
     match result {
         Ok(block) => Ok(DownloadBlock::Block(block)),
