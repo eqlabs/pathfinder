@@ -37,18 +37,36 @@ sudo apt install curl
 sudo apt install git
 ```
 
-`pathfinder` depends on Rust and some Python.
+### Install Rust
 
-- Install Rust by following the [official instructions](https://www.rust-lang.org/tools/install)
-- Ensure you have at least python 3.7 installed
+`pathfinder` requires Rust version `3.58` or later. The easiest way to install Rust is by following the [official instructions](https://www.rust-lang.org/tools/install).
+
+
+If you already have Rust installed, verify the version:
+```bash
+cargo --version # must be 3.58 or higher
+```
+To update your Rust version, use the `rustup` tool that came with the official instructions:
+```bash
+rustup update
+```
+
+### Install Python
+
+`pathfinder` requires Python version `3.7` or later.
 
 ```bash
 sudo apt install python3
 sudo apt install python3-venv
 sudo apt install python3-dev
 ```
+Verify the python version. Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
+```bash
+python3 --version # must be 3.7 or later
+```
 
-- `pathfinder` compilation need additional libraries to be installed (C compiler, linker, other deps)
+### Install build dependencies
+`pathfinder` compilation need additional libraries to be installed (C compiler, linker, other deps)
 
 ```bash
 sudo apt install build-essential
