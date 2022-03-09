@@ -304,10 +304,7 @@ async fn update_sync_status_latest(
         // Work-around the sequencer block fetch being flakey.
         let latest = loop {
             if let Ok(block) = sequencer
-                .block_by_number_with_timeout(
-                    BlockNumberOrTag::Tag(Tag::Latest),
-                    Duration::from_secs(3),
-                )
+                .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
                 .await
             {
                 // Unwrap is safe as only pending blocks have None.
