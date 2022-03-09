@@ -26,13 +26,36 @@ For help or to submit bug reports or feature requests, please open an issue or a
 ### Prerequisites
 
 Currently only supports Linux. Windows and MacOS support is planned.
-
 We need access to a full archive Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
+
+Before you start, make sure your system is up to date with Curl and Git available
+
+```bash
+sudo apt update
+sudo apt upgrade
+sudo apt install curl
+sudo apt install git
+```
 
 `pathfinder` depends on Rust and some Python.
 
 - Install Rust by following the [official instructions](https://www.rust-lang.org/tools/install)
 - Ensure you have at least python 3.7 installed
+
+```bash
+sudo apt install python3
+sudo apt install python3-venv
+sudo apt install python3-dev
+```
+
+- `pathfinder` compilation need additional libraries to be installed (C compiler, linker, other deps)
+
+```bash
+sudo apt install build-essential
+sudo apt install libgmp-dev
+sudo apt install pkg-config
+sudo apt install libssl-dev
+```
 
 ### Clone `pathfinder`
 
