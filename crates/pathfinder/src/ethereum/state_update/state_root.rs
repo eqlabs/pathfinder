@@ -34,7 +34,7 @@ mod tests {
 
     use crate::{
         core::StarknetBlockNumber,
-        ethereum::{test::create_test_transport, Chain},
+        ethereum::{test_transport, Chain},
     };
 
     use super::*;
@@ -44,7 +44,7 @@ mod tests {
         // The first state root retrieved should be the genesis event,
         // with a sequence number of 0.
         let chain = Chain::Goerli;
-        let transport = create_test_transport(chain);
+        let transport = test_transport(chain);
 
         let mut uut = StateRootFetcher::new(None, chain);
         let first_fetch = uut.fetch(&transport).await.unwrap();
@@ -73,7 +73,7 @@ mod tests {
             // This should get interpretted as a reorg once the correct
             // first L2 update log is found.
             let chain = Chain::Goerli;
-            let transport = create_test_transport(chain);
+            let transport = test_transport(chain);
 
             // Note that block_number must be 0 so that we pull all of L1 history.
             // This makes the test robust against L2 changes, updates or deployments
@@ -104,7 +104,7 @@ mod tests {
             // This should be interpreted as a reorg as this update
             // won't be found.
             let chain = Chain::Goerli;
-            let transport = create_test_transport(chain);
+            let transport = test_transport(chain);
 
             let latest_on_chain = transport.eth().block_number().await.unwrap().as_u64();
 

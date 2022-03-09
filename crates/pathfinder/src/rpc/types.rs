@@ -441,7 +441,7 @@ pub mod reply {
         fn try_from(txn: seq::Transaction) -> Result<Self, Self::Error> {
             let txn = txn
                 .transaction
-                .ok_or(anyhow::anyhow!("Transaction not found."))?;
+                .ok_or_else(|| anyhow::anyhow!("Transaction not found."))?;
             Ok(Self {
                 txn_hash: txn.transaction_hash,
                 contract_address: txn.contract_address,

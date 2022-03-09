@@ -112,6 +112,7 @@ where
 
                     continue;
                 }
+                Err(GetLogsError::UnknownBlock) => return Err(BackwardFetchError::Reorg),
                 Err(GetLogsError::Other(other)) => return Err(BackwardFetchError::Other(other)),
             };
 
@@ -178,8 +179,7 @@ mod tests {
             EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
         },
         ethereum::{
-            log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
-            TransactionOrigin,
+            log::StateUpdateLog, test_transport, BlockOrigin, EthOrigin, TransactionOrigin,
         },
     };
 
@@ -226,7 +226,7 @@ mod tests {
             chain,
         );
 
-        let transport = create_test_transport(chain);
+        let transport = test_transport(chain);
         let logs = fetcher.fetch(&transport).await.unwrap();
         let mut block_number = update_log.block_number.0 - 1;
         for log in logs {

@@ -117,6 +117,25 @@ where
 
                     continue;
                 }
+                Err(GetLogsError::UnknownBlock) => {
+                    // This implies either:
+                    //  - the `to_block` exceeds the current chain state, or
+                    //  - both `from_block` and `to_block` exceed the current chain state which indicates a reorg occurred.
+                    // so lets check this by querying for the `to_block`.
+                    let chain_head = transport
+                        .eth()
+                        .block_number()
+                        .await
+                        .context("Get latest block number from L1")?
+                        .as_u64();
+
+                    if from_block <= chain_head {
+                        self.stride = (chain_head - from_block).max(1);
+                        continue;
+                    } else {
+                        return Err(FetchError::Reorg);
+                    }
+                }
                 Err(GetLogsError::Other(other)) => return Err(FetchError::Other(other)),
             };
 
@@ -188,8 +207,7 @@ mod tests {
             EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
         },
         ethereum::{
-            log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
-            TransactionOrigin,
+            log::StateUpdateLog, test_transport, BlockOrigin, EthOrigin, TransactionOrigin,
         },
     };
 
@@ -231,7 +249,7 @@ mod tests {
 
         let chain = crate::ethereum::Chain::Goerli;
         let mut root_fetcher = LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), chain);
-        let transport = create_test_transport(chain);
+        let transport = test_transport(chain);
         let mut block_number = 1;
 
         let logs = root_fetcher.fetch(&transport).await.unwrap();
