@@ -54,7 +54,9 @@ async fn main() -> anyhow::Result<()> {
         futures::future::pending(),
     )
     .await
-    .context("Creating python process for call handling. Have you setup and activate the python `VIRTUAL_ENV` in the `py` directory?")?;
+    .context(
+        "Creating python process for call handling. Have you setup our Python dependencies?",
+    )?;
 
     let api = rpc::api::RpcApi::new(storage, sequencer, network_chain, sync_state)
         .with_call_handling(call_handle);
