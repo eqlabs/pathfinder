@@ -1045,26 +1045,6 @@ mod tests {
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
-            #[ignore = "This is a manual test and will be removed once state mocking facilities are ready."]
-            async fn real_data() {
-                let storage = Storage::migrate("desync.sqlite".into()).unwrap();
-                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-                let params = rpc_params!(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    BlockHashOrTag::Tag(Tag::Latest)
-                );
-                let value = client(addr)
-                    .request::<StorageValue>("starknet_getStorageAt", params)
-                    .await
-                    .unwrap();
-                assert_eq!(value, StorageValue::from_hex_str("0x1E240").unwrap());
-            }
-
-            #[tokio::test]
             async fn positional_args() {
                 let storage = setup_storage();
                 let sequencer = SeqClient::new(Chain::Goerli).unwrap();
