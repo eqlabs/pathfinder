@@ -942,41 +942,47 @@ mod tests {
     mod retry {
         use super::{SequencerError, StarknetErrorCode};
         use assert_matches::assert_matches;
-        use http::StatusCode;
+        use http::{response::Builder, StatusCode};
         use pretty_assertions::assert_eq;
-        use std::collections::VecDeque;
+        use std::{
+            collections::VecDeque, convert::Infallible, net::SocketAddr, sync::Arc, time::Duration,
+        };
+        use tokio::{sync::Mutex, task::JoinHandle};
         use tracing_test::traced_test;
+        use warp::Filter;
 
-        async fn run_retry(
+        // A test helper
+        fn status_queue_server(
             statuses: VecDeque<(StatusCode, &'static str)>,
-        ) -> Result<String, SequencerError> {
-            use http::response::Builder;
-            use std::{
-                cell::RefCell,
-                sync::{Arc, Mutex},
-            };
-            use warp::Filter;
+        ) -> (JoinHandle<()>, SocketAddr) {
+            use std::cell::RefCell;
 
             let statuses = Arc::new(Mutex::new(RefCell::new(statuses)));
-            let any = warp::any().map(move || {
+            let any = warp::any().and_then(move || {
                 let s = statuses.clone();
-                let s = s.lock().unwrap();
-                let s = s.borrow_mut().pop_front().unwrap();
-                Builder::new().status(s.0).body(s.1)
+                async move {
+                    let s = s.lock().await;
+                    let s = s.borrow_mut().pop_front().unwrap();
+                    Result::<_, Infallible>::Ok(Builder::new().status(s.0).body(s.1))
+                }
             });
 
             let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
-            let _jh = tokio::spawn(run_srv);
+            let server_handle = tokio::spawn(run_srv);
+            (server_handle, addr)
+        }
 
-            // super::retry is the UUT here
-            let result = super::retry(|| async {
-                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
-                url.set_port(Some(addr.port())).unwrap();
-                let resp = reqwest::get(url).await.unwrap();
-                super::parse::<String>(resp).await
-            })
-            .await;
-            result
+        // A test helper
+        fn slow_server() -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
+            async fn slow() -> Result<impl warp::Reply, Infallible> {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                Ok(Builder::new().status(200).body(""))
+            }
+
+            let any = warp::any().and_then(slow);
+            let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
+            let server_handle = tokio::spawn(run_srv);
+            (server_handle, addr)
         }
 
         #[tokio::test]
@@ -993,7 +999,15 @@ mod tests {
                 (StatusCode::SERVICE_UNAVAILABLE, ""),
             ]);
 
-            let result = run_retry(statuses).await.unwrap();
+            let (_jh, addr) = status_queue_server(statuses);
+            let result = super::retry(|| async {
+                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                url.set_port(Some(addr.port())).unwrap();
+                let resp = reqwest::get(url).await?;
+                super::parse::<String>(resp).await
+            })
+            .await
+            .unwrap();
             assert_eq!(result, "Finally!");
         }
 
@@ -1014,7 +1028,15 @@ mod tests {
                 (StatusCode::SERVICE_UNAVAILABLE, ""),
             ]);
 
-            let error = run_retry(statuses).await.unwrap_err();
+            let (_jh, addr) = status_queue_server(statuses);
+            let error = super::retry(|| async {
+                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                url.set_port(Some(addr.port())).unwrap();
+                let resp = reqwest::get(url).await?;
+                super::parse::<String>(resp).await
+            })
+            .await
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(se) => assert_eq!(se.code, StarknetErrorCode::BlockNotFound)
@@ -1038,11 +1060,78 @@ mod tests {
                 (StatusCode::TOO_MANY_REQUESTS, ""),
             ]);
 
-            let error = run_retry(statuses).await.unwrap_err();
+            let (_jh, addr) = status_queue_server(statuses);
+            let error = super::retry(|| async {
+                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                url.set_port(Some(addr.port())).unwrap();
+                let resp = reqwest::get(url).await?;
+                super::parse::<String>(resp).await
+            })
+            .await
+            .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::TransportError(te) => assert_eq!(te.status(), Some(StatusCode::SERVICE_UNAVAILABLE))
             );
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn client_timeout() {
+            let (_jh, addr) = slow_server();
+            let timeout_counter = Arc::new(Mutex::new(0));
+
+            let error = super::retry(|| async {
+                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                url.set_port(Some(addr.port())).unwrap();
+
+                let client = reqwest::Client::builder()
+                    .timeout(Duration::from_millis(1))
+                    .build()
+                    .unwrap();
+
+                let mut cnt = timeout_counter.lock().await;
+                *cnt += 1;
+
+                let resp = client.get(url).send().await?;
+                super::parse::<String>(resp).await
+            })
+            .await
+            .unwrap_err();
+
+            // Ultimately, after 7 retries a timeout error is returned
+            assert_matches!(error, SequencerError::TransportError(te) => assert!(te.is_timeout()));
+            assert_eq!(*timeout_counter.lock().await, 8);
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn request_timeout() {
+            let (_jh, addr) = slow_server();
+            let timeout_counter = Arc::new(Mutex::new(0));
+
+            let error = super::retry(|| async {
+                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                url.set_port(Some(addr.port())).unwrap();
+
+                let client = reqwest::Client::builder().build().unwrap();
+
+                let mut cnt = timeout_counter.lock().await;
+                *cnt += 1;
+
+                let resp = client
+                    .get(url)
+                    .timeout(Duration::from_millis(1))
+                    .send()
+                    .await?;
+                super::parse::<String>(resp).await
+            })
+            .await
+            .unwrap_err();
+
+            // Ultimately, after 7 retries a timeout error is returned
+            assert_matches!(error, SequencerError::TransportError(te) => assert!(te.is_timeout()));
+            assert_eq!(*timeout_counter.lock().await, 8);
         }
     }
 }
