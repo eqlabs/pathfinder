@@ -236,7 +236,7 @@ mod tests {
     use crate::{
         core::{
             ContractAddress, ContractHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetProtocolVersion,
+            StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress, StorageValue,
         },
         ethereum::Chain,
         rpc::run_server,
@@ -310,22 +310,23 @@ mod tests {
 
     // Local test helper
     fn setup_storage() -> Storage {
-        let storage = Storage::in_memory().unwrap();
-        let mut connection = storage.connection().unwrap();
-        let db_txn = connection.transaction().unwrap();
-
-        use crate::core::{StorageAddress, StorageValue};
         use crate::ethereum::state_update::{ContractUpdate, StorageUpdate};
         use crate::state::{update_contract_state, CompressedContract};
 
-        let global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
-        let global_root0 = global_tree.apply().unwrap();
+        let storage = Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let db_txn = connection.transaction().unwrap();
 
         let contract0_addr = ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap());
         let contract1_addr = ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap());
 
         let contract0_hash = ContractHash(StarkHash::from_be_slice(b"contract 0 hash").unwrap());
         let contract1_hash = ContractHash(StarkHash::from_be_slice(b"contract 1 hash").unwrap());
+
+        let contract0_update = ContractUpdate {
+            address: contract0_addr,
+            storage_updates: vec![],
+        };
 
         let storage_addr = StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap());
         let contract1_update0 = ContractUpdate {
@@ -360,13 +361,33 @@ mod tests {
         ContractsTable::insert(&db_txn, contract0_addr, contract0_hash).unwrap();
         ContractsTable::insert(&db_txn, contract1_addr, contract1_hash).unwrap();
 
-        let global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
-        update_contract_state(&contract1_update0, &global_tree, &db_txn).unwrap();
-        update_contract_state(&contract1_update1, &global_tree, &db_txn).unwrap();
+        let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
+        let contract_state_hash =
+            update_contract_state(&contract0_update, &global_tree, &db_txn).unwrap();
+        global_tree
+            .set(contract0_addr, contract_state_hash)
+            .unwrap();
+        let global_root0 = global_tree.apply().unwrap();
+
+        let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
+        let contract_state_hash =
+            update_contract_state(&contract1_update0, &global_tree, &db_txn).unwrap();
+        global_tree
+            .set(contract1_addr, contract_state_hash)
+            .unwrap();
+        let contract_state_hash =
+            update_contract_state(&contract1_update1, &global_tree, &db_txn).unwrap();
+        global_tree
+            .set(contract1_addr, contract_state_hash)
+            .unwrap();
         let global_root1 = global_tree.apply().unwrap();
 
-        let global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
-        update_contract_state(&contract1_update2, &global_tree, &db_txn).unwrap();
+        let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
+        let contract_state_hash =
+            update_contract_state(&contract1_update2, &global_tree, &db_txn).unwrap();
+        global_tree
+            .set(contract1_addr, contract_state_hash)
+            .unwrap();
         let global_root2 = global_tree.apply().unwrap();
 
         let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
