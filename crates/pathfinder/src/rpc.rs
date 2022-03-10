@@ -1040,6 +1040,30 @@ mod tests {
             );
         }
 
+        #[tokio::test]
+        async fn deployment_block() {
+            let storage = setup_storage();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(
+                ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
+                StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
+                BlockHashOrTag::Hash(StarknetBlockHash(
+                    StarkHash::from_be_slice(b"block 1").unwrap()
+                ))
+            );
+            let value = client(addr)
+                .request::<StorageValue>("starknet_getStorageAt", params)
+                .await
+                .unwrap();
+            assert_eq!(
+                value.0,
+                StarkHash::from_be_slice(b"storage value 1").unwrap()
+            );
+        }
+
         mod latest_block {
             use super::*;
             use pretty_assertions::assert_eq;
