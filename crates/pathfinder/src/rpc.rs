@@ -255,7 +255,7 @@ mod tests {
     use jsonrpsee::{
         http_client::{HttpClient, HttpClientBuilder},
         rpc_params,
-        types::{traits::Client, v2::ParamsSer, DeserializeOwned},
+        types::{traits::Client, v2::ParamsSer},
     };
     use pedersen::StarkHash;
     use pretty_assertions::assert_eq;
@@ -266,49 +266,6 @@ mod tests {
         sync::Arc,
         time::Duration,
     };
-
-    /// Helper wrapper to allow retrying the test if rate limiting kicks in on the sequencer API side.
-    ///
-    /// Necessary until we move to mocking whatever the RPC api will call when the first release is ready.
-    ///
-    /// TODO remove this wrapper when retry::Retry is used in the sequencer::Client
-    async fn client_request<'a, Out>(
-        method: &str,
-        params: Option<ParamsSer<'a>>,
-    ) -> Result<Out, jsonrpsee::types::Error>
-    where
-        Out: Clone + DeserializeOwned,
-    {
-        let mut sleep_time_ms = 8000;
-        const MAX_SLEEP_TIME_MS: u64 = 128000;
-
-        loop {
-            // Restart the server each time (and implicitly the sequencer client, which actually does the job)
-            let storage = Storage::in_memory().unwrap();
-            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-            match client(addr).request::<Out>(method, params.clone()).await {
-                Ok(r) => return Ok(r),
-                Err(e) => match &e {
-                    jsonrpsee::types::Error::Request(s)
-                        if s.contains("(429 Too Many Requests)") =>
-                    {
-                        if sleep_time_ms > MAX_SLEEP_TIME_MS {
-                            return Err(e);
-                        }
-                        let d = Duration::from_millis(sleep_time_ms);
-                        // Give the sequencer api some slack and then retry
-                        eprintln!("Got HTTP 429, retrying after {:?} ...", d);
-                        tokio::time::sleep(d).await;
-                        sleep_time_ms *= 2;
-                    }
-                    _ => return Err(e),
-                },
-            }
-        }
-    }
 
     /// Helper function: produces named rpc method args map.
     fn by_name<const N: usize>(params: [(&'_ str, serde_json::Value); N]) -> Option<ParamsSer<'_>> {
@@ -776,8 +733,14 @@ mod tests {
         #[tokio::test]
         #[should_panic]
         async fn genesis() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(*GENESIS_BLOCK_HASH);
-            client_request::<StateUpdate>("starknet_getStateUpdateByHash", params)
+            client(addr)
+                .request::<StateUpdate>("starknet_getStateUpdateByHash", params)
                 .await
                 .unwrap();
         }
@@ -785,8 +748,14 @@ mod tests {
         #[tokio::test]
         #[should_panic]
         async fn latest() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
-            client_request::<StateUpdate>("starknet_getStateUpdateByHash", params)
+            client(addr)
+                .request::<StateUpdate>("starknet_getStateUpdateByHash", params)
                 .await
                 .unwrap();
         }
@@ -794,8 +763,14 @@ mod tests {
         #[tokio::test]
         #[should_panic]
         async fn pending() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
-            client_request::<StateUpdate>("starknet_getStateUpdateByHash", params)
+            client(addr)
+                .request::<StateUpdate>("starknet_getStateUpdateByHash", params)
                 .await
                 .unwrap();
         }
@@ -813,6 +788,11 @@ mod tests {
         async fn overflowing_key() {
             use std::str::FromStr;
 
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
                 *VALID_CONTRACT_ADDR,
                 web3::types::H256::from_str(
@@ -821,7 +801,8 @@ mod tests {
                 .unwrap(),
                 BlockHashOrTag::Tag(Tag::Latest)
             );
-            let error = client_request::<StorageValue>("starknet_getStorageAt", params)
+            let error = client(addr)
+                .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -844,8 +825,14 @@ mod tests {
 
         #[tokio::test]
         async fn non_existent_block_hash() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH);
-            let error = client_request::<StorageValue>("starknet_getStorageAt", params)
+            let error = client(addr)
+                .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -893,12 +880,18 @@ mod tests {
 
         #[tokio::test]
         async fn pending_block() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
                 *VALID_CONTRACT_ADDR,
                 *VALID_KEY,
                 BlockHashOrTag::Tag(Tag::Pending)
             );
-            client_request::<StorageValue>("starknet_getStorageAt", params)
+            client(addr)
+                .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
         }
@@ -914,16 +907,28 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = rpc_params!(*VALID_TX_HASH);
-                client_request::<Transaction>("starknet_getTransactionByHash", params)
+                client(addr)
+                    .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
             }
 
             #[tokio::test]
             async fn named_args() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = by_name([("transaction_hash", json!(*VALID_TX_HASH))]);
-                client_request::<Transaction>("starknet_getTransactionByHash", params)
+                client(addr)
+                    .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
             }
@@ -931,8 +936,14 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(*INVALID_TX_HASH);
-            let error = client_request::<Transaction>("starknet_getTransactionByHash", params)
+            let error = client(addr)
+                .request::<Transaction>("starknet_getTransactionByHash", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1244,12 +1255,17 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
-            let e = client_request::<ContractCode>("starknet_getCode", params)
+            let error = client(addr)
+                .request::<ContractCode>("starknet_getCode", params)
                 .await
                 .unwrap_err();
-
-            assert_eq!(ErrorCode::ContractNotFound, e);
+            assert_eq!(ErrorCode::ContractNotFound, error);
         }
 
         #[tokio::test]
@@ -1554,6 +1570,11 @@ mod tests {
 
         #[tokio::test]
         async fn latest_invoked_block() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
                 Call {
                     calldata: CALL_DATA.clone(),
@@ -1562,7 +1583,8 @@ mod tests {
                 },
                 *INVOKE_CONTRACT_BLOCK_HASH
             );
-            client_request::<Vec<CallResultValue>>("starknet_call", params)
+            client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap();
         }
@@ -1572,6 +1594,11 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = rpc_params!(
                     Call {
                         calldata: CALL_DATA.clone(),
@@ -1580,13 +1607,19 @@ mod tests {
                     },
                     BlockHashOrTag::Tag(Tag::Latest)
                 );
-                client_request::<Vec<CallResultValue>>("starknet_call", params)
+                client(addr)
+                    .request::<Vec<CallResultValue>>("starknet_call", params)
                     .await
                     .unwrap();
             }
 
             #[tokio::test]
             async fn named_args() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
                 let params = by_name([
                     (
                         "request",
@@ -1598,7 +1631,8 @@ mod tests {
                     ),
                     ("block_hash", json!("latest")),
                 ]);
-                client_request::<Vec<CallResultValue>>("starknet_call", params)
+                client(addr)
+                    .request::<Vec<CallResultValue>>("starknet_call", params)
                     .await
                     .unwrap();
             }
@@ -1606,6 +1640,11 @@ mod tests {
 
         #[tokio::test]
         async fn pending_block() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
                 Call {
                     calldata: CALL_DATA.clone(),
@@ -1614,13 +1653,19 @@ mod tests {
                 },
                 BlockHashOrTag::Tag(Tag::Pending)
             );
-            client_request::<Vec<CallResultValue>>("starknet_call", params)
+            client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
         async fn invalid_entry_point() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
                 Call {
                     calldata: CALL_DATA.clone(),
@@ -1629,7 +1674,8 @@ mod tests {
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
-            let error = client_request::<Vec<CallResultValue>>("starknet_call", params)
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1640,6 +1686,11 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
                 Call {
                     calldata: CALL_DATA.clone(),
@@ -1648,7 +1699,8 @@ mod tests {
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
-            let error = client_request::<Vec<CallResultValue>>("starknet_call", params)
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1659,6 +1711,11 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_call_data() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
                 Call {
                     calldata: vec![],
@@ -1667,7 +1724,8 @@ mod tests {
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
-            let error = client_request::<Vec<CallResultValue>>("starknet_call", params)
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1678,6 +1736,11 @@ mod tests {
 
         #[tokio::test]
         async fn uninitialized_contract() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
                 Call {
                     calldata: CALL_DATA.clone(),
@@ -1686,7 +1749,8 @@ mod tests {
                 },
                 *PRE_DEPLOY_CONTRACT_BLOCK_HASH
             );
-            let error = client_request::<Vec<CallResultValue>>("starknet_call", params)
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1697,6 +1761,11 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_hash() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
                 Call {
                     calldata: CALL_DATA.clone(),
@@ -1705,7 +1774,8 @@ mod tests {
                 },
                 *INVALID_BLOCK_HASH
             );
-            let error = client_request::<Vec<CallResultValue>>("starknet_call", params)
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1761,7 +1831,13 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn pending_transactions() {
-        client_request::<()>("starknet_pendingTransactions", rpc_params!())
+        let storage = Storage::in_memory().unwrap();
+        let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+        client(addr)
+            .request::<()>("starknet_pendingTransactions", rpc_params!())
             .await
             .unwrap();
     }
@@ -1769,7 +1845,13 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn protocol_version() {
-        client_request::<StarknetProtocolVersion>("starknet_protocolVersion", rpc_params!())
+        let storage = Storage::in_memory().unwrap();
+        let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+        let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+        client(addr)
+            .request::<StarknetProtocolVersion>("starknet_protocolVersion", rpc_params!())
             .await
             .unwrap();
     }

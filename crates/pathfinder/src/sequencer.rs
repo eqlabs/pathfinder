@@ -389,95 +389,10 @@ mod tests {
     use crate::core::{StarknetBlockHash, StarknetBlockNumber};
     use assert_matches::assert_matches;
     use pedersen::StarkHash;
-    use reqwest::StatusCode;
 
     /// Convenience wrapper
     fn client() -> Client {
         Client::new(Chain::Goerli).unwrap()
-    }
-
-    /// Convenience macro to allow retrying the test if rate limiting kicks in.
-    ///
-    /// Necessary until we resign from testing the client on a live API.
-    ///
-    /// Unfortunately __we cannot just use a wrapper function that takes the future as an argument__,
-    /// as this would mean that we would reuse the same client instance after each sleep which
-    /// is insufficient to break out of http 429 (the client needs to be destroyed as it does
-    /// employ pooling internally).
-    /// So __the following code does not actually yield desired results__, not to mention the obvious
-    /// convenience pf using `Rc<SequencerError>`due to the fact that some of its variants are not clonable:
-    /// ```
-    /// /// Helper wrapper to allow retrying the test if rate limiting kicks in.
-    ///
-    /// /// Necessary until we resign from testing the client on a live API.
-    ///
-    /// /// __`Rc`__ is used to work around most inner error types being not clonable.
-    /// async fn retry_on_spurious_err<Out, Fut>(f: Fut) -> Result<Out, Rc<SequencerError>>
-    /// where
-    ///     Out: Clone,
-    ///     Fut: Future<Output = Result<Out, Rc<SequencerError>>>,
-    /// {
-    ///     let mut sleep_time_ms = 8000;
-    ///     const MAX_SLEEP_TIME_MS: u64 = 128000;
-    ///     let clonable = f.shared();
-    ///     loop {
-    ///         match clonable.clone().await {
-    ///             Ok(r) => return Ok(r),
-    ///             Err(e) => match &*e {
-    ///                 SequencerError::TransportError(ee)
-    ///                     if ee.status() == Some(StatusCode::TOO_MANY_REQUESTS) =>
-    ///                 {
-    ///                     if sleep_time_ms > MAX_SLEEP_TIME_MS {
-    ///                         return Err(e);
-    ///                     }
-    ///                     // Give the api some slack and then retry
-    ///                     tokio::time::sleep(Duration::from_millis(sleep_time_ms)).await;
-    ///                     sleep_time_ms *= 2;
-    ///                 }
-    ///                 _ => return Err(e),
-    ///             },
-    ///         }
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// By the way we would still have to use a convenience macro to avoid some boilerplate code pleasures:
-    ///
-    /// ```
-    /// /// Convenience macro, frees the user of remembering to add `async {}` and `map_err(Rc::new)` to the mix.
-    /// macro_rules! retry_on_rate_limiting {
-    ///     ($wrapped_call:expr) => {
-    ///         retry_on_spurious_err(async { ($wrapped_call).await.map_err(Rc::new) })
-    ///     };
-    /// }
-    /// ```
-    macro_rules! retry_on_rate_limiting {
-        ($wrapped_call:expr) => {{
-            let mut sleep_time_ms = 8000;
-            const MAX_SLEEP_TIME_MS: u64 = 128000;
-            loop {
-                match ($wrapped_call) {
-                    Ok(r) => break Ok(r),
-                    Err(e) => match &e {
-                        SequencerError::TransportError(ee)
-                            if ee.status() == Some(StatusCode::TOO_MANY_REQUESTS) =>
-                        {
-                            if sleep_time_ms > MAX_SLEEP_TIME_MS {
-                                break Err(e);
-                            }
-                            // Give the api some slack and then retry
-                            eprintln!(
-                                "Got HTTP 429, retrying after {} seconds...",
-                                sleep_time_ms / 1000
-                            );
-                            tokio::time::sleep(Duration::from_millis(sleep_time_ms)).await;
-                            sleep_time_ms *= 2;
-                        }
-                        _ => break Err(e),
-                    },
-                }
-            }
-        }};
     }
 
     mod block_by_number_matches_by_hash_on {
@@ -485,33 +400,29 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let by_hash =
-                retry_on_rate_limiting!(client().block_by_hash(*GENESIS_BLOCK_HASH).await).unwrap();
-            let by_number =
-                retry_on_rate_limiting!(client().block_by_number(*GENESIS_BLOCK_NUMBER).await)
-                    .unwrap();
+            let by_hash = client().block_by_hash(*GENESIS_BLOCK_HASH).await.unwrap();
+            let by_number = client()
+                .block_by_number(*GENESIS_BLOCK_NUMBER)
+                .await
+                .unwrap();
             assert_eq!(by_hash, by_number);
         }
 
         #[tokio::test]
         async fn specific_block() {
-            let by_hash = retry_on_rate_limiting!(
-                client()
-                    .block_by_hash(BlockHashOrTag::Hash(
-                        StarknetBlockHash::from_hex_str(
-                            "0x07187d565e5563658f2b88a9000c6eb84692dcd90a8ab7d8fe75d768205d9b66"
-                        )
-                        .unwrap()
-                    ))
-                    .await
-            )
-            .unwrap();
-            let by_number = retry_on_rate_limiting!(
-                client()
-                    .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(50000)))
-                    .await
-            )
-            .unwrap();
+            let by_hash = client()
+                .block_by_hash(BlockHashOrTag::Hash(
+                    StarknetBlockHash::from_hex_str(
+                        "0x07187d565e5563658f2b88a9000c6eb84692dcd90a8ab7d8fe75d768205d9b66",
+                    )
+                    .unwrap(),
+                ))
+                .await
+                .unwrap();
+            let by_number = client()
+                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(50000)))
+                .await
+                .unwrap();
             assert_eq!(by_hash, by_number);
         }
     }
@@ -522,43 +433,39 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
-                    .await
-            )
-            .unwrap();
+            client()
+                .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn pending() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
-                    .await
-            )
-            .unwrap();
+            client()
+                .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn block_without_block_hash_field() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_hash(BlockHashOrTag::Hash(
-                        StarknetBlockHash::from_hex_str(
-                            "01cf37f162c3fa3b57c1c4324c240b0c8c65bb5a15e039817a3023b9890e94d1",
-                        )
-                        .unwrap(),
-                    ))
-                    .await
-            )
-            .unwrap();
+            client()
+                .block_by_hash(BlockHashOrTag::Hash(
+                    StarknetBlockHash::from_hex_str(
+                        "01cf37f162c3fa3b57c1c4324c240b0c8c65bb5a15e039817a3023b9890e94d1",
+                    )
+                    .unwrap(),
+                ))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn invalid() {
             // Invalid block hash
-            let error = retry_on_rate_limiting!(client().block_by_hash(*INVALID_BLOCK_HASH).await)
+            let error = client()
+                .block_by_hash(*INVALID_BLOCK_HASH)
+                .await
                 .unwrap_err();
             assert_matches!(
                 error,
@@ -572,29 +479,26 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
-                    .await
-            )
-            .unwrap();
+            client()
+                .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn pending() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
-                    .await
-            )
-            .unwrap();
+            client()
+                .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn invalid() {
-            let error =
-                retry_on_rate_limiting!(client().block_by_number(*INVALID_BLOCK_NUMBER).await)
-                    .unwrap_err();
+            let error = client()
+                .block_by_number(*INVALID_BLOCK_NUMBER)
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -603,12 +507,10 @@ mod tests {
 
         #[tokio::test]
         async fn contains_receipts_without_status_field() {
-            retry_on_rate_limiting!(
-                client()
-                    .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1716)))
-                    .await
-            )
-            .unwrap();
+            client()
+                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1716)))
+                .await
+                .unwrap();
         }
     }
 
@@ -618,20 +520,18 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_entry_point() {
-            let error = retry_on_rate_limiting!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: VALID_CALL_DATA.clone(),
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *INVALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Tag(Tag::Latest),
-                    )
-                    .await
-            )
-            .unwrap_err();
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: VALID_CALL_DATA.clone(),
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *INVALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::EntryPointNotFound)
@@ -640,20 +540,18 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let error = retry_on_rate_limiting!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: VALID_CALL_DATA.clone(),
-                            contract_address: *INVALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Tag(Tag::Latest),
-                    )
-                    .await
-            )
-            .unwrap_err();
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: VALID_CALL_DATA.clone(),
+                        contract_address: *INVALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
@@ -662,20 +560,18 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_call_data() {
-            let error = retry_on_rate_limiting!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: vec![],
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        *INVOKE_CONTRACT_BLOCK_HASH,
-                    )
-                    .await
-            )
-            .unwrap_err();
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: vec![],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    *INVOKE_CONTRACT_BLOCK_HASH,
+                )
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::TransactionFailed)
@@ -684,20 +580,18 @@ mod tests {
 
         #[tokio::test]
         async fn uninitialized_contract() {
-            let error = retry_on_rate_limiting!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: vec![],
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        *GENESIS_BLOCK_HASH,
-                    )
-                    .await
-            )
-            .unwrap_err();
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: vec![],
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    *GENESIS_BLOCK_HASH,
+                )
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
@@ -706,20 +600,18 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let error = retry_on_rate_limiting!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: VALID_CALL_DATA.clone(),
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        *INVALID_BLOCK_HASH,
-                    )
-                    .await
-            )
-            .unwrap_err();
+            let error = client()
+                .call(
+                    request::Call {
+                        calldata: VALID_CALL_DATA.clone(),
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    *INVALID_BLOCK_HASH,
+                )
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -728,56 +620,50 @@ mod tests {
 
         #[tokio::test]
         async fn latest_invoke_block() {
-            retry_on_rate_limiting!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: VALID_CALL_DATA.clone(),
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        *INVOKE_CONTRACT_BLOCK_HASH,
-                    )
-                    .await
-            )
-            .unwrap();
+            client()
+                .call(
+                    request::Call {
+                        calldata: VALID_CALL_DATA.clone(),
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    *INVOKE_CONTRACT_BLOCK_HASH,
+                )
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn latest_block() {
-            retry_on_rate_limiting!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: VALID_CALL_DATA.clone(),
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Tag(Tag::Latest),
-                    )
-                    .await
-            )
-            .unwrap();
+            client()
+                .call(
+                    request::Call {
+                        calldata: VALID_CALL_DATA.clone(),
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn pending_block() {
-            retry_on_rate_limiting!(
-                client()
-                    .call(
-                        request::Call {
-                            calldata: VALID_CALL_DATA.clone(),
-                            contract_address: *VALID_CONTRACT_ADDR,
-                            entry_point_selector: *VALID_ENTRY_POINT,
-                            signature: vec![],
-                        },
-                        BlockHashOrTag::Tag(Tag::Pending),
-                    )
-                    .await
-            )
-            .unwrap();
+            client()
+                .call(
+                    request::Call {
+                        calldata: VALID_CALL_DATA.clone(),
+                        contract_address: *VALID_CONTRACT_ADDR,
+                        entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: vec![],
+                    },
+                    BlockHashOrTag::Tag(Tag::Pending),
+                )
+                .await
+                .unwrap();
         }
     }
 
@@ -787,9 +673,10 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let error =
-                retry_on_rate_limiting!(client().full_contract(*INVALID_CONTRACT_ADDR).await)
-                    .unwrap_err();
+            let error = client()
+                .full_contract(*INVALID_CONTRACT_ADDR)
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
@@ -798,8 +685,7 @@ mod tests {
 
         #[tokio::test]
         async fn success() {
-            let bytes = retry_on_rate_limiting!(client().full_contract(*VALID_CONTRACT_ADDR).await)
-                .unwrap();
+            let bytes = client().full_contract(*VALID_CONTRACT_ADDR).await.unwrap();
             // Fast sanity check
             // TODO replace with something more meaningful once we figure out the structure to deserialize to
             assert_eq!(bytes.len(), 53032);
@@ -812,42 +698,36 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let result = retry_on_rate_limiting!(
-                client()
-                    .storage(
-                        *INVALID_CONTRACT_ADDR,
-                        *VALID_KEY,
-                        BlockHashOrTag::Tag(Tag::Latest),
-                    )
-                    .await
-            )
-            .unwrap();
+            let result = client()
+                .storage(
+                    *INVALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap();
             assert_eq!(result, StorageValue(StarkHash::ZERO));
         }
 
         #[tokio::test]
         async fn invalid_key() {
-            let result = retry_on_rate_limiting!(
-                client()
-                    .storage(
-                        *VALID_CONTRACT_ADDR,
-                        *ZERO_KEY,
-                        BlockHashOrTag::Tag(Tag::Latest),
-                    )
-                    .await
-            )
-            .unwrap();
+            let result = client()
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    *ZERO_KEY,
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap();
             assert_eq!(result, StorageValue(StarkHash::ZERO));
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let error = retry_on_rate_limiting!(
-                client()
-                    .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH,)
-                    .await
-            )
-            .unwrap_err();
+            let error = client()
+                .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH)
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -856,44 +736,38 @@ mod tests {
 
         #[tokio::test]
         async fn latest_invoke_block() {
-            retry_on_rate_limiting!(
-                client()
-                    .storage(
-                        *VALID_CONTRACT_ADDR,
-                        *VALID_KEY,
-                        *INVOKE_CONTRACT_BLOCK_HASH,
-                    )
-                    .await
-            )
-            .unwrap();
+            client()
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    *INVOKE_CONTRACT_BLOCK_HASH,
+                )
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn latest_block() {
-            retry_on_rate_limiting!(
-                client()
-                    .storage(
-                        *VALID_CONTRACT_ADDR,
-                        *VALID_KEY,
-                        BlockHashOrTag::Tag(Tag::Latest),
-                    )
-                    .await
-            )
-            .unwrap();
+            client()
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    BlockHashOrTag::Tag(Tag::Latest),
+                )
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn pending_block() {
-            retry_on_rate_limiting!(
-                client()
-                    .storage(
-                        *VALID_CONTRACT_ADDR,
-                        *VALID_KEY,
-                        BlockHashOrTag::Tag(Tag::Pending),
-                    )
-                    .await
-            )
-            .unwrap();
+            client()
+                .storage(
+                    *VALID_CONTRACT_ADDR,
+                    *VALID_KEY,
+                    BlockHashOrTag::Tag(Tag::Pending),
+                )
+                .await
+                .unwrap();
         }
     }
 
@@ -904,9 +778,7 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             assert_eq!(
-                retry_on_rate_limiting!(client().transaction(*VALID_TX_HASH).await)
-                    .unwrap()
-                    .status,
+                client().transaction(*VALID_TX_HASH).await.unwrap().status,
                 Status::AcceptedOnL1
             );
         }
@@ -914,9 +786,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_hash() {
             assert_eq!(
-                retry_on_rate_limiting!(client().transaction(*INVALID_TX_HASH).await)
-                    .unwrap()
-                    .status,
+                client().transaction(*INVALID_TX_HASH).await.unwrap().status,
                 Status::NotReceived,
             );
         }
@@ -928,7 +798,9 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             assert_eq!(
-                retry_on_rate_limiting!(client().transaction_status(*VALID_TX_HASH).await)
+                client()
+                    .transaction_status(*VALID_TX_HASH)
+                    .await
                     .unwrap()
                     .tx_status,
                 Status::AcceptedOnL1
@@ -938,7 +810,9 @@ mod tests {
         #[tokio::test]
         async fn invalid_hash() {
             assert_eq!(
-                retry_on_rate_limiting!(client().transaction_status(*INVALID_TX_HASH).await)
+                client()
+                    .transaction_status(*INVALID_TX_HASH)
+                    .await
                     .unwrap()
                     .tx_status,
                 Status::NotReceived
@@ -953,21 +827,17 @@ mod tests {
         #[tokio::test]
         #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn genesis() {
-            let by_number = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_number(*GENESIS_BLOCK_NUMBER,)
-                    .await
-            )
-            .unwrap();
+            let by_number = Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_number(*GENESIS_BLOCK_NUMBER)
+                .await
+                .unwrap();
 
-            let by_hash = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_hash(*GENESIS_BLOCK_HASH)
-                    .await
-            )
-            .unwrap();
+            let by_hash = Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_hash(*GENESIS_BLOCK_HASH)
+                .await
+                .unwrap();
 
             assert_eq!(by_number, by_hash);
         }
@@ -975,23 +845,19 @@ mod tests {
         #[tokio::test]
         #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn specific_block() {
-            let by_number = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1000)))
-                    .await
-            )
-            .unwrap();
+            let by_number = Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1000)))
+                .await
+                .unwrap();
 
-            let by_hash = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_hash(BlockHashOrTag::Hash(
-                        StarknetBlockHash::from_hex_str("TODO").unwrap()
-                    ))
-                    .await
-            )
-            .unwrap();
+            let by_hash = Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_hash(BlockHashOrTag::Hash(
+                    StarknetBlockHash::from_hex_str("TODO").unwrap(),
+                ))
+                .await
+                .unwrap();
 
             assert_eq!(by_number, by_hash);
         }
@@ -1003,13 +869,11 @@ mod tests {
         #[tokio::test]
         #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn invalid_number() {
-            let error = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_number(*INVALID_BLOCK_NUMBER,)
-                    .await
-            )
-            .unwrap_err();
+            let error = Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_number(*INVALID_BLOCK_NUMBER)
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -1018,24 +882,20 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_number(BlockNumberOrTag::Tag(Tag::Latest))
-                    .await
-            )
-            .unwrap();
+            Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn pending() {
-            retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
-                    .await
-            )
-            .unwrap();
+            Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
+                .await
+                .unwrap();
         }
     }
 
@@ -1044,13 +904,11 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let error = retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_hash(*INVALID_BLOCK_HASH)
-                    .await
-            )
-            .unwrap_err();
+            let error = Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_hash(*INVALID_BLOCK_HASH)
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -1059,30 +917,26 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
-                    .await
-            )
-            .unwrap();
+            Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
+                .await
+                .unwrap();
         }
 
         #[tokio::test]
         async fn pending() {
-            retry_on_rate_limiting!(
-                Client::new(crate::ethereum::Chain::Goerli)
-                    .unwrap()
-                    .state_update_by_hash(BlockHashOrTag::Tag(Tag::Pending))
-                    .await
-            )
-            .unwrap();
+            Client::new(crate::ethereum::Chain::Goerli)
+                .unwrap()
+                .state_update_by_hash(BlockHashOrTag::Tag(Tag::Pending))
+                .await
+                .unwrap();
         }
     }
 
     #[tokio::test]
     async fn eth_contract_addresses() {
-        retry_on_rate_limiting!(client().eth_contract_addresses().await).unwrap();
+        client().eth_contract_addresses().await.unwrap();
     }
 
     mod retry {
