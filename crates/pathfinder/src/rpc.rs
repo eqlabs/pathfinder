@@ -236,7 +236,7 @@ mod tests {
     use crate::{
         core::{
             ContractAddress, ContractHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress, StorageValue,
+            StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress,
         },
         ethereum::Chain,
         rpc::run_server,
@@ -310,8 +310,11 @@ mod tests {
 
     // Local test helper
     fn setup_storage() -> Storage {
-        use crate::ethereum::state_update::{ContractUpdate, StorageUpdate};
-        use crate::state::{update_contract_state, CompressedContract};
+        use crate::{
+            core::StorageValue,
+            ethereum::state_update::{ContractUpdate, StorageUpdate},
+            state::{update_contract_state, CompressedContract},
+        };
 
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
@@ -914,16 +917,43 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn overflowing_key() {
+        async fn key_is_field_modulus() {
             use std::str::FromStr;
 
-            let storage = Storage::in_memory().unwrap();
+            let storage = setup_storage();
             let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
-                *VALID_CONTRACT_ADDR,
+                ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap()),
+                web3::types::H256::from_str(
+                    "0x0800000000000011000000000000000000000000000000000000000000000001"
+                )
+                .unwrap(),
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
+            let error = client(addr)
+                .request::<StorageValue>("starknet_getStorageAt", params)
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                Error::Request(s) => assert_eq!(get_err(&s), *error::INVALID_KEY)
+            );
+        }
+
+        #[tokio::test]
+        async fn key_is_less_than_modulus_but_252_bits() {
+            use std::str::FromStr;
+
+            let storage = setup_storage();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(
+                ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap()),
                 web3::types::H256::from_str(
                     "0x0800000000000000000000000000000000000000000000000000000000000000"
                 )
@@ -941,25 +971,65 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "Until the test is actually implemented."]
         async fn non_existent_contract_address() {
-            todo!("Add the test once state mocking is easy");
-        }
-
-        #[tokio::test]
-        #[ignore = "Until the test is actually implemented."]
-        async fn pre_deploy_block_hash() {
-            todo!("Add the test once state mocking is easy");
-        }
-
-        #[tokio::test]
-        async fn non_existent_block_hash() {
-            let storage = Storage::in_memory().unwrap();
+            let storage = setup_storage();
             let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-            let params = rpc_params!(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH);
+            let params = rpc_params!(
+                ContractAddress(StarkHash::from_be_slice(b"nonexistent").unwrap()),
+                StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
+                BlockHashOrTag::Tag(Tag::Latest)
+            );
+            let error = client(addr)
+                .request::<StorageValue>("starknet_getStorageAt", params)
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                Error::Request(s) => assert_eq!(get_err(&s), *error::CONTRACT_NOT_FOUND)
+            );
+        }
+
+        #[tokio::test]
+        async fn pre_deploy_block_hash() {
+            let storage = setup_storage();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(
+                ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
+                StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
+                BlockHashOrTag::Hash(StarknetBlockHash(
+                    StarkHash::from_be_slice(b"genesis").unwrap()
+                ))
+            );
+            let error = client(addr)
+                .request::<StorageValue>("starknet_getStorageAt", params)
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                Error::Request(s) => assert_eq!(get_err(&s), *error::CONTRACT_NOT_FOUND)
+            );
+        }
+
+        #[tokio::test]
+        async fn non_existent_block_hash() {
+            let storage = setup_storage();
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+            let params = rpc_params!(
+                ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
+                StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
+                BlockHashOrTag::Hash(StarknetBlockHash(
+                    StarkHash::from_be_slice(b"nonexistent").unwrap()
+                ))
+            );
             let error = client(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
@@ -995,15 +1065,53 @@ mod tests {
             }
 
             #[tokio::test]
-            #[ignore = "Until the test is actually implemented."]
             async fn positional_args() {
-                todo!("Add the test once state mocking is easy");
+                let storage = setup_storage();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let params = rpc_params!(
+                    ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
+                    StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
+                    BlockHashOrTag::Tag(Tag::Latest)
+                );
+                let value = client(addr)
+                    .request::<StorageValue>("starknet_getStorageAt", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    value.0,
+                    StarkHash::from_be_slice(b"storage value 2").unwrap()
+                );
             }
 
             #[tokio::test]
-            #[ignore = "Until the test is actually implemented."]
             async fn named_args() {
-                todo!("Add the test once state mocking is easy");
+                let storage = setup_storage();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let params = by_name([
+                    (
+                        "contract_address",
+                        json! {StarkHash::from_be_slice(b"contract 1").unwrap()},
+                    ),
+                    (
+                        "key",
+                        json! {StarkHash::from_be_slice(b"storage addr 0").unwrap()},
+                    ),
+                    ("block_hash", json! {"latest"}),
+                ]);
+                let value = client(addr)
+                    .request::<StorageValue>("starknet_getStorageAt", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    value.0,
+                    StarkHash::from_be_slice(b"storage value 2").unwrap()
+                );
             }
         }
 
