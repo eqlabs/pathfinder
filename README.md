@@ -180,6 +180,27 @@ RUST_LOG=pathfinder=<log level> cargo run --release <path-to-pathfinder-repo> --
 
 The StarkNet network is based on the provided Ethereum endpoint. If the Ethereum endpoint is on the Goerli network, then the it will be the StarkNet testnet on Goerli. If the Ethereum endpoint is on mainnet, then it will be StarkNet Mainnet.
 
+## Running with Docker
+
+The `pathfinder` node can be run in the provided Docker image. You can build the image by running:
+
+```bash
+docker build -t pathfinder .
+```
+
+You can then start the node with:
+
+```bash
+docker run --rm -it -e RUST_LOG=info -p 9545:9545 pathfinder --http-rpc "0.0.0.0:9545" --ethereum.url  https://goerli.infura.io/v3/<project-id> --ethereum.password <password>
+```
+
+To persist state between restarts you can mount a volume in the Docker container. To run the container and persist data to `/tmp/data` run:
+
+```bash
+docker run --rm -it -e RUST_LOG=info -p 9545:9545 -v /tmp/data:/usr/share/pathfinder/data pathfinder --http-rpc "0.0.0.0:9545" --ethereum.url  https://goerli.infura.io/v3/<project-id> --ethereum.password <password>
+```
+
+
 ## API
 
 The full specification is available [here](https://github.com/starkware-libs/starknet-specs). Note that we currently only support a subset of these. Here is an overview of the JSON-RPC calls which we support.
