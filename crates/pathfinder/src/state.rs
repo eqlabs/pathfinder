@@ -18,6 +18,7 @@ mod sync;
 pub use contract_hash::compute_contract_hash;
 pub use sync::{sync, State as SyncState};
 
+#[derive(Clone)]
 pub struct CompressedContract {
     pub abi: Vec<u8>,
     pub bytecode: Vec<u8>,
@@ -40,7 +41,7 @@ impl std::fmt::Debug for CompressedContract {
 /// [ContractStateHash] of the new state.
 ///
 /// Specifically, it updates the [ContractsStateTree] and [ContractsStateTable].
-fn update_contract_state(
+pub(crate) fn update_contract_state(
     update: &ContractUpdate,
     global_tree: &GlobalStateTree<'_>,
     db: &Transaction<'_>,
