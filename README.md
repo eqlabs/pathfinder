@@ -189,9 +189,9 @@ docker run \
   -e RUST_LOG=info \
   -p 9545:9545 \
   eqlabs/pathfinder \
-    --http-rpc "0.0.0.0:9545" \
-    --ethereum.url https://goerli.infura.io/v3/<project-id>
-    --ethereum.password <password>
+    --http-rpc="0.0.0.0:9545" \
+    --ethereum.url="https://goerli.infura.io/v3/<project-id>" \
+    --ethereum.password="<password>"
 ```
 
 ### Building the container image yourself
