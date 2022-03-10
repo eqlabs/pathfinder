@@ -2043,9 +2043,6 @@ mod tests {
                 format!("0x{}", hex::encode("SN_MAIN")),
             ]
         );
-
-        eprintln!("{}", format!("0x{}", hex::encode("SN_GOERLI")));
-        eprintln!("{}", format!("0x{}", hex::encode("SN_MAIN")));
     }
 
     #[tokio::test]
