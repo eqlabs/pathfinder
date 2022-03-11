@@ -120,10 +120,12 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
                     |row| row.get(0)
                 ).context("Query block number based on block hash")?;
 
-                let serialized_data: Vec<u8> = event.data.into_iter().flat_map(|e| {e.0.as_be_bytes().clone().into_iter()}).collect();
+                // TODO: extract
+                let serialized_data: Vec<u8> = event.data.iter().flat_map(|e| {e.0.as_be_bytes().clone().into_iter()}).collect();
 
+                // TODO: extract
                 // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
-                let serialized_keys: Vec<String> = event.keys.into_iter().map(|key| base64::encode(key.0.as_be_bytes())).collect();
+                let serialized_keys: Vec<String> = event.keys.iter().map(|key| base64::encode(key.0.as_be_bytes())).collect();
                 let serialized_keys = serialized_keys.join(" ");
 
                 transaction.execute(r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
@@ -137,8 +139,6 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
                         ":data": &serialized_data,
                     ]
                 ).context("Insert event data into events table")?;
-
-                // FIXME: keys
 
                 Ok(())
             },

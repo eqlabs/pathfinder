@@ -407,7 +407,8 @@ impl StarknetTransactionsTable {
     /// overwrites existing data if the transaction hash already exists.
     pub fn upsert(
         connection: &Connection,
-        block: StarknetBlockHash,
+        block_hash: StarknetBlockHash,
+        block_number: StarknetBlockNumber,
         transaction_data: &[(transaction::Transaction, transaction::Receipt)],
     ) -> anyhow::Result<()> {
         if transaction_data.is_empty() {
@@ -423,20 +424,52 @@ impl StarknetTransactionsTable {
                 .compress(&tx_data)
                 .context("Compress Starknet transaction")?;
 
-            let receipt = serde_json::ser::to_vec(&receipt)
+            let serialized_receipt = serde_json::ser::to_vec(&receipt)
                 .context("Serialize Starknet transaction receipt")?;
-            let receipt = compressor
-                .compress(&receipt)
+            let serialized_receipt = compressor
+                .compress(&serialized_receipt)
                 .context("Compress Starknet transaction receipt")?;
 
             connection.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
         named_params![
                     ":hash": &transaction.transaction_hash.0.as_be_bytes()[..],
                     ":idx": i,
-                    ":block_hash": &block.0.as_be_bytes()[..],
+                    ":block_hash": &block_hash.0.as_be_bytes()[..],
                     ":tx": &tx_data,
-                    ":receipt": &receipt,
+                    ":receipt": &serialized_receipt,
                 ]).context("Insert transaction data into transactions table")?;
+
+            // insert events from receipt
+            for (idx, event) in receipt.events.iter().enumerate() {
+                let serialized_data: Vec<u8> = event
+                    .data
+                    .iter()
+                    .flat_map(|e| e.0.as_be_bytes().clone().into_iter())
+                    .collect();
+
+                // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
+                let serialized_keys: Vec<String> = event
+                    .keys
+                    .iter()
+                    .map(|key| base64::encode(key.0.as_be_bytes()))
+                    .collect();
+                let serialized_keys = serialized_keys.join(" ");
+
+                connection
+                    .execute(
+                        r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
+                                               VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
+                        named_params![
+                            ":block_number": block_number.0,
+                            ":idx": idx,
+                            ":transaction_hash": &transaction.transaction_hash.0.as_be_bytes()[..],
+                            ":from_address": &transaction.contract_address.0.as_be_bytes()[..],
+                            ":keys": &serialized_keys,
+                            ":data": &serialized_data,
+                        ],
+                    )
+                    .context("Insert events into events table")?;
+            }
         }
 
         Ok(())
