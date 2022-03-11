@@ -7,21 +7,73 @@ use crate::storage::schema::PostMigrationAction;
 pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
     // Create the new events table.
     transaction
-        .execute(
+        .execute_batch(
             r"CREATE TABLE starknet_events (
-            block_number  INTEGER NOT NULL,
-            idx INTEGER NOT NULL,
-            transaction_hash BLOB NOT NULL,
-            from_address BLOB NOT NULL,
-            keys BLOB,
-            data BLOB,
+                block_number  INTEGER NOT NULL,
+                idx INTEGER NOT NULL,
+                transaction_hash BLOB NOT NULL,
+                from_address BLOB NOT NULL,
+                -- Keys are represented as base64 encoded strings separated by space
+                keys TEXT,
+                data BLOB,
+                FOREIGN KEY(block_number) REFERENCES starknet_blocks(number)
+            );
 
-            FOREIGN KEY(block_number) REFERENCES starknet_blocks(number)
-            PRIMARY KEY(transaction_hash, idx)
-)",
+            CREATE VIRTUAL TABLE starknet_events_keys
+            USING fts5(
+                keys,
+                content='starknet_events',
+                content_rowid='rowid',
+                tokenize='ascii'
+            );
+
+            CREATE TRIGGER starknet_events_ai
+            AFTER INSERT ON starknet_events
+            BEGIN
+                INSERT INTO starknet_events_keys(rowid, keys)
+                VALUES (
+                    new.rowid,
+                    new.keys
+                );
+            END;
+
+            CREATE TRIGGER starknet_events_ad
+            AFTER DELETE ON starknet_events
+            BEGIN
+                INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
+                VALUES (
+                    'delete',
+                    old.rowid,
+                    old.keys
+                );
+            END;
+
+            CREATE TRIGGER starknet_events_au
+            AFTER UPDATE ON starknet_events
+            BEGIN
+                INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
+                VALUES (
+                    'delete',
+                    old.rowid,
+                    old.keys
+                );
+                INSERT INTO starknet_events_keys(rowid, keys)
+                VALUES (
+                    new.rowid,
+                    new.keys
+                );
+            END;",
+        )
+        .context("Create starknet events tables and indexes")?;
+
+    // Create an index on starknet_blocks(hash) so that we can look up block numbers based
+    // on block hashes quicker.
+    transaction
+        .execute(
+            r"CREATE INDEX starknet_blocks_hash ON starknet_blocks(hash)",
             [],
         )
-        .context("Create starknet events table")?;
+        .context("Create block hash index")?;
 
     let todo: usize = transaction
         .query_row("SELECT count(1) FROM starknet_transactions", [], |r| {
@@ -69,13 +121,19 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
                 ).context("Query block number based on block hash")?;
 
                 let serialized_data: Vec<u8> = event.data.into_iter().flat_map(|e| {e.0.as_be_bytes().clone().into_iter()}).collect();
-                transaction.execute(r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  data)
-                                                           VALUES (:block_number, :idx, :transaction_hash, :from_address, :data)",
+
+                // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
+                let serialized_keys: Vec<String> = event.keys.into_iter().map(|key| base64::encode(key.0.as_be_bytes())).collect();
+                let serialized_keys = serialized_keys.join(" ");
+
+                transaction.execute(r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
+                                                           VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
                     named_params![
                         ":block_number": block_number,
                         ":idx": idx,
                         ":transaction_hash": transaction_hash,
                         ":from_address": &tx.contract_address.0.as_be_bytes()[..],
+                        ":keys": &serialized_keys,
                         ":data": &serialized_data,
                     ]
                 ).context("Insert event data into events table")?;
@@ -261,11 +319,20 @@ mod tests {
                     })
                     .collect();
 
+                let keys = row.get_ref_unwrap("keys").as_str().unwrap();
+                let keys: Vec<EventKey> = keys
+                    .split(' ')
+                    .map(|v| {
+                        EventKey(StarkHash::from_be_slice(&base64::decode(v).unwrap()).unwrap())
+                    })
+                    .collect();
+
                 assert_eq!(BLOCK_NUMBER, block_number);
                 assert_eq!(event_idx, idx);
                 assert_eq!(tx.transaction_hash, transaction_hash);
                 assert_eq!(tx.contract_address, from_address);
                 assert_eq!(event.data, data);
+                assert_eq!(event.keys, keys);
             }
         }
     }

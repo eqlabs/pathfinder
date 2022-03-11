@@ -16,6 +16,7 @@ tokio-console = ["console-subscriber", "tokio/tracing"]
 [dependencies]
 anyhow = "1.0.44"
 async-trait = "0.1.52"
+base64 = "0.13.0"
 # paritys scale codec locks us here
 bitvec = "0.20.4"
 bytes = "1.1.0"
