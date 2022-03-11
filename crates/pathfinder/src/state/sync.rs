@@ -320,14 +320,22 @@ async fn update_sync_status_latest(
                     current_block: starting_block,
                     highest_block: latest,
                 });
-            }
-            SyncStatus::Status(status) => status.highest_block = latest,
-        }
 
-        tracing::debug!(
-            "Updated sync status with latest block hash: {}",
-            latest.0.to_hex_str()
-        );
+                tracing::debug!(
+                    "Updated sync status with latest block hash: {}",
+                    latest.0.to_hex_str()
+                );
+            }
+            SyncStatus::Status(status) => {
+                if status.highest_block != latest {
+                    status.highest_block = latest;
+                    tracing::debug!(
+                        "Updated sync status with latest block hash: {}",
+                        latest.0.to_hex_str()
+                    );
+                }
+            }
+        }
 
         // Update once every 10 seconds at most.
         tokio::time::sleep(Duration::from_secs(10)).await;

@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
     let sequencer = sequencer::Client::new(network_chain).unwrap();
     let sync_state = Arc::new(state::SyncState::default());
 
-    let _sync_handle = tokio::spawn(state::sync(
+    let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
         eth_transport,
         network_chain,
@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
 
     // TODO: the error could be recovered, but currently it's required for startup. There should
     // not be other reason for the start to fail than python script not firing up.
-    let (call_handle, _jh) = cairo::ext_py::start(
+    let (call_handle, cairo_handle) = cairo::ext_py::start(
         storage.path().into(),
         std::num::NonZeroUsize::new(2).unwrap(),
         futures::future::pending(),
@@ -61,10 +61,29 @@ async fn main() -> anyhow::Result<()> {
     let api = rpc::api::RpcApi::new(storage, sequencer, network_chain, sync_state)
         .with_call_handling(call_handle);
 
-    let (_rpc_handle, local_addr) =
+    let (rpc_handle, local_addr) =
         rpc::run_server(config.http_rpc_addr, api).context("Starting the RPC server")?;
     info!("📡 HTTP-RPC server started on: {}", local_addr);
-    let () = std::future::pending().await;
+
+    // Monitor our spawned process tasks.
+    tokio::select! {
+        result = sync_handle => {
+            match result {
+                Ok(task_result) => tracing::error!("Sync process ended unexpected with: {:?}", task_result),
+                Err(err) => tracing::error!("Sync process ended unexpected; failed to join task handle: {:?}", err),
+            }
+        }
+        result = cairo_handle => {
+            match result {
+                Ok(task_result) => tracing::error!("Cairo process ended unexpected with: {:?}", task_result),
+                Err(err) => tracing::error!("Cairo process ended unexpected; failed to join task handle: {:?}", err),
+            }
+        }
+        _result = rpc_handle => {
+            // This handle returns () so its not very useful.
+            tracing::error!("RPC server process ended unexpected");
+        }
+    }
 
     Ok(())
 }
