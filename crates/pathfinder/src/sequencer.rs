@@ -1077,35 +1077,6 @@ mod tests {
 
         #[tokio::test]
         #[traced_test]
-        async fn client_timeout() {
-            let (_jh, addr) = slow_server();
-            let timeout_counter = Arc::new(Mutex::new(0));
-
-            let error = super::retry(|| async {
-                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
-                url.set_port(Some(addr.port())).unwrap();
-
-                let client = reqwest::Client::builder()
-                    .timeout(Duration::from_millis(1))
-                    .build()
-                    .unwrap();
-
-                let mut cnt = timeout_counter.lock().await;
-                *cnt += 1;
-
-                let resp = client.get(url).send().await?;
-                super::parse::<String>(resp).await
-            })
-            .await
-            .unwrap_err();
-
-            // Ultimately, after 7 retries a timeout error is returned
-            assert_matches!(error, SequencerError::TransportError(te) => assert!(te.is_timeout()));
-            assert_eq!(*timeout_counter.lock().await, 8);
-        }
-
-        #[tokio::test]
-        #[traced_test]
         async fn request_timeout() {
             let (_jh, addr) = slow_server();
             let timeout_counter = Arc::new(Mutex::new(0));
@@ -1119,6 +1090,7 @@ mod tests {
                 let mut cnt = timeout_counter.lock().await;
                 *cnt += 1;
 
+                // Btw this is the same as using Client::builder().timeout()
                 let resp = client
                     .get(url)
                     .timeout(Duration::from_millis(1))
