@@ -71,7 +71,7 @@ pub async fn sync(
                 DownloadBlock::AtHead => tokio::time::sleep(Duration::from_secs(5)).await,
                 DownloadBlock::Reorg => {
                     let some_head = head.unwrap();
-                    reorg(some_head, &tx_event, &sequencer)
+                    head = reorg(some_head, &tx_event, &sequencer)
                         .await
                         .context("L2 reorg")?;
 
@@ -83,7 +83,7 @@ pub async fn sync(
 
         if let Some(some_head) = head {
             if some_head.1 != block.parent_block_hash {
-                reorg(some_head, &tx_event, &sequencer)
+                head = reorg(some_head, &tx_event, &sequencer)
                     .await
                     .context("L2 reorg")?;
 

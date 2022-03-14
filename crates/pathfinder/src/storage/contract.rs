@@ -135,9 +135,7 @@ impl ContractCodeTable {
 pub struct ContractsTable {}
 
 impl ContractsTable {
-    /// Insert a contract into the table.
-    ///
-    /// Fails if the contract address is already populated.
+    /// Insert a contract into the table, does nothing if the contract already exists.
     ///
     /// Note that [hash](ContractHash) must reference a contract stored in [ContractCodeTable].
     pub fn insert(
@@ -145,8 +143,9 @@ impl ContractsTable {
         address: ContractAddress,
         hash: ContractHash,
     ) -> anyhow::Result<()> {
+        // A contract may be deployed multiple times due to L2 reorgs, so we ignore all after the first.
         transaction.execute(
-            r"INSERT INTO contracts (address, hash) VALUES (:address, :hash)",
+            r"INSERT OR IGNORE INTO contracts (address, hash) VALUES (:address, :hash)",
             named_params! {
                 ":address": &address.0.to_be_bytes()[..],
                 ":hash": &hash.0.to_be_bytes()[..],
