@@ -4,7 +4,7 @@
 //! This includes many trivial wrappers around [StarkHash] which help by providing additional type safety.
 use pedersen::StarkHash;
 use serde::{Deserialize, Serialize};
-use web3::types::{H160, H256};
+use web3::types::{H128, H160, H256};
 
 /// The address of a StarkNet contract.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -137,6 +137,10 @@ pub struct EventKey(pub StarkHash);
 /// StarkNet protocol version.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetProtocolVersion(pub H256);
+
+/// StarkNet fee value.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Fee(pub H128);
 
 /// An Ethereum address.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]

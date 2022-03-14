@@ -1,14 +1,14 @@
 //! Utilities used for serializing/deserializing sequencer REST API related data.
 
 use crate::core::{
-    CallParam, CallSignatureElem, ConstructorParam, EthereumAddress, EventData, EventKey,
+    CallParam, CallSignatureElem, ConstructorParam, EthereumAddress, EventData, EventKey, Fee,
     L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionSignatureElem,
 };
 use num_bigint::BigUint;
 use pedersen::{HexParseError, OverflowError, StarkHash};
 use serde_with::serde_conv;
 use std::str::FromStr;
-use web3::types::{H160, H256};
+use web3::types::{H128, H160, H256};
 
 serde_conv!(
     pub CallParamAsDecimalStr,
@@ -80,6 +80,13 @@ serde_with::serde_conv!(
     |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(H256::from)
 );
 
+serde_with::serde_conv!(
+    pub FeeAsHexStr,
+    Fee,
+    |serialize_me: &Fee| bytes_to_hex_str(serialize_me.0.as_bytes()),
+    |s: &str| bytes_from_hex_str::<{ H128::len_bytes() }>(s).map(|b| Fee(H128::from(b)))
+);
+
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_biguint(b: BigUint) -> Result<StarkHash, OverflowError> {
     StarkHash::from_be_slice(&b.to_bytes_be())
@@ -94,9 +101,17 @@ pub(crate) fn starkhash_to_dec_str(h: &StarkHash) -> String {
 
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_dec_str(s: &str) -> Result<StarkHash, anyhow::Error> {
-    let b = BigUint::from_str(s)?;
-    let h = starkhash_from_biguint(b)?;
-    Ok(h)
+    // TODO remove fallback to hex string representation once mainnet moves to cairo-0.8.0
+    match BigUint::from_str(s) {
+        Ok(b) => {
+            let h = starkhash_from_biguint(b)?;
+            Ok(h)
+        }
+        Err(_) => {
+            let h = StarkHash::from_hex_str(s)?;
+            Ok(h)
+        }
+    }
 }
 
 /// A convenience function which parses a hex string into a byte array.
@@ -303,11 +318,20 @@ mod tests {
 
     #[test]
     fn invalid_digit() {
-        use num_bigint::ParseBigIntError;
-        starkhash_from_dec_str("123a")
-            .unwrap_err()
-            .downcast::<ParseBigIntError>()
-            .unwrap();
+        // TODO revert when mainnet moves to cairo-0.8.0
+        // use num_bigint::ParseBigIntError;
+        // starkhash_from_dec_str("123z")
+        //     .unwrap_err()
+        //     .downcast::<ParseBigIntError>()
+        //     .unwrap();
+        starkhash_from_dec_str("123a").unwrap();
+        assert_eq!(
+            starkhash_from_dec_str("123z")
+                .unwrap_err()
+                .downcast::<HexParseError>()
+                .unwrap(),
+            HexParseError::InvalidNibble(b'z')
+        );
         assert_eq!(
             bytes_from_hex_str::<32>("0x123z"),
             Err(HexParseError::InvalidNibble(b'z'))

@@ -159,6 +159,7 @@ mod tests {
                 contract_address_salt: None,
                 entry_point_type: None,
                 entry_point_selector: None,
+                max_fee: None,
                 signature: None,
                 transaction_hash: StarknetTransactionHash(
                     StarkHash::from_hex_str(&"fe".repeat(i as usize + 3)).unwrap(),

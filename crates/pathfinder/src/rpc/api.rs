@@ -88,7 +88,6 @@ impl RpcApi {
                     .sequencer
                     .block_by_hash(block_hash)
                     .await
-                    .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
 
                 let scope = requested_scope.unwrap_or_default();
