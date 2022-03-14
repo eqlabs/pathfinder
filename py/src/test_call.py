@@ -1,4 +1,4 @@
-from call import do_loop
+from call import do_loop, loop_inner
 import sqlite3
 import io
 import json
@@ -245,6 +245,27 @@ def test_success():
 
     assert number == expected == block_hash == latest
 
+
+def test_positive_directly():
+    """
+    this is like test_success but does it directly with the do_call, instead of the json wrapping, which hides exceptions which come from upgrading.
+    """
+
+    con = inmemory_with_tables()
+    contract_address = populate_test_contract_with_132_on_3(con)
+
+    command = {
+        "at_block": 1,
+        "contract_address": contract_address,
+        "entry_point_selector": "get_value",
+        "calldata": [132],
+    }
+
+    con.execute("BEGIN")
+
+    output = loop_inner(con, command)
+
+    assert output.retdata == [3]
 
 def test_called_contract_not_found():
     con = inmemory_with_tables()
