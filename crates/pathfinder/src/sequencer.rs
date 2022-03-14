@@ -1090,7 +1090,7 @@ mod tests {
                 let mut cnt = timeout_counter.lock().await;
                 *cnt += 1;
 
-                // Btw this is the same as using Client::builder().timeout()
+                // This is the same as using Client::builder().timeout()
                 let resp = client
                     .get(url)
                     .timeout(Duration::from_millis(1))
