@@ -4,6 +4,7 @@ import time
 import sqlite3
 import asyncio
 from starkware.starkware_utils.error_handling import WebFriendlyException
+from starkware.storage.storage import Storage
 
 
 def main():
@@ -265,7 +266,7 @@ class InvalidInput(Exception):
         super().__init__(f"Invalid input for key: {key}")
 
 
-class SqliteAdapter:
+class SqliteAdapter(Storage):
     """
     Reads from pathfinders' database to give cairo-lang call implementation the nodes as needed
     however using a single transaction.
@@ -275,6 +276,12 @@ class SqliteAdapter:
         assert connection.in_transaction, "first query should had started a transaction"
         self.connection = connection
         pass
+
+    async def set_value(self, key, value):
+        raise NotImplementedError("Readonly storage, this should never happen")
+
+    async def del_value(self, key):
+        raise NotImplementedError("Readonly storage, this should never happen")
 
     async def get_value(self, key):
         """
@@ -392,7 +399,6 @@ async def do_call(
     cairo-lang state which does not matter, because the state will be thrown
     out.
     """
-    from starkware.storage.internal_proxy_storage import InternalProxyStorage
     from starkware.starknet.business_logic.state import (
         SharedState,
         StateSelector,
@@ -408,7 +414,6 @@ async def do_call(
     general_config = StarknetGeneralConfig()
 
     # hook up the sqlite adapter
-    adapter = InternalProxyStorage(adapter)
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
 
     # the root tree has to always be height=251
