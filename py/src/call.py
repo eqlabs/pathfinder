@@ -62,23 +62,8 @@ def do_loop(connection, input_gen, output_file):
 
             connection.execute("BEGIN")
 
-            if not check_schema(connection):
-                raise UnexpectedSchemaVersion
+            output = loop_inner(connection, command)
 
-            (block_info, global_root) = resolve_block(connection, command["at_block"])
-
-            output = asyncio.run(
-                do_call(
-                    SqliteAdapter(connection),
-                    global_root,
-                    command["contract_address"],
-                    command["entry_point_selector"],
-                    command["calldata"],
-                    command.get("caller_address", 0),
-                    command.get("signature", None),
-                    block_info,
-                )
-            )
             # retdata is List[int] at least in 0.7.0
             # however we need to render it as hex strings, so we can just deserialize it easily
             out["output"] = list(
@@ -115,6 +100,26 @@ def do_loop(connection, input_gen, output_file):
             out["timings"] = timings
 
             print(json.dumps(out), file=output_file, flush=True)
+
+
+def loop_inner(connection, command):
+    if not check_schema(connection):
+        raise UnexpectedSchemaVersion
+
+    (block_info, global_root) = resolve_block(connection, command["at_block"])
+
+    return asyncio.run(
+        do_call(
+            SqliteAdapter(connection),
+            global_root,
+            command["contract_address"],
+            command["entry_point_selector"],
+            command["calldata"],
+            command.get("caller_address", 0),
+            command.get("signature", None),
+            block_info,
+        )
+    )
 
 
 def parse_command(command, required, optional):
