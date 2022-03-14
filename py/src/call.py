@@ -4,6 +4,7 @@ import time
 import sqlite3
 import asyncio
 from starkware.starkware_utils.error_handling import WebFriendlyException
+from starkware.storage.storage import Storage
 
 
 def main():
@@ -61,27 +62,11 @@ def do_loop(connection, input_gen, output_file):
 
             connection.execute("BEGIN")
 
-            if not check_schema(connection):
-                raise UnexpectedSchemaVersion
+            output = loop_inner(connection, command)
 
-            (block_info, global_root) = resolve_block(connection, command["at_block"])
-
-            output = asyncio.run(
-                do_call(
-                    SqliteAdapter(connection),
-                    global_root,
-                    command["contract_address"],
-                    command["entry_point_selector"],
-                    command["calldata"],
-                    command.get("caller_address", 0),
-                    command.get("signature", None),
-                    block_info,
-                )
-            )
-            # retdata is List[int] at least in 0.7.0
-            # however we need to render it as hex strings, so we can just deserialize it easily
+            # we need to render the retdata as hex strings, so we can just deserialize it easily
             out["output"] = list(
-                map(lambda x: "0x" + x.to_bytes(32, "big").hex(), output.retdata)
+                map(lambda x: "0x" + x.to_bytes(32, "big").hex(), output)
             )
         except NoSuchBlock:
             out = {"status": "error", "kind": "NO_SUCH_BLOCK"}
@@ -114,6 +99,26 @@ def do_loop(connection, input_gen, output_file):
             out["timings"] = timings
 
             print(json.dumps(out), file=output_file, flush=True)
+
+
+def loop_inner(connection, command):
+    if not check_schema(connection):
+        raise UnexpectedSchemaVersion
+
+    (block_info, global_root) = resolve_block(connection, command["at_block"])
+
+    return asyncio.run(
+        do_call(
+            SqliteAdapter(connection),
+            global_root,
+            command["contract_address"],
+            command["entry_point_selector"],
+            command["calldata"],
+            command.get("caller_address", 0),
+            command.get("signature", None),
+            block_info,
+        )
+    )
 
 
 def parse_command(command, required, optional):
@@ -265,7 +270,7 @@ class InvalidInput(Exception):
         super().__init__(f"Invalid input for key: {key}")
 
 
-class SqliteAdapter:
+class SqliteAdapter(Storage):
     """
     Reads from pathfinders' database to give cairo-lang call implementation the nodes as needed
     however using a single transaction.
@@ -275,6 +280,12 @@ class SqliteAdapter:
         assert connection.in_transaction, "first query should had started a transaction"
         self.connection = connection
         pass
+
+    async def set_value(self, key, value):
+        raise NotImplementedError("Readonly storage, this should never happen")
+
+    async def del_value(self, key):
+        raise NotImplementedError("Readonly storage, this should never happen")
 
     async def get_value(self, key):
         """
@@ -391,8 +402,9 @@ async def do_call(
     Loads all of the cairo-lang parts needed for the call. Dirties the internal
     cairo-lang state which does not matter, because the state will be thrown
     out.
+
+    Returns the retdata from the call, which is the only property needed by the RPC api.
     """
-    from starkware.storage.internal_proxy_storage import InternalProxyStorage
     from starkware.starknet.business_logic.state import (
         SharedState,
         StateSelector,
@@ -408,7 +420,6 @@ async def do_call(
     general_config = StarknetGeneralConfig()
 
     # hook up the sqlite adapter
-    adapter = InternalProxyStorage(adapter)
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
 
     # the root tree has to always be height=251
@@ -419,10 +430,14 @@ async def do_call(
     )
 
     state = StarknetState(state=carried_state, general_config=general_config)
+    max_fee = 0
 
-    return await state.invoke_raw(
-        contract_address, selector, calldata, caller_address, signature
+    output = await state.invoke_raw(
+        contract_address, selector, calldata, caller_address, max_fee, signature
     )
+
+    # this is everything we need, at least so far for the "call".
+    return output.call_info.retdata
 
 
 if __name__ == "__main__":
