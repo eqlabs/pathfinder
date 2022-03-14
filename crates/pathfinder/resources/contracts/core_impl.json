@@ -5,13 +5,13 @@
             {
                 "indexed": true,
                 "internalType": "uint256",
-                "name": "from_address",
+                "name": "fromAddress",
                 "type": "uint256"
             },
             {
                 "indexed": true,
                 "internalType": "address",
-                "name": "to_address",
+                "name": "toAddress",
                 "type": "address"
             },
             {
@@ -30,13 +30,13 @@
             {
                 "indexed": true,
                 "internalType": "address",
-                "name": "from_address",
+                "name": "fromAddress",
                 "type": "address"
             },
             {
                 "indexed": true,
                 "internalType": "uint256",
-                "name": "to_address",
+                "name": "toAddress",
                 "type": "uint256"
             },
             {
@@ -67,13 +67,13 @@
             {
                 "indexed": true,
                 "internalType": "uint256",
-                "name": "from_address",
+                "name": "fromAddress",
                 "type": "uint256"
             },
             {
                 "indexed": true,
                 "internalType": "address",
-                "name": "to_address",
+                "name": "toAddress",
                 "type": "address"
             },
             {
@@ -92,13 +92,13 @@
             {
                 "indexed": true,
                 "internalType": "address",
-                "name": "from_address",
+                "name": "fromAddress",
                 "type": "address"
             },
             {
                 "indexed": true,
                 "internalType": "uint256",
-                "name": "to_address",
+                "name": "toAddress",
                 "type": "uint256"
             },
             {
@@ -227,10 +227,125 @@
         "type": "event"
     },
     {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "fromAddress",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "toAddress",
+                "type": "uint256"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "selector",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256[]",
+                "name": "payload",
+                "type": "uint256[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "nonce",
+                "type": "uint256"
+            }
+        ],
+        "name": "MessageToL2Canceled",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "fromAddress",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "toAddress",
+                "type": "uint256"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "selector",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256[]",
+                "name": "payload",
+                "type": "uint256[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "nonce",
+                "type": "uint256"
+            }
+        ],
+        "name": "MessageToL2CancellationStarted",
+        "type": "event"
+    },
+    {
         "inputs": [
             {
                 "internalType": "uint256",
-                "name": "from_address",
+                "name": "toAddress",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "selector",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256[]",
+                "name": "payload",
+                "type": "uint256[]"
+            },
+            {
+                "internalType": "uint256",
+                "name": "nonce",
+                "type": "uint256"
+            }
+        ],
+        "name": "cancelL1ToL2Message",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "configHash",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "fromAddress",
                 "type": "uint256"
             },
             {
@@ -329,6 +444,25 @@
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "msgHash",
+                "type": "bytes32"
+            }
+        ],
+        "name": "l1ToL2MessageCancellations",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "l1ToL2MessageNonce",
         "outputs": [
@@ -381,6 +515,19 @@
     },
     {
         "inputs": [],
+        "name": "messageCancellationDelay",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "programHash",
         "outputs": [
             {
@@ -409,7 +556,7 @@
         "inputs": [
             {
                 "internalType": "uint256",
-                "name": "to_address",
+                "name": "toAddress",
                 "type": "uint256"
             },
             {
@@ -431,6 +578,32 @@
                 "type": "bytes32"
             }
         ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "newConfigHash",
+                "type": "uint256"
+            }
+        ],
+        "name": "setConfigHash",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "delayInSeconds",
+                "type": "uint256"
+            }
+        ],
+        "name": "setMessageCancellationDelay",
+        "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
     },
@@ -502,6 +675,34 @@
             }
         ],
         "name": "starknetRemoveGovernor",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "toAddress",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "selector",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256[]",
+                "name": "payload",
+                "type": "uint256[]"
+            },
+            {
+                "internalType": "uint256",
+                "name": "nonce",
+                "type": "uint256"
+            }
+        ],
+        "name": "startL1ToL2MessageCancellation",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
