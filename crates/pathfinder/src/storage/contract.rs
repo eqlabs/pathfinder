@@ -143,6 +143,7 @@ impl ContractsTable {
         address: ContractAddress,
         hash: ContractHash,
     ) -> anyhow::Result<()> {
+        // A contract may be deployed multiple times due to L2 reorgs, so we ignore all after the first.
         transaction.execute(
             r"INSERT OR IGNORE INTO contracts (address, hash) VALUES (:address, :hash)",
             named_params! {
