@@ -100,14 +100,15 @@ pub mod transaction {
     use crate::{
         core::{
             CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-            EthereumAddress, EventData, EventKey, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
-            L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
-            TransactionSignatureElem,
+            EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
+            L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
+            StarknetTransactionIndex, TransactionSignatureElem,
         },
         rpc::serde::{
             CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-            EventDataAsDecimalStr, EventKeyAsDecimalStr, L1ToL2MessagePayloadElemAsDecimalStr,
-            L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
+            EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
+            L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
+            TransactionSignatureElemAsDecimalStr,
         },
     };
     use serde::{Deserialize, Serialize};
@@ -239,6 +240,9 @@ pub mod transaction {
         pub entry_point_type: Option<EntryPointType>,
         #[serde(default)]
         pub entry_point_selector: Option<EntryPoint>,
+        #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
+        pub max_fee: Option<Fee>,
         #[serde_as(as = "Option<Vec<TransactionSignatureElemAsDecimalStr>>")]
         #[serde(default)]
         pub signature: Option<Vec<TransactionSignatureElem>>,

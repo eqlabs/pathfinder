@@ -311,10 +311,11 @@ mod tests {
     // Local test helper
     fn setup_storage() -> Storage {
         use crate::{
-            core::StorageValue,
+            core::{Fee, StorageValue},
             ethereum::state_update::{ContractUpdate, StorageUpdate},
             state::{update_contract_state, CompressedContract},
         };
+        use web3::types::H128;
 
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
@@ -426,6 +427,7 @@ mod tests {
             contract_address_salt: None,
             entry_point_type: None,
             entry_point_selector: None,
+            max_fee: Some(Fee(H128::zero())),
             signature: None,
             transaction_hash: txn0_hash,
             r#type: Type::Deploy,
