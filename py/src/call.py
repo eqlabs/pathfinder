@@ -64,10 +64,9 @@ def do_loop(connection, input_gen, output_file):
 
             output = loop_inner(connection, command)
 
-            # retdata is List[int] at least in 0.7.0
-            # however we need to render it as hex strings, so we can just deserialize it easily
+            # we need to render the retdata as hex strings, so we can just deserialize it easily
             out["output"] = list(
-                map(lambda x: "0x" + x.to_bytes(32, "big").hex(), output.retdata)
+                map(lambda x: "0x" + x.to_bytes(32, "big").hex(), output)
             )
         except NoSuchBlock:
             out = {"status": "error", "kind": "NO_SUCH_BLOCK"}
@@ -403,6 +402,8 @@ async def do_call(
     Loads all of the cairo-lang parts needed for the call. Dirties the internal
     cairo-lang state which does not matter, because the state will be thrown
     out.
+
+    Returns the retdata from the call, which is the only property needed by the RPC api.
     """
     from starkware.starknet.business_logic.state import (
         SharedState,
@@ -429,10 +430,14 @@ async def do_call(
     )
 
     state = StarknetState(state=carried_state, general_config=general_config)
+    max_fee = 0
 
-    return await state.invoke_raw(
-        contract_address, selector, calldata, caller_address, signature
+    output = await state.invoke_raw(
+        contract_address, selector, calldata, caller_address, max_fee, signature
     )
+
+    # this is everything we need, at least so far for the "call".
+    return output.call_info.retdata
 
 
 if __name__ == "__main__":

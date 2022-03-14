@@ -265,7 +265,8 @@ def test_positive_directly():
 
     output = loop_inner(con, command)
 
-    assert output.retdata == [3]
+    assert output == [3]
+
 
 def test_called_contract_not_found():
     con = inmemory_with_tables()
