@@ -234,7 +234,7 @@ async fn reorg(
     };
 
     let reorg_tail = new_head
-        .map(|x| x.0)
+        .map(|x| x.0 + 1)
         .unwrap_or(StarknetBlockNumber::GENESIS);
 
     tx_event
