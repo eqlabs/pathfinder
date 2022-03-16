@@ -457,6 +457,41 @@ mod json {
             let _ = crate::state::contract_hash::compute_contract_hash(&contract_definition)
                 .expect("Extract and compute  hash");
         }
+
+        #[tokio::test]
+        async fn cairo_0_8() {
+            // Cairo 0.8 update broke our contract hash calculation by adding new attribute fields (which
+            // we now need to ignore if empty).
+            use super::super::extract_abi_code_hash;
+            use crate::core::{ContractAddress, ContractHash};
+            use crate::sequencer;
+            use pedersen::StarkHash;
+
+            // Known contract which triggered a hash mismatch failure.
+            let address = ContractAddress(
+                StarkHash::from_hex_str(
+                    "0x0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC",
+                )
+                .unwrap(),
+            );
+
+            let expected = ContractHash(
+                StarkHash::from_hex_str(
+                    "0x056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3",
+                )
+                .unwrap(),
+            );
+            let sequencer = sequencer::Client::new(crate::ethereum::Chain::Goerli).unwrap();
+
+            let contract_definition = sequencer.full_contract(address).await.unwrap();
+            let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+                let (abi, bytecode, hash) = extract_abi_code_hash(&contract_definition)?;
+                Ok((contract_definition, abi, bytecode, hash))
+            });
+            let (_, _, _, calculate_hash) = extract.await.unwrap().unwrap();
+
+            assert_eq!(calculate_hash, expected);
+        }
     }
 
     #[cfg(test)]
