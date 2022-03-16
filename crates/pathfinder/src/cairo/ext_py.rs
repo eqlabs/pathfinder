@@ -256,7 +256,7 @@ mod tests {
         crate::storage::ContractCodeTable::insert(tx, hash, &abi, &bytecode, &contract_definition)
             .unwrap();
 
-        crate::storage::ContractsTable::insert(tx, crate::core::ContractAddress(address), hash)
+        crate::storage::ContractsTable::upsert(tx, crate::core::ContractAddress(address), hash)
             .unwrap();
 
         // this will create the table, not created by migration

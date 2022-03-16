@@ -15,16 +15,14 @@ pub struct EthereumBlocksTable {}
 impl EthereumBlocksTable {
     /// Inserts a new Ethereum block with the given [hash](EthereumBlockHash) and [number](EthereumBlockNumber).
     ///
-    /// Does nothing if the hash already exists.
+    /// overwrites the data if the hash already exists.
     pub fn insert(
         transaction: &Transaction,
         hash: EthereumBlockHash,
         number: EthereumBlockNumber,
     ) -> anyhow::Result<()> {
         transaction.execute(
-            r"INSERT INTO ethereum_blocks ( hash,  number)
-                                       VALUES (:hash, :number)
-                                       ON CONFLICT DO NOTHING",
+            "INSERT OR REPLACE INTO ethereum_blocks (hash, number) VALUES (:hash, :number)",
             named_params! {
                 ":hash": hash.0.as_bytes(),
                 ":number": number.0,
@@ -46,20 +44,18 @@ pub struct EthereumTransactionsTable {}
 impl EthereumTransactionsTable {
     /// Insert a new Ethereum transaction.
     ///
-    /// Does nothing if the ethereum hash already exists.
+    /// Overwrites the data if the ethereum hash already exists.
     ///
     /// Note that [block_hash](EthereumBlockHash) must reference an
     /// Ethereum block stored in [EthereumBlocksTable].
-    pub fn insert(
+    pub fn upsert(
         transaction: &Transaction,
         block_hash: EthereumBlockHash,
         tx_hash: EthereumTransactionHash,
         tx_index: EthereumTransactionIndex,
     ) -> anyhow::Result<()> {
         transaction.execute(
-            r"INSERT INTO ethereum_transactions ( hash,  idx,  block_hash)
-                                             VALUES (:hash, :idx, :block_hash)
-                                             ON CONFLICT DO NOTHING",
+            "INSERT OR REPLACE INTO ethereum_transactions (hash, idx, block_hash) VALUES (:hash, :idx, :block_hash)",
             named_params! {
                 ":hash": tx_hash.0.as_bytes(),
                 ":idx": tx_index.0,

@@ -403,7 +403,9 @@ impl From<StarknetBlockHash> for StarknetBlocksBlockId {
 pub struct StarknetTransactionsTable {}
 impl StarknetTransactionsTable {
     /// Inserts a Starknet block's transactions and transaction receipts into the [StarknetTransactionsTable].
-    pub fn insert_block_transactions(
+    ///
+    /// overwrites existing data if the transaction hash already exists.
+    pub fn upsert(
         connection: &Connection,
         block: StarknetBlockHash,
         transaction_data: &[(transaction::Transaction, transaction::Receipt)],
@@ -427,8 +429,7 @@ impl StarknetTransactionsTable {
                 .compress(&receipt)
                 .context("Compress Starknet transaction receipt")?;
 
-            connection.execute(r"INSERT INTO starknet_transactions ( hash,  idx,  block_hash,  tx,  receipt)
-                                                            VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
+            connection.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
         named_params![
                     ":hash": &transaction.transaction_hash.0.as_be_bytes()[..],
                     ":idx": i,
@@ -667,17 +668,15 @@ pub struct StarknetBlock {
 pub struct ContractsStateTable {}
 
 impl ContractsStateTable {
-    /// Insert a state hash into the table. Does nothing if the state hash already exists.
-    pub fn insert(
+    /// Insert a state hash into the table, overwrites the data if the hash already exists.
+    pub fn upsert(
         transaction: &Transaction,
         state_hash: ContractStateHash,
         hash: ContractHash,
         root: ContractRoot,
     ) -> anyhow::Result<()> {
         transaction.execute(
-            r"INSERT INTO contract_states ( state_hash,  hash,  root)
-                                       VALUES (:state_hash, :hash, :root)
-                                       ON CONFLICT DO NOTHING",
+            "INSERT OR IGNORE INTO contract_states (state_hash, hash, root) VALUES (:state_hash, :hash, :root)",
             named_params! {
                 ":state_hash": &state_hash.0.to_be_bytes()[..],
                 ":hash": &hash.0.to_be_bytes()[..],
@@ -738,7 +737,7 @@ mod tests {
             let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
             let root = ContractRoot(StarkHash::from_hex_str("def").unwrap());
 
-            ContractsStateTable::insert(&transaction, state_hash, hash, root).unwrap();
+            ContractsStateTable::upsert(&transaction, state_hash, hash, root).unwrap();
 
             let result = ContractsStateTable::get_root(&transaction, state_hash).unwrap();
 

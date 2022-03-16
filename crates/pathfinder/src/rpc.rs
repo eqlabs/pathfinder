@@ -362,8 +362,8 @@ mod tests {
         ContractCodeTable::insert_compressed(&db_txn, &contract0_code).unwrap();
         ContractCodeTable::insert_compressed(&db_txn, &contract1_code).unwrap();
 
-        ContractsTable::insert(&db_txn, contract0_addr, contract0_hash).unwrap();
-        ContractsTable::insert(&db_txn, contract1_addr, contract1_hash).unwrap();
+        ContractsTable::upsert(&db_txn, contract0_addr, contract0_hash).unwrap();
+        ContractsTable::upsert(&db_txn, contract1_addr, contract1_hash).unwrap();
 
         let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
         let contract_state_hash =
@@ -479,24 +479,9 @@ mod tests {
         let transaction_data0 = [(txn0, receipt0)];
         let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
         let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5)];
-        StarknetTransactionsTable::insert_block_transactions(
-            &db_txn,
-            genesis_hash,
-            &transaction_data0,
-        )
-        .unwrap();
-        StarknetTransactionsTable::insert_block_transactions(
-            &db_txn,
-            block1_hash,
-            &transaction_data1,
-        )
-        .unwrap();
-        StarknetTransactionsTable::insert_block_transactions(
-            &db_txn,
-            latest_hash,
-            &transaction_data2,
-        )
-        .unwrap();
+        StarknetTransactionsTable::upsert(&db_txn, genesis_hash, &transaction_data0).unwrap();
+        StarknetTransactionsTable::upsert(&db_txn, block1_hash, &transaction_data1).unwrap();
+        StarknetTransactionsTable::upsert(&db_txn, latest_hash, &transaction_data2).unwrap();
 
         db_txn.commit().unwrap();
         storage
@@ -1575,7 +1560,7 @@ mod tests {
                 .context("Deploy testing contract")
                 .unwrap();
 
-                crate::storage::ContractsTable::insert(
+                crate::storage::ContractsTable::upsert(
                     &tx,
                     crate::core::ContractAddress(address),
                     hash,

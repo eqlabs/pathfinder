@@ -135,17 +135,17 @@ impl ContractCodeTable {
 pub struct ContractsTable {}
 
 impl ContractsTable {
-    /// Insert a contract into the table, does nothing if the contract already exists.
+    /// Insert a contract into the table, overwrites the data if it already exists.
     ///
     /// Note that [hash](ContractHash) must reference a contract stored in [ContractCodeTable].
-    pub fn insert(
+    pub fn upsert(
         transaction: &Transaction,
         address: ContractAddress,
         hash: ContractHash,
     ) -> anyhow::Result<()> {
         // A contract may be deployed multiple times due to L2 reorgs, so we ignore all after the first.
         transaction.execute(
-            r"INSERT OR IGNORE INTO contracts (address, hash) VALUES (:address, :hash)",
+            r"INSERT OR REPLACE INTO contracts (address, hash) VALUES (:address, :hash)",
             named_params! {
                 ":address": &address.0.to_be_bytes()[..],
                 ":hash": &hash.0.to_be_bytes()[..],
@@ -201,7 +201,7 @@ mod tests {
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
         let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
 
-        ContractsTable::insert(&transaction, address, hash).unwrap_err();
+        ContractsTable::upsert(&transaction, address, hash).unwrap_err();
     }
 
     #[test]
@@ -215,7 +215,7 @@ mod tests {
         let definition = vec![9, 13, 25];
 
         ContractCodeTable::insert(&transaction, hash, &[][..], &[][..], &definition[..]).unwrap();
-        ContractsTable::insert(&transaction, address, hash).unwrap();
+        ContractsTable::upsert(&transaction, address, hash).unwrap();
 
         let result = ContractsTable::get_hash(&transaction, address).unwrap();
 
@@ -241,7 +241,7 @@ mod tests {
 
         ContractCodeTable::insert(&transaction, hash, &abi[..], &code[..], &definition[..])
             .unwrap();
-        ContractsTable::insert(&transaction, address, hash).unwrap();
+        ContractsTable::upsert(&transaction, address, hash).unwrap();
 
         let result = ContractCodeTable::get_code(&transaction, address).unwrap();
 
