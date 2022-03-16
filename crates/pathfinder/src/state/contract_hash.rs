@@ -63,6 +63,41 @@ fn compute_contract_hash0(
     // the other modification is handled by skipping if the attributes vec is empty
     contract_definition.program.debug_info = None;
 
+    // Cairo 0.8 added "accessible_scopes" and "flow_tracking_data" attribute fields, which were
+    // not present in older contracts. They present as null / empty for older contracts and should
+    // not be included in the hash calculation in these cases.
+    //
+    // We therefore check and remove them from the definition before calculating the hash.
+    contract_definition
+        .program
+        .attributes
+        .iter_mut()
+        .try_for_each(|attr| -> anyhow::Result<()> {
+            let vals = attr
+                .as_object_mut()
+                .context("Program attribute was not an object")?;
+
+            match vals.get_mut("accessible_scopes") {
+                Some(serde_json::Value::Array(array)) => {
+                    if array.is_empty() {
+                        vals.remove("accessible_scopes");
+                    }
+                }
+                Some(_other) => {
+                    anyhow::bail!(
+                        r#"A program's attribute["accessible_scopes"] was not an array type."#
+                    );
+                }
+                None => {}
+            }
+            // We don't know what this type is supposed to be, but if its missing it is null.
+            if let Some(serde_json::Value::Null) = vals.get_mut("flow_tracking_data") {
+                vals.remove("flow_tracking_data");
+            }
+
+            Ok(())
+        })?;
+
     let truncated_keccak = {
         let mut ser =
             serde_json::Serializer::with_formatter(KeccakWriter::default(), PythonDefaultFormatter);
