@@ -7,18 +7,18 @@ use serde::{Deserialize, Serialize};
 use web3::types::{H128, H160, H256};
 
 /// The address of a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddress(pub StarkHash);
 
 /// The salt of a StarkNet contract address.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddressSalt(pub StarkHash);
 
 /// A StarkNet contract's hash. This is a hash over a contract's
 /// deployment properties e.g. code and ABI.
 ///
 /// Not to be confused with [ContractStateHash].
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct ContractHash(pub StarkHash);
 
 /// A StarkNet contract's state hash. This is the value stored
@@ -78,11 +78,11 @@ pub struct CallSignatureElem(pub StarkHash);
 pub struct ByteCodeWord(pub StarkHash);
 
 /// The address of a storage element for a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct StorageAddress(pub StarkHash);
 
 /// The value of a storage element for a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct StorageValue(pub StarkHash);
 
 /// A commitment root of the global StarkNet state. This is the entry-point

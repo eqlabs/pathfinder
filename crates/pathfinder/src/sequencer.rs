@@ -293,7 +293,7 @@ impl Client {
                 .inner
                 .get(self.build_query(
                     "get_state_update",
-                    &[("block_number", &block_number_str(block_number))],
+                    &[("blockNumber", &block_number_str(block_number))],
                 ))
                 .send()
                 .await?;
@@ -821,43 +821,87 @@ mod tests {
     }
 
     mod state_update_by_number_matches_by_hash_on {
-        use super::*;
+        use super::{
+            reply::{
+                state_update::{Contract, StorageDiff},
+                StateUpdate,
+            },
+            *,
+        };
+        use crate::core::{ContractAddress, GlobalRoot};
         use pretty_assertions::assert_eq;
+        use std::collections::{BTreeSet, HashMap};
+
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct OrderedStateDiff {
+            pub storage_diffs: HashMap<ContractAddress, BTreeSet<StorageDiff>>,
+            pub deployed_contracts: BTreeSet<Contract>,
+        }
+
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct OrderedStateUpdate {
+            pub new_root: GlobalRoot,
+            pub old_root: GlobalRoot,
+            pub state_diff: OrderedStateDiff,
+        }
+
+        impl From<StateUpdate> for OrderedStateUpdate {
+            fn from(s: StateUpdate) -> Self {
+                Self {
+                    new_root: s.new_root,
+                    old_root: s.old_root,
+                    state_diff: OrderedStateDiff {
+                        storage_diffs: s
+                            .state_diff
+                            .storage_diffs
+                            .into_iter()
+                            .map(|(addr, diffs)| (addr, diffs.into_iter().collect()))
+                            .collect(),
+                        deployed_contracts: s.state_diff.deployed_contracts.into_iter().collect(),
+                    },
+                }
+            }
+        }
 
         #[tokio::test]
-        #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn genesis() {
-            let by_number = Client::new(crate::ethereum::Chain::Goerli)
+            let by_number: OrderedStateUpdate = Client::new(crate::ethereum::Chain::Goerli)
                 .unwrap()
                 .state_update_by_number(*GENESIS_BLOCK_NUMBER)
                 .await
-                .unwrap();
+                .unwrap()
+                .into();
 
-            let by_hash = Client::new(crate::ethereum::Chain::Goerli)
+            let by_hash: OrderedStateUpdate = Client::new(crate::ethereum::Chain::Goerli)
                 .unwrap()
                 .state_update_by_hash(*GENESIS_BLOCK_HASH)
                 .await
-                .unwrap();
+                .unwrap()
+                .into();
 
             assert_eq!(by_number, by_hash);
         }
 
         #[tokio::test]
-        #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn specific_block() {
-            let by_number = Client::new(crate::ethereum::Chain::Goerli)
+            let by_number: OrderedStateUpdate = Client::new(crate::ethereum::Chain::Goerli)
                 .unwrap()
-                .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1000)))
+                .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(10000)))
                 .await
-                .unwrap();
+                .unwrap()
+                .into();
 
-            let by_hash = Client::new(crate::ethereum::Chain::Goerli)
+            let by_hash: OrderedStateUpdate = Client::new(crate::ethereum::Chain::Goerli)
                 .unwrap()
                 .state_update_by_hash(BlockHashOrTag::Hash(
-                    StarknetBlockHash::from_hex_str("TODO").unwrap(),
+                    StarknetBlockHash::from_hex_str(
+                        "0x59fc9ede727664c12a5cc72252d1c1dd7d84f9182644f9b39f405d33bedcc99",
+                    )
+                    .unwrap(),
                 ))
                 .await
-                .unwrap();
+                .unwrap()
+                .into();
 
             assert_eq!(by_number, by_hash);
         }
@@ -867,7 +911,6 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        #[ignore = "Wait until integration is stabilized and there's a goerli deployment."]
         async fn invalid_number() {
             let error = Client::new(crate::ethereum::Chain::Goerli)
                 .unwrap()
