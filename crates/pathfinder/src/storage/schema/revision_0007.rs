@@ -3,6 +3,7 @@ use rusqlite::{named_params, Transaction};
 
 use crate::sequencer::reply::transaction;
 use crate::storage::schema::PostMigrationAction;
+use crate::storage::state::StarknetEventsTable;
 
 pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
     // Create the new events table.
@@ -18,6 +19,12 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
                 data BLOB,
                 FOREIGN KEY(block_number) REFERENCES starknet_blocks(number)
             );
+
+            -- Event filters can specify ranges of blocks
+            CREATE INDEX starknet_events_block_number ON starknet_events(block_number);
+
+            -- Event filter can specify a contract address
+            CREATE INDEX starknet_events_from_address ON starknet_events(from_address);
 
             CREATE VIRTUAL TABLE starknet_events_keys
             USING fts5(
@@ -120,13 +127,8 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
                     |row| row.get(0)
                 ).context("Query block number based on block hash")?;
 
-                // TODO: extract
-                let serialized_data: Vec<u8> = event.data.iter().flat_map(|e| {e.0.as_be_bytes().clone().into_iter()}).collect();
-
-                // TODO: extract
-                // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
-                let serialized_keys: Vec<String> = event.keys.iter().map(|key| base64::encode(key.0.as_be_bytes())).collect();
-                let serialized_keys = serialized_keys.join(" ");
+                let serialized_data = StarknetEventsTable::event_data_to_bytes(&event.data);
+                let serialized_keys = StarknetEventsTable::event_keys_to_base64_strings(&event.keys);
 
                 transaction.execute(r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
                                                            VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",

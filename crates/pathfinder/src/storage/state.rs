@@ -5,9 +5,10 @@ use web3::types::H256;
 
 use crate::{
     core::{
-        ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
-        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
-        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        ContractAddress, ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash,
+        EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
+        EventData, EventKey, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash,
     },
     ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
     sequencer::reply::transaction,
@@ -440,36 +441,12 @@ impl StarknetTransactionsTable {
                 ]).context("Insert transaction data into transactions table")?;
 
             // insert events from receipt
-            for (idx, event) in receipt.events.iter().enumerate() {
-                let serialized_data: Vec<u8> = event
-                    .data
-                    .iter()
-                    .flat_map(|e| e.0.as_be_bytes().clone().into_iter())
-                    .collect();
-
-                // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
-                let serialized_keys: Vec<String> = event
-                    .keys
-                    .iter()
-                    .map(|key| base64::encode(key.0.as_be_bytes()))
-                    .collect();
-                let serialized_keys = serialized_keys.join(" ");
-
-                connection
-                    .execute(
-                        r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
-                                               VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
-                        named_params![
-                            ":block_number": block_number.0,
-                            ":idx": idx,
-                            ":transaction_hash": &transaction.transaction_hash.0.as_be_bytes()[..],
-                            ":from_address": &transaction.contract_address.0.as_be_bytes()[..],
-                            ":keys": &serialized_keys,
-                            ":data": &serialized_data,
-                        ],
-                    )
-                    .context("Insert events into events table")?;
-            }
+            StarknetEventsTable::insert_events(
+                connection,
+                block_number,
+                transaction,
+                &receipt.events,
+            )?;
         }
 
         Ok(())
@@ -678,6 +655,190 @@ impl StarknetTransactionsTable {
                 Self::get_transaction_count(connection, block.into())
             }
         }
+    }
+}
+
+pub struct StarknetEventFilter {
+    pub from_block: Option<StarknetBlockNumber>,
+    pub to_block: Option<StarknetBlockNumber>,
+    pub contract_address: Option<ContractAddress>,
+    pub keys: Vec<EventKey>,
+}
+
+pub struct StarknetPageRequest {
+    pub page_size: Option<usize>,
+    pub page_number: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StarknetEmittedEvent {
+    pub data: Vec<EventData>,
+    pub from_address: ContractAddress,
+    pub keys: Vec<EventKey>,
+    pub block_hash: StarknetBlockHash,
+    pub block_number: StarknetBlockNumber,
+    pub transaction_hash: StarknetTransactionHash,
+}
+
+pub struct StarknetEventsTable {}
+impl StarknetEventsTable {
+    pub fn event_data_to_bytes(data: &[EventData]) -> Vec<u8> {
+        data.iter()
+            .flat_map(|e| (*e.0.as_be_bytes()).into_iter())
+            .collect()
+    }
+
+    fn event_key_to_base64_string(key: &EventKey) -> String {
+        base64::encode(key.0.as_be_bytes())
+    }
+
+    pub fn event_keys_to_base64_strings(keys: &[EventKey]) -> String {
+        // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
+        let keys: Vec<String> = keys.iter().map(Self::event_key_to_base64_string).collect();
+        keys.join(" ")
+    }
+
+    pub fn insert_events(
+        connection: &Connection,
+        block_number: StarknetBlockNumber,
+        transaction: &transaction::Transaction,
+        events: &[transaction::Event],
+    ) -> anyhow::Result<()> {
+        for (idx, event) in events.iter().enumerate() {
+            connection
+                .execute(
+                    r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
+                                           VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
+                    named_params![
+                        ":block_number": block_number.0,
+                        ":idx": idx,
+                        ":transaction_hash": &transaction.transaction_hash.0.as_be_bytes()[..],
+                        ":from_address": &transaction.contract_address.0.as_be_bytes()[..],
+                        ":keys": Self::event_keys_to_base64_strings(&event.keys),
+                        ":data": Self::event_data_to_bytes(&event.data),
+                    ],
+                )
+                .context("Insert events into events table")?;
+        }
+        Ok(())
+    }
+
+    pub fn get_events(
+        connection: &Connection,
+        filter: &StarknetEventFilter,
+    ) -> anyhow::Result<Vec<StarknetEmittedEvent>> {
+        let mut base_query =
+            r#"SELECT
+                  block_number,
+                  starknet_blocks.hash as block_hash,
+                  transaction_hash,
+                  from_address,
+                  data,
+                  starknet_events.keys as keys
+               FROM starknet_events
+               INNER JOIN starknet_blocks ON starknet_blocks.number = starknet_events.block_number "#
+                .to_string();
+        let mut where_statement_parts: Vec<&'static str> = Vec::new();
+        let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
+
+        // filter on block range
+        match (&filter.from_block, &filter.to_block) {
+            (Some(from_block), Some(to_block)) => {
+                where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
+                params.push((":from_block", &from_block.0));
+                params.push((":to_block", &to_block.0));
+            }
+            (Some(from_block), None) => {
+                where_statement_parts.push("block_number >= :from_block");
+                params.push((":from_block", &from_block.0));
+            }
+            (None, Some(to_block)) => {
+                where_statement_parts.push("block_number <= :to_block");
+                params.push((":to_block", &to_block.0));
+            }
+            (None, None) => {}
+        }
+
+        // filter on contract address
+        if let Some(contract_address) = &filter.contract_address {
+            where_statement_parts.push("from_address = :contract_address");
+            params.push((":contract_address", contract_address.0.as_be_bytes()))
+        }
+
+        // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
+        // The idea is that we convert keys to a space-separated list of Bas64 encoded string
+        // representation and then use the full-text index to find events matching the events.
+        // HACK: make sure key_fts_expression lives long enough
+        let key_fts_expression;
+        if !filter.keys.is_empty() {
+            let base64_keys: Vec<String> = filter
+                .keys
+                .iter()
+                .map(|key| format!("\"{}\"", Self::event_key_to_base64_string(key)))
+                .collect();
+            key_fts_expression = base64_keys.join(" OR ");
+
+            base_query.push_str("INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
+            where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
+            params.push((":events_match", &key_fts_expression));
+        }
+
+        let query = format!(
+            "{} WHERE {} ORDER BY block_number, transaction_hash, idx",
+            base_query,
+            where_statement_parts.join(" AND ")
+        );
+
+        let mut statement = connection.prepare(&query)?;
+        let mut rows = statement.query(params.as_slice())?;
+
+        let mut emitted_events = Vec::new();
+        while let Some(row) = rows.next()? {
+            let block_number = row.get_ref_unwrap("block_number").as_i64().unwrap() as u64;
+            let block_number = StarknetBlockNumber(block_number);
+
+            let block_hash = row.get_ref_unwrap("block_hash").as_blob().unwrap();
+            let block_hash = StarkHash::from_be_slice(block_hash).unwrap();
+            let block_hash = StarknetBlockHash(block_hash);
+
+            let transaction_hash = row.get_ref_unwrap("transaction_hash").as_blob().unwrap();
+            let transaction_hash = StarkHash::from_be_slice(transaction_hash).unwrap();
+            let transaction_hash = StarknetTransactionHash(transaction_hash);
+
+            let from_address = row.get_ref_unwrap("from_address").as_blob().unwrap();
+            let from_address = StarkHash::from_be_slice(from_address).unwrap();
+            let from_address = ContractAddress(from_address);
+
+            let data = row.get_ref_unwrap("data").as_blob().unwrap();
+            let data: Vec<_> = data
+                .chunks_exact(32)
+                .map(|data| {
+                    let data = StarkHash::from_be_slice(data).unwrap();
+                    EventData(data)
+                })
+                .collect();
+
+            let keys = row.get_ref_unwrap("keys").as_str().unwrap();
+            let keys: Vec<_> = keys
+                .split(' ')
+                .map(|key| {
+                    let key = StarkHash::from_be_slice(&base64::decode(key).unwrap()).unwrap();
+                    EventKey(key)
+                })
+                .collect();
+
+            let event = StarknetEmittedEvent {
+                data,
+                from_address,
+                keys,
+                block_hash,
+                block_number,
+                transaction_hash,
+            };
+            emitted_events.push(event);
+        }
+
+        Ok(emitted_events)
     }
 }
 
@@ -1337,6 +1498,283 @@ mod tests {
                     Some(expected)
                 );
             }
+        }
+    }
+
+    mod starknet_events {
+        use super::*;
+
+        use crate::core::{EventData, StarknetTransactionIndex};
+        use crate::sequencer::reply::transaction;
+
+        #[test]
+        fn event_data_serialization() {
+            let data = vec![
+                EventData(StarkHash::from_hex_str("0x1").unwrap()),
+                EventData(StarkHash::from_hex_str("0x2").unwrap()),
+                EventData(StarkHash::from_hex_str("0x3").unwrap()),
+            ];
+            assert_eq!(
+                &StarknetEventsTable::event_data_to_bytes(&data),
+                &[
+                    0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3
+                ]
+            );
+        }
+
+        #[test]
+        fn event_keys_to_base64_strings() {
+            let event = transaction::Event {
+                from_address: ContractAddress::from_hex_str(
+                    "0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
+                )
+                .unwrap(),
+                data: vec![],
+                keys: vec![
+                    EventKey(StarkHash::from_hex_str("0x901823").unwrap()),
+                    EventKey(StarkHash::from_hex_str("0x901824").unwrap()),
+                    EventKey(StarkHash::from_hex_str("0x901825").unwrap()),
+                ],
+            };
+            assert_eq!(
+                StarknetEventsTable::event_keys_to_base64_strings(&event.keys),
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCM= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCQ= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCU="
+            );
+        }
+
+        const NUM_BLOCKS: usize = 4;
+
+        fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
+            (0..NUM_BLOCKS as u64)
+                .map(|i| StarknetBlock {
+                    number: StarknetBlockNumber::GENESIS + i,
+                    hash: StarknetBlockHash(
+                        StarkHash::from_hex_str(&"a".repeat(i as usize + 3)).unwrap(),
+                    ),
+                    root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
+                    timestamp: StarknetBlockTimestamp(i + 500),
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
+        }
+
+        const TRANSACTIONS_PER_BLOCK: usize = 10;
+        const EVENTS_PER_BLOCK: usize = TRANSACTIONS_PER_BLOCK;
+        const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
+
+        fn create_transactions_and_receipts(
+        ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
+            let transactions = (0..NUM_TRANSACTIONS).map(|i| transaction::Transaction {
+                calldata: None,
+                constructor_calldata: None,
+                contract_address: ContractAddress(
+                    StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                ),
+                contract_address_salt: None,
+                entry_point_type: None,
+                entry_point_selector: None,
+                signature: None,
+                transaction_hash: StarknetTransactionHash(
+                    StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap(),
+                ),
+                r#type: transaction::Type::InvokeFunction,
+                max_fee: None,
+            });
+            let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
+                events: vec![transaction::Event {
+                    from_address: ContractAddress(
+                        StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                    ),
+                    data: vec![EventData(
+                        StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
+                    )],
+                    keys: vec![
+                        EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
+                        EventKey(StarkHash::from_hex_str("deadbeef").unwrap()),
+                    ],
+                }],
+                execution_resources: transaction::ExecutionResources {
+                    builtin_instance_counter:
+                        transaction::execution_resources::BuiltinInstanceCounter::Empty(
+                            transaction::execution_resources::EmptyBuiltinInstanceCounter {},
+                        ),
+                    n_steps: i as u64 + 987,
+                    n_memory_holes: i as u64 + 1177,
+                },
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: Vec::new(),
+                transaction_hash: StarknetTransactionHash(
+                    StarkHash::from_hex_str(&"e".repeat(i + 3)).unwrap(),
+                ),
+                transaction_index: StarknetTransactionIndex(i as u64 + 2311),
+            });
+
+            transactions
+                .into_iter()
+                .zip(receipts)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
+        }
+
+        fn setup(connection: &Connection) -> Vec<StarknetEmittedEvent> {
+            let blocks = create_blocks();
+            let transactions_and_receipts = create_transactions_and_receipts();
+
+            for (i, block) in blocks.iter().enumerate() {
+                StarknetBlocksTable::insert(connection, block).unwrap();
+                StarknetTransactionsTable::upsert(
+                    connection,
+                    block.hash,
+                    block.number,
+                    &transactions_and_receipts
+                        [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK],
+                )
+                .unwrap();
+            }
+
+            transactions_and_receipts
+                .iter()
+                .enumerate()
+                .map(|(i, (txn, receipt))| {
+                    let event = &receipt.events[0];
+                    let block = &blocks[i / TRANSACTIONS_PER_BLOCK];
+
+                    StarknetEmittedEvent {
+                        data: event.data.clone(),
+                        from_address: event.from_address,
+                        keys: event.keys.clone(),
+                        block_hash: block.hash,
+                        block_number: block.number,
+                        transaction_hash: txn.transaction_hash,
+                    }
+                })
+                .collect()
+        }
+
+        #[test]
+        fn get_events_with_fully_specified_filter() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let emitted_events = setup(&connection);
+
+            let expected_event = &emitted_events[1];
+            let filter = StarknetEventFilter {
+                from_block: Some(expected_event.block_number),
+                to_block: Some(expected_event.block_number),
+                contract_address: Some(expected_event.from_address),
+                // we're using a key which is present in _all_ events
+                keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
+            };
+
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, &[expected_event.clone()]);
+        }
+
+        #[test]
+        fn get_events_by_block() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let emitted_events = setup(&connection);
+
+            const BLOCK_NUMBER: usize = 2;
+            let filter = StarknetEventFilter {
+                from_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
+                to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
+                contract_address: None,
+                keys: vec![],
+            };
+
+            let expected_events = &emitted_events
+                [EVENTS_PER_BLOCK * BLOCK_NUMBER..EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, expected_events);
+        }
+
+        #[test]
+        fn get_events_up_to_block() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let emitted_events = setup(&connection);
+
+            const UNTIL_BLOCK_NUMBER: usize = 2;
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: Some(StarknetBlockNumber(UNTIL_BLOCK_NUMBER as u64)),
+                contract_address: None,
+                keys: vec![],
+            };
+
+            let expected_events =
+                &emitted_events[..TRANSACTIONS_PER_BLOCK * (UNTIL_BLOCK_NUMBER + 1)];
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, expected_events);
+        }
+
+        #[test]
+        fn get_events_from_block_onwards() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let emitted_events = setup(&connection);
+
+            const FROM_BLOCK_NUMBER: usize = 2;
+            let filter = StarknetEventFilter {
+                from_block: Some(StarknetBlockNumber(FROM_BLOCK_NUMBER as u64)),
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+            };
+
+            let expected_events = &emitted_events[TRANSACTIONS_PER_BLOCK * FROM_BLOCK_NUMBER..];
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, expected_events);
+        }
+
+        #[test]
+        fn get_events_from_contract() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let emitted_events = setup(&connection);
+
+            let expected_event = &emitted_events[33];
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: Some(expected_event.from_address),
+                keys: vec![],
+            };
+
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, &[expected_event.clone()]);
+        }
+
+        #[test]
+        fn get_events_by_key() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let emitted_events = setup(&connection);
+
+            let expected_event = &emitted_events[27];
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![expected_event.keys[0]],
+            };
+
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, &[expected_event.clone()]);
         }
     }
 }
