@@ -479,24 +479,9 @@ mod tests {
         let transaction_data0 = [(txn0, receipt0)];
         let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
         let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5)];
-        StarknetTransactionsTable::upsert(
-            &db_txn,
-            genesis_hash,
-            &transaction_data0,
-        )
-        .unwrap();
-        StarknetTransactionsTable::upsert(
-            &db_txn,
-            block1_hash,
-            &transaction_data1,
-        )
-        .unwrap();
-        StarknetTransactionsTable::upsert(
-            &db_txn,
-            latest_hash,
-            &transaction_data2,
-        )
-        .unwrap();
+        StarknetTransactionsTable::upsert(&db_txn, genesis_hash, &transaction_data0).unwrap();
+        StarknetTransactionsTable::upsert(&db_txn, block1_hash, &transaction_data1).unwrap();
+        StarknetTransactionsTable::upsert(&db_txn, latest_hash, &transaction_data2).unwrap();
 
         db_txn.commit().unwrap();
         storage
