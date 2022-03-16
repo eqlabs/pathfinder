@@ -63,6 +63,41 @@ fn compute_contract_hash0(
     // the other modification is handled by skipping if the attributes vec is empty
     contract_definition.program.debug_info = None;
 
+    // Cairo 0.8 added "accessible_scopes" and "flow_tracking_data" attribute fields, which were
+    // not present in older contracts. They present as null / empty for older contracts and should
+    // not be included in the hash calculation in these cases.
+    //
+    // We therefore check and remove them from the definition before calculating the hash.
+    contract_definition
+        .program
+        .attributes
+        .iter_mut()
+        .try_for_each(|attr| -> anyhow::Result<()> {
+            let vals = attr
+                .as_object_mut()
+                .context("Program attribute was not an object")?;
+
+            match vals.get_mut("accessible_scopes") {
+                Some(serde_json::Value::Array(array)) => {
+                    if array.is_empty() {
+                        vals.remove("accessible_scopes");
+                    }
+                }
+                Some(_other) => {
+                    anyhow::bail!(
+                        r#"A program's attribute["accessible_scopes"] was not an array type."#
+                    );
+                }
+                None => {}
+            }
+            // We don't know what this type is supposed to be, but if its missing it is null.
+            if let Some(serde_json::Value::Null) = vals.get_mut("flow_tracking_data") {
+                vals.remove("flow_tracking_data");
+            }
+
+            Ok(())
+        })?;
+
     let truncated_keccak = {
         let mut ser =
             serde_json::Serializer::with_formatter(KeccakWriter::default(), PythonDefaultFormatter);
@@ -456,6 +491,41 @@ mod json {
 
             let _ = crate::state::contract_hash::compute_contract_hash(&contract_definition)
                 .expect("Extract and compute  hash");
+        }
+
+        #[tokio::test]
+        async fn cairo_0_8() {
+            // Cairo 0.8 update broke our contract hash calculation by adding new attribute fields (which
+            // we now need to ignore if empty).
+            use super::super::extract_abi_code_hash;
+            use crate::core::{ContractAddress, ContractHash};
+            use crate::sequencer;
+            use pedersen::StarkHash;
+
+            // Known contract which triggered a hash mismatch failure.
+            let address = ContractAddress(
+                StarkHash::from_hex_str(
+                    "0x0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC",
+                )
+                .unwrap(),
+            );
+
+            let expected = ContractHash(
+                StarkHash::from_hex_str(
+                    "0x056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3",
+                )
+                .unwrap(),
+            );
+            let sequencer = sequencer::Client::new(crate::ethereum::Chain::Goerli).unwrap();
+
+            let contract_definition = sequencer.full_contract(address).await.unwrap();
+            let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+                let (abi, bytecode, hash) = extract_abi_code_hash(&contract_definition)?;
+                Ok((contract_definition, abi, bytecode, hash))
+            });
+            let (_, _, _, calculate_hash) = extract.await.unwrap().unwrap();
+
+            assert_eq!(calculate_hash, expected);
         }
     }
 
