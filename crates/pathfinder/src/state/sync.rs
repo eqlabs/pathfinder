@@ -455,7 +455,7 @@ async fn l2_update(
             .into_iter()
             .zip(block.transaction_receipts.into_iter())
             .collect::<Vec<_>>();
-        StarknetTransactionsTable::insert_block_transactions(
+        StarknetTransactionsTable::upsert(
             &transaction,
             starknet_block.hash,
             &transaction_data,
@@ -554,8 +554,8 @@ fn deploy_contract(
     global_tree
         .set(contract.address, state_hash)
         .context("Adding deployed contract to global state tree")?;
-    ContractsStateTable::insert(transaction, state_hash, contract.hash, contract_root)
+    ContractsStateTable::upsert(transaction, state_hash, contract.hash, contract_root)
         .context("Insert constract state hash into contracts state table")?;
-    ContractsTable::insert(transaction, contract.address, contract.hash)
+    ContractsTable::upsert(transaction, contract.address, contract.hash)
         .context("Inserting contract hash into contracts table")
 }

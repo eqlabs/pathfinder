@@ -72,7 +72,7 @@ pub(crate) fn update_contract_state(
         .context("Contract hash is missing from contracts table")?;
     let contract_state_hash = calculate_contract_state_hash(contract_hash, new_contract_root);
 
-    ContractsStateTable::insert(db, contract_state_hash, contract_hash, new_contract_root)
+    ContractsStateTable::upsert(db, contract_state_hash, contract_hash, new_contract_root)
         .context("Insert constract state hash into contracts state table")?;
 
     Ok(contract_state_hash)
