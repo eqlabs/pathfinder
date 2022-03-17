@@ -14,7 +14,7 @@ use ff::PrimeField;
 /// The Starknet elliptic curve Field Element.
 ///
 /// Forms the basic building block of most Starknet interactions.
-#[derive(Clone, Copy, PartialEq, Hash, Eq)]
+#[derive(Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub struct StarkHash([u8; 32]);
 
 impl std::fmt::Debug for StarkHash {

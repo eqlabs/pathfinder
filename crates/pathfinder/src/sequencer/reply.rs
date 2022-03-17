@@ -299,7 +299,7 @@ pub mod state_update {
     }
 
     /// L2 storage diff.
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     pub struct StorageDiff {
         pub key: StorageAddress,
@@ -307,7 +307,7 @@ pub mod state_update {
     }
 
     /// L2 contract data within state diff.
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     pub struct Contract {
         pub address: ContractAddress,
