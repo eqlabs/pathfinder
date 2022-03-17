@@ -13,6 +13,60 @@ use crate::{
 use reqwest::Url;
 use std::{borrow::Cow, fmt::Debug, future::Future, result::Result, time::Duration};
 
+#[cfg_attr(test, mockall::automock)]
+#[async_trait::async_trait]
+pub trait ClientApi {
+    async fn block_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<reply::Block, SequencerError>;
+
+    async fn block_by_hash(
+        &self,
+        block_hash: BlockHashOrTag,
+    ) -> Result<reply::Block, SequencerError>;
+
+    async fn call(
+        &self,
+        payload: request::Call,
+        block_hash: BlockHashOrTag,
+    ) -> Result<reply::Call, SequencerError>;
+
+    async fn full_contract(
+        &self,
+        contract_addr: ContractAddress,
+    ) -> Result<bytes::Bytes, SequencerError>;
+
+    async fn storage(
+        &self,
+        contract_addr: ContractAddress,
+        key: StorageAddress,
+        block_hash: BlockHashOrTag,
+    ) -> Result<StorageValue, SequencerError>;
+
+    async fn transaction(
+        &self,
+        transaction_hash: StarknetTransactionHash,
+    ) -> Result<reply::Transaction, SequencerError>;
+
+    async fn transaction_status(
+        &self,
+        transaction_hash: StarknetTransactionHash,
+    ) -> Result<reply::TransactionStatus, SequencerError>;
+
+    async fn state_update_by_hash(
+        &self,
+        block_hash: BlockHashOrTag,
+    ) -> Result<reply::StateUpdate, SequencerError>;
+
+    async fn state_update_by_number(
+        &self,
+        block_number: BlockNumberOrTag,
+    ) -> Result<reply::StateUpdate, SequencerError>;
+
+    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
+}
+
 /// StarkNet sequencer client using REST API.
 #[derive(Debug, Clone)]
 pub struct Client {
@@ -117,9 +171,24 @@ impl Client {
         })
     }
 
+    /// Helper function that constructs a URL for particular query.
+    fn build_query(&self, path_segment: &str, params: &[(&str, &str)]) -> Url {
+        let mut query_url = self.sequencer_url.clone();
+        query_url
+            .path_segments_mut()
+            .expect("Base URL is valid")
+            .extend(&["feeder_gateway", path_segment]);
+        query_url.query_pairs_mut().extend_pairs(params);
+        tracing::trace!(%query_url);
+        query_url
+    }
+}
+
+#[async_trait::async_trait]
+impl ClientApi for Client {
     /// Gets block by number.
     #[tracing::instrument(skip(self))]
-    pub async fn block_by_number(
+    async fn block_by_number(
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<reply::Block, SequencerError> {
@@ -137,7 +206,7 @@ impl Client {
 
     /// Get block by hash.
     #[tracing::instrument(skip(self))]
-    pub async fn block_by_hash(
+    async fn block_by_hash(
         &self,
         block_hash: BlockHashOrTag,
     ) -> Result<reply::Block, SequencerError> {
@@ -155,7 +224,7 @@ impl Client {
 
     /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
     #[tracing::instrument(skip(self))]
-    pub async fn call(
+    async fn call(
         &self,
         payload: request::Call,
         block_hash: BlockHashOrTag,
@@ -175,7 +244,7 @@ impl Client {
 
     /// Gets full contract definition.
     #[tracing::instrument(skip(self))]
-    pub async fn full_contract(
+    async fn full_contract(
         &self,
         contract_addr: ContractAddress,
     ) -> Result<bytes::Bytes, SequencerError> {
@@ -197,7 +266,7 @@ impl Client {
 
     /// Gets storage value associated with a `key` for a prticular contract.
     #[tracing::instrument(skip(self))]
-    pub async fn storage(
+    async fn storage(
         &self,
         contract_addr: ContractAddress,
         key: StorageAddress,
@@ -226,7 +295,7 @@ impl Client {
 
     /// Gets transaction by hash.
     #[tracing::instrument(skip(self))]
-    pub async fn transaction(
+    async fn transaction(
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError> {
@@ -246,7 +315,7 @@ impl Client {
 
     /// Gets transaction status by transaction hash.
     #[tracing::instrument(skip(self))]
-    pub async fn transaction_status(
+    async fn transaction_status(
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::TransactionStatus, SequencerError> {
@@ -266,7 +335,7 @@ impl Client {
 
     /// Gets state update for a particular block hash.
     #[tracing::instrument(skip(self))]
-    pub async fn state_update_by_hash(
+    async fn state_update_by_hash(
         &self,
         block_hash: BlockHashOrTag,
     ) -> Result<reply::StateUpdate, SequencerError> {
@@ -284,7 +353,7 @@ impl Client {
 
     /// Gets state update for a particular block number.
     #[tracing::instrument(skip(self))]
-    pub async fn state_update_by_number(
+    async fn state_update_by_number(
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<reply::StateUpdate, SequencerError> {
@@ -304,9 +373,7 @@ impl Client {
 
     /// Gets addresses of the Ethereum contracts crucial to Starknet operation.
     #[tracing::instrument(skip(self))]
-    pub async fn eth_contract_addresses(
-        &self,
-    ) -> Result<reply::EthContractAddresses, SequencerError> {
+    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
         retry(|| async {
             let resp = self
                 .inner
@@ -316,18 +383,6 @@ impl Client {
             parse(resp).await
         })
         .await
-    }
-
-    /// Helper function that constructs a URL for particular query.
-    fn build_query(&self, path_segment: &str, params: &[(&str, &str)]) -> Url {
-        let mut query_url = self.sequencer_url.clone();
-        query_url
-            .path_segments_mut()
-            .expect("Base URL is valid")
-            .extend(&["feeder_gateway", path_segment]);
-        query_url.query_pairs_mut().extend_pairs(params);
-        tracing::trace!(%query_url);
-        query_url
     }
 }
 

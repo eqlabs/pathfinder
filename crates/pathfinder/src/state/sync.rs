@@ -14,7 +14,7 @@ use crate::{
         Chain,
     },
     rpc::types::reply::syncing,
-    sequencer::{self, reply::Block},
+    sequencer::{self, reply::Block, ClientApi},
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,

@@ -54,7 +54,7 @@ pub enum Event {
 
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
-    sequencer: sequencer::Client,
+    sequencer: impl sequencer::ClientApi,
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash)>,
 ) -> anyhow::Result<()> {
     'outer: loop {
@@ -166,7 +166,7 @@ enum DownloadBlock {
 
 async fn download_block(
     block: StarknetBlockNumber,
-    sequencer: &sequencer::Client,
+    sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
     use sequencer::error::StarknetErrorCode::BlockNotFound;
 
@@ -196,7 +196,7 @@ async fn download_block(
 async fn reorg(
     head: (StarknetBlockNumber, StarknetBlockHash),
     tx_event: &mpsc::Sender<Event>,
-    sequencer: &sequencer::Client,
+    sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
@@ -247,7 +247,7 @@ async fn reorg(
 
 async fn deploy_contracts(
     tx_event: &mpsc::Sender<Event>,
-    sequencer: &sequencer::Client,
+    sequencer: &impl sequencer::ClientApi,
     state_diff: &StateDiff,
 ) -> anyhow::Result<()> {
     let unique_contracts = state_diff
@@ -312,7 +312,7 @@ async fn deploy_contracts(
 
 async fn download_and_compress_contract(
     contract: &Contract,
-    sequencer: &sequencer::Client,
+    sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<CompressedContract> {
     let contract_definition = sequencer
         .full_contract(contract.address)
@@ -358,3 +358,6 @@ async fn download_and_compress_contract(
         hash,
     })
 }
+
+#[cfg(test)]
+mod tests {}
