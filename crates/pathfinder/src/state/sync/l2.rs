@@ -329,6 +329,9 @@ async fn download_and_compress_contract(
         .await
         .context("Parse contract definition and compute hash")??;
 
+    eprintln!("{}", contract.contract_hash.0);
+    eprintln!("{}", hash.0);
+
     // Sanity check.
     anyhow::ensure!(
         contract.contract_hash == hash,
@@ -360,4 +363,281 @@ async fn download_and_compress_contract(
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    mod sync {
+        use super::super::{sync, Event};
+        use crate::{
+            core::{
+                ContractAddress, ContractHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+                StarknetBlockTimestamp, StorageAddress, StorageValue,
+            },
+            ethereum::state_update,
+            rpc::types::BlockNumberOrTag,
+            sequencer::{reply, MockClientApi},
+            state,
+        };
+        use assert_matches::assert_matches;
+        use pedersen::StarkHash;
+        use pretty_assertions::assert_eq;
+        use std::collections::HashMap;
+
+        #[tokio::test]
+        async fn happy_path_from_genesis() {
+            let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+            let mut mock_sequencer = MockClientApi::new();
+            let mut seq = mockall::Sequence::new();
+
+            let block0_number = StarknetBlockNumber(0);
+            let block0_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 0 hash").unwrap());
+            let global_root0 = GlobalRoot(StarkHash::from_be_slice(b"global root 0").unwrap());
+            let block0 = reply::Block {
+                block_hash: Some(block0_hash),
+                block_number: Some(block0_number),
+                parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                state_root: Some(global_root0),
+                status: reply::Status::AcceptedOnL1,
+                timestamp: StarknetBlockTimestamp(0),
+                transaction_receipts: vec![],
+                transactions: vec![],
+            };
+            let contract0_addr =
+                ContractAddress(StarkHash::from_be_slice(b"contract 0 addr").unwrap());
+            let contract0_hash = ContractHash(
+                StarkHash::from_hex_str(
+                    "0x0450FBC0994727C70DDAA04FDF10C362E45CB46130146FE16F70584E8E642182",
+                )
+                .unwrap(),
+            );
+            let contract0_def_bytes = bytes::Bytes::from(
+                r#"{
+                    "abi": [],
+                    "program": {
+                        "attributes": [],
+                        "builtins": [],
+                        "data": [],
+                        "hints": {},
+                        "identifiers": {},
+                        "main_scope": "contract 0 definition",
+                        "prime": "",
+                        "reference_manager": ""
+
+                    },
+                    "entry_points_by_type": {}
+                }"#,
+            );
+            let storage_key0 =
+                StorageAddress(StarkHash::from_be_slice(b"contract 0 storage addr 0").unwrap());
+            let storage_val0 =
+                StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0").unwrap());
+            let state_update0 = reply::StateUpdate {
+                new_root: global_root0,
+                old_root: GlobalRoot(StarkHash::ZERO),
+                state_diff: reply::state_update::StateDiff {
+                    deployed_contracts: vec![reply::state_update::Contract {
+                        address: contract0_addr,
+                        contract_hash: contract0_hash,
+                    }],
+                    storage_diffs: HashMap::from([(
+                        contract0_addr,
+                        vec![reply::state_update::StorageDiff {
+                            key: storage_key0,
+                            value: storage_val0,
+                        }],
+                    )]),
+                },
+            };
+
+            let block1_number = StarknetBlockNumber(1);
+            let block1_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap());
+            let global_root1 = GlobalRoot(StarkHash::from_be_slice(b"global root 1").unwrap());
+            let block1 = reply::Block {
+                block_hash: Some(block1_hash),
+                block_number: Some(block1_number),
+                parent_block_hash: block0_hash,
+                state_root: Some(global_root1),
+                status: reply::Status::AcceptedOnL1,
+                timestamp: StarknetBlockTimestamp(1),
+                transaction_receipts: vec![],
+                transactions: vec![],
+            };
+            let contract1_addr =
+                ContractAddress(StarkHash::from_be_slice(b"contract 1 addr").unwrap());
+            let contract1_hash = ContractHash(
+                StarkHash::from_hex_str(
+                    "0x0676540F61FDED9A4161AEA1A8B229F273A14FD89A7E0047D80BA74B5EA3D55D",
+                )
+                .unwrap(),
+            );
+            let contract1_def_bytes = bytes::Bytes::from(
+                r#"{
+                    "abi": [],
+                    "program": {
+                        "attributes": [],
+                        "builtins": [],
+                        "data": [],
+                        "hints": {},
+                        "identifiers": {},
+                        "main_scope": "contract 1 definition",
+                        "prime": "",
+                        "reference_manager": ""
+
+                    },
+                    "entry_points_by_type": {}
+                }"#,
+            );
+            let storage_key1 =
+                StorageAddress(StarkHash::from_be_slice(b"contract 1 storage addr 0").unwrap());
+            let storage_val1 =
+                StorageValue(StarkHash::from_be_slice(b"contract 1 storage val 0").unwrap());
+            let storage_val0_v2 =
+                StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0 v2").unwrap());
+            let state_update1 = reply::StateUpdate {
+                new_root: global_root1,
+                old_root: global_root0,
+                state_diff: reply::state_update::StateDiff {
+                    deployed_contracts: vec![reply::state_update::Contract {
+                        address: contract1_addr,
+                        contract_hash: contract1_hash,
+                    }],
+                    storage_diffs: HashMap::from([
+                        (
+                            contract0_addr,
+                            vec![reply::state_update::StorageDiff {
+                                key: storage_key0,
+                                value: storage_val0_v2,
+                            }],
+                        ),
+                        (
+                            contract1_addr,
+                            vec![reply::state_update::StorageDiff {
+                                key: storage_key1,
+                                value: storage_val1,
+                            }],
+                        ),
+                    ]),
+                },
+            };
+
+            let mock_output = block0.clone();
+            mock_sequencer
+                .expect_block_by_number()
+                .withf(move |x| x == &BlockNumberOrTag::Number(block0_number))
+                .times(1)
+                .in_sequence(&mut seq)
+                .return_once(move |_| Ok(mock_output));
+
+            mock_sequencer
+                .expect_state_update_by_hash()
+                .times(1)
+                .in_sequence(&mut seq)
+                .return_once(|_| Ok(state_update0));
+
+            mock_sequencer
+                .expect_full_contract()
+                .times(1)
+                .in_sequence(&mut seq)
+                .return_once(|_| Ok(contract0_def_bytes));
+
+            let mock_output = block1.clone();
+            mock_sequencer
+                .expect_block_by_number()
+                .withf(move |x| x == &BlockNumberOrTag::Number(block1_number))
+                .times(1)
+                .in_sequence(&mut seq)
+                .return_once(move |_| Ok(mock_output));
+
+            mock_sequencer
+                .expect_state_update_by_hash()
+                .times(1)
+                .in_sequence(&mut seq)
+                .return_once(|_| Ok(state_update1));
+
+            mock_sequencer
+                .expect_full_contract()
+                .times(1)
+                .in_sequence(&mut seq)
+                .return_once(|_| Ok(contract1_def_bytes));
+
+            // Let's run the UUT
+            let _jh = tokio::spawn(sync(tx_event, mock_sequencer, None));
+
+            let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+            assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                assert_eq!(contract_hashes, vec![contract0_hash]);
+                // Contract 0 definition is not in the DB yet
+                sender.send(vec![false]).unwrap();
+            });
+            assert_matches!(rx_event.recv().await.unwrap(),
+                Event::NewContract(compressed_contract) => {
+                    assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                    assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                    assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                    assert_eq!(compressed_contract.hash, contract0_hash);
+            });
+            assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,state_update,_) => {
+                assert_eq!(block, block0);
+                assert_eq!(state_update, state_update::StateUpdate {
+                    contract_updates: vec![state_update::ContractUpdate {
+                        address: contract0_addr,
+                        storage_updates: vec![
+                            state_update::StorageUpdate {
+                                address: storage_key0,
+                                value: storage_val0,
+                            }
+                        ]
+                    }],
+                    deployed_contracts: vec![
+                        state::sync::DeployedContract {
+                            address: contract0_addr,
+                            hash: contract0_hash,
+                            call_data: vec![],
+                    }]});
+            });
+            assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                assert_eq!(contract_hashes, vec![contract1_hash]);
+                // Contract 1 definition is not in the DB yet
+                sender.send(vec![false]).unwrap();
+            });
+            assert_matches!(rx_event.recv().await.unwrap(),
+                Event::NewContract(compressed_contract) => {
+                    assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                    assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                    assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                    assert_eq!(compressed_contract.hash, contract1_hash);
+            });
+            assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,mut state_update,_) => {
+                assert_eq!(block, block1);
+                assert_eq!(state_update.deployed_contracts, vec![
+                    state::sync::DeployedContract {
+                        address: contract1_addr,
+                        hash: contract1_hash,
+                        call_data: vec![],
+                }]);
+
+                state_update.contract_updates.sort();
+
+                assert_eq!(state_update.contract_updates, vec![
+                    state_update::ContractUpdate {
+                        address: contract0_addr,
+                        storage_updates: vec![
+                            state_update::StorageUpdate {
+                                address: storage_key0,
+                                value: storage_val0_v2,
+                            }
+                        ]
+                    },
+                    state_update::ContractUpdate {
+                        address: contract1_addr,
+                        storage_updates: vec![
+                            state_update::StorageUpdate {
+                                address: storage_key1,
+                                value: storage_val1,
+                            }
+                        ]
+                    }
+                ]);
+            });
+        }
+    }
+}

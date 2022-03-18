@@ -5,9 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::{
-    core::{
-        ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    },
+    core::{ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
     ethereum::{
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
@@ -438,7 +436,7 @@ async fn l2_update(
             number: block.block_number.unwrap(),
             hash: block.block_hash.unwrap(),
             root: block.state_root.unwrap(),
-            timestamp: StarknetBlockTimestamp(block.timestamp),
+            timestamp: block.timestamp,
         };
         StarknetBlocksTable::insert(&transaction, &starknet_block)
             .context("Insert block into database")?;

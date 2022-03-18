@@ -1,6 +1,9 @@
 use futures::future::TryFutureExt;
 use jsonrpsee::types::error::Error;
-use pathfinder_lib::rpc::types::{request::Call, BlockHashOrTag};
+use pathfinder_lib::{
+    rpc::types::{request::Call, BlockHashOrTag},
+    sequencer::ClientApi,
+};
 use tokio::io::AsyncBufReadExt;
 
 use tracing::{debug, warn};

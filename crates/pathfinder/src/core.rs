@@ -99,7 +99,7 @@ pub struct StarknetBlockHash(pub StarkHash);
 pub struct StarknetBlockNumber(pub u64);
 
 /// The timestamp of a Starknet block.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetBlockTimestamp(pub u64);
 
 /// A StarkNet transaction hash.

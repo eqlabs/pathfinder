@@ -25,14 +25,14 @@ pub struct DeployedContract {
 }
 
 /// A StarkNet contract's storage updates.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ContractUpdate {
     pub address: ContractAddress,
     pub storage_updates: Vec<StorageUpdate>,
 }
 
 /// A StarkNet contract's storage update.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct StorageUpdate {
     pub address: StorageAddress,
     pub value: StorageValue,
