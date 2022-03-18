@@ -1,14 +1,27 @@
-use crate::ethereum::{
-    log::{LogFetcher, StateUpdateLog},
-    Chain,
+use crate::{
+    core::EthereumBlockNumber,
+    ethereum::{
+        log::{LogFetcher, StateUpdateLog},
+        Chain,
+    },
 };
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
 pub struct StateRootFetcher(LogFetcher<StateUpdateLog>);
 
+/// The Mainnet Ethereum block containing the Starknet genesis [StateUpdateLog].
+const MAINNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(13_627_224);
+/// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog].
+const GOERLI_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_854_324);
+
 impl StateRootFetcher {
     pub fn new(head: Option<StateUpdateLog>, chain: Chain) -> Self {
-        let inner = LogFetcher::<StateUpdateLog>::new(head, chain);
+        let genesis = match chain {
+            Chain::Mainnet => MAINNET_GENESIS,
+            Chain::Goerli => GOERLI_GENESIS,
+        };
+
+        let inner = LogFetcher::<StateUpdateLog>::new(head, chain, genesis);
         Self(inner)
     }
 }
