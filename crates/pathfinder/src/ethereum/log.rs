@@ -59,7 +59,7 @@ pub struct MemoryPageFactContinuousLog {
 
 /// Error return by [get_logs].
 #[derive(Debug)]
-enum GetLogsError {
+pub enum GetLogsError {
     /// Query exceeded limits (time or result length).
     QueryLimit,
     /// One of the blocks specified in the filter is unknown. Currently only
@@ -69,7 +69,7 @@ enum GetLogsError {
 }
 
 /// Wraps the Ethereum get_logs call to handle [GetLogsError::QueryLimit] situations.
-async fn get_logs<T: Transport>(
+pub async fn get_logs<T: Transport>(
     transport: &Web3<T>,
     filter: Filter,
 ) -> Result<Vec<web3::types::Log>, GetLogsError> {
