@@ -9,27 +9,43 @@ jobs:
   update-docker-images:
     runs-on: ubuntu-latest
     steps:
+     # Workaround for https://github.com/rust-lang/cargo/issues/8719
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@v1.0
+        with:
+          swap-size-gb: 10
+      - run: |
+          sudo mkdir -p /var/lib/docker
+          sudo mount -t tmpfs -o size=10G none /var/lib/docker
+          sudo systemctl restart docker
       - name: Checkout sources
         uses: actions/checkout@v2
-
+      - name: Set up QEMU
+        id: qemu
+        uses: docker/setup-qemu-action@v1
+        with:
+          image: tonistiigi/binfmt:latest
+          platforms: all
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v1
       - name: Login to Docker Hub
         uses: docker/login-action@v1
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: Docker build latest version
+      - name: Build
+        id: docker_build
         uses: docker/build-push-action@v2
         with:
           context: .
+          platforms: |
+            linux/amd64
+            linux/arm64
+            linux/arm/v7
           file: ./Dockerfile
+          builder: ${{ steps.buildx.outputs.name }}
           push: true
-          tags: eqlabs/pathfinder:latest
-
-      - name: Build tagged pathfinder image
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: eqlabs/pathfinder:${{github.ref_name}}
+          tags:  eqlabs/pathfinder:latest, eqlabs/pathfinder:${{github.ref_name}}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
