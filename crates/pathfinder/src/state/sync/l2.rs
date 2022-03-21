@@ -31,7 +31,7 @@ pub struct Timings {
 pub enum Event {
     /// New L2 [block update](StateUpdate) found.
     Update(Block, StateUpdate, Timings),
-    /// An L@ reorg was detected, contains the reorg-tail which
+    /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
     Reorg(StarknetBlockNumber),
@@ -58,15 +58,19 @@ pub async fn sync(
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash)>,
 ) -> anyhow::Result<()> {
     'outer: loop {
+        eprintln!("A");
+
         // Get the next block from L2.
-        let next = match head {
-            Some((number, _)) => number + 1,
-            None => StarknetBlockNumber::GENESIS,
+        let (next, head_hash) = match head {
+            Some((number, hash)) => (number + 1, Some(hash)),
+            None => (StarknetBlockNumber::GENESIS, None),
         };
+
+        eprintln!("sync next {}", next.0);
 
         let t_block = std::time::Instant::now();
         let block = loop {
-            match download_block(next, &sequencer).await? {
+            match download_block(next, head_hash, &sequencer).await? {
                 DownloadBlock::Block(block) => break block,
                 DownloadBlock::AtHead => tokio::time::sleep(Duration::from_secs(5)).await,
                 DownloadBlock::Reorg => {
@@ -91,6 +95,8 @@ pub async fn sync(
             }
         }
 
+        eprintln!("B");
+
         // unwrap is safe as the block hash always exists (unless we query for pending).
         let t_update = std::time::Instant::now();
         let state_update = sequencer
@@ -104,6 +110,8 @@ pub async fn sync(
             .await
             .with_context(|| format!("Deploying new contracts for block {:?}", next))?;
         let t_deploy = t_deploy.elapsed();
+
+        eprintln!("C");
 
         // Map from sequencer type to the actual type... we should declutter these types.
         let deployed_contracts = state_update
@@ -155,6 +163,8 @@ pub async fn sync(
             .send(Event::Update(block, update, timings))
             .await
             .context("Event channel closed")?;
+
+        eprintln!("D");
     }
 }
 
@@ -165,12 +175,15 @@ enum DownloadBlock {
 }
 
 async fn download_block(
-    block: StarknetBlockNumber,
+    block_number: StarknetBlockNumber,
+    prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
     use sequencer::error::StarknetErrorCode::BlockNotFound;
 
-    let result = sequencer.block_by_number(block.into()).await;
+    eprintln!("downloading block {}", block_number.0);
+
+    let result = sequencer.block_by_number(block_number.into()).await;
 
     match result {
         Ok(block) => Ok(DownloadBlock::Block(block)),
@@ -183,9 +196,26 @@ async fn download_block(
                 .await
                 .context("Query sequencer for latest block")?;
 
-            if latest.block_number.unwrap() + 1 == block {
-                Ok(DownloadBlock::AtHead)
+            eprintln!(
+                "downloading block latest {}",
+                latest.block_number.unwrap().0
+            );
+
+            if latest.block_number.unwrap() + 1 == block_number {
+                match prev_block_hash {
+                    // We are definitiely still at the head and it's just that a new block
+                    // has not been published yet
+                    Some(parent_block_hash) if parent_block_hash == latest.block_hash.unwrap() => {
+                        Ok(DownloadBlock::AtHead)
+                    }
+                    // Our head is not valid anymore so there must have been a reorg only at this height
+                    Some(_) => Ok(DownloadBlock::Reorg),
+                    // There is something wrong with the sequencer, as we are attempting to get the genesis block
+                    // Let's retry in a while
+                    None => Ok(DownloadBlock::AtHead),
+                }
             } else {
+                // The new head is at lower height than our head which means there must have been a reorg
                 Ok(DownloadBlock::Reorg)
             }
         }
@@ -203,11 +233,15 @@ async fn reorg(
     let mut reorg_tail = head;
 
     let new_head = loop {
+        eprintln!("reorg tail = {}", reorg_tail.0 .0);
+
         if reorg_tail.0 == StarknetBlockNumber::GENESIS {
             break None;
         }
 
         let previous_block_number = reorg_tail.0 - 1;
+
+        eprintln!("previous_block_number = {}", previous_block_number.0);
 
         let (tx, rx) = oneshot::channel();
         tx_event
@@ -220,7 +254,7 @@ async fn reorg(
             None => break None,
         };
 
-        match download_block(previous_block_number, sequencer)
+        match download_block(previous_block_number, Some(previous_hash), sequencer)
             .await
             .with_context(|| format!("Download block {} from sequencer", previous_block_number.0))?
         {
@@ -372,272 +406,1329 @@ mod tests {
                 StarknetBlockTimestamp, StorageAddress, StorageValue,
             },
             ethereum::state_update,
-            rpc::types::BlockNumberOrTag,
-            sequencer::{reply, MockClientApi},
+            rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
+            sequencer::{
+                error::{SequencerError, StarknetError, StarknetErrorCode},
+                reply, MockClientApi,
+            },
             state,
         };
         use assert_matches::assert_matches;
         use pedersen::StarkHash;
-        use pretty_assertions::assert_eq;
         use std::collections::HashMap;
 
-        #[tokio::test]
-        async fn happy_path_from_genesis() {
-            let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-            let mut mock_sequencer = MockClientApi::new();
-            let mut seq = mockall::Sequence::new();
+        //
+        // TODO
+        //
+        // happy path from genesis
+        //            resumed
+        //
+        // reorg    at genesis   at head
+        //                       at head minus 1
+        //                       at head minus 2 (?)
+        //          > genesis    at head
+        //                       at head minus 1
+        //                       at head minus 2 (?)
+        //
+        //
+        //          parent hash mismatch
+        //
 
-            let block0_number = StarknetBlockNumber(0);
-            let block0_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 0 hash").unwrap());
-            let global_root0 = GlobalRoot(StarkHash::from_be_slice(b"global root 0").unwrap());
-            let block0 = reply::Block {
-                block_hash: Some(block0_hash),
-                block_number: Some(block0_number),
-                parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-                state_root: Some(global_root0),
-                status: reply::Status::AcceptedOnL1,
-                timestamp: StarknetBlockTimestamp(0),
-                transaction_receipts: vec![],
-                transactions: vec![],
-            };
-            let contract0_addr =
-                ContractAddress(StarkHash::from_be_slice(b"contract 0 addr").unwrap());
-            let contract0_hash = ContractHash(
+        const DEF0: &str = r#"{
+            "abi": [],
+            "program": {
+                "attributes": [],
+                "builtins": [],
+                "data": [],
+                "hints": {},
+                "identifiers": {},
+                "main_scope": "contract definition "#;
+        const DEF1: &str = r#"",
+                "prime": "",
+                "reference_manager": ""
+            },
+            "entry_points_by_type": {}
+        }"#;
+
+        const BLOCK0_NUMBER: StarknetBlockNumber = StarknetBlockNumber::GENESIS;
+        const BLOCK1_NUMBER: StarknetBlockNumber = StarknetBlockNumber(1);
+        const BLOCK2_NUMBER: StarknetBlockNumber = StarknetBlockNumber(2);
+        const BLOCK3_NUMBER: StarknetBlockNumber = StarknetBlockNumber(3);
+        const BLOCK4_NUMBER: StarknetBlockNumber = StarknetBlockNumber(4);
+
+        lazy_static::lazy_static! {
+            static ref BLOCK0_HASH: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 0 hash").unwrap());
+            static ref BLOCK0_HASH_V2: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 0 hash v2").unwrap());
+            static ref BLOCK1_HASH: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap());
+            static ref BLOCK1_HASH_V2: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash v2").unwrap());
+            static ref BLOCK2_HASH: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 2 hash").unwrap());
+            static ref BLOCK2_HASH_V2: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 2 hash v2").unwrap());
+            static ref BLOCK3_HASH: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 3 hash").unwrap());
+
+            static ref GLOBAL_ROOT0: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 0").unwrap());
+            static ref GLOBAL_ROOT0_V2: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 0 v2").unwrap());
+            static ref GLOBAL_ROOT1: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 1").unwrap());
+            static ref GLOBAL_ROOT1_V2: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 1 v2").unwrap());
+            static ref GLOBAL_ROOT2: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 2").unwrap());
+            static ref GLOBAL_ROOT2_V2: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 2 v2").unwrap());
+            static ref GLOBAL_ROOT3: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 3").unwrap());
+
+            static ref CONTRACT0_ADDR: ContractAddress = ContractAddress(StarkHash::from_be_slice(b"contract 0 addr").unwrap());
+            static ref CONTRACT0_ADDR_V2: ContractAddress = ContractAddress(StarkHash::from_be_slice(b"contract 0 addr v2").unwrap());
+            static ref CONTRACT1_ADDR: ContractAddress = ContractAddress(StarkHash::from_be_slice(b"contract 1 addr").unwrap());
+
+            static ref CONTRACT0_HASH: ContractHash = ContractHash(
                 StarkHash::from_hex_str(
-                    "0x0450FBC0994727C70DDAA04FDF10C362E45CB46130146FE16F70584E8E642182",
+                    "0x03CC4D0167577958ADD7DD759418506E0930BB061597519CCEB8C3AC6277692E",
                 )
                 .unwrap(),
             );
-            let contract0_def_bytes = bytes::Bytes::from(
-                r#"{
-                    "abi": [],
-                    "program": {
-                        "attributes": [],
-                        "builtins": [],
-                        "data": [],
-                        "hints": {},
-                        "identifiers": {},
-                        "main_scope": "contract 0 definition",
-                        "prime": "",
-                        "reference_manager": ""
-
-                    },
-                    "entry_points_by_type": {}
-                }"#,
+            static ref CONTRACT0_HASH_V2: ContractHash = ContractHash(
+                StarkHash::from_hex_str(
+                    "0x01BE539E97D3BEFAE5D56D780BAF433802B3203DC6B2947FDB90C384AEF39F3E",
+                )
+                .unwrap(),
             );
-            let storage_key0 =
-                StorageAddress(StarkHash::from_be_slice(b"contract 0 storage addr 0").unwrap());
-            let storage_val0 =
-                StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0").unwrap());
-            let state_update0 = reply::StateUpdate {
-                new_root: global_root0,
+            static ref CONTRACT1_HASH: ContractHash = ContractHash(
+                StarkHash::from_hex_str(
+                    "0x071B088C5C8CD884F3106D62C6CB8B423D1D3A58BFAD2EAA8AAC9E4E3E73529D",
+                )
+                .unwrap(),
+            );
+
+            static ref CONTRACT0_DEF: bytes::Bytes = bytes::Bytes::from(format!("{}0{}", DEF0, DEF1));
+            static ref CONTRACT0_DEF_V2: bytes::Bytes = bytes::Bytes::from(format!("{}0 v2{}", DEF0, DEF1));
+            static ref CONTRACT1_DEF: bytes::Bytes = bytes::Bytes::from(format!("{}1{}", DEF0, DEF1));
+
+            static ref STORAGE_KEY0: StorageAddress = StorageAddress(StarkHash::from_be_slice(b"contract 0 storage addr 0").unwrap());
+            static ref STORAGE_KEY1: StorageAddress = StorageAddress(StarkHash::from_be_slice(b"contract 1 storage addr 0").unwrap());
+
+            static ref STORAGE_VAL0: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0").unwrap());
+            static ref STORAGE_VAL0_V2: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0 v2").unwrap());
+            static ref STORAGE_VAL1: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 1 storage val 0").unwrap());
+
+            static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
+                new_root: *GLOBAL_ROOT0,
                 old_root: GlobalRoot(StarkHash::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::Contract {
-                        address: contract0_addr,
-                        contract_hash: contract0_hash,
+                        address: *CONTRACT0_ADDR,
+                        contract_hash: *CONTRACT0_HASH,
                     }],
                     storage_diffs: HashMap::from([(
-                        contract0_addr,
+                     *CONTRACT0_ADDR,
                         vec![reply::state_update::StorageDiff {
-                            key: storage_key0,
-                            value: storage_val0,
+                            key: *STORAGE_KEY0,
+                            value: *STORAGE_VAL0,
                         }],
                     )]),
                 },
             };
-
-            let block1_number = StarknetBlockNumber(1);
-            let block1_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap());
-            let global_root1 = GlobalRoot(StarkHash::from_be_slice(b"global root 1").unwrap());
-            let block1 = reply::Block {
-                block_hash: Some(block1_hash),
-                block_number: Some(block1_number),
-                parent_block_hash: block0_hash,
-                state_root: Some(global_root1),
-                status: reply::Status::AcceptedOnL1,
-                timestamp: StarknetBlockTimestamp(1),
-                transaction_receipts: vec![],
-                transactions: vec![],
-            };
-            let contract1_addr =
-                ContractAddress(StarkHash::from_be_slice(b"contract 1 addr").unwrap());
-            let contract1_hash = ContractHash(
-                StarkHash::from_hex_str(
-                    "0x0676540F61FDED9A4161AEA1A8B229F273A14FD89A7E0047D80BA74B5EA3D55D",
-                )
-                .unwrap(),
-            );
-            let contract1_def_bytes = bytes::Bytes::from(
-                r#"{
-                    "abi": [],
-                    "program": {
-                        "attributes": [],
-                        "builtins": [],
-                        "data": [],
-                        "hints": {},
-                        "identifiers": {},
-                        "main_scope": "contract 1 definition",
-                        "prime": "",
-                        "reference_manager": ""
-
-                    },
-                    "entry_points_by_type": {}
-                }"#,
-            );
-            let storage_key1 =
-                StorageAddress(StarkHash::from_be_slice(b"contract 1 storage addr 0").unwrap());
-            let storage_val1 =
-                StorageValue(StarkHash::from_be_slice(b"contract 1 storage val 0").unwrap());
-            let storage_val0_v2 =
-                StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0 v2").unwrap());
-            let state_update1 = reply::StateUpdate {
-                new_root: global_root1,
-                old_root: global_root0,
+            static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
+                new_root: *GLOBAL_ROOT0_V2,
+                old_root: GlobalRoot(StarkHash::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::Contract {
-                        address: contract1_addr,
-                        contract_hash: contract1_hash,
+                        address: *CONTRACT0_ADDR_V2,
+                        contract_hash: *CONTRACT0_HASH_V2,
+                    }],
+                    storage_diffs: HashMap::new(),
+                },
+            };
+            static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
+                new_root: *GLOBAL_ROOT1,
+                old_root: *GLOBAL_ROOT0,
+                state_diff: reply::state_update::StateDiff {
+                    deployed_contracts: vec![reply::state_update::Contract {
+                        address: *CONTRACT1_ADDR,
+                        contract_hash: *CONTRACT1_HASH,
                     }],
                     storage_diffs: HashMap::from([
                         (
-                            contract0_addr,
+                            *CONTRACT0_ADDR,
                             vec![reply::state_update::StorageDiff {
-                                key: storage_key0,
-                                value: storage_val0_v2,
+                                key: *STORAGE_KEY0,
+                                value: *STORAGE_VAL0_V2,
                             }],
                         ),
                         (
-                            contract1_addr,
+                            *CONTRACT1_ADDR,
                             vec![reply::state_update::StorageDiff {
-                                key: storage_key1,
-                                value: storage_val1,
+                                key: *STORAGE_KEY1,
+                                value: *STORAGE_VAL1,
                             }],
                         ),
                     ]),
                 },
             };
+            static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
+                new_root: *GLOBAL_ROOT1_V2,
+                old_root: *GLOBAL_ROOT0_V2,
+                state_diff: reply::state_update::StateDiff {
+                    deployed_contracts: vec![],
+                    storage_diffs: HashMap::new(),
+                },
+            };
+            static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
+                new_root: *GLOBAL_ROOT2,
+                old_root: *GLOBAL_ROOT1,
+                state_diff: reply::state_update::StateDiff {
+                    deployed_contracts: vec![],
+                    storage_diffs: HashMap::new(),
+                },
+            };
+            static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
+                new_root: *GLOBAL_ROOT2_V2,
+                old_root: *GLOBAL_ROOT1_V2,
+                state_diff: reply::state_update::StateDiff {
+                    deployed_contracts: vec![],
+                    storage_diffs: HashMap::new(),
+                },
+            };
+            static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
+                new_root: *GLOBAL_ROOT3,
+                old_root: *GLOBAL_ROOT2,
+                state_diff: reply::state_update::StateDiff {
+                    deployed_contracts: vec![],
+                    storage_diffs: HashMap::new(),
+                },
+            };
+        }
 
-            let mock_output = block0.clone();
-            mock_sequencer
-                .expect_block_by_number()
-                .withf(move |x| x == &BlockNumberOrTag::Number(block0_number))
+        /// Convenience wrapper
+        fn expect_block(
+            mock: &mut MockClientApi,
+            seq: &mut mockall::Sequence,
+            block_number: StarknetBlockNumber,
+            returned_result: Result<reply::Block, SequencerError>,
+        ) {
+            mock.expect_block_by_number()
+                .withf(move |x| x == &BlockNumberOrTag::Number(block_number))
                 .times(1)
-                .in_sequence(&mut seq)
-                .return_once(move |_| Ok(mock_output));
+                .in_sequence(seq)
+                .return_once(move |_| returned_result);
+        }
 
-            mock_sequencer
-                .expect_state_update_by_hash()
+        /// Convenience wrapper
+        fn expect_latest_block(
+            mock: &mut MockClientApi,
+            seq: &mut mockall::Sequence,
+            returned_result: Result<reply::Block, SequencerError>,
+        ) {
+            mock.expect_block_by_number()
+                .withf(move |x| x == &BlockNumberOrTag::Tag(Tag::Latest))
                 .times(1)
-                .in_sequence(&mut seq)
-                .return_once(|_| Ok(state_update0));
+                .in_sequence(seq)
+                .return_once(move |_| returned_result);
+        }
 
-            mock_sequencer
-                .expect_full_contract()
+        /// Convenience wrapper
+        fn expect_state_update(
+            mock: &mut MockClientApi,
+            seq: &mut mockall::Sequence,
+            block_hash: StarknetBlockHash,
+            returned_result: Result<reply::StateUpdate, SequencerError>,
+        ) {
+            mock.expect_state_update_by_hash()
+                .withf(move |x| x == &BlockHashOrTag::Hash(block_hash))
                 .times(1)
-                .in_sequence(&mut seq)
-                .return_once(|_| Ok(contract0_def_bytes));
+                .in_sequence(seq)
+                .return_once(|_| returned_result);
+        }
 
-            let mock_output = block1.clone();
-            mock_sequencer
-                .expect_block_by_number()
-                .withf(move |x| x == &BlockNumberOrTag::Number(block1_number))
+        /// Convenience wrapper
+        fn expect_full_contract(
+            mock: &mut MockClientApi,
+            seq: &mut mockall::Sequence,
+            contract_address: ContractAddress,
+            returned_result: Result<bytes::Bytes, SequencerError>,
+        ) {
+            mock.expect_full_contract()
+                .withf(move |x| x == &contract_address)
                 .times(1)
-                .in_sequence(&mut seq)
-                .return_once(move |_| Ok(mock_output));
+                .in_sequence(seq)
+                .return_once(|_| returned_result);
+        }
 
-            mock_sequencer
-                .expect_state_update_by_hash()
-                .times(1)
-                .in_sequence(&mut seq)
-                .return_once(|_| Ok(state_update1));
+        /// Convenience wrapper
+        fn block_not_found() -> SequencerError {
+            SequencerError::StarknetError(StarknetError {
+                code: StarknetErrorCode::BlockNotFound,
+                message: String::new(),
+            })
+        }
 
-            mock_sequencer
-                .expect_full_contract()
-                .times(1)
-                .in_sequence(&mut seq)
-                .return_once(|_| Ok(contract1_def_bytes));
+        mod happy_path {
+            use super::*;
+            use pretty_assertions::assert_eq;
 
-            // Let's run the UUT
-            let _jh = tokio::spawn(sync(tx_event, mock_sequencer, None));
+            #[tokio::test]
+            async fn from_genesis() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
 
-            let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+                let block0 = reply::Block {
+                    block_hash: Some(*BLOCK0_HASH),
+                    block_number: Some(BLOCK0_NUMBER),
+                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    state_root: Some(*GLOBAL_ROOT0),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(0),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block1 = reply::Block {
+                    block_hash: Some(*BLOCK1_HASH),
+                    block_number: Some(BLOCK1_NUMBER),
+                    parent_block_hash: *BLOCK0_HASH,
+                    state_root: Some(*GLOBAL_ROOT1),
+                    status: reply::Status::AcceptedOnL2,
+                    timestamp: StarknetBlockTimestamp(1),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
 
-            assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                assert_eq!(contract_hashes, vec![contract0_hash]);
-                // Contract 0 definition is not in the DB yet
-                sender.send(vec![false]).unwrap();
-            });
-            assert_matches!(rx_event.recv().await.unwrap(),
-                Event::NewContract(compressed_contract) => {
-                    assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                    assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
-                    assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                    assert_eq!(compressed_contract.hash, contract0_hash);
-            });
-            assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,state_update,_) => {
-                assert_eq!(block, block0);
-                assert_eq!(state_update, state_update::StateUpdate {
-                    contract_updates: vec![state_update::ContractUpdate {
-                        address: contract0_addr,
-                        storage_updates: vec![
-                            state_update::StorageUpdate {
-                                address: storage_key0,
-                                value: storage_val0,
-                            }
-                        ]
-                    }],
-                    deployed_contracts: vec![
+                // Downlad the genesis block with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(block0.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT0_ADDR,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                // Downlad block #1 with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT1_ADDR,
+                    Ok(CONTRACT1_DEF.clone()),
+                );
+                // Stay at head, no more blocks available
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Err(block_not_found()));
+                expect_latest_block(&mut mock, &mut seq, Ok(block1.clone()));
+
+                // Let's run the UUT
+                let _jh = tokio::spawn(sync(tx_event, mock, None));
+
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
+                    // Contract 0 definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,state_update,_) => {
+                    assert_eq!(block, block0);
+                    assert_eq!(state_update, state_update::StateUpdate {
+                        contract_updates: vec![state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0,
+                                }
+                            ]
+                        }],
+                        deployed_contracts: vec![
+                            state::sync::DeployedContract {
+                                address: *CONTRACT0_ADDR,
+                                hash: *CONTRACT0_HASH,
+                                call_data: vec![],
+                        }]});
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
+                    // Contract 1 definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,mut state_update,_) => {
+                    assert_eq!(block, block1);
+                    assert_eq!(state_update.deployed_contracts, vec![
                         state::sync::DeployedContract {
-                            address: contract0_addr,
-                            hash: contract0_hash,
+                            address: *CONTRACT1_ADDR,
+                            hash: *CONTRACT1_HASH,
                             call_data: vec![],
-                    }]});
-            });
-            assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                assert_eq!(contract_hashes, vec![contract1_hash]);
-                // Contract 1 definition is not in the DB yet
-                sender.send(vec![false]).unwrap();
-            });
-            assert_matches!(rx_event.recv().await.unwrap(),
-                Event::NewContract(compressed_contract) => {
-                    assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                    assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
-                    assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                    assert_eq!(compressed_contract.hash, contract1_hash);
-            });
-            assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,mut state_update,_) => {
-                assert_eq!(block, block1);
-                assert_eq!(state_update.deployed_contracts, vec![
-                    state::sync::DeployedContract {
-                        address: contract1_addr,
-                        hash: contract1_hash,
-                        call_data: vec![],
-                }]);
+                    }]);
 
-                state_update.contract_updates.sort();
+                    state_update.contract_updates.sort();
 
-                assert_eq!(state_update.contract_updates, vec![
-                    state_update::ContractUpdate {
-                        address: contract0_addr,
-                        storage_updates: vec![
-                            state_update::StorageUpdate {
-                                address: storage_key0,
-                                value: storage_val0_v2,
-                            }
-                        ]
-                    },
-                    state_update::ContractUpdate {
-                        address: contract1_addr,
-                        storage_updates: vec![
-                            state_update::StorageUpdate {
-                                address: storage_key1,
-                                value: storage_val1,
-                            }
-                        ]
-                    }
-                ]);
-            });
+                    assert_eq!(state_update.contract_updates, vec![
+                        state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0_V2,
+                                }
+                            ]
+                        },
+                        state_update::ContractUpdate {
+                            address: *CONTRACT1_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY1,
+                                    value: *STORAGE_VAL1,
+                                }
+                            ]
+                        }
+                    ]);
+                });
+            }
+
+            #[tokio::test]
+            async fn resumed_after_genesis() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
+
+                let block1 = reply::Block {
+                    block_hash: Some(*BLOCK1_HASH),
+                    block_number: Some(BLOCK1_NUMBER),
+                    parent_block_hash: *BLOCK0_HASH,
+                    state_root: Some(*GLOBAL_ROOT1),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(0),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+
+                // Start with downloading block #1
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT1_ADDR,
+                    Ok(CONTRACT1_DEF.clone()),
+                );
+
+                // Stay at head, no more blocks available
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Err(block_not_found()));
+                expect_latest_block(&mut mock, &mut seq, Ok(block1.clone()));
+
+                // Let's run the UUT
+                let _jh = tokio::spawn(sync(tx_event, mock, Some((BLOCK0_NUMBER, *BLOCK0_HASH))));
+
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
+                    // Contract 1 definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,mut state_update,_) => {
+                    assert_eq!(block, block1);
+                    assert_eq!(state_update.deployed_contracts, vec![
+                        state::sync::DeployedContract {
+                            address: *CONTRACT1_ADDR,
+                            hash: *CONTRACT1_HASH,
+                            call_data: vec![],
+                    }]);
+
+                    state_update.contract_updates.sort();
+
+                    assert_eq!(state_update.contract_updates, vec![
+                        state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0_V2,
+                                }
+                            ]
+                        },
+                        state_update::ContractUpdate {
+                            address: *CONTRACT1_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY1,
+                                    value: *STORAGE_VAL1,
+                                }
+                            ]
+                        }
+                    ]);
+                });
+            }
+        }
+
+        mod reorg {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            // This reorg occurs at the genesis block, which is swapped for a new one.
+            //
+            // [block 0]
+            //
+            // Becomes:
+            //
+            // [block 0 v2]
+            //
+            async fn at_genesis_which_is_head() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
+
+                let block0 = reply::Block {
+                    block_hash: Some(*BLOCK0_HASH),
+                    block_number: Some(BLOCK0_NUMBER),
+                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    state_root: Some(*GLOBAL_ROOT0),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(0),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block0_v2 = reply::Block {
+                    block_hash: Some(*BLOCK0_HASH_V2),
+                    block_number: Some(BLOCK0_NUMBER),
+                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    state_root: Some(*GLOBAL_ROOT0_V2),
+                    status: reply::Status::AcceptedOnL2,
+                    timestamp: StarknetBlockTimestamp(1),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+
+                // Fetch the genesis block with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(block0.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT0_ADDR,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+
+                // Block #1 is not there
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Err(block_not_found()));
+
+                // L2 sync task is then looking if reorg occured
+                // We indicate that reorg started at genesis
+                expect_latest_block(&mut mock, &mut seq, Ok(block0_v2.clone()));
+
+                // Finally the L2 sync task is downloading the new genesis block
+                // from the fork with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(block0_v2.clone()));
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    *BLOCK0_HASH_V2,
+                    Ok(STATE_UPDATE0_V2.clone()),
+                );
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT0_ADDR_V2,
+                    Ok(CONTRACT0_DEF_V2.clone()),
+                );
+
+                // Indicate that we are still staying at the head - no new blocks
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Err(block_not_found()));
+
+                // Indicate that we are still staying at the head - the latest block matches our head
+                expect_latest_block(&mut mock, &mut seq, Ok(block0_v2.clone()));
+
+                // Let's run the UUT
+                let _jh = tokio::spawn(sync(tx_event, mock, None));
+
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
+                    // Indicate that contract definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block0);
+                    assert_eq!(state_update, state_update::StateUpdate {
+                        contract_updates: vec![state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0,
+                                }
+                            ]
+                        }],
+                        deployed_contracts: vec![
+                            state::sync::DeployedContract {
+                                address: *CONTRACT0_ADDR,
+                                hash: *CONTRACT0_HASH,
+                                call_data: vec![],
+                        }]});
+                });
+                // Reorg started from the genesis block
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                    assert_eq!(tail, BLOCK0_NUMBER);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH_V2]);
+                    // Indicate that contract 0 v2 definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block0_v2);
+                    assert_eq!(state_update.deployed_contracts, vec![
+                        state::sync::DeployedContract {
+                            address: *CONTRACT0_ADDR_V2,
+                            hash: *CONTRACT0_HASH_V2,
+                            call_data: vec![],
+                    }]);
+                    assert!(state_update.contract_updates.is_empty());
+                });
+            }
+
+            #[tokio::test]
+            // This reorg occurs at the genesis block, which means that the fork replaces the entire chain.
+            //
+            // [block 0]-------[block 1]-------[block 2]
+            //
+            // Becomes:
+            //
+            // [block 0 v2]----[block 1 v2]
+            //
+            async fn at_genesis_which_is_not_head() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
+
+                let block0 = reply::Block {
+                    block_hash: Some(*BLOCK0_HASH),
+                    block_number: Some(BLOCK0_NUMBER),
+                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    state_root: Some(*GLOBAL_ROOT0),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(0),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block0_v2 = reply::Block {
+                    block_hash: Some(*BLOCK0_HASH_V2),
+                    block_number: Some(BLOCK0_NUMBER),
+                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    state_root: Some(*GLOBAL_ROOT0_V2),
+                    status: reply::Status::AcceptedOnL2,
+                    timestamp: StarknetBlockTimestamp(3),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block1 = reply::Block {
+                    block_hash: Some(*BLOCK1_HASH),
+                    block_number: Some(BLOCK1_NUMBER),
+                    parent_block_hash: *BLOCK0_HASH,
+                    state_root: Some(*GLOBAL_ROOT1),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(1),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block1_v2 = reply::Block {
+                    block_hash: Some(*BLOCK1_HASH_V2),
+                    block_number: Some(BLOCK1_NUMBER),
+                    parent_block_hash: *BLOCK0_HASH_V2,
+                    state_root: Some(*GLOBAL_ROOT1_V2),
+                    status: reply::Status::AcceptedOnL2,
+                    timestamp: StarknetBlockTimestamp(4),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block2 = reply::Block {
+                    block_hash: Some(*BLOCK2_HASH),
+                    block_number: Some(BLOCK2_NUMBER),
+                    parent_block_hash: *BLOCK1_HASH,
+                    state_root: Some(*GLOBAL_ROOT2),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(2),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+
+                // Fetch the genesis block with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(block0.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT0_ADDR,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                // Fetch block #1 with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT1_ADDR,
+                    Ok(CONTRACT1_DEF.clone()),
+                );
+                // Fetch block #2 with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK2_HASH, Ok(STATE_UPDATE2.clone()));
+
+                // Block #3 is not there
+                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
+
+                // L2 sync task is then looking if reorg occured
+                // We indicate that reorg started at genesis by setting the latest on the new genesis block
+                expect_latest_block(&mut mock, &mut seq, Ok(block0_v2.clone()));
+                // Then the L2 sync task goes back block by block to find the last block where the block hash matches the DB
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(block0_v2.clone()));
+
+                // Once the L2 sync task has found where reorg occured,
+                // it can get back to downloading the new blocks
+                // Fetch the new genesis block from the fork with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(block0_v2.clone()));
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    *BLOCK0_HASH_V2,
+                    Ok(STATE_UPDATE0_V2.clone()),
+                );
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT0_ADDR_V2,
+                    Ok(CONTRACT0_DEF_V2.clone()),
+                );
+                // Fetch the new block #1 from the fork with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    *BLOCK1_HASH_V2,
+                    Ok(STATE_UPDATE1_V2.clone()),
+                );
+
+                // Indicate that we are still staying at the head
+                // No new blocks found and the latest block matches our head
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Err(block_not_found()));
+                expect_latest_block(&mut mock, &mut seq, Ok(block1_v2.clone()));
+
+                // Run the UUT
+                let _jh = tokio::spawn(sync(tx_event, mock, None));
+
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
+                    // Indicate that contract definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block0);
+                    assert_eq!(state_update, state_update::StateUpdate {
+                        contract_updates: vec![state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0,
+                                }
+                            ]
+                        }],
+                        deployed_contracts: vec![
+                            state::sync::DeployedContract {
+                                address: *CONTRACT0_ADDR,
+                                hash: *CONTRACT0_HASH,
+                                call_data: vec![],
+                        }]});
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
+                    // Indicate that contract definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, mut state_update, _) => {
+                    assert_eq!(block, block1);
+                    assert_eq!(state_update.deployed_contracts, vec![
+                        state::sync::DeployedContract {
+                            address: *CONTRACT1_ADDR,
+                            hash: *CONTRACT1_HASH,
+                            call_data: vec![],
+                    }]);
+
+                    state_update.contract_updates.sort();
+
+                    assert_eq!(state_update.contract_updates, vec![
+                        state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0_V2,
+                                }
+                            ]
+                        },
+                        state_update::ContractUpdate {
+                            address: *CONTRACT1_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY1,
+                                    value: *STORAGE_VAL1,
+                                }
+                            ]
+                        }
+                    ]);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block2);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                    assert_eq!(block_number, BLOCK1_NUMBER);
+                    // The DB contains the **old** hash of block #1
+                    sender.send(Some(*BLOCK1_HASH)).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                    assert_eq!(block_number, BLOCK0_NUMBER);
+                    // The DB contains the **old** hash of the genesis block
+                    sender.send(Some(*BLOCK0_HASH)).unwrap();
+                });
+                // Reorg started at the genesis block
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                    assert_eq!(tail, BLOCK0_NUMBER);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH_V2]);
+                    // Indicate that contract 0 v2 definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block0_v2);
+                    assert_eq!(state_update.deployed_contracts, vec![
+                        state::sync::DeployedContract {
+                            address: *CONTRACT0_ADDR_V2,
+                            hash: *CONTRACT0_HASH_V2,
+                            call_data: vec![],
+                    }]);
+                    assert!(state_update.contract_updates.is_empty());
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block1_v2);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+            }
+
+            #[tokio::test]
+            // This reorg occurs after the genesis block, the fork
+            // replaces the entire chain except the genesis block.
+            //
+            // [block 0]----[block 1]-------[block 2]-------[block 3]
+            //
+            // Becomes:
+            //
+            // [block 0]----[block 1 v2]----[block 2 v2]
+            //
+            async fn after_genesis_and_not_at_head() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
+
+                let block0 = reply::Block {
+                    block_hash: Some(*BLOCK0_HASH),
+                    block_number: Some(BLOCK0_NUMBER),
+                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    state_root: Some(*GLOBAL_ROOT0),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(0),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block1 = reply::Block {
+                    block_hash: Some(*BLOCK1_HASH),
+                    block_number: Some(BLOCK1_NUMBER),
+                    parent_block_hash: *BLOCK0_HASH,
+                    state_root: Some(*GLOBAL_ROOT1),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(1),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block1_v2 = reply::Block {
+                    block_hash: Some(*BLOCK1_HASH_V2),
+                    block_number: Some(BLOCK1_NUMBER),
+                    parent_block_hash: *BLOCK0_HASH,
+                    state_root: Some(*GLOBAL_ROOT1_V2),
+                    status: reply::Status::AcceptedOnL2,
+                    timestamp: StarknetBlockTimestamp(4),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block2 = reply::Block {
+                    block_hash: Some(*BLOCK2_HASH),
+                    block_number: Some(BLOCK2_NUMBER),
+                    parent_block_hash: *BLOCK1_HASH,
+                    state_root: Some(*GLOBAL_ROOT2),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(2),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block2_v2 = reply::Block {
+                    block_hash: Some(*BLOCK2_HASH_V2),
+                    block_number: Some(BLOCK2_NUMBER),
+                    parent_block_hash: *BLOCK1_HASH_V2,
+                    state_root: Some(*GLOBAL_ROOT2_V2),
+                    status: reply::Status::AcceptedOnL2,
+                    timestamp: StarknetBlockTimestamp(5),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block3 = reply::Block {
+                    block_hash: Some(*BLOCK3_HASH),
+                    block_number: Some(BLOCK3_NUMBER),
+                    parent_block_hash: *BLOCK2_HASH,
+                    state_root: Some(*GLOBAL_ROOT3),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(3),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+
+                // Fetch the genesis block with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(block0.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT0_ADDR,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                // Fetch block #1 with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT1_ADDR,
+                    Ok(CONTRACT1_DEF.clone()),
+                );
+                // Fetch block #2 with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK2_HASH, Ok(STATE_UPDATE2.clone()));
+                // Fetch block #3 with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Ok(block3.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK3_HASH, Ok(STATE_UPDATE3.clone()));
+                // Block #4 is not there
+                expect_block(&mut mock, &mut seq, BLOCK4_NUMBER, Err(block_not_found()));
+
+                // L2 sync task is then looking if reorg occured
+                // We indicate that reorg started at block #1
+                expect_latest_block(&mut mock, &mut seq, Ok(block1_v2.clone()));
+
+                // L2 sync task goes back block by block to find where the block hash matches the DB
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2_v2.clone()));
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(block0.clone()));
+
+                // Finally the L2 sync task is downloading the new blocks once it knows where to start again
+                // Fetch the new block #1 from the fork with respective state update
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    *BLOCK1_HASH_V2,
+                    Ok(STATE_UPDATE1_V2.clone()),
+                );
+                // Fetch the new block #2 from the fork with respective state update
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2_v2.clone()));
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    *BLOCK2_HASH_V2,
+                    Ok(STATE_UPDATE2_V2.clone()),
+                );
+
+                // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
+                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
+                expect_latest_block(&mut mock, &mut seq, Ok(block2_v2.clone()));
+
+                // Run the UUT
+                let _jh = tokio::spawn(sync(tx_event, mock, None));
+
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
+                    // Indicate that contract definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block0);
+                    assert_eq!(state_update, state_update::StateUpdate {
+                        contract_updates: vec![state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0,
+                                }
+                            ]
+                        }],
+                        deployed_contracts: vec![
+                            state::sync::DeployedContract {
+                                address: *CONTRACT0_ADDR,
+                                hash: *CONTRACT0_HASH,
+                                call_data: vec![],
+                        }]});
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
+                    // Indicate that contract definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, mut state_update, _) => {
+                    assert_eq!(block, block1);
+                    assert_eq!(state_update.deployed_contracts, vec![
+                        state::sync::DeployedContract {
+                            address: *CONTRACT1_ADDR,
+                            hash: *CONTRACT1_HASH,
+                            call_data: vec![],
+                    }]);
+
+                    state_update.contract_updates.sort();
+
+                    assert_eq!(state_update.contract_updates, vec![
+                        state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0_V2,
+                                }
+                            ]
+                        },
+                        state_update::ContractUpdate {
+                            address: *CONTRACT1_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY1,
+                                    value: *STORAGE_VAL1,
+                                }
+                            ]
+                        }
+                    ]);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block2);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block3);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                    assert_eq!(block_number, BLOCK2_NUMBER);
+                    // The DB contains the **old** hash of block #2
+                    sender.send(Some(*BLOCK2_HASH)).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                    assert_eq!(block_number, BLOCK1_NUMBER);
+                    // The DB contains the **old** hash of block #1
+                    sender.send(Some(*BLOCK1_HASH)).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                    assert_eq!(block_number, BLOCK0_NUMBER);
+                    // The DB contains the **old** hash of the genesis block
+                    sender.send(Some(*BLOCK0_HASH)).unwrap();
+                });
+                // Reorg started from block #1
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                    assert_eq!(tail, BLOCK1_NUMBER);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block1_v2);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block2_v2);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+            }
+
+            #[tokio::test]
+            // This reorg occurs after the genesis block, the fork
+            // replaces only the head block.
+            //
+            // [block 0]----[block 1]----[block 2]
+            //
+            // Becomes:
+            //
+            // [block 0]----[block 1]----[block 2 v2]
+            //
+            async fn after_genesis_and_at_head() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
+
+                let block0 = reply::Block {
+                    block_hash: Some(*BLOCK0_HASH),
+                    block_number: Some(BLOCK0_NUMBER),
+                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    state_root: Some(*GLOBAL_ROOT0),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(0),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block1 = reply::Block {
+                    block_hash: Some(*BLOCK1_HASH),
+                    block_number: Some(BLOCK1_NUMBER),
+                    parent_block_hash: *BLOCK0_HASH,
+                    state_root: Some(*GLOBAL_ROOT1),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(1),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block2 = reply::Block {
+                    block_hash: Some(*BLOCK2_HASH),
+                    block_number: Some(BLOCK2_NUMBER),
+                    parent_block_hash: *BLOCK1_HASH,
+                    state_root: Some(*GLOBAL_ROOT2),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(2),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block2_v2 = reply::Block {
+                    block_hash: Some(*BLOCK2_HASH_V2),
+                    block_number: Some(BLOCK2_NUMBER),
+                    parent_block_hash: *BLOCK1_HASH,
+                    state_root: Some(*GLOBAL_ROOT2_V2),
+                    status: reply::Status::AcceptedOnL2,
+                    timestamp: StarknetBlockTimestamp(5),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+
+                // Fetch the genesis block with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(block0.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT0_ADDR,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                // Fetch block #1 with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT1_ADDR,
+                    Ok(CONTRACT1_DEF.clone()),
+                );
+                // Fetch block #2 with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK2_HASH, Ok(STATE_UPDATE2.clone()));
+                // Block #3 is not there
+                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
+
+                // L2 sync task is then looking if reorg occured
+                // We indicate that reorg started at block #2
+                expect_latest_block(&mut mock, &mut seq, Ok(block2_v2.clone()));
+
+                // L2 sync task goes back block by block to find where the block hash matches the DB
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1.clone()));
+
+                // Finally the L2 sync task is downloading the new blocks once it knows where to start again
+                // Fetch the new block #2 from the fork with respective state update
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2_v2.clone()));
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    *BLOCK2_HASH_V2,
+                    Ok(STATE_UPDATE2_V2.clone()),
+                );
+
+                // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
+                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
+                expect_latest_block(&mut mock, &mut seq, Ok(block2_v2.clone()));
+
+                // Run the UUT
+                let _jh = tokio::spawn(sync(tx_event, mock, None));
+
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
+                    // Indicate that contract definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block0);
+                    assert_eq!(state_update, state_update::StateUpdate {
+                        contract_updates: vec![state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0,
+                                }
+                            ]
+                        }],
+                        deployed_contracts: vec![
+                            state::sync::DeployedContract {
+                                address: *CONTRACT0_ADDR,
+                                hash: *CONTRACT0_HASH,
+                                call_data: vec![],
+                        }]});
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
+                    // Indicate that contract definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, mut state_update, _) => {
+                    assert_eq!(block, block1);
+                    assert_eq!(state_update.deployed_contracts, vec![
+                        state::sync::DeployedContract {
+                            address: *CONTRACT1_ADDR,
+                            hash: *CONTRACT1_HASH,
+                            call_data: vec![],
+                    }]);
+
+                    state_update.contract_updates.sort();
+
+                    assert_eq!(state_update.contract_updates, vec![
+                        state_update::ContractUpdate {
+                            address: *CONTRACT0_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY0,
+                                    value: *STORAGE_VAL0_V2,
+                                }
+                            ]
+                        },
+                        state_update::ContractUpdate {
+                            address: *CONTRACT1_ADDR,
+                            storage_updates: vec![
+                                state_update::StorageUpdate {
+                                    address: *STORAGE_KEY1,
+                                    value: *STORAGE_VAL1,
+                                }
+                            ]
+                        }
+                    ]);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block2);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                    assert_eq!(block_number, BLOCK1_NUMBER);
+                    // The DB contains the **old** hash of block #1
+                    sender.send(Some(*BLOCK1_HASH)).unwrap();
+                });
+                // Reorg started from block #2
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                    assert_eq!(tail, BLOCK2_NUMBER);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block2_v2);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+            }
         }
     }
 }
