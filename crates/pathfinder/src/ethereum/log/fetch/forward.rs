@@ -4,9 +4,12 @@ use web3::{
     Transport, Web3,
 };
 
-use crate::ethereum::{
-    log::{fetch::MetaLog, get_logs, GetLogsError},
-    Chain,
+use crate::{
+    core::EthereumBlockNumber,
+    ethereum::{
+        log::{fetch::MetaLog, get_logs, GetLogsError},
+        Chain,
+    },
 };
 
 /// Fetches consecutive logs of type T from L1, accounting for chain
@@ -16,6 +19,7 @@ where
     T: MetaLog + PartialEq + std::fmt::Debug + Clone,
 {
     head: Option<T>,
+    genesis: EthereumBlockNumber,
     stride: u64,
     base_filter: FilterBuilder,
 }
@@ -42,7 +46,7 @@ where
     /// If `head` is [None] then the starting point is genesis.
     ///
     /// In other words, the first log returned will be the one after `head`.
-    pub fn new(head: Option<T>, chain: Chain) -> Self {
+    pub fn new(head: Option<T>, chain: Chain, genesis: EthereumBlockNumber) -> Self {
         let base_filter = FilterBuilder::default()
             .address(vec![T::contract_address(chain)])
             .topics(Some(vec![T::signature()]), None, None, None);
@@ -51,6 +55,7 @@ where
             head,
             stride: 10_000,
             base_filter,
+            genesis,
         }
     }
 
@@ -86,7 +91,7 @@ where
             .head
             .as_ref()
             .map(|update| update.origin().block.number.0)
-            .unwrap_or_default();
+            .unwrap_or(self.genesis.0);
         let base_filter = self
             .base_filter
             .clone()
@@ -247,8 +252,11 @@ mod tests {
             block_number: StarknetBlockNumber(0),
         };
 
+        let genesis_block = starknet_genesis_log.origin.block.number;
+
         let chain = crate::ethereum::Chain::Goerli;
-        let mut root_fetcher = LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), chain);
+        let mut root_fetcher =
+            LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), chain, genesis_block);
         let transport = test_transport(chain);
         let mut block_number = 1;
 

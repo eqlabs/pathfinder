@@ -1,14 +1,27 @@
-use crate::ethereum::{
-    log::{LogFetcher, StateUpdateLog},
-    Chain,
+use crate::{
+    core::EthereumBlockNumber,
+    ethereum::{
+        log::{LogFetcher, StateUpdateLog},
+        Chain,
+    },
 };
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
 pub struct StateRootFetcher(LogFetcher<StateUpdateLog>);
 
+/// The Mainnet Ethereum block containing the Starknet genesis [StateUpdateLog].
+const MAINNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(13_627_224);
+/// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog].
+const GOERLI_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_854_324);
+
 impl StateRootFetcher {
     pub fn new(head: Option<StateUpdateLog>, chain: Chain) -> Self {
-        let inner = LogFetcher::<StateUpdateLog>::new(head, chain);
+        let genesis = match chain {
+            Chain::Mainnet => MAINNET_GENESIS,
+            Chain::Goerli => GOERLI_GENESIS,
+        };
+
+        let inner = LogFetcher::<StateUpdateLog>::new(head, chain, genesis);
         Self(inner)
     }
 }
@@ -40,7 +53,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn genesis() {
+    async fn first_fetch() {
         // The first state root retrieved should be the genesis event,
         // with a sequence number of 0.
         let chain = Chain::Goerli;
@@ -51,6 +64,71 @@ mod tests {
         let first = first_fetch.first().expect("Should be at least one log");
 
         assert_eq!(first.block_number, StarknetBlockNumber(0));
+    }
+
+    mod genesis {
+        use pretty_assertions::assert_eq;
+        use web3::types::{BlockNumber, FilterBuilder};
+
+        use crate::ethereum::log::{get_logs, MetaLog};
+
+        use super::*;
+
+        #[tokio::test]
+        async fn mainnet() {
+            // Checks `MAINNET_GENESIS` contains the actual Starknet genesis StateUpdateLog
+            let chain = Chain::Mainnet;
+            let transport = test_transport(chain);
+
+            let block_number = BlockNumber::Number(MAINNET_GENESIS.0.into());
+
+            let filter = FilterBuilder::default()
+                .address(vec![StateUpdateLog::contract_address(chain)])
+                .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
+                .from_block(block_number)
+                .to_block(block_number)
+                .build();
+
+            let logs = get_logs(&transport, filter).await.unwrap();
+            let logs = logs
+                .into_iter()
+                .map(StateUpdateLog::try_from)
+                .collect::<Result<Vec<StateUpdateLog>, _>>()
+                .unwrap();
+
+            assert_eq!(
+                logs.first().unwrap().block_number,
+                StarknetBlockNumber::GENESIS
+            );
+        }
+
+        #[tokio::test]
+        async fn goerli() {
+            // Checks `GOERLI_GENESIS` contains the actual Starknet genesis StateUpdateLog
+            let chain = Chain::Goerli;
+            let transport = test_transport(chain);
+
+            let block_number = BlockNumber::Number(GOERLI_GENESIS.0.into());
+
+            let filter = FilterBuilder::default()
+                .address(vec![StateUpdateLog::contract_address(chain)])
+                .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
+                .from_block(block_number)
+                .to_block(block_number)
+                .build();
+
+            let logs = get_logs(&transport, filter).await.unwrap();
+            let logs = logs
+                .into_iter()
+                .map(StateUpdateLog::try_from)
+                .collect::<Result<Vec<StateUpdateLog>, _>>()
+                .unwrap();
+
+            assert_eq!(
+                logs.first().unwrap().block_number,
+                StarknetBlockNumber::GENESIS
+            );
+        }
     }
 
     mod reorg {
