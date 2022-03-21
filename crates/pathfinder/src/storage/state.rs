@@ -53,7 +53,7 @@ impl L1StateTable {
                     )",
                 named_params! {
                     ":starknet_block_number": update.block_number.0,
-                    ":starknet_global_root": &update.global_root.0.as_be_bytes()[..],
+                    ":starknet_global_root": update.global_root.0.as_be_bytes(),
                     ":ethereum_block_hash": &update.origin.block.hash.0[..],
                     ":ethereum_block_number": update.origin.block.number.0,
                     ":ethereum_transaction_hash": &update.origin.transaction.hash.0[..],
@@ -249,8 +249,8 @@ impl StarknetBlocksTable {
                                    VALUES (:number, :hash, :root, :timestamp)",
             named_params! {
                 ":number": block.number.0,
-                ":hash": &block.hash.0.as_be_bytes()[..],
-                ":root": &block.root.0.as_be_bytes()[..],
+                ":hash": block.hash.0.as_be_bytes(),
+                ":root": block.root.0.as_be_bytes(),
                 ":timestamp": block.timestamp.0,
             },
         )?;
@@ -277,9 +277,7 @@ impl StarknetBlocksTable {
 
         let mut rows = match block {
             StarknetBlocksBlockId::Number(number) => statement.query(params![number.0]),
-            StarknetBlocksBlockId::Hash(hash) => {
-                statement.query(params![&hash.0.as_be_bytes()[..]])
-            }
+            StarknetBlocksBlockId::Hash(hash) => statement.query(params![hash.0.as_be_bytes()]),
             StarknetBlocksBlockId::Latest => statement.query([]),
         }?;
 
@@ -333,9 +331,7 @@ impl StarknetBlocksTable {
 
         let mut rows = match block {
             StarknetBlocksBlockId::Number(number) => statement.query(params![number.0]),
-            StarknetBlocksBlockId::Hash(hash) => {
-                statement.query(params![&hash.0.as_be_bytes()[..]])
-            }
+            StarknetBlocksBlockId::Hash(hash) => statement.query(params![hash.0.as_be_bytes()]),
             StarknetBlocksBlockId::Latest => statement.query([]),
         }?;
 
@@ -433,9 +429,9 @@ impl StarknetTransactionsTable {
 
             connection.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
         named_params![
-                    ":hash": &transaction.transaction_hash.0.as_be_bytes()[..],
+                    ":hash": transaction.transaction_hash.0.as_be_bytes(),
                     ":idx": i,
-                    ":block_hash": &block_hash.0.as_be_bytes()[..],
+                    ":block_hash": block_hash.0.as_be_bytes(),
                     ":tx": &tx_data,
                     ":receipt": &serialized_receipt,
                 ]).context("Insert transaction data into transactions table")?;
@@ -480,7 +476,7 @@ impl StarknetTransactionsTable {
             .context("Preparing statement")?;
 
         let mut rows = stmt
-            .query(params![&block_hash.0.as_be_bytes()[..]])
+            .query(params![block_hash.0.as_be_bytes()])
             .context("Executing query")?;
 
         let mut decompressor = zstd::bulk::Decompressor::new().context("Creating decompressor")?;
@@ -539,7 +535,7 @@ impl StarknetTransactionsTable {
             .context("Preparing statement")?;
 
         let mut rows = stmt
-            .query(params![&block_hash.0.as_be_bytes()[..], index])
+            .query(params![block_hash.0.as_be_bytes(), index])
             .context("Executing query")?;
 
         let row = match rows.next()? {
@@ -569,7 +565,7 @@ impl StarknetTransactionsTable {
             .context("Preparing statement")?;
 
         let mut rows = stmt
-            .query(params![&transaction.0.as_be_bytes()[..]])
+            .query(params![transaction.0.as_be_bytes()])
             .context("Executing query")?;
 
         let row = match rows.next()? {
@@ -602,7 +598,7 @@ impl StarknetTransactionsTable {
             .context("Preparing statement")?;
 
         let mut rows = stmt
-            .query(params![&transaction.0.as_be_bytes()[..]])
+            .query(params![transaction.0.as_be_bytes()])
             .context("Executing query")?;
 
         let row = match rows.next()? {
@@ -640,7 +636,7 @@ impl StarknetTransactionsTable {
             StarknetBlocksBlockId::Hash(hash) => connection
                 .query_row(
                     "SELECT COUNT(*) FROM starknet_transactions WHERE block_hash = ?1",
-                    params![&hash.0.as_be_bytes()[..]],
+                    params![hash.0.as_be_bytes()],
                     |row| row.get(0),
                 )
                 .context("Counting transactions"),
@@ -872,9 +868,9 @@ impl ContractsStateTable {
         transaction.execute(
             "INSERT OR IGNORE INTO contract_states (state_hash, hash, root) VALUES (:state_hash, :hash, :root)",
             named_params! {
-                ":state_hash": &state_hash.0.to_be_bytes()[..],
-                ":hash": &hash.0.to_be_bytes()[..],
-                ":root": &root.0.to_be_bytes()[..],
+                ":state_hash": state_hash.0.to_be_bytes(),
+                ":hash": hash.0.to_be_bytes(),
+                ":root": root.0.to_be_bytes(),
             },
         )?;
         Ok(())
@@ -890,7 +886,7 @@ impl ContractsStateTable {
             .query_row(
                 "SELECT root FROM contract_states WHERE state_hash = :state_hash",
                 named_params! {
-                    ":state_hash": &state_hash.0.to_be_bytes()[..]
+                    ":state_hash": state_hash.0.to_be_bytes()
                 },
                 |row| row.get("root"),
             )
