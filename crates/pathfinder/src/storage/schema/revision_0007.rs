@@ -1,9 +1,185 @@
 use anyhow::Context;
 use rusqlite::{named_params, Transaction};
 
-use crate::sequencer::reply::transaction;
 use crate::storage::schema::PostMigrationAction;
 use crate::storage::state::StarknetEventsTable;
+
+// This is a copy of data structures and their serialization specification as of
+// revision 6. We have to keep these intact so that future changes to these types
+// do not break database upgrades.
+mod transaction {
+    use crate::{
+        core::{
+            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+            EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
+            L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
+            StarknetTransactionIndex, TransactionSignatureElem,
+        },
+        rpc::serde::{
+            CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
+            EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
+            L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
+            TransactionSignatureElemAsDecimalStr,
+        },
+    };
+    use serde::{Deserialize, Serialize};
+    use serde_with::serde_as;
+
+    /// Represents deserialized L2 transaction entry point values.
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub enum EntryPointType {
+        #[serde(rename = "EXTERNAL")]
+        External,
+        #[serde(rename = "L1_HANDLER")]
+        L1Handler,
+    }
+
+    /// Represents execution resources for L2 transaction.
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct ExecutionResources {
+        pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
+        pub n_steps: u64,
+        pub n_memory_holes: u64,
+    }
+
+    /// Types used when deserializing L2 execution resources related data.
+    pub mod execution_resources {
+        use serde::{Deserialize, Serialize};
+
+        /// Sometimes `builtin_instance_counter` JSON object is returned empty.
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(untagged)]
+        #[serde(deny_unknown_fields)]
+        pub enum BuiltinInstanceCounter {
+            Normal(NormalBuiltinInstanceCounter),
+            Empty(EmptyBuiltinInstanceCounter),
+        }
+
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct NormalBuiltinInstanceCounter {
+            bitwise_builtin: u64,
+            ecdsa_builtin: u64,
+            ec_op_builtin: u64,
+            output_builtin: u64,
+            pedersen_builtin: u64,
+            range_check_builtin: u64,
+        }
+
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        pub struct EmptyBuiltinInstanceCounter {}
+    }
+
+    /// Represents deserialized L1 to L2 message.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct L1ToL2Message {
+        #[serde_as(as = "EthereumAddressAsHexStr")]
+        pub from_address: EthereumAddress,
+        #[serde_as(as = "Vec<L1ToL2MessagePayloadElemAsDecimalStr>")]
+        pub payload: Vec<L1ToL2MessagePayloadElem>,
+        pub selector: EntryPoint,
+        pub to_address: ContractAddress,
+        #[serde(default)]
+        pub nonce: Option<L1ToL2MessageNonce>,
+    }
+
+    /// Represents deserialized L2 to L1 message.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct L2ToL1Message {
+        pub from_address: ContractAddress,
+        #[serde_as(as = "Vec<L2ToL1MessagePayloadElemAsDecimalStr>")]
+        pub payload: Vec<L2ToL1MessagePayloadElem>,
+        #[serde_as(as = "EthereumAddressAsHexStr")]
+        pub to_address: EthereumAddress,
+    }
+
+    /// Represents deserialized L2 transaction receipt data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Receipt {
+        pub events: Vec<Event>,
+        pub execution_resources: ExecutionResources,
+        pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
+        pub l2_to_l1_messages: Vec<L2ToL1Message>,
+        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_index: StarknetTransactionIndex,
+    }
+
+    /// Represents deserialized L2 transaction event data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Event {
+        #[serde_as(as = "Vec<EventDataAsDecimalStr>")]
+        pub data: Vec<EventData>,
+        pub from_address: ContractAddress,
+        #[serde_as(as = "Vec<EventKeyAsDecimalStr>")]
+        pub keys: Vec<EventKey>,
+    }
+
+    /// Represents deserialized object containing L2 contract address and transaction type.
+    #[serde_as]
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Source {
+        pub contract_address: ContractAddress,
+        pub r#type: Type,
+    }
+
+    /// Represents deserialized L2 transaction data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Transaction {
+        #[serde_as(as = "Option<Vec<CallParamAsDecimalStr>>")]
+        #[serde(default)]
+        pub calldata: Option<Vec<CallParam>>,
+        #[serde_as(as = "Option<Vec<ConstructorParamAsDecimalStr>>")]
+        #[serde(default)]
+        pub constructor_calldata: Option<Vec<ConstructorParam>>,
+        pub contract_address: ContractAddress,
+        #[serde(default)]
+        pub contract_address_salt: Option<ContractAddressSalt>,
+        #[serde(default)]
+        pub entry_point_type: Option<EntryPointType>,
+        #[serde(default)]
+        pub entry_point_selector: Option<EntryPoint>,
+        #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
+        pub max_fee: Option<Fee>,
+        #[serde_as(as = "Option<Vec<TransactionSignatureElemAsDecimalStr>>")]
+        #[serde(default)]
+        pub signature: Option<Vec<TransactionSignatureElem>>,
+        pub transaction_hash: StarknetTransactionHash,
+        pub r#type: Type,
+    }
+
+    /// Describes L2 transaction types.
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub enum Type {
+        #[serde(rename = "DEPLOY")]
+        Deploy,
+        #[serde(rename = "INVOKE_FUNCTION")]
+        InvokeFunction,
+    }
+
+    /// Describes L2 transaction failure details.
+    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct Failure {
+        pub code: String,
+        pub error_message: String,
+        pub tx_id: u64,
+    }
+}
 
 pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
     // Create the new events table.
