@@ -55,9 +55,10 @@ RUN find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
 #######################
 FROM python:3.8-alpine AS runner
 
-RUN apk add --no-cache tini
+RUN apk add --no-cache tini libstdc++ libgcc gmp
 
-COPY --from=rust-builder ["/usr/lib/libstdc++.so.6", "/usr/lib/libgcc_s.so.1", "/usr/lib/libgmp.so.10", "/usr/lib/" ]
+COPY --from=rust-builder [ "/usr/lib/" ]
+
 COPY --from=rust-builder /usr/src/pathfinder/target/release/pathfinder /usr/local/bin/pathfinder
 COPY --from=python-builder /usr/local/lib/python3.8/ /usr/local/lib/python3.8/
 
