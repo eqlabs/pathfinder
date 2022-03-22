@@ -1,9 +1,9 @@
 ########################################
 # Stage 1: Build the pathfinder binary #
 ########################################
-FROM rust:1.59-alpine AS rust-builder
+FROM rust:1.59-bullseye AS rust-builder
 
-RUN apk add --no-cache musl-dev gcc openssl-dev
+RUN apt-get update && apt-get install -y musl-dev gcc libssl-dev
 
 WORKDIR /usr/src/pathfinder
 
