@@ -121,6 +121,22 @@ mod tests {
             use super::*;
             use pretty_assertions::assert_eq;
 
+            // The L1 Starknet contracts often use a proxy pattern. This is common for
+            // Ethereum contracts. The main entry-point contract is a proxy which has
+            // a few built-in functions to handle things like changing the backing
+            // implementation, or making it immutable. Every function call that is
+            // not one of these proxy-management functions is then delegated to the
+            // actual backing implementation contract.
+            //
+            // The advantage of this is that one gets to update / tweak the
+            // implementation without changing the "entry-point" contract address.
+            //
+            // For us this is therefore fully opaque -- we shouldn't really care about
+            // this changing -- except we care about the implementation ABI: we read
+            // some of the logs.
+            // These tests ensure we know when its changed, and we can check if the
+            // ABI was updated.
+
             #[tokio::test]
             async fn goerli() {
                 // Checks that Starknet's core proxy contract still points to the same
@@ -167,7 +183,7 @@ mod tests {
                 // update the address and more importantly, the ABI.
 
                 // The current address of Starknet's core contract implementation.
-                const CORE_IMPL_ADDR: &str = "0x944960b90381d76368aece61f269bd99fffd627e";
+                const CORE_IMPL_ADDR: &str = "0xdc109c4a1a3084ed15a97692fbef3e1fb32a6955";
                 let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
 
                 // The proxy's ABI.
