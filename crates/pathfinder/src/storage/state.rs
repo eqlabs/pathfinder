@@ -661,9 +661,29 @@ pub struct StarknetEventFilter {
     pub keys: Vec<EventKey>,
 }
 
-pub struct StarknetPageRequest {
-    pub page_size: Option<usize>,
-    pub page_number: Option<usize>,
+impl From<crate::rpc::types::request::EventFilter> for StarknetEventFilter {
+    fn from(filter: crate::rpc::types::request::EventFilter) -> Self {
+        Self {
+            from_block: filter.from_block,
+            to_block: filter.to_block,
+            contract_address: filter.address,
+            keys: filter.keys,
+        }
+    }
+}
+
+pub struct StarknetResultPageRequest {
+    pub page_size: usize,
+    pub page_number: usize,
+}
+
+impl From<crate::rpc::types::request::ResultPageRequest> for StarknetResultPageRequest {
+    fn from(page_request: crate::rpc::types::request::ResultPageRequest) -> Self {
+        Self {
+            page_size: page_request.page_size,
+            page_number: page_request.page_number,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

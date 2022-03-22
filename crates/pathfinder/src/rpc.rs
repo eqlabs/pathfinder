@@ -9,7 +9,7 @@ use crate::{
         api::RpcApi,
         types::{
             request::OverflowingStorageAddress,
-            request::{BlockResponseScope, Call},
+            request::{BlockResponseScope, Call, EventFilter},
             BlockHashOrTag, BlockNumberOrTag,
         },
     },
@@ -226,6 +226,14 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
     module.register_async_method("starknet_syncing", |_, context| async move {
         context.syncing().await
     })?;
+    module.register_async_method("starknet_getEvents", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            pub filter: EventFilter,
+        }
+        let request = params.parse::<NamedArgs>()?.filter;
+        context.get_events(request).await
+    })?;
     let module = module.into_inner();
     server.start(module).map(|handle| (handle, local_addr))
 }
@@ -235,8 +243,8 @@ mod tests {
     use super::*;
     use crate::{
         core::{
-            ContractAddress, ContractHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress,
+            ContractAddress, ContractHash, EventData, EventKey, GlobalRoot, StarknetBlockHash,
+            StarknetBlockNumber, StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress,
         },
         ethereum::Chain,
         rpc::run_server,
@@ -2128,6 +2136,258 @@ mod tests {
                 .unwrap();
 
             assert_eq!(syncing, expected);
+        }
+    }
+
+    mod events {
+        use super::*;
+
+        use super::types::reply::EmittedEvent;
+        use crate::sequencer::reply::transaction;
+
+        const NUM_BLOCKS: usize = 4;
+
+        fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
+            (0..NUM_BLOCKS as u64)
+                .map(|i| StarknetBlock {
+                    number: StarknetBlockNumber::GENESIS + i,
+                    hash: StarknetBlockHash(
+                        StarkHash::from_hex_str(&"a".repeat(i as usize + 3)).unwrap(),
+                    ),
+                    root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
+                    timestamp: StarknetBlockTimestamp(i + 500),
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
+        }
+
+        const TRANSACTIONS_PER_BLOCK: usize = 10;
+        const EVENTS_PER_BLOCK: usize = TRANSACTIONS_PER_BLOCK;
+        const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
+
+        fn create_transactions_and_receipts(
+        ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
+            let transactions = (0..NUM_TRANSACTIONS).map(|i| transaction::Transaction {
+                calldata: None,
+                constructor_calldata: None,
+                contract_address: ContractAddress(
+                    StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                ),
+                contract_address_salt: None,
+                entry_point_type: None,
+                entry_point_selector: None,
+                signature: None,
+                transaction_hash: StarknetTransactionHash(
+                    StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap(),
+                ),
+                r#type: transaction::Type::InvokeFunction,
+                max_fee: None,
+            });
+            let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
+                events: vec![transaction::Event {
+                    from_address: ContractAddress(
+                        StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                    ),
+                    data: vec![EventData(
+                        StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
+                    )],
+                    keys: vec![
+                        EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
+                        EventKey(StarkHash::from_hex_str("deadbeef").unwrap()),
+                    ],
+                }],
+                execution_resources: transaction::ExecutionResources {
+                    builtin_instance_counter:
+                        transaction::execution_resources::BuiltinInstanceCounter::Empty(
+                            transaction::execution_resources::EmptyBuiltinInstanceCounter {},
+                        ),
+                    n_steps: i as u64 + 987,
+                    n_memory_holes: i as u64 + 1177,
+                },
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: Vec::new(),
+                transaction_hash: StarknetTransactionHash(
+                    StarkHash::from_hex_str(&"e".repeat(i + 3)).unwrap(),
+                ),
+                transaction_index: StarknetTransactionIndex(i as u64 + 2311),
+            });
+
+            transactions
+                .into_iter()
+                .zip(receipts)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
+        }
+
+        fn setup() -> (Storage, Vec<EmittedEvent>) {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let blocks = create_blocks();
+            let transactions_and_receipts = create_transactions_and_receipts();
+
+            for (i, block) in blocks.iter().enumerate() {
+                StarknetBlocksTable::insert(&connection, block).unwrap();
+                StarknetTransactionsTable::upsert(
+                    &connection,
+                    block.hash,
+                    block.number,
+                    &transactions_and_receipts
+                        [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK],
+                )
+                .unwrap();
+            }
+
+            let events = transactions_and_receipts
+                .iter()
+                .enumerate()
+                .map(|(i, (txn, receipt))| {
+                    let event = &receipt.events[0];
+                    let block = &blocks[i / TRANSACTIONS_PER_BLOCK];
+
+                    EmittedEvent {
+                        data: event.data.clone(),
+                        from_address: event.from_address,
+                        keys: event.keys.clone(),
+                        block_hash: block.hash,
+                        block_number: block.number,
+                        transaction_hash: txn.transaction_hash,
+                    }
+                })
+                .collect();
+
+            (storage, events)
+        }
+
+        mod positional_args {
+            use super::*;
+
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn get_events_with_empty_filter() {
+                let (storage, events) = setup();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let params = rpc_params!(EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: vec![],
+                    pagination: None,
+                });
+                let rpc_result = client(addr)
+                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(rpc_result, events);
+            }
+
+            #[tokio::test]
+            async fn get_events_with_fully_specified_filter() {
+                let (storage, events) = setup();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let expected_event = &events[1];
+                let params = rpc_params!(EventFilter {
+                    from_block: Some(expected_event.block_number),
+                    to_block: Some(expected_event.block_number),
+                    address: Some(expected_event.from_address),
+                    // we're using a key which is present in _all_ events
+                    keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
+                    pagination: None,
+                });
+                let rpc_result = client(addr)
+                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(rpc_result, &[expected_event.clone()]);
+            }
+
+            #[tokio::test]
+            async fn get_events_by_block() {
+                let (storage, events) = setup();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                const BLOCK_NUMBER: usize = 2;
+                let params = rpc_params!(EventFilter {
+                    from_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
+                    to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
+                    address: None,
+                    keys: vec![],
+                    pagination: None,
+                });
+                let rpc_result = client(addr)
+                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                let expected_events =
+                    &events[EVENTS_PER_BLOCK * BLOCK_NUMBER..EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
+                assert_eq!(rpc_result, expected_events);
+            }
+        }
+
+        mod named_args {
+            use super::*;
+
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn get_events_with_empty_filter() {
+                let (storage, events) = setup();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let params = by_name([("filter", json!({}))]);
+                let rpc_result = client(addr)
+                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(rpc_result, events);
+            }
+
+            #[tokio::test]
+            async fn get_events_with_fully_specified_filter() {
+                let (storage, events) = setup();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let expected_event = &events[1];
+                let params = by_name([(
+                    "filter",
+                    json!({
+                        "fromBlock": expected_event.block_number.0,
+                        "toBlock": expected_event.block_number.0,
+                        "address": expected_event.from_address,
+                        "keys": [expected_event.keys[0]],
+                    }),
+                )]);
+                let rpc_result = client(addr)
+                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(rpc_result, &[expected_event.clone()]);
+            }
         }
     }
 }

@@ -18,7 +18,8 @@ use crate::{
     },
     state::SyncState,
     storage::{
-        RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
+        RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEventsTable,
+        StarknetTransactionsTable, Storage,
     },
 };
 use anyhow::Context;
@@ -29,6 +30,8 @@ use jsonrpsee::types::{
 use pedersen::StarkHash;
 use std::convert::TryInto;
 use std::sync::Arc;
+
+use super::types::{reply::EmittedEvent, request::EventFilter};
 
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
@@ -905,6 +908,31 @@ impl RpcApi {
         // Scoped so I don't have to think too hard about mutex guard drop semantics.
         let value = { self.sync_state.status.read().await.clone() };
         Ok(value)
+    }
+
+    /// Returns events matching the specified filter
+    pub async fn get_events(&self, request: EventFilter) -> RpcResult<Vec<EmittedEvent>> {
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let connection = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let filter = request.into();
+            let events = StarknetEventsTable::get_events(&connection, &filter)
+                .context("Look up events from database")
+                .map_err(internal_server_error)?;
+
+            Ok(events.into_iter().map(|e| e.into()).collect())
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            // flatten is unstable
+            .and_then(|x| x)
     }
 }
 
