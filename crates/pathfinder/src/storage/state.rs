@@ -668,8 +668,8 @@ pub struct StarknetPageRequest {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct StarknetEmittedEvent {
-    pub data: Vec<EventData>,
     pub from_address: ContractAddress,
+    pub data: Vec<EventData>,
     pub keys: Vec<EventKey>,
     pub block_hash: StarknetBlockHash,
     pub block_number: StarknetBlockNumber,
@@ -779,11 +779,18 @@ impl StarknetEventsTable {
             params.push((":events_match", &key_fts_expression));
         }
 
-        let query = format!(
-            "{} WHERE {} ORDER BY block_number, transaction_hash, idx",
-            base_query,
-            where_statement_parts.join(" AND ")
-        );
+        let query = if where_statement_parts.is_empty() {
+            format!(
+                "{} ORDER BY block_number, transaction_hash, idx",
+                base_query
+            )
+        } else {
+            format!(
+                "{} WHERE {} ORDER BY block_number, transaction_hash, idx",
+                base_query,
+                where_statement_parts.join(" AND ")
+            )
+        };
 
         let mut statement = connection.prepare(&query)?;
         let mut rows = statement.query(params.as_slice())?;
@@ -1771,6 +1778,24 @@ mod tests {
 
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
             assert_eq!(events, &[expected_event.clone()]);
+        }
+
+        #[test]
+        fn get_events_with_no_filter() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let emitted_events = setup(&connection);
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+            };
+
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, emitted_events);
         }
     }
 }
