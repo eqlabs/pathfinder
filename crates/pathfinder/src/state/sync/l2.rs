@@ -186,7 +186,7 @@ async fn download_block(
 
             if latest.block_number.unwrap() + 1 == block_number {
                 match prev_block_hash {
-                    // We are definitiely still at the head and it's just that a new block
+                    // We are definitely still at the head and it's just that a new block
                     // has not been published yet
                     Some(parent_block_hash) if parent_block_hash == latest.block_hash.unwrap() => {
                         Ok(DownloadBlock::AtHead)
