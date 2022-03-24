@@ -1112,12 +1112,10 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
-                    // The DB contains the **old** hash of block #1
                     sender.send(Some(*BLOCK1_HASH)).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
                     assert_eq!(block_number, BLOCK0_NUMBER);
-                    // The DB contains the **old** hash of the genesis block
                     sender.send(Some(*BLOCK0_HASH)).unwrap();
                 });
                 // Reorg started at the genesis block
@@ -1313,17 +1311,14 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
                     assert_eq!(block_number, BLOCK2_NUMBER);
-                    // The DB contains the **old** hash of block #2
                     sender.send(Some(*BLOCK2_HASH)).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
-                    // The DB contains the **old** hash of block #1
                     sender.send(Some(*BLOCK1_HASH)).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
                     assert_eq!(block_number, BLOCK0_NUMBER);
-                    // The DB contains the **old** hash of the genesis block
                     sender.send(Some(*BLOCK0_HASH)).unwrap();
                 });
                 // Reorg started from block #1
@@ -1464,7 +1459,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
-                    // The DB contains the **old** hash of block #1
                     sender.send(Some(*BLOCK1_HASH)).unwrap();
                 });
                 // Reorg started from block #2
@@ -1473,6 +1467,146 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(block, block2_v2);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+            }
+
+            #[tokio::test]
+            // This reorg occurs because the downloaded block at head turns out to indicate
+            // a different parent hash than the previous downloaded block.
+            //
+            // [block 0]-----[block 1]       --[block 2]
+            //            \                 /
+            //             --[block 1 v2]--
+            //
+            async fn parent_hash_mismatch() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
+
+                let block1_v2 = reply::Block {
+                    block_hash: Some(*BLOCK1_HASH_V2),
+                    block_number: Some(BLOCK1_NUMBER),
+                    parent_block_hash: *BLOCK0_HASH,
+                    state_root: Some(*GLOBAL_ROOT1_V2),
+                    status: reply::Status::AcceptedOnL2,
+                    timestamp: StarknetBlockTimestamp(4),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+                let block2 = reply::Block {
+                    block_hash: Some(*BLOCK2_HASH),
+                    block_number: Some(BLOCK2_NUMBER),
+                    parent_block_hash: *BLOCK1_HASH_V2,
+                    state_root: Some(*GLOBAL_ROOT2),
+                    status: reply::Status::AcceptedOnL1,
+                    timestamp: StarknetBlockTimestamp(5),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                };
+
+                // Fetch the genesis block with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT0_ADDR,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                // Fetch block #1 with respective state update and contracts
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(BLOCK1.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_full_contract(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT1_ADDR,
+                    Ok(CONTRACT1_DEF.clone()),
+                );
+                // Fetch block #2 whose parent hash does not match block #1 hash
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2.clone()));
+
+                // L2 sync task goes back block by block to find where the block hash matches the DB
+                // It starts at the previous block to which the mismatch happened
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
+
+                // Finally the L2 sync task is downloading the new blocks once it knows where to start again
+                // Fetch the new block #1 from the fork with respective state update
+                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    *BLOCK1_HASH_V2,
+                    Ok(STATE_UPDATE1_V2.clone()),
+                );
+                // Fetch the block #2 again, now with respective state update
+                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK2_HASH, Ok(STATE_UPDATE2.clone()));
+
+                // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
+                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
+                expect_latest_block(&mut mock, &mut seq, Ok(block2.clone()));
+
+                // Run the UUT
+                let _jh = tokio::spawn(sync(tx_event, mock, None));
+
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
+                    // Indicate that contract definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, *BLOCK0);
+                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE0);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
+                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
+                    // Indicate that contract definition is not in the DB yet
+                    sender.send(vec![false]).unwrap();
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    Event::NewContract(compressed_contract) => {
+                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
+                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
+                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
+                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, mut state_update, _) => {
+                    assert_eq!(block, *BLOCK1);
+                    assert_eq!(state_update.deployed_contracts, vec![
+                        state::sync::DeployedContract {
+                            address: *CONTRACT1_ADDR,
+                            hash: *CONTRACT1_HASH,
+                            call_data: vec![],
+                    }]);
+                    state_update.contract_updates.sort();
+                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE1);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                    assert_eq!(block_number, BLOCK0_NUMBER);
+                    sender.send(Some(*BLOCK0_HASH)).unwrap();
+                });
+                // Reorg started from block #1
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                    assert_eq!(tail, BLOCK1_NUMBER);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block1_v2);
+                    assert!(state_update.deployed_contracts.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                    assert_eq!(block, block2);
                     assert!(state_update.deployed_contracts.is_empty());
                     assert!(state_update.contract_updates.is_empty());
                 });
