@@ -692,4 +692,12 @@ pub mod reply {
             }
         }
     }
+
+    // Result type for starknet_getEvents
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct GetEventsResult {
+        pub events: Vec<EmittedEvent>,
+        pub page_number: usize,
+    }
 }

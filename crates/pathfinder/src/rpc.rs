@@ -2142,7 +2142,7 @@ mod tests {
     mod events {
         use super::*;
 
-        use super::types::reply::EmittedEvent;
+        use super::types::reply::{EmittedEvent, GetEventsResult};
         use crate::sequencer::reply::transaction;
 
         const NUM_BLOCKS: usize = 4;
@@ -2282,11 +2282,17 @@ mod tests {
                     pagination: None,
                 });
                 let rpc_result = client(addr)
-                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
 
-                assert_eq!(rpc_result, events);
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events,
+                        page_number: 0
+                    }
+                );
             }
 
             #[tokio::test]
@@ -2307,11 +2313,17 @@ mod tests {
                     pagination: None,
                 });
                 let rpc_result = client(addr)
-                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
 
-                assert_eq!(rpc_result, &[expected_event.clone()]);
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: vec![expected_event.clone()],
+                        page_number: 0
+                    }
+                );
             }
 
             #[tokio::test]
@@ -2331,13 +2343,19 @@ mod tests {
                     pagination: None,
                 });
                 let rpc_result = client(addr)
-                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
 
                 let expected_events =
                     &events[EVENTS_PER_BLOCK * BLOCK_NUMBER..EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
-                assert_eq!(rpc_result, expected_events);
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: expected_events.to_vec(),
+                        page_number: 0
+                    }
+                );
             }
         }
 
@@ -2356,11 +2374,17 @@ mod tests {
 
                 let params = by_name([("filter", json!({}))]);
                 let rpc_result = client(addr)
-                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
 
-                assert_eq!(rpc_result, events);
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events,
+                        page_number: 0
+                    }
+                );
             }
 
             #[tokio::test]
@@ -2382,11 +2406,17 @@ mod tests {
                     }),
                 )]);
                 let rpc_result = client(addr)
-                    .request::<Vec<EmittedEvent>>("starknet_getEvents", params)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
 
-                assert_eq!(rpc_result, &[expected_event.clone()]);
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: vec![expected_event.clone()],
+                        page_number: 0
+                    }
+                );
             }
         }
     }
