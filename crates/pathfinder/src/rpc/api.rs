@@ -926,13 +926,15 @@ impl RpcApi {
                 .map_err(internal_server_error)?;
 
             let filter = request.into();
+            // We don't add context here, because [StarknetEventsTable::get_events] adds its
+            // own context to the errors. This way we get meaningful error information
+            // for errors related to query parameters.
             let events = StarknetEventsTable::get_events(&connection, &filter)
-                .context("Look up events from database")
                 .map_err(internal_server_error)?;
 
             Ok(GetEventsResult {
                 events: events.into_iter().map(|e| e.into()).collect(),
-                page_number: 0,
+                page_number: filter.page_number.unwrap_or_default(),
             })
         });
 

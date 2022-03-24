@@ -729,6 +729,8 @@ impl StarknetEventsTable {
         Ok(())
     }
 
+    const PAGE_SIZE_LIMIT: usize = 1024;
+
     pub fn get_events(
         connection: &Connection,
         filter: &StarknetEventFilter,
@@ -789,24 +791,44 @@ impl StarknetEventsTable {
             params.push((":events_match", &key_fts_expression));
         }
 
+        // Paging
+        // HACK: make sure offset lives long enough
+        let offset;
+        let limit_expression = match (&filter.page_size, &filter.page_number) {
+            (Some(page_size), Some(page_number))
+                if *page_size > 0 && *page_size <= Self::PAGE_SIZE_LIMIT =>
+            {
+                offset = page_number * page_size;
+                params.push((":limit", page_size));
+                params.push((":offset", &offset));
+                "LIMIT :limit OFFSET :offset"
+            }
+            (Some(_), Some(_)) => anyhow::bail!("Invalid page size"),
+            (None, None) => "",
+            (_, _) => anyhow::bail!("Invalid pagination request"),
+        };
+
         let query = if where_statement_parts.is_empty() {
             format!(
-                "{} ORDER BY block_number, transaction_hash, idx",
-                base_query
+                "{} ORDER BY block_number, transaction_hash, idx {}",
+                base_query, limit_expression
             )
         } else {
             format!(
-                "{} WHERE {} ORDER BY block_number, transaction_hash, idx",
+                "{} WHERE {} ORDER BY block_number, transaction_hash, idx {}",
                 base_query,
-                where_statement_parts.join(" AND ")
+                where_statement_parts.join(" AND "),
+                limit_expression
             )
         };
 
-        let mut statement = connection.prepare(&query)?;
-        let mut rows = statement.query(params.as_slice())?;
+        let mut statement = connection.prepare(&query).context("Preparing SQL query")?;
+        let mut rows = statement
+            .query(params.as_slice())
+            .context("Executing SQL query")?;
 
         let mut emitted_events = Vec::new();
-        while let Some(row) = rows.next()? {
+        while let Some(row) = rows.next().context("Fetching next event")? {
             let block_number = row.get_ref_unwrap("block_number").as_i64().unwrap() as u64;
             let block_number = StarknetBlockNumber(block_number);
 
@@ -849,6 +871,10 @@ impl StarknetEventsTable {
                 transaction_hash,
             };
             emitted_events.push(event);
+
+            if emitted_events.len() > Self::PAGE_SIZE_LIMIT {
+                anyhow::bail!("Limit exceeded");
+            }
         }
 
         Ok(emitted_events)
@@ -1825,6 +1851,172 @@ mod tests {
 
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
             assert_eq!(events, emitted_events);
+        }
+
+        #[test]
+        fn get_events_with_no_filter_and_paging() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let emitted_events = setup(&connection);
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+                page_size: Some(10),
+                page_number: Some(0),
+            };
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, &emitted_events[..10]);
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+                page_size: Some(10),
+                page_number: Some(1),
+            };
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, &emitted_events[10..20]);
+        }
+
+        #[test]
+        fn get_events_with_no_filter_and_nonexistent_page() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let _emitted_events = setup(&connection);
+
+            const PAGE_SIZE: usize = 10;
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+                page_size: Some(PAGE_SIZE),
+                // one page _after_ the last one
+                page_number: Some(NUM_BLOCKS * EVENTS_PER_BLOCK / PAGE_SIZE),
+            };
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert!(events.is_empty());
+        }
+
+        #[test]
+        fn get_events_with_invalid_page_request() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let _emitted_events = setup(&connection);
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+                page_size: Some(1),
+                page_number: None,
+            };
+            let result = StarknetEventsTable::get_events(&connection, &filter);
+            assert!(result.is_err());
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Invalid pagination request"
+            );
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+                page_size: None,
+                page_number: Some(1),
+            };
+            let result = StarknetEventsTable::get_events(&connection, &filter);
+            assert!(result.is_err());
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Invalid pagination request"
+            );
+        }
+
+        #[test]
+        fn get_events_with_invalid_page_size() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let _emitted_events = setup(&connection);
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+                page_size: Some(0),
+                page_number: Some(0),
+            };
+            let result = StarknetEventsTable::get_events(&connection, &filter);
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err().to_string(), "Invalid page size");
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+                page_size: Some(StarknetEventsTable::PAGE_SIZE_LIMIT + 1),
+                page_number: Some(0),
+            };
+            let result = StarknetEventsTable::get_events(&connection, &filter);
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err().to_string(), "Invalid page size");
+        }
+
+        #[test]
+        fn get_events_by_key_with_paging() {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            let emitted_events = setup(&connection);
+
+            let expected_events = &emitted_events[27..31];
+            let keys_for_expected_events: Vec<_> =
+                expected_events.iter().map(|e| e.keys[0]).collect();
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: keys_for_expected_events.clone(),
+                page_size: Some(2),
+                page_number: Some(0),
+            };
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, &expected_events[..2]);
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: keys_for_expected_events.clone(),
+                page_size: Some(2),
+                page_number: Some(1),
+            };
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, &expected_events[2..4]);
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: keys_for_expected_events,
+                page_size: Some(2),
+                page_number: Some(2),
+            };
+            let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
+            assert_eq!(events, &expected_events[4..]);
         }
     }
 

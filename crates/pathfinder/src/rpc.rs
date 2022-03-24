@@ -2369,6 +2369,152 @@ mod tests {
                     }
                 );
             }
+
+            #[tokio::test]
+            async fn get_events_with_invalid_pagination_request() {
+                let (storage, _events) = setup();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let params = rpc_params!(EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: vec![],
+                    page_size: Some(1),
+                    page_number: None,
+                });
+                let error = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap_err();
+                assert_matches!(
+                    error,
+                    Error::Request(s) => assert_eq!(get_err(&s).1, "Internal error: Invalid pagination request")
+                );
+            }
+
+            #[tokio::test]
+            async fn get_events_with_invalid_page_size() {
+                let (storage, _events) = setup();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let params = rpc_params!(EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: vec![],
+                    page_size: Some(0),
+                    page_number: Some(0),
+                });
+                let error = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap_err();
+                assert_matches!(
+                    error,
+                    Error::Request(s) => assert_eq!(get_err(&s).1, "Internal error: Invalid page size")
+                );
+            }
+
+            #[tokio::test]
+            async fn get_events_by_key_with_paging() {
+                let (storage, events) = setup();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let expected_events = &events[27..31];
+                let keys_for_expected_events: Vec<_> =
+                    expected_events.iter().map(|e| e.keys[0]).collect();
+
+                let params = rpc_params!(EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: keys_for_expected_events.clone(),
+                    page_size: Some(2),
+                    page_number: Some(0),
+                });
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: expected_events[..2].to_vec(),
+                        page_number: 0
+                    }
+                );
+
+                let params = rpc_params!(EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: keys_for_expected_events.clone(),
+                    page_size: Some(2),
+                    page_number: Some(1),
+                });
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: expected_events[2..4].to_vec(),
+                        page_number: 1
+                    }
+                );
+
+                let params = rpc_params!(EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: keys_for_expected_events.clone(),
+                    page_size: Some(2),
+                    page_number: Some(2),
+                });
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: expected_events[4..].to_vec(),
+                        page_number: 2
+                    }
+                );
+
+                // nonexistent page
+                let params = rpc_params!(EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: keys_for_expected_events.clone(),
+                    page_size: Some(2),
+                    page_number: Some(3),
+                });
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: vec![],
+                        page_number: 3
+                    }
+                );
+            }
         }
 
         mod named_args {
