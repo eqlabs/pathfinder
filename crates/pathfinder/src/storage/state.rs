@@ -659,6 +659,8 @@ pub struct StarknetEventFilter {
     pub to_block: Option<StarknetBlockNumber>,
     pub contract_address: Option<ContractAddress>,
     pub keys: Vec<EventKey>,
+    pub page_size: Option<usize>,
+    pub page_number: Option<usize>,
 }
 
 impl From<crate::rpc::types::request::EventFilter> for StarknetEventFilter {
@@ -668,20 +670,8 @@ impl From<crate::rpc::types::request::EventFilter> for StarknetEventFilter {
             to_block: filter.to_block,
             contract_address: filter.address,
             keys: filter.keys,
-        }
-    }
-}
-
-pub struct StarknetResultPageRequest {
-    pub page_size: usize,
-    pub page_number: usize,
-}
-
-impl From<crate::rpc::types::request::ResultPageRequest> for StarknetResultPageRequest {
-    fn from(page_request: crate::rpc::types::request::ResultPageRequest) -> Self {
-        Self {
-            page_size: page_request.page_size,
-            page_number: page_request.page_number,
+            page_size: filter.page_size,
+            page_number: filter.page_number,
         }
     }
 }
@@ -1698,6 +1688,8 @@ mod tests {
                 contract_address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
                 keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
+                page_size: None,
+                page_number: None,
             };
 
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
@@ -1717,6 +1709,8 @@ mod tests {
                 to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: vec![],
+                page_size: None,
+                page_number: None,
             };
 
             let expected_events = &emitted_events
@@ -1738,6 +1732,8 @@ mod tests {
                 to_block: Some(StarknetBlockNumber(UNTIL_BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: vec![],
+                page_size: None,
+                page_number: None,
             };
 
             let expected_events =
@@ -1759,6 +1755,8 @@ mod tests {
                 to_block: None,
                 contract_address: None,
                 keys: vec![],
+                page_size: None,
+                page_number: None,
             };
 
             let expected_events = &emitted_events[TRANSACTIONS_PER_BLOCK * FROM_BLOCK_NUMBER..];
@@ -1780,6 +1778,8 @@ mod tests {
                 to_block: None,
                 contract_address: Some(expected_event.from_address),
                 keys: vec![],
+                page_size: None,
+                page_number: None,
             };
 
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
@@ -1799,6 +1799,8 @@ mod tests {
                 to_block: None,
                 contract_address: None,
                 keys: vec![expected_event.keys[0]],
+                page_size: None,
+                page_number: None,
             };
 
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
@@ -1817,6 +1819,8 @@ mod tests {
                 to_block: None,
                 contract_address: None,
                 keys: vec![],
+                page_size: None,
+                page_number: None,
             };
 
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
@@ -1903,12 +1907,16 @@ mod tests {
             from_block: None,
             to_block: None,
             keys: vec![event0_key],
+            page_size: None,
+            page_number: None,
         };
         let filter1 = StarknetEventFilter {
             contract_address: None,
             from_block: None,
             to_block: None,
             keys: vec![event1_key],
+            page_size: None,
+            page_number: None,
         };
         assert_eq!(
             StarknetEventsTable::get_events(&connection, &filter0).unwrap(),

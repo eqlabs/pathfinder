@@ -106,15 +106,10 @@ pub mod request {
         #[serde(default)]
         pub keys: Vec<EventKey>,
 
-        #[serde(flatten)]
-        pub pagination: Option<ResultPageRequest>,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
-    pub struct ResultPageRequest {
-        pub page_size: usize,
-        pub page_number: usize,
+        // These are inlined here because serde flatten and deny_unknown_fields
+        // don't work together.
+        pub page_size: Option<usize>,
+        pub page_number: Option<usize>,
     }
 }
 

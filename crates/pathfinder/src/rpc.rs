@@ -2288,7 +2288,8 @@ mod tests {
                     to_block: None,
                     address: None,
                     keys: vec![],
-                    pagination: None,
+                    page_size: None,
+                    page_number: None,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2319,7 +2320,8 @@ mod tests {
                     address: Some(expected_event.from_address),
                     // we're using a key which is present in _all_ events
                     keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
-                    pagination: None,
+                    page_size: None,
+                    page_number: None,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2349,7 +2351,8 @@ mod tests {
                     to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
                     address: None,
                     keys: vec![],
-                    pagination: None,
+                    page_size: None,
+                    page_number: None,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
