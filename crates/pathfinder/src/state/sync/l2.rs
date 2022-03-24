@@ -58,15 +58,11 @@ pub async fn sync(
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash)>,
 ) -> anyhow::Result<()> {
     'outer: loop {
-        eprintln!("A");
-
         // Get the next block from L2.
         let (next, head_hash) = match head {
             Some((number, hash)) => (number + 1, Some(hash)),
             None => (StarknetBlockNumber::GENESIS, None),
         };
-
-        eprintln!("sync next {}", next.0);
 
         let t_block = std::time::Instant::now();
         let block = loop {
@@ -95,8 +91,6 @@ pub async fn sync(
             }
         }
 
-        eprintln!("B");
-
         // unwrap is safe as the block hash always exists (unless we query for pending).
         let t_update = std::time::Instant::now();
         let state_update = sequencer
@@ -110,8 +104,6 @@ pub async fn sync(
             .await
             .with_context(|| format!("Deploying new contracts for block {:?}", next))?;
         let t_deploy = t_deploy.elapsed();
-
-        eprintln!("C");
 
         // Map from sequencer type to the actual type... we should declutter these types.
         let deployed_contracts = state_update
@@ -163,8 +155,6 @@ pub async fn sync(
             .send(Event::Update(block, update, timings))
             .await
             .context("Event channel closed")?;
-
-        eprintln!("D");
     }
 }
 
@@ -181,8 +171,6 @@ async fn download_block(
 ) -> anyhow::Result<DownloadBlock> {
     use sequencer::error::StarknetErrorCode::BlockNotFound;
 
-    eprintln!("downloading block {}", block_number.0);
-
     let result = sequencer.block_by_number(block_number.into()).await;
 
     match result {
@@ -195,11 +183,6 @@ async fn download_block(
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
                 .await
                 .context("Query sequencer for latest block")?;
-
-            eprintln!(
-                "downloading block latest {}",
-                latest.block_number.unwrap().0
-            );
 
             if latest.block_number.unwrap() + 1 == block_number {
                 match prev_block_hash {
@@ -233,15 +216,11 @@ async fn reorg(
     let mut reorg_tail = head;
 
     let new_head = loop {
-        eprintln!("reorg tail = {}", reorg_tail.0 .0);
-
         if reorg_tail.0 == StarknetBlockNumber::GENESIS {
             break None;
         }
 
         let previous_block_number = reorg_tail.0 - 1;
-
-        eprintln!("previous_block_number = {}", previous_block_number.0);
 
         let (tx, rx) = oneshot::channel();
         tx_event
@@ -362,9 +341,6 @@ async fn download_and_compress_contract(
     let (contract_definition, abi, bytecode, hash) = extract
         .await
         .context("Parse contract definition and compute hash")??;
-
-    eprintln!("{}", contract.contract_hash.0);
-    eprintln!("{}", hash.0);
 
     // Sanity check.
     anyhow::ensure!(
