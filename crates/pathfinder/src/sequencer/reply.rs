@@ -9,8 +9,8 @@ use crate::{
 use serde::Deserialize;
 use serde_with::serde_as;
 
-/// Used to deserialize replies to [Client::block_by_hash](crate::sequencer::Client::block_by_hash) and
-/// [Client::block_by_number](crate::sequencer::Client::block_by_number).
+/// Used to deserialize replies to [ClientApi::block_by_hash](crate::sequencer::ClientApi::block_by_hash) and
+/// [ClientApi::block_by_number](crate::sequencer::ClientApi::block_by_number).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
@@ -49,7 +49,7 @@ pub enum Status {
     Aborted,
 }
 
-/// Used to deserialize a reply from [Client::call](crate::sequencer::Client::call).
+/// Used to deserialize a reply from [ClientApi::call](crate::sequencer::ClientApi::call).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Call {
@@ -72,7 +72,7 @@ pub mod call {
     }
 }
 
-/// Used to deserialize replies to [Client::transaction](crate::sequencer::Client::transaction).
+/// Used to deserialize replies to [ClientApi::transaction](crate::sequencer::ClientApi::transaction).
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -88,7 +88,7 @@ pub struct Transaction {
     pub transaction_index: Option<u64>,
 }
 
-/// Used to deserialize replies to [Client::transaction_status](crate::sequencer::Client::transaction_status).
+/// Used to deserialize replies to [ClientApi::transaction_status](crate::sequencer::ClientApi::transaction_status).
 #[serde_as]
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -274,7 +274,7 @@ pub mod transaction {
 }
 
 /// Used to deserialize a reply from
-/// [`Client::state_update_by_hash`](crate::sequencer::Client::state_update_by_hash).
+/// [ClientApi::state_update_by_hash](crate::sequencer::ClientApi::state_update_by_hash).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct StateUpdate {
     // At the moment when querying by block hash there is an additional `block_hash` field available.
@@ -318,7 +318,7 @@ pub mod state_update {
     }
 }
 
-/// Used to deserialize a reply from [Client::eth_contract_addresses](crate::sequencer::Client::eth_contract_addresses).
+/// Used to deserialize a reply from [ClientApi::eth_contract_addresses](crate::sequencer::ClientApi::eth_contract_addresses).
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
