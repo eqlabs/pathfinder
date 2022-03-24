@@ -417,23 +417,6 @@ mod tests {
         use pedersen::StarkHash;
         use std::collections::HashMap;
 
-        //
-        // TODO
-        //
-        // happy path from genesis
-        //            resumed
-        //
-        // reorg    at genesis   at head
-        //                       at head minus 1
-        //                       at head minus 2 (?)
-        //          > genesis    at head
-        //                       at head minus 1
-        //                       at head minus 2 (?)
-        //
-        //
-        //          parent hash mismatch
-        //
-
         const DEF0: &str = r#"{
             "abi": [],
             "program": {
