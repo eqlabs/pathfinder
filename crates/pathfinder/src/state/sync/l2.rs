@@ -1570,6 +1570,30 @@ mod tests {
                     assert!(state_update.contract_updates.is_empty());
                 });
             }
+
+            #[tokio::test]
+            async fn shutdown() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                // Closing the event's channel should trigger the sync to exit with error after the first send.
+                rx_event.close();
+
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
+
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
+                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+
+                // Run the UUT
+                let jh = tokio::spawn(sync(tx_event, mock, None));
+
+                // Wrap this in a timeout so we don't wait forever in case of test failure.
+                // Right now closing the channel causes an error.
+                tokio::time::timeout(std::time::Duration::from_secs(2), jh)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .unwrap_err();
+            }
         }
     }
 }
