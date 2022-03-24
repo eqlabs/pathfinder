@@ -207,10 +207,10 @@ pub mod transaction {
     #[serde(deny_unknown_fields)]
     pub struct Event {
         #[serde_as(as = "Vec<EventDataAsDecimalStr>")]
-        data: Vec<EventData>,
-        from_address: ContractAddress,
+        pub data: Vec<EventData>,
+        pub from_address: ContractAddress,
         #[serde_as(as = "Vec<EventKeyAsDecimalStr>")]
-        keys: Vec<EventKey>,
+        pub keys: Vec<EventKey>,
     }
 
     /// Represents deserialized object containing L2 contract address and transaction type.

@@ -51,7 +51,7 @@ pub enum BlockNumberOrTag {
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use crate::{
-        core::{CallParam, ContractAddress, EntryPoint},
+        core::{CallParam, ContractAddress, EntryPoint, EventKey, StarknetBlockNumber},
         rpc::serde::H256AsNoLeadingZerosHexStr,
     };
     use serde::{Deserialize, Serialize};
@@ -92,6 +92,30 @@ pub mod request {
             BlockResponseScope::TransactionHashes
         }
     }
+
+    /// Contains event filter parameters passed to `starknet_getEvents`.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct EventFilter {
+        #[serde(default, rename = "fromBlock")]
+        pub from_block: Option<StarknetBlockNumber>,
+        #[serde(default, rename = "toBlock")]
+        pub to_block: Option<StarknetBlockNumber>,
+        #[serde(default)]
+        pub address: Option<ContractAddress>,
+        #[serde(default)]
+        pub keys: Vec<EventKey>,
+
+        #[serde(flatten)]
+        pub pagination: Option<ResultPageRequest>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct ResultPageRequest {
+        pub page_size: usize,
+        pub page_number: usize,
+    }
 }
 
 /// Groups all strictly output types of the RPC API.
@@ -100,8 +124,8 @@ pub mod reply {
     use super::request::BlockResponseScope;
     use crate::{
         core::{
-            CallParam, ContractAddress, EntryPoint, GlobalRoot, StarknetBlockHash,
-            StarknetBlockNumber, StarknetTransactionHash,
+            CallParam, ContractAddress, EntryPoint, EventData, EventKey, GlobalRoot,
+            StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
         },
         rpc::api::RawBlock,
         sequencer::reply as seq,
@@ -642,5 +666,38 @@ pub mod reply {
             pub current_block: StarknetBlockHash,
             pub highest_block: StarknetBlockHash,
         }
+    }
+
+    /// Describes an emitted event returned by starknet_getEvents
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct EmittedEvent {
+        pub data: Vec<EventData>,
+        pub keys: Vec<EventKey>,
+        pub from_address: ContractAddress,
+        pub block_hash: StarknetBlockHash,
+        pub block_number: StarknetBlockNumber,
+        pub transaction_hash: StarknetTransactionHash,
+    }
+
+    impl From<crate::storage::StarknetEmittedEvent> for EmittedEvent {
+        fn from(event: crate::storage::StarknetEmittedEvent) -> Self {
+            Self {
+                data: event.data,
+                keys: event.keys,
+                from_address: event.from_address,
+                block_hash: event.block_hash,
+                block_number: event.block_number,
+                transaction_hash: event.transaction_hash,
+            }
+        }
+    }
+
+    // Result type for starknet_getEvents
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct GetEventsResult {
+        pub events: Vec<EmittedEvent>,
+        pub page_number: usize,
     }
 }

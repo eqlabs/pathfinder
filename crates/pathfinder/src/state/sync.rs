@@ -455,8 +455,13 @@ async fn l2_update(
             .into_iter()
             .zip(block.transaction_receipts.into_iter())
             .collect::<Vec<_>>();
-        StarknetTransactionsTable::upsert(&transaction, starknet_block.hash, &transaction_data)
-            .context("Insert transaction data into database")?;
+        StarknetTransactionsTable::upsert(
+            &transaction,
+            starknet_block.hash,
+            starknet_block.number,
+            &transaction_data,
+        )
+        .context("Insert transaction data into database")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
