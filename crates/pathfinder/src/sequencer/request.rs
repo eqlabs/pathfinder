@@ -9,7 +9,7 @@ use crate::{
 use serde::Serialize;
 use std::convert::From;
 
-/// Used to serialize payload for [Client::call](crate::sequencer::Client::call).
+/// Used to serialize payload for [ClientApi::call](crate::sequencer::ClientApi::call).
 #[serde_with::serde_as]
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct Call {

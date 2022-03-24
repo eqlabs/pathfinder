@@ -125,7 +125,8 @@ pub mod reply {
     use crate::{
         core::{
             CallParam, ContractAddress, EntryPoint, EventData, EventKey, GlobalRoot,
-            StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StarknetTransactionHash,
         },
         rpc::api::RawBlock,
         sequencer::reply as seq,
@@ -199,7 +200,7 @@ pub mod reply {
         pub sequencer: H160,
         pub new_root: Option<GlobalRoot>,
         pub old_root: GlobalRoot,
-        pub accepted_time: u64,
+        pub accepted_time: StarknetBlockTimestamp,
         pub transactions: Transactions,
     }
 
@@ -214,7 +215,7 @@ pub mod reply {
                 sequencer: H160::zero(),
                 new_root: Some(block.root),
                 old_root: block.parent_root,
-                accepted_time: block.timestamp.0,
+                accepted_time: block.timestamp,
                 transactions,
             }
         }

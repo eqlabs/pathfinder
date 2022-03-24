@@ -18,6 +18,7 @@ use crate::{
     sequencer::{
         self,
         reply::{self as raw},
+        ClientApi,
     },
     state::SyncState,
     storage::{

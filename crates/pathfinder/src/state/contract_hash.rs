@@ -475,7 +475,9 @@ mod json {
 
         #[tokio::test]
         async fn genesis_contract() {
+            use crate::sequencer::ClientApi;
             use pedersen::StarkHash;
+
             let contract = StarkHash::from_hex_str(
                 "0x0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3",
             )
@@ -499,7 +501,7 @@ mod json {
             // we now need to ignore if empty).
             use super::super::extract_abi_code_hash;
             use crate::core::{ContractAddress, ContractHash};
-            use crate::sequencer;
+            use crate::sequencer::{self, ClientApi};
             use pedersen::StarkHash;
 
             // Known contract which triggered a hash mismatch failure.

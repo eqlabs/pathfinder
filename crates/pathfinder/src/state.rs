@@ -18,7 +18,7 @@ mod sync;
 pub use contract_hash::compute_contract_hash;
 pub use sync::{sync, State as SyncState};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct CompressedContract {
     pub abi: Vec<u8>,
     pub bytecode: Vec<u8>,
