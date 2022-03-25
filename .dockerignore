@@ -1,1 +1,8 @@
-Dockerfile
+# Don't ignore this, because it being missing would interfere with -dirty in `git describe`.
+# Dockerfile
+# rust temporary files
+target/
+# database files
+*.sqlite
+# compressed database dump files
+*.zst

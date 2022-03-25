@@ -4,6 +4,7 @@ version = "0.1.6"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.58"
+build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
@@ -56,3 +57,6 @@ tempfile = "3"
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tracing-test = "0.2.1"
 warp = "0.3.2"
+
+[build-dependencies]
+vergen = { version = "7", default-features = false, features = ["git"] }

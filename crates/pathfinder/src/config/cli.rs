@@ -1,5 +1,5 @@
 //! Command-line argument parsing
-use clap::{crate_version, Arg};
+use clap::Arg;
 use std::ffi::OsString;
 
 use crate::config::builder::ConfigBuilder;
@@ -60,7 +60,7 @@ fn clap_app() -> clap::App<'static, 'static> {
             format!("HTTP-RPC listening address [default: {}]", DEFAULT_HTTP_RPC_ADDR);
     }
 
-    let version = concat!(crate_version!(), "-alpha");
+    let version = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT");
     clap::App::new("Pathfinder")
         .version(version)
         .about("A StarkNet node implemented by Equilibrium. Submit bug reports and issues at https://github.com/eqlabs/pathfinder.")
