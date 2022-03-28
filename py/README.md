@@ -33,6 +33,10 @@ $ PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
 
 That is currently the only list we have, and it doesn't have too large extras.
 
+### Upgrading dependencies
+
+Re-use the `PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt` to upgrade the virtual environment.
+
 ## Testing
 
 Inside the virtual environment, in the same directory as this README, after installing all of the dependencies:

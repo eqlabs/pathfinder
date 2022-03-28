@@ -19,11 +19,19 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     # stderr should not be used
 
+    if not check_cairolang_version():
+        print(
+            "unexpected cairo-lang version: please reinstall dependencies to upgrade.",
+            flush=True,
+        )
+        sys.exit(1)
+
     with sqlite3.connect(db) as connection:
         connection.isolation_level = None
 
         connection.execute("BEGIN")
         if not check_schema(connection):
+            print("unexpected database schema version at start.", flush=True)
             sys.exit(1)
         connection.rollback()
 
@@ -32,6 +40,13 @@ def main():
         # if it didn't add the newline to the written out string.
         print("ready", flush=True)
         do_loop(connection, sys.stdin, sys.stdout)
+
+
+def check_cairolang_version():
+    import pkg_resources
+
+    version = pkg_resources.get_distribution("cairo-lang").version
+    return version == "0.8.0"
 
 
 def do_loop(connection, input_gen, output_file):
