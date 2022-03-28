@@ -10,9 +10,9 @@ WORKDIR /usr/src/pathfinder
 # Build only the dependencies first. This utilizes
 # container layer caching for Rust builds
 RUN mkdir crates
-RUN cargo new --lib crates/pedersen
+RUN cargo new --lib --vcs none crates/pedersen
 # Correct: --lib. We'll handle the binary later.
-RUN cargo new --lib crates/pathfinder
+RUN cargo new --lib --vcs none crates/pathfinder
 COPY Cargo.toml Cargo.toml
 
 COPY crates/pathfinder/Cargo.toml crates/pathfinder/Cargo.toml
