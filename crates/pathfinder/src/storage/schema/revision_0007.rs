@@ -194,6 +194,7 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
                 keys TEXT,
                 data BLOB,
                 FOREIGN KEY(block_number) REFERENCES starknet_blocks(number)
+                ON DELETE CASCADE
             );
 
             -- Event filters can specify ranges of blocks
