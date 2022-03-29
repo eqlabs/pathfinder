@@ -939,7 +939,10 @@ impl ContractsStateTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::Storage;
+    use crate::{
+        sequencer::reply::transaction::{Event, Transaction},
+        storage::Storage,
+    };
 
     mod contracts {
         use super::*;
@@ -1817,5 +1820,106 @@ mod tests {
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
             assert_eq!(events, emitted_events);
         }
+    }
+
+    #[test]
+    fn revision7_l2_reorg_regression() {
+        let storage = Storage::in_memory().unwrap();
+        let connection = storage.connection().unwrap();
+
+        let block0_number = StarknetBlockNumber(0);
+        let block1_number = StarknetBlockNumber(1);
+        let block0_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap());
+        let block0 = StarknetBlock {
+            hash: block0_hash,
+            number: block0_number,
+            root: GlobalRoot(StarkHash::from_be_slice(b"root 0").unwrap()),
+            timestamp: StarknetBlockTimestamp(0),
+        };
+        let block1 = StarknetBlock {
+            hash: StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap()),
+            number: block1_number,
+            root: GlobalRoot(StarkHash::from_be_slice(b"root 1").unwrap()),
+            timestamp: StarknetBlockTimestamp(1),
+        };
+        let contract0_address =
+            ContractAddress(StarkHash::from_be_slice(b"contract 0 address").unwrap());
+        let contract1_address =
+            ContractAddress(StarkHash::from_be_slice(b"contract 1 address").unwrap());
+        let transaction0_hash =
+            StarknetTransactionHash(StarkHash::from_be_slice(b"transaction 0 hash").unwrap());
+        let transaction0 = Transaction {
+            calldata: None,
+            constructor_calldata: None,
+            contract_address: contract0_address,
+            contract_address_salt: None,
+            entry_point_selector: None,
+            entry_point_type: None,
+            max_fee: None,
+            signature: None,
+            transaction_hash: transaction0_hash,
+            r#type: transaction::Type::Deploy,
+        };
+        let mut transaction1 = transaction0.clone();
+        transaction1.transaction_hash =
+            StarknetTransactionHash(StarkHash::from_be_slice(b"transaction 1 hash").unwrap());
+        let event0_key = EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap());
+        let event1_key = EventKey(StarkHash::from_be_slice(b"event 1 key").unwrap());
+        let event0_data = EventData(StarkHash::from_be_slice(b"event 0 data").unwrap());
+        let event0 = Event {
+            data: vec![event0_data],
+            from_address: contract0_address,
+            keys: vec![event0_key],
+        };
+        let event1 = Event {
+            data: vec![EventData(
+                StarkHash::from_be_slice(b"event 1 data").unwrap(),
+            )],
+            from_address: contract1_address,
+            keys: vec![event1_key],
+        };
+
+        StarknetBlocksTable::insert(&connection, &block0).unwrap();
+        StarknetEventsTable::insert_events(&connection, block0_number, &transaction0, &[event0])
+            .unwrap();
+        StarknetBlocksTable::insert(&connection, &block1).unwrap();
+        StarknetEventsTable::insert_events(&connection, block1_number, &transaction1, &[event1])
+            .unwrap();
+
+        // UUT
+        StarknetBlocksTable::reorg(&connection, block1_number).unwrap();
+
+        assert_eq!(
+            StarknetBlocksTable::get_latest_number(&connection)
+                .unwrap()
+                .unwrap(),
+            block0_number
+        );
+        let filter0 = StarknetEventFilter {
+            contract_address: None,
+            from_block: None,
+            to_block: None,
+            keys: vec![event0_key],
+        };
+        let filter1 = StarknetEventFilter {
+            contract_address: None,
+            from_block: None,
+            to_block: None,
+            keys: vec![event1_key],
+        };
+        assert_eq!(
+            StarknetEventsTable::get_events(&connection, &filter0).unwrap(),
+            vec![StarknetEmittedEvent {
+                block_hash: block0_hash,
+                block_number: block0_number,
+                data: vec![event0_data],
+                from_address: contract0_address,
+                keys: vec![event0_key],
+                transaction_hash: transaction0_hash,
+            }]
+        );
+        assert!(StarknetEventsTable::get_events(&connection, &filter1)
+            .unwrap()
+            .is_empty());
     }
 }
