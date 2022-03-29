@@ -12,7 +12,7 @@ use crate::{
         Chain,
     },
     rpc::types::reply::syncing,
-    sequencer::{self, reply::Block, ClientApi},
+    sequencer::{self, reply::Block},
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
@@ -45,7 +45,7 @@ pub async fn sync(
     storage: Storage,
     transport: Web3<Http>,
     chain: Chain,
-    sequencer: sequencer::Client,
+    sequencer: impl sequencer::ClientApi + Clone + Send + Sync + 'static,
     state: Arc<State>,
 ) -> anyhow::Result<()> {
     // TODO: should this be owning a Storage, or just take in a Connection?
@@ -294,7 +294,7 @@ pub async fn sync(
 /// Periodically updates sync state with the latest block height.
 async fn update_sync_status_latest(
     state: Arc<State>,
-    sequencer: sequencer::Client,
+    sequencer: impl sequencer::ClientApi,
     starting_block: StarknetBlockHash,
 ) -> anyhow::Result<()> {
     use crate::rpc::types::{BlockNumberOrTag, Tag};
@@ -557,4 +557,10 @@ fn deploy_contract(
         .context("Insert constract state hash into contracts state table")?;
     ContractsTable::upsert(transaction, contract.address, contract.hash)
         .context("Inserting contract hash into contracts table")
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn happy_path() {}
 }
