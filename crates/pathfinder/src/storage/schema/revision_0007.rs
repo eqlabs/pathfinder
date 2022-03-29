@@ -193,7 +193,7 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
                 -- Keys are represented as base64 encoded strings separated by space
                 keys TEXT,
                 data BLOB,
-                FOREIGN KEY(block_number) REFERENCES starknet_blocks(number)
+                FOREIGN KEY(block_number) REFERENCES starknet_blocks(number) ON DELETE CASCADE
             );
 
             -- Event filters can specify ranges of blocks
