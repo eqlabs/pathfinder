@@ -48,6 +48,8 @@ async fn main() -> anyhow::Result<()> {
         network_chain,
         sequencer.clone(),
         sync_state.clone(),
+        state::l1_sync,
+        state::l2_sync,
     ));
 
     // TODO: the error could be recovered, but currently it's required for startup. There should

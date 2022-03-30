@@ -31,7 +31,7 @@ pub enum Event {
 
 /// Syncs L1 state update logs. Emits [sync events](Event) which should be handled
 /// to update storage and respond to queries.
-pub(super) async fn sync(
+pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     transport: Web3<Http>,
     chain: Chain,

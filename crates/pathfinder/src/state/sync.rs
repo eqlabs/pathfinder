@@ -1,8 +1,7 @@
 mod l1;
 mod l2;
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::{future::Future, sync::Arc, time::Duration};
 
 use crate::{
     core::{ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
@@ -11,7 +10,7 @@ use crate::{
         state_update::{DeployedContract, StateUpdate},
         Chain,
     },
-    rpc::types::reply::syncing,
+    rpc::types::reply::{syncing, Syncing as SyncStatus},
     sequencer::{self, reply::Block},
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
@@ -21,13 +20,14 @@ use crate::{
     },
 };
 
+pub use l1::sync as l1_sync;
+pub use l2::sync as l2_sync;
+
 use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{Connection, Transaction};
 use tokio::sync::{mpsc, RwLock};
-use web3::{transports::Http, Web3};
-
-use crate::rpc::types::reply::Syncing as SyncStatus;
+use web3::Web3;
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
@@ -41,13 +41,29 @@ impl Default for State {
     }
 }
 
-pub async fn sync(
+pub async fn sync<Web3Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
-    transport: Web3<Http>,
+    transport: Web3<Web3Transport>,
     chain: Chain,
-    sequencer: impl sequencer::ClientApi + Clone + Send + Sync + 'static,
+    sequencer: SequencerClient,
     state: Arc<State>,
-) -> anyhow::Result<()> {
+    l1_sync: L1Sync,
+    l2_sync: L2Sync,
+) -> anyhow::Result<()>
+where
+    Web3Transport: web3::Transport,
+    SequencerClient: sequencer::ClientApi + Clone + Send + Sync + 'static,
+    F1: Future<Output = anyhow::Result<()>> + Send + 'static,
+    F2: Future<Output = anyhow::Result<()>> + Send + 'static,
+    L1Sync: FnOnce(mpsc::Sender<l1::Event>, Web3<Web3Transport>, Chain, Option<StateUpdateLog>) -> F1
+        + Copy,
+    L2Sync: FnOnce(
+            mpsc::Sender<l2::Event>,
+            SequencerClient,
+            Option<(StarknetBlockNumber, StarknetBlockHash)>,
+        ) -> F2
+        + Copy,
+{
     // TODO: should this be owning a Storage, or just take in a Connection?
     let mut db_conn = storage
         .connection()
@@ -76,8 +92,8 @@ pub async fn sync(
     ));
 
     // Start L1 and L2 sync processes.
-    let mut l1_handle = tokio::spawn(l1::sync(tx_l1, transport.clone(), chain, l1_head));
-    let mut l2_handle = tokio::spawn(l2::sync(tx_l2, sequencer.clone(), l2_head));
+    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, transport.clone(), chain, l1_head));
+    let mut l2_handle = tokio::spawn(l2_sync(tx_l2, sequencer.clone(), l2_head));
 
     let mut existed = (0, 0);
 
@@ -154,7 +170,7 @@ pub async fn sync(
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    l1_handle = tokio::spawn(l1::sync(new_tx, transport.clone(), chain, l1_head));
+                    l1_handle = tokio::spawn(l1_sync(new_tx, transport.clone(), chain, l1_head));
                     tracing::info!("L1 sync process restarted.")
                 },
             },
@@ -283,7 +299,7 @@ pub async fn sync(
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    l2_handle = tokio::spawn(l2::sync(new_tx, sequencer.clone(), l2_head));
+                    l2_handle = tokio::spawn(l2_sync(new_tx, sequencer.clone(), l2_head));
                     tracing::info!("L2 sync process restarted.");
                 }
             }
@@ -557,10 +573,4 @@ fn deploy_contract(
         .context("Insert constract state hash into contracts state table")?;
     ContractsTable::upsert(transaction, contract.address, contract.hash)
         .context("Inserting contract hash into contracts table")
-}
-
-#[cfg(test)]
-mod tests {
-    #[tokio::test]
-    async fn happy_path() {}
 }
