@@ -574,3 +574,56 @@ fn deploy_contract(
     ContractsTable::upsert(transaction, contract.address, contract.hash)
         .context("Inserting contract hash into contracts table")
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{sequencer, state, storage::Storage};
+    use futures::future::BoxFuture;
+    use jsonrpc_core::{Call, Value};
+    use std::sync::Arc;
+    use web3::{error, RequestId, Transport, Web3};
+
+    // Satisfies the sync() api, not really called anywhere in the tests
+    #[derive(Debug, Clone)]
+    struct FakeTransport;
+
+    impl Transport for FakeTransport {
+        type Out = BoxFuture<'static, error::Result<Value>>;
+
+        fn prepare(&self, _method: &str, _params: Vec<Value>) -> (RequestId, Call) {
+            unimplemented!()
+        }
+
+        fn send(&self, _id: RequestId, _request: Call) -> Self::Out {
+            unimplemented!()
+        }
+    }
+
+    impl Clone for sequencer::MockClientApi {
+        // Just don't crash
+        fn clone(&self) -> Self {
+            sequencer::MockClientApi::new()
+        }
+    }
+
+    #[tokio::test]
+    async fn noop_test() {
+        let chain = crate::ethereum::Chain::Goerli;
+        let storage = Storage::in_memory().unwrap();
+        let sequencer = sequencer::MockClientApi::new();
+        let sync_state = Arc::new(state::SyncState::default());
+
+        let l1 = |_, _, _, _| async { Ok(()) };
+        let l2 = |_, _, _| async { Ok(()) };
+
+        let _sync_handle = tokio::spawn(state::sync(
+            storage,
+            Web3::new(FakeTransport),
+            chain,
+            sequencer,
+            sync_state,
+            l1,
+            l2,
+        ));
+    }
+}
