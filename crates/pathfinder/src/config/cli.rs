@@ -26,14 +26,14 @@ pub fn parse_cmd_line() -> (Option<String>, ConfigBuilder) {
     }
 }
 
-/// A wrapper around [clap::App]'s `get_matches_from_safe()` which returns
+/// A wrapper around [clap::Command]'s `get_matches_from_safe()` which returns
 /// a [ConfigOption].
 fn parse_args<I, T>(args: I) -> clap::Result<(Option<String>, ConfigBuilder)>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let args = clap_app().get_matches_from_safe(args)?;
+    let args = clap_app().try_get_matches_from(args)?;
 
     let config_filepath = args.value_of(CONFIG_KEY).map(|s| s.to_owned());
     let ethereum_url = args.value_of(ETH_URL_KEY).map(|s| s.to_owned());
@@ -50,10 +50,10 @@ where
     Ok((config_filepath, cfg))
 }
 
-/// Defines our command-line interface using [clap::App].
+/// Defines our command-line interface using [clap::Command].
 ///
 /// Sets the argument names, help strings etc.
-fn clap_app() -> clap::App<'static, 'static> {
+fn clap_app() -> clap::Command<'static> {
     use super::DEFAULT_HTTP_RPC_ADDR;
     lazy_static::lazy_static! {
         static ref HTTP_RPC_HELP: String =
@@ -61,33 +61,33 @@ fn clap_app() -> clap::App<'static, 'static> {
     }
 
     let version = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT");
-    clap::App::new("Pathfinder")
+    clap::Command::new("Pathfinder")
         .version(version)
         .about("A StarkNet node implemented by Equilibrium. Submit bug reports and issues at https://github.com/eqlabs/pathfinder.")
         .arg(
-            Arg::with_name(CONFIG_KEY)
-                .short("c")
+            Arg::new(CONFIG_KEY)
+                .short('c')
                 .long(CONFIG_KEY)
                 .help("Path to the configuration file.")
                 .value_name("FILE")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name(ETH_USER_KEY)
+            Arg::new(ETH_USER_KEY)
                 .long(ETH_USER_KEY)
                 .help("Ethereum API user")
                 .takes_value(true)
                 .long_help("The optional user to use for the Ethereum API"),
         )
         .arg(
-            Arg::with_name(ETH_PASS_KEY)
+            Arg::new(ETH_PASS_KEY)
                 .long(ETH_PASS_KEY)
                 .help("Ethereum API password")
                 .takes_value(true)
                 .long_help("The optional password to use for the Ethereum API"),
         )
         .arg(
-            Arg::with_name(ETH_URL_KEY)
+            Arg::new(ETH_URL_KEY)
                 .long(ETH_URL_KEY)
                 .help("Ethereum API endpoint")
                 .takes_value(true)
@@ -97,9 +97,9 @@ Examples:
     infura: https://goerli.infura.io/v3/<PROJECT_ID>
     geth:   https://localhost:8545"))
         .arg(
-            Arg::with_name(HTTP_RPC_ADDR_KEY)
+            Arg::new(HTTP_RPC_ADDR_KEY)
                 .long(HTTP_RPC_ADDR_KEY)
-                .help(&HTTP_RPC_HELP)
+                .help(HTTP_RPC_HELP.as_ref())
                 .takes_value(true)
                 .value_name("IP:PORT")
         )
