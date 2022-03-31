@@ -16,7 +16,7 @@ pub(crate) mod state_tree;
 mod sync;
 
 pub use contract_hash::compute_contract_hash;
-pub use sync::{l1_sync, l2_sync, sync, State as SyncState};
+pub use sync::{l1, l2, sync, State as SyncState};
 
 #[derive(Clone, PartialEq)]
 pub struct CompressedContract {
@@ -473,8 +473,8 @@ mod tests {
             chain,
             sequencer,
             state,
-            sync::l1_sync,
-            sync::l2_sync,
+            sync::l1::sync,
+            sync::l2::sync,
         )
         .await
         .unwrap();

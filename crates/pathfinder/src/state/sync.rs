@@ -1,5 +1,5 @@
-mod l1;
-mod l2;
+pub mod l1;
+pub mod l2;
 
 use std::{future::Future, sync::Arc, time::Duration};
 
@@ -19,9 +19,6 @@ use crate::{
         StarknetTransactionsTable, Storage,
     },
 };
-
-pub use l1::sync as l1_sync;
-pub use l2::sync as l2_sync;
 
 use anyhow::Context;
 use pedersen::StarkHash;
