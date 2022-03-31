@@ -589,12 +589,12 @@ mod tests {
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
         sequencer::{self, error::SequencerError, reply, request},
         state,
-        storage::{self, RefsTable, StarknetBlocksTable, Storage},
+        storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
     use futures::{future::BoxFuture, stream::TryStreamExt};
     use jsonrpc_core::{Call, Value};
     use pedersen::StarkHash;
-    use std::sync::Arc;
+    use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
     use web3::{error, types::H256, RequestId, Transport, Web3};
 
@@ -626,16 +626,7 @@ mod tests {
             &self,
             _: BlockNumberOrTag,
         ) -> Result<reply::Block, sequencer::error::SequencerError> {
-            Ok(sequencer::reply::Block {
-                block_hash: Some(StarknetBlockHash(StarkHash::ZERO)),
-                block_number: Some(StarknetBlockNumber(0)),
-                parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-                state_root: None,
-                status: sequencer::reply::Status::Pending,
-                timestamp: crate::core::StarknetBlockTimestamp(0),
-                transaction_receipts: vec![],
-                transactions: vec![],
-            })
+            Ok(BLOCK.clone())
         }
 
         async fn block_by_hash(&self, _: BlockHashOrTag) -> Result<reply::Block, SequencerError> {
@@ -715,13 +706,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l1_update() {
-        let chain = ethereum::Chain::Goerli;
-        let sync_state = Arc::new(state::SyncState::default());
-
-        // Incoming L1 update factory
-        let update = || ethereum::log::StateUpdateLog {
+    lazy_static::lazy_static! {
+        pub static ref STATE_UPDATE_LOG: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber(0),
             global_root: GlobalRoot(StarkHash::ZERO),
             origin: ethereum::EthOrigin {
@@ -736,10 +722,29 @@ mod tests {
                 },
             },
         };
-        // A simple L1 sync task mock
+        pub static ref BLOCK: reply::Block = reply::Block {
+            block_hash: Some(StarknetBlockHash(StarkHash::ZERO)),
+            block_number: Some(StarknetBlockNumber(0)),
+            parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+            state_root: Some(GlobalRoot(StarkHash::ZERO)),
+            status: reply::Status::Pending,
+            timestamp: crate::core::StarknetBlockTimestamp(0),
+            transaction_receipts: vec![],
+            transactions: vec![],
+        };
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l1_update() {
+        let chain = ethereum::Chain::Goerli;
+        let sync_state = Arc::new(state::SyncState::default());
+
+        // Incoming L1 update
+        let update = || STATE_UPDATE_LOG.clone();
+        // A simple L1 sync task
         let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
             tx.send(l1::Event::Update(vec![update()])).await.unwrap();
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())
         };
 
@@ -755,12 +760,12 @@ mod tests {
             }),
         ]
         .into_iter()
-        .map(|l2_head_block_in_the_db| async {
+        .map(|block| async {
             let storage = Storage::in_memory().unwrap();
             let connection = storage.connection().unwrap();
 
-            if let Some(block) = l2_head_block_in_the_db {
-                StarknetBlocksTable::insert(&connection, &block).unwrap()
+            if let Some(some_block) = block {
+                StarknetBlocksTable::insert(&connection, &some_block).unwrap()
             }
 
             // UUT
@@ -775,7 +780,80 @@ mod tests {
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+
+            RefsTable::get_l1_l2_head(&connection)
+        })
+        .collect::<futures::stream::FuturesOrdered<_>>()
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+
+        assert_eq!(
+            results,
+            vec![
+                // Case 0: no L1-L2 head expected
+                None,
+                // Case 1: some L1-L2 head expected
+                Some(StarknetBlockNumber(0))
+            ]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l2_update() {
+        let chain = ethereum::Chain::Goerli;
+        let sync_state = Arc::new(state::SyncState::default());
+
+        // Incoming L2 update
+        let block = || BLOCK.clone();
+        let state_update = || ethereum::state_update::StateUpdate {
+            contract_updates: vec![],
+            deployed_contracts: vec![],
+        };
+        let timings = l2::Timings {
+            block_download: Duration::default(),
+            state_diff_download: Duration::default(),
+            contract_deployment: Duration::default(),
+        };
+
+        // A simple L2 sync task mock
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _| async move {
+            tx.send(l2::Event::Update(block(), state_update(), timings))
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok(())
+        };
+
+        let results = [
+            // Case 0: no L1 head
+            None,
+            // Case 1: some L1 head
+            Some(STATE_UPDATE_LOG.clone()),
+        ]
+        .into_iter()
+        .map(|update_log| async {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            if let Some(some_update_log) = update_log {
+                L1StateTable::insert(&connection, &some_update_log).unwrap();
+            }
+
+            // UUT
+            let _jh = tokio::spawn(state::sync(
+                storage.clone(),
+                Web3::new(FakeTransport),
+                chain,
+                FakeSequencer,
+                sync_state.clone(),
+                l1_noop,
+                l2,
+            ));
+
+            // TODO Find a better way to figure out that the DB update has already been performed
+            tokio::time::sleep(Duration::from_millis(100)).await;
 
             RefsTable::get_l1_l2_head(&connection)
         })
