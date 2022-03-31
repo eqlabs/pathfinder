@@ -588,7 +588,10 @@ mod tests {
         state,
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
-    use futures::{future::BoxFuture, stream::TryStreamExt};
+    use futures::{
+        future::BoxFuture,
+        stream::{StreamExt, TryStreamExt},
+    };
     use jsonrpc_core::{Call, Value};
     use pedersen::StarkHash;
     use std::{sync::Arc, time::Duration};
@@ -623,7 +626,7 @@ mod tests {
             &self,
             _: BlockNumberOrTag,
         ) -> Result<reply::Block, sequencer::error::SequencerError> {
-            Ok(BLOCK.clone())
+            Ok(BLOCK0.clone())
         }
 
         async fn block_by_hash(&self, _: BlockHashOrTag) -> Result<reply::Block, SequencerError> {
@@ -704,28 +707,46 @@ mod tests {
     }
 
     lazy_static::lazy_static! {
-        pub static ref STATE_UPDATE_LOG: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
-            block_number: StarknetBlockNumber(0),
-            global_root: GlobalRoot(StarkHash::ZERO),
-            origin: ethereum::EthOrigin {
-                block: ethereum::BlockOrigin {
-                    hash: EthereumBlockHash(H256::zero()),
-                    number: EthereumBlockNumber(0),
-                },
-                log_index: EthereumLogIndex(0),
-                transaction: ethereum::TransactionOrigin {
-                    hash: EthereumTransactionHash(H256::zero()),
-                    index: EthereumTransactionIndex(0),
-                },
+        static ref A: StarkHash = StarkHash::from_be_slice(&[0xA]).unwrap();
+        static ref B: StarkHash = StarkHash::from_be_slice(&[0xB]).unwrap();
+        static ref ETH_ORIG: ethereum::EthOrigin = ethereum::EthOrigin {
+            block: ethereum::BlockOrigin {
+                hash: EthereumBlockHash(H256::zero()),
+                number: EthereumBlockNumber(0),
+            },
+            log_index: EthereumLogIndex(0),
+            transaction: ethereum::TransactionOrigin {
+                hash: EthereumTransactionHash(H256::zero()),
+                index: EthereumTransactionIndex(0),
             },
         };
-        pub static ref BLOCK: reply::Block = reply::Block {
-            block_hash: Some(StarknetBlockHash(StarkHash::ZERO)),
+        pub static ref STATE_UPDATE_LOG0: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
+            block_number: StarknetBlockNumber(0),
+            global_root: GlobalRoot(*A),
+            origin: ETH_ORIG.clone(),
+        };
+        pub static ref STATE_UPDATE_LOG1: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
+            block_number: StarknetBlockNumber(1),
+            global_root: GlobalRoot(*B),
+            origin: ETH_ORIG.clone(),
+        };
+        pub static ref BLOCK0: reply::Block = reply::Block {
+            block_hash: Some(StarknetBlockHash(*A)),
             block_number: Some(StarknetBlockNumber(0)),
             parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-            state_root: Some(GlobalRoot(StarkHash::ZERO)),
-            status: reply::Status::Pending,
+            state_root: Some(GlobalRoot(*A)),
+            status: reply::Status::AcceptedOnL1,
             timestamp: crate::core::StarknetBlockTimestamp(0),
+            transaction_receipts: vec![],
+            transactions: vec![],
+        };
+        pub static ref BLOCK1: reply::Block = reply::Block {
+            block_hash: Some(StarknetBlockHash(*B)),
+            block_number: Some(StarknetBlockNumber(1)),
+            parent_block_hash: StarknetBlockHash(*A),
+            state_root: Some(GlobalRoot(*B)),
+            status: reply::Status::AcceptedOnL2,
+            timestamp: crate::core::StarknetBlockTimestamp(1),
             transaction_receipts: vec![],
             transactions: vec![],
         };
@@ -737,7 +758,7 @@ mod tests {
         let sync_state = Arc::new(state::SyncState::default());
 
         // Incoming L1 update
-        let update = || STATE_UPDATE_LOG.clone();
+        let update = || STATE_UPDATE_LOG0.clone();
         // A simple L1 sync task
         let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
             tx.send(l1::Event::Update(vec![update()])).await.unwrap();
@@ -798,12 +819,79 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l1_reorg() {
+        let results = [
+            // Case 0: single block in L1, reorg on genesis
+            (vec![STATE_UPDATE_LOG0.clone()], 0),
+            // Case 1: 2 blocks in L1, reorg on block #1
+            (
+                vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
+                1,
+            ),
+        ]
+        .into_iter()
+        .map(|(updates, reorg_on_block)| async move {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            // A simple L1 sync task
+            let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
+                tx.send(l1::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
+                    .await
+                    .unwrap();
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                Ok(())
+            };
+
+            RefsTable::set_l1_l2_head(&connection, Some(StarknetBlockNumber(reorg_on_block)))
+                .unwrap();
+            updates
+                .into_iter()
+                .for_each(|update| L1StateTable::insert(&connection, &update).unwrap());
+
+            // UUT
+            let _jh = tokio::spawn(state::sync(
+                storage.clone(),
+                Web3::new(FakeTransport),
+                ethereum::Chain::Goerli,
+                FakeSequencer,
+                Arc::new(state::SyncState::default()),
+                l1,
+                l2_noop,
+            ));
+
+            // TODO Find a better way to figure out that the DB update has already been performed
+            tokio::time::sleep(Duration::from_millis(10)).await;
+
+            let latest_block_number =
+                L1StateTable::get(&connection, storage::L1TableBlockId::Latest)
+                    .unwrap()
+                    .map(|s| s.block_number);
+            let head = RefsTable::get_l1_l2_head(&connection).unwrap();
+            (head, latest_block_number)
+        })
+        .collect::<futures::stream::FuturesOrdered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+
+        assert_eq!(
+            results,
+            vec![
+                // Case 0: no L1-L2 head expected, as we start from genesis
+                (None, None),
+                // Case 1: some L1-L2 head expected, block #1 removed
+                (Some(StarknetBlockNumber(0)), Some(StarknetBlockNumber(0)))
+            ]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
         let chain = ethereum::Chain::Goerli;
         let sync_state = Arc::new(state::SyncState::default());
 
         // Incoming L2 update
-        let block = || BLOCK.clone();
+        let block = || BLOCK0.clone();
         let state_update = || ethereum::state_update::StateUpdate {
             contract_updates: vec![],
             deployed_contracts: vec![],
@@ -827,7 +915,7 @@ mod tests {
             // Case 0: no L1 head
             None,
             // Case 1: some L1 head
-            Some(STATE_UPDATE_LOG.clone()),
+            Some(STATE_UPDATE_LOG0.clone()),
         ]
         .into_iter()
         .map(|update_log| async {
