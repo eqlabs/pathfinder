@@ -10,23 +10,26 @@ WORKDIR /usr/src/pathfinder
 # Build only the dependencies first. This utilizes
 # container layer caching for Rust builds
 RUN mkdir crates
-RUN cargo new --lib crates/pedersen
+RUN cargo new --lib --vcs none crates/pedersen
 # Correct: --lib. We'll handle the binary later.
-RUN cargo new --lib crates/pathfinder
+RUN cargo new --lib --vcs none crates/pathfinder
 COPY Cargo.toml Cargo.toml
 
 COPY crates/pathfinder/Cargo.toml crates/pathfinder/Cargo.toml
+COPY crates/pathfinder/build.rs crates/pathfinder/build.rs
 COPY crates/pedersen/Cargo.toml crates/pedersen/Cargo.toml
 COPY crates/pedersen/benches crates/pedersen/benches
 
-RUN RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release
-
+# DEPENDENCY_LAYER=1 should disable any vergen interaction, because the .git directory is not yet available
+RUN DEPENDENCY_LAYER=1 RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release
 
 # Compile the actual libraries and binary now
 COPY . .
+COPY ./.git /usr/src/pathfinder/.git
 
 # Mark these for re-compilation
 RUN touch crates/pathfinder/src/lib.rs
+RUN touch crates/pathfinder/src/build.rs
 RUN touch crates/pedersen/src/lib.rs
 
 RUN RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release

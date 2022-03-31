@@ -20,7 +20,11 @@ async fn main() -> anyhow::Result<()> {
     let config =
         config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
 
-    info!("🏁 Starting node.");
+    info!(
+        // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
+        version = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"),
+        "🏁 Starting node."
+    );
     let eth_transport = ethereum_transport(config.ethereum)
         .await
         .context("Creating Ethereum transport")?;
