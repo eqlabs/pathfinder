@@ -577,11 +577,26 @@ fn deploy_contract(
 
 #[cfg(test)]
 mod tests {
-    use crate::{sequencer, state, storage::Storage};
-    use futures::future::BoxFuture;
+    use super::{l1, l2};
+    use crate::{
+        core::{
+            ContractAddress, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
+            EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot, StarknetBlockHash,
+            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
+            StorageValue,
+        },
+        ethereum,
+        rpc::types::{BlockHashOrTag, BlockNumberOrTag},
+        sequencer::{self, error::SequencerError, reply, request},
+        state,
+        storage::{self, RefsTable, StarknetBlocksTable, Storage},
+    };
+    use futures::{future::BoxFuture, stream::TryStreamExt};
     use jsonrpc_core::{Call, Value};
+    use pedersen::StarkHash;
     use std::sync::Arc;
-    use web3::{error, RequestId, Transport, Web3};
+    use tokio::sync::mpsc;
+    use web3::{error, types::H256, RequestId, Transport, Web3};
 
     // Satisfies the sync() api, not really called anywhere in the tests
     #[derive(Debug, Clone)]
@@ -599,31 +614,104 @@ mod tests {
         }
     }
 
-    impl Clone for sequencer::MockClientApi {
-        // Just don't crash
-        fn clone(&self) -> Self {
-            sequencer::MockClientApi::new()
+    // We need a simple clonable mock here. Satisfies the sync() internals,
+    // and is not really called anywhere in the tests except for status updates
+    // which we don't test against here.
+    #[derive(Debug, Clone)]
+    struct FakeSequencer;
+
+    #[async_trait::async_trait]
+    impl sequencer::ClientApi for FakeSequencer {
+        async fn block_by_number(
+            &self,
+            _: BlockNumberOrTag,
+        ) -> Result<reply::Block, sequencer::error::SequencerError> {
+            Ok(sequencer::reply::Block {
+                block_hash: Some(StarknetBlockHash(StarkHash::ZERO)),
+                block_number: Some(StarknetBlockNumber(0)),
+                parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                state_root: None,
+                status: sequencer::reply::Status::Pending,
+                timestamp: crate::core::StarknetBlockTimestamp(0),
+                transaction_receipts: vec![],
+                transactions: vec![],
+            })
+        }
+
+        async fn block_by_hash(&self, _: BlockHashOrTag) -> Result<reply::Block, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn call(
+            &self,
+            _: request::Call,
+            _: BlockHashOrTag,
+        ) -> Result<reply::Call, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn full_contract(&self, _: ContractAddress) -> Result<bytes::Bytes, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn storage(
+            &self,
+            _: ContractAddress,
+            _: StorageAddress,
+            _: BlockHashOrTag,
+        ) -> Result<StorageValue, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn transaction(
+            &self,
+            _: StarknetTransactionHash,
+        ) -> Result<reply::Transaction, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn transaction_status(
+            &self,
+            _: StarknetTransactionHash,
+        ) -> Result<reply::TransactionStatus, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn state_update_by_hash(
+            &self,
+            _: BlockHashOrTag,
+        ) -> Result<reply::StateUpdate, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn state_update_by_number(
+            &self,
+            _: BlockNumberOrTag,
+        ) -> Result<reply::StateUpdate, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn eth_contract_addresses(
+            &self,
+        ) -> Result<reply::EthContractAddresses, SequencerError> {
+            unimplemented!()
         }
     }
 
-    #[tokio::test]
-    async fn noop_test() {
-        let chain = crate::ethereum::Chain::Goerli;
-        let storage = Storage::in_memory().unwrap();
-        let sequencer = sequencer::MockClientApi::new();
-        let sync_state = Arc::new(state::SyncState::default());
+    async fn l1_noop(
+        _: mpsc::Sender<l1::Event>,
+        _: Web3<FakeTransport>,
+        _: ethereum::Chain,
+        _: Option<ethereum::log::StateUpdateLog>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
 
-        let l1 = |_, _, _, _| async { Ok(()) };
-        let l2 = |_, _, _| async { Ok(()) };
-
-        let _sync_handle = tokio::spawn(state::sync(
-            storage,
-            Web3::new(FakeTransport),
-            chain,
-            sequencer,
-            sync_state,
-            l1,
-            l2,
-        ));
+    async fn l2_noop(
+        _: mpsc::Sender<l2::Event>,
+        _: impl sequencer::ClientApi,
+        _: Option<(StarknetBlockNumber, StarknetBlockHash)>,
+    ) -> anyhow::Result<()> {
+        Ok(())
     }
 }
