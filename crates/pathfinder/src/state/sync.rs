@@ -41,9 +41,9 @@ impl Default for State {
     }
 }
 
-pub async fn sync<Web3Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
+pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
-    transport: Web3<Web3Transport>,
+    transport: Web3<Transport>,
     chain: Chain,
     sequencer: SequencerClient,
     state: Arc<State>,
@@ -51,11 +51,11 @@ pub async fn sync<Web3Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     l2_sync: L2Sync,
 ) -> anyhow::Result<()>
 where
-    Web3Transport: web3::Transport,
+    Transport: web3::Transport,
     SequencerClient: sequencer::ClientApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnOnce(mpsc::Sender<l1::Event>, Web3<Web3Transport>, Chain, Option<StateUpdateLog>) -> F1
+    L1Sync: FnOnce(mpsc::Sender<l1::Event>, Web3<Transport>, Chain, Option<StateUpdateLog>) -> F1
         + Copy,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
