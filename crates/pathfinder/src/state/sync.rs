@@ -714,4 +714,84 @@ mod tests {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l1_update() {
+        let chain = ethereum::Chain::Goerli;
+        let sync_state = Arc::new(state::SyncState::default());
+
+        // Incoming L1 update factory
+        let update = || ethereum::log::StateUpdateLog {
+            block_number: StarknetBlockNumber(0),
+            global_root: GlobalRoot(StarkHash::ZERO),
+            origin: ethereum::EthOrigin {
+                block: ethereum::BlockOrigin {
+                    hash: EthereumBlockHash(H256::zero()),
+                    number: EthereumBlockNumber(0),
+                },
+                log_index: EthereumLogIndex(0),
+                transaction: ethereum::TransactionOrigin {
+                    hash: EthereumTransactionHash(H256::zero()),
+                    index: EthereumTransactionIndex(0),
+                },
+            },
+        };
+        // A simple L1 sync task mock
+        let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
+            tx.send(l1::Event::Update(vec![update()])).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            Ok(())
+        };
+
+        let results = [
+            // Case 0: no L2 head
+            None,
+            // Case 1: some L2 head
+            Some(storage::StarknetBlock {
+                number: StarknetBlockNumber(0),
+                hash: StarknetBlockHash(StarkHash::ZERO),
+                root: GlobalRoot(StarkHash::ZERO),
+                timestamp: StarknetBlockTimestamp(0),
+            }),
+        ]
+        .into_iter()
+        .map(|l2_head_block_in_the_db| async {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            if let Some(block) = l2_head_block_in_the_db {
+                StarknetBlocksTable::insert(&connection, &block).unwrap()
+            }
+
+            // UUT
+            let _jh = tokio::spawn(state::sync(
+                storage.clone(),
+                Web3::new(FakeTransport),
+                chain,
+                FakeSequencer,
+                sync_state.clone(),
+                l1,
+                l2_noop,
+            ));
+
+            // TODO Find a better way to figure out that the DB update has already been performed
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+            RefsTable::get_l1_l2_head(&connection)
+        })
+        .collect::<futures::stream::FuturesOrdered<_>>()
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+
+        assert_eq!(
+            results,
+            vec![
+                // Case 0: no L1-L2 head expected
+                None,
+                // Case 1: some L1-L2 head expected
+                Some(StarknetBlockNumber(0))
+            ]
+        );
+    }
 }
