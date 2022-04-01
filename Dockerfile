@@ -73,6 +73,7 @@ USER 1000:1000
 EXPOSE 9545
 WORKDIR /usr/share/pathfinder/data
 
+ENV PATHFINDER_HTTP_RPC_ADDRESS="0.0.0.0:9545"
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/usr/local/bin/pathfinder"]
