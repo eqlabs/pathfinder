@@ -66,29 +66,29 @@ async fn main() {
 
 /// Creates the CLI and parses the resulting arguments.
 fn parse_cli_args() -> (Web3<Http>, EthereumBlockHash, StarknetBlockNumber) {
-    let cli = clap::App::new("fact-retrieval")
+    let cli = clap::Command::new("fact-retrieval")
         .about("Retrieves and displays a StarkNet state update fact")
         .after_help("You can use Etherscan to identify a fact hash to retrieve. The fact hash for a state update is emitted as a `LogStateTransitionFact` log.")
         .arg(
-            Arg::with_name("seq-no")
+            Arg::new("seq-no")
                 .long("sequence-number")
-                .short("s")
+                .short('s')
                 .takes_value(true)
                 .help("The state update's sequence number.")
                 .value_name("INT")
         )
         .arg(
-             Arg::with_name("block")
+             Arg::new("block")
                 .long("block-hash")
-                .short("b")
+                .short('b')
                 .takes_value(true)
                 .value_name("HASH")
                 .help("The L1 block hash at which the state update occurred.")
         )
         .arg(
-            Arg::with_name("url")
+            Arg::new("url")
                 .long("url")
-                .short("u")
+                .short('u')
                 .takes_value(true)
                 .value_name("HTTP(S) URL")
                 .long_help(r#"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura or Cloudflare.
