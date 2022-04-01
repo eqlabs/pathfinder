@@ -722,7 +722,8 @@ mod tests {
         };
         pub static ref STATE_UPDATE_LOG0: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber(0),
-            global_root: GlobalRoot(*A),
+            // State update actually doesn't change the state hence 0 root
+            global_root: GlobalRoot(StarkHash::ZERO),
             origin: ETH_ORIG.clone(),
         };
         pub static ref STATE_UPDATE_LOG1: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
@@ -734,7 +735,7 @@ mod tests {
             block_hash: Some(StarknetBlockHash(*A)),
             block_number: Some(StarknetBlockNumber(0)),
             parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-            state_root: Some(GlobalRoot(*A)),
+            state_root: Some(GlobalRoot(StarkHash::ZERO)),
             status: reply::Status::AcceptedOnL1,
             timestamp: crate::core::StarknetBlockTimestamp(0),
             transaction_receipts: vec![],
@@ -749,6 +750,17 @@ mod tests {
             timestamp: crate::core::StarknetBlockTimestamp(1),
             transaction_receipts: vec![],
             transactions: vec![],
+        };
+        pub static ref STORAGE_BLOCK0: storage::StarknetBlock = storage::StarknetBlock {
+            number: StarknetBlockNumber(0),
+            hash: StarknetBlockHash(*A),
+            root: GlobalRoot(StarkHash::ZERO),
+            timestamp: StarknetBlockTimestamp(0),
+        };
+        // Causes root to remain 0
+        pub static ref STATE_UPDATE0: ethereum::state_update::StateUpdate = ethereum::state_update::StateUpdate {
+            contract_updates: vec![],
+            deployed_contracts: vec![],
         };
     }
 
@@ -770,12 +782,7 @@ mod tests {
             // Case 0: no L2 head
             None,
             // Case 1: some L2 head
-            Some(storage::StarknetBlock {
-                number: StarknetBlockNumber(0),
-                hash: StarknetBlockHash(StarkHash::ZERO),
-                root: GlobalRoot(StarkHash::ZERO),
-                timestamp: StarknetBlockTimestamp(0),
-            }),
+            Some(STORAGE_BLOCK0.clone()),
         ]
         .into_iter()
         .map(|block| async {
@@ -886,16 +893,49 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l1_query_update() {
+        let storage = Storage::in_memory().unwrap();
+        let connection = storage.connection().unwrap();
+
+        // This is what we're asking for
+        L1StateTable::insert(&connection, &*STATE_UPDATE_LOG0).unwrap();
+
+        // A simple L1 sync task which does the request and checks he result
+        let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
+            let (tx1, rx1) =
+                tokio::sync::oneshot::channel::<Option<ethereum::log::StateUpdateLog>>();
+
+            tx.send(l1::Event::QueryUpdate(StarknetBlockNumber(0), tx1))
+                .await
+                .unwrap();
+
+            // Check the result straight away ¯\_(ツ)_/¯
+            assert_eq!(rx1.await.unwrap().unwrap(), *STATE_UPDATE_LOG0);
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok(())
+        };
+
+        // UUT
+        let _jh = tokio::spawn(state::sync(
+            storage,
+            Web3::new(FakeTransport),
+            ethereum::Chain::Goerli,
+            FakeSequencer,
+            Arc::new(state::SyncState::default()),
+            l1,
+            l2_noop,
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
         let chain = ethereum::Chain::Goerli;
         let sync_state = Arc::new(state::SyncState::default());
 
         // Incoming L2 update
         let block = || BLOCK0.clone();
-        let state_update = || ethereum::state_update::StateUpdate {
-            contract_updates: vec![],
-            deployed_contracts: vec![],
-        };
+        let state_update = || STATE_UPDATE0.clone();
         let timings = l2::Timings {
             block_download: Duration::default(),
             state_diff_download: Duration::default(),
@@ -938,7 +978,7 @@ mod tests {
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
 
             RefsTable::get_l1_l2_head(&connection)
         })
