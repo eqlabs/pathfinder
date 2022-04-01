@@ -77,6 +77,7 @@ fn clap_app() -> clap::Command<'static> {
                 .long(ETH_USER_KEY)
                 .help("Ethereum API user")
                 .takes_value(true)
+                .env("PATHFINDER_ETHEREUM_API_USERNAME")
                 .long_help("The optional user to use for the Ethereum API"),
         )
         .arg(
@@ -84,6 +85,7 @@ fn clap_app() -> clap::Command<'static> {
                 .long(ETH_PASS_KEY)
                 .help("Ethereum API password")
                 .takes_value(true)
+                .env("PATHFINDER_ETHEREUM_API_PASSWORD")
                 .long_help("The optional password to use for the Ethereum API"),
         )
         .arg(
@@ -92,6 +94,7 @@ fn clap_app() -> clap::Command<'static> {
                 .help("Ethereum API endpoint")
                 .takes_value(true)
                 .value_name("HTTP(s) URL")
+                .env("PATHFINDER_ETHEREUM_API_URL")
                 .long_help(r"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura or Cloudflare.
 Examples:
     infura: https://goerli.infura.io/v3/<PROJECT_ID>
@@ -102,36 +105,97 @@ Examples:
                 .help(HTTP_RPC_HELP.as_ref())
                 .takes_value(true)
                 .value_name("IP:PORT")
+                .env("PATHFINDER_HTTP_RPC_ADDRESS")
         )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+    use std::sync::Mutex;
+
+    lazy_static::lazy_static! {
+        // prevents running tests in parallel, since these depend on
+        // process-global environment variables
+        static ref ENV_VAR_MUTEX: Mutex<()> = Mutex::new(());
+    }
+
+    fn clear_environment() {
+        env::remove_var("PATHFINDER_ETHEREUM_API_USERNAME");
+        env::remove_var("PATHFINDER_ETHEREUM_API_PASSWORD");
+        env::remove_var("PATHFINDER_ETHEREUM_API_URL");
+        env::remove_var("PATHFINDER_HTTP_RPC_ADDRESS");
+    }
 
     #[test]
     fn ethereum_url_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
         let value = "value".to_owned();
         let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.url", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumHttpUrl), Some(value));
     }
 
     #[test]
+    fn ethereum_url_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_ETHEREUM_API_URL", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::EthereumHttpUrl), Some(value));
+    }
+
+    #[test]
     fn ethereum_user_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
         let value = "value".to_owned();
         let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.user", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(value));
     }
 
     #[test]
+    fn ethereum_user_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_ETHEREUM_API_USERNAME", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(value));
+    }
+
+    #[test]
     fn ethereum_password_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
         let value = "value".to_owned();
         let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.password", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(value));
     }
 
     #[test]
+    fn ethereum_password_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_ETHEREUM_API_PASSWORD", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(value));
+    }
+
+    #[test]
     fn config_filepath_short() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
         let value = "value".to_owned();
         let (filepath, _) = parse_args(vec!["bin name", "-c", &value]).unwrap();
         assert_eq!(filepath, Some(value));
@@ -139,6 +203,9 @@ mod tests {
 
     #[test]
     fn config_filepath_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
         let value = "value".to_owned();
         let (filepath, _) = parse_args(vec!["bin name", "--config", &value]).unwrap();
         assert_eq!(filepath, Some(value));
@@ -146,13 +213,30 @@ mod tests {
 
     #[test]
     fn http_rpc_address_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
         let value = "value".to_owned();
         let (_, mut cfg) = parse_args(vec!["bin name", "--http-rpc", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
     }
 
     #[test]
+    fn http_rpc_address_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_HTTP_RPC_ADDRESS", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
+    }
+
+    #[test]
     fn empty_config() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
         let (filepath, cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(filepath, None);
         assert_eq!(cfg, ConfigBuilder::default());
