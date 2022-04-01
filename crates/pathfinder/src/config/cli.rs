@@ -8,7 +8,7 @@ use super::ConfigOption;
 
 const CONFIG_KEY: &str = "config";
 const ETH_URL_KEY: &str = "ethereum.url";
-const ETH_USER_KEY: &str = "ethereum.user";
+const ETH_USER_AGENT_KEY: &str = "ethereum.user-agent";
 const ETH_PASS_KEY: &str = "ethereum.password";
 const HTTP_RPC_ADDR_KEY: &str = "http-rpc";
 
@@ -37,13 +37,13 @@ where
 
     let config_filepath = args.value_of(CONFIG_KEY).map(|s| s.to_owned());
     let ethereum_url = args.value_of(ETH_URL_KEY).map(|s| s.to_owned());
-    let ethereum_user = args.value_of(ETH_USER_KEY).map(|s| s.to_owned());
+    let ethereum_user_agent = args.value_of(ETH_USER_AGENT_KEY).map(|s| s.to_owned());
     let ethereum_password = args.value_of(ETH_PASS_KEY).map(|s| s.to_owned());
     let http_rpc_addr = args.value_of(HTTP_RPC_ADDR_KEY).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
-        .with(ConfigOption::EthereumUser, ethereum_user)
+        .with(ConfigOption::EthereumUserAgent, ethereum_user_agent)
         .with(ConfigOption::EthereumPassword, ethereum_password)
         .with(ConfigOption::HttpRpcAddress, http_rpc_addr);
 
@@ -73,11 +73,11 @@ fn clap_app() -> clap::Command<'static> {
                 .takes_value(true),
         )
         .arg(
-            Arg::new(ETH_USER_KEY)
-                .long(ETH_USER_KEY)
+            Arg::new(ETH_USER_AGENT_KEY)
+                .long(ETH_USER_AGENT_KEY)
                 .help("Ethereum API user")
                 .takes_value(true)
-                .env("PATHFINDER_ETHEREUM_API_USERNAME")
+                .env("PATHFINDER_ETHEREUM_API_USER_AGENT")
                 .long_help("The optional user to use for the Ethereum API"),
         )
         .arg(
@@ -122,7 +122,7 @@ mod tests {
     }
 
     fn clear_environment() {
-        env::remove_var("PATHFINDER_ETHEREUM_API_USERNAME");
+        env::remove_var("PATHFINDER_ETHEREUM_API_USER_AGENT");
         env::remove_var("PATHFINDER_ETHEREUM_API_PASSWORD");
         env::remove_var("PATHFINDER_ETHEREUM_API_URL");
         env::remove_var("PATHFINDER_HTTP_RPC_ADDRESS");
@@ -150,24 +150,24 @@ mod tests {
     }
 
     #[test]
-    fn ethereum_user_long() {
+    fn ethereum_user_agent_long() {
         let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.user", &value]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(value));
+        let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.user-agent", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::EthereumUserAgent), Some(value));
     }
 
     #[test]
-    fn ethereum_user_environment_variable() {
+    fn ethereum_user_agent_environment_variable() {
         let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         clear_environment();
 
         let value = "value".to_owned();
-        env::set_var("PATHFINDER_ETHEREUM_API_USERNAME", &value);
+        env::set_var("PATHFINDER_ETHEREUM_API_USER_AGENT", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(value));
+        assert_eq!(cfg.take(ConfigOption::EthereumUserAgent), Some(value));
     }
 
     #[test]
