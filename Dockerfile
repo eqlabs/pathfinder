@@ -69,13 +69,10 @@ RUN mkdir -p /usr/share/pathfinder/data
 RUN chown 1000:1000 /usr/share/pathfinder/data
 VOLUME /usr/share/pathfinder/data
 
-# Move the start script in the Dockerfile
-COPY start-node.sh /tmp/start-node.sh
-RUN chmod +x /tmp/start-node.sh && mv /tmp/start-node.sh /usr/local/bin/start-node.sh && chmod 755 /usr/local/bin/start-node.sh
-
 USER 1000:1000
 EXPOSE 9545
 WORKDIR /usr/share/pathfinder/data
 
-ENTRYPOINT ["sh", "/usr/local/bin/start-node.sh"]
 
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/usr/local/bin/pathfinder"]
