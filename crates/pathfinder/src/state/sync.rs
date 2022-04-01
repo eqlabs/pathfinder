@@ -695,6 +695,7 @@ mod tests {
         _: ethereum::Chain,
         _: Option<ethereum::log::StateUpdateLog>,
     ) -> anyhow::Result<()> {
+        let () = std::future::pending().await;
         Ok(())
     }
 
@@ -703,6 +704,7 @@ mod tests {
         _: impl sequencer::ClientApi,
         _: Option<(StarknetBlockNumber, StarknetBlockHash)>,
     ) -> anyhow::Result<()> {
+        let () = std::future::pending().await;
         Ok(())
     }
 
@@ -929,6 +931,36 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l1_restart() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let storage = Storage::in_memory().unwrap();
+
+        static CNT: AtomicUsize = AtomicUsize::new(0);
+
+        // A simple L1 sync task
+        let l1 = move |_, _, _, _| async move {
+            CNT.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        };
+
+        // UUT
+        let _jh = tokio::spawn(state::sync(
+            storage,
+            Web3::new(FakeTransport),
+            ethereum::Chain::Goerli,
+            FakeSequencer,
+            Arc::new(state::SyncState::default()),
+            l1,
+            l2_noop,
+        ));
+
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        assert!(CNT.load(Ordering::Relaxed) > 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
         let chain = ethereum::Chain::Goerli;
         let sync_state = Arc::new(state::SyncState::default());
@@ -942,7 +974,7 @@ mod tests {
             contract_deployment: Duration::default(),
         };
 
-        // A simple L2 sync task mock
+        // A simple L2 sync task
         let l2 = move |tx: mpsc::Sender<l2::Event>, _, _| async move {
             tx.send(l2::Event::Update(block(), state_update(), timings))
                 .await
@@ -996,5 +1028,35 @@ mod tests {
                 Some(StarknetBlockNumber(0))
             ]
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l2_restart() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let storage = Storage::in_memory().unwrap();
+
+        static CNT: AtomicUsize = AtomicUsize::new(0);
+
+        // A simple L2 sync task
+        let l2 = move |_, _, _| async move {
+            CNT.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        };
+
+        // UUT
+        let _jh = tokio::spawn(state::sync(
+            storage,
+            Web3::new(FakeTransport),
+            ethereum::Chain::Goerli,
+            FakeSequencer,
+            Arc::new(state::SyncState::default()),
+            l1_noop,
+            l2,
+        ));
+
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        assert!(CNT.load(Ordering::Relaxed) > 1);
     }
 }
