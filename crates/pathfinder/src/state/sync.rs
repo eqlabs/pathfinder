@@ -577,10 +577,10 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            ContractAddress, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot, StarknetBlockHash,
-            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
-            StorageValue,
+            ContractAddress, ContractHash, EthereumBlockHash, EthereumBlockNumber,
+            EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StarknetTransactionHash, StorageAddress, StorageValue,
         },
         ethereum,
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
@@ -695,6 +695,7 @@ mod tests {
         _: ethereum::Chain,
         _: Option<ethereum::log::StateUpdateLog>,
     ) -> anyhow::Result<()> {
+        // Avoid being restarted all the time by the outer sync() loop
         let () = std::future::pending().await;
         Ok(())
     }
@@ -704,6 +705,7 @@ mod tests {
         _: impl sequencer::ClientApi,
         _: Option<(StarknetBlockNumber, StarknetBlockHash)>,
     ) -> anyhow::Result<()> {
+        // Avoid being restarted all the time by the outer sync() loop
         let () = std::future::pending().await;
         Ok(())
     }
@@ -758,6 +760,12 @@ mod tests {
             hash: StarknetBlockHash(*A),
             root: GlobalRoot(StarkHash::ZERO),
             timestamp: StarknetBlockTimestamp(0),
+        };
+        pub static ref STORAGE_BLOCK1: storage::StarknetBlock = storage::StarknetBlock {
+            number: StarknetBlockNumber(1),
+            hash: StarknetBlockHash(*B),
+            root: GlobalRoot(*B),
+            timestamp: StarknetBlockTimestamp(1),
         };
         // Causes root to remain 0
         pub static ref STATE_UPDATE0: ethereum::state_update::StateUpdate = ethereum::state_update::StateUpdate {
@@ -1028,6 +1036,194 @@ mod tests {
                 Some(StarknetBlockNumber(0))
             ]
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l2_reorg() {
+        let results = [
+            // Case 0: single block in L2, reorg on genesis
+            (vec![STORAGE_BLOCK0.clone()], 0),
+            // Case 1: 2 blocks in L2, reorg on block #1
+            (vec![STORAGE_BLOCK0.clone(), STORAGE_BLOCK1.clone()], 1),
+        ]
+        .into_iter()
+        .map(|(updates, reorg_on_block)| async move {
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+
+            // A simple L2 sync task
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _| async move {
+                tx.send(l2::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
+                    .await
+                    .unwrap();
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                Ok(())
+            };
+
+            RefsTable::set_l1_l2_head(&connection, Some(StarknetBlockNumber(reorg_on_block)))
+                .unwrap();
+            updates
+                .into_iter()
+                .for_each(|block| StarknetBlocksTable::insert(&connection, &block).unwrap());
+
+            // UUT
+            let _jh = tokio::spawn(state::sync(
+                storage.clone(),
+                Web3::new(FakeTransport),
+                ethereum::Chain::Goerli,
+                FakeSequencer,
+                Arc::new(state::SyncState::default()),
+                l1_noop,
+                l2,
+            ));
+
+            // TODO Find a better way to figure out that the DB update has already been performed
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
+            let latest_block_number =
+                StarknetBlocksTable::get(&connection, storage::StarknetBlocksBlockId::Latest)
+                    .unwrap()
+                    .map(|s| s.number);
+            let head = RefsTable::get_l1_l2_head(&connection).unwrap();
+            (head, latest_block_number)
+        })
+        .collect::<futures::stream::FuturesOrdered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+
+        assert_eq!(
+            results,
+            vec![
+                // Case 0: no L1-L2 head expected, as we start from genesis
+                (None, None),
+                // Case 1: some L1-L2 head expected, block #1 removed
+                (Some(StarknetBlockNumber(0)), Some(StarknetBlockNumber(0)))
+            ]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l2_new_contract() {
+        let storage = Storage::in_memory().unwrap();
+        let connection = storage.connection().unwrap();
+
+        // A simple L2 sync task
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _| async move {
+            let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+            tx.send(l2::Event::NewContract(state::CompressedContract {
+                abi: zstd_magic.clone(),
+                bytecode: zstd_magic.clone(),
+                definition: zstd_magic,
+                hash: ContractHash(*A),
+            }))
+            .await
+            .unwrap();
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok(())
+        };
+
+        // UUT
+        let _jh = tokio::spawn(state::sync(
+            storage,
+            Web3::new(FakeTransport),
+            ethereum::Chain::Goerli,
+            FakeSequencer,
+            Arc::new(state::SyncState::default()),
+            l1_noop,
+            l2,
+        ));
+
+        // TODO Find a better way to figure out that the DB update has already been performed
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        assert_eq!(
+            storage::ContractCodeTable::exists(&connection, &[ContractHash(*A)]).unwrap(),
+            vec![true]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l2_query_hash() {
+        let storage = Storage::in_memory().unwrap();
+        let connection = storage.connection().unwrap();
+
+        // This is what we're asking for
+        StarknetBlocksTable::insert(&connection, &STORAGE_BLOCK0).unwrap();
+
+        // A simple L2 sync task which does the request and checks he result
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _| async move {
+            let (tx1, rx1) = tokio::sync::oneshot::channel::<Option<StarknetBlockHash>>();
+
+            tx.send(l2::Event::QueryHash(StarknetBlockNumber(0), tx1))
+                .await
+                .unwrap();
+
+            // Check the result straight away ¯\_(ツ)_/¯
+            assert_eq!(rx1.await.unwrap().unwrap(), StarknetBlockHash(*A));
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok(())
+        };
+
+        // UUT
+        let _jh = tokio::spawn(state::sync(
+            storage,
+            Web3::new(FakeTransport),
+            ethereum::Chain::Goerli,
+            FakeSequencer,
+            Arc::new(state::SyncState::default()),
+            l1_noop,
+            l2,
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn l2_query_contract_existance() {
+        let storage = Storage::in_memory().unwrap();
+        let connection = storage.connection().unwrap();
+        let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+
+        // This is what we're asking for
+        storage::ContractCodeTable::insert_compressed(
+            &connection,
+            &state::CompressedContract {
+                abi: zstd_magic.clone(),
+                bytecode: zstd_magic.clone(),
+                definition: zstd_magic,
+                hash: ContractHash(*A),
+            },
+        )
+        .unwrap();
+
+        // A simple L2 sync task which does the request and checks he result
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _| async move {
+            let (tx1, rx1) = tokio::sync::oneshot::channel::<Vec<bool>>();
+
+            tx.send(l2::Event::QueryContractExistance(
+                vec![ContractHash(*A)],
+                tx1,
+            ))
+            .await
+            .unwrap();
+
+            // Check the result straight away ¯\_(ツ)_/¯
+            assert_eq!(rx1.await.unwrap(), vec![true]);
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok(())
+        };
+
+        // UUT
+        let _jh = tokio::spawn(state::sync(
+            storage,
+            Web3::new(FakeTransport),
+            ethereum::Chain::Goerli,
+            FakeSequencer,
+            Arc::new(state::SyncState::default()),
+            l1_noop,
+            l2,
+        ));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
