@@ -779,12 +779,22 @@ mod tests {
         let chain = ethereum::Chain::Goerli;
         let sync_state = Arc::new(state::SyncState::default());
 
-        // Incoming L1 update
-        let update = || STATE_UPDATE_LOG0.clone();
+        lazy_static::lazy_static! {
+            static ref UPDATES: Arc<tokio::sync::RwLock<Vec<Vec<ethereum::log::StateUpdateLog>>>> =
+            Arc::new(tokio::sync::RwLock::new(vec![
+                vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
+                vec![STATE_UPDATE_LOG0.clone()],
+                vec![STATE_UPDATE_LOG0.clone()],
+            ]));
+        }
+
         // A simple L1 sync task
-        let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
-            tx.send(l1::Event::Update(vec![update()])).await.unwrap();
-            tokio::time::sleep(Duration::from_secs(1)).await;
+        let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
+            let mut update = UPDATES.write().await;
+            if let Some(some_update) = update.pop() {
+                tx.send(l1::Event::Update(some_update)).await.unwrap();
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
             Ok(())
         };
 
@@ -792,15 +802,19 @@ mod tests {
             // Case 0: no L2 head
             None,
             // Case 1: some L2 head
-            Some(STORAGE_BLOCK0.clone()),
+            Some(vec![STORAGE_BLOCK0.clone()]),
+            // Case 2: some L2 head, update contains more than one item
+            Some(vec![STORAGE_BLOCK0.clone(), STORAGE_BLOCK1.clone()]),
         ]
         .into_iter()
-        .map(|block| async {
+        .map(|blocks| async {
             let storage = Storage::in_memory().unwrap();
             let connection = storage.connection().unwrap();
 
-            if let Some(some_block) = block {
-                StarknetBlocksTable::insert(&connection, &some_block).unwrap()
+            if let Some(some_blocks) = blocks {
+                some_blocks
+                    .iter()
+                    .for_each(|block| StarknetBlocksTable::insert(&connection, block).unwrap());
             }
 
             // UUT
@@ -815,7 +829,7 @@ mod tests {
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
             RefsTable::get_l1_l2_head(&connection)
         })
@@ -830,7 +844,9 @@ mod tests {
                 // Case 0: no L1-L2 head expected
                 None,
                 // Case 1: some L1-L2 head expected
-                Some(StarknetBlockNumber(0))
+                Some(StarknetBlockNumber(0)),
+                // Case 2: some L1-L2 head expected
+                Some(StarknetBlockNumber(1))
             ]
         );
     }
@@ -936,6 +952,8 @@ mod tests {
             l1,
             l2_noop,
         ));
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1018,7 +1036,7 @@ mod tests {
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
 
             RefsTable::get_l1_l2_head(&connection)
         })
