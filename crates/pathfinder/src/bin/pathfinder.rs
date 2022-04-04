@@ -100,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
 /// - the password (if provided)
 async fn ethereum_transport(config: EthereumConfig) -> anyhow::Result<Web3<Http>> {
     let client = reqwest::Client::builder();
-    let client = match config.user {
+    let client = match config.user_agent {
         Some(user_agent) => client.user_agent(user_agent),
         None => client,
     }

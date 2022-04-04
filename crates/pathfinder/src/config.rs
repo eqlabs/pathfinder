@@ -15,8 +15,8 @@ const DEFAULT_HTTP_RPC_ADDR: &str = "127.0.0.1:9545";
 pub enum ConfigOption {
     /// The Ethereum URL.
     EthereumHttpUrl,
-    /// The Ethereum user.
-    EthereumUser,
+    /// The User Agent header value to use for the Ethereum URL.
+    EthereumUserAgent,
     /// The Ethereum password.
     EthereumPassword,
     /// The HTTP-RPC listening socket address.
@@ -27,7 +27,7 @@ impl Display for ConfigOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfigOption::EthereumHttpUrl => f.write_str("Ethereum HTTP URL"),
-            ConfigOption::EthereumUser => f.write_str("Ethereum user"),
+            ConfigOption::EthereumUserAgent => f.write_str("Ethereum user agent"),
             ConfigOption::EthereumPassword => f.write_str("Ethereum password"),
             ConfigOption::HttpRpcAddress => f.write_str("HTTP-RPC socket address"),
         }
@@ -39,8 +39,8 @@ impl Display for ConfigOption {
 pub struct EthereumConfig {
     /// The Ethereum URL.
     pub url: Url,
-    /// The optional Ethereum user.
-    pub user: Option<String>,
+    /// The optional HTTP User-Agent header value to use for Ethereum.
+    pub user_agent: Option<String>,
     /// The optional Ethereum password.
     pub password: Option<String>,
 }

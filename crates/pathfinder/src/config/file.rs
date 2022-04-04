@@ -6,7 +6,8 @@ use crate::config::builder::ConfigBuilder;
 #[derive(Deserialize, Debug, PartialEq)]
 struct EthereumConfig {
     url: Option<String>,
-    user: Option<String>,
+    #[serde(rename = "user-agent")]
+    user_agent: Option<String>,
     password: Option<String>,
 }
 
@@ -23,7 +24,7 @@ impl FileConfig {
         let builder = match self.ethereum {
             Some(eth) => ConfigBuilder::default()
                 .with(ConfigOption::EthereumHttpUrl, eth.url)
-                .with(ConfigOption::EthereumUser, eth.user)
+                .with(ConfigOption::EthereumUserAgent, eth.user_agent)
                 .with(ConfigOption::EthereumPassword, eth.password),
             None => ConfigBuilder::default(),
         };
@@ -59,9 +60,9 @@ mod tests {
     #[test]
     fn ethereum_user() {
         let value = "value".to_owned();
-        let toml = format!(r#"ethereum.user = "{}""#, value);
+        let toml = format!(r#"ethereum.user-agent = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(value));
+        assert_eq!(cfg.take(ConfigOption::EthereumUserAgent), Some(value));
     }
 
     #[test]
@@ -74,20 +75,20 @@ mod tests {
 
     #[test]
     fn ethereum_section() {
-        let user = "user".to_owned();
+        let user_agent = "user_agent".to_owned();
         let url = "url".to_owned();
         let password = "password".to_owned();
 
         let toml = format!(
             r#"[ethereum]
-user = "{}"
+user-agent = "{}"
 url = "{}"
 password = "{}""#,
-            user, url, password
+            user_agent, url, password
         );
 
         let mut cfg = config_from_str(&toml).unwrap();
-        assert_eq!(cfg.take(ConfigOption::EthereumUser), Some(user));
+        assert_eq!(cfg.take(ConfigOption::EthereumUserAgent), Some(user_agent));
         assert_eq!(cfg.take(ConfigOption::EthereumHttpUrl), Some(url));
         assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(password));
     }
