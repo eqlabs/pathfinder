@@ -294,7 +294,6 @@ class SqliteAdapter(Storage):
     def __init__(self, connection):
         assert connection.in_transaction, "first query should had started a transaction"
         self.connection = connection
-        pass
 
     async def set_value(self, key, value):
         raise NotImplementedError("Readonly storage, this should never happen")
