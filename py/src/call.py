@@ -16,7 +16,10 @@ def main():
     Loops on stdin, reads json commands from lines, outputs single json as a response.
     Starts by outputting "ready"
     """
-    [_myname, db] = sys.argv
+    if len(sys.argv) != 2:
+        print("usage: call.py [sqlite.db]")
+        sys.exit(1)
+    database_path = sys.argv[1]
 
     # make sure that regardless of the interesting platform we communicate sanely to pathfinder
     sys.stdin.reconfigure(encoding="utf-8")
@@ -30,7 +33,7 @@ def main():
         )
         sys.exit(1)
 
-    with sqlite3.connect(db) as connection:
+    with sqlite3.connect(database_path) as connection:
         connection.isolation_level = None
 
         connection.execute("BEGIN")
