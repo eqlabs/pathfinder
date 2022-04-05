@@ -33,7 +33,7 @@ async def generate_root_and_nodes(input):
     from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
         PatriciaTree,
     )
-    from starkware.starknet.business_logic.state_objects import ContractState
+    from starkware.starknet.business_logic.state.objects import ContractState
     from copy import deepcopy
 
     # still create this for the ffc it creates.

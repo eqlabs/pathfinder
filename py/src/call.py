@@ -229,7 +229,7 @@ def check_schema(connection):
 
 
 def resolve_block(connection, at_block):
-    from starkware.starknet.business_logic.state import BlockInfo
+    from starkware.starknet.business_logic.state.state import BlockInfo
 
     if at_block == "latest":
         # latest is questionable, but the rust side cannot use it at the moment at least,
@@ -420,7 +420,7 @@ async def do_call(
 
     Returns the retdata from the call, which is the only property needed by the RPC api.
     """
-    from starkware.starknet.business_logic.state import (
+    from starkware.starknet.business_logic.state.state import (
         SharedState,
         StateSelector,
     )
