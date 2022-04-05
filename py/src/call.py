@@ -46,7 +46,7 @@ def check_cairolang_version():
     import pkg_resources
 
     version = pkg_resources.get_distribution("cairo-lang").version
-    return version == "0.8.0"
+    return version == "0.8.1"
 
 
 def do_loop(connection, input_gen, output_file):

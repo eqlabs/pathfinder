@@ -1,5 +1,5 @@
 # see README.md
-cairo-lang==0.8.0
+cairo-lang==0.8.1
 # We don't use rlp directly, however this needs to be defined for it to help pip-compile
 eth-rlp==0.2.1
 pip-tools==6.4.0
