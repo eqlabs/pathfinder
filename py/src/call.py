@@ -230,6 +230,7 @@ def check_schema(connection):
 
 def resolve_block(connection, at_block):
     from starkware.starknet.business_logic.state.state import BlockInfo
+    from starkware.starknet.definitions.general_config import DEFAULT_GAS_PRICE
 
     if at_block == "latest":
         # latest is questionable, but the rust side cannot use it at the moment at least,
@@ -258,7 +259,7 @@ def resolve_block(connection, at_block):
         # NOTE: this assumes the rust side to serialize starknet_blocks::timestamp as compatible
         # for blocks before 0.7.0
         return (
-            BlockInfo(block_number, block_time),
+            BlockInfo(block_number, block_time, DEFAULT_GAS_PRICE),
             global_root,
         )
     except Exception:
