@@ -15,11 +15,7 @@ use crate::{
         request::{BlockResponseScope, Call, EventFilter, OverflowingStorageAddress},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
-    sequencer::{
-        self,
-        reply::{self as raw},
-        ClientApi,
-    },
+    sequencer::{self, ClientApi},
     state::SyncState,
     storage::{
         RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEventsTable,
@@ -449,29 +445,36 @@ impl RpcApi {
             .and_then(|x| x)
     }
 
-    /// Helper function.
-    async fn get_raw_transaction_by_hash(
-        &self,
-        transaction_hash: StarknetTransactionHash,
-    ) -> RpcResult<raw::Transaction> {
-        // TODO get this from storage. This is currently not possible as transactions are not stored separately.
-        let txn = self.sequencer.transaction(transaction_hash).await?;
-        if txn.status == raw::Status::NotReceived {
-            return Err(ErrorCode::InvalidTransactionHash.into());
-        }
-        Ok(txn)
-    }
-
     /// Get the details and status of a submitted transaction.
     /// `transaction_hash` is the hash of the requested transaction.
     pub async fn get_transaction_by_hash(
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> RpcResult<Transaction> {
-        // TODO get this from storage. This is currently not possible as transactions are not stored separately.
-        let txn = self.get_raw_transaction_by_hash(transaction_hash).await?;
-        let txn = txn.try_into()?;
-        Ok(txn)
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let db_tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            // Get the transaction from storage.
+            StarknetTransactionsTable::get_transaction(&db_tx, transaction_hash)
+                .context("Reading transaction from database")?
+                .ok_or(ErrorCode::InvalidTransactionHash.into())
+                .map(|tx| tx.into())
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
     }
 
     /// Get the details of a transaction by a given block hash and index.
