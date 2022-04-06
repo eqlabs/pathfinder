@@ -38,6 +38,45 @@ impl Default for State {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum BlockingTaskDone {
+    L1Update,
+    L1Reorg,
+    L1QueryUpdate,
+    L1Restart,
+    L2Update,
+    L2Reorg,
+    L2NewContract,
+    L2QueryHash,
+    L2QueryContractExistance,
+    L2Restart,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub struct BlockingTaskDoneSender(pub mpsc::Sender<BlockingTaskDone>);
+
+#[cfg(not(test))]
+#[derive(Debug, Clone)]
+struct BlockingTaskDoneSender;
+
+impl BlockingTaskDoneSender {
+    #[cfg(test)]
+    pub async fn send(&self, value: BlockingTaskDone) {
+        self.0.send(value).await.unwrap();
+    }
+
+    #[cfg(not(test))]
+    pub async fn send(&self, _: BlockingTaskDone) {}
+}
+
+#[cfg(test)]
+impl From<mpsc::Sender<BlockingTaskDone>> for BlockingTaskDoneSender {
+    fn from(sender: mpsc::Sender<BlockingTaskDone>) -> Self {
+        Self(sender)
+    }
+}
+
 pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
     transport: Web3<Transport>,
@@ -46,6 +85,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     state: Arc<State>,
     l1_sync: L1Sync,
     l2_sync: L2Sync,
+    #[cfg(test)] blocking_done_tx: BlockingTaskDoneSender,
 ) -> anyhow::Result<()>
 where
     Transport: web3::Transport,
@@ -61,6 +101,9 @@ where
         ) -> F2
         + Copy,
 {
+    #[cfg(not(test))]
+    let blocking_done_tx = BlockingTaskDoneSender;
+
     // TODO: should this be owning a Storage, or just take in a Connection?
     let mut db_conn = storage
         .connection()
@@ -105,7 +148,7 @@ where
                     let first = updates.first().map(|u| u.block_number.0);
                     let last = updates.last().map(|u| u.block_number.0);
 
-                    l1_update(&mut db_conn, &updates).await.with_context(|| {
+                    l1_update(&mut db_conn, &updates, blocking_done_tx.clone()).await.with_context(|| {
                         format!("Update L1 state with blocks {:?}-{:?}", first, last)
                     })?;
 
@@ -124,7 +167,7 @@ where
                     }
                 }
                 Some(l1::Event::Reorg(reorg_tail)) => {
-                    l1_reorg(&mut db_conn, reorg_tail)
+                    l1_reorg(&mut db_conn, reorg_tail, blocking_done_tx.clone())
                         .await
                         .with_context(|| format!("Reorg L1 state to block {}", reorg_tail.0))?;
 
@@ -145,6 +188,8 @@ where
                         tokio::task::block_in_place(|| L1StateTable::get(&db_conn, block.into()))
                             .with_context(|| format!("Query L1 state table for block {:?}", block))?;
 
+                    blocking_done_tx.send(BlockingTaskDone::L1QueryUpdate).await;
+
                     let _ = tx.send(update);
 
                     tracing::trace!("Query for L1 update for block {}", block.0);
@@ -164,6 +209,8 @@ where
                     })
                     .context("Query L1 head from database")?;
 
+                    blocking_done_tx.send(BlockingTaskDone::L1Restart).await;
+
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
@@ -182,7 +229,7 @@ where
                         .map(|u| u.storage_updates.len())
                         .sum();
                     let update_t = std::time::Instant::now();
-                    l2_update(&mut db_conn, block, diff)
+                    l2_update(&mut db_conn, block, diff, blocking_done_tx.clone())
                         .await
                         .with_context(|| format!("Update L2 state to {}", block_num))?;
                     let block_time = last_block_start.elapsed();
@@ -227,7 +274,7 @@ where
                     }
                 }
                 Some(l2::Event::Reorg(reorg_tail)) => {
-                    l2_reorg(&mut db_conn, reorg_tail)
+                    l2_reorg(&mut db_conn, reorg_tail, blocking_done_tx.clone())
                         .await
                         .with_context(|| format!("Reorg L2 state to {:?}", reorg_tail))?;
 
@@ -250,6 +297,8 @@ where
                         format!("Insert contract definition with hash: {:?}", contract.hash)
                     })?;
 
+                    blocking_done_tx.send(BlockingTaskDone::L2NewContract).await;
+
                     tracing::trace!("Inserted new contract {}", contract.hash.0.to_hex_str());
                 }
                 Some(l2::Event::QueryHash(block, tx)) => {
@@ -258,6 +307,7 @@ where
                     })
                     .with_context(|| format!("Query L2 block hash for block {:?}", block))?
                     .map(|block| block.hash);
+                    blocking_done_tx.send(BlockingTaskDone::L2QueryHash).await;
                     let _ = tx.send(hash);
 
                     tracing::trace!("Query hash for L2 block {}", block.0);
@@ -268,6 +318,7 @@ where
                             .with_context(|| {
                                 format!("Query storage for existance of contracts {:?}", contracts)
                             })?;
+                    blocking_done_tx.send(BlockingTaskDone::L2QueryContractExistance).await;
                     let count = exists.iter().filter(|b| **b).count();
 
                     existed = (contracts.len(), count);
@@ -292,6 +343,8 @@ where
                     })
                     .context("Query L2 head from database")?
                     .map(|block| (block.number, block.hash));
+
+                    blocking_done_tx.send(BlockingTaskDone::L2Restart).await;
 
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
@@ -353,7 +406,11 @@ async fn update_sync_status_latest(
     }
 }
 
-async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> anyhow::Result<()> {
+async fn l1_update(
+    connection: &mut Connection,
+    updates: &[StateUpdateLog],
+    blocking_done_tx: BlockingTaskDoneSender,
+) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction()
@@ -395,12 +452,15 @@ async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> a
         }
 
         transaction.commit().context("Commit database transaction")
-    })
+    })?;
+    blocking_done_tx.send(BlockingTaskDone::L1Update).await;
+    Ok(())
 }
 
 async fn l1_reorg(
     connection: &mut Connection,
     reorg_tail: StarknetBlockNumber,
+    blocking_done_tx: BlockingTaskDoneSender,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -423,13 +483,16 @@ async fn l1_reorg(
         }
 
         transaction.commit().context("Commit database transaction")
-    })
+    })?;
+    blocking_done_tx.send(BlockingTaskDone::L1Reorg).await;
+    Ok(())
 }
 
 async fn l2_update(
     connection: &mut Connection,
     block: Block,
     state_diff: StateUpdate,
+    blocking_done_tx: BlockingTaskDoneSender,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -490,12 +553,15 @@ async fn l2_update(
         }
 
         transaction.commit().context("Commit database transaction")
-    })
+    })?;
+    blocking_done_tx.send(BlockingTaskDone::L2Update).await;
+    Ok(())
 }
 
 async fn l2_reorg(
     connection: &mut Connection,
     reorg_tail: StarknetBlockNumber,
+    blocking_done_tx: BlockingTaskDoneSender,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -521,7 +587,9 @@ async fn l2_reorg(
         }
 
         transaction.commit().context("Commit database transaction")
-    })
+    })?;
+    blocking_done_tx.send(BlockingTaskDone::L2Reorg).await;
+    Ok(())
 }
 
 fn update_starknet_state(
@@ -574,7 +642,7 @@ fn deploy_contract(
 
 #[cfg(test)]
 mod tests {
-    use super::{l1, l2};
+    use super::{l1, l2, BlockingTaskDone};
     use crate::{
         core::{
             ContractAddress, ContractHash, EthereumBlockHash, EthereumBlockNumber,
@@ -594,7 +662,13 @@ mod tests {
     };
     use jsonrpc_core::{Call, Value};
     use pedersen::StarkHash;
-    use std::{sync::Arc, time::Duration};
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+        time::Duration,
+    };
     use tokio::sync::mpsc;
     use web3::{error, types::H256, RequestId, Transport, Web3};
 
@@ -776,25 +850,29 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_update() {
+        use std::collections::VecDeque;
+        static SEND_ONCE: AtomicBool = AtomicBool::new(false);
         let chain = ethereum::Chain::Goerli;
-        let sync_state = Arc::new(state::SyncState::default());
 
         lazy_static::lazy_static! {
-            static ref UPDATES: Arc<tokio::sync::RwLock<Vec<Vec<ethereum::log::StateUpdateLog>>>> =
-            Arc::new(tokio::sync::RwLock::new(vec![
+            static ref UPDATES: Arc<tokio::sync::RwLock<VecDeque<Vec<ethereum::log::StateUpdateLog>>>> =
+            Arc::new(tokio::sync::RwLock::new(VecDeque::from([
+                vec![STATE_UPDATE_LOG0.clone()],
+                vec![STATE_UPDATE_LOG0.clone()],
                 vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
-                vec![STATE_UPDATE_LOG0.clone()],
-                vec![STATE_UPDATE_LOG0.clone()],
-            ]));
+            ])));
         }
 
-        // A simple L1 sync task
+        // A simple L1 sync task which sends the update only once and if called again will remain pending
         let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
-            let mut update = UPDATES.write().await;
-            if let Some(some_update) = update.pop() {
-                tx.send(l1::Event::Update(some_update)).await.unwrap();
+            if SEND_ONCE.fetch_or(true, Ordering::Relaxed) {
+                let () = std::future::pending().await;
+            } else {
+                let mut update = UPDATES.write().await;
+                if let Some(some_update) = update.pop_front() {
+                    tx.send(l1::Event::Update(some_update)).await.unwrap();
+                }
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
             Ok(())
         };
 
@@ -807,9 +885,10 @@ mod tests {
             Some(vec![STORAGE_BLOCK0.clone(), STORAGE_BLOCK1.clone()]),
         ]
         .into_iter()
-        .map(|blocks| async {
+        .map(|blocks| async move {
             let storage = Storage::in_memory().unwrap();
             let connection = storage.connection().unwrap();
+            SEND_ONCE.fetch_and(false, Ordering::Relaxed);
 
             if let Some(some_blocks) = blocks {
                 some_blocks
@@ -817,19 +896,21 @@ mod tests {
                     .for_each(|block| StarknetBlocksTable::insert(&connection, block).unwrap());
             }
 
+            let (done_tx, mut done_rx) = mpsc::channel(1);
+
             // UUT
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
                 Web3::new(FakeTransport),
                 chain,
                 FakeSequencer,
-                sync_state.clone(),
+                Arc::new(state::SyncState::default()),
                 l1,
                 l2_noop,
+                done_tx.into(),
             ));
 
-            // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(300)).await;
+            assert_eq!(done_rx.recv().await.unwrap(), BlockingTaskDone::L1Update);
 
             RefsTable::get_l1_l2_head(&connection)
         })
@@ -853,6 +934,8 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_reorg() {
+        static SEND_ONCE: AtomicBool = AtomicBool::new(false);
+
         let results = [
             // Case 0: single block in L1, reorg on genesis
             (vec![STATE_UPDATE_LOG0.clone()], 0),
@@ -866,13 +949,17 @@ mod tests {
         .map(|(updates, reorg_on_block)| async move {
             let storage = Storage::in_memory().unwrap();
             let connection = storage.connection().unwrap();
+            SEND_ONCE.fetch_and(false, Ordering::Relaxed);
 
-            // A simple L1 sync task
+            // A simple L1 sync task which sends the update only once and if called again will remain pending
             let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
-                tx.send(l1::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
-                    .await
-                    .unwrap();
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                if SEND_ONCE.fetch_or(true, Ordering::Relaxed) {
+                    let () = std::future::pending().await;
+                } else {
+                    tx.send(l1::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
+                        .await
+                        .unwrap();
+                }
                 Ok(())
             };
 
@@ -881,6 +968,8 @@ mod tests {
             updates
                 .into_iter()
                 .for_each(|update| L1StateTable::insert(&connection, &update).unwrap());
+
+            let (done_tx, mut done_rx) = mpsc::channel(1);
 
             // UUT
             let _jh = tokio::spawn(state::sync(
@@ -891,10 +980,10 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1,
                 l2_noop,
+                done_tx.into(),
             ));
 
-            // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            assert_eq!(done_rx.recv().await.unwrap(), BlockingTaskDone::L1Reorg);
 
             let latest_block_number =
                 L1StateTable::get(&connection, storage::L1TableBlockId::Latest)
@@ -926,7 +1015,7 @@ mod tests {
         // This is what we're asking for
         L1StateTable::insert(&connection, &*STATE_UPDATE_LOG0).unwrap();
 
-        // A simple L1 sync task which does the request and checks he result
+        // A simple L1 sync task which does the request and checks the result and does it only once
         let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
             let (tx1, rx1) =
                 tokio::sync::oneshot::channel::<Option<ethereum::log::StateUpdateLog>>();
@@ -937,10 +1026,10 @@ mod tests {
 
             // Check the result straight away ¯\_(ツ)_/¯
             assert_eq!(rx1.await.unwrap().unwrap(), *STATE_UPDATE_LOG0);
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())
         };
+
+        let (done_tx, mut done_rx) = mpsc::channel(1);
 
         // UUT
         let _jh = tokio::spawn(state::sync(
@@ -951,24 +1040,24 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
+            done_tx.into(),
         ));
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(
+            done_rx.recv().await.unwrap(),
+            BlockingTaskDone::L1QueryUpdate
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_restart() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
+        use std::sync::atomic::AtomicUsize;
         let storage = Storage::in_memory().unwrap();
 
-        static CNT: AtomicUsize = AtomicUsize::new(0);
-
         // A simple L1 sync task
-        let l1 = move |_, _, _, _| async move {
-            CNT.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        };
+        let l1 = |_, _, _, _| async { Ok(()) };
+
+        let (done_tx, mut done_rx) = mpsc::channel(1);
 
         // UUT
         let _jh = tokio::spawn(state::sync(
@@ -979,17 +1068,17 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
+            done_tx.into(),
         ));
 
-        tokio::time::sleep(Duration::from_millis(5)).await;
-
-        assert!(CNT.load(Ordering::Relaxed) > 1);
+        assert_eq!(done_rx.recv().await.unwrap(), BlockingTaskDone::L1Restart);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
         let chain = ethereum::Chain::Goerli;
         let sync_state = Arc::new(state::SyncState::default());
+        static SEND_ONCE: AtomicBool = AtomicBool::new(false);
 
         // Incoming L2 update
         let block = || BLOCK0.clone();
@@ -1002,10 +1091,13 @@ mod tests {
 
         // A simple L2 sync task
         let l2 = move |tx: mpsc::Sender<l2::Event>, _, _| async move {
-            tx.send(l2::Event::Update(block(), state_update(), timings))
-                .await
-                .unwrap();
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            if SEND_ONCE.fetch_or(true, Ordering::Relaxed) {
+                let () = std::future::pending().await;
+            } else {
+                tx.send(l2::Event::Update(block(), state_update(), timings))
+                    .await
+                    .unwrap();
+            }
             Ok(())
         };
 
@@ -1019,24 +1111,27 @@ mod tests {
         .map(|update_log| async {
             let storage = Storage::in_memory().unwrap();
             let connection = storage.connection().unwrap();
+            SEND_ONCE.fetch_and(false, Ordering::Relaxed);
 
             if let Some(some_update_log) = update_log {
                 L1StateTable::insert(&connection, &some_update_log).unwrap();
             }
 
+            let (done_tx, mut done_rx) = mpsc::channel(1);
+
             // UUT
             let _jh = tokio::spawn(state::sync(
-                storage.clone(),
+                storage,
                 Web3::new(FakeTransport),
                 chain,
                 FakeSequencer,
                 sync_state.clone(),
                 l1_noop,
                 l2,
+                done_tx.into(),
             ));
 
-            // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            assert_eq!(done_rx.recv().await.unwrap(), BlockingTaskDone::L2Update);
 
             RefsTable::get_l1_l2_head(&connection)
         })
@@ -1058,6 +1153,8 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_reorg() {
+        static SEND_ONCE: AtomicBool = AtomicBool::new(false);
+
         let results = [
             // Case 0: single block in L2, reorg on genesis
             (vec![STORAGE_BLOCK0.clone()], 0),
@@ -1068,13 +1165,17 @@ mod tests {
         .map(|(updates, reorg_on_block)| async move {
             let storage = Storage::in_memory().unwrap();
             let connection = storage.connection().unwrap();
+            SEND_ONCE.fetch_and(false, Ordering::Relaxed);
 
-            // A simple L2 sync task
+            // A simple L2 sync task, sends the update only once and then stays pending
             let l2 = move |tx: mpsc::Sender<l2::Event>, _, _| async move {
-                tx.send(l2::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
-                    .await
-                    .unwrap();
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                if SEND_ONCE.fetch_or(true, Ordering::Relaxed) {
+                    let () = std::future::pending().await;
+                } else {
+                    tx.send(l2::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
+                        .await
+                        .unwrap();
+                }
                 Ok(())
             };
 
@@ -1083,6 +1184,8 @@ mod tests {
             updates
                 .into_iter()
                 .for_each(|block| StarknetBlocksTable::insert(&connection, &block).unwrap());
+
+            let (done_tx, mut done_rx) = mpsc::channel(1);
 
             // UUT
             let _jh = tokio::spawn(state::sync(
@@ -1093,10 +1196,10 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1_noop,
                 l2,
+                done_tx.into(),
             ));
 
-            // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            assert_eq!(done_rx.recv().await.unwrap(), BlockingTaskDone::L2Reorg);
 
             let latest_block_number =
                 StarknetBlocksTable::get(&connection, storage::StarknetBlocksBlockId::Latest)
@@ -1136,10 +1239,10 @@ mod tests {
             }))
             .await
             .unwrap();
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())
         };
+
+        let (done_tx, mut done_rx) = mpsc::channel(1);
 
         // UUT
         let _jh = tokio::spawn(state::sync(
@@ -1150,11 +1253,13 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            done_tx.into(),
         ));
 
-        // TODO Find a better way to figure out that the DB update has already been performed
-        tokio::time::sleep(Duration::from_millis(10)).await;
-
+        assert_eq!(
+            done_rx.recv().await.unwrap(),
+            BlockingTaskDone::L2NewContract
+        );
         assert_eq!(
             storage::ContractCodeTable::exists(&connection, &[ContractHash(*A)]).unwrap(),
             vec![true]
@@ -1179,10 +1284,10 @@ mod tests {
 
             // Check the result straight away ¯\_(ツ)_/¯
             assert_eq!(rx1.await.unwrap().unwrap(), StarknetBlockHash(*A));
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())
         };
+
+        let (done_tx, mut done_rx) = mpsc::channel(1);
 
         // UUT
         let _jh = tokio::spawn(state::sync(
@@ -1193,7 +1298,10 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            done_tx.into(),
         ));
+
+        assert_eq!(done_rx.recv().await.unwrap(), BlockingTaskDone::L2QueryHash);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1228,9 +1336,10 @@ mod tests {
             // Check the result straight away ¯\_(ツ)_/¯
             assert_eq!(rx1.await.unwrap(), vec![true]);
 
-            tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())
         };
+
+        let (done_tx, mut done_rx) = mpsc::channel(1);
 
         // UUT
         let _jh = tokio::spawn(state::sync(
@@ -1241,22 +1350,24 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            done_tx.into(),
         ));
+
+        assert_eq!(
+            done_rx.recv().await.unwrap(),
+            BlockingTaskDone::L2QueryContractExistance
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_restart() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
+        use std::sync::atomic::AtomicUsize;
         let storage = Storage::in_memory().unwrap();
 
-        static CNT: AtomicUsize = AtomicUsize::new(0);
-
         // A simple L2 sync task
-        let l2 = move |_, _, _| async move {
-            CNT.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        };
+        let l2 = |_, _, _| async { Ok(()) };
+
+        let (done_tx, mut done_rx) = mpsc::channel(1);
 
         // UUT
         let _jh = tokio::spawn(state::sync(
@@ -1267,10 +1378,9 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            done_tx.into(),
         ));
 
-        tokio::time::sleep(Duration::from_millis(5)).await;
-
-        assert!(CNT.load(Ordering::Relaxed) > 1);
+        assert_eq!(done_rx.recv().await.unwrap(), BlockingTaskDone::L2Restart);
     }
 }

@@ -467,16 +467,16 @@ mod tests {
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
         let state = std::sync::Arc::new(sync::State::default());
 
-        sync::sync(
-            storage,
-            transport,
-            chain,
-            sequencer,
-            state,
-            sync::l1::sync,
-            sync::l2::sync,
-        )
-        .await
-        .unwrap();
+        // sync::sync(
+        //     storage,
+        //     transport,
+        //     chain,
+        //     sequencer,
+        //     state,
+        //     sync::l1::sync,
+        //     sync::l2::sync,
+        // )
+        // .await
+        // .unwrap();
     }
 }
