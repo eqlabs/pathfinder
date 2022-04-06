@@ -95,7 +95,7 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
 
 #[cfg(test)]
 mod tests {
-    use super::{calculate_contract_state_hash, sync};
+    use super::calculate_contract_state_hash;
     use crate::core::{ContractHash, ContractRoot, ContractStateHash};
     use pedersen::StarkHash;
 

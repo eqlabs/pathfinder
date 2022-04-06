@@ -77,6 +77,7 @@ impl From<mpsc::Sender<BlockingTaskDone>> for BlockingTaskDoneSender {
     }
 }
 
+#[cfg_attr(test, allow(clippy::too_many_arguments))]
 pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
     transport: Web3<Transport>,
@@ -1051,7 +1052,6 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_restart() {
-        use std::sync::atomic::AtomicUsize;
         let storage = Storage::in_memory().unwrap();
 
         // A simple L1 sync task
@@ -1361,7 +1361,6 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_restart() {
-        use std::sync::atomic::AtomicUsize;
         let storage = Storage::in_memory().unwrap();
 
         // A simple L2 sync task
