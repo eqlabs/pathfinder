@@ -467,7 +467,7 @@ impl RpcApi {
             // Get the transaction from storage.
             StarknetTransactionsTable::get_transaction(&db_tx, transaction_hash)
                 .context("Reading transaction from database")?
-                .ok_or(ErrorCode::InvalidTransactionHash.into())
+                .ok_or_else(|| ErrorCode::InvalidTransactionHash.into())
                 .map(|tx| tx.into())
         });
 
