@@ -28,6 +28,10 @@ pub struct ContractHash(pub StarkHash);
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractStateHash(pub StarkHash);
 
+/// A StarkNet contract's class hash.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ContractClassHash(pub StarkHash);
+
 /// A commitment root of a StarkNet contract. This is the entry-point
 /// for a contract's state at a specific point in time via the contract
 /// state tree.

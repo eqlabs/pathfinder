@@ -102,8 +102,8 @@ pub struct TransactionStatus {
 pub mod transaction {
     use crate::{
         core::{
-            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-            EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
+            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, ContractClassHash,
+            EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
             L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
             StarknetTransactionIndex, TransactionSignatureElem,
         },
@@ -196,6 +196,9 @@ pub mod transaction {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
+        #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
+        pub actual_fee: Option<Fee>,
         pub events: Vec<Event>,
         pub execution_resources: ExecutionResources,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
@@ -233,6 +236,9 @@ pub mod transaction {
         #[serde_as(as = "Option<Vec<CallParamAsDecimalStr>>")]
         #[serde(default)]
         pub calldata: Option<Vec<CallParam>>,
+        /// None for Invoke, Some() for Deploy
+        #[serde(default)]
+        pub class_hash: Option<ContractClassHash>,
         #[serde_as(as = "Option<Vec<ConstructorParamAsDecimalStr>>")]
         #[serde(default)]
         pub constructor_calldata: Option<Vec<ConstructorParam>>,

@@ -1596,6 +1596,7 @@ mod tests {
         ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
             let transactions = (0..NUM_TRANSACTIONS).map(|i| transaction::Transaction {
                 calldata: None,
+                class_hash: None,
                 constructor_calldata: None,
                 contract_address: ContractAddress(
                     StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
@@ -1611,6 +1612,7 @@ mod tests {
                 max_fee: None,
             });
             let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
+                actual_fee: None,
                 events: vec![transaction::Event {
                     from_address: ContractAddress(
                         StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
@@ -1850,6 +1852,7 @@ mod tests {
             StarknetTransactionHash(StarkHash::from_be_slice(b"transaction 0 hash").unwrap());
         let transaction0 = Transaction {
             calldata: None,
+            class_hash: None,
             constructor_calldata: None,
             contract_address: contract0_address,
             contract_address_salt: None,
