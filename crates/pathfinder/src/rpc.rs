@@ -1143,39 +1143,44 @@ mod tests {
 
         mod accepted {
             use super::*;
+            use pretty_assertions::assert_eq;
 
             #[tokio::test]
             async fn positional_args() {
-                let storage = Storage::in_memory().unwrap();
+                let storage = setup_storage();
+                let hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-                let params = rpc_params!(*VALID_TX_HASH);
-                client(addr)
+                let params = rpc_params!(hash);
+                let transaction = client(addr)
                     .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
+                assert_eq!(transaction.txn_hash, hash);
             }
 
             #[tokio::test]
             async fn named_args() {
-                let storage = Storage::in_memory().unwrap();
+                let storage = setup_storage();
+                let hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-                let params = by_name([("transaction_hash", json!(*VALID_TX_HASH))]);
-                client(addr)
+                let params = by_name([("transaction_hash", json!(hash))]);
+                let transaction = client(addr)
                     .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
+                assert_eq!(transaction.txn_hash, hash);
             }
         }
 
         #[tokio::test]
         async fn invalid_hash() {
-            let storage = Storage::in_memory().unwrap();
+            let storage = setup_storage();
             let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
