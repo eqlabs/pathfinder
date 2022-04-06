@@ -108,8 +108,8 @@ pub mod request {
 
         // These are inlined here because serde flatten and deny_unknown_fields
         // don't work together.
-        pub page_size: Option<usize>,
-        pub page_number: Option<usize>,
+        pub page_size: usize,
+        pub page_number: usize,
     }
 }
 
@@ -283,6 +283,7 @@ pub mod reply {
         InvalidTransactionHash = 25,
         InvalidBlockNumber = 26,
         InvalidTransactionIndex = 27,
+        PageSizeTooBig = 31,
         ContractError = 40,
     }
 
@@ -363,6 +364,7 @@ pub mod reply {
                 25 => InvalidTransactionHash,
                 26 => InvalidBlockNumber,
                 27 => InvalidTransactionIndex,
+                31 => PageSizeTooBig,
                 40 => ContractError,
                 x => return Err(x),
             })
@@ -381,6 +383,7 @@ pub mod reply {
                 ErrorCode::InvalidTransactionHash => "Invalid transaction hash",
                 ErrorCode::InvalidBlockNumber => "Invalid block number",
                 ErrorCode::InvalidTransactionIndex => "Invalid transaction index in a block",
+                ErrorCode::PageSizeTooBig => "Requested page size is too big",
                 ErrorCode::ContractError => "Contract error",
             }
         }
@@ -695,5 +698,6 @@ pub mod reply {
     pub struct GetEventsResult {
         pub events: Vec<EmittedEvent>,
         pub page_number: usize,
+        pub is_last_page: bool,
     }
 }

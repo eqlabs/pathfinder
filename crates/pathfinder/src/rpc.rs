@@ -2172,6 +2172,7 @@ mod tests {
         const TRANSACTIONS_PER_BLOCK: usize = 10;
         const EVENTS_PER_BLOCK: usize = TRANSACTIONS_PER_BLOCK;
         const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
+        const NUM_EVENTS: usize = NUM_BLOCKS * EVENTS_PER_BLOCK;
 
         fn create_transactions_and_receipts(
         ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
@@ -2288,8 +2289,8 @@ mod tests {
                     to_block: None,
                     address: None,
                     keys: vec![],
-                    page_size: None,
-                    page_number: None,
+                    page_size: NUM_EVENTS,
+                    page_number: 0,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2300,7 +2301,8 @@ mod tests {
                     rpc_result,
                     GetEventsResult {
                         events,
-                        page_number: 0
+                        page_number: 0,
+                        is_last_page: true,
                     }
                 );
             }
@@ -2320,8 +2322,8 @@ mod tests {
                     address: Some(expected_event.from_address),
                     // we're using a key which is present in _all_ events
                     keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
-                    page_size: None,
-                    page_number: None,
+                    page_size: NUM_EVENTS,
+                    page_number: 0,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2332,7 +2334,8 @@ mod tests {
                     rpc_result,
                     GetEventsResult {
                         events: vec![expected_event.clone()],
-                        page_number: 0
+                        page_number: 0,
+                        is_last_page: true,
                     }
                 );
             }
@@ -2351,8 +2354,8 @@ mod tests {
                     to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
                     address: None,
                     keys: vec![],
-                    page_size: None,
-                    page_number: None,
+                    page_size: NUM_EVENTS,
+                    page_number: 0,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2365,34 +2368,9 @@ mod tests {
                     rpc_result,
                     GetEventsResult {
                         events: expected_events.to_vec(),
-                        page_number: 0
+                        page_number: 0,
+                        is_last_page: true,
                     }
-                );
-            }
-
-            #[tokio::test]
-            async fn get_events_with_invalid_pagination_request() {
-                let (storage, _events) = setup();
-                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-
-                let params = rpc_params!(EventFilter {
-                    from_block: None,
-                    to_block: None,
-                    address: None,
-                    keys: vec![],
-                    page_size: Some(1),
-                    page_number: None,
-                });
-                let error = client(addr)
-                    .request::<GetEventsResult>("starknet_getEvents", params)
-                    .await
-                    .unwrap_err();
-                assert_matches!(
-                    error,
-                    Error::Request(s) => assert_eq!(get_err(&s).1, "Internal error: Invalid pagination request")
                 );
             }
 
@@ -2409,8 +2387,8 @@ mod tests {
                     to_block: None,
                     address: None,
                     keys: vec![],
-                    page_size: Some(0),
-                    page_number: Some(0),
+                    page_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                    page_number: 0,
                 });
                 let error = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2418,7 +2396,16 @@ mod tests {
                     .unwrap_err();
                 assert_matches!(
                     error,
-                    Error::Request(s) => assert_eq!(get_err(&s).1, "Internal error: Invalid page size")
+                    Error::Request(s) => assert_eq!(
+                        serde_json::from_str::<serde_json::Value>(&s).unwrap()["error"],
+                        json!({
+                            "code": 31,
+                            "message": "Requested page size is too big",
+                            "data": {
+                                "max_page_size": crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT
+                            }
+                        })
+                    )
                 );
             }
 
@@ -2430,7 +2417,7 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
 
-                let expected_events = &events[27..31];
+                let expected_events = &events[27..32];
                 let keys_for_expected_events: Vec<_> =
                     expected_events.iter().map(|e| e.keys[0]).collect();
 
@@ -2439,8 +2426,8 @@ mod tests {
                     to_block: None,
                     address: None,
                     keys: keys_for_expected_events.clone(),
-                    page_size: Some(2),
-                    page_number: Some(0),
+                    page_size: 2,
+                    page_number: 0,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2450,7 +2437,8 @@ mod tests {
                     rpc_result,
                     GetEventsResult {
                         events: expected_events[..2].to_vec(),
-                        page_number: 0
+                        page_number: 0,
+                        is_last_page: false,
                     }
                 );
 
@@ -2459,8 +2447,8 @@ mod tests {
                     to_block: None,
                     address: None,
                     keys: keys_for_expected_events.clone(),
-                    page_size: Some(2),
-                    page_number: Some(1),
+                    page_size: 2,
+                    page_number: 1,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2470,7 +2458,8 @@ mod tests {
                     rpc_result,
                     GetEventsResult {
                         events: expected_events[2..4].to_vec(),
-                        page_number: 1
+                        page_number: 1,
+                        is_last_page: false,
                     }
                 );
 
@@ -2479,8 +2468,8 @@ mod tests {
                     to_block: None,
                     address: None,
                     keys: keys_for_expected_events.clone(),
-                    page_size: Some(2),
-                    page_number: Some(2),
+                    page_size: 2,
+                    page_number: 2,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2490,7 +2479,8 @@ mod tests {
                     rpc_result,
                     GetEventsResult {
                         events: expected_events[4..].to_vec(),
-                        page_number: 2
+                        page_number: 2,
+                        is_last_page: true,
                     }
                 );
 
@@ -2500,8 +2490,8 @@ mod tests {
                     to_block: None,
                     address: None,
                     keys: keys_for_expected_events.clone(),
-                    page_size: Some(2),
-                    page_number: Some(3),
+                    page_size: 2,
+                    page_number: 3,
                 });
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
@@ -2511,7 +2501,8 @@ mod tests {
                     rpc_result,
                     GetEventsResult {
                         events: vec![],
-                        page_number: 3
+                        page_number: 3,
+                        is_last_page: true,
                     }
                 );
             }
@@ -2530,7 +2521,8 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
 
-                let params = by_name([("filter", json!({}))]);
+                let params =
+                    by_name([("filter", json!({"page_size": NUM_EVENTS, "page_number": 0}))]);
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
@@ -2540,7 +2532,8 @@ mod tests {
                     rpc_result,
                     GetEventsResult {
                         events,
-                        page_number: 0
+                        page_number: 0,
+                        is_last_page: true,
                     }
                 );
             }
@@ -2561,6 +2554,8 @@ mod tests {
                         "toBlock": expected_event.block_number.0,
                         "address": expected_event.from_address,
                         "keys": [expected_event.keys[0]],
+                        "page_size": NUM_EVENTS,
+                        "page_number": 0,
                     }),
                 )]);
                 let rpc_result = client(addr)
@@ -2572,7 +2567,8 @@ mod tests {
                     rpc_result,
                     GetEventsResult {
                         events: vec![expected_event.clone()],
-                        page_number: 0
+                        page_number: 0,
+                        is_last_page: true,
                     }
                 );
             }
