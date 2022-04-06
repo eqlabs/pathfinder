@@ -456,27 +456,4 @@ mod tests {
         // assert_eq!(state.eth_tx_index, genesis.origin.transaction.index);
         // assert_eq!(state.eth_log_index, genesis.origin.log_index);
     }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    #[ignore = "this is manual testing only, but we should really use the binary for this"]
-    async fn go_sync() {
-        let storage =
-            crate::storage::Storage::migrate(std::path::PathBuf::from("testing.sqlite")).unwrap();
-        let chain = crate::ethereum::Chain::Goerli;
-        let transport = crate::ethereum::test_transport(chain);
-        let sequencer = crate::sequencer::Client::new(chain).unwrap();
-        let state = std::sync::Arc::new(sync::State::default());
-
-        // sync::sync(
-        //     storage,
-        //     transport,
-        //     chain,
-        //     sequencer,
-        //     state,
-        //     sync::l1::sync,
-        //     sync::l2::sync,
-        // )
-        // .await
-        // .unwrap();
-    }
 }
