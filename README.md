@@ -186,13 +186,20 @@ The `pathfinder` node can be run in the provided Docker image.
 
 ```bash
 docker run \
-  -e RUST_LOG=info \
   -p 9545:9545 \
-  eqlabs/pathfinder \
-    --http-rpc="0.0.0.0:9545" \
-    --ethereum.url="https://goerli.infura.io/v3/<project-id>" \
-    --ethereum.password="<password>"
+  -e RUST_LOG=info \
+  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
+  eqlabs/pathfinder
 ```
+
+The following environment variables can be passed to the container:
+
+| Name                               | Description                                                  | Default value | Required |
+| ---------------------------------- | ------------------------------------------------------------ | ------------- | -------- |
+| PATHFINDER_ETHEREUM_API_URL        | Ethereum (archive) node JSON-RPC endpoint URL                |               | yes      |
+| PATHFINDER_ETHEREUM_API_USER_AGENT | User-Agent header value to use with Ethereum node API        |               | no       |
+| PATHFINDER_ETHEREUM_API_PASSWORD   | Password to use during authentication with Ethereum node API |               | no       |
+| PATHFINDER_HTTP_RPC_ADDRESS        | Address to bind the `pathfinder` RPC server to               | 0.0.0.0:9545  | no       |
 
 ### Building the container image yourself
 
@@ -205,13 +212,26 @@ docker build -t pathfinder .
 You can then start the node with:
 
 ```bash
-docker run --rm -it -e RUST_LOG=info -p 9545:9545 pathfinder --http-rpc "0.0.0.0:9545" --ethereum.url  https://goerli.infura.io/v3/<project-id> --ethereum.password <password>
+docker run \
+  --rm \
+  -it \
+  -p 9545:9545 \
+  -e RUST_LOG=info \
+  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
+  pathfinder
 ```
 
 To persist state between restarts you can mount a volume in the Docker container. To run the container and persist data to `/tmp/data` run:
 
 ```bash
-docker run --rm -it -e RUST_LOG=info -p 9545:9545 -v /tmp/data:/usr/share/pathfinder/data pathfinder --http-rpc "0.0.0.0:9545" --ethereum.url  https://goerli.infura.io/v3/<project-id> --ethereum.password <password>
+docker run \
+  --rm \
+  -it \
+  -p 9545:9545 \
+  -e RUST_LOG=info \
+  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
+  -v /tmp/data:/usr/share/pathfinder/data \
+  pathfinder
 ```
 
 
