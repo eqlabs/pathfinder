@@ -14,6 +14,7 @@ RUN cargo new --lib --vcs none crates/pedersen
 # Correct: --lib. We'll handle the binary later.
 RUN cargo new --lib --vcs none crates/pathfinder
 COPY Cargo.toml Cargo.toml
+COPY Cargo.lock Cargo.lock
 
 COPY crates/pathfinder/Cargo.toml crates/pathfinder/Cargo.toml
 COPY crates/pathfinder/build.rs crates/pathfinder/build.rs
