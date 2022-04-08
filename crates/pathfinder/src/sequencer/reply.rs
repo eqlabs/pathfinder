@@ -102,7 +102,7 @@ pub struct TransactionStatus {
 pub mod transaction {
     use crate::{
         core::{
-            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, ContractClassHash,
+            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash,
             EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
             L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
             StarknetTransactionIndex, TransactionSignatureElem,
@@ -238,7 +238,7 @@ pub mod transaction {
         pub calldata: Option<Vec<CallParam>>,
         /// None for Invoke, Some() for Deploy
         #[serde(default)]
-        pub class_hash: Option<ContractClassHash>,
+        pub class_hash: Option<ContractHash>,
         #[serde_as(as = "Option<Vec<ConstructorParamAsDecimalStr>>")]
         #[serde(default)]
         pub constructor_calldata: Option<Vec<ConstructorParam>>,
