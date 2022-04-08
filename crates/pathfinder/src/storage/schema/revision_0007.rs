@@ -1,8 +1,6 @@
+use crate::storage::{schema::PostMigrationAction, state::StarknetEventsTable};
 use anyhow::Context;
 use rusqlite::{named_params, Transaction};
-
-use crate::storage::schema::PostMigrationAction;
-use crate::storage::state::StarknetEventsTable;
 
 // This is a copy of data structures and their serialization specification as of
 // revision 6. We have to keep these intact so that future changes to these types
@@ -336,12 +334,13 @@ mod tests {
         core::{
             ContractAddress, EventData, EventKey, StarknetTransactionHash, StarknetTransactionIndex,
         },
-        sequencer::reply::transaction::{
-            self as starknet_transaction,
-            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-            ExecutionResources,
-        },
         storage::schema,
+    };
+
+    use super::transaction::{
+        self as starknet_transaction,
+        execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+        ExecutionResources,
     };
 
     use super::*;

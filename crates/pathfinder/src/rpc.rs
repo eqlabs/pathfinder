@@ -430,6 +430,7 @@ mod tests {
         let txn0_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
         let txn0 = Transaction {
             calldata: None,
+            class_hash: None,
             constructor_calldata: None,
             contract_address: contract0_addr,
             contract_address_salt: None,
@@ -441,6 +442,7 @@ mod tests {
             r#type: Type::Deploy,
         };
         let receipt0 = Receipt {
+            actual_fee: None,
             events: vec![],
             execution_resources: ExecutionResources {
                 builtin_instance_counter: BuiltinInstanceCounter::Empty(
@@ -2175,6 +2177,7 @@ mod tests {
         ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
             let transactions = (0..NUM_TRANSACTIONS).map(|i| transaction::Transaction {
                 calldata: None,
+                class_hash: None,
                 constructor_calldata: None,
                 contract_address: ContractAddress(
                     StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
@@ -2190,6 +2193,7 @@ mod tests {
                 max_fee: None,
             });
             let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
+                actual_fee: None,
                 events: vec![transaction::Event {
                     from_address: ContractAddress(
                         StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
