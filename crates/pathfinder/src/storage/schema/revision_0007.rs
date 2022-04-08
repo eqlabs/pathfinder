@@ -275,23 +275,16 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         .context("Prepare transaction query")?;
     let mut rows = stmt.query([])?;
 
-    let mut decompressor = zstd::bulk::Decompressor::new().context("Create zstd decompressor")?;
-    const CAPACITY_100_MB: usize = 1_000 * 1_000 * 100;
-
     while let Some(r) = rows.next()? {
         let transaction_hash = r.get_ref_unwrap("hash").as_blob()?;
         let block_hash = r.get_ref_unwrap("block_hash").as_blob()?;
         let tx = r.get_ref_unwrap("tx").as_blob()?;
         let receipt = r.get_ref_unwrap("receipt").as_blob()?;
 
-        let tx = decompressor
-            .decompress(tx, CAPACITY_100_MB)
-            .context("Decompress transaction")?;
+        let tx = zstd::decode_all(tx).context("Decompress transaction")?;
         let tx: transaction::Transaction =
             serde_json::de::from_slice(&tx).context("Deserializing transaction")?;
-        let receipt = decompressor
-            .decompress(receipt, CAPACITY_100_MB)
-            .context("Decompress receipt")?;
+        let receipt = zstd::decode_all(receipt).context("Decompress receipt")?;
         let receipt: transaction::Receipt =
             serde_json::de::from_slice(&receipt).context("Deserializing transaction receipt")?;
 
