@@ -18,8 +18,8 @@ use crate::{
     sequencer::{self, ClientApi},
     state::SyncState,
     storage::{
-        RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEventsTable,
-        StarknetTransactionsTable, Storage,
+        EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
+        StarknetEventsTable, StarknetTransactionsTable, Storage,
     },
 };
 use anyhow::Context;
@@ -926,13 +926,21 @@ impl RpcApi {
                 .map_err(internal_server_error)?;
 
             let filter = request.into();
-            let events = StarknetEventsTable::get_events(&connection, &filter)
-                .context("Look up events from database")
-                .map_err(internal_server_error)?;
+            // We don't add context here, because [StarknetEventsTable::get_events] adds its
+            // own context to the errors. This way we get meaningful error information
+            // for errors related to query parameters.
+            let page = StarknetEventsTable::get_events(&connection, &filter).map_err(|e| {
+                if let Some(e) = e.downcast_ref::<EventFilterError>() {
+                    Error::from(*e)
+                } else {
+                    internal_server_error(e)
+                }
+            })?;
 
             Ok(GetEventsResult {
-                events: events.into_iter().map(|e| e.into()).collect(),
-                page_number: 0,
+                events: page.events.into_iter().map(|e| e.into()).collect(),
+                page_number: filter.page_number,
+                is_last_page: page.is_last_page,
             })
         });
 
@@ -954,6 +962,23 @@ impl From<ext_py::CallFailure> for jsonrpsee::types::Error {
             ext_py::CallFailure::Internal(_) | ext_py::CallFailure::Shutdown => {
                 static_internal_server_error()
             }
+        }
+    }
+}
+
+impl From<EventFilterError> for jsonrpsee::types::Error {
+    fn from(e: EventFilterError) -> Self {
+        match e {
+            EventFilterError::PageSizeTooBig(max_size) => Error::Call(CallError::Custom {
+                code: ErrorCode::PageSizeTooBig as i32,
+                message: ErrorCode::PageSizeTooBig.to_string(),
+                data: Some(
+                    serde_json::value::RawValue::from_string(
+                        serde_json::json!({ "max_page_size": max_size }).to_string(),
+                    )
+                    .unwrap(),
+                ),
+            }),
         }
     }
 }
