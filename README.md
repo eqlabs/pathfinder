@@ -263,6 +263,8 @@ starknet_blockNumber
 starknet_chainId
 # The node's sync status
 starknet_syncing
+# Returns all events matching the given filter
+starknet_getEvents
 ```
 
 ## License
