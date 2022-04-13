@@ -1,23 +1,18 @@
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
+use std::time::Duration;
 
 use anyhow::Context;
-
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{
-    core::{ContractHash, StarknetBlockHash, StarknetBlockNumber},
-    ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
-    rpc::types::{BlockNumberOrTag, Tag},
-    sequencer::{
-        self,
-        error::SequencerError,
-        reply::{
-            state_update::{Contract, StateDiff},
-            Block,
-        },
-    },
-    state::{contract_hash::extract_abi_code_hash, CompressedContract},
-};
+use crate::core::{ContractHash, StarknetBlockHash, StarknetBlockNumber};
+use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
+use crate::rpc::types::{BlockNumberOrTag, Tag};
+use crate::sequencer::error::SequencerError;
+use crate::sequencer::reply::state_update::{Contract, StateDiff};
+use crate::sequencer::reply::Block;
+use crate::sequencer::{self};
+use crate::state::contract_hash::extract_abi_code_hash;
+use crate::state::CompressedContract;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Timings {
@@ -56,6 +51,7 @@ pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     sequencer: sequencer::Client,
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash)>,
+    chain: crate::ethereum::Chain,
 ) -> anyhow::Result<()> {
     'outer: loop {
         // Get the next block from L2.
@@ -68,7 +64,11 @@ pub async fn sync(
         let block = loop {
             match download_block(next, &sequencer).await? {
                 DownloadBlock::Block(block) => break block,
-                DownloadBlock::AtHead => tokio::time::sleep(Duration::from_secs(5)).await,
+                DownloadBlock::AtHead => {
+                    let poll_interval = head_poll_interval(chain);
+                    tracing::info!(poll_interval=?poll_interval, "At head of chain");
+                    tokio::time::sleep(poll_interval).await;
+                }
                 DownloadBlock::Reorg => {
                     let some_head = head.unwrap();
                     head = reorg(some_head, &tx_event, &sequencer)
@@ -176,8 +176,8 @@ async fn download_block(
         Ok(block) => Ok(DownloadBlock::Block(block)),
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound => {
             // This would occur if we queried past the head of the chain. We now need to check that
-            // a reorg hasn't put us too far in the future. This does run into race conditions with the
-            // sequencer but this is the best we can do I think.
+            // a reorg hasn't put us too far in the future. This does run into race conditions with
+            // the sequencer but this is the best we can do I think.
             let latest = sequencer
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
                 .await
@@ -225,7 +225,7 @@ async fn reorg(
             .with_context(|| format!("Download block {} from sequencer", previous_block_number.0))?
         {
             DownloadBlock::Block(block) if block.block_hash.unwrap() == previous_hash => {
-                break Some((previous_block_number, previous_hash))
+                break Some((previous_block_number, previous_hash));
             }
             _ => {}
         };
@@ -357,4 +357,20 @@ async fn download_and_compress_contract(
         definition,
         hash,
     })
+}
+
+/// Returns the interval to be used when polling the sequencer while at the head of the chain. The
+/// interval is chosen to provide a good balance between spamming the sequencer and getting new
+/// block information as it is available.
+///
+/// The interval is based on the block creation time, which is 2 minutes for Goerlie and 2 hours for
+/// Mainnet.
+pub fn head_poll_interval(chain: crate::ethereum::Chain) -> Duration {
+    use crate::ethereum::Chain::*;
+    match chain {
+        // 15 minute interval for a 2 hour block time.
+        Mainnet => Duration::from_secs(60 * 15),
+        // 30 second interval for a 2 minute block time.
+        Goerli => Duration::from_secs(30),
+    }
 }

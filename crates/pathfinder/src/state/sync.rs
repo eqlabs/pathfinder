@@ -2,7 +2,6 @@ mod l1;
 mod l2;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::{
     core::{
@@ -75,11 +74,12 @@ pub async fn sync(
         Arc::clone(&state),
         sequencer.clone(),
         starting_block,
+        chain,
     ));
 
     // Start L1 and L2 sync processes.
     let mut l1_handle = tokio::spawn(l1::sync(tx_l1, transport.clone(), chain, l1_head));
-    let mut l2_handle = tokio::spawn(l2::sync(tx_l2, sequencer.clone(), l2_head));
+    let mut l2_handle = tokio::spawn(l2::sync(tx_l2, sequencer.clone(), l2_head, chain));
 
     let mut existed = (0, 0);
 
@@ -285,7 +285,7 @@ pub async fn sync(
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    l2_handle = tokio::spawn(l2::sync(new_tx, sequencer.clone(), l2_head));
+                    l2_handle = tokio::spawn(l2::sync(new_tx, sequencer.clone(), l2_head, chain));
                     tracing::info!("L2 sync process restarted.");
                 }
             }
@@ -298,8 +298,11 @@ async fn update_sync_status_latest(
     state: Arc<State>,
     sequencer: sequencer::Client,
     starting_block: StarknetBlockHash,
+    chain: Chain,
 ) -> anyhow::Result<()> {
     use crate::rpc::types::{BlockNumberOrTag, Tag};
+    let poll_interval = l2::head_poll_interval(chain);
+
     loop {
         // Work-around the sequencer block fetch being flakey.
         let latest = loop {
@@ -322,23 +325,24 @@ async fn update_sync_status_latest(
                 });
 
                 tracing::debug!(
-                    "Updated sync status with latest block hash: {}",
-                    latest.0.to_hex_str()
+                    starting=%starting_block.0,
+                    current=%starting_block.0,
+                    highest=%latest.0,
+                    "Updated sync status",
                 );
             }
             SyncStatus::Status(status) => {
                 if status.highest_block != latest {
                     status.highest_block = latest;
                     tracing::debug!(
-                        "Updated sync status with latest block hash: {}",
-                        latest.0.to_hex_str()
+                        highest=%latest.0,
+                        "Updated sync status",
                     );
                 }
             }
         }
 
-        // Update once every 10 seconds at most.
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(poll_interval).await;
     }
 }
 
