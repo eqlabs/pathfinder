@@ -318,41 +318,41 @@ async fn update_sync_status_latest(
     let poll_interval = l2::head_poll_interval(chain);
 
     loop {
-        // Work-around the sequencer block fetch being flakey.
-        let latest = loop {
-            if let Ok(block) = sequencer
-                .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
-                .await
-            {
-                // Unwrap is safe as only pending blocks have None.
-                break block.block_hash.unwrap();
-            }
-        };
+        match sequencer
+            .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+            .await
+        {
+            Ok(block) => {
+                let latest = block.block_hash.unwrap();
+                // Update the sync status.
+                match &mut *state.status.write().await {
+                    sync_status @ SyncStatus::False(_) => {
+                        *sync_status = SyncStatus::Status(syncing::Status {
+                            starting_block,
+                            current_block: starting_block,
+                            highest_block: latest,
+                        });
 
-        // Update the sync status.
-        match &mut *state.status.write().await {
-            sync_status @ SyncStatus::False(_) => {
-                *sync_status = SyncStatus::Status(syncing::Status {
-                    starting_block,
-                    current_block: starting_block,
-                    highest_block: latest,
-                });
-
-                tracing::debug!(
-                    starting=%starting_block.0,
-                    current=%starting_block.0,
-                    highest=%latest.0,
-                    "Updated sync status",
-                );
-            }
-            SyncStatus::Status(status) => {
-                if status.highest_block != latest {
-                    status.highest_block = latest;
-                    tracing::debug!(
-                        highest=%latest.0,
-                        "Updated sync status",
-                    );
+                        tracing::debug!(
+                            starting=%starting_block.0,
+                            current=%starting_block.0,
+                            highest=%latest.0,
+                            "Updated sync status",
+                        );
+                    }
+                    SyncStatus::Status(status) => {
+                        if status.highest_block != latest {
+                            status.highest_block = latest;
+                            tracing::debug!(
+                                highest=%latest.0,
+                                "Updated sync status",
+                            );
+                        }
+                    }
                 }
+            }
+            Err(e) => {
+                tracing::error!(error=%e, "Failed to fetch latest block");
             }
         }
 
