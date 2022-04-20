@@ -7,3 +7,4 @@ pub mod rpc;
 pub mod sequencer;
 pub mod state;
 pub mod storage;
+pub mod update;
