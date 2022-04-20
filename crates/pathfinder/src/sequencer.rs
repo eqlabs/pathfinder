@@ -159,15 +159,29 @@ where
 impl Client {
     /// Creates a new Sequencer client for the given chain.
     pub fn new(chain: Chain) -> reqwest::Result<Self> {
-        let sequencer_url = match chain {
+        let url = match chain {
             Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
             Chain::Goerli => Url::parse("https://alpha4.starknet.io/").unwrap(),
         };
+
+        Self::with_url(url)
+    }
+
+    /// Create a Sequencer client for the given [Url].
+    fn with_url(url: Url) -> reqwest::Result<Self> {
+        // Resolves to "pathfinder/<version_info>"
+        const USER_AGENT: &str = concat!(
+            env!("CARGO_PKG_NAME"),
+            "/",
+            env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
+        );
+
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
+                .user_agent(USER_AGENT)
                 .build()?,
-            sequencer_url,
+            sequencer_url: url,
         })
     }
 
@@ -448,6 +462,40 @@ mod tests {
     /// Convenience wrapper
     fn client() -> Client {
         Client::new(Chain::Goerli).unwrap()
+    }
+
+    #[tokio::test]
+    async fn client_user_agent() {
+        use std::convert::Infallible;
+
+        use warp::Filter;
+
+        let filter = warp::header::optional("user-agent").and_then(
+            |user_agent: Option<String>| async move {
+                let user_agent = user_agent.expect("user-agent set");
+                let (name, version) = user_agent.split_once('/').unwrap();
+
+                assert_eq!(name, "pathfinder");
+                assert_eq!(version, env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"));
+
+                Result::<_, Infallible>::Ok("")
+            },
+        );
+
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let (addr, run_srv) =
+            warp::serve(filter).bind_with_graceful_shutdown(([127, 0, 0, 1], 0), async {
+                shutdown_rx.await.ok();
+            });
+        let server_handle = tokio::spawn(run_srv);
+
+        let url = format!("http://{}", addr);
+        let url = Url::parse(&url).unwrap();
+        let client = Client::with_url(url).unwrap();
+
+        let _ = client.block_by_hash(BlockHashOrTag::Tag(Tag::Latest)).await;
+        shutdown_tx.send(()).unwrap();
+        server_handle.await.unwrap();
     }
 
     mod block_by_number_matches_by_hash_on {
