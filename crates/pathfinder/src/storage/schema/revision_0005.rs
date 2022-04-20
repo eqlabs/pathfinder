@@ -213,25 +213,19 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         .context("Prepare statement")?;
     let mut rows = stmt.query([])?;
 
-    let mut decompressor = zstd::bulk::Decompressor::new().context("Create zstd decompressor")?;
     let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-    const CAPACITY_100_MB: usize = 1_000 * 1_000 * 100;
 
     while let Some(r) = rows.next()? {
         let block_hash = r.get_ref_unwrap("hash").as_blob()?;
         let transactions = r.get_ref_unwrap("transactions").as_blob()?;
         let receipts = r.get_ref_unwrap("transaction_receipts").as_blob()?;
 
-        let transactions = decompressor
-            .decompress(transactions, CAPACITY_100_MB)
-            .context("Decompressing transactions")?;
+        let transactions = zstd::decode_all(transactions).context("Decompressing transactions")?;
         let transactions =
             serde_json::de::from_slice::<Vec<transaction::Transaction>>(&transactions)
                 .context("Deserializing transactions")?;
 
-        let receipts = decompressor
-            .decompress(receipts, CAPACITY_100_MB)
-            .context("Decompressing transactions")?;
+        let receipts = zstd::decode_all(receipts).context("Decompressing transactions")?;
         let receipts = serde_json::de::from_slice::<Vec<transaction::Receipt>>(&receipts)
             .context("Deserializing transaction receipts")?;
 
@@ -365,7 +359,6 @@ mod tests {
         let receipts1 = serde_json::ser::to_vec(&receipts_original[5..]).unwrap();
 
         let mut compressor = zstd::bulk::Compressor::new(10).unwrap();
-        let mut decompressor = zstd::bulk::Decompressor::new().unwrap();
         let tx0 = compressor.compress(&tx0).unwrap();
         let tx1 = compressor.compress(&tx1).unwrap();
         let receipts0 = compressor.compress(&receipts0).unwrap();
@@ -418,8 +411,8 @@ mod tests {
                 .unwrap()
                 .unwrap();
 
-            let tx_i = decompressor.decompress(tx_i, 1000 * 1000).unwrap();
-            let rx_i = decompressor.decompress(rx_i, 1000 * 1000).unwrap();
+            let tx_i = zstd::decode_all(tx_i).unwrap();
+            let rx_i = zstd::decode_all(rx_i).unwrap();
 
             let tx_i = serde_json::de::from_slice::<transaction::Transaction>(&tx_i).unwrap();
             let rx_i = serde_json::de::from_slice::<transaction::Receipt>(&rx_i).unwrap();

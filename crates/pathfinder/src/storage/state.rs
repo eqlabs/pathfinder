@@ -479,16 +479,13 @@ impl StarknetTransactionsTable {
             .query(params![block_hash.0.as_be_bytes()])
             .context("Executing query")?;
 
-        let mut decompressor = zstd::bulk::Decompressor::new().context("Creating decompressor")?;
         let mut data = Vec::new();
         while let Some(row) = rows.next()? {
             let receipt = row
                 .get_ref_unwrap("receipt")
                 .as_blob_or_null()?
                 .context("Receipt data missing")?;
-            let receipt = decompressor
-                .decompress(receipt, 1000 * 1000 * 10)
-                .context("Decompressing transaction receipt")?;
+            let receipt = zstd::decode_all(receipt).context("Decompressing transaction receipt")?;
             let receipt = serde_json::de::from_slice(&receipt)
                 .context("Deserializing transaction receipt")?;
 
@@ -496,9 +493,7 @@ impl StarknetTransactionsTable {
                 .get_ref_unwrap("tx")
                 .as_blob_or_null()?
                 .context("Transaction data missing")?;
-            let transaction = decompressor
-                .decompress(transaction, 1000 * 1000 * 10)
-                .context("Decompressing transaction")?;
+            let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
             let transaction =
                 serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
 
@@ -548,8 +543,7 @@ impl StarknetTransactionsTable {
             None => return Ok(None),
         };
 
-        let transaction = zstd::bulk::decompress(transaction, 1000 * 1000 * 10)
-            .context("Decompressing transaction")?;
+        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction =
             serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
 
@@ -577,8 +571,7 @@ impl StarknetTransactionsTable {
             Some(data) => data,
             None => return Ok(None),
         };
-        let receipt = zstd::bulk::decompress(receipt, 1000 * 1000 * 10)
-            .context("Decompressing transaction")?;
+        let receipt = zstd::decode_all(receipt).context("Decompressing transaction")?;
         let receipt = serde_json::de::from_slice(&receipt).context("Deserializing transaction")?;
 
         let block_hash = row.get_ref_unwrap("block_hash").as_blob()?;
@@ -611,8 +604,7 @@ impl StarknetTransactionsTable {
             None => return Ok(None),
         };
 
-        let transaction = zstd::bulk::decompress(transaction, 1000 * 1000 * 10)
-            .context("Decompressing transaction")?;
+        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction =
             serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
 
