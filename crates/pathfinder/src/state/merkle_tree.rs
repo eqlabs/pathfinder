@@ -45,7 +45,7 @@
 //! The in-memory tree is built using a graph of `Rc<RefCell<Node>>` which is a bit painful.
 
 use anyhow::Context;
-use bitvec::prelude::BitVec;
+use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use rusqlite::Transaction;
 use std::{cell::RefCell, rc::Rc};
 
@@ -237,7 +237,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     }
 
     /// Sets the value of a key. To delete a key, set the value to [StarkHash::ZERO].
-    pub fn set(&mut self, key: StarkHash, value: StarkHash) -> anyhow::Result<()> {
+    pub fn set(&mut self, key: &BitSlice<Msb0, u8>, value: StarkHash) -> anyhow::Result<()> {
         if value == StarkHash::ZERO {
             return self.delete_leaf(key);
         }
@@ -278,7 +278,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                         let child_height = branch_height + 1;
 
                         // Path from binary node to new leaf
-                        let new_path = key.view_bits()[child_height..].to_bitvec();
+                        let new_path = key[child_height..].to_bitvec();
                         // Path from binary node to existing child
                         let old_path = edge.path[common.len() + 1..].to_bitvec();
 
@@ -312,7 +312,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                             }
                         };
 
-                        let new_direction = Direction::from(key.view_bits()[branch_height]);
+                        let new_direction = Direction::from(key[branch_height]);
                         let (left, right) = match new_direction {
                             Direction::Left => (new, old),
                             Direction::Right => (old, new),
@@ -354,7 +354,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                 let edge = Node::Edge(EdgeNode {
                     hash: None,
                     height: 0,
-                    path: key.view_bits().to_bitvec(),
+                    path: key.to_bitvec(),
                     child: Rc::new(RefCell::new(leaf)),
                 });
 
@@ -369,7 +369,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     ///
     /// This is not an external facing API; the functionality is instead accessed by calling
     /// [`MerkleTree::set`] with value set to [`StarkHash::ZERO`].
-    fn delete_leaf(&mut self, key: StarkHash) -> anyhow::Result<()> {
+    fn delete_leaf(&mut self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<()> {
         // Algorithm explanation:
         //
         // The leaf's parent node is either an edge, or a binary node.
@@ -450,7 +450,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     }
 
     /// Returns the value stored at key, or [StarkHash::ZERO] if it does not exist.
-    pub fn get(&self, key: StarkHash) -> anyhow::Result<StarkHash> {
+    pub fn get(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<StarkHash> {
         let val = match self.traverse(key)?.last() {
             Some(node) => match &*node.borrow() {
                 Node::Leaf(value) => *value,
@@ -472,7 +472,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     /// The final node can __not__ be a [Binary](Node::Binary) node since it would always be possible to continue
     /// on towards the destination. Nor can it be an [Unresolved](Node::Unresolved) node since this would be
     /// resolved to check if we can travel further.
-    fn traverse(&self, dst: StarkHash) -> anyhow::Result<Vec<Rc<RefCell<Node>>>> {
+    fn traverse(&self, dst: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<Rc<RefCell<Node>>>> {
         if self.root.borrow().is_empty() {
             return Ok(Vec::new());
         }
@@ -586,24 +586,17 @@ mod tests {
     use super::*;
     use bitvec::prelude::*;
 
-    fn starkhash_from_bits(bits: &BitSlice<Msb0, u8>) -> StarkHash {
-        assert!(bits.len() <= 251);
-
-        let mut b2 = bitvec![Msb0, u8; 0; 256 - bits.len()];
-        b2.extend_from_bitslice(bits);
-        let bytes = b2.into_vec().try_into().unwrap();
-
-        StarkHash::from_be_bytes(bytes).unwrap()
-    }
-
     #[test]
     fn get_empty() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
         let uut = MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-        let key = StarkHash::from_hex_str("99cadc82").unwrap();
-        assert_eq!(uut.get(key).unwrap(), StarkHash::ZERO);
+        let key = StarkHash::from_hex_str("99cadc82")
+            .unwrap()
+            .view_bits()
+            .to_bitvec();
+        assert_eq!(uut.get(&key).unwrap(), StarkHash::ZERO);
     }
 
     #[test]
@@ -625,21 +618,30 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key0 = StarkHash::from_hex_str("99cadc82").unwrap();
-            let key1 = StarkHash::from_hex_str("901823").unwrap();
-            let key2 = StarkHash::from_hex_str("8975").unwrap();
+            let key0 = StarkHash::from_hex_str("99cadc82")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
+            let key1 = StarkHash::from_hex_str("901823")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
+            let key2 = StarkHash::from_hex_str("8975")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
 
             let val0 = StarkHash::from_hex_str("891127cbaf").unwrap();
             let val1 = StarkHash::from_hex_str("82233127cbaf").unwrap();
             let val2 = StarkHash::from_hex_str("891124667aacde7cbaf").unwrap();
 
-            uut.set(key0, val0).unwrap();
-            uut.set(key1, val1).unwrap();
-            uut.set(key2, val2).unwrap();
+            uut.set(&key0, val0).unwrap();
+            uut.set(&key1, val1).unwrap();
+            uut.set(&key2, val2).unwrap();
 
-            assert_eq!(uut.get(key0).unwrap(), val0);
-            assert_eq!(uut.get(key1).unwrap(), val1);
-            assert_eq!(uut.get(key2).unwrap(), val2);
+            assert_eq!(uut.get(&key0).unwrap(), val0);
+            assert_eq!(uut.get(&key1).unwrap(), val1);
+            assert_eq!(uut.get(&key2).unwrap(), val2);
         }
 
         #[test]
@@ -649,14 +651,17 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("123").unwrap();
+            let key = StarkHash::from_hex_str("123")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
             let old_value = StarkHash::from_hex_str("abc").unwrap();
             let new_value = StarkHash::from_hex_str("def").unwrap();
 
-            uut.set(key, old_value).unwrap();
-            uut.set(key, new_value).unwrap();
+            uut.set(&key, old_value).unwrap();
+            uut.set(&key, new_value).unwrap();
 
-            assert_eq!(uut.get(key).unwrap(), new_value);
+            assert_eq!(uut.get(&key).unwrap(), new_value);
         }
     }
 
@@ -670,14 +675,17 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("123").unwrap();
+            let key = StarkHash::from_hex_str("123")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
             let value = StarkHash::from_hex_str("abc").unwrap();
 
-            uut.set(key, value).unwrap();
+            uut.set(&key, value).unwrap();
 
             // The tree should consist of an edge node (root) leading to a leaf node.
             // The edge node path should match the key, and the leaf node the value.
-            let expected_path = key.view_bits().to_bitvec();
+            let expected_path = key.clone();
 
             let edge = uut
                 .root
@@ -695,11 +703,9 @@ mod tests {
         #[test]
         fn binary_middle() {
             let key0 = bitvec![Msb0, u8; 0; 251];
-            let key0 = starkhash_from_bits(&key0);
 
             let mut key1 = bitvec![Msb0, u8; 0; 251];
             key1.set(50, true);
-            let key1 = starkhash_from_bits(&key1);
 
             let value0 = StarkHash::from_hex_str("abc").unwrap();
             let value1 = StarkHash::from_hex_str("def").unwrap();
@@ -709,8 +715,8 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            uut.set(key0, value0).unwrap();
-            uut.set(key1, value1).unwrap();
+            uut.set(&key0, value0).unwrap();
+            uut.set(&key1, value1).unwrap();
 
             let edge = uut
                 .root
@@ -761,11 +767,9 @@ mod tests {
         #[test]
         fn binary_root() {
             let key0 = bitvec![Msb0, u8; 0; 251];
-            let key0 = starkhash_from_bits(&key0);
 
             let mut key1 = bitvec![Msb0, u8; 0; 251];
             key1.set(0, true);
-            let key1 = starkhash_from_bits(&key1);
 
             let value0 = StarkHash::from_hex_str("abc").unwrap();
             let value1 = StarkHash::from_hex_str("def").unwrap();
@@ -775,8 +779,8 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            uut.set(key0, value0).unwrap();
-            uut.set(key1, value1).unwrap();
+            uut.set(&key0, value0).unwrap();
+            uut.set(&key1, value1).unwrap();
 
             let binary = uut
                 .root
@@ -815,8 +819,14 @@ mod tests {
 
         #[test]
         fn binary_leaves() {
-            let key0 = StarkHash::from_hex_str("0").unwrap();
-            let key1 = StarkHash::from_hex_str("1").unwrap();
+            let key0 = StarkHash::from_hex_str("0")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
+            let key1 = StarkHash::from_hex_str("1")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
             let value0 = StarkHash::from_hex_str("abc").unwrap();
             let value1 = StarkHash::from_hex_str("def").unwrap();
 
@@ -825,8 +835,8 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            uut.set(key0, value0).unwrap();
-            uut.set(key1, value1).unwrap();
+            uut.set(&key0, value0).unwrap();
+            uut.set(&key1, value1).unwrap();
 
             // The tree should consist of an edge node, terminating in a binary node connecting to
             // the two leaf nodes.
@@ -838,7 +848,7 @@ mod tests {
                 .expect("root should be an edge");
             // The edge's path will be the full key path excluding the final bit.
             // The final bit is represented by the following binary node.
-            let mut expected_path = key0.view_bits().to_bitvec();
+            let mut expected_path = key0.clone();
             expected_path.pop();
 
             assert_eq!(edge.path, expected_path);
@@ -881,8 +891,11 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("123abc").unwrap();
-            uut.delete_leaf(key).unwrap();
+            let key = StarkHash::from_hex_str("123abc")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
+            uut.delete_leaf(&key).unwrap();
 
             assert_eq!(*uut.root.borrow(), Node::Unresolved(StarkHash::ZERO));
         }
@@ -894,13 +907,16 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("123").unwrap();
+            let key = StarkHash::from_hex_str("123")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
             let value = StarkHash::from_hex_str("abc").unwrap();
 
-            uut.set(key, value).unwrap();
-            uut.delete_leaf(key).unwrap();
+            uut.set(&key, value).unwrap();
+            uut.delete_leaf(&key).unwrap();
 
-            assert_eq!(uut.get(key).unwrap(), StarkHash::ZERO);
+            assert_eq!(uut.get(&key).unwrap(), StarkHash::ZERO);
             assert_eq!(*uut.root.borrow(), Node::Unresolved(StarkHash::ZERO));
         }
 
@@ -911,23 +927,32 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key0 = StarkHash::from_hex_str("99cadc82").unwrap();
-            let key1 = StarkHash::from_hex_str("901823").unwrap();
-            let key2 = StarkHash::from_hex_str("8975").unwrap();
+            let key0 = StarkHash::from_hex_str("99cadc82")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
+            let key1 = StarkHash::from_hex_str("901823")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
+            let key2 = StarkHash::from_hex_str("8975")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
 
             let val0 = StarkHash::from_hex_str("1").unwrap();
             let val1 = StarkHash::from_hex_str("2").unwrap();
             let val2 = StarkHash::from_hex_str("3").unwrap();
 
-            uut.set(key0, val0).unwrap();
-            uut.set(key1, val1).unwrap();
-            uut.set(key2, val2).unwrap();
+            uut.set(&key0, val0).unwrap();
+            uut.set(&key1, val1).unwrap();
+            uut.set(&key2, val2).unwrap();
 
-            uut.delete_leaf(key1).unwrap();
+            uut.delete_leaf(&key1).unwrap();
 
-            assert_eq!(uut.get(key0).unwrap(), val0);
-            assert_eq!(uut.get(key1).unwrap(), StarkHash::ZERO);
-            assert_eq!(uut.get(key2).unwrap(), val2);
+            assert_eq!(uut.get(&key0).unwrap(), val0);
+            assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
+            assert_eq!(uut.get(&key2).unwrap(), val2);
         }
     }
 
@@ -941,25 +966,34 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key0 = StarkHash::from_hex_str("99cadc82").unwrap();
-            let key1 = StarkHash::from_hex_str("901823").unwrap();
-            let key2 = StarkHash::from_hex_str("8975").unwrap();
+            let key0 = StarkHash::from_hex_str("99cadc82")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
+            let key1 = StarkHash::from_hex_str("901823")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
+            let key2 = StarkHash::from_hex_str("8975")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
 
             let val0 = StarkHash::from_hex_str("1").unwrap();
             let val1 = StarkHash::from_hex_str("2").unwrap();
             let val2 = StarkHash::from_hex_str("3").unwrap();
 
-            uut.set(key0, val0).unwrap();
-            uut.set(key1, val1).unwrap();
-            uut.set(key2, val2).unwrap();
+            uut.set(&key0, val0).unwrap();
+            uut.set(&key1, val1).unwrap();
+            uut.set(&key2, val2).unwrap();
 
             let root = uut.commit().unwrap();
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root).unwrap();
 
-            assert_eq!(uut.get(key0).unwrap(), val0);
-            assert_eq!(uut.get(key1).unwrap(), val1);
-            assert_eq!(uut.get(key2).unwrap(), val2);
+            assert_eq!(uut.get(&key0).unwrap(), val0);
+            assert_eq!(uut.get(&key1).unwrap(), val1);
+            assert_eq!(uut.get(&key2).unwrap(), val2);
         }
 
         #[test]
@@ -998,17 +1032,23 @@ mod tests {
 
             // Add the first four leaves and commit them to storage.
             for (key, val) in &leaves[..4] {
-                let key = StarkHash::from_hex_str(key).unwrap();
+                let key = StarkHash::from_hex_str(key)
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
                 let val = StarkHash::from_hex_str(val).unwrap();
-                uut.set(key, val).unwrap();
+                uut.set(&key, val).unwrap();
             }
             let root = uut.commit().unwrap();
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
             let mut uut = MerkleTree::load("test".to_string(), &transaction, root).unwrap();
-            let key = StarkHash::from_hex_str(leaves[4].0).unwrap();
+            let key = StarkHash::from_hex_str(leaves[4].0)
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
             let val = StarkHash::from_hex_str(leaves[4].1).unwrap();
-            uut.set(key, val).unwrap();
+            uut.set(&key, val).unwrap();
             let root = uut.commit().unwrap();
             let expect = StarkHash::from_hex_str(
                 "05f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896",
@@ -1025,9 +1065,18 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = StarkHash::from_hex_str("99cadc82").unwrap();
-                let key1 = StarkHash::from_hex_str("901823").unwrap();
-                let key2 = StarkHash::from_hex_str("8975").unwrap();
+                let key0 = StarkHash::from_hex_str("99cadc82")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
+                let key1 = StarkHash::from_hex_str("901823")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
+                let key2 = StarkHash::from_hex_str("8975")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
 
                 let val0 = StarkHash::from_hex_str("1").unwrap();
                 let val1 = StarkHash::from_hex_str("2").unwrap();
@@ -1035,31 +1084,31 @@ mod tests {
 
                 let mut uut =
                     MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
-                uut.set(key0, val0).unwrap();
+                uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
                 let mut uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                uut.set(key1, val1).unwrap();
+                uut.set(&key1, val1).unwrap();
                 let root1 = uut.commit().unwrap();
 
                 let mut uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
-                uut.set(key2, val2).unwrap();
+                uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), val1);
-                assert_eq!(uut.get(key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), val1);
+                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root2).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), val1);
-                assert_eq!(uut.get(key2).unwrap(), val2);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), val1);
+                assert_eq!(uut.get(&key2).unwrap(), val2);
             }
 
             #[test]
@@ -1067,9 +1116,18 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = StarkHash::from_hex_str("99cadc82").unwrap();
-                let key1 = StarkHash::from_hex_str("901823").unwrap();
-                let key2 = StarkHash::from_hex_str("8975").unwrap();
+                let key0 = StarkHash::from_hex_str("99cadc82")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
+                let key1 = StarkHash::from_hex_str("901823")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
+                let key2 = StarkHash::from_hex_str("8975")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
 
                 let val0 = StarkHash::from_hex_str("1").unwrap();
                 let val1 = StarkHash::from_hex_str("2").unwrap();
@@ -1077,31 +1135,31 @@ mod tests {
 
                 let mut uut =
                     MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
-                uut.set(key0, val0).unwrap();
+                uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
                 let mut uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                uut.set(key1, val1).unwrap();
+                uut.set(&key1, val1).unwrap();
                 let root1 = uut.commit().unwrap();
 
                 let mut uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
-                uut.set(key2, val2).unwrap();
+                uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
                 uut.delete().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
 
                 MerkleTree::load("test".to_string(), &transaction, root1).unwrap_err();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root2).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), val1);
-                assert_eq!(uut.get(key2).unwrap(), val2);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), val1);
+                assert_eq!(uut.get(&key2).unwrap(), val2);
             }
         }
 
@@ -1113,9 +1171,18 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = StarkHash::from_hex_str("99cadc82").unwrap();
-                let key1 = StarkHash::from_hex_str("901823").unwrap();
-                let key2 = StarkHash::from_hex_str("8975").unwrap();
+                let key0 = StarkHash::from_hex_str("99cadc82")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
+                let key1 = StarkHash::from_hex_str("901823")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
+                let key2 = StarkHash::from_hex_str("8975")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
 
                 let val0 = StarkHash::from_hex_str("1").unwrap();
                 let val1 = StarkHash::from_hex_str("2").unwrap();
@@ -1123,31 +1190,31 @@ mod tests {
 
                 let mut uut =
                     MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
-                uut.set(key0, val0).unwrap();
+                uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
                 let mut uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                uut.set(key1, val1).unwrap();
+                uut.set(&key1, val1).unwrap();
                 let root1 = uut.commit().unwrap();
 
                 let mut uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                uut.set(key2, val2).unwrap();
+                uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), val1);
-                assert_eq!(uut.get(key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), val1);
+                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root2).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(key2).unwrap(), val2);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key2).unwrap(), val2);
             }
 
             #[test]
@@ -1155,9 +1222,18 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = StarkHash::from_hex_str("99cadc82").unwrap();
-                let key1 = StarkHash::from_hex_str("901823").unwrap();
-                let key2 = StarkHash::from_hex_str("8975").unwrap();
+                let key0 = StarkHash::from_hex_str("99cadc82")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
+                let key1 = StarkHash::from_hex_str("901823")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
+                let key2 = StarkHash::from_hex_str("8975")
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
 
                 let val0 = StarkHash::from_hex_str("1").unwrap();
                 let val1 = StarkHash::from_hex_str("2").unwrap();
@@ -1165,31 +1241,31 @@ mod tests {
 
                 let mut uut =
                     MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
-                uut.set(key0, val0).unwrap();
+                uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
                 let mut uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                uut.set(key1, val1).unwrap();
+                uut.set(&key1, val1).unwrap();
                 let root1 = uut.commit().unwrap();
 
                 let mut uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                uut.set(key2, val2).unwrap();
+                uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root1).unwrap();
                 uut.delete().unwrap();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
 
                 MerkleTree::load("test".to_string(), &transaction, root1).unwrap_err();
 
                 let uut = MerkleTree::load("test".to_string(), &transaction, root2).unwrap();
-                assert_eq!(uut.get(key0).unwrap(), val0);
-                assert_eq!(uut.get(key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(key2).unwrap(), val2);
+                assert_eq!(uut.get(&key0).unwrap(), val0);
+                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key2).unwrap(), val2);
             }
         }
 
@@ -1200,9 +1276,12 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("99cadc82").unwrap();
+            let key = StarkHash::from_hex_str("99cadc82")
+                .unwrap()
+                .view_bits()
+                .to_bitvec();
             let val = StarkHash::from_hex_str("12345678").unwrap();
-            uut.set(key, val).unwrap();
+            uut.set(&key, val).unwrap();
 
             let root0 = uut.commit().unwrap();
 
@@ -1219,13 +1298,13 @@ mod tests {
             uut.delete().unwrap();
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-            assert_eq!(uut.get(key).unwrap(), val);
+            assert_eq!(uut.get(&key).unwrap(), val);
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
             uut.delete().unwrap();
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
-            assert_eq!(uut.get(key).unwrap(), val);
+            assert_eq!(uut.get(&key).unwrap(), val);
 
             let uut = MerkleTree::load("test".to_string(), &transaction, root0).unwrap();
             uut.delete().unwrap();
@@ -1248,19 +1327,19 @@ mod tests {
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
             uut.set(
-                StarkHash::from_hex_str("0x1").unwrap(),
+                StarkHash::from_hex_str("0x1").unwrap().view_bits(),
                 StarkHash::from_hex_str("0x0").unwrap(),
             )
             .unwrap();
 
             uut.set(
-                StarkHash::from_hex_str("0x86").unwrap(),
+                StarkHash::from_hex_str("0x86").unwrap().view_bits(),
                 StarkHash::from_hex_str("0x1").unwrap(),
             )
             .unwrap();
 
             uut.set(
-                StarkHash::from_hex_str("0x87").unwrap(),
+                StarkHash::from_hex_str("0x87").unwrap().view_bits(),
                 StarkHash::from_hex_str("0x2").unwrap(),
             )
             .unwrap();
@@ -1313,9 +1392,12 @@ mod tests {
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
             for (key, val) in leaves {
-                let key = StarkHash::from_hex_str(key).unwrap();
+                let key = StarkHash::from_hex_str(key)
+                    .unwrap()
+                    .view_bits()
+                    .to_bitvec();
                 let val = StarkHash::from_hex_str(val).unwrap();
-                tree.set(key, val).unwrap();
+                tree.set(&key, val).unwrap();
             }
 
             let root = tree.commit().unwrap();
