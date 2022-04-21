@@ -46,10 +46,13 @@ sudo apt install git
 
 
 If you already have Rust installed, verify the version:
+
 ```bash
 cargo --version # must be 1.58 or higher
 ```
+
 To update your Rust version, use the `rustup` tool that came with the official instructions:
+
 ```bash
 rustup update
 ```
@@ -63,7 +66,9 @@ sudo apt install python3
 sudo apt install python3-venv
 sudo apt install python3-dev
 ```
+
 Verify the python version. Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
+
 ```bash
 python3 --version # must be 3.7 or 3.8
 ```
@@ -95,12 +100,16 @@ cd py
 python3 -m venv .venv
 source .venv/bin/activate
 ```
+
 Next install the python tooling and dependencies
+
 ```bash
 PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
 PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
 ```
+
 Finally, run our python tests to make sure you were succesful.
+
 ```bash
 # This should run the tests (and they should pass).
 pytest
@@ -109,6 +118,7 @@ pytest
 ### Compiling `pathfinder`
 
 You should now be able to compile `pathfinder` by running (from within the `pathfinder` repo):
+
 ```bash
 cargo build --release --bin pathfinder
 ```
@@ -116,17 +126,21 @@ cargo build --release --bin pathfinder
 ## Running the node
 
 Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup). For the `pathfinder` environment this is done by running:
+
 ```bash
 source py/.venv/bin/activate
 ```
+
 If you are already in another virtual environment, you can exit it by running `deactivate` and then activating the `pathfinder` one.
 
 This step is always required when running `pathfinder`.
 
 Finally, you can start the node:
+
 ```bash
 cargo run --release --bin pathfinder -- <pathfinder options>
 ```
+
 Note the extra "`--`" which separate the Rust `cargo` command options from the options for our node. For more information on these options see the [Configuration](#configuration) section.
 
 It may take a while to first compile the node on the first invocation if you didn't do the [compilation step](#compiling-pathfinder).
@@ -138,16 +152,19 @@ It may take a while to first compile the node on the first invocation if you did
 The `pathfinder` node options can be configured via the command line as well as a configuration file. The command line configuration overrides the options from the file.
 
 The command line options are passed in after the after the `cargo run` options, as follows:
+
 ```bash
 cargo run --release --bin pathfinder -- <pathfinder options>
 ```
 
 Using `--help` will display the `pathfinder` options:
+
 ```bash
 cargo run --release --bin pathfinder -- --help
 ```
 
 The configuration file uses the `toml` format:
+
 ```toml
 # The address we will host the RPC API at. Defaults to "127.0.0.1:9545"
 http-rpc = "127.0.0.1:1235"
@@ -168,7 +185,9 @@ Logging can be configured using the `RUST_LOG` environment variable. We recommen
 ```bash
 RUST_LOG=<log level> cargo run --release --bin pathfinder ...
 ```
+
 The following log levels are supported, from most to least verbose:
+
 ```bash
 trace
 debug
@@ -176,7 +195,9 @@ info  # default
 warn
 error
 ```
+
 At the more verbose log levels (`trace`, `debug`), you may find the logs a bit noisy as our dependencies also add their own logging to the mix. You can restrict the logs to only `pathfinder` specific ones using `RUST_LOG=pathfinder=<level>` instead. For example:
+
 ```bash
 RUST_LOG=pathfinder=<log level> cargo run --release --bin pathfinder ...
 ```
