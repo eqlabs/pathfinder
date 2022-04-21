@@ -183,12 +183,15 @@ The StarkNet network is based on the provided Ethereum endpoint. If the Ethereum
 ## Running with Docker
 
 The `pathfinder` node can be run in the provided Docker image.
+By binding a volume (`-v`) to `/usr/share/pathfinder/data` the files of pathfinder can be persisted between the runs.
+The example uses `$HOME/pathfinder` as the bound directory, but you can of course select a different one.
 
 ```bash
 docker run \
   -p 9545:9545 \
   -e RUST_LOG=info \
   -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
+  -v $HOME/pathfinder:/usr/share/pathfinder/data \
   eqlabs/pathfinder
 ```
 
@@ -203,6 +206,7 @@ The following environment variables can be passed to the container:
 
 ### Building the container image yourself
 
+Building the container image from source code is necessary only in special cases or development.
 You can build the image by running:
 
 ```bash
@@ -218,19 +222,7 @@ docker run \
   -p 9545:9545 \
   -e RUST_LOG=info \
   -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
-  pathfinder
-```
-
-To persist state between restarts you can mount a volume in the Docker container. To run the container and persist data to `/tmp/data` run:
-
-```bash
-docker run \
-  --rm \
-  -it \
-  -p 9545:9545 \
-  -e RUST_LOG=info \
-  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
-  -v /tmp/data:/usr/share/pathfinder/data \
+  -v $HOME/pathfinder:/usr/share/pathfinder/data \
   pathfinder
 ```
 
