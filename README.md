@@ -36,8 +36,7 @@ Before you start, make sure your system is up to date with Curl and Git availabl
 ```bash
 sudo apt update
 sudo apt upgrade
-sudo apt install curl
-sudo apt install git
+sudo apt install curl git
 ```
 
 ### Install Rust
@@ -62,9 +61,7 @@ rustup update
 `pathfinder` requires Python version `3.7` or `3.8`. (In particular, `cairo-lang` 0.7.1 seems incompatible with Python 3.10.)
 
 ```bash
-sudo apt install python3
-sudo apt install python3-venv
-sudo apt install python3-dev
+sudo apt install python3 python3-venv python3-dev
 ```
 
 Verify the python version. Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
@@ -77,10 +74,7 @@ python3 --version # must be 3.7 or 3.8
 `pathfinder` compilation need additional libraries to be installed (C compiler, linker, other deps)
 
 ```bash
-sudo apt install build-essential
-sudo apt install libgmp-dev
-sudo apt install pkg-config
-sudo apt install libssl-dev
+sudo apt install build-essential libgmp-dev pkg-config libssl-dev
 ```
 
 ### Clone `pathfinder`
