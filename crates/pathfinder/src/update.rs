@@ -36,12 +36,12 @@ pub async fn poll_github_for_releases() -> anyhow::Result<()> {
             UpdateResult::NotModified => {
                 tracing::trace!(latest=?latest_gh_version, "No new release found on Github");
             }
-            UpdateResult::RewestError(e) if e.is_decode() || e.is_body() || e.is_builder() => {
+            UpdateResult::ReqwestError(e) if e.is_decode() || e.is_body() || e.is_builder() => {
                 // More severe errors, probably indicating something is wrong with our setup.
                 // Set to warn and not error because this update checking is a non-critical feature.
                 tracing::warn!(error=%e, "Error checking Github for new releases")
             }
-            UpdateResult::RewestError(e) => {
+            UpdateResult::ReqwestError(e) => {
                 // Less severe errors, includes transient connection errors and timeouts; does not warrant
                 // a high log level.
                 tracing::trace!(error=%e, "Error checking Github for new releases")
@@ -77,7 +77,7 @@ enum UpdateResult {
     Update(Release),
     /// No new releases since last query (status code 304).
     NotModified,
-    RewestError(reqwest::Error),
+    ReqwestError(reqwest::Error),
     Other(anyhow::Error),
 }
 
@@ -113,7 +113,7 @@ async fn fetch_latest_github_release(
 
     let result = match request.send().await {
         Ok(r) => r,
-        Err(e) => return UpdateResult::RewestError(e),
+        Err(e) => return UpdateResult::ReqwestError(e),
     };
     match result.status() {
         StatusCode::NOT_MODIFIED => UpdateResult::NotModified,
@@ -138,7 +138,7 @@ async fn fetch_latest_github_release(
                     version: r.name,
                     etag,
                 }),
-                Err(e) => UpdateResult::RewestError(e),
+                Err(e) => UpdateResult::ReqwestError(e),
             }
         }
         other => UpdateResult::Other(anyhow::anyhow!(
