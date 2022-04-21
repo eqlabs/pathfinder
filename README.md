@@ -17,7 +17,8 @@ Pathfinder is currently in alpha so expect some rough edges but it is already us
 
 ## Feedback
 
-We appreciate any feedback, especially during this alpha period. This includes any documentation issues, feature requests and bugs that you may encounter.
+We appreciate any feedback, especially during this alpha period.
+This includes any documentation issues, feature requests and bugs that you may encounter.
 
 For help or to submit bug reports or feature requests, please open an issue or alternatively visit the StarkNet [discord channel](https://discord.com/invite/uJ9HZTUk2Y).
 
@@ -41,7 +42,8 @@ sudo apt install curl git
 
 ### Install Rust
 
-`pathfinder` requires Rust version `1.58` or later. The easiest way to install Rust is by following the [official instructions](https://www.rust-lang.org/tools/install).
+`pathfinder` requires Rust version `1.58` or later.
+The easiest way to install Rust is by following the [official instructions](https://www.rust-lang.org/tools/install).
 
 If you already have Rust installed, verify the version:
 
@@ -63,7 +65,8 @@ rustup update
 sudo apt install python3 python3-venv python3-dev
 ```
 
-Verify the python version. Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
+Verify the python version.
+Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
 
 ```bash
 python3 --version # must be 3.7 or 3.8
@@ -79,7 +82,8 @@ sudo apt install build-essential libgmp-dev pkg-config libssl-dev
 
 ### Clone `pathfinder`
 
-Checkout the latest `pathfinder` release by cloning this repo and checking out the latest version tag. Take care not to be on our `main` branch as we do actively develop in it.
+Checkout the latest `pathfinder` release by cloning this repo and checking out the latest version tag.
+Take care not to be on our `main` branch as we do actively develop in it.
 
 The remainder of the installation documentation assumes you are in the checkout directory.
 
@@ -119,7 +123,8 @@ cargo build --release --bin pathfinder
 
 ## Running the node
 
-Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup). For the `pathfinder` environment this is done by running:
+Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup).
+For the `pathfinder` environment this is done by running:
 
 ```bash
 source py/.venv/bin/activate
@@ -135,15 +140,18 @@ Finally, you can start the node:
 cargo run --release --bin pathfinder -- <pathfinder options>
 ```
 
-Note the extra "`--`" which separate the Rust `cargo` command options from the options for our node. For more information on these options see the [Configuration](#configuration) section.
+Note the extra "`--`" which separate the Rust `cargo` command options from the options for our node.
+For more information on these options see the [Configuration](#configuration) section.
 
 It may take a while to first compile the node on the first invocation if you didn't do the [compilation step](#compiling-pathfinder).
 
-`pathfinder` runs relative to the current directory. This means things like the database will be created and searched for within the current directory.
+`pathfinder` runs relative to the current directory.
+This means things like the database will be created and searched for within the current directory.
 
 ### Configuration
 
-The `pathfinder` node options can be configured via the command line as well as a configuration file. The command line configuration overrides the options from the file.
+The `pathfinder` node options can be configured via the command line as well as a configuration file.
+The command line configuration overrides the options from the file.
 
 The command line options are passed in after the after the `cargo run` options, as follows:
 
@@ -174,7 +182,8 @@ user-agent     = "..."
 
 ### Logging
 
-Logging can be configured using the `RUST_LOG` environment variable. We recommend setting it when you invoke the run command:
+Logging can be configured using the `RUST_LOG` environment variable.
+We recommend setting it when you invoke the run command:
 
 ```bash
 RUST_LOG=<log level> cargo run --release --bin pathfinder ...
@@ -190,7 +199,8 @@ warn
 error
 ```
 
-At the more verbose log levels (`trace`, `debug`), you may find the logs a bit noisy as our dependencies also add their own logging to the mix. You can restrict the logs to only `pathfinder` specific ones using `RUST_LOG=pathfinder=<level>` instead. For example:
+At the more verbose log levels (`trace`, `debug`), you may find the logs a bit noisy as our dependencies also add their own logging to the mix.
+You can restrict the logs to only `pathfinder` specific ones using `RUST_LOG=pathfinder=<level>` instead. For example:
 
 ```bash
 RUST_LOG=pathfinder=<log level> cargo run --release --bin pathfinder ...
@@ -198,7 +208,9 @@ RUST_LOG=pathfinder=<log level> cargo run --release --bin pathfinder ...
 
 ### Network Selection
 
-The StarkNet network is based on the provided Ethereum endpoint. If the Ethereum endpoint is on the Goerli network, then the it will be the StarkNet testnet on Goerli. If the Ethereum endpoint is on mainnet, then it will be StarkNet Mainnet.
+The StarkNet network is based on the provided Ethereum endpoint.
+If the Ethereum endpoint is on the Goerli network, then the it will be the StarkNet testnet on Goerli.
+If the Ethereum endpoint is on mainnet, then it will be StarkNet Mainnet.
 
 ## Running with Docker
 
@@ -255,7 +267,9 @@ docker run \
 
 ## API
 
-The full specification is available [here](https://github.com/starkware-libs/starknet-specs). Note that we currently only support a subset of these. Here is an overview of the JSON-RPC calls which we support.
+The full specification is available [here](https://github.com/starkware-libs/starknet-specs).
+Note that we currently only support a subset of these.
+Here is an overview of the JSON-RPC calls which we support.
 
 ```bash
 # Block information
