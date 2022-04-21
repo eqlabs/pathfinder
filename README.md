@@ -190,9 +190,12 @@ Docker image is the easiest way which does not involve a lot of python setup.
 The following assumes you have [docker installed](https://docs.docker.com/get-docker/) and ready to go.
 
 The example uses `$HOME/pathfinder` as the volume directory where persistent files used by `pathfinder` will be stored.
-If it does not exist, it will be created by docker.
+It is easiest to create the volume directory as the user who is running the docker command.
+If the directory gets created by docker upon startup, it might be unusable for creating files.
 
 ```bash
+# ensure the directory has been created before invoking docker
+mkdir -p $HOME/pathfinder
 docker run \
   -p 9545:9545 \
   -e RUST_LOG=info \
