@@ -82,6 +82,8 @@ sudo apt install libssl-dev
 
 Checkout the latest `pathfinder` release by cloning this repo and checking out the latest version tag. Take care not to be on our `main` branch as we do actively develop in it.
 
+The remainder of the installation documentation assumes you are in the checkout directory.
+
 ### Python setup
 
 Create a python virtual environment in the `py` folder.
