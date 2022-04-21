@@ -31,7 +31,7 @@ The following are instructions on how to build from source.
 Currently only supports Linux. Windows and MacOS support is planned.
 We need access to a full archive Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
 
-Before you start, make sure your system is up to date with Curl and Git available
+Before you start, make sure your system is up to date with Curl and Git available:
 
 ```bash
 sudo apt update
