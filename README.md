@@ -17,36 +17,42 @@ Pathfinder is currently in alpha so expect some rough edges but it is already us
 
 ## Feedback
 
-We appreciate any feedback, especially during this alpha period. This includes any documentation issues, feature requests and bugs that you may encounter.
+We appreciate any feedback, especially during this alpha period.
+This includes any documentation issues, feature requests and bugs that you may encounter.
 
 For help or to submit bug reports or feature requests, please open an issue or alternatively visit the StarkNet [discord channel](https://discord.com/invite/uJ9HZTUk2Y).
 
 ## Installation
+
+If you'd like to just run the node, please consider skipping ahead to [docker instructions](#running-with-docker).
+The following are instructions on how to build from source.
 
 ### Prerequisites
 
 Currently only supports Linux. Windows and MacOS support is planned.
 We need access to a full archive Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
 
-Before you start, make sure your system is up to date with Curl and Git available
+Before you start, make sure your system is up to date with Curl and Git available:
 
 ```bash
 sudo apt update
 sudo apt upgrade
-sudo apt install curl
-sudo apt install git
+sudo apt install curl git
 ```
 
 ### Install Rust
 
-`pathfinder` requires Rust version `1.58` or later. The easiest way to install Rust is by following the [official instructions](https://www.rust-lang.org/tools/install).
-
+`pathfinder` requires Rust version `1.58` or later.
+The easiest way to install Rust is by following the [official instructions](https://www.rust-lang.org/tools/install).
 
 If you already have Rust installed, verify the version:
+
 ```bash
 cargo --version # must be 1.58 or higher
 ```
+
 To update your Rust version, use the `rustup` tool that came with the official instructions:
+
 ```bash
 rustup update
 ```
@@ -56,28 +62,30 @@ rustup update
 `pathfinder` requires Python version `3.7` or `3.8`. (In particular, `cairo-lang` 0.7.1 seems incompatible with Python 3.10.)
 
 ```bash
-sudo apt install python3
-sudo apt install python3-venv
-sudo apt install python3-dev
+sudo apt install python3 python3-venv python3-dev
 ```
-Verify the python version. Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
+
+Verify the python version.
+Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
+
 ```bash
 python3 --version # must be 3.7 or 3.8
 ```
 
 ### Install build dependencies
+
 `pathfinder` compilation need additional libraries to be installed (C compiler, linker, other deps)
 
 ```bash
-sudo apt install build-essential
-sudo apt install libgmp-dev
-sudo apt install pkg-config
-sudo apt install libssl-dev
+sudo apt install build-essential libgmp-dev pkg-config libssl-dev
 ```
 
 ### Clone `pathfinder`
 
-Checkout the latest `pathfinder` release by cloning this repo and checking out the latest version tag. Take care not to be on our `main` branch as we do actively develop in it.
+Checkout the latest `pathfinder` release by cloning this repo and checking out the latest version tag.
+Take care not to be on our `main` branch as we do actively develop in it.
+
+The remainder of the installation documentation assumes you are in the checkout directory.
 
 ### Python setup
 
@@ -90,12 +98,16 @@ cd py
 python3 -m venv .venv
 source .venv/bin/activate
 ```
+
 Next install the python tooling and dependencies
+
 ```bash
 PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
 PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
 ```
+
 Finally, run our python tests to make sure you were succesful.
+
 ```bash
 # This should run the tests (and they should pass).
 pytest
@@ -104,45 +116,57 @@ pytest
 ### Compiling `pathfinder`
 
 You should now be able to compile `pathfinder` by running (from within the `pathfinder` repo):
+
 ```bash
 cargo build --release --bin pathfinder
 ```
 
 ## Running the node
 
-Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup). For the `pathfinder` environment this is done by running:
+Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup).
+For the `pathfinder` environment this is done by running:
+
 ```bash
-source <path-to-pathfinder-repo>/py/.venv/bin/activate
+source py/.venv/bin/activate
 ```
+
 If you are already in another virtual environment, you can exit it by running `deactivate` and then activating the `pathfinder` one.
 
 This step is always required when running `pathfinder`.
 
 Finally, you can start the node:
+
 ```bash
-cargo run --release <path-to-pathfinder-repo> --bin pathfinder -- <pathfinder options>
+cargo run --release --bin pathfinder -- <pathfinder options>
 ```
-Note the extra "`--`" which separate the Rust `cargo` command options from the options for our node. For more information on these options see the [Configuration](#configuration) section.
+
+Note the extra "`--`" which separate the Rust `cargo` command options from the options for our node.
+For more information on these options see the [Configuration](#configuration) section.
 
 It may take a while to first compile the node on the first invocation if you didn't do the [compilation step](#compiling-pathfinder).
 
-`pathfinder` runs relative to the current directory. This means things like the database will be created and searched for within the current directory.
+`pathfinder` runs relative to the current directory.
+This means things like the database will be created and searched for within the current directory.
 
 ### Configuration
 
-The `pathfinder` node options can be configured via the command line as well as a configuration file. The command line configuration overrides the options from the file.
+The `pathfinder` node options can be configured via the command line as well as a configuration file.
+The command line configuration overrides the options from the file.
 
 The command line options are passed in after the after the `cargo run` options, as follows:
+
 ```bash
-cargo run --release <path-to-pathfinder-repo> --bin pathfinder -- <pathfinder options>
+cargo run --release --bin pathfinder -- <pathfinder options>
 ```
 
 Using `--help` will display the `pathfinder` options:
+
 ```bash
-cargo run --release <path-to-pathfinder-repo> --bin pathfinder -- --help
+cargo run --release --bin pathfinder -- --help
 ```
 
 The configuration file uses the `toml` format:
+
 ```toml
 # The address we will host the RPC API at. Defaults to "127.0.0.1:9545"
 http-rpc = "127.0.0.1:1235"
@@ -158,12 +182,15 @@ user-agent     = "..."
 
 ### Logging
 
-Logging can be configured using the `RUST_LOG` environment variable. We recommend setting it when you invoke the run command:
+Logging can be configured using the `RUST_LOG` environment variable.
+We recommend setting it when you invoke the run command:
 
 ```bash
-RUST_LOG=<log level> cargo run --release <path-to-pathfinder-repo> --bin pathfinder ...
+RUST_LOG=<log level> cargo run --release --bin pathfinder ...
 ```
+
 The following log levels are supported, from most to least verbose:
+
 ```bash
 trace
 debug
@@ -171,24 +198,38 @@ info  # default
 warn
 error
 ```
-At the more verbose log levels (`trace`, `debug`), you may find the logs a bit noisy as our dependencies also add their own logging to the mix. You can restrict the logs to only `pathfinder` specific ones using `RUST_LOG=pathfinder=<level>` instead. For example:
+
+At the more verbose log levels (`trace`, `debug`), you may find the logs a bit noisy as our dependencies also add their own logging to the mix.
+You can restrict the logs to only `pathfinder` specific ones using `RUST_LOG=pathfinder=<level>` instead. For example:
+
 ```bash
-RUST_LOG=pathfinder=<log level> cargo run --release <path-to-pathfinder-repo> --bin pathfinder ...
+RUST_LOG=pathfinder=<log level> cargo run --release --bin pathfinder ...
 ```
 
 ### Network Selection
 
-The StarkNet network is based on the provided Ethereum endpoint. If the Ethereum endpoint is on the Goerli network, then the it will be the StarkNet testnet on Goerli. If the Ethereum endpoint is on mainnet, then it will be StarkNet Mainnet.
+The StarkNet network is based on the provided Ethereum endpoint.
+If the Ethereum endpoint is on the Goerli network, then the it will be the StarkNet testnet on Goerli.
+If the Ethereum endpoint is on mainnet, then it will be StarkNet Mainnet.
 
 ## Running with Docker
 
 The `pathfinder` node can be run in the provided Docker image.
+Docker image is the easiest way which does not involve a lot of python setup.
+The following assumes you have [docker installed](https://docs.docker.com/get-docker/) and ready to go.
+
+The example uses `$HOME/pathfinder` as the volume directory where persistent files used by `pathfinder` will be stored.
+It is easiest to create the volume directory as the user who is running the docker command.
+If the directory gets created by docker upon startup, it might be unusable for creating files.
 
 ```bash
+# ensure the directory has been created before invoking docker
+mkdir -p $HOME/pathfinder
 docker run \
   -p 9545:9545 \
   -e RUST_LOG=info \
   -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
+  -v $HOME/pathfinder:/usr/share/pathfinder/data \
   eqlabs/pathfinder
 ```
 
@@ -203,6 +244,7 @@ The following environment variables can be passed to the container:
 
 ### Building the container image yourself
 
+Building the container image from source code is necessary only in special cases or development.
 You can build the image by running:
 
 ```bash
@@ -218,26 +260,16 @@ docker run \
   -p 9545:9545 \
   -e RUST_LOG=info \
   -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
-  pathfinder
-```
-
-To persist state between restarts you can mount a volume in the Docker container. To run the container and persist data to `/tmp/data` run:
-
-```bash
-docker run \
-  --rm \
-  -it \
-  -p 9545:9545 \
-  -e RUST_LOG=info \
-  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
-  -v /tmp/data:/usr/share/pathfinder/data \
+  -v $HOME/pathfinder:/usr/share/pathfinder/data \
   pathfinder
 ```
 
 
 ## API
 
-The full specification is available [here](https://github.com/starkware-libs/starknet-specs). Note that we currently only support a subset of these. Here is an overview of the JSON-RPC calls which we support.
+The full specification is available [here](https://github.com/starkware-libs/starknet-specs).
+Note that we currently only support a subset of these.
+Here is an overview of the JSON-RPC calls which we support.
 
 ```bash
 # Block information
