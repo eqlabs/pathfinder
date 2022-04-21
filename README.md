@@ -186,8 +186,11 @@ The StarkNet network is based on the provided Ethereum endpoint. If the Ethereum
 ## Running with Docker
 
 The `pathfinder` node can be run in the provided Docker image.
-By binding a volume (`-v`) to `/usr/share/pathfinder/data` the files of pathfinder can be persisted between the runs.
-The example uses `$HOME/pathfinder` as the bound directory, but you can of course select a different one.
+Docker image is the easiest way which does not involve a lot of python setup.
+The following assumes you have [docker installed](https://docs.docker.com/get-docker/) and ready to go.
+
+The example uses `$HOME/pathfinder` as the volume directory where persistent files used by `pathfinder` will be stored.
+If it does not exist, it will be created by docker.
 
 ```bash
 docker run \
