@@ -115,7 +115,7 @@ cargo build --release --bin pathfinder
 
 Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup). For the `pathfinder` environment this is done by running:
 ```bash
-source <path-to-pathfinder-repo>/py/.venv/bin/activate
+source py/.venv/bin/activate
 ```
 If you are already in another virtual environment, you can exit it by running `deactivate` and then activating the `pathfinder` one.
 
@@ -123,7 +123,7 @@ This step is always required when running `pathfinder`.
 
 Finally, you can start the node:
 ```bash
-cargo run --release <path-to-pathfinder-repo> --bin pathfinder -- <pathfinder options>
+cargo run --release --bin pathfinder -- <pathfinder options>
 ```
 Note the extra "`--`" which separate the Rust `cargo` command options from the options for our node. For more information on these options see the [Configuration](#configuration) section.
 
@@ -137,12 +137,12 @@ The `pathfinder` node options can be configured via the command line as well as 
 
 The command line options are passed in after the after the `cargo run` options, as follows:
 ```bash
-cargo run --release <path-to-pathfinder-repo> --bin pathfinder -- <pathfinder options>
+cargo run --release --bin pathfinder -- <pathfinder options>
 ```
 
 Using `--help` will display the `pathfinder` options:
 ```bash
-cargo run --release <path-to-pathfinder-repo> --bin pathfinder -- --help
+cargo run --release --bin pathfinder -- --help
 ```
 
 The configuration file uses the `toml` format:
@@ -164,7 +164,7 @@ user-agent     = "..."
 Logging can be configured using the `RUST_LOG` environment variable. We recommend setting it when you invoke the run command:
 
 ```bash
-RUST_LOG=<log level> cargo run --release <path-to-pathfinder-repo> --bin pathfinder ...
+RUST_LOG=<log level> cargo run --release --bin pathfinder ...
 ```
 The following log levels are supported, from most to least verbose:
 ```bash
@@ -176,7 +176,7 @@ error
 ```
 At the more verbose log levels (`trace`, `debug`), you may find the logs a bit noisy as our dependencies also add their own logging to the mix. You can restrict the logs to only `pathfinder` specific ones using `RUST_LOG=pathfinder=<level>` instead. For example:
 ```bash
-RUST_LOG=pathfinder=<log level> cargo run --release <path-to-pathfinder-repo> --bin pathfinder ...
+RUST_LOG=pathfinder=<log level> cargo run --release --bin pathfinder ...
 ```
 
 ### Network Selection
