@@ -23,6 +23,9 @@ For help or to submit bug reports or feature requests, please open an issue or a
 
 ## Installation
 
+If you'd like to just run the node, please consider skipping ahead to [docker instructions](#running-with-docker).
+The following are instructions on how to build from source.
+
 ### Prerequisites
 
 Currently only supports Linux. Windows and MacOS support is planned.
