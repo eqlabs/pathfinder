@@ -135,11 +135,11 @@ where
         // Max number of retries of 7 gives a total accumulated timeout of 4 minutes and 15 seconds (2^8-1)
         .max_num_retries(NonZeroUsize::new(7).unwrap())
         .when(|e| match e {
-            SequencerError::TransportError(te) if te.is_timeout() => {
+            SequencerError::ReqwestError(te) if te.is_timeout() => {
                 tracing::debug!("Retrying due to timeout");
                 true
             }
-            SequencerError::TransportError(te) => match te.status() {
+            SequencerError::ReqwestError(te) => match te.status() {
                 Some(
                     status @ (StatusCode::TOO_MANY_REQUESTS
                     | StatusCode::BAD_GATEWAY

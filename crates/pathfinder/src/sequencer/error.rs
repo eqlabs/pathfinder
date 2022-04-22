@@ -6,23 +6,18 @@ use serde::{Deserialize, Serialize};
 /// Sequencer errors.
 #[derive(Debug, thiserror::Error)]
 pub enum SequencerError {
-    /// All errors related to deserializing sequencer replies.
-    #[error("Failed to deserialize sequencer reply: {0}")]
-    DeserializationError(#[from] serde_json::Error),
     /// Starknet specific errors.
     #[error("Starknet error: {0}")]
     StarknetError(#[from] StarknetError),
-    /// Networking and protocol related errors.
-    #[error("Sequencer transport error: {0}")]
-    TransportError(#[from] reqwest::Error),
+    /// All other kinds of errors
+    #[error("{0}")]
+    ReqwestError(#[from] reqwest::Error),
 }
 
 impl From<SequencerError> for rpc::Error {
     fn from(e: SequencerError) -> Self {
         match e {
-            SequencerError::DeserializationError(e) => {
-                rpc::Error::Call(rpc::CallError::Failed(e.into()))
-            }
+            SequencerError::ReqwestError(e) => rpc::Error::Call(rpc::CallError::Failed(e.into())),
             SequencerError::StarknetError(e) => match e.code {
                 StarknetErrorCode::OutOfRangeBlockHash | StarknetErrorCode::BlockNotFound
                     if e.message.contains("Block hash") =>
@@ -44,7 +39,6 @@ impl From<SequencerError> for rpc::Error {
                 }
                 _ => rpc::Error::Call(rpc::CallError::Failed(e.into())),
             },
-            SequencerError::TransportError(e) => rpc::Error::Call(rpc::CallError::Failed(e.into())),
         }
     }
 }
