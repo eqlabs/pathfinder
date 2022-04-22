@@ -71,6 +71,8 @@ async fn main() -> anyhow::Result<()> {
         rpc::run_server(config.http_rpc_addr, api).context("Starting the RPC server")?;
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
+    let update_handle = tokio::spawn(pathfinder_lib::update::poll_github_for_releases());
+
     // Monitor our spawned process tasks.
     tokio::select! {
         result = sync_handle => {
@@ -88,6 +90,12 @@ async fn main() -> anyhow::Result<()> {
         _result = rpc_handle => {
             // This handle returns () so its not very useful.
             tracing::error!("RPC server process ended unexpected");
+        }
+        result = update_handle => {
+            match result {
+                Ok(_) => tracing::error!("Release monitoring process ended unexpectedly"),
+                Err(err) => tracing::error!(error=%err, "Release monitoring process ended unexpectedly"),
+            }
         }
     }
 
