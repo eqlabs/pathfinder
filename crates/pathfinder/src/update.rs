@@ -65,10 +65,10 @@ pub async fn poll_github_for_releases() -> anyhow::Result<()> {
 }
 
 /// Creates a [reqwest::Client] for use in querying Github API.
-/// 
+///
 /// Adds a 5 minute request timeout, and sets the required headers:
-/// - [ACCEPT](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#current-version) 
-/// - [USER_AGENT](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#user-agent-required) 
+/// - [ACCEPT](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#current-version)
+/// - [USER_AGENT](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#user-agent-required)
 fn configure_client() -> anyhow::Result<reqwest::Client> {
     use anyhow::Context;
     const USER_AGENT: &str = concat!(
