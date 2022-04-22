@@ -11,9 +11,9 @@ pub async fn poll_github_for_releases() -> anyhow::Result<()> {
     let local_version = semver::Version::parse(current_version)
         .context("Semver parsing of local version failed")?;
     let mut latest_gh_version = None;
-
-    let client = reqwest::Client::new();
     let mut etag = None;
+
+    let client = configure_client()?;
 
     loop {
         match fetch_latest_github_release(&client, &etag).await {
@@ -64,6 +64,35 @@ pub async fn poll_github_for_releases() -> anyhow::Result<()> {
     }
 }
 
+/// Creates a [reqwest::Client] for use in querying Github API.
+/// 
+/// Adds a 5 minute request timeout, and sets the required headers:
+/// - [ACCEPT](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#current-version) 
+/// - [USER_AGENT](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#user-agent-required) 
+fn configure_client() -> anyhow::Result<reqwest::Client> {
+    use anyhow::Context;
+    const USER_AGENT: &str = concat!(
+        env!("CARGO_PKG_NAME"),
+        "/",
+        env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
+    );
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    // https://docs.github.com/en/rest/overview/resources-in-the-rest-api#current-version
+    headers.insert(
+        reqwest::header::ACCEPT,
+        "application/vnd.github.v3+json".parse().unwrap(),
+    );
+
+    reqwest::Client::builder()
+        .default_headers(headers)
+        // https://docs.github.com/en/rest/overview/resources-in-the-rest-api#user-agent-required
+        .user_agent(USER_AGENT)
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .context("Failed to create Github client")
+}
+
 #[derive(Debug)]
 struct Release {
     version: String,
@@ -93,20 +122,10 @@ async fn fetch_latest_github_release(
     use reqwest::StatusCode;
     use reqwest::Url;
 
-    const USER_AGENT: &str = concat!(
-        env!("CARGO_PKG_NAME"),
-        "/",
-        env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
-    );
     let url = Url::parse("https://api.github.com/repos/eqlabs/pathfinder/releases/latest").unwrap();
 
-    let mut request = client
-        .get(url)
-        .timeout(std::time::Duration::from_secs(300))
-        // https://docs.github.com/en/rest/overview/resources-in-the-rest-api#current-version
-        .header(reqwest::header::ACCEPT, "application/vnd.github.v3+json")
-        // https://docs.github.com/en/rest/overview/resources-in-the-rest-api#user-agent-required
-        .header(reqwest::header::USER_AGENT, USER_AGENT);
+    let mut request = client.get(url);
+
     if let Some(etag) = etag {
         request = request.header(reqwest::header::IF_NONE_MATCH, etag);
     }
@@ -152,7 +171,7 @@ async fn fetch_latest_github_release(
 mod tests {
     #[tokio::test]
     async fn fetch_latest_github_release() {
-        let client = reqwest::Client::new();
+        let client = super::configure_client().unwrap();
 
         // First check should result in the latest github release.
         let release = super::fetch_latest_github_release(&client, &None).await;
