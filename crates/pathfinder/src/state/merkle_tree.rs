@@ -559,7 +559,6 @@ impl<T: NodeStorage> MerkleTree<T> {
     }
 }
 
-#[cfg(any(test, fuzzing))]
 impl NodeStorage for () {
     fn get(&self, _key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
         // the rc<refcell> impl will do just fine by without any backing for transaction tree

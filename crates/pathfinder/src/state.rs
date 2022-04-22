@@ -9,6 +9,7 @@ use crate::{
     storage::{ContractsStateTable, ContractsTable},
 };
 
+pub mod block_hash;
 pub(crate) mod class_hash;
 mod merkle_node;
 pub(crate) mod merkle_tree;
