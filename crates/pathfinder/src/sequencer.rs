@@ -122,7 +122,7 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
 ///
 /// Retry is performed on __all__ types of errors __except for__
-/// [StarkNet specific errors](crate::sequencer::errors::StarknetError).
+/// [StarkNet specific errors](crate::sequencer::error::StarknetError).
 ///
 /// Initial backoff time is 30 seconds and saturates at 1 hour:
 ///
