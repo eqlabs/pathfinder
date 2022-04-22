@@ -1236,50 +1236,19 @@ mod tests {
 
         #[tokio::test]
         #[traced_test]
-        async fn stop_on_max_retry_count() {
-            let statuses = VecDeque::from([
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::BAD_GATEWAY, ""),
-                (StatusCode::GATEWAY_TIMEOUT, ""),
-                (StatusCode::SERVICE_UNAVAILABLE, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-            ]);
-
-            let (_jh, addr) = status_queue_server(statuses);
-            let error = super::retry(|| async {
-                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
-                url.set_port(Some(addr.port())).unwrap();
-                let resp = reqwest::get(url).await?;
-                super::parse::<String>(resp).await
-            })
-            .await
-            .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::TransportError(te) => assert_eq!(te.status(), Some(StatusCode::SERVICE_UNAVAILABLE))
-            );
-        }
-
-        #[tokio::test]
-        #[traced_test]
         async fn request_timeout() {
-            let (_jh, addr) = slow_server();
-            let timeout_counter = Arc::new(Mutex::new(0));
+            use std::sync::atomic::{AtomicUsize, Ordering};
 
-            let error = super::retry(|| async {
+            let (_jh, addr) = slow_server();
+            static CNT: AtomicUsize = AtomicUsize::new(0);
+
+            let fut = super::retry(|| async {
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
 
                 let client = reqwest::Client::builder().build().unwrap();
 
-                let mut cnt = timeout_counter.lock().await;
-                *cnt += 1;
+                CNT.fetch_add(1, Ordering::Relaxed);
 
                 // This is the same as using Client::builder().timeout()
                 let resp = client
@@ -1288,13 +1257,14 @@ mod tests {
                     .send()
                     .await?;
                 super::parse::<String>(resp).await
-            })
-            .await
-            .unwrap_err();
+            });
 
-            // Ultimately, after 7 retries a timeout error is returned
-            assert_matches!(error, SequencerError::TransportError(te) => assert!(te.is_timeout()));
-            assert_eq!(*timeout_counter.lock().await, 8);
+            // The retry loops forever, so wrap it in a timeout and check the counter.
+            tokio::time::timeout(Duration::from_millis(250), fut)
+                .await
+                .unwrap_err();
+            // 4th try should have timedout if this is really exponential backoff
+            assert_eq!(CNT.load(Ordering::Relaxed), 4);
         }
     }
 }
