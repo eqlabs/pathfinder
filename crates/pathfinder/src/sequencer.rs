@@ -121,7 +121,9 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
 
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
 ///
-/// Initial backoff time is 2 seconds. Retrying stops after approximately 4 minutes in total.
+/// Initial backoff time is 30 seconds and saturates at 1 hour:
+///
+/// `backoff [secs] = min((2 ^ N) * 15, 3600) [secs]`
 async fn retry<T, Fut, FutureFactory>(future_factory: FutureFactory) -> Result<T, SequencerError>
 where
     Fut: Future<Output = Result<T, SequencerError>>,
@@ -129,11 +131,11 @@ where
 {
     use crate::retry::Retry;
     use reqwest::StatusCode;
-    use std::num::{NonZeroU64, NonZeroUsize};
+    use std::num::NonZeroU64;
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
-        // Max number of retries of 7 gives a total accumulated timeout of 4 minutes and 15 seconds (2^8-1)
-        .max_num_retries(NonZeroUsize::new(7).unwrap())
+        .factor(NonZeroU64::new(15).unwrap())
+        .max_delay(Duration::from_secs(60 * 60))
         .when(|e| match e {
             SequencerError::ReqwestError(te) if te.is_timeout() => {
                 tracing::debug!("Retrying due to timeout");
