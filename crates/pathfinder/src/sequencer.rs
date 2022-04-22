@@ -121,9 +121,14 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
 
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
 ///
+/// Retry is performed on __all__ types of errors __except for__
+/// [StarkNet specific errors](crate::sequencer::errors::StarknetError).
+///
 /// Initial backoff time is 30 seconds and saturates at 1 hour:
 ///
 /// `backoff [secs] = min((2 ^ N) * 15, 3600) [secs]`
+///
+/// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 async fn retry<T, Fut, FutureFactory>(future_factory: FutureFactory) -> Result<T, SequencerError>
 where
     Fut: Future<Output = Result<T, SequencerError>>,
@@ -132,28 +137,66 @@ where
     use crate::retry::Retry;
     use reqwest::StatusCode;
     use std::num::NonZeroU64;
+    use tracing::{info, trace, warn, Level};
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
         .factor(NonZeroU64::new(15).unwrap())
         .max_delay(Duration::from_secs(60 * 60))
         .when(|e| match e {
-            SequencerError::ReqwestError(te) if te.is_timeout() => {
-                tracing::debug!("Retrying due to timeout");
+            SequencerError::ReqwestError(e) => {
+                match tracing::level_filters::LevelFilter::current().into_level() {
+                    None => {}
+                    Some(level) if level >= Level::TRACE => {
+                        trace!("Retrying due to: {:?}", e);
+                    }
+                    Some(_) => {
+                        if e.is_timeout() {
+                            info!("Retrying due to a timeout.");
+                        } else if e.is_decode() {
+                            warn!("Retrying due to a deserialization error.");
+                        } else if e.is_status() {
+                            match e.status() {
+                                Some(code) if code.is_redirection() => {
+                                    warn!("Retrying due to a redirect error: {code}")
+                                }
+                                Some(code @ StatusCode::NOT_FOUND) => {
+                                    info!("Retrying due to: {code}.")
+                                }
+                                Some(StatusCode::TOO_MANY_REQUESTS) => {
+                                    info!("Retrying due to rate limiting.")
+                                }
+                                Some(code) if code.is_client_error() => {
+                                    warn!("Retrying due to: {code}.")
+                                }
+                                Some(StatusCode::INTERNAL_SERVER_ERROR) => {
+                                    unreachable!("All HTTP 500s should either be converted to StarkNet errors or result in a deserialization error.")
+                                }
+                                Some(
+                                    code @ (StatusCode::BAD_GATEWAY
+                                    | StatusCode::SERVICE_UNAVAILABLE
+                                    | StatusCode::GATEWAY_TIMEOUT),
+                                ) => info!("Retrying due to: {code}."),
+                                Some(code) if code.is_server_error() => warn!("Retrying due to: {code}."),
+                                Some(code) => warn!("Retrying due to unclassified status code: {code}."),
+                                None => unreachable!(),
+                            }
+                        } else if e.is_redirect() {
+                            warn!("Retrying due to a redirect error.")
+                        } else if e.is_connect() {
+                            info!("Retrying due to a connection error.")
+                        } else if e.is_body() {
+                            info!("Retrying due to an error sending the request's or receiving the reply's body.")
+                        } else {
+                            // We should not get here since the only remaining error category
+                            // is a builder error
+                            warn!("Retrying due to an unexpected error.")
+                        }
+                    }
+                }
+
                 true
             }
-            SequencerError::ReqwestError(te) => match te.status() {
-                Some(
-                    status @ (StatusCode::TOO_MANY_REQUESTS
-                    | StatusCode::BAD_GATEWAY
-                    | StatusCode::SERVICE_UNAVAILABLE
-                    | StatusCode::GATEWAY_TIMEOUT),
-                ) => {
-                    tracing::debug!("Retrying due to {status}");
-                    true
-                }
-                Some(_) | None => false,
-            },
-            _ => false,
+            SequencerError::StarknetError(_) => false,
         })
         .await
 }
