@@ -251,6 +251,7 @@ impl ProjectivePoint {
 }
 
 /// Montgomery representation of the Stark curve generator G.
+#[allow(dead_code)]
 pub const CURVE_G: ProjectivePoint = ProjectivePoint {
     x: FieldElement::new([
         14484022957141291997,
