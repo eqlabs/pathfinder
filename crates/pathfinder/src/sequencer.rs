@@ -137,7 +137,7 @@ where
     use crate::retry::Retry;
     use reqwest::StatusCode;
     use std::num::NonZeroU64;
-    use tracing::{error, info, warn};
+    use tracing::{debug, error, info, warn};
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
         .factor(NonZeroU64::new(15).unwrap())
@@ -145,25 +145,28 @@ where
         .when(|e| match e {
             SequencerError::ReqwestError(e) => {
                 if e.is_body() || e.is_connect() || e.is_timeout() {
-                    info!(error=%e, "Request failed, retrying:");
+                    info!(reason=%e, "Request failed, retrying");
                 } else if e.is_status() {
                     match e.status() {
-                        Some(StatusCode::NOT_FOUND | StatusCode::TOO_MANY_REQUESTS | StatusCode::BAD_GATEWAY
+                        Some(
+                            StatusCode::NOT_FOUND
+                            | StatusCode::TOO_MANY_REQUESTS
+                            | StatusCode::BAD_GATEWAY
                             | StatusCode::SERVICE_UNAVAILABLE
-                            | StatusCode::GATEWAY_TIMEOUT) => {
-                            info!(error=%e, "Request failed, retrying:");
+                            | StatusCode::GATEWAY_TIMEOUT,
+                        ) => {
+                            debug!(reason=%e, "Request failed, retrying");
                         }
                         Some(StatusCode::INTERNAL_SERVER_ERROR) => {
-                            unreachable!("All HTTP 500s should either be converted to StarkNet errors or result in a deserialization error.")
+                            error!(reason=%e, "Request failed, retrying");
                         }
-                        Some(_) => warn!(error=%e, "Request failed, retrying:"),
+                        Some(_) => warn!(reason=%e, "Request failed, retrying"),
                         None => unreachable!(),
                     }
-
                 } else if e.is_decode() {
-                    error!(error=%e, "Request failed, retrying:");
+                    error!(reason=%e, "Request failed, retrying");
                 } else {
-                    warn!(error=%e, "Request failed, retrying:");
+                    warn!(reason=%e, "Request failed, retrying");
                 }
 
                 true
