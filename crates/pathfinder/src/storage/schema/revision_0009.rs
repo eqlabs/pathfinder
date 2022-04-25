@@ -28,7 +28,7 @@ mod tests {
         storage::{schema, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable},
     };
 
-    use pedersen::StarkHash;
+    use pedersen_hash::StarkHash;
     use rusqlite::{named_params, Connection};
 
     #[test]

@@ -158,7 +158,7 @@ mod tests {
 
     use std::str::FromStr;
 
-    use pedersen::StarkHash;
+    use pedersen_hash::StarkHash;
     use web3::types::H256;
 
     use crate::{

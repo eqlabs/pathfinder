@@ -325,7 +325,7 @@ mod tests {
         rpc_params,
         types::{traits::Client, v2::ParamsSer},
     };
-    use pedersen::StarkHash;
+    use pedersen_hash::StarkHash;
     use pretty_assertions::assert_eq;
     use serde_json::json;
     use std::{
@@ -578,7 +578,7 @@ mod tests {
             request::BlockResponseScope,
             BlockHashOrTag, Tag,
         };
-        use pedersen::StarkHash;
+        use pedersen_hash::StarkHash;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1619,7 +1619,7 @@ mod tests {
             use anyhow::Context;
             use bytes::Bytes;
             use futures::stream::TryStreamExt;
-            use pedersen::StarkHash;
+            use pedersen_hash::StarkHash;
 
             let storage = Storage::in_memory().unwrap();
 

@@ -43,7 +43,7 @@ use anyhow::Context;
 use bitvec::{order::Msb0, prelude::BitVec, view::BitView};
 use rusqlite::{named_params, OptionalExtension, Transaction};
 
-use pedersen::StarkHash;
+use pedersen_hash::StarkHash;
 
 /// Provides a reference counted storage backend for the
 /// nodes of a Starknet Binary Merkle Patricia Tree.

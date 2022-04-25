@@ -2,7 +2,7 @@
 //! See [`crate::curve_consts_gen::generate_consts`].
 //! The constants are used by [`crate::hash::pedersen_hash_preprocessed`].
 
-use crate::curve::AffinePoint;
+use stark_curve::AffinePoint;
 
 pub const CURVE_CONSTS_BITS: usize = 1;
 

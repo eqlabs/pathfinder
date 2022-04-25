@@ -1,5 +1,5 @@
 use anyhow::{Context, Error, Result};
-use pedersen::{pedersen_hash, StarkHash};
+use pedersen_hash::{pedersen_hash, StarkHash};
 use serde::Serialize;
 use sha3::Digest;
 
@@ -382,7 +382,7 @@ mod json {
         async fn first() {
             // this test is a bit on the slow side because of the download and because of the long
             // processing time in dev builds. expected --release speed is 9 contracts/s.
-            let expected = pedersen::StarkHash::from_hex_str(
+            let expected = pedersen_hash::StarkHash::from_hex_str(
                 "0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576",
             )
             .unwrap();
@@ -415,7 +415,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                pedersen::StarkHash::from_hex_str(
+                pedersen_hash::StarkHash::from_hex_str(
                     "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
                 )
                 .unwrap()
@@ -425,7 +425,7 @@ mod json {
         #[tokio::test]
         async fn genesis_contract() {
             use crate::sequencer::ClientApi;
-            use pedersen::StarkHash;
+            use pedersen_hash::StarkHash;
 
             let contract = StarkHash::from_hex_str(
                 "0x0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3",
@@ -451,7 +451,7 @@ mod json {
             use super::super::extract_abi_code_hash;
             use crate::core::{ContractAddress, ContractHash};
             use crate::sequencer::{self, ClientApi};
-            use pedersen::StarkHash;
+            use pedersen_hash::StarkHash;
 
             // Known contract which triggered a hash mismatch failure.
             let address = ContractAddress(
@@ -539,7 +539,7 @@ mod tests {
     #[test]
     fn truncated_keccak_matches_pythonic() {
         use super::truncated_keccak;
-        use pedersen::StarkHash;
+        use pedersen_hash::StarkHash;
         use sha3::{Digest, Keccak256};
         let all_set = Keccak256::digest(&[0xffu8; 32]);
         assert!(all_set[0] > 0xf);

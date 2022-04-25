@@ -2,6 +2,7 @@
 members = [
     "crates/load-test",
     "crates/pathfinder",
-    "crates/pedersen",
+    "crates/pedersen_hash",
+    "crates/stark_curve",
 ]
 resolver = "2"

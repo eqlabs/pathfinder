@@ -61,7 +61,7 @@ pub mod request {
     /// The address of a storage element for a StarkNet contract.
     ///
     /// __This type is not checked for 251 bits overflow__ in contrast to
-    /// [`StarkHash`](pedersen::StarkHash).
+    /// [`StarkHash`](pedersen_hash::StarkHash).
     #[serde_as]
     #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
     pub struct OverflowingStorageAddress(#[serde_as(as = "H256AsNoLeadingZerosHexStr")] pub H256);
@@ -128,7 +128,7 @@ pub mod reply {
         sequencer::reply::Status as SeqStatus,
     };
     use jsonrpsee::types::{CallError, Error};
-    use pedersen::StarkHash;
+    use pedersen_hash::StarkHash;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;

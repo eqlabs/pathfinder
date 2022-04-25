@@ -4,7 +4,7 @@ use crate::{
 };
 
 use anyhow::Context;
-use pedersen::StarkHash;
+use pedersen_hash::StarkHash;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
 /// Stores StarkNet contract information, specifically a contract's

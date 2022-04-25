@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pedersen::StarkHash;
+use pedersen_hash::StarkHash;
 use web3::{
     contract::tokens::Tokenizable,
     ethabi::{ethereum_types::BigEndianHash, LogParam, RawLog},

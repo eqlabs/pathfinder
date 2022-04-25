@@ -506,7 +506,7 @@ pub mod test_utils {
         },
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
     };
-    use pedersen::{HexParseError, StarkHash};
+    use pedersen_hash::{HexParseError, StarkHash};
 
     macro_rules! impl_from_hex_str {
         ($type:ty) => {
@@ -554,7 +554,7 @@ mod tests {
     use super::{error::StarknetErrorCode, test_utils::*, *};
     use crate::core::{StarknetBlockHash, StarknetBlockNumber};
     use assert_matches::assert_matches;
-    use pedersen::StarkHash;
+    use pedersen_hash::StarkHash;
 
     /// Convenience wrapper
     fn client() -> Client {

@@ -133,7 +133,7 @@ impl From<std::io::Error> for SubprocessError {
 #[cfg(test)]
 mod tests {
     use super::sub_process::launch_python;
-    use pedersen::StarkHash;
+    use pedersen_hash::StarkHash;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
 

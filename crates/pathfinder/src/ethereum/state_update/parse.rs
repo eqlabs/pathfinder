@@ -1,7 +1,7 @@
 use std::vec::IntoIter;
 
 use anyhow::{Context, Result};
-use pedersen::StarkHash;
+use pedersen_hash::StarkHash;
 use web3::types::U256;
 
 use crate::{

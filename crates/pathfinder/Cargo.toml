@@ -30,7 +30,7 @@ home = "0.5.3"
 jsonrpsee = { version = "0.6.1", features = ["full"] }
 lazy_static = "1.4.0"
 num-bigint = { version = "0.4.3", features = ["serde"] }
-pedersen = { path = "../pedersen" }
+pedersen_hash = { path = "../pedersen_hash" }
 reqwest = { version = "0.11.4", features = ["json"] }
 rusqlite = { version = "0.27.0", features = ["bundled"] }
 semver = "1.0.7"

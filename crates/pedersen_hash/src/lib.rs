@@ -1,5 +1,3 @@
-mod curve;
-mod field;
 mod hash;
 mod serde;
 

@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pedersen::{pedersen_hash, StarkHash};
+use pedersen_hash::{pedersen_hash, StarkHash};
 use rusqlite::Transaction;
 
 use crate::{
@@ -97,7 +97,7 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
 mod tests {
     use super::{calculate_contract_state_hash, sync};
     use crate::core::{ContractHash, ContractRoot, ContractStateHash};
-    use pedersen::StarkHash;
+    use pedersen_hash::StarkHash;
 
     #[test]
     fn hash() {

@@ -2,7 +2,7 @@ mod parse;
 mod retrieve;
 pub mod state_root;
 
-use pedersen::StarkHash;
+use pedersen_hash::StarkHash;
 use retrieve::*;
 
 use crate::{
@@ -96,7 +96,7 @@ impl StateUpdate {
 mod tests {
     use std::str::FromStr;
 
-    use pedersen::StarkHash;
+    use pedersen_hash::StarkHash;
     use pretty_assertions::assert_eq;
     use web3::types::H256;
 

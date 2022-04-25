@@ -55,7 +55,7 @@ use crate::storage::merkle_tree::{
     PersistedBinaryNode, PersistedEdgeNode, PersistedNode, RcNodeStorage,
 };
 
-use pedersen::StarkHash;
+use pedersen_hash::StarkHash;
 
 /// Backing storage for [`MerkleTree`].
 ///
