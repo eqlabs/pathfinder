@@ -30,6 +30,8 @@ home = "0.5.3"
 jsonrpsee = { version = "0.11.0", features = ["server"] }
 lazy_static = "1.4.0"
 num-bigint = { version = "0.4.3", features = ["serde"] }
+r2d2 = "0.8.9"
+r2d2_sqlite = "0.20.0"
 reqwest = { version = "0.11.4", features = ["json"] }
 rusqlite = { version = "0.27.0", features = ["bundled"] }
 semver = "1.0.7"
