@@ -2,9 +2,6 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::Display;
 
-use crate::curve_consts::{
-    CURVE_CONSTS_BITS, CURVE_CONSTS_P1, CURVE_CONSTS_P2, CURVE_CONSTS_P3, CURVE_CONSTS_P4,
-};
 use stark_curve::{
     AffinePoint, FieldElement, FieldElementRepr, ProjectivePoint, PEDERSEN_P0, PEDERSEN_P1,
     PEDERSEN_P2, PEDERSEN_P3, PEDERSEN_P4,
@@ -12,6 +9,8 @@ use stark_curve::{
 
 use bitvec::{field::BitField, order::Msb0, slice::BitSlice, view::BitView};
 use ff::PrimeField;
+
+include!(concat!(env!("OUT_DIR"), "/curve_consts.rs"));
 
 /// The Starknet elliptic curve Field Element.
 ///

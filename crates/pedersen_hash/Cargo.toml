@@ -9,6 +9,9 @@ license = "MIT OR Apache-2.0"
 name = "pedersen_hash"
 path = "src/lib.rs"
 
+[build-dependencies]
+stark_curve = { path = "../stark_curve" }
+
 [dependencies]
 # paritys scale codec locks us here
 bitvec = "0.20.4"
