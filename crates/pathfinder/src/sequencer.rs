@@ -121,7 +121,14 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
 
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
 ///
-/// Initial backoff time is 2 seconds. Retrying stops after approximately 4 minutes in total.
+/// Retry is performed on __all__ types of errors __except for__
+/// [StarkNet specific errors](crate::sequencer::error::StarknetError).
+///
+/// Initial backoff time is 30 seconds and saturates at 1 hour:
+///
+/// `backoff [secs] = min((2 ^ N) * 15, 3600) [secs]`
+///
+/// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 async fn retry<T, Fut, FutureFactory>(future_factory: FutureFactory) -> Result<T, SequencerError>
 where
     Fut: Future<Output = Result<T, SequencerError>>,
@@ -129,29 +136,42 @@ where
 {
     use crate::retry::Retry;
     use reqwest::StatusCode;
-    use std::num::{NonZeroU64, NonZeroUsize};
+    use std::num::NonZeroU64;
+    use tracing::{debug, error, info, warn};
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
-        // Max number of retries of 7 gives a total accumulated timeout of 4 minutes and 15 seconds (2^8-1)
-        .max_num_retries(NonZeroUsize::new(7).unwrap())
+        .factor(NonZeroU64::new(15).unwrap())
+        .max_delay(Duration::from_secs(60 * 60))
         .when(|e| match e {
-            SequencerError::TransportError(te) if te.is_timeout() => {
-                tracing::debug!("Retrying due to timeout");
+            SequencerError::ReqwestError(e) => {
+                if e.is_body() || e.is_connect() || e.is_timeout() {
+                    info!(reason=%e, "Request failed, retrying");
+                } else if e.is_status() {
+                    match e.status() {
+                        Some(
+                            StatusCode::NOT_FOUND
+                            | StatusCode::TOO_MANY_REQUESTS
+                            | StatusCode::BAD_GATEWAY
+                            | StatusCode::SERVICE_UNAVAILABLE
+                            | StatusCode::GATEWAY_TIMEOUT,
+                        ) => {
+                            debug!(reason=%e, "Request failed, retrying");
+                        }
+                        Some(StatusCode::INTERNAL_SERVER_ERROR) => {
+                            error!(reason=%e, "Request failed, retrying");
+                        }
+                        Some(_) => warn!(reason=%e, "Request failed, retrying"),
+                        None => unreachable!(),
+                    }
+                } else if e.is_decode() {
+                    error!(reason=%e, "Request failed, retrying");
+                } else {
+                    warn!(reason=%e, "Request failed, retrying");
+                }
+
                 true
             }
-            SequencerError::TransportError(te) => match te.status() {
-                Some(
-                    status @ (StatusCode::TOO_MANY_REQUESTS
-                    | StatusCode::BAD_GATEWAY
-                    | StatusCode::SERVICE_UNAVAILABLE
-                    | StatusCode::GATEWAY_TIMEOUT),
-                ) => {
-                    tracing::debug!("Retrying due to {status}");
-                    true
-                }
-                Some(_) | None => false,
-            },
-            _ => false,
+            SequencerError::StarknetError(_) => false,
         })
         .await
 }
@@ -1191,50 +1211,19 @@ mod tests {
 
         #[tokio::test]
         #[traced_test]
-        async fn stop_on_max_retry_count() {
-            let statuses = VecDeque::from([
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::BAD_GATEWAY, ""),
-                (StatusCode::GATEWAY_TIMEOUT, ""),
-                (StatusCode::SERVICE_UNAVAILABLE, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-                (StatusCode::TOO_MANY_REQUESTS, ""),
-            ]);
-
-            let (_jh, addr) = status_queue_server(statuses);
-            let error = super::retry(|| async {
-                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
-                url.set_port(Some(addr.port())).unwrap();
-                let resp = reqwest::get(url).await?;
-                super::parse::<String>(resp).await
-            })
-            .await
-            .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::TransportError(te) => assert_eq!(te.status(), Some(StatusCode::SERVICE_UNAVAILABLE))
-            );
-        }
-
-        #[tokio::test]
-        #[traced_test]
         async fn request_timeout() {
-            let (_jh, addr) = slow_server();
-            let timeout_counter = Arc::new(Mutex::new(0));
+            use std::sync::atomic::{AtomicUsize, Ordering};
 
-            let error = super::retry(|| async {
+            let (_jh, addr) = slow_server();
+            static CNT: AtomicUsize = AtomicUsize::new(0);
+
+            let fut = super::retry(|| async {
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
 
                 let client = reqwest::Client::builder().build().unwrap();
 
-                let mut cnt = timeout_counter.lock().await;
-                *cnt += 1;
+                CNT.fetch_add(1, Ordering::Relaxed);
 
                 // This is the same as using Client::builder().timeout()
                 let resp = client
@@ -1243,13 +1232,14 @@ mod tests {
                     .send()
                     .await?;
                 super::parse::<String>(resp).await
-            })
-            .await
-            .unwrap_err();
+            });
 
-            // Ultimately, after 7 retries a timeout error is returned
-            assert_matches!(error, SequencerError::TransportError(te) => assert!(te.is_timeout()));
-            assert_eq!(*timeout_counter.lock().await, 8);
+            // The retry loops forever, so wrap it in a timeout and check the counter.
+            tokio::time::timeout(Duration::from_millis(250), fut)
+                .await
+                .unwrap_err();
+            // 4th try should have timedout if this is really exponential backoff
+            assert_eq!(CNT.load(Ordering::Relaxed), 4);
         }
     }
 }
