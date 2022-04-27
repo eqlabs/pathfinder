@@ -2,11 +2,11 @@ use std::time::Duration;
 
 use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
-use web3::{transports::Http, Web3};
 
 use crate::{
     core::{EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber},
     ethereum::{
+        api::Web3EthApi,
         log::{FetchError, StateUpdateLog},
         state_update::state_root::StateRootFetcher,
         Chain,
@@ -31,12 +31,15 @@ pub enum Event {
 
 /// Syncs L1 state update logs. Emits [sync events](Event) which should be handled
 /// to update storage and respond to queries.
-pub async fn sync(
+pub async fn sync<T>(
     tx_event: mpsc::Sender<Event>,
-    transport: Web3<Http>,
+    transport: T,
     chain: Chain,
     head: Option<StateUpdateLog>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    T: Web3EthApi + Send + Sync,
+{
     let eth_api = EthereumImpl {
         logs: StateRootFetcher::new(head, chain),
         transport,
@@ -61,13 +64,13 @@ trait EthereumApi {
     ) -> anyhow::Result<Option<EthereumBlockHash>>;
 }
 
-struct EthereumImpl {
+struct EthereumImpl<T: Web3EthApi + Send + Sync> {
     logs: StateRootFetcher,
-    transport: Web3<Http>,
+    transport: T,
 }
 
 #[async_trait::async_trait]
-impl EthereumApi for EthereumImpl {
+impl<T: Web3EthApi + Send + Sync> EthereumApi for EthereumImpl<T> {
     async fn fetch_logs(&mut self) -> Result<Vec<StateUpdateLog>, FetchError> {
         self.logs.fetch(&self.transport).await
     }
@@ -86,7 +89,6 @@ impl EthereumApi for EthereumImpl {
     ) -> anyhow::Result<Option<EthereumBlockHash>> {
         Ok(self
             .transport
-            .eth()
             .block(block.into())
             .await?
             .map(|b| EthereumBlockHash(b.hash.unwrap())))

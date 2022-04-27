@@ -3,14 +3,11 @@ mod parse;
 
 pub use fetch::*;
 
-use web3::{
-    types::{Filter, H256},
-    Transport, Web3,
-};
+use web3::types::{Filter, H256};
 
 use crate::{
     core::{GlobalRoot, StarknetBlockNumber},
-    ethereum::{EthOrigin, RpcErrorCode},
+    ethereum::{api::Web3EthApi, EthOrigin, RpcErrorCode},
 };
 
 /// Describes a state update log event. Is always emitted
@@ -57,20 +54,23 @@ pub struct MemoryPageFactContinuousLog {
     pub hash: H256,
 }
 
-/// Error return by [get_logs].
-#[derive(Debug)]
+/// Error returned by [get_logs].
+#[derive(Debug, thiserror::Error)]
 pub enum GetLogsError {
     /// Query exceeded limits (time or result length).
+    #[error("Query limit exceeded.")]
     QueryLimit,
     /// One of the blocks specified in the filter is unknown. Currently only
     /// known to occur for Alchemy endpoints.
+    #[error("Unknown block.")]
     UnknownBlock,
-    Other(anyhow::Error),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Wraps the Ethereum get_logs call to handle [GetLogsError::QueryLimit] situations.
-pub async fn get_logs<T: Transport>(
-    transport: &Web3<T>,
+pub async fn get_logs(
+    transport: &impl Web3EthApi,
     filter: Filter,
 ) -> Result<Vec<web3::types::Log>, GetLogsError> {
     use web3::Error::*;
@@ -84,7 +84,7 @@ pub async fn get_logs<T: Transport>(
     const ALCHEMY_QUERY_TIMEOUT_ERR: &str =
         "Query timeout exceeded. Consider reducing your block range.";
     loop {
-        match transport.eth().logs(filter.clone()).await {
+        match transport.logs(filter.clone()).await {
             Ok(logs) => return Ok(logs),
             Err(Rpc(err)) if err.code.code() == LimitExceeded.code() => {
                 return Err(GetLogsError::QueryLimit);

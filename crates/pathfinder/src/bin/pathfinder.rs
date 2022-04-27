@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
         network_chain,
         sequencer.clone(),
         sync_state.clone(),
-        state::l1::sync,
+        state::L1SyncImpl,
         state::l2::sync,
     ));
 
@@ -102,13 +102,15 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Creates an [Ethereum transport](Web3<Http>) from the configuration.
+/// Creates an [Ethereum transport wrapper](ethereum::api::Web3EthImpl) from the configuration.
 ///
 /// This includes setting:
 /// - the [Url](reqwest::Url)
 /// - the user-agent (if provided)
 /// - the password (if provided)
-async fn ethereum_transport(config: EthereumConfig) -> anyhow::Result<Web3<Http>> {
+async fn ethereum_transport(
+    config: EthereumConfig,
+) -> anyhow::Result<ethereum::api::Web3EthImpl<Http>> {
     let client = reqwest::Client::builder();
     let client = match config.user_agent {
         Some(user_agent) => client.user_agent(user_agent),
@@ -123,7 +125,7 @@ async fn ethereum_transport(config: EthereumConfig) -> anyhow::Result<Web3<Http>
 
     let client = Http::with_client(client, url);
 
-    Ok(Web3::new(client))
+    Ok(ethereum::api::Web3EthImpl(Web3::new(client)))
 }
 
 #[cfg(feature = "tokio-console")]

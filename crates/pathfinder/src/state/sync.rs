@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::{
     core::{ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
     ethereum::{
+        api::Web3EthApi,
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
         Chain,
@@ -25,7 +26,6 @@ use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{Connection, Transaction};
 use tokio::sync::{mpsc, RwLock};
-use web3::Web3;
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
@@ -39,22 +39,52 @@ impl Default for State {
     }
 }
 
-pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
+/// Simplifies dependency injection for testing.
+#[async_trait::async_trait]
+pub trait L1Sync<T> {
+    async fn sync(
+        tx_event: mpsc::Sender<l1::Event>,
+        transport: T,
+        chain: Chain,
+        head: Option<StateUpdateLog>,
+    ) -> anyhow::Result<()>;
+}
+
+/// Simple implementation that just forwards to [`l1::sync`].
+#[derive(Debug)]
+pub struct L1SyncImpl;
+
+#[async_trait::async_trait]
+impl<T> L1Sync<T> for L1SyncImpl
+where
+    T: Web3EthApi + Send + Sync + 'static,
+{
+    async fn sync(
+        tx_event: mpsc::Sender<l1::Event>,
+        transport: T,
+        chain: Chain,
+        head: Option<StateUpdateLog>,
+    ) -> anyhow::Result<()> {
+        l1::sync(tx_event, transport, chain, head).await
+    }
+}
+
+/// Implements the main sync loop, where L1 and L2 sync results are combined.
+pub async fn sync<Transport, SequencerClient, F2, L1, L2Sync>(
     storage: Storage,
-    transport: Web3<Transport>,
+    transport: Transport,
     chain: Chain,
     sequencer: SequencerClient,
     state: Arc<State>,
-    l1_sync: L1Sync,
+    // To avoid having to explicitly specify all generic arguments.
+    _l1_sync_type_marker: L1,
     l2_sync: L2Sync,
 ) -> anyhow::Result<()>
 where
-    Transport: web3::Transport,
+    Transport: Web3EthApi + Clone,
     SequencerClient: sequencer::ClientApi + Clone + Send + Sync + 'static,
-    F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnOnce(mpsc::Sender<l1::Event>, Web3<Transport>, Chain, Option<StateUpdateLog>) -> F1
-        + Copy,
+    L1: L1Sync<Transport>,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
@@ -92,7 +122,7 @@ where
     ));
 
     // Start L1 and L2 sync processes.
-    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, transport.clone(), chain, l1_head));
+    let mut l1_handle = tokio::spawn(L1::sync(tx_l1, transport.clone(), chain, l1_head));
     let mut l2_handle = tokio::spawn(l2_sync(tx_l2, sequencer.clone(), l2_head, chain));
 
     let mut existed = (0, 0);
@@ -170,7 +200,7 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    l1_handle = tokio::spawn(l1_sync(new_tx, transport.clone(), chain, l1_head));
+                    l1_handle = tokio::spawn(L1::sync(new_tx, transport.clone(), chain, l1_head));
                     tracing::info!("L1 sync process restarted.")
                 },
             },

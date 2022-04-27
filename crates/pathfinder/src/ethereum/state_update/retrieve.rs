@@ -4,22 +4,22 @@ use anyhow::Context;
 use web3::{
     futures::future::try_join_all,
     types::{FilterBuilder, Transaction, TransactionId, U256},
-    Transport, Web3,
 };
 
 use crate::ethereum::{
+    api::Web3EthApi,
     contract::{REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
     log::{
-        BackwardFetchError, BackwardLogFetcher, EitherMetaLog, MemoryPageFactContinuousLog,
-        MemoryPagesHashesLog, StateTransitionFactLog, StateUpdateLog,
+        get_logs, BackwardFetchError, BackwardLogFetcher, EitherMetaLog,
+        MemoryPageFactContinuousLog, MemoryPagesHashesLog, StateTransitionFactLog, StateUpdateLog,
     },
     state_update::RetrieveStateUpdateError,
     Chain,
 };
 
 /// Retrieves the [StateTransitionFactLog] associated with the given [StateUpdateLog].
-pub async fn retrieve_transition_fact<T: Transport>(
-    transport: &Web3<T>,
+pub async fn retrieve_transition_fact(
+    transport: &impl Web3EthApi,
     state_update: StateUpdateLog,
     chain: Chain,
 ) -> Result<StateTransitionFactLog, RetrieveStateUpdateError> {
@@ -37,11 +37,7 @@ pub async fn retrieve_transition_fact<T: Transport>(
         .block_hash(state_update.origin.block.hash.0)
         .build();
 
-    let logs = transport
-        .eth()
-        .logs(filter)
-        .await
-        .context("Error retrieving StateTransitionFactLog")?;
+    let logs = get_logs(transport, filter).await?;
     for log in logs {
         let log = StateTransitionFactLog::try_from(log)?;
 
@@ -56,8 +52,8 @@ pub async fn retrieve_transition_fact<T: Transport>(
 }
 
 /// Retrieves the [MemoryPagesHashesLog] associated with the given [StateTransitionFactLog].
-pub async fn retrieve_mempage_hashes<T: Transport>(
-    transport: &Web3<T>,
+pub async fn retrieve_mempage_hashes(
+    transport: &impl Web3EthApi,
     fact: StateTransitionFactLog,
     chain: Chain,
 ) -> Result<MemoryPagesHashesLog, RetrieveStateUpdateError> {
@@ -88,8 +84,8 @@ pub async fn retrieve_mempage_hashes<T: Transport>(
 }
 
 /// Retrieves the list of [MemoryPageFactContinuousLog] associated with the given [MemoryPagesHashesLog].
-pub async fn retrieve_memory_page_logs<T: Transport>(
-    transport: &Web3<T>,
+pub async fn retrieve_memory_page_logs(
+    transport: &impl Web3EthApi,
     mempage_hashes: MemoryPagesHashesLog,
     chain: Chain,
 ) -> Result<Vec<MemoryPageFactContinuousLog>, RetrieveStateUpdateError> {
@@ -139,17 +135,13 @@ pub async fn retrieve_memory_page_logs<T: Transport>(
 /// Retrieves and parses the transaction data of the given [MemoryPageFactContinuousLog]'s.
 ///
 /// These can be parsed into a [StateUpdate](crate::ethereum::state_update::StateUpdate).
-pub async fn retrieve_mempage_transaction_data<T: Transport>(
-    transport: &Web3<T>,
+pub async fn retrieve_mempage_transaction_data(
+    transport: &impl Web3EthApi,
     mempages: Vec<MemoryPageFactContinuousLog>,
 ) -> Result<Vec<Vec<U256>>, RetrieveStateUpdateError> {
     let fut = mempages
         .iter()
-        .map(|page| {
-            transport
-                .eth()
-                .transaction(TransactionId::Hash(page.origin.transaction.hash.0))
-        })
+        .map(|page| transport.transaction(TransactionId::Hash(page.origin.transaction.hash.0)))
         .collect::<Vec<_>>();
 
     let transactions = try_join_all(fut)

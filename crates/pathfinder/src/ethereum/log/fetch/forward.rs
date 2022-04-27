@@ -1,12 +1,10 @@
 use anyhow::Context;
-use web3::{
-    types::{BlockNumber, FilterBuilder},
-    Transport, Web3,
-};
+use web3::types::{BlockNumber, FilterBuilder};
 
 use crate::{
     core::EthereumBlockNumber,
     ethereum::{
+        api::Web3EthApi,
         log::{fetch::MetaLog, get_logs, GetLogsError},
         Chain,
     },
@@ -69,10 +67,7 @@ where
 
     /// Fetches the next set of logs from L1. This set may be empty, in which
     /// case we have reached the current end of the L1 chain.
-    pub async fn fetch<Tr: Transport>(
-        &mut self,
-        transport: &Web3<Tr>,
-    ) -> Result<Vec<T>, FetchError> {
+    pub async fn fetch(&mut self, transport: &impl Web3EthApi) -> Result<Vec<T>, FetchError> {
         // Algorithm overview.
         //
         // There are two key difficulties this algorithm needs to handle.
@@ -128,11 +123,9 @@ where
                     //  - both `from_block` and `to_block` exceed the current chain state which indicates a reorg occurred.
                     // so lets check this by querying for the `to_block`.
                     let chain_head = transport
-                        .eth()
                         .block_number()
                         .await
-                        .context("Get latest block number from L1")?
-                        .as_u64();
+                        .context("Get latest block number from L1")?;
 
                     if from_block <= chain_head {
                         self.stride = (chain_head - from_block).max(1);
@@ -173,11 +166,9 @@ where
             // or we need to increase our query range.
             if logs.is_empty() {
                 let chain_head = transport
-                    .eth()
                     .block_number()
                     .await
-                    .context("Get latest block number from L1")?
-                    .as_u64();
+                    .context("Get latest block number from L1")?;
 
                 if to_block < chain_head {
                     match stride_cap {

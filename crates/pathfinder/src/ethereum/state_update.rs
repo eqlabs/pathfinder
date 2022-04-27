@@ -5,12 +5,11 @@ pub mod state_root;
 use pedersen::StarkHash;
 use retrieve::*;
 
-use web3::{Transport, Web3};
-
 use crate::{
     core::{ContractAddress, ContractHash, StorageAddress, StorageValue},
     ethereum::{
-        log::StateUpdateLog,
+        api::Web3EthApi,
+        log::{GetLogsError, StateUpdateLog},
         state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
         Chain,
     },
@@ -47,44 +46,28 @@ pub struct StateUpdate {
     pub contract_updates: Vec<ContractUpdate>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum RetrieveStateUpdateError {
+    #[error("Not found: State transition fact")]
     StateTransitionFactNotFound,
+    #[error("Not found: Memory page hashes")]
     MemoryPageHashesNotFound,
+    #[error("Not found: Memory page log")]
     MemoryPageLogNotFound,
+    #[error("Not found: Memory page transaction")]
     MemoryPageTransactionNotFound,
+    #[error("Reorg event detected")]
     Reorg,
-    Other(anyhow::Error),
-}
-
-impl std::fmt::Display for RetrieveStateUpdateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use RetrieveStateUpdateError::*;
-        match self {
-            StateTransitionFactNotFound => write!(f, "Not found: State transition fact"),
-            MemoryPageHashesNotFound => write!(f, "Not found: Memory page hashes"),
-            MemoryPageLogNotFound => write!(f, "Not found: Memory page log"),
-            MemoryPageTransactionNotFound => write!(f, "Not found: Memory page transaction"),
-            Reorg => write!(f, "Reorg event detected"),
-            Other(e) => e.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for RetrieveStateUpdateError {
-    // no source implementation, because anyhow is not a standard error.
-}
-
-impl From<anyhow::Error> for RetrieveStateUpdateError {
-    fn from(err: anyhow::Error) -> Self {
-        RetrieveStateUpdateError::Other(err)
-    }
+    #[error(transparent)]
+    GetLogs(#[from] GetLogsError),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 impl StateUpdate {
     /// Retrieves the [StateUpdate] associated with the given [StateUpdateLog] from L1.
-    pub async fn retrieve<T: Transport>(
-        transport: &Web3<T>,
+    pub async fn retrieve(
+        transport: &impl Web3EthApi,
         state_update: StateUpdateLog,
         chain: Chain,
     ) -> Result<Self, RetrieveStateUpdateError> {

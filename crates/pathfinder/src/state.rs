@@ -16,7 +16,7 @@ pub(crate) mod state_tree;
 mod sync;
 
 pub use contract_hash::compute_contract_hash;
-pub use sync::{l1, l2, sync, State as SyncState};
+pub use sync::{l1, l2, sync, L1SyncImpl, State as SyncState};
 
 #[derive(Clone, PartialEq)]
 pub struct CompressedContract {
