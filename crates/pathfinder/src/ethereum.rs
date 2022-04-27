@@ -186,7 +186,7 @@ pub fn test_transport(chain: Chain) -> api::Web3EthImpl<web3::transports::Http> 
     let client = reqwest::Client::builder().build().unwrap();
     let transport = web3::transports::Http::with_client(client, url);
 
-    api::Web3EthImpl(Web3::new(transport))
+    api::Web3EthImpl(web3::Web3::new(transport))
 }
 
 #[cfg(test)]

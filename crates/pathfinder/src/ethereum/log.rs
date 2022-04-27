@@ -127,7 +127,7 @@ pub async fn get_logs(
 mod tests {
 
     mod get_logs {
-        use crate::ethereum::{log::GetLogsError, test_transport};
+        use crate::ethereum::{api::Web3EthApi, log::GetLogsError, test_transport};
 
         use super::super::get_logs;
         use assert_matches::assert_matches;
@@ -176,7 +176,7 @@ mod tests {
             //  - Infura accepts the query as valid and simply returns logs for whatever part of the range it has.
             //  - Alchemy throws a RPC::ServerError which `get_logs` maps to `UnknownBlock`.
             let transport = test_transport(crate::ethereum::Chain::Goerli);
-            let latest = transport.eth().block_number().await.unwrap().as_u64();
+            let latest = transport.block_number().await.unwrap();
 
             let filter = FilterBuilder::default()
                 .from_block(BlockNumber::Number((latest + 10).into()))

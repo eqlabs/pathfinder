@@ -140,7 +140,9 @@ mod tests {
                 EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
                 EthereumTransactionIndex, GlobalRoot,
             },
-            ethereum::{log::FetchError, BlockOrigin, EthOrigin, TransactionOrigin},
+            ethereum::{
+                api::Web3EthApi, log::FetchError, BlockOrigin, EthOrigin, TransactionOrigin,
+            },
         };
 
         use super::*;
@@ -184,7 +186,7 @@ mod tests {
             let chain = Chain::Goerli;
             let transport = test_transport(chain);
 
-            let latest_on_chain = transport.eth().block_number().await.unwrap().as_u64();
+            let latest_on_chain = transport.block_number().await.unwrap();
 
             let not_genesis = StateUpdateLog {
                 origin: EthOrigin {

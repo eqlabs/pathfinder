@@ -609,6 +609,7 @@ fn deploy_contract(
         .context("Inserting contract hash into contracts table")
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::{l1, l2};
@@ -1312,3 +1313,4 @@ mod tests {
         assert!(CNT.load(Ordering::Relaxed) > 1);
     }
 }
+*/

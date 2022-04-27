@@ -473,7 +473,7 @@ mod tests {
             chain,
             sequencer,
             state,
-            sync::l1::sync,
+            sync::L1SyncImpl,
             sync::l2::sync,
         )
         .await
