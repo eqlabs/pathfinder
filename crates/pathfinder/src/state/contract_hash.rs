@@ -4,6 +4,7 @@ use serde::Serialize;
 use sha3::Digest;
 
 use crate::core::ContractHash;
+use crate::sequencer::request::contract::EntryPointType;
 
 /// Computes the starknet contract hash for given contract definition json blob.
 ///
@@ -58,7 +59,7 @@ pub(crate) fn extract_abi_code_hash(
 fn compute_contract_hash0(
     mut contract_definition: json::ContractDefinition<'_>,
 ) -> Result<ContractHash> {
-    use json::EntryPointType::*;
+    use EntryPointType::*;
 
     // the other modification is handled by skipping if the attributes vec is empty
     contract_definition.program.debug_info = None;
@@ -308,7 +309,8 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
 mod json {
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
-    use std::fmt;
+
+    use crate::sequencer::request::contract::{EntryPointType, SelectorAndOffset};
 
     /// Our version of the cairo contract definition used to deserialize and re-serialize a
     /// modified version for a hash of the contract definition.
@@ -339,37 +341,6 @@ mod json {
         /// Keccak256 hash.
         #[serde(skip_serializing, borrow)]
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset<'a>>>,
-    }
-
-    #[derive(Copy, Clone, Debug, serde::Deserialize, PartialEq, Hash, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub enum EntryPointType {
-        #[serde(rename = "EXTERNAL")]
-        External,
-        #[serde(rename = "L1_HANDLER")]
-        L1Handler,
-        #[serde(rename = "CONSTRUCTOR")]
-        Constructor,
-    }
-
-    impl fmt::Display for EntryPointType {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            use EntryPointType::*;
-            f.pad(match self {
-                External => "EXTERNAL",
-                L1Handler => "L1_HANDLER",
-                Constructor => "CONSTRUCTOR",
-            })
-        }
-    }
-
-    #[derive(serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct SelectorAndOffset<'a> {
-        #[serde(borrow)]
-        pub selector: Cow<'a, str>,
-        #[serde(borrow)]
-        pub offset: Cow<'a, str>,
     }
 
     // It's important that this is ordered alphabetically because the fields need to be in

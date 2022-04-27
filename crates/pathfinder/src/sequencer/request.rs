@@ -33,3 +33,39 @@ impl From<rpc::Call> for Call {
         }
     }
 }
+
+pub mod contract {
+    use std::borrow::Cow;
+    use std::fmt;
+
+    #[derive(Copy, Clone, Debug, serde::Deserialize, PartialEq, Hash, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub enum EntryPointType {
+        #[serde(rename = "EXTERNAL")]
+        External,
+        #[serde(rename = "L1_HANDLER")]
+        L1Handler,
+        #[serde(rename = "CONSTRUCTOR")]
+        Constructor,
+    }
+
+    impl fmt::Display for EntryPointType {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            use EntryPointType::*;
+            f.pad(match self {
+                External => "EXTERNAL",
+                L1Handler => "L1_HANDLER",
+                Constructor => "CONSTRUCTOR",
+            })
+        }
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct SelectorAndOffset<'a> {
+        #[serde(borrow)]
+        pub selector: Cow<'a, str>,
+        #[serde(borrow)]
+        pub offset: Cow<'a, str>,
+    }
+}
