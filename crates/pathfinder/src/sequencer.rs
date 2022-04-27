@@ -68,6 +68,15 @@ pub trait ClientApi {
 }
 
 /// StarkNet sequencer client using REST API.
+///
+/// Retry is performed on __all__ types of errors __except for__
+/// [StarkNet specific errors](crate::sequencer::error::StarknetError).
+///
+/// Initial backoff time is 30 seconds and saturates at 1 hour:
+///
+/// `backoff [secs] = min((2 ^ N) * 15, 3600) [secs]`
+///
+/// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Debug, Clone)]
 pub struct Client {
     /// This client is internally refcounted
@@ -120,15 +129,6 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
 }
 
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
-///
-/// Retry is performed on __all__ types of errors __except for__
-/// [StarkNet specific errors](crate::sequencer::error::StarknetError).
-///
-/// Initial backoff time is 30 seconds and saturates at 1 hour:
-///
-/// `backoff [secs] = min((2 ^ N) * 15, 3600) [secs]`
-///
-/// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 async fn retry<T, Fut, FutureFactory>(future_factory: FutureFactory) -> Result<T, SequencerError>
 where
     Fut: Future<Output = Result<T, SequencerError>>,
