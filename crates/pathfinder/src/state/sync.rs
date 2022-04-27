@@ -579,7 +579,6 @@ fn deploy_contract(
         .context("Inserting contract hash into contracts table")
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use super::{l1, l2};
@@ -596,28 +595,40 @@ mod tests {
         state,
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
-    use futures::{
-        future::BoxFuture,
-        stream::{StreamExt, TryStreamExt},
-    };
-    use jsonrpc_core::{Call, Value};
+    use futures::stream::{StreamExt, TryStreamExt};
     use pedersen::StarkHash;
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
-    use web3::{error, types::H256, RequestId, Transport, Web3};
+    use web3::types::H256;
 
-    // Satisfies the sync() api, not really called anywhere in the tests
     #[derive(Debug, Clone)]
     struct FakeTransport;
 
-    impl Transport for FakeTransport {
-        type Out = BoxFuture<'static, error::Result<Value>>;
-
-        fn prepare(&self, _method: &str, _params: Vec<Value>) -> (RequestId, Call) {
+    #[async_trait::async_trait]
+    impl ethereum::api::Web3EthApi for FakeTransport {
+        async fn block(
+            &self,
+            _: web3::types::BlockId,
+        ) -> web3::Result<Option<web3::types::Block<H256>>> {
             unimplemented!()
         }
 
-        fn send(&self, _id: RequestId, _request: Call) -> Self::Out {
+        async fn block_number(&self) -> web3::Result<u64> {
+            unimplemented!()
+        }
+
+        async fn chain_id(&self) -> web3::Result<web3::types::U256> {
+            unimplemented!()
+        }
+
+        async fn logs(&self, _: web3::types::Filter) -> web3::Result<Vec<web3::types::Log>> {
+            unimplemented!()
+        }
+
+        async fn transaction(
+            &self,
+            _: web3::types::TransactionId,
+        ) -> web3::Result<Option<web3::types::Transaction>> {
             unimplemented!()
         }
     }
@@ -699,7 +710,7 @@ mod tests {
 
     async fn l1_noop(
         _: mpsc::Sender<l1::Event>,
-        _: Web3<FakeTransport>,
+        _: FakeTransport,
         _: ethereum::Chain,
         _: Option<ethereum::log::StateUpdateLog>,
     ) -> anyhow::Result<()> {
@@ -829,7 +840,7 @@ mod tests {
             // UUT
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
-                Web3::new(FakeTransport),
+                FakeTransport,
                 chain,
                 FakeSequencer,
                 sync_state.clone(),
@@ -894,7 +905,7 @@ mod tests {
             // UUT
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
-                Web3::new(FakeTransport),
+                FakeTransport,
                 ethereum::Chain::Goerli,
                 FakeSequencer,
                 Arc::new(state::SyncState::default()),
@@ -954,7 +965,7 @@ mod tests {
         // UUT
         let _jh = tokio::spawn(state::sync(
             storage,
-            Web3::new(FakeTransport),
+            FakeTransport,
             ethereum::Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
@@ -982,7 +993,7 @@ mod tests {
         // UUT
         let _jh = tokio::spawn(state::sync(
             storage,
-            Web3::new(FakeTransport),
+            FakeTransport,
             ethereum::Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
@@ -1036,7 +1047,7 @@ mod tests {
             // UUT
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
-                Web3::new(FakeTransport),
+                FakeTransport,
                 chain,
                 FakeSequencer,
                 sync_state.clone(),
@@ -1096,7 +1107,7 @@ mod tests {
             // UUT
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
-                Web3::new(FakeTransport),
+                FakeTransport,
                 ethereum::Chain::Goerli,
                 FakeSequencer,
                 Arc::new(state::SyncState::default()),
@@ -1153,7 +1164,7 @@ mod tests {
         // UUT
         let _jh = tokio::spawn(state::sync(
             storage,
-            Web3::new(FakeTransport),
+            FakeTransport,
             ethereum::Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
@@ -1196,7 +1207,7 @@ mod tests {
         // UUT
         let _jh = tokio::spawn(state::sync(
             storage,
-            Web3::new(FakeTransport),
+            FakeTransport,
             ethereum::Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
@@ -1244,7 +1255,7 @@ mod tests {
         // UUT
         let _jh = tokio::spawn(state::sync(
             storage,
-            Web3::new(FakeTransport),
+            FakeTransport,
             ethereum::Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
@@ -1270,7 +1281,7 @@ mod tests {
         // UUT
         let _jh = tokio::spawn(state::sync(
             storage,
-            Web3::new(FakeTransport),
+            FakeTransport,
             ethereum::Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
@@ -1283,4 +1294,3 @@ mod tests {
         assert!(CNT.load(Ordering::Relaxed) > 1);
     }
 }
-*/
