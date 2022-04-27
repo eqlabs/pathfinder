@@ -154,7 +154,10 @@ pub mod reply {
         sequencer::reply as seq,
         sequencer::reply::Status as SeqStatus,
     };
-    use jsonrpsee::types::{CallError, Error};
+    use jsonrpsee::{
+        core::Error,
+        types::{error::CallError, ErrorObject},
+    };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use stark_hash::StarkHash;
@@ -331,11 +334,11 @@ pub mod reply {
     /// accessed with [`Result::unwrap_err`], then compared to the expected [`ErrorCode`] with
     /// [`assert_eq!`].
     #[cfg(test)]
-    impl PartialEq<jsonrpsee::types::Error> for ErrorCode {
-        fn eq(&self, other: &jsonrpsee::types::Error) -> bool {
-            use jsonrpsee::types::Error::*;
+    impl PartialEq<jsonrpsee::core::error::Error> for ErrorCode {
+        fn eq(&self, other: &jsonrpsee::core::error::Error) -> bool {
+            use jsonrpsee::core::error::Error::*;
 
-            // the interesting variant Error::Request holds the whole error value as a raw string,
+            // the interesting variant Error::Call holds the whole error value as a raw string,
             // which looks like FailedResponse.
             //
             // RpcError could have more user error body, which is why there's the
@@ -374,7 +377,7 @@ pub mod reply {
             }
 
             let resp = match other {
-                Request(ref s) => serde_json::from_str::<FailedResponse>(s),
+                Call(ref s) => serde_json::from_str::<FailedResponse>(&s.to_string()),
                 _ => return false,
             };
 
@@ -438,11 +441,12 @@ pub mod reply {
 
     impl From<ErrorCode> for Error {
         fn from(ecode: ErrorCode) -> Self {
-            Error::Call(CallError::Custom {
-                code: ecode as i32,
-                message: ecode.to_string(),
-                data: None,
-            })
+            let error: i32 = ecode as i32;
+            Error::Call(CallError::Custom(ErrorObject::owned(
+                error.into(),
+                ecode.to_string(),
+                None::<()>,
+            )))
         }
     }
 
