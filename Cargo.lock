@@ -1860,7 +1860,6 @@ dependencies = [
  "hex",
  "home",
  "http",
- "jsonrpc-core",
  "jsonrpsee",
  "lazy_static",
  "mockall",

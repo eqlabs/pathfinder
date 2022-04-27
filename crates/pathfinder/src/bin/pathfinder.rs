@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
         network_chain,
         sequencer.clone(),
         sync_state.clone(),
-        state::L1SyncImpl,
+        state::l1::sync,
         state::l2::sync,
     ));
 
