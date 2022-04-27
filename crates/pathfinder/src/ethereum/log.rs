@@ -115,10 +115,9 @@ pub async fn get_logs<T: Transport>(
                 continue;
             }
             Err(other) => {
-                return Err(GetLogsError::Other(anyhow::anyhow!(
-                    "Error getting logs: {:?}",
-                    other
-                )));
+                return Err(GetLogsError::Other(
+                    anyhow::Error::new(other).context("Error getting logs"),
+                ));
             }
         };
     }
