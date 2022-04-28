@@ -4,7 +4,7 @@ use web3::types::{BlockNumber, FilterBuilder};
 use crate::{
     core::EthereumBlockNumber,
     ethereum::{
-        api::{GetLogsError, Web3EthApi},
+        api::{LogsError, Web3EthApi},
         log::fetch::MetaLog,
         Chain,
     },
@@ -111,13 +111,13 @@ where
 
             let logs = match transport.logs(filter).await {
                 Ok(logs) => logs,
-                Err(GetLogsError::QueryLimit) => {
+                Err(LogsError::QueryLimit) => {
                     stride_cap = Some(self.stride);
                     self.stride = (self.stride / 2).max(1);
 
                     continue;
                 }
-                Err(GetLogsError::UnknownBlock) => {
+                Err(LogsError::UnknownBlock) => {
                     // This implies either:
                     //  - the `to_block` exceeds the current chain state, or
                     //  - both `from_block` and `to_block` exceed the current chain state which indicates a reorg occurred.
@@ -134,7 +134,7 @@ where
                         return Err(FetchError::Reorg);
                     }
                 }
-                Err(GetLogsError::Other(other)) => {
+                Err(LogsError::Other(other)) => {
                     return Err(FetchError::Other(anyhow::Error::new(other)))
                 }
             };

@@ -1,7 +1,7 @@
 use web3::types::{BlockNumber, FilterBuilder};
 
 use crate::ethereum::{
-    api::{GetLogsError, Web3EthApi},
+    api::{LogsError, Web3EthApi},
     log::fetch::{EitherMetaLog, MetaLog},
     Chain,
 };
@@ -92,14 +92,14 @@ where
 
             let logs = match transport.logs(filter).await {
                 Ok(logs) => logs,
-                Err(GetLogsError::QueryLimit) => {
+                Err(LogsError::QueryLimit) => {
                     stride_cap = Some(self.stride);
                     self.stride = (self.stride / 2).max(1);
 
                     continue;
                 }
-                Err(GetLogsError::UnknownBlock) => return Err(BackwardFetchError::Reorg),
-                Err(GetLogsError::Other(other)) => {
+                Err(LogsError::UnknownBlock) => return Err(BackwardFetchError::Reorg),
+                Err(LogsError::Other(other)) => {
                     return Err(BackwardFetchError::Other(anyhow::Error::new(other)))
                 }
             };

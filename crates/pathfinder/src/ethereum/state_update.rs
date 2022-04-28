@@ -8,7 +8,7 @@ use retrieve::*;
 use crate::{
     core::{ContractAddress, ContractHash, StorageAddress, StorageValue},
     ethereum::{
-        api::{GetLogsError, Web3EthApi},
+        api::{LogsError, Web3EthApi},
         log::StateUpdateLog,
         state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
         Chain,
@@ -59,7 +59,7 @@ pub enum RetrieveStateUpdateError {
     #[error("Reorg event detected")]
     Reorg,
     #[error(transparent)]
-    GetLogs(#[from] GetLogsError),
+    GetLogs(#[from] LogsError),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
