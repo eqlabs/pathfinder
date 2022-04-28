@@ -16,22 +16,15 @@ use web3::{
 /// Contains only those functions from [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
 /// that [the ethereum module](super) uses.
 pub trait Web3EthApi {
-    /// TODO
     async fn block(&self, block: BlockId) -> Result<Option<Block<H256>>>;
-    /// TODO
     async fn block_number(&self) -> Result<u64>;
-    /// TODO
     async fn chain_id(&self) -> Result<U256>;
-    /// TODO
     async fn logs(&self, filter: Filter) -> Result<Vec<Log>>;
-    /// TODO
     async fn transaction(&self, id: TransactionId) -> Result<Option<Transaction>>;
 }
 
 /// An implementation of [`Web3EthApi`] which uses [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
 /// wrapped in an [exponential backoff retry utility](Retry).
-///
-/// Retry is performed on __TODO__ types of errors __except for__ TODO.
 ///
 /// Initial backoff time is 30 seconds and saturates at 1 hour:
 ///
@@ -50,30 +43,44 @@ where
     T: Transport + Send + Sync,
     T::Out: Send,
 {
+    /// Wraps [`Web3::eth().block()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block)
+    /// into exponential retry on __all__ errors.
     async fn block(&self, block: BlockId) -> Result<Option<Block<H256>>> {
-        retry(|| self.0.eth().block(block), retry_condition).await
+        retry(|| self.0.eth().block(block), log_and_always_retry).await
     }
 
+    /// Wraps [`Web3::eth().block_number()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block_number)
+    /// into exponential retry on __all__ errors.
     async fn block_number(&self) -> Result<u64> {
-        retry(|| self.0.eth().block_number(), retry_condition)
+        retry(|| self.0.eth().block_number(), log_and_always_retry)
             .await
             .map(|n| n.as_u64())
     }
 
+    /// Wraps [`Web3::chain_id()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.chain_id)
+    /// into exponential retry on __all__ errors.
     async fn chain_id(&self) -> Result<U256> {
-        retry(|| self.0.eth().chain_id(), retry_condition).await
+        retry(|| self.0.eth().chain_id(), log_and_always_retry).await
     }
 
+    /// Wraps [`Web3::logs()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.logs)
+    /// into exponential retry on __some__ errors.
     async fn logs(&self, filter: Filter) -> Result<Vec<Log>> {
         retry(|| self.0.eth().logs(filter.clone()), |_| false).await
     }
 
+    /// Wraps [`Web3::transaction()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.transaction)
+    /// into exponential retry on __all__ errors.
     async fn transaction(&self, id: TransactionId) -> Result<Option<Transaction>> {
-        retry(|| self.0.eth().transaction(id.clone()), retry_condition).await
+        retry(
+            || self.0.eth().transaction(id.clone()),
+            log_and_always_retry,
+        )
+        .await
     }
 }
 
-/// A helper function to keep the backoff strategy consistent across different Eth Web3 API calls.
+/// A helper function to keep the backoff strategy consistent across different Web3 Eth API calls.
 async fn retry<T, Fut, FutureFactory, RetryCondition>(
     future_factory: FutureFactory,
     retry_condition: RetryCondition,
@@ -90,7 +97,8 @@ where
         .await
 }
 
-fn retry_condition(error: &Error) -> bool {
+/// A helper function to log Web3 Eth API errors. Always yields __true__.
+fn log_and_always_retry(error: &Error) -> bool {
     match error {
         Error::Unreachable | Error::InvalidResponse(_) | Error::Transport(_) => {
             debug!(reason=%error, "L1 request failed, retrying")
