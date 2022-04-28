@@ -70,7 +70,7 @@ mod tests {
         use pretty_assertions::assert_eq;
         use web3::types::{BlockNumber, FilterBuilder};
 
-        use crate::ethereum::log::{get_logs, MetaLog};
+        use crate::ethereum::{api::Web3EthApi, log::MetaLog};
 
         use super::*;
 
@@ -89,7 +89,7 @@ mod tests {
                 .to_block(block_number)
                 .build();
 
-            let logs = get_logs(&transport, filter).await.unwrap();
+            let logs = transport.logs(filter).await.unwrap();
             let logs = logs
                 .into_iter()
                 .map(StateUpdateLog::try_from)
@@ -117,7 +117,7 @@ mod tests {
                 .to_block(block_number)
                 .build();
 
-            let logs = get_logs(&transport, filter).await.unwrap();
+            let logs = transport.logs(filter).await.unwrap();
             let logs = logs
                 .into_iter()
                 .map(StateUpdateLog::try_from)

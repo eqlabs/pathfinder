@@ -8,8 +8,8 @@ use retrieve::*;
 use crate::{
     core::{ContractAddress, ContractHash, StorageAddress, StorageValue},
     ethereum::{
-        api::Web3EthApi,
-        log::{GetLogsError, StateUpdateLog},
+        api::{GetLogsError, Web3EthApi},
+        log::StateUpdateLog,
         state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
         Chain,
     },

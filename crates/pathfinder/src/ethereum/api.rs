@@ -170,7 +170,7 @@ pub enum GetLogsError {
     #[error("Unknown block.")]
     UnknownBlock,
     #[error(transparent)]
-    Other(#[from] Error),
+    Other(#[from] web3::Error),
 }
 
 #[cfg(test)]
@@ -225,7 +225,7 @@ mod tests {
             //
             // Infura and Alchemy handle this differently.
             //  - Infura accepts the query as valid and simply returns logs for whatever part of the range it has.
-            //  - Alchemy throws a RPC::ServerError which `get_logs` maps to `UnknownBlock`.
+            //  - Alchemy throws a RPC::ServerError which `Web3EthImpl::logs` maps to `UnknownBlock`.
             let transport = test_transport(crate::ethereum::Chain::Goerli);
             let latest = transport.block_number().await.unwrap();
 

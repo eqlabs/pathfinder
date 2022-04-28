@@ -10,8 +10,8 @@ use crate::ethereum::{
     api::Web3EthApi,
     contract::{REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
     log::{
-        get_logs, BackwardFetchError, BackwardLogFetcher, EitherMetaLog,
-        MemoryPageFactContinuousLog, MemoryPagesHashesLog, StateTransitionFactLog, StateUpdateLog,
+        BackwardFetchError, BackwardLogFetcher, EitherMetaLog, MemoryPageFactContinuousLog,
+        MemoryPagesHashesLog, StateTransitionFactLog, StateUpdateLog,
     },
     state_update::RetrieveStateUpdateError,
     Chain,
@@ -37,7 +37,7 @@ pub async fn retrieve_transition_fact(
         .block_hash(state_update.origin.block.hash.0)
         .build();
 
-    let logs = get_logs(transport, filter).await?;
+    let logs = transport.logs(filter).await?;
     for log in logs {
         let log = StateTransitionFactLog::try_from(log)?;
 

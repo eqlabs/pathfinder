@@ -4,8 +4,8 @@ use web3::types::{BlockNumber, FilterBuilder};
 use crate::{
     core::EthereumBlockNumber,
     ethereum::{
-        api::Web3EthApi,
-        log::{fetch::MetaLog, get_logs, GetLogsError},
+        api::{GetLogsError, Web3EthApi},
+        log::fetch::MetaLog,
         Chain,
     },
 };
@@ -109,7 +109,7 @@ where
                 .to_block(BlockNumber::Number(to_block.into()))
                 .build();
 
-            let logs = match get_logs(transport, filter).await {
+            let logs = match transport.logs(filter).await {
                 Ok(logs) => logs,
                 Err(GetLogsError::QueryLimit) => {
                     stride_cap = Some(self.stride);
@@ -134,7 +134,9 @@ where
                         return Err(FetchError::Reorg);
                     }
                 }
-                Err(GetLogsError::Other(other)) => return Err(FetchError::Other(other)),
+                Err(GetLogsError::Other(other)) => {
+                    return Err(FetchError::Other(anyhow::Error::new(other)))
+                }
             };
 
             let mut logs = logs.into_iter();

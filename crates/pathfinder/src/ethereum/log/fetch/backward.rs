@@ -1,34 +1,22 @@
 use web3::types::{BlockNumber, FilterBuilder};
 
 use crate::ethereum::{
-    api::Web3EthApi,
-    log::{
-        fetch::{EitherMetaLog, MetaLog},
-        get_logs, GetLogsError,
-    },
+    api::{GetLogsError, Web3EthApi},
+    log::fetch::{EitherMetaLog, MetaLog},
     Chain,
 };
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum BackwardFetchError {
     /// An L1 chain reorganisation occurred. At the very least, the lastest log
     /// returned previously is now invalid.
+    #[error("Reorg occured.")]
     Reorg,
     /// L1 genesis has been reached, there are no more logs to fetch.
+    #[error("Genesis reached.")]
     GenesisReached,
-    Other(anyhow::Error),
-}
-
-impl From<anyhow::Error> for BackwardFetchError {
-    fn from(err: anyhow::Error) -> Self {
-        BackwardFetchError::Other(err)
-    }
-}
-
-impl From<web3::error::Error> for BackwardFetchError {
-    fn from(err: web3::error::Error) -> Self {
-        BackwardFetchError::Other(anyhow::anyhow!(err))
-    }
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Fetches logs backwards through L1 history, accounting for chain
@@ -102,7 +90,7 @@ where
                 .from_block(BlockNumber::Number(from_block.into()))
                 .build();
 
-            let logs = match get_logs(transport, filter).await {
+            let logs = match transport.logs(filter).await {
                 Ok(logs) => logs,
                 Err(GetLogsError::QueryLimit) => {
                     stride_cap = Some(self.stride);
@@ -111,7 +99,9 @@ where
                     continue;
                 }
                 Err(GetLogsError::UnknownBlock) => return Err(BackwardFetchError::Reorg),
-                Err(GetLogsError::Other(other)) => return Err(BackwardFetchError::Other(other)),
+                Err(GetLogsError::Other(other)) => {
+                    return Err(BackwardFetchError::Other(anyhow::Error::new(other)))
+                }
             };
 
             // We need to iterate in reverse since that is the direction we are searching in.

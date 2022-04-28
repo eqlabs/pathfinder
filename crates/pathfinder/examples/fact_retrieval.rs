@@ -28,8 +28,8 @@ use clap::Arg;
 use pathfinder_lib::{
     core::{EthereumBlockHash, StarknetBlockNumber},
     ethereum::{
-        api::Web3EthImpl,
-        log::{get_logs, MetaLog, StateUpdateLog},
+        api::{Web3EthApi, Web3EthImpl},
+        log::{MetaLog, StateUpdateLog},
         state_update::StateUpdate,
     },
 };
@@ -50,7 +50,7 @@ async fn main() {
         .address(vec![StateUpdateLog::contract_address(chain)])
         .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
         .build();
-    let logs = get_logs(&transport, filter).await.unwrap();
+    let logs = transport.logs(filter).await.unwrap();
 
     let update_log = logs
         .into_iter()
