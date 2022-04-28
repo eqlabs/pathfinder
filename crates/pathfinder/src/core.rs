@@ -57,6 +57,13 @@ impl EntryPoint {
     }
 }
 
+/// Offset of an entry point into the bytecode of a StarkNet contract.
+///
+/// This is a StarkHash because we use it directly for computing the
+/// contract hashes.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ByteCodeOffset(pub StarkHash);
+
 /// A single parameter passed to a StarkNet `call`.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CallParam(pub StarkHash);

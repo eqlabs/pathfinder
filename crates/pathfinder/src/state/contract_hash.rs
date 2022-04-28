@@ -136,36 +136,14 @@ fn compute_contract_hash0(
                 .get(key)
                 .unwrap_or(&Vec::new())
                 .iter()
-                .enumerate()
                 // flatten each entry point to get a list of (selector, offset, selector, offset, ...)
-                // `i` is the nth selector of the `key` kind
-                .flat_map(|(i, x)| {
-                    [("selector", &*x.selector), ("offset", &*x.offset)]
-                        .into_iter()
-                        .map(move |(field, x)| match x.strip_prefix("0x") {
-                            Some(x) => Ok((field, x)),
-                            None => Err(anyhow::anyhow!(
-                                "Entry point missing '0x' prefix under {key} at index {i} entry ({field})",
-                            )),
-                        })
-                        .map(move |res| {
-                            res.and_then(|(field, hex)| {
-                                StarkHash::from_hex_str(hex).with_context(|| {
-                                    format!("Entry point invalid hex under {key} at index {i} entry ({field})")
-                                })
-                            })
-                        })
-                })
-                .try_fold(HashChain::default(), |mut hc, next| {
-                    hc.update(next?);
-                    Result::<_, Error>::Ok(hc)
+                .flat_map(|x| [x.selector.0, x.offset.0].into_iter())
+                .fold(HashChain::default(), |mut hc, next| {
+                    hc.update(next);
+                    hc
                 })
         })
-        .try_for_each(|x| {
-            outer.update(x?.finalize());
-            Result::<_, Error>::Ok(())
-        })
-        .context("Failed to process contract_definition.entry_points_by_type")?;
+        .for_each(|x| outer.update(x.finalize()));
 
     let builtins = contract_definition
         .program
@@ -339,8 +317,8 @@ mod json {
         ///
         /// These are left out of the re-serialized version with the ordering requirement to a
         /// Keccak256 hash.
-        #[serde(skip_serializing, borrow)]
-        pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset<'a>>>,
+        #[serde(skip_serializing)]
+        pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
     }
 
     // It's important that this is ordered alphabetically because the fields need to be in

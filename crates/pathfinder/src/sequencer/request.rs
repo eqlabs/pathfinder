@@ -35,8 +35,9 @@ impl From<rpc::Call> for Call {
 }
 
 pub mod contract {
-    use std::borrow::Cow;
     use std::fmt;
+
+    use crate::core::{ByteCodeOffset, EntryPoint};
 
     #[derive(Copy, Clone, Debug, serde::Deserialize, PartialEq, Hash, Eq)]
     #[serde(deny_unknown_fields)]
@@ -62,10 +63,8 @@ pub mod contract {
 
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
-    pub struct SelectorAndOffset<'a> {
-        #[serde(borrow)]
-        pub selector: Cow<'a, str>,
-        #[serde(borrow)]
-        pub offset: Cow<'a, str>,
+    pub struct SelectorAndOffset {
+        pub selector: EntryPoint,
+        pub offset: ByteCodeOffset,
     }
 }
