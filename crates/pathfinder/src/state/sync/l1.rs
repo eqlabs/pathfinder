@@ -121,6 +121,7 @@ impl<T: Web3EthApi + Send + Sync + Clone> EthereumApi for EthereumImpl<T> {
         &self,
         block: EthereumBlockNumber,
     ) -> anyhow::Result<Option<EthereumBlockHash>> {
+        // No explicit retrying here as any `Web3EthApi` implementor should already hadle that there.
         Ok(self
             .transport
             .block(block.into())
