@@ -377,7 +377,7 @@ pub mod reply {
             }
 
             let resp = match other {
-                Call(ref s) => serde_json::from_str::<FailedResponse>(&s.to_string()),
+                Call(ref s) => serde_json::from_str::<FailedResponse>(&s.to_owned().to_string()),
                 _ => return false,
             };
 
