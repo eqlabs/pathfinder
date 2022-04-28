@@ -621,7 +621,10 @@ mod tests {
             unimplemented!()
         }
 
-        async fn logs(&self, _: web3::types::Filter) -> web3::Result<Vec<web3::types::Log>> {
+        async fn logs(
+            &self,
+            _: web3::types::Filter,
+        ) -> std::result::Result<Vec<web3::types::Log>, ethereum::api::GetLogsError> {
             unimplemented!()
         }
 
