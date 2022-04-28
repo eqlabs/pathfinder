@@ -1,7 +1,8 @@
-use std::time::Duration;
+use std::{num::NonZeroU64, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use tokio::sync::{mpsc, oneshot};
+use futures::Future;
+use tokio::sync::{mpsc, oneshot, RwLock};
 
 use crate::{
     core::{EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber},
@@ -11,6 +12,7 @@ use crate::{
         state_update::state_root::StateRootFetcher,
         Chain,
     },
+    retry::Retry,
 };
 
 /// Events and queries emitted by L1 sync process.
@@ -38,10 +40,10 @@ pub async fn sync<T>(
     head: Option<StateUpdateLog>,
 ) -> anyhow::Result<()>
 where
-    T: Web3EthApi + Send + Sync,
+    T: Web3EthApi + Send + Sync + Clone,
 {
     let eth_api = EthereumImpl {
-        logs: StateRootFetcher::new(head, chain),
+        logs: Arc::new(RwLock::new(StateRootFetcher::new(head, chain))),
         transport,
     };
 
@@ -54,9 +56,9 @@ where
 trait EthereumApi {
     async fn fetch_logs(&mut self) -> Result<Vec<StateUpdateLog>, FetchError>;
 
-    fn set_log_head(&mut self, head: Option<StateUpdateLog>);
+    async fn set_log_head(&mut self, head: Option<StateUpdateLog>);
 
-    fn log_head(&mut self) -> &Option<StateUpdateLog>;
+    async fn log_head(&self) -> Option<StateUpdateLog>;
 
     async fn block_hash(
         &self,
@@ -64,34 +66,57 @@ trait EthereumApi {
     ) -> anyhow::Result<Option<EthereumBlockHash>>;
 }
 
+/// A helper function to keep the backoff strategy consistent.
+async fn retry<T, E, Fut, FutureFactory, RetryCondition>(
+    future_factory: FutureFactory,
+    retry_condition: RetryCondition,
+) -> Result<T, E>
+where
+    Fut: Future<Output = Result<T, E>>,
+    FutureFactory: FnMut() -> Fut,
+    RetryCondition: FnMut(&E) -> bool,
+{
+    Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
+        .factor(NonZeroU64::new(15).unwrap())
+        .max_delay(Duration::from_secs(60 * 60))
+        .when(retry_condition)
+        .await
+}
+
+#[derive(Clone)]
 struct EthereumImpl<T: Web3EthApi + Send + Sync> {
-    logs: StateRootFetcher,
+    logs: Arc<RwLock<StateRootFetcher>>,
     transport: T,
 }
 
 #[async_trait::async_trait]
-impl<T: Web3EthApi + Send + Sync> EthereumApi for EthereumImpl<T> {
+impl<T: Web3EthApi + Send + Sync + Clone> EthereumApi for EthereumImpl<T> {
     async fn fetch_logs(&mut self) -> Result<Vec<StateUpdateLog>, FetchError> {
-        self.logs.fetch(&self.transport).await
+        let ff = || async {
+            let logs = self.logs.clone();
+            let transport = self.transport.clone();
+            let mut logs = logs.write().await;
+            logs.fetch(transport).await
+        };
+        let logs = retry(ff, |_| false).await?;
+        Ok(logs)
     }
 
-    fn set_log_head(&mut self, head: Option<StateUpdateLog>) {
-        self.logs.set_head(head);
+    async fn set_log_head(&mut self, head: Option<StateUpdateLog>) {
+        self.logs.write().await.set_head(head);
     }
 
-    fn log_head(&mut self) -> &Option<StateUpdateLog> {
-        self.logs.head()
+    async fn log_head(&self) -> Option<StateUpdateLog> {
+        self.logs.read().await.head().clone()
     }
 
     async fn block_hash(
         &self,
         block: EthereumBlockNumber,
     ) -> anyhow::Result<Option<EthereumBlockHash>> {
-        Ok(self
-            .transport
-            .block(block.into())
-            .await?
-            .map(|b| EthereumBlockHash(b.hash.unwrap())))
+        let ff = || self.transport.block(block.into());
+        let block_hash = retry(ff, |_| false).await?;
+        Ok(block_hash.map(|b| EthereumBlockHash(b.hash.unwrap())))
     }
 }
 
@@ -159,7 +184,7 @@ async fn sync_impl(
                 // Unwrap is safe as it is not be possible to get a reorg event if there
                 // was no latest log to reorg against. We know that this block already needs to
                 // be reorg'd since it triggered the reorg in the first place.
-                let mut reorg_tail = eth_api.log_head().clone().unwrap();
+                let mut reorg_tail = eth_api.log_head().await.clone().unwrap();
 
                 // Check each Starknet block in reverse history order, until we find a still
                 // valid block. This becomes the new head of our L1 state.
@@ -214,7 +239,7 @@ async fn sync_impl(
                 }
 
                 // Update the Ethereum log fetcher.
-                eth_api.set_log_head(new_head);
+                eth_api.set_log_head(new_head).await;
             }
             Err(FetchError::Other(other)) => anyhow::bail!(other),
         }

@@ -7,6 +7,7 @@ use crate::{
 };
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
+#[derive(Clone)]
 pub struct StateRootFetcher(LogFetcher<StateUpdateLog>);
 
 /// The Mainnet Ethereum block containing the Starknet genesis [StateUpdateLog].
