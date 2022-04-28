@@ -66,7 +66,7 @@ trait EthereumApi {
     ) -> anyhow::Result<Option<EthereumBlockHash>>;
 }
 
-/// A helper function to keep the backoff strategy consistent.
+/// A helper function to keep the backoff strategy construction separated.
 async fn retry<T, E, Fut, FutureFactory, RetryCondition>(
     future_factory: FutureFactory,
     retry_condition: RetryCondition,
@@ -98,7 +98,14 @@ impl<T: Web3EthApi + Send + Sync + Clone> EthereumApi for EthereumImpl<T> {
             let mut logs = logs.write().await;
             logs.fetch(transport).await
         };
-        let logs = retry(ff, |_| false).await?;
+        let logs = retry(ff, |error| match error {
+            FetchError::Other(other) => {
+                tracing::warn!(reason=%other, "Failed fetching L1 logs, retrying");
+                true
+            }
+            FetchError::Reorg => false,
+        })
+        .await?;
         Ok(logs)
     }
 
@@ -114,9 +121,11 @@ impl<T: Web3EthApi + Send + Sync + Clone> EthereumApi for EthereumImpl<T> {
         &self,
         block: EthereumBlockNumber,
     ) -> anyhow::Result<Option<EthereumBlockHash>> {
-        let ff = || self.transport.block(block.into());
-        let block_hash = retry(ff, |_| false).await?;
-        Ok(block_hash.map(|b| EthereumBlockHash(b.hash.unwrap())))
+        Ok(self
+            .transport
+            .block(block.into())
+            .await?
+            .map(|b| EthereumBlockHash(b.hash.unwrap())))
     }
 }
 
@@ -241,6 +250,7 @@ async fn sync_impl(
                 // Update the Ethereum log fetcher.
                 eth_api.set_log_head(new_head).await;
             }
+            // Unreachable provided that `eth_api` implements a retry policy.
             Err(FetchError::Other(other)) => anyhow::bail!(other),
         }
     }
