@@ -149,6 +149,10 @@ pub struct StarknetProtocolVersion(pub H256);
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Fee(pub H128);
 
+/// StarkNet transaction version.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct TransactionVersion(pub H256);
+
 /// An Ethereum address.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EthereumAddress(pub H160);

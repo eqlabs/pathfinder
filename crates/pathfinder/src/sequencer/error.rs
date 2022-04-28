@@ -84,4 +84,6 @@ pub enum StarknetErrorCode {
     OutOfRangeTransactionHash,
     #[serde(rename = "StarkErrorCode.MALFORMED_REQUEST")]
     MalformedRequest,
+    #[serde(rename = "StarknetErrorCode.UNSUPPORTED_SELECTOR_FOR_FEE")]
+    UnsupportedSelectorForFee,
 }

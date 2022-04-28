@@ -3,7 +3,7 @@
 use crate::core::{
     CallParam, CallSignatureElem, ConstructorParam, EthereumAddress, EventData, EventKey, Fee,
     L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
-    TransactionSignatureElem,
+    TransactionSignatureElem, TransactionVersion,
 };
 use num_bigint::BigUint;
 use pedersen::{HexParseError, OverflowError, StarkHash};
@@ -238,6 +238,13 @@ impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexSt
         deserializer.deserialize_str(StarknetBlockNumberVisitor)
     }
 }
+
+serde_with::serde_conv!(
+    pub TransactionVersionAsHexStr,
+    TransactionVersion,
+    |serialize_me: &TransactionVersion| bytes_to_hex_str(serialize_me.0.as_bytes()),
+    |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(|b| TransactionVersion(H256::from(b)))
+);
 
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_biguint(b: BigUint) -> Result<StarkHash, OverflowError> {

@@ -3,9 +3,12 @@ pub mod error;
 pub mod reply;
 pub mod request;
 
-use self::error::StarknetError;
+use self::{error::StarknetError, request::Call};
 use crate::{
-    core::{ContractAddress, StarknetTransactionHash, StorageAddress, StorageValue},
+    core::{
+        ContractAddress, Fee, StarknetTransactionHash, StorageAddress, StorageValue,
+        TransactionVersion,
+    },
     ethereum::Chain,
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
@@ -65,6 +68,13 @@ pub trait ClientApi {
     ) -> Result<reply::StateUpdate, SequencerError>;
 
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
+
+    async fn add_invoke_transaction(
+        &self,
+        function_invocation: Call,
+        max_fee: Fee,
+        version: TransactionVersion,
+    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError>;
 }
 
 /// StarkNet sequencer client using REST API.
@@ -206,12 +216,12 @@ impl Client {
     }
 
     /// Helper function that constructs a URL for particular query.
-    fn build_query(&self, path_segment: &str, params: &[(&str, &str)]) -> Url {
+    fn build_query(&self, path_segments: &[&str], params: &[(&str, &str)]) -> Url {
         let mut query_url = self.sequencer_url.clone();
         query_url
             .path_segments_mut()
             .expect("Base URL is valid")
-            .extend(&["feeder_gateway", path_segment]);
+            .extend(path_segments);
         query_url.query_pairs_mut().extend_pairs(params);
         tracing::trace!(%query_url);
         query_url
@@ -230,7 +240,10 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .get(self.build_query("get_block", &[("blockNumber", &number)]))
+                .get(self.build_query(
+                    &["feeder_gateway", "get_block"],
+                    &[("blockNumber", &number)],
+                ))
                 .send()
                 .await?;
             parse::<reply::Block>(resp).await
@@ -248,7 +261,7 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .get(self.build_query("get_block", &[(tag, &hash)]))
+                .get(self.build_query(&["feeder_gateway", "get_block"], &[(tag, &hash)]))
                 .send()
                 .await?;
             parse::<reply::Block>(resp).await
@@ -267,7 +280,7 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .post(self.build_query("call_contract", &[(tag, &hash)]))
+                .post(self.build_query(&["feeder_gateway", "call_contract"], &[(tag, &hash)]))
                 .json(&payload)
                 .send()
                 .await?;
@@ -286,7 +299,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_full_contract",
+                    &["feeder_gateway", "get_full_contract"],
                     &[("contractAddress", &contract_addr.0.to_hex_str())],
                 ))
                 .send()
@@ -313,7 +326,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_storage_at",
+                    &["feeder_gateway", "get_storage_at"],
                     &[
                         ("contractAddress", &contract_addr.0.to_hex_str()),
                         ("key", &starkhash_to_dec_str(&key.0)),
@@ -337,7 +350,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_transaction",
+                    &["feeder_gateway", "get_transaction"],
                     &[("transactionHash", &transaction_hash.0.to_hex_str())],
                 ))
                 .send()
@@ -357,7 +370,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_transaction_status",
+                    &["feeder_gateway", "get_transaction_status"],
                     &[("transactionHash", &transaction_hash.0.to_hex_str())],
                 ))
                 .send()
@@ -377,7 +390,7 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .get(self.build_query("get_state_update", &[(tag, &hash)]))
+                .get(self.build_query(&["feeder_gateway", "get_state_update"], &[(tag, &hash)]))
                 .send()
                 .await?;
             parse(resp).await
@@ -395,7 +408,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_state_update",
+                    &["feeder_gateway", "get_state_update"],
                     &[("blockNumber", &block_number_str(block_number))],
                 ))
                 .send()
@@ -411,12 +424,42 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .get(self.build_query("get_contract_addresses", &[]))
+                .get(self.build_query(&["feeder_gateway", "get_contract_addresses"], &[]))
                 .send()
                 .await?;
             parse(resp).await
         })
         .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn add_invoke_transaction(
+        &self,
+        call: Call,
+        max_fee: Fee,
+        version: TransactionVersion,
+    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+        let req = request::add_transaction::AddTransaction::Invoke(
+            request::add_transaction::InvokeFunction {
+                contract_address: call.contract_address,
+                entry_point_selector: call.entry_point_selector,
+                calldata: call.calldata,
+                max_fee,
+                version,
+                signature: call.signature,
+            },
+        );
+        // Note that we don't do retries here.
+        // This method is used to proxy an add transaction operation from the JSON-RPC
+        // API to the sequencer. Retries should be implemented in the JSON-RPC
+        // client instead.
+        let resp = self
+            .inner
+            .post(self.build_query(&["gateway", "add_transaction"], &[]))
+            .json(&req)
+            .send()
+            .await?;
+        parse(resp).await
     }
 }
 
@@ -1103,6 +1146,133 @@ mod tests {
     #[tokio::test]
     async fn eth_contract_addresses() {
         client().eth_contract_addresses().await.unwrap();
+    }
+
+    mod add_transaction {
+        use super::*;
+        use crate::core::{CallParam, CallSignatureElem, EntryPoint};
+
+        use web3::types::H256;
+
+        #[tokio::test]
+        async fn invalid_entry_point_selector() {
+            // test with values dumped from `starknet invoke` for a test contract, except for
+            // an invalid entry point value
+            let  error = client()
+                .add_invoke_transaction(
+                    Call {
+                        contract_address: ContractAddress(
+                            StarkHash::from_hex_str(
+                                "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                            )
+                            .unwrap(),
+                        ),
+                        calldata: vec![
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(
+                                StarkHash::from_hex_str(
+                                    "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
+                                )
+                                .unwrap(),
+                            ),
+                            CallParam(
+                                StarkHash::from_hex_str(
+                                    "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
+                                )
+                                .unwrap(),
+                            ),
+                            CallParam(StarkHash::ZERO),
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(StarkHash::from_hex_str("0x2b").unwrap()),
+                            CallParam(StarkHash::ZERO),
+                        ],
+                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        signature: vec![
+                            CallSignatureElem(
+                                StarkHash::from_hex_str(
+                                    "0x7dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                                )
+                                .unwrap(),
+                            ),
+                            CallSignatureElem(
+                                StarkHash::from_hex_str(
+                                    "0x71456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                                )
+                                .unwrap(),
+                            ),
+                        ],
+                    },
+                    Fee(5444010076217u128.to_be_bytes().into()),
+                    TransactionVersion(H256::zero()),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UnsupportedSelectorForFee)
+            );
+        }
+
+        #[tokio::test]
+        async fn invoke_function() {
+            // test with values dumped from `starknet invoke` for a test contract
+            client()
+                .add_invoke_transaction(
+                    Call {
+                        contract_address: ContractAddress(
+                            StarkHash::from_hex_str(
+                                "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                            )
+                            .unwrap(),
+                        ),
+                        calldata: vec![
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(
+                                StarkHash::from_hex_str(
+                                    "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
+                                )
+                                .unwrap(),
+                            ),
+                            CallParam(
+                                StarkHash::from_hex_str(
+                                    "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
+                                )
+                                .unwrap(),
+                            ),
+                            CallParam(StarkHash::ZERO),
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(StarkHash::from_hex_str("0x2b").unwrap()),
+                            CallParam(StarkHash::ZERO),
+                        ],
+                        entry_point_selector: EntryPoint(
+                            StarkHash::from_hex_str(
+                                "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+                            )
+                            .unwrap(),
+                        ),
+                        signature: vec![
+                            CallSignatureElem(
+                                StarkHash::from_hex_str(
+                                    "0x7dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5",
+                                )
+                                .unwrap(),
+                            ),
+                            CallSignatureElem(
+                                StarkHash::from_hex_str(
+                                    "0x71456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8",
+                                )
+                                .unwrap(),
+                            ),
+                        ],
+                    },
+                    Fee(5444010076217u128.to_be_bytes().into()),
+                    TransactionVersion(H256::zero()),
+                )
+                .await
+                .unwrap();
+        }
     }
 
     mod retry {

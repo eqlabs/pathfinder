@@ -616,9 +616,9 @@ mod tests {
     use crate::{
         core::{
             ContractAddress, ContractHash, EthereumBlockHash, EthereumBlockNumber,
-            EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
+            EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GlobalRoot,
             StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress, StorageValue,
+            StarknetTransactionHash, StorageAddress, StorageValue, TransactionVersion,
         },
         ethereum,
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
@@ -738,6 +738,15 @@ mod tests {
         async fn eth_contract_addresses(
             &self,
         ) -> Result<reply::EthContractAddresses, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn add_invoke_transaction(
+            &self,
+            _: crate::sequencer::request::Call,
+            _: Fee,
+            _: TransactionVersion,
+        ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
             unimplemented!()
         }
     }

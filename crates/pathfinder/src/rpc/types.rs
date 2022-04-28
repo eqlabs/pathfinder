@@ -285,6 +285,7 @@ pub mod reply {
         InvalidTransactionIndex = 27,
         PageSizeTooBig = 31,
         ContractError = 40,
+        InvalidContractDefinition = 50,
     }
 
     /// We can have this equality and should have it in order to use it for tests. It is meant to
@@ -366,6 +367,7 @@ pub mod reply {
                 27 => InvalidTransactionIndex,
                 31 => PageSizeTooBig,
                 40 => ContractError,
+                50 => InvalidContractDefinition,
                 x => return Err(x),
             })
         }
@@ -385,6 +387,7 @@ pub mod reply {
                 ErrorCode::InvalidTransactionIndex => "Invalid transaction index in a block",
                 ErrorCode::PageSizeTooBig => "Requested page size is too big",
                 ErrorCode::ContractError => "Contract error",
+                ErrorCode::InvalidContractDefinition => "Invalid contract definition",
             }
         }
     }
@@ -710,5 +713,12 @@ pub mod reply {
         pub events: Vec<EmittedEvent>,
         pub page_number: usize,
         pub is_last_page: bool,
+    }
+
+    // Result type for starknet_addInvokeTransaction
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct InvokeTransactionResult {
+        pub transaction_hash: StarknetTransactionHash,
     }
 }
