@@ -166,7 +166,7 @@ pub async fn chain(transport: &impl api::EthereumTransport) -> anyhow::Result<Ch
 ///
 /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
 ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
-pub fn test_transport(chain: Chain) -> api::HttpTransport<web3::transports::Http> {
+pub fn test_transport(chain: Chain) -> api::HttpTransport {
     let key_prefix = match chain {
         Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
         Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
@@ -186,7 +186,7 @@ pub fn test_transport(chain: Chain) -> api::HttpTransport<web3::transports::Http
     let client = reqwest::Client::builder().build().unwrap();
     let transport = web3::transports::Http::with_client(client, url);
 
-    api::HttpTransport(web3::Web3::new(transport))
+    api::HttpTransport::new(web3::Web3::new(transport))
 }
 
 #[cfg(test)]

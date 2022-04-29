@@ -8,8 +8,9 @@ use std::time::Duration;
 use futures::TryFutureExt;
 use tracing::{debug, error, info};
 use web3::{
+    transports::Http,
     types::{Block, BlockId, Filter, Log, Transaction, TransactionId, H256, U256},
-    Error, Transport, Web3,
+    Error, Web3,
 };
 
 /// Error returned by [`HttpTransport::logs`].
@@ -46,17 +47,17 @@ pub trait EthereumTransport {
 ///
 /// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Clone, Debug)]
-pub struct HttpTransport<T>(pub Web3<T>)
-where
-    T: Transport + Send + Sync,
-    T::Out: Send;
+pub struct HttpTransport(Web3<Http>);
+
+impl HttpTransport {
+    /// Create new [`HttpTransport`] from [`Web3<Http>`]
+    pub fn new(http: Web3<Http>) -> Self {
+        Self(http)
+    }
+}
 
 #[async_trait::async_trait]
-impl<T: Transport> EthereumTransport for HttpTransport<T>
-where
-    T: Transport + Send + Sync,
-    T::Out: Send,
-{
+impl EthereumTransport for HttpTransport {
     /// Wraps [`Web3::eth().block()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block)
     /// into exponential retry on __all__ errors.
     async fn block(&self, block: BlockId) -> web3::Result<Option<Block<H256>>> {
@@ -171,6 +172,15 @@ fn log_and_always_retry(error: &Error) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+impl std::ops::Deref for HttpTransport {
+    type Target = Web3<Http>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[cfg(test)]

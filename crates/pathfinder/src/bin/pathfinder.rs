@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
 /// - the password (if provided)
 async fn ethereum_transport(
     config: EthereumConfig,
-) -> anyhow::Result<ethereum::api::HttpTransport<Http>> {
+) -> anyhow::Result<ethereum::api::HttpTransport> {
     let client = reqwest::Client::builder();
     let client = match config.user_agent {
         Some(user_agent) => client.user_agent(user_agent),
@@ -125,7 +125,7 @@ async fn ethereum_transport(
 
     let client = Http::with_client(client, url);
 
-    Ok(ethereum::api::HttpTransport(Web3::new(client)))
+    Ok(ethereum::api::HttpTransport::new(Web3::new(client)))
 }
 
 #[cfg(feature = "tokio-console")]

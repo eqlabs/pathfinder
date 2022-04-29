@@ -156,7 +156,7 @@ mod tests {
                 let transport = test_transport(Chain::Goerli);
 
                 let core_proxy = web3::contract::Contract::from_json(
-                    transport.0.eth(),
+                    transport.eth(),
                     GOERLI_ADDRESSES.core,
                     CORE_PROXY_ABI,
                 )
@@ -195,7 +195,7 @@ mod tests {
                 let transport = test_transport(Chain::Mainnet);
 
                 let core_proxy = web3::contract::Contract::from_json(
-                    transport.0.eth(),
+                    transport.eth(),
                     MAINNET_ADDRESSES.core,
                     CORE_PROXY_ABI,
                 )

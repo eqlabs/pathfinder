@@ -66,7 +66,7 @@ async fn main() {
 }
 
 /// Creates the CLI and parses the resulting arguments.
-fn parse_cli_args() -> (HttpTransport<Http>, EthereumBlockHash, StarknetBlockNumber) {
+fn parse_cli_args() -> (HttpTransport, EthereumBlockHash, StarknetBlockNumber) {
     let cli = clap::Command::new("fact-retrieval")
         .about("Retrieves and displays a StarkNet state update fact")
         .after_help("You can use Etherscan to identify a fact hash to retrieve. The fact hash for a state update is emitted as a `LogStateTransitionFact` log.")
@@ -113,7 +113,7 @@ Examples:
     let seq_no = U256::from_dec_str(seq_no).expect("A valid sequence number");
     let seq_no = StarknetBlockNumber(seq_no.as_u64());
 
-    let client = HttpTransport(Web3::new(client));
+    let client = HttpTransport::new(Web3::new(client));
 
     (client, block, seq_no)
 }
