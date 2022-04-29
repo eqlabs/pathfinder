@@ -338,54 +338,25 @@ pub mod reply {
         fn eq(&self, other: &jsonrpsee::core::error::Error) -> bool {
             use jsonrpsee::core::error::Error::*;
 
-            // the interesting variant Error::Call holds the whole error value as a raw string,
-            // which looks like FailedResponse.
-            //
-            // RpcError could have more user error body, which is why there's the
-            // deny_unknown_fields, as when writing this there were no such extra types being used.
-
-            #[derive(serde::Deserialize, Debug)]
-            pub struct FailedResponse<'a> {
-                // we don't really care about this when testing; version
-                #[serde(borrow, rename = "jsonrpc")]
-                _jsonrpc: &'a serde_json::value::RawValue,
-                // don't care: request id
-                #[serde(borrow, rename = "id")]
-                _id: &'a serde_json::value::RawValue,
-                #[serde(borrow)]
-                error: RpcError<'a>,
-            }
-
-            #[derive(serde::Deserialize, Debug)]
-            #[serde(deny_unknown_fields)]
-            pub struct RpcError<'a> {
-                code: i32,
-                #[serde(borrow)]
-                message: std::borrow::Cow<'a, str>,
-            }
-
-            impl PartialEq<ErrorCode> for FailedResponse<'_> {
-                fn eq(&self, rhs: &ErrorCode) -> bool {
-                    if let Ok(lhs) = ErrorCode::try_from(self.error.code) {
-                        // make sure the error matches what we think it was; it's ... a bit extra,
-                        // but shouldn't really be an issue.
-                        &*self.error.message == lhs.as_str() && &lhs == rhs
-                    } else {
-                        false
+            if let Call(CallError::Custom(custom)) = other {
+                let data = match self {
+                    ErrorCode::PageSizeTooBig => {
+                        // this revealed a possible bug I haven't yet confirmed on main: there's
+                        // extra quoting around this because of a to_string.
+                        Some(
+                            serde_json::value::to_raw_value(&serde_json::json!({
+                                "max_page_size": 1024u32
+                            }))
+                            .unwrap(),
+                        )
                     }
-                }
-            }
+                    _ => None,
+                };
 
-            let resp = match other {
-                Call(ref s) => serde_json::from_str::<FailedResponse>(&s.to_owned().to_string()),
-                _ => return false,
-            };
-
-            if let Ok(resp) = resp {
-                &resp == self
+                (*self) as i32 == custom.code()
+                    && self.as_str() == custom.message()
+                    && data.as_ref().map(|x| x.get()) == custom.data().map(|x| x.get())
             } else {
-                // Parsing failure doesn't really matter, and we don't need to panic; the assert_eq
-                // will make sure we'll have informative panic.
                 false
             }
         }
