@@ -1033,7 +1033,7 @@ impl From<EventFilterError> for jsonrpsee::core::Error {
     fn from(e: EventFilterError) -> Self {
         match e {
             EventFilterError::PageSizeTooBig(max_size) => {
-                let error: i32 = ErrorCode::PageSizeTooBig as i32;
+                let error = ErrorCode::PageSizeTooBig as i32;
                 Error::Call(CallError::Custom(ErrorObject::owned(
                     error,
                     ErrorCode::PageSizeTooBig.to_string(),

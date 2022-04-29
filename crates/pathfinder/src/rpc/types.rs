@@ -154,10 +154,6 @@ pub mod reply {
         sequencer::reply as seq,
         sequencer::reply::Status as SeqStatus,
     };
-    use jsonrpsee::{
-        core::Error,
-        types::{error::CallError, ErrorObject},
-    };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use stark_hash::StarkHash;
@@ -336,26 +332,26 @@ pub mod reply {
     #[cfg(test)]
     impl PartialEq<jsonrpsee::core::error::Error> for ErrorCode {
         fn eq(&self, other: &jsonrpsee::core::error::Error) -> bool {
-            use jsonrpsee::core::error::Error::*;
+            use jsonrpsee::core::error::Error;
+            use jsonrpsee::types::error::CallError;
 
-            if let Call(CallError::Custom(custom)) = other {
-                let data = match self {
+            if let Error::Call(CallError::Custom(custom)) = other {
+                // this is quite ackward dance to go back to error level then come back to the
+                // custom error object. it however allows not having the json structure in two
+                // places, and leaning on ErrorObject partialeq impl.
+                let repr = match self {
                     ErrorCode::PageSizeTooBig => {
-                        // TODO: it would be nice to get this from a single place (the same code is
-                        // here and in the conversion from PageSizeTooBig)
-                        Some(
-                            serde_json::value::to_raw_value(&serde_json::json!({
-                                "max_page_size": 1024u32
-                            }))
-                            .unwrap(),
-                        )
+                        Error::from(crate::storage::EventFilterError::PageSizeTooBig(1024))
                     }
-                    _ => None,
+                    other => Error::from(*other),
                 };
 
-                (*self) as i32 == custom.code()
-                    && self.as_str() == custom.message()
-                    && data.as_ref().map(|x| x.get()) == custom.data().map(|x| x.get())
+                let repr = match repr {
+                    Error::Call(CallError::Custom(repr)) => repr,
+                    unexpected => unreachable!("using pathfinders ErrorCode to create jsonrpsee did not create a custom error: {unexpected:?}")
+                };
+
+                &repr == custom
             } else {
                 false
             }
@@ -410,13 +406,24 @@ pub mod reply {
         }
     }
 
-    impl From<ErrorCode> for Error {
+    impl From<ErrorCode> for jsonrpsee::core::error::Error {
         fn from(ecode: ErrorCode) -> Self {
-            let error: i32 = ecode as i32;
+            use jsonrpsee::core::error::Error;
+            use jsonrpsee::types::error::{CallError, ErrorObject};
+
+            match ecode {
+                ErrorCode::PageSizeTooBig => {
+                    #[cfg(debug_assertions)]
+                    panic!("convert jsonrpsee::...::Error from EventFilterError to get error data");
+                }
+                _ => {}
+            }
+
+            let error = ecode as i32;
             Error::Call(CallError::Custom(ErrorObject::owned(
                 error.into(),
                 ecode.to_string(),
-                // FIXME: this is insufficient in every situation
+                // this is insufficient in every situation (PageSizeTooBig)
                 None::<()>,
             )))
         }
