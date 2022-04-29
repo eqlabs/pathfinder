@@ -1,7 +1,6 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
-use web3::types::U256;
 
 use crate::core::{
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
@@ -143,17 +142,6 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
     }
 }
 
-/// Identifies the Ethereum [Chain] behind the given Ethereum transport.
-///
-/// Will error if it's not one of the valid Starknet [Chain] variants.
-pub async fn chain(transport: &impl api::EthereumTransport) -> anyhow::Result<Chain> {
-    match transport.chain_id().await? {
-        id if id == U256::from(1u32) => Ok(Chain::Mainnet),
-        id if id == U256::from(5u32) => Ok(Chain::Goerli),
-        other => anyhow::bail!("Unsupported chain ID: {}", other),
-    }
-}
-
 #[cfg(test)]
 /// Creates a [HttpTransport](api::HttpTransport) transport from the Ethereum endpoint specified by the relevant environment variables.
 ///
@@ -195,12 +183,13 @@ mod tests {
 
     mod chain {
         use super::*;
+        use crate::ethereum::api::EthereumTransport;
 
         #[tokio::test]
         async fn goerli() {
             let expected_chain = Chain::Goerli;
             let transport = test_transport(expected_chain);
-            let chain = chain(&transport).await.unwrap();
+            let chain = transport.chain().await.unwrap();
 
             assert_eq!(chain, expected_chain);
         }
@@ -209,7 +198,7 @@ mod tests {
         async fn mainnet() {
             let expected_chain = Chain::Mainnet;
             let transport = test_transport(expected_chain);
-            let chain = chain(&transport).await.unwrap();
+            let chain = transport.chain().await.unwrap();
 
             assert_eq!(chain, expected_chain);
         }

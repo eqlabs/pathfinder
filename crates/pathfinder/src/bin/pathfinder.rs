@@ -2,7 +2,8 @@ use anyhow::Context;
 use pathfinder_lib::{
     cairo,
     config::{self, EthereumConfig},
-    ethereum, rpc, sequencer, state,
+    ethereum::{self, api::EthereumTransport},
+    rpc, sequencer, state,
     storage::Storage,
 };
 use std::sync::Arc;
@@ -29,7 +30,8 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Creating Ethereum transport")?;
 
-    let network_chain = ethereum::chain(&eth_transport)
+    let network_chain = eth_transport
+        .chain()
         .await
         .context("Determining Ethereum chain")?;
 

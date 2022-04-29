@@ -13,6 +13,8 @@ use web3::{
     Error, Web3,
 };
 
+use super::Chain;
+
 /// Error returned by [`HttpTransport::logs`].
 #[derive(Debug, thiserror::Error)]
 pub enum LogsError {
@@ -33,7 +35,7 @@ pub enum LogsError {
 pub trait EthereumTransport {
     async fn block(&self, block: BlockId) -> web3::Result<Option<Block<H256>>>;
     async fn block_number(&self) -> web3::Result<u64>;
-    async fn chain_id(&self) -> web3::Result<U256>;
+    async fn chain(&self) -> anyhow::Result<Chain>;
     async fn logs(&self, filter: Filter) -> std::result::Result<Vec<Log>, LogsError>;
     async fn transaction(&self, id: TransactionId) -> web3::Result<Option<Transaction>>;
 }
@@ -72,10 +74,17 @@ impl EthereumTransport for HttpTransport {
             .map(|n| n.as_u64())
     }
 
-    /// Wraps [`Web3::chain_id()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.chain_id)
+    /// Identifies the Ethereum [Chain] behind the given Ethereum transport.
+    ///
+    /// Will error if it's not one of the valid Starknet [Chain] variants.
+    /// Internaly wraps [`Web3::chain_id()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.chain_id)
     /// into exponential retry on __all__ errors.
-    async fn chain_id(&self) -> web3::Result<U256> {
-        retry(|| self.0.eth().chain_id(), log_and_always_retry).await
+    async fn chain(&self) -> anyhow::Result<Chain> {
+        match retry(|| self.0.eth().chain_id(), log_and_always_retry).await? {
+            id if id == U256::from(1u32) => Ok(Chain::Mainnet),
+            id if id == U256::from(5u32) => Ok(Chain::Goerli),
+            other => anyhow::bail!("Unsupported chain ID: {}", other),
+        }
     }
 
     /// Wraps [`Web3::logs()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.logs)

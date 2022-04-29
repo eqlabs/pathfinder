@@ -40,7 +40,8 @@ use web3::{transports::Http, types::FilterBuilder, Web3};
 async fn main() {
     let (transport, block_hash, block_no) = parse_cli_args();
 
-    let chain = pathfinder_lib::ethereum::chain(&transport)
+    let chain = transport
+        .chain()
         .await
         .expect("Failed to identify Ethereum network");
 

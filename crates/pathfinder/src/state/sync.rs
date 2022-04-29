@@ -617,7 +617,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn chain_id(&self) -> web3::Result<web3::types::U256> {
+        async fn chain(&self) -> anyhow::Result<ethereum::Chain> {
             unimplemented!()
         }
 
