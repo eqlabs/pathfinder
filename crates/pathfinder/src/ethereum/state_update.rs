@@ -48,15 +48,15 @@ pub struct StateUpdate {
 
 #[derive(Debug, thiserror::Error)]
 pub enum RetrieveStateUpdateError {
-    #[error("Not found: State transition fact")]
+    #[error("not found: State transition fact")]
     StateTransitionFactNotFound,
-    #[error("Not found: Memory page hashes")]
+    #[error("not found: Memory page hashes")]
     MemoryPageHashesNotFound,
-    #[error("Not found: Memory page log")]
+    #[error("not found: Memory page log")]
     MemoryPageLogNotFound,
-    #[error("Not found: Memory page transaction")]
+    #[error("not found: Memory page transaction")]
     MemoryPageTransactionNotFound,
-    #[error("Reorg event detected")]
+    #[error("reorg event detected")]
     Reorg,
     #[error(transparent)]
     GetLogs(#[from] LogsError),

@@ -16,11 +16,11 @@ use web3::{
 #[derive(Debug, thiserror::Error)]
 pub enum LogsError {
     /// Query exceeded limits (time or result length).
-    #[error("Query limit exceeded.")]
+    #[error("query limit exceeded")]
     QueryLimit,
     /// One of the blocks specified in the filter is unknown. Currently only
     /// known to occur for Alchemy endpoints.
-    #[error("Unknown block.")]
+    #[error("unknown block")]
     UnknownBlock,
     #[error(transparent)]
     Other(#[from] web3::Error),

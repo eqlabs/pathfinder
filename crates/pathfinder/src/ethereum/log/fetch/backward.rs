@@ -10,10 +10,10 @@ use crate::ethereum::{
 pub enum BackwardFetchError {
     /// An L1 chain reorganisation occurred. At the very least, the lastest log
     /// returned previously is now invalid.
-    #[error("Reorg occured.")]
+    #[error("reorg occured")]
     Reorg,
     /// L1 genesis has been reached, there are no more logs to fetch.
-    #[error("Genesis reached.")]
+    #[error("genesis reached")]
     GenesisReached,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
