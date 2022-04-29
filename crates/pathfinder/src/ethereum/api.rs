@@ -81,6 +81,41 @@ impl HttpTransport {
 
         Ok(Self::new(Web3::new(client)))
     }
+
+    #[cfg(test)]
+    /// Creates a [HttpTransport](api::HttpTransport) transport from the Ethereum endpoint specified by the relevant environment variables.
+    ///
+    /// Requires an environment variable for both the URL and (optional) password.
+    ///
+    /// Panics if the environment variables are not specified.
+    ///
+    /// Goerli:  PATHFINDER_ETHEREUM_HTTP_GOERLI_URL
+    ///          PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD (optional)
+    ///
+    /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
+    ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
+    pub fn test_transport(chain: Chain) -> Self {
+        let key_prefix = match chain {
+            Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
+            Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
+        };
+
+        let url_key = format!("{}_URL", key_prefix);
+        let password_key = format!("{}_PASSWORD", key_prefix);
+
+        let url = std::env::var(&url_key)
+            .unwrap_or_else(|_| panic!("Ethereum URL environment var not set {url_key}"));
+
+        let password = std::env::var(password_key).ok();
+
+        let mut url = url.parse::<reqwest::Url>().expect("Bad Ethereum URL");
+        url.set_password(password.as_deref()).unwrap();
+
+        let client = reqwest::Client::builder().build().unwrap();
+        let transport = Http::with_client(client, url);
+
+        Self::new(Web3::new(transport))
+    }
 }
 
 #[async_trait::async_trait]
@@ -221,8 +256,8 @@ impl std::ops::Deref for HttpTransport {
 mod tests {
     mod logs {
         use crate::ethereum::{
-            api::{EthereumTransport, LogsError},
-            test_transport,
+            api::{EthereumTransport, HttpTransport, LogsError},
+            Chain,
         };
 
         use assert_matches::assert_matches;
@@ -241,7 +276,7 @@ mod tests {
                 )
                 .build();
 
-            let transport = test_transport(crate::ethereum::Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Goerli);
 
             let result = transport.logs(filter).await;
             assert_matches!(result, Ok(logs) if logs.len() == 85);
@@ -256,7 +291,7 @@ mod tests {
                 .to_block(BlockNumber::Latest)
                 .build();
 
-            let transport = test_transport(crate::ethereum::Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Goerli);
 
             let result = transport.logs(filter).await;
             assert_matches!(result, Err(LogsError::QueryLimit));
@@ -270,7 +305,7 @@ mod tests {
             // Infura and Alchemy handle this differently.
             //  - Infura accepts the query as valid and simply returns logs for whatever part of the range it has.
             //  - Alchemy throws a RPC::ServerError which `HttpTransport::logs` maps to `UnknownBlock`.
-            let transport = test_transport(crate::ethereum::Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Goerli);
             let latest = transport.block_number().await.unwrap();
 
             let filter = FilterBuilder::default()

@@ -167,7 +167,7 @@ mod tests {
             EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
         },
         ethereum::{
-            log::StateUpdateLog, test_transport, BlockOrigin, EthOrigin, TransactionOrigin,
+            api::HttpTransport, log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin,
         },
     };
 
@@ -214,7 +214,7 @@ mod tests {
             chain,
         );
 
-        let transport = test_transport(chain);
+        let transport = HttpTransport::test_transport(chain);
         let logs = fetcher.fetch(&transport).await.unwrap();
         let mut block_number = update_log.block_number.0 - 1;
         for log in logs {

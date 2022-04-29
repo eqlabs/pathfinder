@@ -104,7 +104,7 @@ mod tests {
         EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
         EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
     };
-    use crate::ethereum::{test_transport, BlockOrigin, EthOrigin, TransactionOrigin};
+    use crate::ethereum::{api::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin};
 
     use super::*;
 
@@ -142,7 +142,7 @@ mod tests {
         };
 
         let chain = crate::ethereum::Chain::Goerli;
-        let transport = test_transport(chain);
+        let transport = HttpTransport::test_transport(chain);
         let update = StateUpdate::retrieve(&transport, update_log, chain)
             .await
             .unwrap();
