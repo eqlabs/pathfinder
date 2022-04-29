@@ -382,6 +382,7 @@ pub mod reply {
     }
 
     impl ErrorCode {
+        /// Returns the message specified in the openrpc api spec.
         fn as_str(&self) -> &'static str {
             match self {
                 ErrorCode::FailedToReceiveTransaction => "Failed to write transaction",
