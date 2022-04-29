@@ -48,7 +48,7 @@ mod tests {
 
     use crate::{
         core::StarknetBlockNumber,
-        ethereum::{api::HttpTransport, Chain},
+        ethereum::{transport::HttpTransport, Chain},
     };
 
     use super::*;
@@ -71,7 +71,7 @@ mod tests {
         use pretty_assertions::assert_eq;
         use web3::types::{BlockNumber, FilterBuilder};
 
-        use crate::ethereum::{api::EthereumTransport, log::MetaLog};
+        use crate::ethereum::{log::MetaLog, transport::EthereumTransport};
 
         use super::*;
 
@@ -142,7 +142,8 @@ mod tests {
                 EthereumTransactionIndex, GlobalRoot,
             },
             ethereum::{
-                api::EthereumTransport, log::FetchError, BlockOrigin, EthOrigin, TransactionOrigin,
+                log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
+                TransactionOrigin,
             },
         };
 

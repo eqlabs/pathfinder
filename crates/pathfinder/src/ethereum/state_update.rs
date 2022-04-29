@@ -8,9 +8,9 @@ use retrieve::*;
 use crate::{
     core::{ContractAddress, ContractHash, StorageAddress, StorageValue},
     ethereum::{
-        api::{EthereumTransport, LogsError},
         log::StateUpdateLog,
         state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
+        transport::{EthereumTransport, LogsError},
         Chain,
     },
 };
@@ -104,7 +104,7 @@ mod tests {
         EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
         EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
     };
-    use crate::ethereum::{api::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin};
+    use crate::ethereum::{transport::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin};
 
     use super::*;
 

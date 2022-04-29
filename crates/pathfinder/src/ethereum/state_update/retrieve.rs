@@ -7,13 +7,13 @@ use web3::{
 };
 
 use crate::ethereum::{
-    api::EthereumTransport,
     contract::{REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
     log::{
         BackwardFetchError, BackwardLogFetcher, EitherMetaLog, MemoryPageFactContinuousLog,
         MemoryPagesHashesLog, StateTransitionFactLog, StateUpdateLog,
     },
     state_update::RetrieveStateUpdateError,
+    transport::EthereumTransport,
     Chain,
 };
 

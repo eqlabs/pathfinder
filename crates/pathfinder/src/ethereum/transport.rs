@@ -256,7 +256,7 @@ impl std::ops::Deref for HttpTransport {
 mod tests {
     mod logs {
         use crate::ethereum::{
-            api::{EthereumTransport, HttpTransport, LogsError},
+            transport::{EthereumTransport, HttpTransport, LogsError},
             Chain,
         };
 

@@ -98,7 +98,7 @@ mod tests {
             types::{BlockId, BlockNumber},
         };
 
-        use crate::ethereum::{api::HttpTransport, Chain};
+        use crate::ethereum::{transport::HttpTransport, Chain};
 
         use super::*;
 

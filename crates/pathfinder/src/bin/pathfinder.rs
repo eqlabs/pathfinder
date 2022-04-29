@@ -3,7 +3,7 @@ use pathfinder_lib::{
     cairo, config,
     ethereum::{
         self,
-        api::{EthereumTransport, HttpTransport},
+        transport::{EthereumTransport, HttpTransport},
     },
     rpc, sequencer, state,
     storage::Storage,

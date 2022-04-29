@@ -7,9 +7,9 @@ use std::sync::Arc;
 use crate::{
     core::{ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
     ethereum::{
-        api::EthereumTransport,
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
+        transport::EthereumTransport,
         Chain,
     },
     rpc::types::reply::{syncing, Syncing as SyncStatus},
@@ -605,7 +605,7 @@ mod tests {
     struct FakeTransport;
 
     #[async_trait::async_trait]
-    impl ethereum::api::EthereumTransport for FakeTransport {
+    impl ethereum::transport::EthereumTransport for FakeTransport {
         async fn block(
             &self,
             _: web3::types::BlockId,
@@ -624,7 +624,7 @@ mod tests {
         async fn logs(
             &self,
             _: web3::types::Filter,
-        ) -> std::result::Result<Vec<web3::types::Log>, ethereum::api::LogsError> {
+        ) -> std::result::Result<Vec<web3::types::Log>, ethereum::transport::LogsError> {
             unimplemented!()
         }
 

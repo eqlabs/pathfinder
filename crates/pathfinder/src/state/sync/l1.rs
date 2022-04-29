@@ -7,9 +7,9 @@ use tokio::sync::{mpsc, oneshot, RwLock};
 use crate::{
     core::{EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber},
     ethereum::{
-        api::EthereumTransport,
         log::{FetchError, StateUpdateLog},
         state_update::state_root::StateRootFetcher,
+        transport::EthereumTransport,
         Chain,
     },
     retry::Retry,

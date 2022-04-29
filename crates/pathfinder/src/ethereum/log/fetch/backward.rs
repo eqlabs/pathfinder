@@ -1,8 +1,8 @@
 use web3::types::{BlockNumber, FilterBuilder};
 
 use crate::ethereum::{
-    api::{EthereumTransport, LogsError},
     log::fetch::{EitherMetaLog, MetaLog},
+    transport::{EthereumTransport, LogsError},
     Chain,
 };
 
@@ -167,7 +167,8 @@ mod tests {
             EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
         },
         ethereum::{
-            api::HttpTransport, log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin,
+            log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin,
+            TransactionOrigin,
         },
     };
 

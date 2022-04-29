@@ -28,9 +28,9 @@ use clap::Arg;
 use pathfinder_lib::{
     core::{EthereumBlockHash, StarknetBlockNumber},
     ethereum::{
-        api::{EthereumTransport, HttpTransport},
         log::{MetaLog, StateUpdateLog},
         state_update::StateUpdate,
+        transport::{EthereumTransport, HttpTransport},
     },
 };
 use web3::types::{H256, U256};

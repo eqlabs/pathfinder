@@ -7,10 +7,10 @@ use crate::core::{
     EthereumTransactionIndex,
 };
 
-pub mod api;
 pub mod contract;
 pub mod log;
 pub mod state_update;
+pub mod transport;
 
 /// Ethereum network chains running Starknet.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -148,7 +148,7 @@ mod tests {
 
     mod chain {
         use super::*;
-        use crate::ethereum::api::{EthereumTransport, HttpTransport};
+        use crate::ethereum::transport::{EthereumTransport, HttpTransport};
 
         #[tokio::test]
         async fn goerli() {
