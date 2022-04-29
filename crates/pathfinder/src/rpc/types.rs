@@ -341,8 +341,8 @@ pub mod reply {
             if let Call(CallError::Custom(custom)) = other {
                 let data = match self {
                     ErrorCode::PageSizeTooBig => {
-                        // this revealed a possible bug I haven't yet confirmed on main: there's
-                        // extra quoting around this because of a to_string.
+                        // TODO: it would be nice to get this from a single place (the same code is
+                        // here and in the conversion from PageSizeTooBig)
                         Some(
                             serde_json::value::to_raw_value(&serde_json::json!({
                                 "max_page_size": 1024u32
@@ -416,6 +416,7 @@ pub mod reply {
             Error::Call(CallError::Custom(ErrorObject::owned(
                 error.into(),
                 ecode.to_string(),
+                // FIXME: this is insufficient in every situation
                 None::<()>,
             )))
         }
