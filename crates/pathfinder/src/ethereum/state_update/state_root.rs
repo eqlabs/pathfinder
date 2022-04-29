@@ -7,6 +7,7 @@ use crate::{
 };
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
+#[derive(Clone)]
 pub struct StateRootFetcher(LogFetcher<StateUpdateLog>);
 
 /// The Mainnet Ethereum block containing the Starknet genesis [StateUpdateLog].
@@ -47,7 +48,7 @@ mod tests {
 
     use crate::{
         core::StarknetBlockNumber,
-        ethereum::{test_transport, Chain},
+        ethereum::{transport::HttpTransport, Chain},
     };
 
     use super::*;
@@ -57,10 +58,10 @@ mod tests {
         // The first state root retrieved should be the genesis event,
         // with a sequence number of 0.
         let chain = Chain::Goerli;
-        let transport = test_transport(chain);
+        let transport = HttpTransport::test_transport(chain);
 
         let mut uut = StateRootFetcher::new(None, chain);
-        let first_fetch = uut.fetch(&transport).await.unwrap();
+        let first_fetch = uut.fetch(transport).await.unwrap();
         let first = first_fetch.first().expect("Should be at least one log");
 
         assert_eq!(first.block_number, StarknetBlockNumber(0));
@@ -70,7 +71,7 @@ mod tests {
         use pretty_assertions::assert_eq;
         use web3::types::{BlockNumber, FilterBuilder};
 
-        use crate::ethereum::log::{get_logs, MetaLog};
+        use crate::ethereum::{log::MetaLog, transport::EthereumTransport};
 
         use super::*;
 
@@ -78,7 +79,7 @@ mod tests {
         async fn mainnet() {
             // Checks `MAINNET_GENESIS` contains the actual Starknet genesis StateUpdateLog
             let chain = Chain::Mainnet;
-            let transport = test_transport(chain);
+            let transport = HttpTransport::test_transport(chain);
 
             let block_number = BlockNumber::Number(MAINNET_GENESIS.0.into());
 
@@ -89,7 +90,7 @@ mod tests {
                 .to_block(block_number)
                 .build();
 
-            let logs = get_logs(&transport, filter).await.unwrap();
+            let logs = transport.logs(filter).await.unwrap();
             let logs = logs
                 .into_iter()
                 .map(StateUpdateLog::try_from)
@@ -106,7 +107,7 @@ mod tests {
         async fn goerli() {
             // Checks `GOERLI_GENESIS` contains the actual Starknet genesis StateUpdateLog
             let chain = Chain::Goerli;
-            let transport = test_transport(chain);
+            let transport = HttpTransport::test_transport(chain);
 
             let block_number = BlockNumber::Number(GOERLI_GENESIS.0.into());
 
@@ -117,7 +118,7 @@ mod tests {
                 .to_block(block_number)
                 .build();
 
-            let logs = get_logs(&transport, filter).await.unwrap();
+            let logs = transport.logs(filter).await.unwrap();
             let logs = logs
                 .into_iter()
                 .map(StateUpdateLog::try_from)
@@ -140,7 +141,10 @@ mod tests {
                 EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
                 EthereumTransactionIndex, GlobalRoot,
             },
-            ethereum::{log::FetchError, BlockOrigin, EthOrigin, TransactionOrigin},
+            ethereum::{
+                log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
+                TransactionOrigin,
+            },
         };
 
         use super::*;
@@ -151,7 +155,7 @@ mod tests {
             // This should get interpretted as a reorg once the correct
             // first L2 update log is found.
             let chain = Chain::Goerli;
-            let transport = test_transport(chain);
+            let transport = HttpTransport::test_transport(chain);
 
             // Note that block_number must be 0 so that we pull all of L1 history.
             // This makes the test robust against L2 changes, updates or deployments
@@ -173,7 +177,7 @@ mod tests {
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis), chain);
-            assert_matches!(uut.fetch(&transport).await, Err(FetchError::Reorg));
+            assert_matches!(uut.fetch(transport).await, Err(FetchError::Reorg));
         }
 
         #[tokio::test]
@@ -182,9 +186,9 @@ mod tests {
             // This should be interpreted as a reorg as this update
             // won't be found.
             let chain = Chain::Goerli;
-            let transport = test_transport(chain);
+            let transport = HttpTransport::test_transport(chain);
 
-            let latest_on_chain = transport.eth().block_number().await.unwrap().as_u64();
+            let latest_on_chain = transport.block_number().await.unwrap();
 
             let not_genesis = StateUpdateLog {
                 origin: EthOrigin {
@@ -203,7 +207,7 @@ mod tests {
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis), chain);
-            assert_matches!(uut.fetch(&transport).await, Err(FetchError::Reorg));
+            assert_matches!(uut.fetch(transport).await, Err(FetchError::Reorg));
         }
     }
 }

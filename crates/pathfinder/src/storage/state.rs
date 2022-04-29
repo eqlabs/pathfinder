@@ -680,7 +680,7 @@ pub struct StarknetEmittedEvent {
 
 #[derive(Copy, Clone, Debug, thiserror::Error, PartialEq)]
 pub enum EventFilterError {
-    #[error("Requested page size is too big, supported maximum is {0}")]
+    #[error("requested page size is too big, supported maximum is {0}")]
     PageSizeTooBig(usize),
 }
 

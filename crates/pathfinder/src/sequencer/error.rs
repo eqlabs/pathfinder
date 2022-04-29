@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, thiserror::Error)]
 pub enum SequencerError {
     /// Starknet specific errors.
-    #[error("Starknet error: {0}")]
+    #[error(transparent)]
     StarknetError(#[from] StarknetError),
     /// All other kinds of errors
-    #[error("{0}")]
+    #[error(transparent)]
     ReqwestError(#[from] reqwest::Error),
 }
 

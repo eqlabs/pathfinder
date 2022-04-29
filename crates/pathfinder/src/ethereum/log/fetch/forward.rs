@@ -1,19 +1,18 @@
 use anyhow::Context;
-use web3::{
-    types::{BlockNumber, FilterBuilder},
-    Transport, Web3,
-};
+use web3::types::{BlockNumber, FilterBuilder};
 
 use crate::{
     core::EthereumBlockNumber,
     ethereum::{
-        log::{fetch::MetaLog, get_logs, GetLogsError},
+        log::fetch::MetaLog,
+        transport::{EthereumTransport, LogsError},
         Chain,
     },
 };
 
 /// Fetches consecutive logs of type T from L1, accounting for chain
 /// reorganisations.
+#[derive(Clone)]
 pub struct LogFetcher<T>
 where
     T: MetaLog + PartialEq + std::fmt::Debug + Clone,
@@ -69,10 +68,8 @@ where
 
     /// Fetches the next set of logs from L1. This set may be empty, in which
     /// case we have reached the current end of the L1 chain.
-    pub async fn fetch<Tr: Transport>(
-        &mut self,
-        transport: &Web3<Tr>,
-    ) -> Result<Vec<T>, FetchError> {
+    // pub async fn fetch(&mut self, transport: &impl EthereumTransport) -> Result<Vec<T>, FetchError> {
+    pub async fn fetch(&mut self, transport: impl EthereumTransport) -> Result<Vec<T>, FetchError> {
         // Algorithm overview.
         //
         // There are two key difficulties this algorithm needs to handle.
@@ -114,25 +111,23 @@ where
                 .to_block(BlockNumber::Number(to_block.into()))
                 .build();
 
-            let logs = match get_logs(transport, filter).await {
+            let logs = match transport.logs(filter).await {
                 Ok(logs) => logs,
-                Err(GetLogsError::QueryLimit) => {
+                Err(LogsError::QueryLimit) => {
                     stride_cap = Some(self.stride);
                     self.stride = (self.stride / 2).max(1);
 
                     continue;
                 }
-                Err(GetLogsError::UnknownBlock) => {
+                Err(LogsError::UnknownBlock) => {
                     // This implies either:
                     //  - the `to_block` exceeds the current chain state, or
                     //  - both `from_block` and `to_block` exceed the current chain state which indicates a reorg occurred.
                     // so lets check this by querying for the `to_block`.
                     let chain_head = transport
-                        .eth()
                         .block_number()
                         .await
-                        .context("Get latest block number from L1")?
-                        .as_u64();
+                        .context("Get latest block number from L1")?;
 
                     if from_block <= chain_head {
                         self.stride = (chain_head - from_block).max(1);
@@ -141,7 +136,9 @@ where
                         return Err(FetchError::Reorg);
                     }
                 }
-                Err(GetLogsError::Other(other)) => return Err(FetchError::Other(other)),
+                Err(LogsError::Other(other)) => {
+                    return Err(FetchError::Other(anyhow::Error::new(other)))
+                }
             };
 
             let mut logs = logs.into_iter();
@@ -173,11 +170,9 @@ where
             // or we need to increase our query range.
             if logs.is_empty() {
                 let chain_head = transport
-                    .eth()
                     .block_number()
                     .await
-                    .context("Get latest block number from L1")?
-                    .as_u64();
+                    .context("Get latest block number from L1")?;
 
                 if to_block < chain_head {
                     match stride_cap {
@@ -212,7 +207,8 @@ mod tests {
             EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
         },
         ethereum::{
-            log::StateUpdateLog, test_transport, BlockOrigin, EthOrigin, TransactionOrigin,
+            log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin,
+            TransactionOrigin,
         },
     };
 
@@ -257,15 +253,15 @@ mod tests {
         let chain = crate::ethereum::Chain::Goerli;
         let mut root_fetcher =
             LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), chain, genesis_block);
-        let transport = test_transport(chain);
+        let transport = HttpTransport::test_transport(chain);
         let mut block_number = 1;
 
-        let logs = root_fetcher.fetch(&transport).await.unwrap();
+        let logs = root_fetcher.fetch(transport.clone()).await.unwrap();
         for log in logs {
             assert_eq!(log.block_number.0, block_number, "First fetch");
             block_number += 1;
         }
-        let logs = root_fetcher.fetch(&transport).await.unwrap();
+        let logs = root_fetcher.fetch(transport).await.unwrap();
         for log in logs {
             assert_eq!(log.block_number.0, block_number, "Second fetch");
             block_number += 1;

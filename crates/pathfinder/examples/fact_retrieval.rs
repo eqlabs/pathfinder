@@ -30,6 +30,7 @@ use pathfinder_lib::{
     ethereum::{
         log::{MetaLog, StateUpdateLog},
         state_update::StateUpdate,
+        transport::{EthereumTransport, HttpTransport},
     },
 };
 use web3::types::{H256, U256};
@@ -39,7 +40,8 @@ use web3::{transports::Http, types::FilterBuilder, Web3};
 async fn main() {
     let (transport, block_hash, block_no) = parse_cli_args();
 
-    let chain = pathfinder_lib::ethereum::chain(&transport)
+    let chain = transport
+        .chain()
         .await
         .expect("Failed to identify Ethereum network");
 
@@ -49,7 +51,7 @@ async fn main() {
         .address(vec![StateUpdateLog::contract_address(chain)])
         .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
         .build();
-    let logs = transport.eth().logs(filter).await.unwrap();
+    let logs = transport.logs(filter).await.unwrap();
 
     let update_log = logs
         .into_iter()
@@ -65,7 +67,7 @@ async fn main() {
 }
 
 /// Creates the CLI and parses the resulting arguments.
-fn parse_cli_args() -> (Web3<Http>, EthereumBlockHash, StarknetBlockNumber) {
+fn parse_cli_args() -> (HttpTransport, EthereumBlockHash, StarknetBlockNumber) {
     let cli = clap::Command::new("fact-retrieval")
         .about("Retrieves and displays a StarkNet state update fact")
         .after_help("You can use Etherscan to identify a fact hash to retrieve. The fact hash for a state update is emitted as a `LogStateTransitionFact` log.")
@@ -112,7 +114,7 @@ Examples:
     let seq_no = U256::from_dec_str(seq_no).expect("A valid sequence number");
     let seq_no = StarknetBlockNumber(seq_no.as_u64());
 
-    let client = Web3::new(client);
+    let client = HttpTransport::new(Web3::new(client));
 
     (client, block, seq_no)
 }

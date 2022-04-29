@@ -1,36 +1,22 @@
-use web3::{
-    types::{BlockNumber, FilterBuilder},
-    Transport, Web3,
-};
+use web3::types::{BlockNumber, FilterBuilder};
 
 use crate::ethereum::{
-    log::{
-        fetch::{EitherMetaLog, MetaLog},
-        get_logs, GetLogsError,
-    },
+    log::fetch::{EitherMetaLog, MetaLog},
+    transport::{EthereumTransport, LogsError},
     Chain,
 };
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum BackwardFetchError {
     /// An L1 chain reorganisation occurred. At the very least, the lastest log
     /// returned previously is now invalid.
+    #[error("reorg occured")]
     Reorg,
     /// L1 genesis has been reached, there are no more logs to fetch.
+    #[error("genesis reached")]
     GenesisReached,
-    Other(anyhow::Error),
-}
-
-impl From<anyhow::Error> for BackwardFetchError {
-    fn from(err: anyhow::Error) -> Self {
-        BackwardFetchError::Other(err)
-    }
-}
-
-impl From<web3::error::Error> for BackwardFetchError {
-    fn from(err: web3::error::Error) -> Self {
-        BackwardFetchError::Other(anyhow::anyhow!(err))
-    }
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Fetches logs backwards through L1 history, accounting for chain
@@ -77,9 +63,9 @@ where
     ///
     /// This set will never be empty. Reaching genesis is instead
     /// indicated by [BackwardFetchError::GenesisReached].
-    pub async fn fetch<Tr: Transport>(
+    pub async fn fetch(
         &mut self,
-        transport: &Web3<Tr>,
+        transport: &impl EthereumTransport,
     ) -> Result<Vec<EitherMetaLog<L, R>>, BackwardFetchError> {
         let to_block = self.tail.origin().block.number.0;
         let base_filter = self
@@ -104,16 +90,18 @@ where
                 .from_block(BlockNumber::Number(from_block.into()))
                 .build();
 
-            let logs = match get_logs(transport, filter).await {
+            let logs = match transport.logs(filter).await {
                 Ok(logs) => logs,
-                Err(GetLogsError::QueryLimit) => {
+                Err(LogsError::QueryLimit) => {
                     stride_cap = Some(self.stride);
                     self.stride = (self.stride / 2).max(1);
 
                     continue;
                 }
-                Err(GetLogsError::UnknownBlock) => return Err(BackwardFetchError::Reorg),
-                Err(GetLogsError::Other(other)) => return Err(BackwardFetchError::Other(other)),
+                Err(LogsError::UnknownBlock) => return Err(BackwardFetchError::Reorg),
+                Err(LogsError::Other(other)) => {
+                    return Err(BackwardFetchError::Other(anyhow::Error::new(other)))
+                }
             };
 
             // We need to iterate in reverse since that is the direction we are searching in.
@@ -179,7 +167,8 @@ mod tests {
             EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
         },
         ethereum::{
-            log::StateUpdateLog, test_transport, BlockOrigin, EthOrigin, TransactionOrigin,
+            log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin,
+            TransactionOrigin,
         },
     };
 
@@ -226,7 +215,7 @@ mod tests {
             chain,
         );
 
-        let transport = test_transport(chain);
+        let transport = HttpTransport::test_transport(chain);
         let logs = fetcher.fetch(&transport).await.unwrap();
         let mut block_number = update_log.block_number.0 - 1;
         for log in logs {
