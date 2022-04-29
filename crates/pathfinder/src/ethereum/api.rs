@@ -26,9 +26,9 @@ pub enum LogsError {
     Other(#[from] web3::Error),
 }
 
-#[async_trait::async_trait]
 /// Contains only those functions from [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
 /// that [the ethereum module](super) uses.
+#[async_trait::async_trait]
 pub trait Web3EthApi {
     async fn block(&self, block: BlockId) -> web3::Result<Option<Block<H256>>>;
     async fn block_number(&self) -> web3::Result<u64>;
