@@ -1037,7 +1037,7 @@ impl From<EventFilterError> for jsonrpsee::core::Error {
                 Error::Call(CallError::Custom(ErrorObject::owned(
                     error,
                     ErrorCode::PageSizeTooBig.to_string(),
-                    Some(serde_json::json!({ "max_page_size": max_size }).to_string()),
+                    Some(serde_json::json!({ "max_page_size": max_size })),
                 )))
             }
         }
