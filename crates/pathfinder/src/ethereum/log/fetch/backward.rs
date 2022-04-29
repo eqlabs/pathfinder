@@ -1,7 +1,7 @@
 use web3::types::{BlockNumber, FilterBuilder};
 
 use crate::ethereum::{
-    api::{LogsError, Web3EthApi},
+    api::{EthereumTransport, LogsError},
     log::fetch::{EitherMetaLog, MetaLog},
     Chain,
 };
@@ -65,7 +65,7 @@ where
     /// indicated by [BackwardFetchError::GenesisReached].
     pub async fn fetch(
         &mut self,
-        transport: &impl Web3EthApi,
+        transport: &impl EthereumTransport,
     ) -> Result<Vec<EitherMetaLog<L, R>>, BackwardFetchError> {
         let to_block = self.tail.origin().block.number.0;
         let base_filter = self

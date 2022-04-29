@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::{
     core::{ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
     ethereum::{
-        api::Web3EthApi,
+        api::EthereumTransport,
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
         Chain,
@@ -50,7 +50,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     l2_sync: L2Sync,
 ) -> anyhow::Result<()>
 where
-    Transport: Web3EthApi + Clone,
+    Transport: EthereumTransport + Clone,
     SequencerClient: sequencer::ClientApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
@@ -605,7 +605,7 @@ mod tests {
     struct FakeTransport;
 
     #[async_trait::async_trait]
-    impl ethereum::api::Web3EthApi for FakeTransport {
+    impl ethereum::api::EthereumTransport for FakeTransport {
         async fn block(
             &self,
             _: web3::types::BlockId,

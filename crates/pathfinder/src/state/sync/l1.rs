@@ -7,7 +7,7 @@ use tokio::sync::{mpsc, oneshot, RwLock};
 use crate::{
     core::{EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber},
     ethereum::{
-        api::Web3EthApi,
+        api::EthereumTransport,
         log::{FetchError, StateUpdateLog},
         state_update::state_root::StateRootFetcher,
         Chain,
@@ -40,7 +40,7 @@ pub async fn sync<T>(
     head: Option<StateUpdateLog>,
 ) -> anyhow::Result<()>
 where
-    T: Web3EthApi + Send + Sync + Clone,
+    T: EthereumTransport + Send + Sync + Clone,
 {
     let eth_api = EthereumImpl {
         logs: Arc::new(RwLock::new(StateRootFetcher::new(head, chain))),
@@ -84,13 +84,13 @@ where
 }
 
 #[derive(Clone)]
-struct EthereumImpl<T: Web3EthApi + Send + Sync> {
+struct EthereumImpl<T: EthereumTransport + Send + Sync> {
     logs: Arc<RwLock<StateRootFetcher>>,
     transport: T,
 }
 
 #[async_trait::async_trait]
-impl<T: Web3EthApi + Send + Sync + Clone> EthereumApi for EthereumImpl<T> {
+impl<T: EthereumTransport + Send + Sync + Clone> EthereumApi for EthereumImpl<T> {
     async fn fetch_logs(&mut self) -> Result<Vec<StateUpdateLog>, FetchError> {
         let ff = || async {
             let logs = self.logs.clone();
@@ -121,7 +121,7 @@ impl<T: Web3EthApi + Send + Sync + Clone> EthereumApi for EthereumImpl<T> {
         &self,
         block: EthereumBlockNumber,
     ) -> anyhow::Result<Option<EthereumBlockHash>> {
-        // No explicit retrying here as any `Web3EthApi` implementor should already hadle that there.
+        // No explicit retrying here as any `EthereumTransport` implementor should already hadle that there.
         Ok(self
             .transport
             .block(block.into())

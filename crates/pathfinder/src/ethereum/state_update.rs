@@ -8,7 +8,7 @@ use retrieve::*;
 use crate::{
     core::{ContractAddress, ContractHash, StorageAddress, StorageValue},
     ethereum::{
-        api::{LogsError, Web3EthApi},
+        api::{EthereumTransport, LogsError},
         log::StateUpdateLog,
         state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
         Chain,
@@ -67,7 +67,7 @@ pub enum RetrieveStateUpdateError {
 impl StateUpdate {
     /// Retrieves the [StateUpdate] associated with the given [StateUpdateLog] from L1.
     pub async fn retrieve(
-        transport: &impl Web3EthApi,
+        transport: &impl EthereumTransport,
         state_update: StateUpdateLog,
         chain: Chain,
     ) -> Result<Self, RetrieveStateUpdateError> {

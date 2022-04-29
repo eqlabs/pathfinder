@@ -7,7 +7,7 @@ use web3::{
 };
 
 use crate::ethereum::{
-    api::Web3EthApi,
+    api::EthereumTransport,
     contract::{REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
     log::{
         BackwardFetchError, BackwardLogFetcher, EitherMetaLog, MemoryPageFactContinuousLog,
@@ -19,7 +19,7 @@ use crate::ethereum::{
 
 /// Retrieves the [StateTransitionFactLog] associated with the given [StateUpdateLog].
 pub async fn retrieve_transition_fact(
-    transport: &impl Web3EthApi,
+    transport: &impl EthereumTransport,
     state_update: StateUpdateLog,
     chain: Chain,
 ) -> Result<StateTransitionFactLog, RetrieveStateUpdateError> {
@@ -53,7 +53,7 @@ pub async fn retrieve_transition_fact(
 
 /// Retrieves the [MemoryPagesHashesLog] associated with the given [StateTransitionFactLog].
 pub async fn retrieve_mempage_hashes(
-    transport: &impl Web3EthApi,
+    transport: &impl EthereumTransport,
     fact: StateTransitionFactLog,
     chain: Chain,
 ) -> Result<MemoryPagesHashesLog, RetrieveStateUpdateError> {
@@ -85,7 +85,7 @@ pub async fn retrieve_mempage_hashes(
 
 /// Retrieves the list of [MemoryPageFactContinuousLog] associated with the given [MemoryPagesHashesLog].
 pub async fn retrieve_memory_page_logs(
-    transport: &impl Web3EthApi,
+    transport: &impl EthereumTransport,
     mempage_hashes: MemoryPagesHashesLog,
     chain: Chain,
 ) -> Result<Vec<MemoryPageFactContinuousLog>, RetrieveStateUpdateError> {
@@ -136,7 +136,7 @@ pub async fn retrieve_memory_page_logs(
 ///
 /// These can be parsed into a [StateUpdate](crate::ethereum::state_update::StateUpdate).
 pub async fn retrieve_mempage_transaction_data(
-    transport: &impl Web3EthApi,
+    transport: &impl EthereumTransport,
     mempages: Vec<MemoryPageFactContinuousLog>,
 ) -> Result<Vec<Vec<U256>>, RetrieveStateUpdateError> {
     let fut = mempages

@@ -4,7 +4,7 @@ use web3::types::{BlockNumber, FilterBuilder};
 use crate::{
     core::EthereumBlockNumber,
     ethereum::{
-        api::{LogsError, Web3EthApi},
+        api::{EthereumTransport, LogsError},
         log::fetch::MetaLog,
         Chain,
     },
@@ -68,8 +68,8 @@ where
 
     /// Fetches the next set of logs from L1. This set may be empty, in which
     /// case we have reached the current end of the L1 chain.
-    // pub async fn fetch(&mut self, transport: &impl Web3EthApi) -> Result<Vec<T>, FetchError> {
-    pub async fn fetch(&mut self, transport: impl Web3EthApi) -> Result<Vec<T>, FetchError> {
+    // pub async fn fetch(&mut self, transport: &impl EthereumTransport) -> Result<Vec<T>, FetchError> {
+    pub async fn fetch(&mut self, transport: impl EthereumTransport) -> Result<Vec<T>, FetchError> {
         // Algorithm overview.
         //
         // There are two key difficulties this algorithm needs to handle.

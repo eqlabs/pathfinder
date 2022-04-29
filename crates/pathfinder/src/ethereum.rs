@@ -146,7 +146,7 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
 /// Identifies the Ethereum [Chain] behind the given Ethereum transport.
 ///
 /// Will error if it's not one of the valid Starknet [Chain] variants.
-pub async fn chain(transport: &impl api::Web3EthApi) -> anyhow::Result<Chain> {
+pub async fn chain(transport: &impl api::EthereumTransport) -> anyhow::Result<Chain> {
     match transport.chain_id().await? {
         id if id == U256::from(1u32) => Ok(Chain::Mainnet),
         id if id == U256::from(5u32) => Ok(Chain::Goerli),
@@ -155,7 +155,7 @@ pub async fn chain(transport: &impl api::Web3EthApi) -> anyhow::Result<Chain> {
 }
 
 #[cfg(test)]
-/// Creates a [Web3EthImpl](api::Web3EthImpl) transport from the Ethereum endpoint specified by the relevant environment variables.
+/// Creates a [HttpTransport](api::HttpTransport) transport from the Ethereum endpoint specified by the relevant environment variables.
 ///
 /// Requires an environment variable for both the URL and (optional) password.
 ///
@@ -166,7 +166,7 @@ pub async fn chain(transport: &impl api::Web3EthApi) -> anyhow::Result<Chain> {
 ///
 /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
 ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
-pub fn test_transport(chain: Chain) -> api::Web3EthImpl<web3::transports::Http> {
+pub fn test_transport(chain: Chain) -> api::HttpTransport<web3::transports::Http> {
     let key_prefix = match chain {
         Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
         Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
@@ -186,7 +186,7 @@ pub fn test_transport(chain: Chain) -> api::Web3EthImpl<web3::transports::Http> 
     let client = reqwest::Client::builder().build().unwrap();
     let transport = web3::transports::Http::with_client(client, url);
 
-    api::Web3EthImpl(web3::Web3::new(transport))
+    api::HttpTransport(web3::Web3::new(transport))
 }
 
 #[cfg(test)]

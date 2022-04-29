@@ -71,7 +71,7 @@ mod tests {
         use pretty_assertions::assert_eq;
         use web3::types::{BlockNumber, FilterBuilder};
 
-        use crate::ethereum::{api::Web3EthApi, log::MetaLog};
+        use crate::ethereum::{api::EthereumTransport, log::MetaLog};
 
         use super::*;
 
@@ -142,7 +142,7 @@ mod tests {
                 EthereumTransactionIndex, GlobalRoot,
             },
             ethereum::{
-                api::Web3EthApi, log::FetchError, BlockOrigin, EthOrigin, TransactionOrigin,
+                api::EthereumTransport, log::FetchError, BlockOrigin, EthOrigin, TransactionOrigin,
             },
         };
 

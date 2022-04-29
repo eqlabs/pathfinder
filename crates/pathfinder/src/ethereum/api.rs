@@ -12,7 +12,7 @@ use web3::{
     Error, Transport, Web3,
 };
 
-/// Error returned by [`Web3EthImpl::logs`].
+/// Error returned by [`HttpTransport::logs`].
 #[derive(Debug, thiserror::Error)]
 pub enum LogsError {
     /// Query exceeded limits (time or result length).
@@ -29,7 +29,7 @@ pub enum LogsError {
 /// Contains only those functions from [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
 /// that [the ethereum module](super) uses.
 #[async_trait::async_trait]
-pub trait Web3EthApi {
+pub trait EthereumTransport {
     async fn block(&self, block: BlockId) -> web3::Result<Option<Block<H256>>>;
     async fn block_number(&self) -> web3::Result<u64>;
     async fn chain_id(&self) -> web3::Result<U256>;
@@ -37,7 +37,7 @@ pub trait Web3EthApi {
     async fn transaction(&self, id: TransactionId) -> web3::Result<Option<Transaction>>;
 }
 
-/// An implementation of [`Web3EthApi`] which uses [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
+/// An implementation of [`EthereumTransport`] which uses [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
 /// wrapped in an [exponential backoff retry utility](Retry).
 ///
 /// Initial backoff time is 30 seconds and saturates at 1 hour:
@@ -46,13 +46,13 @@ pub trait Web3EthApi {
 ///
 /// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Clone, Debug)]
-pub struct Web3EthImpl<T>(pub Web3<T>)
+pub struct HttpTransport<T>(pub Web3<T>)
 where
     T: Transport + Send + Sync,
     T::Out: Send;
 
 #[async_trait::async_trait]
-impl<T: Transport> Web3EthApi for Web3EthImpl<T>
+impl<T: Transport> EthereumTransport for HttpTransport<T>
 where
     T: Transport + Send + Sync,
     T::Out: Send,
@@ -177,7 +177,7 @@ fn log_and_always_retry(error: &Error) -> bool {
 mod tests {
     mod logs {
         use crate::ethereum::{
-            api::{LogsError, Web3EthApi},
+            api::{EthereumTransport, LogsError},
             test_transport,
         };
 
@@ -225,7 +225,7 @@ mod tests {
             //
             // Infura and Alchemy handle this differently.
             //  - Infura accepts the query as valid and simply returns logs for whatever part of the range it has.
-            //  - Alchemy throws a RPC::ServerError which `Web3EthImpl::logs` maps to `UnknownBlock`.
+            //  - Alchemy throws a RPC::ServerError which `HttpTransport::logs` maps to `UnknownBlock`.
             let transport = test_transport(crate::ethereum::Chain::Goerli);
             let latest = transport.block_number().await.unwrap();
 
