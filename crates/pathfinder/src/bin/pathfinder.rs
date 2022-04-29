@@ -1,14 +1,15 @@
 use anyhow::Context;
 use pathfinder_lib::{
-    cairo,
-    config::{self, EthereumConfig},
-    ethereum::{self, api::EthereumTransport},
+    cairo, config,
+    ethereum::{
+        self,
+        api::{EthereumTransport, HttpTransport},
+    },
     rpc, sequencer, state,
     storage::Storage,
 };
 use std::sync::Arc;
 use tracing::info;
-use web3::{transports::Http, Web3};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -26,9 +27,8 @@ async fn main() -> anyhow::Result<()> {
         version = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"),
         "🏁 Starting node."
     );
-    let eth_transport = ethereum_transport(config.ethereum)
-        .await
-        .context("Creating Ethereum transport")?;
+    let eth_transport =
+        HttpTransport::from_config(config.ethereum).context("Creating Ethereum transport")?;
 
     let network_chain = eth_transport
         .chain()
@@ -102,32 +102,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-/// Creates an [Ethereum transport wrapper](ethereum::api::HttpTransport) from the configuration.
-///
-/// This includes setting:
-/// - the [Url](reqwest::Url)
-/// - the user-agent (if provided)
-/// - the password (if provided)
-async fn ethereum_transport(
-    config: EthereumConfig,
-) -> anyhow::Result<ethereum::api::HttpTransport> {
-    let client = reqwest::Client::builder();
-    let client = match config.user_agent {
-        Some(user_agent) => client.user_agent(user_agent),
-        None => client,
-    }
-    .build()
-    .context("Creating HTTP client")?;
-
-    let mut url = config.url;
-    url.set_password(config.password.as_deref())
-        .map_err(|_| anyhow::anyhow!("Setting password"))?;
-
-    let client = Http::with_client(client, url);
-
-    Ok(ethereum::api::HttpTransport::new(Web3::new(client)))
 }
 
 #[cfg(feature = "tokio-console")]

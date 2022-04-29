@@ -1,10 +1,13 @@
 //! Wrapper for the parts of the [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
+use crate::config::EthereumConfig;
+use crate::ethereum::Chain;
 use crate::retry::Retry;
 
 use std::future::Future;
 use std::num::NonZeroU64;
 use std::time::Duration;
 
+use anyhow::Context;
 use futures::TryFutureExt;
 use tracing::{debug, error, info};
 use web3::{
@@ -12,8 +15,6 @@ use web3::{
     types::{Block, BlockId, Filter, Log, Transaction, TransactionId, H256, U256},
     Error, Web3,
 };
-
-use super::Chain;
 
 /// Error returned by [`HttpTransport::logs`].
 #[derive(Debug, thiserror::Error)]
@@ -52,9 +53,33 @@ pub trait EthereumTransport {
 pub struct HttpTransport(Web3<Http>);
 
 impl HttpTransport {
-    /// Create new [`HttpTransport`] from [`Web3<Http>`]
+    /// Creates new [`HttpTransport`] from [`Web3<Http>`]
     pub fn new(http: Web3<Http>) -> Self {
         Self(http)
+    }
+
+    /// Creates new [`HttpTransport`] from [configuration](EthereumConfig)
+    ///
+    /// This includes setting:
+    /// - the [Url](reqwest::Url)
+    /// - the user-agent (if provided)
+    /// - the password (if provided)
+    pub fn from_config(config: EthereumConfig) -> anyhow::Result<Self> {
+        let client = reqwest::Client::builder();
+        let client = match config.user_agent {
+            Some(user_agent) => client.user_agent(user_agent),
+            None => client,
+        }
+        .build()
+        .context("Creating HTTP client")?;
+
+        let mut url = config.url;
+        url.set_password(config.password.as_deref())
+            .map_err(|_| anyhow::anyhow!("Setting password"))?;
+
+        let client = Http::with_client(client, url);
+
+        Ok(Self::new(Web3::new(client)))
     }
 }
 
