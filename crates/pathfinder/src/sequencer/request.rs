@@ -61,7 +61,7 @@ pub mod contract {
         }
     }
 
-    #[derive(serde::Deserialize, serde::Serialize)]
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
     #[serde(deny_unknown_fields)]
     pub struct SelectorAndOffset {
         pub selector: EntryPoint,
@@ -70,13 +70,12 @@ pub mod contract {
 }
 
 pub mod add_transaction {
-    use std::borrow::Cow;
     use std::collections::HashMap;
 
     use crate::core::{ConstructorParam, ContractAddressSalt, TransactionVersion};
     use crate::rpc::serde::{
-        CallParamAsDecimalStr, CallSignatureElemAsDecimalStr, ConstructorParamAsDecimalStr,
-        FeeAsHexStr, TransactionVersionAsHexStr,
+        CallParamAsDecimalStr, CallSignatureElemAsDecimalStr, FeeAsHexStr,
+        TransactionVersionAsHexStr,
     };
 
     use serde_with::serde_as;
@@ -89,22 +88,19 @@ pub mod add_transaction {
     /// This is somewhat different compared to the contract definition we're using
     /// for contract hash calculation. The actual program contents are not relevant
     /// for us, and they are sent as a gzip + base64 encoded string via the API.
-    #[derive(serde::Deserialize, serde::Serialize)]
-    pub struct ContractDefinition<'a> {
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    pub struct ContractDefinition {
         pub abi: serde_json::Value,
         // gzip + base64 encoded JSON of the compiled contract JSON
-        pub program: Cow<'a, str>,
+        pub program: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
     }
 
     /// Contract deployment transaction details.
-    #[serde_as]
     #[derive(serde::Deserialize, serde::Serialize)]
-    pub struct Deploy<'a> {
+    pub struct Deploy {
         pub contract_address_salt: ContractAddressSalt,
-        #[serde(borrow)]
-        pub contract_definition: ContractDefinition<'a>,
-        #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
+        pub contract_definition: ContractDefinition,
         pub constructor_calldata: Vec<ConstructorParam>,
     }
 
@@ -134,11 +130,11 @@ pub mod add_transaction {
     /// the transaction (invoke or deploy).
     #[derive(serde::Deserialize, serde::Serialize)]
     #[serde(tag = "type")]
-    pub enum AddTransaction<'a> {
+    pub enum AddTransaction {
         #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeFunction),
-        #[serde(borrow, rename = "DEPLOY")]
-        Deploy(Deploy<'a>),
+        #[serde(rename = "DEPLOY")]
+        Deploy(Deploy),
     }
 
     #[cfg(test)]

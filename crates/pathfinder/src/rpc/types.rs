@@ -721,4 +721,12 @@ pub mod reply {
     pub struct InvokeTransactionResult {
         pub transaction_hash: StarknetTransactionHash,
     }
+
+    // Result type for starknet_addDeployTransaction
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeployTransactionResult {
+        pub transaction_hash: StarknetTransactionHash,
+        pub contract_address: ContractAddress,
+    }
 }

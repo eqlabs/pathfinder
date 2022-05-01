@@ -615,14 +615,20 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            ContractAddress, ContractHash, EthereumBlockHash, EthereumBlockNumber,
-            EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GlobalRoot,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress, StorageValue, TransactionVersion,
+            ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash,
+            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, Fee, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+            StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
+            TransactionVersion,
         },
         ethereum,
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
-        sequencer::{self, error::SequencerError, reply, request},
+        sequencer::{
+            self,
+            error::SequencerError,
+            reply,
+            request::{self, add_transaction::ContractDefinition},
+        },
         state,
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
@@ -747,6 +753,15 @@ mod tests {
             _: Fee,
             _: TransactionVersion,
         ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn add_deploy_transaction(
+            &self,
+            _: ContractAddressSalt,
+            _: Vec<ConstructorParam>,
+            _: ContractDefinition,
+        ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
             unimplemented!()
         }
     }
