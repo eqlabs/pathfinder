@@ -62,7 +62,7 @@ impl RpcApi {
         Self {
             storage,
             sequencer,
-            chain_id: super::serde::bytes_to_hex_str_owned(match chain {
+            chain_id: super::serde::bytes_to_hex_str(match chain {
                 Chain::Goerli => b"SN_GOERLI",
                 Chain::Mainnet => b"SN_MAIN",
             }),

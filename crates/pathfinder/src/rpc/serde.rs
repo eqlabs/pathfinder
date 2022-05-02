@@ -78,7 +78,7 @@ impl SerializeAs<EthereumAddress> for EthereumAddressAsHexStr {
         // EthereumAddress is "0x" + 40 digits at most
         let mut buf = [0u8; 2 + 40];
         let s =
-            bytes_to_hex_str(source.0.as_bytes(), &mut buf).map_err(serde::ser::Error::custom)?;
+            bytes_as_hex_str(source.0.as_bytes(), &mut buf).map_err(serde::ser::Error::custom)?;
         serializer.serialize_str(&s)
     }
 }
@@ -120,7 +120,7 @@ impl SerializeAs<H256> for H256AsNoLeadingZerosHexStr {
     {
         // H256 is "0x" + 64 digits at most
         let mut buf = [0u8; 2 + 64];
-        let s = bytes_to_hex_str(source.as_bytes(), &mut buf).map_err(serde::ser::Error::custom)?;
+        let s = bytes_as_hex_str(source.as_bytes(), &mut buf).map_err(serde::ser::Error::custom)?;
         serializer.serialize_str(&s)
     }
 }
@@ -163,7 +163,7 @@ impl SerializeAs<Fee> for FeeAsHexStr {
         // Fee is "0x" + 32 digits at most
         let mut buf = [0u8; 2 + 32];
         let s =
-            bytes_to_hex_str(source.0.as_bytes(), &mut buf).map_err(serde::ser::Error::custom)?;
+            bytes_as_hex_str(source.0.as_bytes(), &mut buf).map_err(serde::ser::Error::custom)?;
         serializer.serialize_str(&s)
     }
 }
@@ -305,7 +305,7 @@ fn it_to_hex_str<'a>(
 /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
 /// from an array of bytes.
 /// Returns `InvalidBufferLengthError` if `bytes.len() * 2 + 2 > buf.len()`
-pub(crate) fn bytes_to_hex_str<'a>(
+pub(crate) fn bytes_as_hex_str<'a>(
     bytes: &'a [u8],
     buf: &'a mut [u8],
 ) -> Result<Cow<'a, str>, InvalidBufferSizeError> {
@@ -327,7 +327,7 @@ pub(crate) fn bytes_to_hex_str<'a>(
 }
 
 /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-pub(crate) fn bytes_to_hex_str_owned(bytes: &[u8]) -> String {
+pub(crate) fn bytes_to_hex_str(bytes: &[u8]) -> String {
     if !bytes.iter().any(|b| *b != 0) {
         return "0x0".to_string();
     }
@@ -358,9 +358,9 @@ mod tests {
 
         let c: [u8; 1] = bytes_from_hex_str(ZERO_HEX_STR).unwrap();
         assert!(c.iter().all(|x| *x == 0));
-        assert_eq!(bytes_to_hex_str_owned(&c[..]), ZERO_HEX_STR);
+        assert_eq!(bytes_to_hex_str(&c[..]), ZERO_HEX_STR);
         let mut buf = [0u8; 2 + 2];
-        assert_eq!(bytes_to_hex_str(&c[..], &mut buf).unwrap(), ZERO_HEX_STR);
+        assert_eq!(bytes_as_hex_str(&c[..], &mut buf).unwrap(), ZERO_HEX_STR);
     }
 
     #[test]
@@ -378,9 +378,9 @@ mod tests {
 
         let c: [u8; 8] = bytes_from_hex_str(ODD_HEX_STR).unwrap();
         assert_eq!(c, ODD_BYTES);
-        assert_eq!(bytes_to_hex_str_owned(&c[..]), ODD_HEX_STR);
+        assert_eq!(bytes_to_hex_str(&c[..]), ODD_HEX_STR);
         let mut buf = [0u8; 2 + 16];
-        assert_eq!(bytes_to_hex_str(&c[..], &mut buf).unwrap(), ODD_HEX_STR);
+        assert_eq!(bytes_as_hex_str(&c[..], &mut buf).unwrap(), ODD_HEX_STR);
     }
 
     #[test]
@@ -398,9 +398,9 @@ mod tests {
 
         let c: [u8; 8] = bytes_from_hex_str(EVEN_HEX_STR).unwrap();
         assert_eq!(c, EVEN_BYTES);
-        assert_eq!(bytes_to_hex_str_owned(&c[..]), EVEN_HEX_STR);
+        assert_eq!(bytes_to_hex_str(&c[..]), EVEN_HEX_STR);
         let mut buf = [0u8; 2 + 16];
-        assert_eq!(bytes_to_hex_str(&c[..], &mut buf).unwrap(), EVEN_HEX_STR);
+        assert_eq!(bytes_as_hex_str(&c[..], &mut buf).unwrap(), EVEN_HEX_STR);
     }
 
     #[test]
@@ -423,16 +423,16 @@ mod tests {
 
         let c: [u8; 32] = bytes_from_hex_str(MAX_HEX_STR).unwrap();
         assert_eq!(c, MAX_BYTES);
-        assert_eq!(bytes_to_hex_str_owned(&c[..]), MAX_HEX_STR);
+        assert_eq!(bytes_to_hex_str(&c[..]), MAX_HEX_STR);
         let mut buf = [0u8; 2 + 64];
-        assert_eq!(bytes_to_hex_str(&c[..], &mut buf).unwrap(), MAX_HEX_STR);
+        assert_eq!(bytes_as_hex_str(&c[..], &mut buf).unwrap(), MAX_HEX_STR);
     }
 
     #[test]
     fn buffer_too_small() {
         let mut buf = [0u8; 2 + 1];
         assert_eq!(
-            bytes_to_hex_str(&[0u8], &mut buf).unwrap_err(),
+            bytes_as_hex_str(&[0u8], &mut buf).unwrap_err(),
             InvalidBufferSizeError {
                 actual: 3,
                 expected: 4
