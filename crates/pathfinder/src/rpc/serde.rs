@@ -6,7 +6,8 @@ use crate::core::{
 };
 use num_bigint::BigUint;
 use pedersen::{HexParseError, OverflowError, StarkHash};
-use serde_with::serde_conv;
+use serde::de::Visitor;
+use serde_with::{serde_conv, DeserializeAs, SerializeAs};
 use std::borrow::Cow;
 use std::str::FromStr;
 use web3::types::{H128, H160, H256};
@@ -81,12 +82,48 @@ serde_with::serde_conv!(
     |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(H256::from)
 );
 
-serde_with::serde_conv!(
-    pub FeeAsHexStr,
-    Fee,
-    |serialize_me: &Fee| bytes_to_hex_str_owned(serialize_me.0.as_bytes()),
-    |s: &str| bytes_from_hex_str::<{ H128::len_bytes() }>(s).map(|b| Fee(H128::from(b)))
-);
+pub struct FeeAsHexStr;
+
+impl SerializeAs<Fee> for FeeAsHexStr {
+    fn serialize_as<S>(source: &Fee, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Fee is "0x" + 32 digits at most
+        let mut buf = [0u8; 2 + 32];
+        let s =
+            bytes_to_hex_str(source.0.as_bytes(), &mut buf).map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> DeserializeAs<'de, Fee> for FeeAsHexStr {
+    fn deserialize_as<D>(deserializer: D) -> Result<Fee, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(FeeVisitor)
+    }
+}
+
+struct FeeVisitor;
+
+impl<'de> Visitor<'de> for FeeVisitor {
+    type Value = Fee;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a hex string of up to 32 digits with an optional '0x' prefix")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        bytes_from_hex_str::<{ H128::len_bytes() }>(v)
+            .map_err(serde::de::Error::custom)
+            .map(|b| Fee(H128::from(b)))
+    }
+}
 
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_biguint(b: BigUint) -> Result<StarkHash, OverflowError> {
