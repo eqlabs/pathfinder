@@ -7,6 +7,7 @@ use crate::core::{
 use num_bigint::BigUint;
 use pedersen::{HexParseError, OverflowError, StarkHash};
 use serde_with::serde_conv;
+use std::borrow::Cow;
 use std::str::FromStr;
 use web3::types::{H128, H160, H256};
 
@@ -153,22 +154,34 @@ fn bytes_from_hex_str<const N: usize>(hex_str: &str) -> Result<[u8; N], HexParse
     Ok(buf)
 }
 
-/// A convenience function which produces a "0x" prefixed hex string from a byte slice.
-pub(crate) fn bytes_to_hex_str_owned(bytes: &[u8]) -> String {
-    if !bytes.iter().any(|b| *b != 0) {
-        return "0x0".to_string();
-    }
+#[derive(Copy, Clone, Debug, thiserror::Error, PartialEq)]
+#[error("Expected buffer size {expected:}, got {actual:}")]
+pub(crate) struct InvalidBufferSizeError {
+    expected: usize,
+    actual: usize,
+}
 
-    const LUT: [u8; 16] = *b"0123456789abcdef";
-
+/// The first stage of conversion - skip leading zeros
+fn skip_zeros(bytes: &[u8]) -> (impl Iterator<Item = &u8>, usize, usize) {
     // Skip all leading zero bytes
     let it = bytes.iter().skip_while(|&&b| b == 0);
     let num_bytes = it.clone().count();
     let skipped = bytes.len() - num_bytes;
     // The first high nibble can be 0
     let start = if bytes[skipped] < 0x10 { 1 } else { 2 };
+    // Number of characters to display
     let len = start + num_bytes * 2;
-    let mut buf = vec![0; len];
+    (it, start, len)
+}
+
+/// The second stage of conversion - map bytes to hex str
+fn it_to_hex_str<'a>(
+    it: impl Iterator<Item = &'a u8>,
+    start: usize,
+    len: usize,
+    buf: &'a mut [u8],
+) -> &'a [u8] {
+    const LUT: [u8; 16] = *b"0123456789abcdef";
     buf[0] = b'0';
     // Same small lookup table is ~25% faster than hex::encode_from_slice 🤷
     it.enumerate().for_each(|(i, &b)| {
@@ -178,7 +191,41 @@ pub(crate) fn bytes_to_hex_str_owned(bytes: &[u8]) -> String {
         buf[pos..pos + 2].copy_from_slice(&x);
     });
     buf[1] = b'x';
+    &buf[..len]
+}
 
+/// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
+/// from an array of bytes.
+/// Returns `InvalidBufferLengthError` if `bytes.len() * 2 + 2 > buf.len()`
+pub(crate) fn bytes_to_hex_str<'a>(
+    bytes: &'a [u8],
+    buf: &'a mut [u8],
+) -> Result<Cow<'a, str>, InvalidBufferSizeError> {
+    if bytes.len() * 2 + 2 > buf.len() {
+        return Err(InvalidBufferSizeError {
+            actual: buf.len(),
+            expected: bytes.len() * 2 + 2,
+        });
+    }
+
+    if !bytes.iter().any(|b| *b != 0) {
+        return Ok(Cow::from("0x0"));
+    }
+
+    let (it, start, len) = skip_zeros(bytes);
+    let res = it_to_hex_str(it, start, len, buf);
+    // No heap allocations
+    Ok(String::from_utf8_lossy(res))
+}
+
+/// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+pub(crate) fn bytes_to_hex_str_owned(bytes: &[u8]) -> String {
+    if !bytes.iter().any(|b| *b != 0) {
+        return "0x0".to_string();
+    }
+    let (it, start, len) = skip_zeros(bytes);
+    let mut buf = vec![0u8; len];
+    it_to_hex_str(it, start, len, &mut buf);
     // Unwrap is safe as the buffer contains valid utf8
     String::from_utf8(buf).unwrap()
 }
