@@ -205,8 +205,8 @@ impl SerializeAs<StarknetBlockNumber> for StarknetBlockNumberAsHexStr {
         let bytes = source.0.to_be_bytes();
         // StarknetBlockNumber is "0x" + 16 digits at most
         let mut buf = [0u8; 2 + 16];
-        let s = bytes_as_hex_str(&bytes, &mut buf).map_err(serde::ser::Error::custom)?;
-        serializer.serialize_str(&s)
+        let s = bytes_as_hex_str(&bytes, &mut buf);
+        serializer.serialize_str(s)
     }
 }
 
