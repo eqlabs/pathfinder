@@ -2126,9 +2126,18 @@ mod tests {
         #[tokio::test]
         async fn syncing() {
             let expected = Syncing::Status(syncing::Status {
-                starting_block: StarknetBlockHash(StarkHash::from_be_slice(b"starting").unwrap()),
-                current_block: StarknetBlockHash(StarkHash::from_be_slice(b"current").unwrap()),
-                highest_block: StarknetBlockHash(StarkHash::from_be_slice(b"highest").unwrap()),
+                starting_block_hash: StarknetBlockHash(
+                    StarkHash::from_be_slice(b"starting").unwrap(),
+                ),
+                starting_block_num: StarknetBlockNumber(1),
+                current_block_hash: StarknetBlockHash(
+                    StarkHash::from_be_slice(b"current").unwrap(),
+                ),
+                current_block_num: StarknetBlockNumber(2),
+                highest_block_hash: StarknetBlockHash(
+                    StarkHash::from_be_slice(b"highest").unwrap(),
+                ),
+                highest_block_num: StarknetBlockNumber(3),
             });
 
             let storage = setup_storage();

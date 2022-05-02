@@ -654,16 +654,27 @@ pub mod reply {
 
     /// Starknet's syncing status substructures.
     pub mod syncing {
-        use crate::core::StarknetBlockHash;
+        use crate::{
+            core::{StarknetBlockHash, StarknetBlockNumber},
+            rpc::serde::StarknetBlockNumberAsHexStr,
+        };
         use serde::{Deserialize, Serialize};
+        use serde_with::serde_as;
 
         /// Represents Starknet node syncing status.
+        #[serde_as]
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Status {
-            pub starting_block: StarknetBlockHash,
-            pub current_block: StarknetBlockHash,
-            pub highest_block: StarknetBlockHash,
+            pub starting_block_hash: StarknetBlockHash,
+            #[serde_as(as = "StarknetBlockNumberAsHexStr")]
+            pub starting_block_num: StarknetBlockNumber,
+            pub current_block_hash: StarknetBlockHash,
+            #[serde_as(as = "StarknetBlockNumberAsHexStr")]
+            pub current_block_num: StarknetBlockNumber,
+            pub highest_block_hash: StarknetBlockHash,
+            #[serde_as(as = "StarknetBlockNumberAsHexStr")]
+            pub highest_block_num: StarknetBlockNumber,
         }
     }
 
