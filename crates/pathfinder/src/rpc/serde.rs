@@ -248,9 +248,11 @@ mod tests {
         assert_eq!(expected, b);
         assert_eq!(starkhash_to_dec_str(&expected), ZERO_DEC_STR);
 
-        let c: [u8; 32] = bytes_from_hex_str(ZERO_HEX_STR).unwrap();
+        let c: [u8; 1] = bytes_from_hex_str(ZERO_HEX_STR).unwrap();
         assert!(c.iter().all(|x| *x == 0));
         assert_eq!(bytes_to_hex_str_owned(&c[..]), ZERO_HEX_STR);
+        let mut buf = [0u8; 2 + 2];
+        assert_eq!(bytes_to_hex_str(&c[..], &mut buf).unwrap(), ZERO_HEX_STR);
     }
 
     #[test]
@@ -269,6 +271,8 @@ mod tests {
         let c: [u8; 8] = bytes_from_hex_str(ODD_HEX_STR).unwrap();
         assert_eq!(c, ODD_BYTES);
         assert_eq!(bytes_to_hex_str_owned(&c[..]), ODD_HEX_STR);
+        let mut buf = [0u8; 2 + 16];
+        assert_eq!(bytes_to_hex_str(&c[..], &mut buf).unwrap(), ODD_HEX_STR);
     }
 
     #[test]
@@ -287,6 +291,8 @@ mod tests {
         let c: [u8; 8] = bytes_from_hex_str(EVEN_HEX_STR).unwrap();
         assert_eq!(c, EVEN_BYTES);
         assert_eq!(bytes_to_hex_str_owned(&c[..]), EVEN_HEX_STR);
+        let mut buf = [0u8; 2 + 16];
+        assert_eq!(bytes_to_hex_str(&c[..], &mut buf).unwrap(), EVEN_HEX_STR);
     }
 
     #[test]
@@ -310,6 +316,20 @@ mod tests {
         let c: [u8; 32] = bytes_from_hex_str(MAX_HEX_STR).unwrap();
         assert_eq!(c, MAX_BYTES);
         assert_eq!(bytes_to_hex_str_owned(&c[..]), MAX_HEX_STR);
+        let mut buf = [0u8; 2 + 64];
+        assert_eq!(bytes_to_hex_str(&c[..], &mut buf).unwrap(), MAX_HEX_STR);
+    }
+
+    #[test]
+    fn buffer_too_small() {
+        let mut buf = [0u8; 2 + 1];
+        assert_eq!(
+            bytes_to_hex_str(&[0u8], &mut buf).unwrap_err(),
+            InvalidBufferSizeError {
+                actual: 3,
+                expected: 4
+            }
+        );
     }
 
     #[test]
