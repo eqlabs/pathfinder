@@ -88,7 +88,7 @@ pub struct Client {
 /// Helper function which simplifies the handling of optional block hashes in queries.
 fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
     match hash {
-        BlockHashOrTag::Hash(h) => ("blockHash", Cow::from(h.0.to_hex_str())),
+        BlockHashOrTag::Hash(h) => ("blockHash", Cow::from(h.0.to_hex_str_owned())),
         BlockHashOrTag::Tag(Tag::Latest) => ("blockNumber", Cow::from("null")),
         BlockHashOrTag::Tag(Tag::Pending) => ("blockNumber", Cow::from("pending")),
     }
@@ -287,7 +287,7 @@ impl ClientApi for Client {
                 .inner
                 .get(self.build_query(
                     "get_full_contract",
-                    &[("contractAddress", &contract_addr.0.to_hex_str())],
+                    &[("contractAddress", &contract_addr.0.to_hex_str_owned())],
                 ))
                 .send()
                 .await?;
@@ -315,7 +315,7 @@ impl ClientApi for Client {
                 .get(self.build_query(
                     "get_storage_at",
                     &[
-                        ("contractAddress", &contract_addr.0.to_hex_str()),
+                        ("contractAddress", &contract_addr.0.to_hex_str_owned()),
                         ("key", &starkhash_to_dec_str(&key.0)),
                         (tag, &hash),
                     ],
@@ -338,7 +338,7 @@ impl ClientApi for Client {
                 .inner
                 .get(self.build_query(
                     "get_transaction",
-                    &[("transactionHash", &transaction_hash.0.to_hex_str())],
+                    &[("transactionHash", &transaction_hash.0.to_hex_str_owned())],
                 ))
                 .send()
                 .await?;
@@ -358,7 +358,7 @@ impl ClientApi for Client {
                 .inner
                 .get(self.build_query(
                     "get_transaction_status",
-                    &[("transactionHash", &transaction_hash.0.to_hex_str())],
+                    &[("transactionHash", &transaction_hash.0.to_hex_str_owned())],
                 ))
                 .send()
                 .await?;
