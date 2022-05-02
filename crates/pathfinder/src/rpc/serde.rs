@@ -68,12 +68,48 @@ serde_conv!(
     |s: &str| starkhash_from_dec_str(s).map(TransactionSignatureElem)
 );
 
-serde_with::serde_conv!(
-    pub EthereumAddressAsHexStr,
-    EthereumAddress,
-    |serialize_me: &EthereumAddress| bytes_to_hex_str_owned(serialize_me.0.as_bytes()),
-    |s: &str| bytes_from_hex_str::<{ H160::len_bytes() }>(s).map(|b| EthereumAddress(H160::from(b)))
-);
+pub struct EthereumAddressAsHexStr;
+
+impl SerializeAs<EthereumAddress> for EthereumAddressAsHexStr {
+    fn serialize_as<S>(source: &EthereumAddress, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // EthereumAddress is "0x" + 40 digits at most
+        let mut buf = [0u8; 2 + 40];
+        let s =
+            bytes_to_hex_str(source.0.as_bytes(), &mut buf).map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> DeserializeAs<'de, EthereumAddress> for EthereumAddressAsHexStr {
+    fn deserialize_as<D>(deserializer: D) -> Result<EthereumAddress, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(EthereumAddressVisitor)
+    }
+}
+
+struct EthereumAddressVisitor;
+
+impl<'de> Visitor<'de> for EthereumAddressVisitor {
+    type Value = EthereumAddress;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a hex string of up to 40 digits with an optional '0x' prefix")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        bytes_from_hex_str::<{ H160::len_bytes() }>(v)
+            .map_err(serde::de::Error::custom)
+            .map(|b| EthereumAddress(H160::from(b)))
+    }
+}
 
 pub struct H256AsNoLeadingZerosHexStr;
 
