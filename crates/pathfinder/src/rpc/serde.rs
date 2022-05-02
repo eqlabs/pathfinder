@@ -2,7 +2,8 @@
 
 use crate::core::{
     CallParam, CallSignatureElem, ConstructorParam, EthereumAddress, EventData, EventKey, Fee,
-    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionSignatureElem,
+    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
+    TransactionSignatureElem,
 };
 use num_bigint::BigUint;
 use pedersen::{HexParseError, OverflowError, StarkHash};
@@ -191,6 +192,49 @@ impl<'de> DeserializeAs<'de, Fee> for FeeAsHexStr {
         }
 
         deserializer.deserialize_str(FeeVisitor)
+    }
+}
+
+pub struct StarknetBlockNumberAsHexStr;
+
+impl SerializeAs<StarknetBlockNumber> for StarknetBlockNumberAsHexStr {
+    fn serialize_as<S>(source: &StarknetBlockNumber, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let bytes = source.0.to_be_bytes();
+        // StarknetBlockNumber is "0x" + 16 digits at most
+        let mut buf = [0u8; 2 + 16];
+        let s = bytes_as_hex_str(&bytes, &mut buf).map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexStr {
+    fn deserialize_as<D>(deserializer: D) -> Result<StarknetBlockNumber, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(StarknetBlockNumberVisitor)
+    }
+}
+
+struct StarknetBlockNumberVisitor;
+
+impl<'de> Visitor<'de> for StarknetBlockNumberVisitor {
+    type Value = StarknetBlockNumber;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a hex string of up to 16 digits with an optional '0x' prefix")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        u64::from_str_radix(v, 16)
+            .map_err(serde::de::Error::custom)
+            .map(StarknetBlockNumber)
     }
 }
 
