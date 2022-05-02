@@ -306,7 +306,7 @@ impl StarkHash {
     /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
     /// from a [StarkHash].
     /// Returns `InvalidBufferLengthError` if `self.0.len() * 2 + 2 > buf.len()`
-    pub(crate) fn to_hex_str<'a>(
+    pub(crate) fn as_hex_str<'a>(
         &'a self,
         buf: &'a mut [u8],
     ) -> Result<Cow<'a, str>, InvalidBufferSizeError> {
@@ -655,7 +655,7 @@ mod tests {
         fn zero() {
             assert_eq!(StarkHash::ZERO.to_hex_str_owned(), "0x0");
             let mut buf = [0u8; 66];
-            assert_eq!(StarkHash::ZERO.to_hex_str(&mut buf).unwrap(), "0x0");
+            assert_eq!(StarkHash::ZERO.as_hex_str(&mut buf).unwrap(), "0x0");
         }
 
         #[test]
@@ -663,7 +663,7 @@ mod tests {
             let hash = StarkHash::from_hex_str(ODD).unwrap();
             assert_eq!(hash.to_hex_str_owned(), ODD);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.to_hex_str(&mut buf).unwrap(), ODD);
+            assert_eq!(hash.as_hex_str(&mut buf).unwrap(), ODD);
         }
 
         #[test]
@@ -671,7 +671,7 @@ mod tests {
             let hash = StarkHash::from_hex_str(EVEN).unwrap();
             assert_eq!(hash.to_hex_str_owned(), EVEN);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.to_hex_str(&mut buf).unwrap(), EVEN);
+            assert_eq!(hash.as_hex_str(&mut buf).unwrap(), EVEN);
         }
 
         #[test]
@@ -679,14 +679,14 @@ mod tests {
             let hash = StarkHash::from_hex_str(MAX).unwrap();
             assert_eq!(hash.to_hex_str_owned(), MAX);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.to_hex_str(&mut buf).unwrap(), MAX);
+            assert_eq!(hash.as_hex_str(&mut buf).unwrap(), MAX);
         }
 
         #[test]
         fn buffer_too_small() {
             let mut buf = [0u8; 65];
             assert_eq!(
-                StarkHash::ZERO.to_hex_str(&mut buf).unwrap_err(),
+                StarkHash::ZERO.as_hex_str(&mut buf).unwrap_err(),
                 InvalidBufferSizeError {
                     actual: 65,
                     expected: 66
