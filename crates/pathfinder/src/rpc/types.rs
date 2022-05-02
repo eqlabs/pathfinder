@@ -341,7 +341,9 @@ pub mod reply {
                 // places, and leaning on ErrorObject partialeq impl.
                 let repr = match self {
                     ErrorCode::PageSizeTooBig => {
-                        Error::from(crate::storage::EventFilterError::PageSizeTooBig(1024))
+                        Error::from(crate::storage::EventFilterError::PageSizeTooBig(
+                            crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT,
+                        ))
                     }
                     other => Error::from(*other),
                 };
