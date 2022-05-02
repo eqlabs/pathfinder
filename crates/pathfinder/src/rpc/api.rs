@@ -65,7 +65,8 @@ impl RpcApi {
             chain_id: super::serde::bytes_to_hex_str(match chain {
                 Chain::Goerli => b"SN_GOERLI",
                 Chain::Mainnet => b"SN_MAIN",
-            }),
+            })
+            .into(),
             call_handle: None,
             sync_state,
         }

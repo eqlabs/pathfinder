@@ -305,38 +305,36 @@ impl StarkHash {
 
     /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
     /// from a [StarkHash].
-    /// Returns `InvalidBufferLengthError` if `self.0.len() * 2 + 2 > buf.len()`
-    pub(crate) fn as_hex_str<'a>(
-        &'a self,
-        buf: &'a mut [u8],
-    ) -> Result<Cow<'a, str>, InvalidBufferSizeError> {
-        if self.0.len() * 2 + 2 > buf.len() {
-            return Err(InvalidBufferSizeError {
-                actual: buf.len(),
-                expected: self.0.len() * 2 + 2,
-            });
-        }
+    /// Panics if `self.0.len() * 2 + 2 > buf.len()`
+    pub(crate) fn as_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
+        let expected_buf_len = self.0.len() * 2 + 2;
+        assert!(
+            buf.len() >= expected_buf_len,
+            "buffer size is {}, expected at least {}",
+            buf.len(),
+            expected_buf_len
+        );
 
         if !self.0.iter().any(|b| *b != 0) {
-            return Ok(Cow::from("0x0"));
+            return "0x0";
         }
 
         let (it, start, len) = self.skip_zeros();
         let res = Self::it_to_hex_str(it, start, len, buf);
-        // No heap allocations
-        Ok(String::from_utf8_lossy(res))
+        // Unwrap is safe because `buf` holds valid UTF8 characters.
+        std::str::from_utf8(res).unwrap()
     }
 
     /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-    pub fn to_hex_str(&self) -> String {
+    pub fn to_hex_str(&self) -> Cow<'static, str> {
         if !self.0.iter().any(|b| *b != 0) {
-            return "0x0".to_string();
+            return Cow::from("0x0");
         }
         let (it, start, len) = self.skip_zeros();
         let mut buf = vec![0u8; len];
         Self::it_to_hex_str(it, start, len, &mut buf);
         // Unwrap is safe as the buffer contains valid utf8
-        String::from_utf8(buf).unwrap()
+        String::from_utf8(buf).unwrap().into()
     }
 }
 
@@ -655,7 +653,7 @@ mod tests {
         fn zero() {
             assert_eq!(StarkHash::ZERO.to_hex_str(), "0x0");
             let mut buf = [0u8; 66];
-            assert_eq!(StarkHash::ZERO.as_hex_str(&mut buf).unwrap(), "0x0");
+            assert_eq!(StarkHash::ZERO.as_hex_str(&mut buf), "0x0");
         }
 
         #[test]
@@ -663,7 +661,7 @@ mod tests {
             let hash = StarkHash::from_hex_str(ODD).unwrap();
             assert_eq!(hash.to_hex_str(), ODD);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.as_hex_str(&mut buf).unwrap(), ODD);
+            assert_eq!(hash.as_hex_str(&mut buf), ODD);
         }
 
         #[test]
@@ -671,7 +669,7 @@ mod tests {
             let hash = StarkHash::from_hex_str(EVEN).unwrap();
             assert_eq!(hash.to_hex_str(), EVEN);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.as_hex_str(&mut buf).unwrap(), EVEN);
+            assert_eq!(hash.as_hex_str(&mut buf), EVEN);
         }
 
         #[test]
@@ -679,19 +677,14 @@ mod tests {
             let hash = StarkHash::from_hex_str(MAX).unwrap();
             assert_eq!(hash.to_hex_str(), MAX);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.as_hex_str(&mut buf).unwrap(), MAX);
+            assert_eq!(hash.as_hex_str(&mut buf), MAX);
         }
 
         #[test]
+        #[should_panic]
         fn buffer_too_small() {
             let mut buf = [0u8; 65];
-            assert_eq!(
-                StarkHash::ZERO.as_hex_str(&mut buf).unwrap_err(),
-                InvalidBufferSizeError {
-                    actual: 65,
-                    expected: 66
-                }
-            );
+            StarkHash::ZERO.as_hex_str(&mut buf);
         }
     }
 
