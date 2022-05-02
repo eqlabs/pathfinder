@@ -69,6 +69,43 @@ rpc_call '[{"jsonrpc":"2.0","id":"34","method":"starknet_call","params":[{"calld
 
 rpc_call '{"jsonrpc":"2.0","id":"36","method":"starknet_blockNumber"}'
 
+rpc_call '{
+    "jsonrpc": "2.0",
+    "method": "starknet_getEvents",
+    "params": [
+        {"fromBlock": 800, "toBlock": 1701, "page_size": 1000, "page_number": 0}
+    ],
+    "id": 0
+}'
+
+rpc_call '{
+    "jsonrpc": "2.0",
+    "method": "starknet_addInvokeTransaction",
+    "params": [
+        {
+            "contract_address": "0x23371b227eaecd8e8920cd429d2cd0f3fee6abaacca08d3ab82a7cdd",
+            "calldata": [
+                "1",
+                "2925423296824367013529965983412166292018955438053992527907701360681569823649",
+                "1530486729947006463063166157847785599120665941190480211966374137237989315360",
+                "0",
+                "1",
+                "1",
+                "43",
+                "0"
+            ],
+            "entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
+        },
+        [
+            "3557065757165699682249469970267166698995647077461960906176449260016084767701",
+            "3202126414680946801789588986259466145787792017299869598314522555275920413944"
+        ],
+        "0x4f388496839",
+        "0x0"
+    ],
+    "id": 0
+}'
+
 # TODO not implemented yet
 # rpc_call '{"jsonrpc":"2.0","id":"37","method":"starknet_chainId"}'
 # rpc_call '{"jsonrpc":"2.0","id":"38","method":"starknet_pendingTransactions"}'
