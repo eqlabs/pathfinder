@@ -6,7 +6,12 @@ impl Serialize for StarkHash {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_hex_str())
+        // StarkHash has a leading "0x" and at most 64 digits
+        let mut buf = [0u8; 2 + 64];
+        let s = self
+            .to_hex_str_cow(&mut buf)
+            .map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&s)
     }
 }
 

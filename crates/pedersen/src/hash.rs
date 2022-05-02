@@ -1,4 +1,6 @@
+use std::borrow::Cow;
 use std::error::Error;
+use std::fmt::Display;
 
 use crate::curve::{
     AffinePoint, ProjectivePoint, PEDERSEN_P0, PEDERSEN_P1, PEDERSEN_P2, PEDERSEN_P3, PEDERSEN_P4,
@@ -212,6 +214,21 @@ impl From<FieldElement> for StarkHash {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub(crate) struct InvalidBufferSizeError {
+    expected: usize,
+    actual: usize,
+}
+
+impl Display for InvalidBufferSizeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "Expected buffer size {}, got {}",
+            self.expected, self.actual,
+        ))
+    }
+}
+
 impl StarkHash {
     /// A convenience function which parses a hex string into a [StarkHash].
     ///
@@ -253,22 +270,27 @@ impl StarkHash {
         Ok(hash)
     }
 
-    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-    pub fn to_hex_str(&self) -> String {
-        if self == &StarkHash::ZERO {
-            return "0x0".to_string();
-        }
-
-        const LUT: [u8; 16] = *b"0123456789abcdef";
-
+    /// The first stage of conversion - skip leading zeros
+    fn skip_zeros(&self) -> (impl Iterator<Item = &u8>, usize, usize) {
         // Skip all leading zero bytes
         let it = self.0.iter().skip_while(|&&b| b == 0);
         let num_bytes = it.clone().count();
-        let skipped = 32 - num_bytes;
+        let skipped = self.0.len() - num_bytes;
         // The first high nibble can be 0
         let start = if self.0[skipped] < 0x10 { 1 } else { 2 };
+        // Number of characters to display
         let len = start + num_bytes * 2;
-        let mut buf = vec![0; len];
+        (it, start, len)
+    }
+
+    /// The second stage of conversion - map bytes to hex str
+    fn it_to_hex_str<'a>(
+        it: impl Iterator<Item = &'a u8>,
+        start: usize,
+        len: usize,
+        buf: &'a mut [u8],
+    ) -> &'a [u8] {
+        const LUT: [u8; 16] = *b"0123456789abcdef";
         buf[0] = b'0';
         // Same small lookup table is ~25% faster than hex::encode_from_slice 🤷
         it.enumerate().for_each(|(i, &b)| {
@@ -278,7 +300,41 @@ impl StarkHash {
             buf[pos..pos + 2].copy_from_slice(&x);
         });
         buf[1] = b'x';
+        &buf[..len]
+    }
 
+    /// A convenience function which produces a "0x" prefixed hex str slice in a given
+    /// buffer `buf` from slice of `bytes`.
+    /// Returns `InvalidBufferLengthError` if `bytes.len() * 2 + 2 > buf.len()`
+    pub(crate) fn to_hex_str_cow<'a>(
+        &'a self,
+        buf: &'a mut [u8],
+    ) -> Result<Cow<'a, str>, InvalidBufferSizeError> {
+        if self.0.len() * 2 + 2 > buf.len() {
+            return Err(InvalidBufferSizeError {
+                actual: buf.len(),
+                expected: self.0.len() * 2 + 2,
+            });
+        }
+
+        if !self.0.iter().any(|b| *b != 0) {
+            return Ok(Cow::from("0x0"));
+        }
+
+        let (it, start, len) = self.skip_zeros();
+        let res = Self::it_to_hex_str(it, start, len, buf);
+        // No heap allocations
+        Ok(String::from_utf8_lossy(res))
+    }
+
+    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+    pub fn to_hex_str(&self) -> String {
+        if !self.0.iter().any(|b| *b != 0) {
+            return "0x0".to_string();
+        }
+        let (it, start, len) = self.skip_zeros();
+        let mut buf = vec![0u8; len];
+        Self::it_to_hex_str(it, start, len, &mut buf);
         // Unwrap is safe as the buffer contains valid utf8
         String::from_utf8(buf).unwrap()
     }
