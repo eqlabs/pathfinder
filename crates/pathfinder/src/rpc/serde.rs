@@ -75,12 +75,47 @@ serde_with::serde_conv!(
     |s: &str| bytes_from_hex_str::<{ H160::len_bytes() }>(s).map(|b| EthereumAddress(H160::from(b)))
 );
 
-serde_with::serde_conv!(
-    pub H256AsNoLeadingZerosHexStr,
-    H256,
-    |serialize_me: &H256| bytes_to_hex_str_owned(serialize_me.as_bytes()),
-    |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(H256::from)
-);
+pub struct H256AsNoLeadingZerosHexStr;
+
+impl SerializeAs<H256> for H256AsNoLeadingZerosHexStr {
+    fn serialize_as<S>(source: &H256, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // H256 is "0x" + 64 digits at most
+        let mut buf = [0u8; 2 + 64];
+        let s = bytes_to_hex_str(source.as_bytes(), &mut buf).map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> DeserializeAs<'de, H256> for H256AsNoLeadingZerosHexStr {
+    fn deserialize_as<D>(deserializer: D) -> Result<H256, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(H256Visitor)
+    }
+}
+
+struct H256Visitor;
+
+impl<'de> Visitor<'de> for H256Visitor {
+    type Value = H256;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a hex string of up to 64 digits with an optional '0x' prefix")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        bytes_from_hex_str::<{ H256::len_bytes() }>(v)
+            .map_err(serde::de::Error::custom)
+            .map(H256::from)
+    }
+}
 
 pub struct FeeAsHexStr;
 
