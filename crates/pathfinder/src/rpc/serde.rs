@@ -215,26 +215,26 @@ impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexSt
     where
         D: serde::Deserializer<'de>,
     {
+        struct StarknetBlockNumberVisitor;
+
+        impl<'de> Visitor<'de> for StarknetBlockNumberVisitor {
+            type Value = StarknetBlockNumber;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a hex string of up to 16 digits with an optional '0x' prefix")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                u64::from_str_radix(v, 16)
+                    .map_err(serde::de::Error::custom)
+                    .map(StarknetBlockNumber)
+            }
+        }
+
         deserializer.deserialize_str(StarknetBlockNumberVisitor)
-    }
-}
-
-struct StarknetBlockNumberVisitor;
-
-impl<'de> Visitor<'de> for StarknetBlockNumberVisitor {
-    type Value = StarknetBlockNumber;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a hex string of up to 16 digits with an optional '0x' prefix")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        u64::from_str_radix(v, 16)
-            .map_err(serde::de::Error::custom)
-            .map(StarknetBlockNumber)
     }
 }
 
