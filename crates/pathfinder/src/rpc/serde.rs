@@ -69,21 +69,21 @@ serde_conv!(
 serde_with::serde_conv!(
     pub EthereumAddressAsHexStr,
     EthereumAddress,
-    |serialize_me: &EthereumAddress| bytes_to_hex_str(serialize_me.0.as_bytes()),
+    |serialize_me: &EthereumAddress| bytes_to_hex_str_owned(serialize_me.0.as_bytes()),
     |s: &str| bytes_from_hex_str::<{ H160::len_bytes() }>(s).map(|b| EthereumAddress(H160::from(b)))
 );
 
 serde_with::serde_conv!(
     pub H256AsNoLeadingZerosHexStr,
     H256,
-    |serialize_me: &H256| bytes_to_hex_str(serialize_me.as_bytes()),
+    |serialize_me: &H256| bytes_to_hex_str_owned(serialize_me.as_bytes()),
     |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(H256::from)
 );
 
 serde_with::serde_conv!(
     pub FeeAsHexStr,
     Fee,
-    |serialize_me: &Fee| bytes_to_hex_str(serialize_me.0.as_bytes()),
+    |serialize_me: &Fee| bytes_to_hex_str_owned(serialize_me.0.as_bytes()),
     |s: &str| bytes_from_hex_str::<{ H128::len_bytes() }>(s).map(|b| Fee(H128::from(b)))
 );
 
@@ -154,7 +154,7 @@ fn bytes_from_hex_str<const N: usize>(hex_str: &str) -> Result<[u8; N], HexParse
 }
 
 /// A convenience function which produces a "0x" prefixed hex string from a byte slice.
-pub(crate) fn bytes_to_hex_str(bytes: &[u8]) -> String {
+pub(crate) fn bytes_to_hex_str_owned(bytes: &[u8]) -> String {
     if !bytes.iter().any(|b| *b != 0) {
         return "0x0".to_string();
     }
@@ -203,7 +203,7 @@ mod tests {
 
         let c: [u8; 32] = bytes_from_hex_str(ZERO_HEX_STR).unwrap();
         assert!(c.iter().all(|x| *x == 0));
-        assert_eq!(bytes_to_hex_str(&c[..]), ZERO_HEX_STR);
+        assert_eq!(bytes_to_hex_str_owned(&c[..]), ZERO_HEX_STR);
     }
 
     #[test]
@@ -221,7 +221,7 @@ mod tests {
 
         let c: [u8; 8] = bytes_from_hex_str(ODD_HEX_STR).unwrap();
         assert_eq!(c, ODD_BYTES);
-        assert_eq!(bytes_to_hex_str(&c[..]), ODD_HEX_STR);
+        assert_eq!(bytes_to_hex_str_owned(&c[..]), ODD_HEX_STR);
     }
 
     #[test]
@@ -239,7 +239,7 @@ mod tests {
 
         let c: [u8; 8] = bytes_from_hex_str(EVEN_HEX_STR).unwrap();
         assert_eq!(c, EVEN_BYTES);
-        assert_eq!(bytes_to_hex_str(&c[..]), EVEN_HEX_STR);
+        assert_eq!(bytes_to_hex_str_owned(&c[..]), EVEN_HEX_STR);
     }
 
     #[test]
@@ -262,7 +262,7 @@ mod tests {
 
         let c: [u8; 32] = bytes_from_hex_str(MAX_HEX_STR).unwrap();
         assert_eq!(c, MAX_BYTES);
-        assert_eq!(bytes_to_hex_str(&c[..]), MAX_HEX_STR);
+        assert_eq!(bytes_to_hex_str_owned(&c[..]), MAX_HEX_STR);
     }
 
     #[test]
