@@ -654,24 +654,44 @@ mod tests {
         #[test]
         fn zero() {
             assert_eq!(StarkHash::ZERO.to_hex_str(), "0x0");
+            let mut buf = [0u8; 66];
+            assert_eq!(StarkHash::ZERO.to_hex_str_cow(&mut buf).unwrap(), "0x0");
         }
 
         #[test]
         fn odd() {
             let hash = StarkHash::from_hex_str(ODD).unwrap();
             assert_eq!(hash.to_hex_str(), ODD);
+            let mut buf = [0u8; 66];
+            assert_eq!(hash.to_hex_str_cow(&mut buf).unwrap(), ODD);
         }
 
         #[test]
         fn even() {
             let hash = StarkHash::from_hex_str(EVEN).unwrap();
             assert_eq!(hash.to_hex_str(), EVEN);
+            let mut buf = [0u8; 66];
+            assert_eq!(hash.to_hex_str_cow(&mut buf).unwrap(), EVEN);
         }
 
         #[test]
         fn max() {
             let hash = StarkHash::from_hex_str(MAX).unwrap();
             assert_eq!(hash.to_hex_str(), MAX);
+            let mut buf = [0u8; 66];
+            assert_eq!(hash.to_hex_str_cow(&mut buf).unwrap(), MAX);
+        }
+
+        #[test]
+        fn buffer_too_small() {
+            let mut buf = [0u8; 65];
+            assert_eq!(
+                StarkHash::ZERO.to_hex_str_cow(&mut buf).unwrap_err(),
+                InvalidBufferSizeError {
+                    actual: 65,
+                    expected: 66
+                }
+            );
         }
     }
 
