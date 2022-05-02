@@ -253,7 +253,7 @@ where
                         format!("Insert contract definition with hash: {:?}", contract.hash)
                     })?;
 
-                    tracing::trace!("Inserted new contract {}", contract.hash.0.to_hex_str_owned());
+                    tracing::trace!("Inserted new contract {}", contract.hash.0.to_hex_str());
                 }
                 Some(l2::Event::QueryHash(block, tx)) => {
                     let hash = tokio::task::block_in_place(|| {

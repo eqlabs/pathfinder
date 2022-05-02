@@ -328,7 +328,7 @@ impl StarkHash {
     }
 
     /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-    pub fn to_hex_str_owned(&self) -> String {
+    pub fn to_hex_str(&self) -> String {
         if !self.0.iter().any(|b| *b != 0) {
             return "0x0".to_string();
         }
@@ -653,7 +653,7 @@ mod tests {
 
         #[test]
         fn zero() {
-            assert_eq!(StarkHash::ZERO.to_hex_str_owned(), "0x0");
+            assert_eq!(StarkHash::ZERO.to_hex_str(), "0x0");
             let mut buf = [0u8; 66];
             assert_eq!(StarkHash::ZERO.as_hex_str(&mut buf).unwrap(), "0x0");
         }
@@ -661,7 +661,7 @@ mod tests {
         #[test]
         fn odd() {
             let hash = StarkHash::from_hex_str(ODD).unwrap();
-            assert_eq!(hash.to_hex_str_owned(), ODD);
+            assert_eq!(hash.to_hex_str(), ODD);
             let mut buf = [0u8; 66];
             assert_eq!(hash.as_hex_str(&mut buf).unwrap(), ODD);
         }
@@ -669,7 +669,7 @@ mod tests {
         #[test]
         fn even() {
             let hash = StarkHash::from_hex_str(EVEN).unwrap();
-            assert_eq!(hash.to_hex_str_owned(), EVEN);
+            assert_eq!(hash.to_hex_str(), EVEN);
             let mut buf = [0u8; 66];
             assert_eq!(hash.as_hex_str(&mut buf).unwrap(), EVEN);
         }
@@ -677,7 +677,7 @@ mod tests {
         #[test]
         fn max() {
             let hash = StarkHash::from_hex_str(MAX).unwrap();
-            assert_eq!(hash.to_hex_str_owned(), MAX);
+            assert_eq!(hash.to_hex_str(), MAX);
             let mut buf = [0u8; 66];
             assert_eq!(hash.as_hex_str(&mut buf).unwrap(), MAX);
         }
