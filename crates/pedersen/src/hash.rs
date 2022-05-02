@@ -303,9 +303,9 @@ impl StarkHash {
         &buf[..len]
     }
 
-    /// A convenience function which produces a "0x" prefixed hex str slice in a given
-    /// buffer `buf` from slice of `bytes`.
-    /// Returns `InvalidBufferLengthError` if `bytes.len() * 2 + 2 > buf.len()`
+    /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
+    /// from a [StarkHash].
+    /// Returns `InvalidBufferLengthError` if `self.0.len() * 2 + 2 > buf.len()`
     pub(crate) fn to_hex_str_cow<'a>(
         &'a self,
         buf: &'a mut [u8],
