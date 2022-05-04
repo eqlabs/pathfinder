@@ -7,6 +7,7 @@ use crate::config::builder::ConfigBuilder;
 use super::ConfigOption;
 
 const CONFIG_KEY: &str = "config";
+const DATA_DIR_KEY: &str = "data-directory";
 const ETH_URL_KEY: &str = "ethereum.url";
 const ETH_USER_AGENT_KEY: &str = "ethereum.user-agent";
 const ETH_PASS_KEY: &str = "ethereum.password";
@@ -36,6 +37,7 @@ where
     let args = clap_app().try_get_matches_from(args)?;
 
     let config_filepath = args.value_of(CONFIG_KEY).map(|s| s.to_owned());
+    let data_directory = args.value_of(DATA_DIR_KEY).map(|s| s.to_owned());
     let ethereum_url = args.value_of(ETH_URL_KEY).map(|s| s.to_owned());
     let ethereum_user_agent = args.value_of(ETH_USER_AGENT_KEY).map(|s| s.to_owned());
     let ethereum_password = args.value_of(ETH_PASS_KEY).map(|s| s.to_owned());
@@ -45,7 +47,8 @@ where
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
         .with(ConfigOption::EthereumUserAgent, ethereum_user_agent)
         .with(ConfigOption::EthereumPassword, ethereum_password)
-        .with(ConfigOption::HttpRpcAddress, http_rpc_addr);
+        .with(ConfigOption::HttpRpcAddress, http_rpc_addr)
+        .with(ConfigOption::DataDirectory, data_directory);
 
     Ok((config_filepath, cfg))
 }
@@ -107,6 +110,14 @@ Examples:
                 .value_name("IP:PORT")
                 .env("PATHFINDER_HTTP_RPC_ADDRESS")
         )
+        .arg(
+            Arg::new(DATA_DIR_KEY)
+                .long(DATA_DIR_KEY)
+                .help("Directory where the node should store its data".as_ref())
+                .takes_value(true)
+                .value_name("IP:PORT")
+                .env("PATHFINDER_DATA_DIRECTORY")
+        )
 }
 
 #[cfg(test)]
@@ -126,6 +137,7 @@ mod tests {
         env::remove_var("PATHFINDER_ETHEREUM_API_PASSWORD");
         env::remove_var("PATHFINDER_ETHEREUM_API_URL");
         env::remove_var("PATHFINDER_HTTP_RPC_ADDRESS");
+        env::remove_var("PATHFINDER_DATA_DIRECTORY");
     }
 
     #[test]
@@ -230,6 +242,27 @@ mod tests {
         env::set_var("PATHFINDER_HTTP_RPC_ADDRESS", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
+    }
+
+    #[test]
+    fn data_directory_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--data-directory", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::DataDirectory), Some(value));
+    }
+
+    #[test]
+    fn data_directory_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_DATA_DIRECTORY", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::DataDirectory), Some(value));
     }
 
     #[test]
