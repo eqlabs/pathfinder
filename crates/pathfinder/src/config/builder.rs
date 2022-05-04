@@ -235,7 +235,7 @@ mod tests {
             for option in REQUIRED {
                 let mut builder = builder_with_all_required();
                 builder.take(*option);
-                assert!(builder.try_build().is_err());
+                assert!(builder.try_build().is_err(), "{option} failed");
             }
         }
 
