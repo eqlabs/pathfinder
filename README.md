@@ -300,6 +300,10 @@ starknet_chainId
 starknet_syncing
 # Returns all events matching the given filter
 starknet_getEvents
+# Submit a new invoke contract transaction
+starknet_addInvokeTransaction
+# Submit a new deploy contract transaction
+starknet_addDeployTransaction
 ```
 
 ## License
