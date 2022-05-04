@@ -3,7 +3,7 @@
 
 use crate::config::{ConfigOption, Configuration, EthereumConfig};
 use reqwest::Url;
-use std::{collections::HashMap, net::SocketAddr};
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf, str::FromStr};
 
 /// A convenient way of collecting and merging configuration options.
 ///
@@ -67,6 +67,12 @@ impl ConfigBuilder {
         let eth_user_agent = self.take(ConfigOption::EthereumUserAgent);
         let eth_password = self.take(ConfigOption::EthereumPassword);
 
+        // Optional parameters with defaults.
+        let data_directory = self
+            .take(ConfigOption::DataDirectory)
+            .map(|s| Ok(PathBuf::from_str(&s).unwrap()))
+            .unwrap_or_else(|| std::env::current_dir())?;
+
         Ok(Configuration {
             ethereum: EthereumConfig {
                 url: eth_url,
@@ -74,6 +80,7 @@ impl ConfigBuilder {
                 password: eth_password,
             },
             http_rpc_addr,
+            data_directory,
         })
     }
 
