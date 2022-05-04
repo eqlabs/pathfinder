@@ -439,7 +439,7 @@ mod json {
             .unwrap();
 
             // this is quite big payload, ~500kB
-            let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc")
+            let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc")
                 .await
                 .unwrap();
 
