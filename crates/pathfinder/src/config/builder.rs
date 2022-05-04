@@ -40,26 +40,12 @@ impl ConfigBuilder {
 
         // Required parameters.
         let eth_url = self.take_required(ConfigOption::EthereumHttpUrl)?;
-        let http_rpc_addr = self
-            .take_required(ConfigOption::HttpRpcAddress)
-            .unwrap_or_else(|_| DEFAULT_HTTP_RPC_ADDR.to_owned());
 
         // Parse the Ethereum URL.
         let eth_url = eth_url.parse::<Url>().map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!("Invalid Ethereum URL ({}): {}", eth_url, err),
-            )
-        })?;
-
-        // Parse the HTTP-RPC listening address and port.
-        let http_rpc_addr = http_rpc_addr.parse::<SocketAddr>().map_err(|err| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "Invalid HTTP-RPC listening interface and port ({}): {}",
-                    http_rpc_addr, err
-                ),
             )
         })?;
 
@@ -72,6 +58,20 @@ impl ConfigBuilder {
             .take(ConfigOption::DataDirectory)
             .map(|s| Ok(PathBuf::from_str(&s).unwrap()))
             .unwrap_or_else(|| std::env::current_dir())?;
+        let http_rpc_addr = self
+            .take(ConfigOption::HttpRpcAddress)
+            .unwrap_or_else(|| DEFAULT_HTTP_RPC_ADDR.to_owned());
+
+        // Parse the HTTP-RPC listening address and port.
+        let http_rpc_addr = http_rpc_addr.parse::<SocketAddr>().map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid HTTP-RPC listening interface and port ({}): {}",
+                    http_rpc_addr, err
+                ),
+            )
+        })?;
 
         Ok(Configuration {
             ethereum: EthereumConfig {
