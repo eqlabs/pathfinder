@@ -82,7 +82,8 @@ where
 
     // Start update sync-status process.
     let (starting_block_num, starting_block_hash) = l2_head.unwrap_or((
-        StarknetBlockNumber::GENESIS,
+        // Seems a better choice for an invalid block number than 0
+        StarknetBlockNumber(u64::MAX),
         StarknetBlockHash(StarkHash::ZERO),
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
