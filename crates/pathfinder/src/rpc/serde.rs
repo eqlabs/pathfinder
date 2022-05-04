@@ -228,6 +228,7 @@ impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexSt
             where
                 E: serde::de::Error,
             {
+                let stripped = v.strip_prefix("0x").unwrap_or(v);
                 u64::from_str_radix(v, 16)
                     .map_err(serde::de::Error::custom)
                     .map(StarknetBlockNumber)
