@@ -6,7 +6,10 @@ impl Serialize for StarkHash {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_hex_str())
+        // StarkHash has a leading "0x" and at most 64 digits
+        let mut buf = [0u8; 2 + 64];
+        let s = self.as_hex_str(&mut buf);
+        serializer.serialize_str(s)
     }
 }
 
@@ -15,24 +18,24 @@ impl<'de> Deserialize<'de> for StarkHash {
     where
         D: serde::Deserializer<'de>,
     {
+        struct StarkHashVisitor;
+
+        impl<'de> Visitor<'de> for StarkHashVisitor {
+            type Value = StarkHash;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a hex string of up to 64 digits with an optional '0x' prefix")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                StarkHash::from_hex_str(v).map_err(|e| serde::de::Error::custom(e))
+            }
+        }
+
         deserializer.deserialize_str(StarkHashVisitor)
-    }
-}
-
-struct StarkHashVisitor;
-
-impl<'de> Visitor<'de> for StarkHashVisitor {
-    type Value = StarkHash;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a hex string of up to 64 digits with an optional '0x' prefix")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        StarkHash::from_hex_str(v).map_err(|e| serde::de::Error::custom(e))
     }
 }
 

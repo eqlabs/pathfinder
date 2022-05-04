@@ -35,7 +35,7 @@ use std::sync::Arc;
 pub struct RpcApi {
     storage: Storage,
     sequencer: sequencer::Client,
-    chain: Chain,
+    chain_id: &'static str,
     call_handle: Option<ext_py::Handle>,
     sync_state: Arc<SyncState>,
 }
@@ -62,7 +62,12 @@ impl RpcApi {
         Self {
             storage,
             sequencer,
-            chain,
+            chain_id: match chain {
+                // Hex str for b"SN_GOERLI"
+                Chain::Goerli => "0x534e5f474f45524c49",
+                // Hex str for b"SN_MAIN"
+                Chain::Mainnet => "0x534e5f4d41494e",
+            },
             call_handle: None,
             sync_state,
         }
@@ -889,13 +894,8 @@ impl RpcApi {
     }
 
     /// Return the currently configured StarkNet chain id.
-    pub async fn chain_id(&self) -> RpcResult<String> {
-        use super::serde::bytes_to_hex_str;
-
-        Ok(bytes_to_hex_str(match self.chain {
-            Chain::Goerli => b"SN_GOERLI",
-            Chain::Mainnet => b"SN_MAIN",
-        }))
+    pub async fn chain_id(&self) -> RpcResult<&'static str> {
+        Ok(self.chain_id)
     }
 
     // /// Returns the transactions in the transaction pool, recognized by this sequencer.

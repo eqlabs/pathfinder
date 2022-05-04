@@ -1,4 +1,6 @@
+use std::borrow::Cow;
 use std::error::Error;
+use std::fmt::Display;
 
 use crate::curve::{
     AffinePoint, ProjectivePoint, PEDERSEN_P0, PEDERSEN_P1, PEDERSEN_P2, PEDERSEN_P3, PEDERSEN_P4,
@@ -212,6 +214,21 @@ impl From<FieldElement> for StarkHash {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub(crate) struct InvalidBufferSizeError {
+    expected: usize,
+    actual: usize,
+}
+
+impl Display for InvalidBufferSizeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "Expected buffer size {}, got {}",
+            self.expected, self.actual,
+        ))
+    }
+}
+
 impl StarkHash {
     /// A convenience function which parses a hex string into a [StarkHash].
     ///
@@ -253,22 +270,27 @@ impl StarkHash {
         Ok(hash)
     }
 
-    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-    pub fn to_hex_str(&self) -> String {
-        if self == &StarkHash::ZERO {
-            return "0x0".to_string();
-        }
-
-        const LUT: [u8; 16] = *b"0123456789abcdef";
-
+    /// The first stage of conversion - skip leading zeros
+    fn skip_zeros(&self) -> (impl Iterator<Item = &u8>, usize, usize) {
         // Skip all leading zero bytes
         let it = self.0.iter().skip_while(|&&b| b == 0);
         let num_bytes = it.clone().count();
-        let skipped = 32 - num_bytes;
+        let skipped = self.0.len() - num_bytes;
         // The first high nibble can be 0
         let start = if self.0[skipped] < 0x10 { 1 } else { 2 };
+        // Number of characters to display
         let len = start + num_bytes * 2;
-        let mut buf = vec![0; len];
+        (it, start, len)
+    }
+
+    /// The second stage of conversion - map bytes to hex str
+    fn it_to_hex_str<'a>(
+        it: impl Iterator<Item = &'a u8>,
+        start: usize,
+        len: usize,
+        buf: &'a mut [u8],
+    ) -> &'a [u8] {
+        const LUT: [u8; 16] = *b"0123456789abcdef";
         buf[0] = b'0';
         // Same small lookup table is ~25% faster than hex::encode_from_slice 🤷
         it.enumerate().for_each(|(i, &b)| {
@@ -278,9 +300,41 @@ impl StarkHash {
             buf[pos..pos + 2].copy_from_slice(&x);
         });
         buf[1] = b'x';
+        &buf[..len]
+    }
 
+    /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
+    /// from a [StarkHash].
+    /// Panics if `self.0.len() * 2 + 2 > buf.len()`
+    pub(crate) fn as_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
+        let expected_buf_len = self.0.len() * 2 + 2;
+        assert!(
+            buf.len() >= expected_buf_len,
+            "buffer size is {}, expected at least {}",
+            buf.len(),
+            expected_buf_len
+        );
+
+        if !self.0.iter().any(|b| *b != 0) {
+            return "0x0";
+        }
+
+        let (it, start, len) = self.skip_zeros();
+        let res = Self::it_to_hex_str(it, start, len, buf);
+        // Unwrap is safe because `buf` holds valid UTF8 characters.
+        std::str::from_utf8(res).unwrap()
+    }
+
+    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+    pub fn to_hex_str(&self) -> Cow<'static, str> {
+        if !self.0.iter().any(|b| *b != 0) {
+            return Cow::from("0x0");
+        }
+        let (it, start, len) = self.skip_zeros();
+        let mut buf = vec![0u8; len];
+        Self::it_to_hex_str(it, start, len, &mut buf);
         // Unwrap is safe as the buffer contains valid utf8
-        String::from_utf8(buf).unwrap()
+        String::from_utf8(buf).unwrap().into()
     }
 }
 
@@ -598,24 +652,39 @@ mod tests {
         #[test]
         fn zero() {
             assert_eq!(StarkHash::ZERO.to_hex_str(), "0x0");
+            let mut buf = [0u8; 66];
+            assert_eq!(StarkHash::ZERO.as_hex_str(&mut buf), "0x0");
         }
 
         #[test]
         fn odd() {
             let hash = StarkHash::from_hex_str(ODD).unwrap();
             assert_eq!(hash.to_hex_str(), ODD);
+            let mut buf = [0u8; 66];
+            assert_eq!(hash.as_hex_str(&mut buf), ODD);
         }
 
         #[test]
         fn even() {
             let hash = StarkHash::from_hex_str(EVEN).unwrap();
             assert_eq!(hash.to_hex_str(), EVEN);
+            let mut buf = [0u8; 66];
+            assert_eq!(hash.as_hex_str(&mut buf), EVEN);
         }
 
         #[test]
         fn max() {
             let hash = StarkHash::from_hex_str(MAX).unwrap();
             assert_eq!(hash.to_hex_str(), MAX);
+            let mut buf = [0u8; 66];
+            assert_eq!(hash.as_hex_str(&mut buf), MAX);
+        }
+
+        #[test]
+        #[should_panic]
+        fn buffer_too_small() {
+            let mut buf = [0u8; 65];
+            StarkHash::ZERO.as_hex_str(&mut buf);
         }
     }
 

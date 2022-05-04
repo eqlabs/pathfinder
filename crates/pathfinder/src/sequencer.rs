@@ -88,7 +88,7 @@ pub struct Client {
 /// Helper function which simplifies the handling of optional block hashes in queries.
 fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
     match hash {
-        BlockHashOrTag::Hash(h) => ("blockHash", Cow::from(h.0.to_hex_str())),
+        BlockHashOrTag::Hash(h) => ("blockHash", h.0.to_hex_str()),
         BlockHashOrTag::Tag(Tag::Latest) => ("blockNumber", Cow::from("null")),
         BlockHashOrTag::Tag(Tag::Pending) => ("blockNumber", Cow::from("pending")),
     }
