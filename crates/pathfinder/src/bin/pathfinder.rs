@@ -35,12 +35,13 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Determining Ethereum chain")?;
 
-    let database_path = match network_chain {
+    let database_path = config.data_directory.join(match network_chain {
         ethereum::Chain::Mainnet => "mainnet.sqlite",
         ethereum::Chain::Goerli => "goerli.sqlite",
-    };
+    });
+    let storage = Storage::migrate(database_path.clone()).unwrap();
+    info!(location=?database_path, "Database loaded.");
 
-    let storage = Storage::migrate(database_path.into()).unwrap();
     let sequencer = sequencer::Client::new(network_chain).unwrap();
     let sync_state = Arc::new(state::SyncState::default());
 
