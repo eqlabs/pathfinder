@@ -53,6 +53,8 @@ pub async fn sync(
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash)>,
     chain: crate::ethereum::Chain,
 ) -> anyhow::Result<()> {
+    use crate::state::sync::head_poll_interval;
+
     'outer: loop {
         // Get the next block from L2.
         let (next, head_hash) = match head {
@@ -370,22 +372,6 @@ async fn download_and_compress_contract(
         definition,
         hash,
     })
-}
-
-/// Returns the interval to be used when polling the sequencer while at the head of the chain. The
-/// interval is chosen to provide a good balance between spamming the sequencer and getting new
-/// block information as it is available.
-///
-/// The interval is based on the block creation time, which is 2 minutes for Goerlie and 2 hours for
-/// Mainnet.
-pub fn head_poll_interval(chain: crate::ethereum::Chain) -> Duration {
-    use crate::ethereum::Chain::*;
-    match chain {
-        // 15 minute interval for a 2 hour block time.
-        Mainnet => Duration::from_secs(60 * 15),
-        // 30 second interval for a 2 minute block time.
-        Goerli => Duration::from_secs(30),
-    }
 }
 
 #[cfg(test)]

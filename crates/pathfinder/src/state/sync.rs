@@ -315,7 +315,7 @@ async fn update_sync_status_latest(
     chain: Chain,
 ) -> anyhow::Result<()> {
     use crate::rpc::types::{BlockNumberOrTag, Tag};
-    let poll_interval = l2::head_poll_interval(chain);
+    let poll_interval = head_poll_interval(chain);
 
     loop {
         match sequencer
@@ -577,6 +577,24 @@ fn deploy_contract(
         .context("Insert constract state hash into contracts state table")?;
     ContractsTable::upsert(transaction, contract.address, contract.hash)
         .context("Inserting contract hash into contracts table")
+}
+
+/// Interval at which poll for new data when at the head of chain.
+///
+/// Returns the interval to be used when polling while at the head of the chain. The
+/// interval is chosen to provide a good balance between spamming and getting new
+/// block information as it is available. The interval is based on the block creation
+/// time, which is 2 minutes for Goerlie and 2 hours for Mainnet.
+pub fn head_poll_interval(chain: crate::ethereum::Chain) -> std::time::Duration {
+    use crate::ethereum::Chain::*;
+    use std::time::Duration;
+
+    match chain {
+        // 15 minute interval for a 2 hour block time.
+        Mainnet => Duration::from_secs(60 * 15),
+        // 30 second interval for a 2 minute block time.
+        Goerli => Duration::from_secs(30),
+    }
 }
 
 #[cfg(test)]
