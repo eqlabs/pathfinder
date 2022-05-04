@@ -57,7 +57,7 @@ impl ConfigBuilder {
         let data_directory = self
             .take(ConfigOption::DataDirectory)
             .map(|s| Ok(PathBuf::from_str(&s).unwrap()))
-            .unwrap_or_else(|| std::env::current_dir())?;
+            .unwrap_or_else(std::env::current_dir)?;
         let http_rpc_addr = self
             .take(ConfigOption::HttpRpcAddress)
             .unwrap_or_else(|| DEFAULT_HTTP_RPC_ADDR.to_owned());
