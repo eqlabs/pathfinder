@@ -229,7 +229,7 @@ impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexSt
                 E: serde::de::Error,
             {
                 let stripped = v.strip_prefix("0x").unwrap_or(v);
-                u64::from_str_radix(v, 16)
+                u64::from_str_radix(stripped, 16)
                     .map_err(serde::de::Error::custom)
                     .map(StarknetBlockNumber)
             }
@@ -540,5 +540,43 @@ mod tests {
             bytes_from_hex_str::<32>("0x123z"),
             Err(HexParseError::InvalidNibble(b'z'))
         );
+    }
+
+    mod block_number_as_hex_str {
+        #[serde_with::serde_as]
+        #[derive(Debug, Copy, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+        struct BlockNum(
+            #[serde_as(as = "super::StarknetBlockNumberAsHexStr")] crate::core::StarknetBlockNumber,
+        );
+
+        impl BlockNum {
+            pub fn new(v: u64) -> Self {
+                Self(crate::core::StarknetBlockNumber(v))
+            }
+        }
+
+        #[test]
+        fn deserialize() {
+            // u64::from_str_radix does not accept the `0x` prefix, so also make sure it is stripped
+            ["", "0x"].into_iter().for_each(|prefix| {
+                assert_eq!(
+                    serde_json::from_str::<BlockNum>(&format!("\"{prefix}0\"")).unwrap(),
+                    BlockNum::new(0)
+                );
+                assert_eq!(
+                    serde_json::from_str::<BlockNum>(&format!("\"{prefix}123\"")).unwrap(),
+                    BlockNum::new(0x123)
+                );
+                assert_eq!(
+                    serde_json::from_str::<BlockNum>(&format!("\"{prefix}1234\"")).unwrap(),
+                    BlockNum::new(0x1234)
+                );
+                assert_eq!(
+                    serde_json::from_str::<BlockNum>(&format!("\"{prefix}ffffffffffffffff\""))
+                        .unwrap(),
+                    BlockNum::new(u64::MAX)
+                );
+            });
+        }
     }
 }
