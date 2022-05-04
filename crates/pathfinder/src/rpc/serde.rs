@@ -296,7 +296,7 @@ fn it_to_hex_str<'a>(
 /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
 /// from an array of bytes.
 /// Panics if `bytes.len() * 2 + 2 > buf.len()`
-pub(crate) fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
+fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
     let expected_buf_len = bytes.len() * 2 + 2;
     assert!(
         buf.len() >= expected_buf_len,
@@ -316,7 +316,8 @@ pub(crate) fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a st
 }
 
 /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-pub(crate) fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
+#[allow(dead_code)]
+fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     if !bytes.iter().any(|b| *b != 0) {
         return Cow::from("0x0");
     }
