@@ -579,12 +579,12 @@ fn deploy_contract(
         .context("Inserting contract hash into contracts table")
 }
 
-/// Returns the interval to be used when polling the sequencer while at the head of the chain. The
-/// interval is chosen to provide a good balance between spamming the sequencer and getting new
-/// block information as it is available.
+/// Interval at which poll for new data when at the head of chain.
 ///
-/// The interval is based on the block creation time, which is 2 minutes for Goerlie and 2 hours for
-/// Mainnet.
+/// Returns the interval to be used when polling while at the head of the chain. The
+/// interval is chosen to provide a good balance between spamming and getting new
+/// block information as it is available. The interval is based on the block creation
+/// time, which is 2 minutes for Goerlie and 2 hours for Mainnet.
 pub fn head_poll_interval(chain: crate::ethereum::Chain) -> std::time::Duration {
     use crate::ethereum::Chain::*;
     use std::time::Duration;
