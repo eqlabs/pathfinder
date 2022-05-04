@@ -170,6 +170,8 @@ The configuration file uses the `toml` format:
 ```toml
 # The address we will host the RPC API at. Defaults to "127.0.0.1:9545"
 http-rpc = "127.0.0.1:1235"
+# The directory the node will use to store its data. Defaults to the current directory.
+data-directory = "..."
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
