@@ -48,7 +48,7 @@ where
     };
 
     // The core sync logic implementation.
-    sync_impl(eth_api, tx_event).await
+    sync_impl(eth_api, tx_event, chain).await
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -174,14 +174,19 @@ impl EventSender {
 async fn sync_impl(
     mut eth_api: impl EthereumApi,
     tx_event: mpsc::Sender<Event>,
+    chain: Chain,
 ) -> anyhow::Result<()> {
+    use crate::state::sync::head_poll_interval;
+
+    let head_poll_interval = head_poll_interval(chain);
+
     let event_sender = EventSender(tx_event);
     loop {
         match eth_api.fetch_logs().await {
             Ok(logs) => {
                 // If empty, then we are at head of chain, sleep a bit and try again.
                 if logs.is_empty() {
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    tokio::time::sleep(head_poll_interval).await;
                     continue;
                 }
 
@@ -345,7 +350,7 @@ mod tests {
                 .in_sequence(&mut seq)
                 .return_once(|| mock_output);
 
-            tokio::spawn(sync_impl(mock_fetcher, tx_event));
+            tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
 
             match rx_event.recv().await.unwrap() {
                 Event::Update(recv) => assert_eq!(recv, logs1),
@@ -384,7 +389,7 @@ mod tests {
             mock_fetcher
                 .expect_fetch_logs()
                 .return_once(move || Ok(logs));
-            let handle = tokio::spawn(sync_impl(mock_fetcher, tx_event));
+            let handle = tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
 
             // Wrap this in a timeout so we don't wait forever in case of test failure.
             tokio::time::timeout(Duration::from_secs(2), handle)
@@ -467,7 +472,7 @@ mod tests {
                     .in_sequence(&mut seq)
                     .return_once(move || mock_output);
 
-                tokio::spawn(sync_impl(mock_fetcher, tx_event));
+                tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
 
                 // Receive first log update event.
                 match rx_event.recv().await.unwrap() {
@@ -555,7 +560,7 @@ mod tests {
                     .in_sequence(&mut seq)
                     .return_once(move || mock_output);
 
-                tokio::spawn(sync_impl(mock_fetcher, tx_event));
+                tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
 
                 // Receive the first log update event.
                 match rx_event.recv().await.unwrap() {
@@ -639,7 +644,7 @@ mod tests {
                     .in_sequence(&mut seq)
                     .return_once(move || mock_output);
 
-                tokio::spawn(sync_impl(mock_fetcher, tx_event));
+                tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
 
                 // First log batch event.
                 match rx_event.recv().await.unwrap() {
