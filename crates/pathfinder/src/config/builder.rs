@@ -238,5 +238,29 @@ mod tests {
                 assert!(builder.try_build().is_err());
             }
         }
+
+        mod defaults {
+            //! Tests that the correct default values are applied during `try_build`.
+
+            use super::builder_with_all_required;
+
+            #[test]
+            fn data_directory() {
+                let expected = std::env::current_dir().unwrap();
+                let config = builder_with_all_required().try_build().unwrap();
+                assert_eq!(config.data_directory, expected);
+            }
+
+            #[test]
+            fn http_rpc_addr() {
+                use crate::config::DEFAULT_HTTP_RPC_ADDR;
+                use std::net::SocketAddr;
+
+                let expected = DEFAULT_HTTP_RPC_ADDR.parse::<SocketAddr>().unwrap();
+
+                let config = builder_with_all_required().try_build().unwrap();
+                assert_eq!(config.http_rpc_addr, expected);
+            }
+        }
     }
 }
