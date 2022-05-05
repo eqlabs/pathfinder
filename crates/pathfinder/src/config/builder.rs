@@ -3,7 +3,7 @@
 
 use crate::config::{ConfigOption, Configuration, EthereumConfig};
 use reqwest::Url;
-use std::{collections::HashMap, net::SocketAddr};
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf, str::FromStr};
 
 /// A convenient way of collecting and merging configuration options.
 ///
@@ -40,9 +40,6 @@ impl ConfigBuilder {
 
         // Required parameters.
         let eth_url = self.take_required(ConfigOption::EthereumHttpUrl)?;
-        let http_rpc_addr = self
-            .take_required(ConfigOption::HttpRpcAddress)
-            .unwrap_or_else(|_| DEFAULT_HTTP_RPC_ADDR.to_owned());
 
         // Parse the Ethereum URL.
         let eth_url = eth_url.parse::<Url>().map_err(|err| {
@@ -51,6 +48,19 @@ impl ConfigBuilder {
                 format!("Invalid Ethereum URL ({}): {}", eth_url, err),
             )
         })?;
+
+        // Optional parameters.
+        let eth_user_agent = self.take(ConfigOption::EthereumUserAgent);
+        let eth_password = self.take(ConfigOption::EthereumPassword);
+
+        // Optional parameters with defaults.
+        let data_directory = self
+            .take(ConfigOption::DataDirectory)
+            .map(|s| Ok(PathBuf::from_str(&s).unwrap()))
+            .unwrap_or_else(std::env::current_dir)?;
+        let http_rpc_addr = self
+            .take(ConfigOption::HttpRpcAddress)
+            .unwrap_or_else(|| DEFAULT_HTTP_RPC_ADDR.to_owned());
 
         // Parse the HTTP-RPC listening address and port.
         let http_rpc_addr = http_rpc_addr.parse::<SocketAddr>().map_err(|err| {
@@ -63,10 +73,6 @@ impl ConfigBuilder {
             )
         })?;
 
-        // Optional parameters.
-        let eth_user_agent = self.take(ConfigOption::EthereumUserAgent);
-        let eth_password = self.take(ConfigOption::EthereumPassword);
-
         Ok(Configuration {
             ethereum: EthereumConfig {
                 url: eth_url,
@@ -74,6 +80,7 @@ impl ConfigBuilder {
                 password: eth_password,
             },
             http_rpc_addr,
+            data_directory,
         })
     }
 
@@ -228,7 +235,31 @@ mod tests {
             for option in REQUIRED {
                 let mut builder = builder_with_all_required();
                 builder.take(*option);
-                assert!(builder.try_build().is_err());
+                assert!(builder.try_build().is_err(), "{option} failed");
+            }
+        }
+
+        mod defaults {
+            //! Tests that the correct default values are applied during `try_build`.
+
+            use super::builder_with_all_required;
+
+            #[test]
+            fn data_directory() {
+                let expected = std::env::current_dir().unwrap();
+                let config = builder_with_all_required().try_build().unwrap();
+                assert_eq!(config.data_directory, expected);
+            }
+
+            #[test]
+            fn http_rpc_addr() {
+                use crate::config::DEFAULT_HTTP_RPC_ADDR;
+                use std::net::SocketAddr;
+
+                let expected = DEFAULT_HTTP_RPC_ADDR.parse::<SocketAddr>().unwrap();
+
+                let config = builder_with_all_required().try_build().unwrap();
+                assert_eq!(config.http_rpc_addr, expected);
             }
         }
     }

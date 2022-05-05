@@ -170,6 +170,8 @@ The configuration file uses the `toml` format:
 ```toml
 # The address we will host the RPC API at. Defaults to "127.0.0.1:9545"
 http-rpc = "127.0.0.1:1235"
+# The directory the node will use to store its data. Defaults to the current directory.
+data-directory = "..."
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
@@ -235,12 +237,13 @@ docker run \
 
 The following environment variables can be passed to the container:
 
-| Name                               | Description                                                  | Default value | Required |
-| ---------------------------------- | ------------------------------------------------------------ | ------------- | -------- |
-| PATHFINDER_ETHEREUM_API_URL        | Ethereum (archive) node JSON-RPC endpoint URL                |               | yes      |
-| PATHFINDER_ETHEREUM_API_USER_AGENT | User-Agent header value to use with Ethereum node API        |               | no       |
-| PATHFINDER_ETHEREUM_API_PASSWORD   | Password to use during authentication with Ethereum node API |               | no       |
-| PATHFINDER_HTTP_RPC_ADDRESS        | Address to bind the `pathfinder` RPC server to               | 0.0.0.0:9545  | no       |
+| Name                               | Description                                                  | Default value     | Required |
+| ---------------------------------- | ------------------------------------------------------------ | ----------------- | -------- |
+| PATHFINDER_ETHEREUM_API_URL        | Ethereum (archive) node JSON-RPC endpoint URL                |                   | yes      |
+| PATHFINDER_ETHEREUM_API_USER_AGENT | User-Agent header value to use with Ethereum node API        |                   | no       |
+| PATHFINDER_ETHEREUM_API_PASSWORD   | Password to use during authentication with Ethereum node API |                   | no       |
+| PATHFINDER_HTTP_RPC_ADDRESS        | Address to bind the `pathfinder` RPC server to               | 0.0.0.0:9545      | no       |
+| PATHFINDER_DATA_DIRECTORY          | Directory used to store `pathfinder` data                    | Current directory | no       |
 
 ### Building the container image yourself
 

@@ -16,19 +16,22 @@ struct FileConfig {
     ethereum: Option<EthereumConfig>,
     #[serde(rename = "http-rpc")]
     http_rpc: Option<String>,
+    #[serde(rename = "data-directory")]
+    data_directory: Option<String>,
 }
 
 impl FileConfig {
     fn into_config_options(self) -> ConfigBuilder {
         use crate::config::ConfigOption;
-        let builder = match self.ethereum {
+        match self.ethereum {
             Some(eth) => ConfigBuilder::default()
                 .with(ConfigOption::EthereumHttpUrl, eth.url)
                 .with(ConfigOption::EthereumUserAgent, eth.user_agent)
                 .with(ConfigOption::EthereumPassword, eth.password),
             None => ConfigBuilder::default(),
-        };
-        builder.with(ConfigOption::HttpRpcAddress, self.http_rpc)
+        }
+        .with(ConfigOption::DataDirectory, self.data_directory)
+        .with(ConfigOption::HttpRpcAddress, self.http_rpc)
     }
 }
 
@@ -99,6 +102,14 @@ password = "{}""#,
         let toml = format!(r#"http-rpc = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
+    }
+
+    #[test]
+    fn data_directory() {
+        let value = "value".to_owned();
+        let toml = format!(r#"data-directory = "{}""#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(cfg.take(ConfigOption::DataDirectory), Some(value));
     }
 
     #[test]
