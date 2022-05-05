@@ -251,7 +251,7 @@ mod tests {
         sequencer::{
             reply::transaction::{
                 execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                ExecutionResources, Receipt, Transaction, Type,
+                Event, ExecutionResources, Receipt, Transaction, Type,
             },
             test_utils::*,
             Client as SeqClient,
@@ -441,7 +441,7 @@ mod tests {
             transaction_hash: txn0_hash,
             r#type: Type::Deploy,
         };
-        let receipt0 = Receipt {
+        let mut receipt0 = Receipt {
             actual_fee: None,
             events: vec![],
             execution_resources: ExecutionResources {
@@ -481,6 +481,13 @@ mod tests {
         let mut receipt3 = receipt0.clone();
         let mut receipt4 = receipt0.clone();
         let mut receipt5 = receipt0.clone();
+        receipt0.events = vec![Event {
+            data: vec![EventData(
+                StarkHash::from_be_slice(b"event 0 data").unwrap(),
+            )],
+            from_address: ContractAddress(StarkHash::from_be_slice(b"event 0 from addr").unwrap()),
+            keys: vec![EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())],
+        }];
         receipt1.transaction_hash = txn1_hash;
         receipt2.transaction_hash = txn2_hash;
         receipt3.transaction_hash = txn3_hash;
@@ -1454,6 +1461,10 @@ mod tests {
                     .await
                     .unwrap();
                 assert_eq!(receipt.txn_hash, txn_hash);
+                assert_eq!(
+                    receipt.events[0].keys[0],
+                    EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())
+                );
             }
 
             #[tokio::test]
@@ -1470,6 +1481,10 @@ mod tests {
                     .await
                     .unwrap();
                 assert_eq!(receipt.txn_hash, txn_hash);
+                assert_eq!(
+                    receipt.events[0].keys[0],
+                    EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())
+                );
             }
         }
 
