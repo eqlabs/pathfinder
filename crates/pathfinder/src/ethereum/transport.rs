@@ -67,15 +67,8 @@ impl HttpTransport {
     pub fn from_config(config: EthereumConfig) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder();
 
-        // "starknet-",
-        const USER_AGENT: &str = concat!(
-            env!("CARGO_PKG_NAME"),
-            "/",
-            env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
-        );
-
         let client = client
-            .user_agent(USER_AGENT)
+            .user_agent(crate::consts::USER_AGENT)
             .build()
             .context("Creating HTTP client")?;
 

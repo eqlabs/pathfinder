@@ -209,17 +209,10 @@ impl Client {
 
     /// Create a Sequencer client for the given [Url].
     fn with_url(url: Url) -> reqwest::Result<Self> {
-        // Resolves to "pathfinder/<version_info>"
-        const USER_AGENT: &str = concat!(
-            env!("CARGO_PKG_NAME"),
-            "/",
-            env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
-        );
-
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
-                .user_agent(USER_AGENT)
+                .user_agent(crate::consts::USER_AGENT)
                 .build()?,
             sequencer_url: url,
         })

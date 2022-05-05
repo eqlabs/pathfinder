@@ -1,5 +1,6 @@
 pub mod cairo;
 pub mod config;
+pub(crate) mod consts;
 pub mod core;
 pub mod ethereum;
 pub mod retry;
