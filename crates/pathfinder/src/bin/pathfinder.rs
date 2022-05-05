@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
         ethereum::Chain::Goerli => "goerli.sqlite",
     });
     let storage = Storage::migrate(database_path.clone()).unwrap();
-    info!(location=?database_path, "Database loaded.");
+    info!(location=?database_path, "Database migrated.");
 
     let sequencer = sequencer::Client::new(network_chain).unwrap();
     let sync_state = Arc::new(state::SyncState::default());
