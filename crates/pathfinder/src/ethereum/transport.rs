@@ -66,12 +66,18 @@ impl HttpTransport {
     /// - the password (if provided)
     pub fn from_config(config: EthereumConfig) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder();
-        let client = match config.user_agent {
-            Some(user_agent) => client.user_agent(user_agent),
-            None => client,
-        }
-        .build()
-        .context("Creating HTTP client")?;
+
+        // "starknet-",
+        const USER_AGENT: &str = concat!(
+            env!("CARGO_PKG_NAME"),
+            "/",
+            env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
+        );
+
+        let client = client
+            .user_agent(USER_AGENT)
+            .build()
+            .context("Creating HTTP client")?;
 
         let mut url = config.url;
         url.set_password(config.password.as_deref())
