@@ -81,13 +81,16 @@ where
     })?;
 
     // Start update sync-status process.
-    let starting_block = l2_head
-        .map(|(_, hash)| hash)
-        .unwrap_or(StarknetBlockHash(StarkHash::ZERO));
+    let (starting_block_num, starting_block_hash) = l2_head.unwrap_or((
+        // Seems a better choice for an invalid block number than 0
+        StarknetBlockNumber(u64::MAX),
+        StarknetBlockHash(StarkHash::ZERO),
+    ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
         Arc::clone(&state),
         sequencer.clone(),
-        starting_block,
+        starting_block_hash,
+        starting_block_num,
         chain,
     ));
 
@@ -199,7 +202,8 @@ where
                     match &mut *state.status.write().await {
                         SyncStatus::False(_) => {}
                         SyncStatus::Status(status) => {
-                            status.current_block = block_hash;
+                            status.current_block_hash = block_hash;
+                            status.current_block_num = StarknetBlockNumber(block_num);
                         }
                     }
 
@@ -311,7 +315,8 @@ where
 async fn update_sync_status_latest(
     state: Arc<State>,
     sequencer: impl sequencer::ClientApi,
-    starting_block: StarknetBlockHash,
+    starting_block_hash: StarknetBlockHash,
+    starting_block_num: StarknetBlockNumber,
     chain: Chain,
 ) -> anyhow::Result<()> {
     use crate::rpc::types::{BlockNumberOrTag, Tag};
@@ -323,28 +328,36 @@ async fn update_sync_status_latest(
             .await
         {
             Ok(block) => {
-                let latest = block.block_hash.unwrap();
+                let latest_hash = block.block_hash.unwrap();
+                let latest_num = block.block_number.unwrap();
                 // Update the sync status.
                 match &mut *state.status.write().await {
                     sync_status @ SyncStatus::False(_) => {
                         *sync_status = SyncStatus::Status(syncing::Status {
-                            starting_block,
-                            current_block: starting_block,
-                            highest_block: latest,
+                            starting_block_hash,
+                            starting_block_num,
+                            current_block_hash: starting_block_hash,
+                            current_block_num: starting_block_num,
+                            highest_block_hash: latest_hash,
+                            highest_block_num: latest_num,
                         });
 
                         tracing::debug!(
-                            starting=%starting_block.0,
-                            current=%starting_block.0,
-                            highest=%latest.0,
+                            starting_hash=%starting_block_hash.0,
+                            starting_num=%starting_block_num.0,
+                            current_hash=%starting_block_hash.0,
+                            current_num=%starting_block_num.0,
+                            highest_hash=%latest_hash.0,
+                            highest_num=%latest_num.0,
                             "Updated sync status",
                         );
                     }
                     SyncStatus::Status(status) => {
-                        if status.highest_block != latest {
-                            status.highest_block = latest;
+                        if status.highest_block_hash != latest_hash {
+                            status.highest_block_hash = latest_hash;
                             tracing::debug!(
-                                highest=%latest.0,
+                                highest_hash=%latest_hash.0,
+                                highest_num=%latest_num.0,
                                 "Updated sync status",
                             );
                         }

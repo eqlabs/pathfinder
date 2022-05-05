@@ -2,7 +2,8 @@
 
 use crate::core::{
     CallParam, CallSignatureElem, ConstructorParam, EthereumAddress, EventData, EventKey, Fee,
-    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionSignatureElem,
+    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
+    TransactionSignatureElem,
 };
 use num_bigint::BigUint;
 use pedersen::{HexParseError, OverflowError, StarkHash};
@@ -191,6 +192,50 @@ impl<'de> DeserializeAs<'de, Fee> for FeeAsHexStr {
         }
 
         deserializer.deserialize_str(FeeVisitor)
+    }
+}
+
+pub struct StarknetBlockNumberAsHexStr;
+
+impl SerializeAs<StarknetBlockNumber> for StarknetBlockNumberAsHexStr {
+    fn serialize_as<S>(source: &StarknetBlockNumber, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let bytes = source.0.to_be_bytes();
+        // StarknetBlockNumber is "0x" + 16 digits at most
+        let mut buf = [0u8; 2 + 16];
+        let s = bytes_as_hex_str(&bytes, &mut buf);
+        serializer.serialize_str(s)
+    }
+}
+
+impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexStr {
+    fn deserialize_as<D>(deserializer: D) -> Result<StarknetBlockNumber, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct StarknetBlockNumberVisitor;
+
+        impl<'de> Visitor<'de> for StarknetBlockNumberVisitor {
+            type Value = StarknetBlockNumber;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a hex string of up to 16 digits with an optional '0x' prefix")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let stripped = v.strip_prefix("0x").unwrap_or(v);
+                u64::from_str_radix(stripped, 16)
+                    .map_err(serde::de::Error::custom)
+                    .map(StarknetBlockNumber)
+            }
+        }
+
+        deserializer.deserialize_str(StarknetBlockNumberVisitor)
     }
 }
 
@@ -496,5 +541,43 @@ mod tests {
             bytes_from_hex_str::<32>("0x123z"),
             Err(HexParseError::InvalidNibble(b'z'))
         );
+    }
+
+    mod block_number_as_hex_str {
+        #[serde_with::serde_as]
+        #[derive(Debug, Copy, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+        struct BlockNum(
+            #[serde_as(as = "super::StarknetBlockNumberAsHexStr")] crate::core::StarknetBlockNumber,
+        );
+
+        impl BlockNum {
+            pub fn new(v: u64) -> Self {
+                Self(crate::core::StarknetBlockNumber(v))
+            }
+        }
+
+        #[test]
+        fn deserialize() {
+            // u64::from_str_radix does not accept the `0x` prefix, so also make sure it is stripped
+            ["", "0x"].into_iter().for_each(|prefix| {
+                assert_eq!(
+                    serde_json::from_str::<BlockNum>(&format!("\"{prefix}0\"")).unwrap(),
+                    BlockNum::new(0)
+                );
+                assert_eq!(
+                    serde_json::from_str::<BlockNum>(&format!("\"{prefix}123\"")).unwrap(),
+                    BlockNum::new(0x123)
+                );
+                assert_eq!(
+                    serde_json::from_str::<BlockNum>(&format!("\"{prefix}1234\"")).unwrap(),
+                    BlockNum::new(0x1234)
+                );
+                assert_eq!(
+                    serde_json::from_str::<BlockNum>(&format!("\"{prefix}ffffffffffffffff\""))
+                        .unwrap(),
+                    BlockNum::new(u64::MAX)
+                );
+            });
+        }
     }
 }
