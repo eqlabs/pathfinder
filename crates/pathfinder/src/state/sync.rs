@@ -615,14 +615,20 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            ContractAddress, ContractHash, EthereumBlockHash, EthereumBlockNumber,
-            EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress, StorageValue,
+            ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash,
+            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, Fee, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+            StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
+            TransactionVersion,
         },
         ethereum,
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
-        sequencer::{self, error::SequencerError, reply, request},
+        sequencer::{
+            self,
+            error::SequencerError,
+            reply,
+            request::{self, add_transaction::ContractDefinition},
+        },
         state,
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
@@ -738,6 +744,24 @@ mod tests {
         async fn eth_contract_addresses(
             &self,
         ) -> Result<reply::EthContractAddresses, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn add_invoke_transaction(
+            &self,
+            _: crate::sequencer::request::Call,
+            _: Fee,
+            _: TransactionVersion,
+        ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn add_deploy_transaction(
+            &self,
+            _: ContractAddressSalt,
+            _: Vec<ConstructorParam>,
+            _: ContractDefinition,
+        ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
             unimplemented!()
         }
     }

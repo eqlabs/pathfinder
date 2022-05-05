@@ -57,6 +57,13 @@ impl EntryPoint {
     }
 }
 
+/// Offset of an entry point into the bytecode of a StarkNet contract.
+///
+/// This is a StarkHash because we use it directly for computing the
+/// contract hashes.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ByteCodeOffset(pub StarkHash);
+
 /// A single parameter passed to a StarkNet `call`.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CallParam(pub StarkHash);
@@ -141,6 +148,10 @@ pub struct StarknetProtocolVersion(pub H256);
 /// StarkNet fee value.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Fee(pub H128);
+
+/// StarkNet transaction version.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct TransactionVersion(pub H256);
 
 /// An Ethereum address.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]

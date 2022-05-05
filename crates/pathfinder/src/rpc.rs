@@ -4,21 +4,27 @@ pub mod serde;
 pub mod types;
 
 use crate::{
-    core::{ContractAddress, StarknetTransactionHash, StarknetTransactionIndex},
+    core::{
+        CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        StarknetTransactionHash, StarknetTransactionIndex, TransactionVersion,
+    },
     rpc::{
         api::RpcApi,
+        serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
         types::{
             request::OverflowingStorageAddress,
             request::{BlockResponseScope, Call, EventFilter},
             BlockHashOrTag, BlockNumberOrTag,
         },
     },
+    sequencer::request::add_transaction::ContractDefinition,
 };
 use ::serde::Deserialize;
 use jsonrpsee::{
     http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
     types::Error,
 };
+
 use std::{net::SocketAddr, result::Result};
 
 /// Helper wrapper for attaching spans to rpc method implementations
@@ -234,6 +240,51 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
         let request = params.parse::<NamedArgs>()?.filter;
         context.get_events(request).await
     })?;
+    module.register_async_method(
+        "starknet_addInvokeTransaction",
+        |params, context| async move {
+            #[serde_with::serde_as]
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub function_invocation: Call,
+                #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
+                pub signature: Vec<CallSignatureElem>,
+                #[serde_as(as = "FeeAsHexStr")]
+                pub max_fee: Fee,
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                pub version: TransactionVersion,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .add_invoke_transaction(
+                    params.function_invocation,
+                    params.signature,
+                    params.max_fee,
+                    params.version,
+                )
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_addDeployTransaction",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub contract_address_salt: ContractAddressSalt,
+                pub constructor_calldata: Vec<ConstructorParam>,
+                pub contract_definition: ContractDefinition,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .add_deploy_transaction(
+                    params.contract_address_salt,
+                    params.constructor_calldata,
+                    params.contract_definition,
+                )
+                .await
+        },
+    )?;
+
     let module = module.into_inner();
     server.start(module).map(|handle| (handle, local_addr))
 }
@@ -319,7 +370,7 @@ mod tests {
     // Local test helper
     fn setup_storage() -> Storage {
         use crate::{
-            core::{Fee, StorageValue},
+            core::StorageValue,
             ethereum::state_update::{ContractUpdate, StorageUpdate},
             state::{update_contract_state, CompressedContract},
         };
@@ -2593,6 +2644,315 @@ mod tests {
                         events: vec![expected_event.clone()],
                         page_number: 0,
                         is_last_page: true,
+                    }
+                );
+            }
+        }
+    }
+
+    mod add_transaction {
+        use super::*;
+        use crate::rpc::types::reply::{DeployTransactionResult, InvokeTransactionResult};
+
+        lazy_static::lazy_static! {
+            pub static ref CONTRACT_DEFINITION_JSON: serde_json::Value = {
+                let json = include_bytes!("../resources/deploy_transaction.json");
+                let mut json: serde_json::Value = serde_json::from_slice(json).unwrap();
+                json["contract_definition"].take()
+            };
+        }
+
+        mod positional_args {
+            use std::collections::HashMap;
+
+            use super::*;
+            use crate::{
+                core::{ByteCodeOffset, CallParam, EntryPoint},
+                sequencer::request::contract::{EntryPointType, SelectorAndOffset},
+            };
+
+            use pretty_assertions::assert_eq;
+            use web3::types::H256;
+
+            lazy_static::lazy_static! {
+                pub static ref CALL: Call = Call {
+                    contract_address: ContractAddress(
+                        StarkHash::from_hex_str(
+                            "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                        )
+                        .unwrap(),
+                    ),
+                    calldata: vec![
+                        CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                        CallParam(
+                            StarkHash::from_hex_str(
+                                "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
+                            )
+                            .unwrap(),
+                        ),
+                        CallParam(
+                            StarkHash::from_hex_str(
+                                "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
+                            )
+                            .unwrap(),
+                        ),
+                        CallParam(StarkHash::ZERO),
+                        CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                        CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                        CallParam(StarkHash::from_hex_str("0x2b").unwrap()),
+                        CallParam(StarkHash::ZERO),
+                    ],
+                    entry_point_selector: EntryPoint(
+                        StarkHash::from_hex_str(
+                            "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+                        )
+                        .unwrap(),
+                    ),
+                };
+                pub static ref SIGNATURE: Vec<CallSignatureElem> = vec![
+                    CallSignatureElem(
+                        StarkHash::from_hex_str(
+                            "0x7dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5",
+                        )
+                        .unwrap(),
+                    ),
+                    CallSignatureElem(
+                        StarkHash::from_hex_str(
+                            "0x71456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8",
+                        )
+                        .unwrap(),
+                    ),
+                ];
+                pub static ref MAX_FEE: Fee = Fee(5444010076217u128.to_be_bytes().into());
+                pub static ref TRANSACTION_VERSION: TransactionVersion = TransactionVersion(H256::zero());
+
+                pub static ref ENTRY_POINTS_BY_TYPE: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
+                HashMap::from([
+                    (EntryPointType::Constructor, vec![]),
+                    (
+                        EntryPointType::External,
+                        vec![
+                            SelectorAndOffset {
+                                offset: ByteCodeOffset(StarkHash::from_hex_str("0x3a").unwrap()),
+                                selector: EntryPoint::hashed(&b"increase_balance"[..]),
+                            },
+                            SelectorAndOffset{
+                                offset: ByteCodeOffset(StarkHash::from_hex_str("0x5b").unwrap()),
+                                selector: EntryPoint::hashed(&b"get_balance"[..]),
+                            },
+                        ],
+                    ),
+                    (EntryPointType::L1Handler, vec![]),
+                ]);
+                pub static ref PROGRAM: String = CONTRACT_DEFINITION_JSON["program"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned();
+                pub static ref CONTRACT_DEFINITION: ContractDefinition = ContractDefinition {
+                    abi: serde_json::json!([
+                        {
+                            "inputs": [
+                                {
+                                    "name": "amount",
+                                    "type": "felt"
+                                }
+                            ],
+                            "name": "increase_balance",
+                            "outputs": [],
+                            "type": "function"
+                        },
+                        {
+                            "inputs": [],
+                            "name": "get_balance",
+                            "outputs": [
+                                {
+                                    "name": "res",
+                                    "type": "felt"
+                                }
+                            ],
+                            "stateMutability": "view",
+                            "type": "function"
+                        }
+                    ]),
+                    program: PROGRAM.clone(),
+                    entry_points_by_type: ENTRY_POINTS_BY_TYPE.clone(),
+                };
+            }
+
+            #[tokio::test]
+            async fn invoke_transaction() {
+                let storage = setup_storage();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let params = rpc_params!(
+                    CALL.clone(),
+                    SIGNATURE.clone(),
+                    *MAX_FEE,
+                    *TRANSACTION_VERSION
+                );
+                let rpc_result = client(addr)
+                    .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    InvokeTransactionResult {
+                        transaction_hash: StarknetTransactionHash(
+                            StarkHash::from_hex_str(
+                                "0x389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
+                            )
+                            .unwrap()
+                        )
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn deploy_transaction() {
+                let storage = setup_storage();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let contract_definition = CONTRACT_DEFINITION.clone();
+                let contract_address_salt = ContractAddressSalt(
+                    StarkHash::from_hex_str(
+                        "0x5864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d",
+                    )
+                    .unwrap(),
+                );
+                let constructor_calldata: Vec<ConstructorParam> = vec![];
+
+                let params = rpc_params!(
+                    contract_address_salt,
+                    constructor_calldata,
+                    contract_definition
+                );
+
+                let rpc_result = client(addr)
+                    .request::<DeployTransactionResult>("starknet_addDeployTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    DeployTransactionResult {
+                        transaction_hash: StarknetTransactionHash(
+                            StarkHash::from_hex_str(
+                                "0x057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
+                            )
+                            .unwrap()
+                        ),
+                        contract_address: ContractAddress(
+                            StarkHash::from_hex_str(
+                                "0x03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
+                            )
+                            .unwrap()
+                        ),
+                    }
+                );
+            }
+        }
+
+        mod named_args {
+            use super::*;
+
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn invoke_transaction() {
+                let storage = setup_storage();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let params = by_name([
+                    (
+                        "function_invocation",
+                        json!({
+                            "contract_address": "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                            "calldata": [
+                                "1",
+                                "2925423296824367013529965983412166292018955438053992527907701360681569823649",
+                                "1530486729947006463063166157847785599120665941190480211966374137237989315360",
+                                "0",
+                                "1",
+                                "1",
+                                "43",
+                                "0"
+                            ],
+                            "entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
+                        }),
+                    ),
+                    ("signature", json!([
+                        "3557065757165699682249469970267166698995647077461960906176449260016084767701",
+                        "3202126414680946801789588986259466145787792017299869598314522555275920413944"
+                    ])),
+                    ("max_fee", json!("0x4f388496839")),
+                    ("version", json!("0x0")),
+                ]);
+
+                let rpc_result = client(addr)
+                    .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    InvokeTransactionResult {
+                        transaction_hash: StarknetTransactionHash(
+                            StarkHash::from_hex_str(
+                                "0x389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
+                            )
+                            .unwrap()
+                        )
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn deploy_transaction() {
+                let storage = setup_storage();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+
+                let params = by_name([
+                    (
+                        "contract_address_salt",
+                        json!("0x5864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"),
+                    ),
+                    ("constructor_calldata", json!([])),
+                    ("contract_definition", CONTRACT_DEFINITION_JSON.clone()),
+                ]);
+
+                let rpc_result = client(addr)
+                    .request::<DeployTransactionResult>("starknet_addDeployTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    DeployTransactionResult {
+                        transaction_hash: StarknetTransactionHash(
+                            StarkHash::from_hex_str(
+                                "0x057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
+                            )
+                            .unwrap()
+                        ),
+                        contract_address: ContractAddress(
+                            StarkHash::from_hex_str(
+                                "0x03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
+                            )
+                            .unwrap()
+                        ),
                     }
                 );
             }

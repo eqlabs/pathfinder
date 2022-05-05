@@ -37,7 +37,16 @@ impl From<SequencerError> for rpc::Error {
                 StarknetErrorCode::BlockNotFound if e.message.contains("Block number") => {
                     RpcErrorCode::InvalidBlockNumber.into()
                 }
-                _ => rpc::Error::Call(rpc::CallError::Failed(e.into())),
+                StarknetErrorCode::InvalidContractDefinition => {
+                    RpcErrorCode::InvalidContractDefinition.into()
+                }
+                StarknetErrorCode::BlockNotFound
+                | StarknetErrorCode::SchemaValidationError
+                | StarknetErrorCode::MalformedRequest
+                | StarknetErrorCode::UnsupportedSelectorForFee
+                | StarknetErrorCode::OutOfRangeBlockHash => {
+                    rpc::Error::Call(rpc::CallError::Failed(e.into()))
+                }
             },
         }
     }
@@ -84,4 +93,8 @@ pub enum StarknetErrorCode {
     OutOfRangeTransactionHash,
     #[serde(rename = "StarkErrorCode.MALFORMED_REQUEST")]
     MalformedRequest,
+    #[serde(rename = "StarknetErrorCode.UNSUPPORTED_SELECTOR_FOR_FEE")]
+    UnsupportedSelectorForFee,
+    #[serde(rename = "StarknetErrorCode.INVALID_CONTRACT_DEFINITION")]
+    InvalidContractDefinition,
 }

@@ -4,6 +4,7 @@ use serde::Serialize;
 use sha3::Digest;
 
 use crate::core::ContractHash;
+use crate::sequencer::request::contract::EntryPointType;
 
 /// Computes the starknet contract hash for given contract definition json blob.
 ///
@@ -58,7 +59,7 @@ pub(crate) fn extract_abi_code_hash(
 fn compute_contract_hash0(
     mut contract_definition: json::ContractDefinition<'_>,
 ) -> Result<ContractHash> {
-    use json::EntryPointType::*;
+    use EntryPointType::*;
 
     // the other modification is handled by skipping if the attributes vec is empty
     contract_definition.program.debug_info = None;
@@ -135,36 +136,14 @@ fn compute_contract_hash0(
                 .get(key)
                 .unwrap_or(&Vec::new())
                 .iter()
-                .enumerate()
                 // flatten each entry point to get a list of (selector, offset, selector, offset, ...)
-                // `i` is the nth selector of the `key` kind
-                .flat_map(|(i, x)| {
-                    [("selector", &*x.selector), ("offset", &*x.offset)]
-                        .into_iter()
-                        .map(move |(field, x)| match x.strip_prefix("0x") {
-                            Some(x) => Ok((field, x)),
-                            None => Err(anyhow::anyhow!(
-                                "Entry point missing '0x' prefix under {key} at index {i} entry ({field})",
-                            )),
-                        })
-                        .map(move |res| {
-                            res.and_then(|(field, hex)| {
-                                StarkHash::from_hex_str(hex).with_context(|| {
-                                    format!("Entry point invalid hex under {key} at index {i} entry ({field})")
-                                })
-                            })
-                        })
-                })
-                .try_fold(HashChain::default(), |mut hc, next| {
-                    hc.update(next?);
-                    Result::<_, Error>::Ok(hc)
+                .flat_map(|x| [x.selector.0, x.offset.0].into_iter())
+                .fold(HashChain::default(), |mut hc, next| {
+                    hc.update(next);
+                    hc
                 })
         })
-        .try_for_each(|x| {
-            outer.update(x?.finalize());
-            Result::<_, Error>::Ok(())
-        })
-        .context("Failed to process contract_definition.entry_points_by_type")?;
+        .for_each(|x| outer.update(x.finalize()));
 
     let builtins = contract_definition
         .program
@@ -308,7 +287,8 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
 mod json {
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
-    use std::fmt;
+
+    use crate::sequencer::request::contract::{EntryPointType, SelectorAndOffset};
 
     /// Our version of the cairo contract definition used to deserialize and re-serialize a
     /// modified version for a hash of the contract definition.
@@ -337,39 +317,8 @@ mod json {
         ///
         /// These are left out of the re-serialized version with the ordering requirement to a
         /// Keccak256 hash.
-        #[serde(skip_serializing, borrow)]
-        pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset<'a>>>,
-    }
-
-    #[derive(Copy, Clone, Debug, serde::Deserialize, PartialEq, Hash, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub enum EntryPointType {
-        #[serde(rename = "EXTERNAL")]
-        External,
-        #[serde(rename = "L1_HANDLER")]
-        L1Handler,
-        #[serde(rename = "CONSTRUCTOR")]
-        Constructor,
-    }
-
-    impl fmt::Display for EntryPointType {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            use EntryPointType::*;
-            f.pad(match self {
-                External => "EXTERNAL",
-                L1Handler => "L1_HANDLER",
-                Constructor => "CONSTRUCTOR",
-            })
-        }
-    }
-
-    #[derive(serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct SelectorAndOffset<'a> {
-        #[serde(borrow)]
-        pub selector: Cow<'a, str>,
-        #[serde(borrow)]
-        pub offset: Cow<'a, str>,
+        #[serde(skip_serializing)]
+        pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
     }
 
     // It's important that this is ordered alphabetically because the fields need to be in

@@ -2,9 +2,10 @@
 use crate::{
     cairo::ext_py,
     core::{
-        CallResultValue, ContractAddress, ContractCode, GlobalRoot, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-        StarknetTransactionIndex, StorageValue,
+        CallResultValue, CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
+        ContractCode, Fee, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageValue,
+        TransactionVersion,
     },
     ethereum::Chain,
     rpc::types::{
@@ -15,7 +16,7 @@ use crate::{
         request::{BlockResponseScope, Call, EventFilter, OverflowingStorageAddress},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
-    sequencer::{self, ClientApi},
+    sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
     state::SyncState,
     storage::{
         EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
@@ -30,6 +31,8 @@ use jsonrpsee::types::{
 use pedersen::StarkHash;
 use std::convert::TryInto;
 use std::sync::Arc;
+
+use super::types::reply::{DeployTransactionResult, InvokeTransactionResult};
 
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
@@ -949,6 +952,53 @@ impl RpcApi {
             .map_err(internal_server_error)
             // flatten is unstable
             .and_then(|x| x)
+    }
+
+    /// Submit a new transaction to be added to the chain.
+    ///
+    /// This method just forwards the request received over the JSON-RPC
+    /// interface to the sequencer.
+    pub async fn add_invoke_transaction(
+        &self,
+        call: Call,
+        signature: Vec<CallSignatureElem>,
+        max_fee: Fee,
+        version: TransactionVersion,
+    ) -> RpcResult<InvokeTransactionResult> {
+        let mut call: sequencer::request::Call = call.into();
+        call.signature = signature;
+
+        let result = self
+            .sequencer
+            .add_invoke_transaction(call, max_fee, version)
+            .await?;
+        Ok(InvokeTransactionResult {
+            transaction_hash: result.transaction_hash,
+        })
+    }
+
+    /// Submit a new deploy contract transaction.
+    ///
+    /// This method just forwards the request received over the JSON-RPC
+    /// interface to the sequencer.
+    pub async fn add_deploy_transaction(
+        &self,
+        contract_address_salt: ContractAddressSalt,
+        constructor_calldata: Vec<ConstructorParam>,
+        contract_definition: ContractDefinition,
+    ) -> RpcResult<DeployTransactionResult> {
+        let result = self
+            .sequencer
+            .add_deploy_transaction(
+                contract_address_salt,
+                constructor_calldata,
+                contract_definition,
+            )
+            .await?;
+        Ok(DeployTransactionResult {
+            transaction_hash: result.transaction_hash,
+            contract_address: result.address,
+        })
     }
 }
 

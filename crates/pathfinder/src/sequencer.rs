@@ -3,9 +3,15 @@ pub mod error;
 pub mod reply;
 pub mod request;
 
-use self::error::StarknetError;
+use self::{
+    error::StarknetError,
+    request::{add_transaction::ContractDefinition, Call},
+};
 use crate::{
-    core::{ContractAddress, StarknetTransactionHash, StorageAddress, StorageValue},
+    core::{
+        ConstructorParam, ContractAddress, ContractAddressSalt, Fee, StarknetTransactionHash,
+        StorageAddress, StorageValue, TransactionVersion,
+    },
     ethereum::Chain,
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
     sequencer::error::SequencerError,
@@ -65,6 +71,20 @@ pub trait ClientApi {
     ) -> Result<reply::StateUpdate, SequencerError>;
 
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
+
+    async fn add_invoke_transaction(
+        &self,
+        function_invocation: Call,
+        max_fee: Fee,
+        version: TransactionVersion,
+    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError>;
+
+    async fn add_deploy_transaction(
+        &self,
+        contract_address_salt: ContractAddressSalt,
+        constructor_calldata: Vec<ConstructorParam>,
+        contract_definition: ContractDefinition,
+    ) -> Result<reply::add_transaction::DeployResponse, SequencerError>;
 }
 
 /// StarkNet sequencer client using REST API.
@@ -206,12 +226,12 @@ impl Client {
     }
 
     /// Helper function that constructs a URL for particular query.
-    fn build_query(&self, path_segment: &str, params: &[(&str, &str)]) -> Url {
+    fn build_query(&self, path_segments: &[&str], params: &[(&str, &str)]) -> Url {
         let mut query_url = self.sequencer_url.clone();
         query_url
             .path_segments_mut()
             .expect("Base URL is valid")
-            .extend(&["feeder_gateway", path_segment]);
+            .extend(path_segments);
         query_url.query_pairs_mut().extend_pairs(params);
         tracing::trace!(%query_url);
         query_url
@@ -230,7 +250,10 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .get(self.build_query("get_block", &[("blockNumber", &number)]))
+                .get(self.build_query(
+                    &["feeder_gateway", "get_block"],
+                    &[("blockNumber", &number)],
+                ))
                 .send()
                 .await?;
             parse::<reply::Block>(resp).await
@@ -248,7 +271,7 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .get(self.build_query("get_block", &[(tag, &hash)]))
+                .get(self.build_query(&["feeder_gateway", "get_block"], &[(tag, &hash)]))
                 .send()
                 .await?;
             parse::<reply::Block>(resp).await
@@ -267,7 +290,7 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .post(self.build_query("call_contract", &[(tag, &hash)]))
+                .post(self.build_query(&["feeder_gateway", "call_contract"], &[(tag, &hash)]))
                 .json(&payload)
                 .send()
                 .await?;
@@ -286,7 +309,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_full_contract",
+                    &["feeder_gateway", "get_full_contract"],
                     &[("contractAddress", &contract_addr.0.to_hex_str())],
                 ))
                 .send()
@@ -313,7 +336,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_storage_at",
+                    &["feeder_gateway", "get_storage_at"],
                     &[
                         ("contractAddress", &contract_addr.0.to_hex_str()),
                         ("key", &starkhash_to_dec_str(&key.0)),
@@ -337,7 +360,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_transaction",
+                    &["feeder_gateway", "get_transaction"],
                     &[("transactionHash", &transaction_hash.0.to_hex_str())],
                 ))
                 .send()
@@ -357,7 +380,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_transaction_status",
+                    &["feeder_gateway", "get_transaction_status"],
                     &[("transactionHash", &transaction_hash.0.to_hex_str())],
                 ))
                 .send()
@@ -377,7 +400,7 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .get(self.build_query("get_state_update", &[(tag, &hash)]))
+                .get(self.build_query(&["feeder_gateway", "get_state_update"], &[(tag, &hash)]))
                 .send()
                 .await?;
             parse(resp).await
@@ -395,7 +418,7 @@ impl ClientApi for Client {
             let resp = self
                 .inner
                 .get(self.build_query(
-                    "get_state_update",
+                    &["feeder_gateway", "get_state_update"],
                     &[("blockNumber", &block_number_str(block_number))],
                 ))
                 .send()
@@ -411,12 +434,70 @@ impl ClientApi for Client {
         retry(|| async {
             let resp = self
                 .inner
-                .get(self.build_query("get_contract_addresses", &[]))
+                .get(self.build_query(&["feeder_gateway", "get_contract_addresses"], &[]))
                 .send()
                 .await?;
             parse(resp).await
         })
         .await
+    }
+
+    /// Adds a transaction invoking a contract.
+    #[tracing::instrument(skip(self))]
+    async fn add_invoke_transaction(
+        &self,
+        call: Call,
+        max_fee: Fee,
+        version: TransactionVersion,
+    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+        let req = request::add_transaction::AddTransaction::Invoke(
+            request::add_transaction::InvokeFunction {
+                contract_address: call.contract_address,
+                entry_point_selector: call.entry_point_selector,
+                calldata: call.calldata,
+                max_fee,
+                version,
+                signature: call.signature,
+            },
+        );
+        // Note that we don't do retries here.
+        // This method is used to proxy an add transaction operation from the JSON-RPC
+        // API to the sequencer. Retries should be implemented in the JSON-RPC
+        // client instead.
+        let resp = self
+            .inner
+            .post(self.build_query(&["gateway", "add_transaction"], &[]))
+            .json(&req)
+            .send()
+            .await?;
+        parse(resp).await
+    }
+
+    /// Deploys a contract.
+    #[tracing::instrument(skip(self, contract_definition))]
+    async fn add_deploy_transaction(
+        &self,
+        contract_address_salt: ContractAddressSalt,
+        constructor_calldata: Vec<ConstructorParam>,
+        contract_definition: ContractDefinition,
+    ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
+        let req =
+            request::add_transaction::AddTransaction::Deploy(request::add_transaction::Deploy {
+                contract_address_salt,
+                contract_definition,
+                constructor_calldata,
+            });
+        // Note that we don't do retries here.
+        // This method is used to proxy an add transaction operation from the JSON-RPC
+        // API to the sequencer. Retries should be implemented in the JSON-RPC
+        // client instead.
+        let resp = self
+            .inner
+            .post(self.build_query(&["gateway", "add_transaction"], &[]))
+            .json(&req)
+            .send()
+            .await?;
+        parse(resp).await
     }
 }
 
@@ -1103,6 +1184,231 @@ mod tests {
     #[tokio::test]
     async fn eth_contract_addresses() {
         client().eth_contract_addresses().await.unwrap();
+    }
+
+    mod add_transaction {
+        use std::collections::HashMap;
+
+        use super::*;
+        use crate::{
+            core::{ByteCodeOffset, CallParam, CallSignatureElem, EntryPoint},
+            sequencer::request::contract::{EntryPointType, SelectorAndOffset},
+        };
+
+        use web3::types::H256;
+
+        #[tokio::test]
+        async fn invalid_entry_point_selector() {
+            // test with values dumped from `starknet invoke` for a test contract, except for
+            // an invalid entry point value
+            let  error = client()
+                .add_invoke_transaction(
+                    Call {
+                        contract_address: ContractAddress(
+                            StarkHash::from_hex_str(
+                                "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                            )
+                            .unwrap(),
+                        ),
+                        calldata: vec![
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(
+                                StarkHash::from_hex_str(
+                                    "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
+                                )
+                                .unwrap(),
+                            ),
+                            CallParam(
+                                StarkHash::from_hex_str(
+                                    "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
+                                )
+                                .unwrap(),
+                            ),
+                            CallParam(StarkHash::ZERO),
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(StarkHash::from_hex_str("0x2b").unwrap()),
+                            CallParam(StarkHash::ZERO),
+                        ],
+                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        signature: vec![
+                            CallSignatureElem(
+                                StarkHash::from_hex_str(
+                                    "0x7dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                                )
+                                .unwrap(),
+                            ),
+                            CallSignatureElem(
+                                StarkHash::from_hex_str(
+                                    "0x71456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                                )
+                                .unwrap(),
+                            ),
+                        ],
+                    },
+                    Fee(5444010076217u128.to_be_bytes().into()),
+                    TransactionVersion(H256::zero()),
+                )
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UnsupportedSelectorForFee)
+            );
+        }
+
+        #[tokio::test]
+        async fn invoke_function() {
+            // test with values dumped from `starknet invoke` for a test contract
+            client()
+                .add_invoke_transaction(
+                    Call {
+                        contract_address: ContractAddress(
+                            StarkHash::from_hex_str(
+                                "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                            )
+                            .unwrap(),
+                        ),
+                        calldata: vec![
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(
+                                StarkHash::from_hex_str(
+                                    "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
+                                )
+                                .unwrap(),
+                            ),
+                            CallParam(
+                                StarkHash::from_hex_str(
+                                    "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
+                                )
+                                .unwrap(),
+                            ),
+                            CallParam(StarkHash::ZERO),
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
+                            CallParam(StarkHash::from_hex_str("0x2b").unwrap()),
+                            CallParam(StarkHash::ZERO),
+                        ],
+                        entry_point_selector: EntryPoint(
+                            StarkHash::from_hex_str(
+                                "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+                            )
+                            .unwrap(),
+                        ),
+                        signature: vec![
+                            CallSignatureElem(
+                                StarkHash::from_hex_str(
+                                    "0x7dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5",
+                                )
+                                .unwrap(),
+                            ),
+                            CallSignatureElem(
+                                StarkHash::from_hex_str(
+                                    "0x71456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8",
+                                )
+                                .unwrap(),
+                            ),
+                        ],
+                    },
+                    Fee(5444010076217u128.to_be_bytes().into()),
+                    TransactionVersion(H256::zero()),
+                )
+                .await
+                .unwrap();
+        }
+
+        #[test]
+        fn test_program_is_valid_compressed_json() {
+            use flate2::write::GzDecoder;
+            use std::io::Write;
+
+            let json = include_bytes!("../resources/deploy_transaction.json");
+            let json: serde_json::Value = serde_json::from_slice(json).unwrap();
+            let program = json["contract_definition"]["program"].as_str().unwrap();
+            let gzipped_program = base64::decode(program).unwrap();
+
+            let mut decoder = GzDecoder::new(Vec::new());
+            decoder.write_all(&gzipped_program).unwrap();
+            let json = decoder.finish().unwrap();
+
+            let _contract: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        }
+
+        #[tokio::test]
+        async fn deploy_contract() {
+            // test with values dumped from `starknet deploy` for a test contract
+            let json = include_bytes!("../resources/deploy_transaction.json");
+            let json: serde_json::Value = serde_json::from_slice(json).unwrap();
+            let program = json["contract_definition"]["program"].as_str().unwrap();
+            let entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
+                HashMap::from([
+                    (EntryPointType::Constructor, vec![]),
+                    (
+                        EntryPointType::External,
+                        vec![
+                            SelectorAndOffset {
+                                offset: ByteCodeOffset(StarkHash::from_hex_str("0x3a").unwrap()),
+                                selector: EntryPoint(StarkHash::from_hex_str(
+                                        "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
+                                    )
+                                    .unwrap()
+                                ),
+                            },
+                            SelectorAndOffset{
+                                offset: ByteCodeOffset(StarkHash::from_hex_str("0x5b").unwrap()),
+                                selector: EntryPoint(StarkHash::from_hex_str(
+                                        "0x39e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695",
+                                    )
+                                    .unwrap()
+                                ),
+                            },
+                        ],
+                    ),
+                    (EntryPointType::L1Handler, vec![]),
+                ]);
+
+            client()
+                .add_deploy_transaction(
+                    ContractAddressSalt(
+                        StarkHash::from_hex_str(
+                            "0x5864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d",
+                        )
+                        .unwrap(),
+                    ),
+                    vec![],
+                    ContractDefinition {
+                        abi: serde_json::json!([
+                            {
+                                "inputs": [
+                                    {
+                                        "name": "amount",
+                                        "type": "felt"
+                                    }
+                                ],
+                                "name": "increase_balance",
+                                "outputs": [],
+                                "type": "function"
+                            },
+                            {
+                                "inputs": [],
+                                "name": "get_balance",
+                                "outputs": [
+                                    {
+                                        "name": "res",
+                                        "type": "felt"
+                                    }
+                                ],
+                                "stateMutability": "view",
+                                "type": "function"
+                            }
+                        ]),
+                        program: program.to_owned(),
+                        entry_points_by_type,
+                    },
+                )
+                .await
+                .unwrap();
+        }
     }
 
     mod retry {
