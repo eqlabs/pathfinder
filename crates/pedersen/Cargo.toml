@@ -12,10 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 # paritys scale codec locks us here
 bitvec = "0.20.4"
-# Use our fork of ff. ff currently causes a bitvec-funty clash with our ethereum deps.
-# We've modified ff to not rely on bitvec (note that ff features are broken: https://github.com/zkcrypto/ff/issues/69).
-# We can use normal ff once it and `ethabi` (via `web3`) play nice.
-ff = { git = "https://github.com/eqlabs/ff", branch = "derive_bitvec", default-features = false, features = [
+ff = { version = "0.12", default-features = false, features = [
     "derive",
     "alloc",
 ] }
