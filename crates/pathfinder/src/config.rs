@@ -101,7 +101,7 @@ impl Configuration {
 
         if cfg.ethereum.user_agent.is_some() {
             tracing::warn!(
-                "PATHFINDER_ETHEREUM_API_USER_AGENT was provided in the configuration but no longer used: it will be no longer accepted in future releases"
+                "Ethereum user-agent was provided in the configuration but this option is deprecated. It will be no longer accepted in future releases"
             );
         }
 
