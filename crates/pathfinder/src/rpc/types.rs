@@ -511,8 +511,11 @@ pub mod reply {
                 l1_origin_message: receipt
                     .l1_to_l2_consumed_message
                     .map(transaction_receipt::MessageToL2::from),
-                // TODO at the moment not available in sequencer replies
-                events: vec![],
+                events: receipt
+                    .events
+                    .into_iter()
+                    .map(transaction_receipt::Event::from)
+                    .collect(),
             }
         }
     }
@@ -573,9 +576,19 @@ pub mod reply {
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Event {
-            from_address: ContractAddress,
-            keys: Vec<EventKey>,
-            data: Vec<EventData>,
+            pub from_address: ContractAddress,
+            pub keys: Vec<EventKey>,
+            pub data: Vec<EventData>,
+        }
+
+        impl From<crate::sequencer::reply::transaction::Event> for Event {
+            fn from(e: crate::sequencer::reply::transaction::Event) -> Self {
+                Self {
+                    from_address: e.from_address,
+                    keys: e.keys,
+                    data: e.data,
+                }
+            }
         }
     }
 
