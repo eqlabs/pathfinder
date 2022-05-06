@@ -16,7 +16,7 @@ jobs:
       - uses: Swatinem/rust-cache@v1
       - run: |
           cargo test --no-run --workspace
-          timeout 5m cargo test -p pathfinder -- --skip rpc::tests --skip sequencer::tests --skip ethereum::
+          timeout 5m cargo test -p pathfinder -- --skip sequencer::tests --skip ethereum::
 
           # Run Ethereum tests using Infura endpoint
           PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.INFURA_GOERLI_URL }} \
