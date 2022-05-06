@@ -128,7 +128,6 @@ pub mod reply {
         sequencer::reply::Status as SeqStatus,
     };
     use jsonrpsee::types::{CallError, Error};
-    use pedersen::StarkHash;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
@@ -217,7 +216,11 @@ pub mod reply {
         }
 
         /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
-        pub fn from_sequencer_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
+        pub fn from_sequencer_scoped(
+            block: seq::Block,
+            old_root: GlobalRoot,
+            scope: BlockResponseScope,
+        ) -> Self {
             Self {
                 block_hash: block.block_hash,
                 parent_hash: block.parent_block_hash,
@@ -228,14 +231,12 @@ pub mod reply {
                     // TODO FIXME
                     .unwrap_or(EthereumAddress(web3::types::H160::zero())),
                 new_root: block.state_root,
-                // TODO where to get it from
-                old_root: GlobalRoot(StarkHash::ZERO),
+                old_root,
                 accepted_time: block.timestamp,
                 gas_price: block
                     .gas_price
                     // TODO FIXME
                     .unwrap_or(crate::core::GasPrice(web3::types::H128::zero())),
-
                 transactions: match scope {
                     BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
                         block
