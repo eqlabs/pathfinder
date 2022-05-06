@@ -380,8 +380,9 @@ mod tests {
         use super::super::{sync, Event};
         use crate::{
             core::{
-                ContractAddress, ContractHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-                StarknetBlockTimestamp, StorageAddress, StorageValue,
+                ContractAddress, ContractHash, EthereumAddress, GasPrice, GlobalRoot,
+                StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
+                StorageValue,
             },
             ethereum::state_update,
             rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
@@ -394,6 +395,7 @@ mod tests {
         use assert_matches::assert_matches;
         use pedersen::StarkHash;
         use std::collections::HashMap;
+        use web3::types::{H128, H160};
 
         const DEF0: &str = r#"{
             "abi": [],
@@ -471,7 +473,9 @@ mod tests {
             static ref BLOCK0: reply::Block = reply::Block {
                 block_hash: Some(*BLOCK0_HASH),
                 block_number: Some(BLOCK0_NUMBER),
+                gas_price: Some(GasPrice(H128::from_slice(b"0               "))),
                 parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                sequencer_address: Some(EthereumAddress(H160::from_slice(b"0                   "))),
                 state_root: Some(*GLOBAL_ROOT0),
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp(0),
@@ -481,7 +485,9 @@ mod tests {
             static ref BLOCK0_V2: reply::Block = reply::Block {
                 block_hash: Some(*BLOCK0_HASH_V2),
                 block_number: Some(BLOCK0_NUMBER),
+                gas_price: Some(GasPrice(H128::from_slice(b"0 v2            "))),
                 parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                sequencer_address: Some(EthereumAddress(H160::from_slice(b"0 v2                "))),
                 state_root: Some(*GLOBAL_ROOT0_V2),
                 status: reply::Status::AcceptedOnL2,
                 timestamp: StarknetBlockTimestamp(10),
@@ -491,7 +497,9 @@ mod tests {
             static ref BLOCK1: reply::Block = reply::Block {
                 block_hash: Some(*BLOCK1_HASH),
                 block_number: Some(BLOCK1_NUMBER),
+                gas_price: Some(GasPrice(H128::from_slice(b"1               "))),
                 parent_block_hash: *BLOCK0_HASH,
+                sequencer_address: Some(EthereumAddress(H160::from_slice(b"1                   "))),
                 state_root: Some(*GLOBAL_ROOT1),
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp(1),
@@ -501,7 +509,9 @@ mod tests {
             static ref BLOCK2: reply::Block = reply::Block {
                 block_hash: Some(*BLOCK2_HASH),
                 block_number: Some(BLOCK2_NUMBER),
+                gas_price: Some(GasPrice(H128::from_slice(b"2               "))),
                 parent_block_hash: *BLOCK1_HASH,
+                sequencer_address: Some(EthereumAddress(H160::from_slice(b"2                   "))),
                 state_root: Some(*GLOBAL_ROOT2),
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp(2),
@@ -959,7 +969,11 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: Some(*BLOCK1_HASH_V2),
                     block_number: Some(BLOCK1_NUMBER),
+                    gas_price: Some(GasPrice(H128::from_slice(b"1 v2            "))),
                     parent_block_hash: *BLOCK0_HASH_V2,
+                    sequencer_address: Some(EthereumAddress(H160::from_slice(
+                        b"1 v2                ",
+                    ))),
                     state_root: Some(*GLOBAL_ROOT1_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(4),
@@ -1137,7 +1151,11 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: Some(*BLOCK1_HASH_V2),
                     block_number: Some(BLOCK1_NUMBER),
+                    gas_price: Some(GasPrice(H128::from_slice(b"1 v2            "))),
                     parent_block_hash: *BLOCK0_HASH,
+                    sequencer_address: Some(EthereumAddress(H160::from_slice(
+                        b"1 v2                ",
+                    ))),
                     state_root: Some(*GLOBAL_ROOT1_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(4),
@@ -1147,7 +1165,11 @@ mod tests {
                 let block2_v2 = reply::Block {
                     block_hash: Some(*BLOCK2_HASH_V2),
                     block_number: Some(BLOCK2_NUMBER),
+                    gas_price: Some(GasPrice(H128::from_slice(b"2 v2            "))),
                     parent_block_hash: *BLOCK1_HASH_V2,
+                    sequencer_address: Some(EthereumAddress(H160::from_slice(
+                        b"2 v2                ",
+                    ))),
                     state_root: Some(*GLOBAL_ROOT2_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(5),
@@ -1157,7 +1179,11 @@ mod tests {
                 let block3 = reply::Block {
                     block_hash: Some(*BLOCK3_HASH),
                     block_number: Some(BLOCK3_NUMBER),
+                    gas_price: Some(GasPrice(H128::from_slice(b"3               "))),
                     parent_block_hash: *BLOCK2_HASH,
+                    sequencer_address: Some(EthereumAddress(H160::from_slice(
+                        b"3                   ",
+                    ))),
                     state_root: Some(*GLOBAL_ROOT3),
                     status: reply::Status::AcceptedOnL1,
                     timestamp: StarknetBlockTimestamp(3),
@@ -1323,7 +1349,11 @@ mod tests {
                 let block2_v2 = reply::Block {
                     block_hash: Some(*BLOCK2_HASH_V2),
                     block_number: Some(BLOCK2_NUMBER),
+                    gas_price: Some(GasPrice(H128::from_slice(b"2 v2            "))),
                     parent_block_hash: *BLOCK1_HASH,
+                    sequencer_address: Some(EthereumAddress(H160::from_slice(
+                        b"2 v2                ",
+                    ))),
                     state_root: Some(*GLOBAL_ROOT2_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(5),
@@ -1456,7 +1486,11 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: Some(*BLOCK1_HASH_V2),
                     block_number: Some(BLOCK1_NUMBER),
+                    gas_price: Some(GasPrice(H128::from_slice(b"1 v2            "))),
                     parent_block_hash: *BLOCK0_HASH,
+                    sequencer_address: Some(EthereumAddress(H160::from_slice(
+                        b"1 v2                ",
+                    ))),
                     state_root: Some(*GLOBAL_ROOT1_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(4),
@@ -1466,7 +1500,11 @@ mod tests {
                 let block2 = reply::Block {
                     block_hash: Some(*BLOCK2_HASH),
                     block_number: Some(BLOCK2_NUMBER),
+                    gas_price: Some(GasPrice(H128::from_slice(b"2               "))),
                     parent_block_hash: *BLOCK1_HASH_V2,
+                    sequencer_address: Some(EthereumAddress(H160::from_slice(
+                        b"2                   ",
+                    ))),
                     state_root: Some(*GLOBAL_ROOT2),
                     status: reply::Status::AcceptedOnL1,
                     timestamp: StarknetBlockTimestamp(5),

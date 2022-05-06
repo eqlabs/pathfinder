@@ -615,11 +615,11 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash,
+            ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash, EthereumAddress,
             EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, Fee, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
-            TransactionVersion,
+            EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, StarknetBlockHash,
+            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
+            StorageValue, TransactionVersion,
         },
         ethereum,
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
@@ -636,7 +636,7 @@ mod tests {
     use pedersen::StarkHash;
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
-    use web3::types::H256;
+    use web3::types::{H128, H160, H256};
 
     #[derive(Debug, Clone)]
     struct FakeTransport;
@@ -816,7 +816,9 @@ mod tests {
         pub static ref BLOCK0: reply::Block = reply::Block {
             block_hash: Some(StarknetBlockHash(*A)),
             block_number: Some(StarknetBlockNumber(0)),
+            gas_price: Some(GasPrice(H128::zero())),
             parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+            sequencer_address: Some(EthereumAddress(H160::zero())),
             state_root: Some(GlobalRoot(StarkHash::ZERO)),
             status: reply::Status::AcceptedOnL1,
             timestamp: crate::core::StarknetBlockTimestamp(0),
@@ -826,7 +828,9 @@ mod tests {
         pub static ref BLOCK1: reply::Block = reply::Block {
             block_hash: Some(StarknetBlockHash(*B)),
             block_number: Some(StarknetBlockNumber(1)),
+            gas_price: Some(GasPrice(H128::from_slice(b"1"))),
             parent_block_hash: StarknetBlockHash(*A),
+            sequencer_address: Some(EthereumAddress(H160::from_slice(b"1"))),
             state_root: Some(GlobalRoot(*B)),
             status: reply::Status::AcceptedOnL2,
             timestamp: crate::core::StarknetBlockTimestamp(1),
