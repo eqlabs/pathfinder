@@ -260,6 +260,10 @@ docker pull eqlabs/pathfinder
 
 There is a chance of seeing the release notification before a new docker image is available for download, so just wait a minutes and then retry.
 
+### Available images
+
+Our images are updated on every `pathfinder` release. This means that the `:latest` docker image does not track our `main` branch here, but instead matches the latest `pathfinder` [release](https://github.com/eqlabs/pathfinder/releases).
+
 ### Building the container image yourself
 
 Building the container image from source code is necessary only in special cases or development.
