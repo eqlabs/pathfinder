@@ -1,8 +1,8 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use crate::{
     core::{
-        CallResultValue, EthereumAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp,
+        CallResultValue, EthereumAddress, GasPrice, GlobalRoot, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp,
     },
     rpc::serde::EthereumAddressAsHexStr,
 };
@@ -18,7 +18,11 @@ pub struct Block {
     pub block_hash: Option<StarknetBlockHash>,
     #[serde(default)]
     pub block_number: Option<StarknetBlockNumber>,
+    #[serde(default)]
+    pub gas_price: Option<GasPrice>,
     pub parent_block_hash: StarknetBlockHash,
+    #[serde(default)]
+    pub sequencer_address: Option<EthereumAddress>,
     #[serde(default)]
     pub state_root: Option<GlobalRoot>,
     pub status: Status,

@@ -3,9 +3,9 @@ use crate::{
     cairo::ext_py,
     core::{
         CallResultValue, CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
-        ContractCode, Fee, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageValue,
-        TransactionVersion,
+        ContractCode, EthereumAddress, Fee, GasPrice, GlobalRoot, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        StarknetTransactionIndex, StorageValue, TransactionVersion,
     },
     ethereum::Chain,
     rpc::types::{
@@ -52,6 +52,8 @@ pub struct RawBlock {
     pub parent_root: GlobalRoot,
     pub timestamp: StarknetBlockTimestamp,
     pub status: BlockStatus,
+    pub sequencer: EthereumAddress,
+    pub gas_price: GasPrice,
 }
 
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
@@ -314,6 +316,8 @@ impl RpcApi {
                 parent_root,
                 timestamp: block.timestamp,
                 status: block_status,
+                sequencer: EthereumAddress(web3::types::H160::zero()), // TODO FIXME
+                gas_price: GasPrice(web3::types::H128::zero()),        // TODO FIXME
             };
 
             Ok(block)
