@@ -59,7 +59,7 @@ rustup update
 
 ### Install Python
 
-`pathfinder` requires Python version `3.7` or `3.8`. (In particular, `cairo-lang` 0.7.1 seems incompatible with Python 3.10.)
+`pathfinder` requires Python version `3.8` (in particular, `cairo-lang` 0.7.1 seems incompatible with Python 3.10).
 
 ```bash
 sudo apt install python3 python3-venv python3-dev
@@ -69,7 +69,7 @@ Verify the python version.
 Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
 
 ```bash
-python3 --version # must be 3.7 or 3.8
+python3 --version # must be 3.8
 ```
 
 ### Install build dependencies
