@@ -30,7 +30,11 @@ The following are instructions on how to build from source.
 ### Prerequisites
 
 Currently only supports Linux. Windows and MacOS support is planned.
-We need access to a full archive Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
+We need access to a full Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
+
+| :warning:    | If using Infura as an L1 provider, you will need access to their archive node facilities. This is because `pathfinder` requires access to the full log history. |
+|---------------|:------------------------|
+
 
 Before you start, make sure your system is up to date with Curl and Git available:
 
@@ -239,7 +243,7 @@ The following environment variables can be passed to the container:
 
 | Name                               | Description                                                  | Default value     | Required |
 | ---------------------------------- | ------------------------------------------------------------ | ----------------- | -------- |
-| PATHFINDER_ETHEREUM_API_URL        | Ethereum (archive) node JSON-RPC endpoint URL                |                   | yes      |
+| PATHFINDER_ETHEREUM_API_URL        | Ethereum full node JSON-RPC endpoint URL                |                   | yes      |
 | PATHFINDER_ETHEREUM_API_PASSWORD   | Password to use during authentication with Ethereum node API |                   | no       |
 | PATHFINDER_HTTP_RPC_ADDRESS        | Address to bind the `pathfinder` RPC server to               | 0.0.0.0:9545      | no       |
 | PATHFINDER_DATA_DIRECTORY          | Directory used to store `pathfinder` data                    | Current directory | no       |
