@@ -16,6 +16,8 @@ pub enum ConfigOption {
     /// The Ethereum URL.
     EthereumHttpUrl,
     /// The User Agent header value to use for the Ethereum URL.
+    ///
+    /// Deprecated, we now set a version specific user-agent.
     EthereumUserAgent,
     /// The Ethereum password.
     EthereumPassword,
@@ -95,6 +97,14 @@ impl Configuration {
             None => cli_cfg,
         };
 
-        cfg.try_build()
+        let cfg = cfg.try_build()?;
+
+        if cfg.ethereum.user_agent.is_some() {
+            tracing::warn!(
+                "Ethereum user-agent was provided in the configuration but this option is deprecated. It will be no longer accepted in future releases"
+            );
+        }
+
+        Ok(cfg)
     }
 }
