@@ -2715,7 +2715,7 @@ mod tests {
                 let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = rpc_params!(
                     CALL.clone(),
@@ -2747,7 +2747,7 @@ mod tests {
                 let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let contract_definition = CONTRACT_DEFINITION.clone();
                 let contract_address_salt = ContractAddressSalt(
@@ -2800,7 +2800,7 @@ mod tests {
                 let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([
                     (
@@ -2855,7 +2855,7 @@ mod tests {
                 let sequencer = SeqClient::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([
                     (
