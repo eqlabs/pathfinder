@@ -6,6 +6,9 @@ use crate::storage::schema::PostMigrationAction;
 /// This schema migration fixes a mistake in the previous migration. It failed to
 /// drop the transactions and transaction_receipts columns if the table was empty due to
 /// to an early exit condition.
+///
+/// This mistake has since been rectified, but we should still fix databases that included
+/// this bug.
 pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
     // Check if the columns still exist. Checking just one is enough as either both exist, or neither.
     //
@@ -56,6 +59,20 @@ mod tests {
         schema::revision_0003::migrate(&transaction).unwrap();
         schema::revision_0004::migrate(&transaction).unwrap();
         schema::revision_0005::migrate(&transaction).unwrap();
+
+        // Manually add the columns in.
+        transaction
+            .execute("ALTER TABLE starknet_blocks ADD COLUMN transactions", [])
+            .context("Adding transactions from starknet_blocks table")
+            .unwrap();
+        transaction
+            .execute(
+                "ALTER TABLE starknet_blocks ADD COLUMN transaction_receipts",
+                [],
+            )
+            .context("Adding transaction receipts from starknet_blocks table")
+            .unwrap();
+
         let action = migrate(&transaction).unwrap();
         assert_eq!(action, PostMigrationAction::Vacuum);
 
@@ -84,19 +101,6 @@ mod tests {
         schema::revision_0003::migrate(&transaction).unwrap();
         schema::revision_0004::migrate(&transaction).unwrap();
         schema::revision_0005::migrate(&transaction).unwrap();
-
-        // Manually drop the columns.
-        transaction
-            .execute("ALTER TABLE starknet_blocks DROP COLUMN transactions", [])
-            .context("Dropping transactions from starknet_blocks table")
-            .unwrap();
-        transaction
-            .execute(
-                "ALTER TABLE starknet_blocks DROP COLUMN transaction_receipts",
-                [],
-            )
-            .context("Dropping transaction receipts from starknet_blocks table")
-            .unwrap();
 
         let action = migrate(&transaction).unwrap();
         assert_eq!(action, PostMigrationAction::None);

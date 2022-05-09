@@ -199,64 +199,65 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
     let todo: usize = transaction
         .query_row("SELECT count(1) FROM starknet_blocks", [], |r| r.get(0))
         .context("Count rows in starknet blocks table")?;
-    if todo == 0 {
-        return Ok(PostMigrationAction::None);
-    }
 
-    info!(
-        "Decompressing and migrating {} blocks of transaction data, this may take a while.",
-        todo
-    );
-
-    let mut stmt = transaction
-        .prepare("SELECT hash, transactions, transaction_receipts FROM starknet_blocks")
-        .context("Prepare statement")?;
-    let mut rows = stmt.query([])?;
-
-    let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-
-    while let Some(r) = rows.next()? {
-        let block_hash = r.get_ref_unwrap("hash").as_blob()?;
-        let transactions = r.get_ref_unwrap("transactions").as_blob()?;
-        let receipts = r.get_ref_unwrap("transaction_receipts").as_blob()?;
-
-        let transactions = zstd::decode_all(transactions).context("Decompressing transactions")?;
-        let transactions =
-            serde_json::de::from_slice::<Vec<transaction::Transaction>>(&transactions)
-                .context("Deserializing transactions")?;
-
-        let receipts = zstd::decode_all(receipts).context("Decompressing transactions")?;
-        let receipts = serde_json::de::from_slice::<Vec<transaction::Receipt>>(&receipts)
-            .context("Deserializing transaction receipts")?;
-
-        anyhow::ensure!(
-            transactions.len() == receipts.len(),
-            "Mismatched number of transactions and receipts"
+    // Only perform data migration if there is actual data.
+    if todo > 0 {
+        info!(
+            "Decompressing and migrating {} blocks of transaction data, this may take a while.",
+            todo
         );
 
-        transactions
-            .into_iter()
-            .zip(receipts.into_iter())
-            .enumerate()
-            .try_for_each(|(idx, (tx, rx))| -> anyhow::Result<_> {
-                let transaction_data = serde_json::ser::to_vec(&tx).context("Serializing transaction data")?;
-                let transaction_data = compressor.compress(&transaction_data).context("Compressing transaction data")?;
+        let mut stmt = transaction
+            .prepare("SELECT hash, transactions, transaction_receipts FROM starknet_blocks")
+            .context("Prepare statement")?;
+        let mut rows = stmt.query([])?;
 
-                let receipt_data = serde_json::ser::to_vec(&rx).context("Serializing transaction receipt data")?;
-                let receipt_data = compressor.compress(&receipt_data).context("Compressing transaction receipt data")?;
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
 
-                transaction.execute(r"INSERT INTO starknet_transactions ( hash,  idx,  block_hash,  tx,  receipt)
-                                                                     VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
-        named_params![
-                    ":hash": &tx.transaction_hash.0.as_be_bytes()[..],
-                    ":idx": idx,
-                    ":block_hash": block_hash,
-                    ":tx": &transaction_data,
-                    ":receipt": &receipt_data,
-                ]).context("Insert transaction data into transactions table")?;
+        while let Some(r) = rows.next()? {
+            let block_hash = r.get_ref_unwrap("hash").as_blob()?;
+            let transactions = r.get_ref_unwrap("transactions").as_blob()?;
+            let receipts = r.get_ref_unwrap("transaction_receipts").as_blob()?;
 
-                Ok(())
-            })?;
+            let transactions =
+                zstd::decode_all(transactions).context("Decompressing transactions")?;
+            let transactions =
+                serde_json::de::from_slice::<Vec<transaction::Transaction>>(&transactions)
+                    .context("Deserializing transactions")?;
+
+            let receipts = zstd::decode_all(receipts).context("Decompressing transactions")?;
+            let receipts = serde_json::de::from_slice::<Vec<transaction::Receipt>>(&receipts)
+                .context("Deserializing transaction receipts")?;
+
+            anyhow::ensure!(
+                transactions.len() == receipts.len(),
+                "Mismatched number of transactions and receipts"
+            );
+
+            transactions
+                .into_iter()
+                .zip(receipts.into_iter())
+                .enumerate()
+                .try_for_each(|(idx, (tx, rx))| -> anyhow::Result<_> {
+                    let transaction_data = serde_json::ser::to_vec(&tx).context("Serializing transaction data")?;
+                    let transaction_data = compressor.compress(&transaction_data).context("Compressing transaction data")?;
+
+                    let receipt_data = serde_json::ser::to_vec(&rx).context("Serializing transaction receipt data")?;
+                    let receipt_data = compressor.compress(&receipt_data).context("Compressing transaction receipt data")?;
+
+                    transaction.execute(r"INSERT INTO starknet_transactions ( hash,  idx,  block_hash,  tx,  receipt)
+                                                                         VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
+            named_params![
+                        ":hash": &tx.transaction_hash.0.as_be_bytes()[..],
+                        ":idx": idx,
+                        ":block_hash": block_hash,
+                        ":tx": &transaction_data,
+                        ":receipt": &receipt_data,
+                    ]).context("Insert transaction data into transactions table")?;
+
+                    Ok(())
+                })?;
+        }
     }
 
     // Remove transaction columns from blocks table.
@@ -271,8 +272,12 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         )
         .context("Dropping transaction receipts from starknet_blocks table")?;
 
-    // Database should be vacuum'd to defrag removal of transaction columns.
-    Ok(PostMigrationAction::Vacuum)
+    if todo > 0 {
+        // Database should be vacuum'd to defrag removal of transaction columns.
+        Ok(PostMigrationAction::Vacuum)
+    } else {
+        Ok(PostMigrationAction::None)
+    }
 }
 
 #[cfg(test)]
