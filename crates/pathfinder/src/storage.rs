@@ -195,6 +195,36 @@ fn enable_foreign_keys(connection: &Connection) -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
+pub(crate) mod test_utils {
+    use super::StarknetBlock;
+
+    use crate::core::{
+        GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp,
+    };
+
+    use pedersen::StarkHash;
+    use web3::types::H128;
+
+    /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
+    /// with arbitrary other values.
+    pub(crate) fn create_blocks<const N: usize>() -> [StarknetBlock; N] {
+        (0..N)
+            .map(|i| StarknetBlock {
+                number: StarknetBlockNumber::GENESIS + i as u64,
+                hash: StarknetBlockHash(StarkHash::from_hex_str(&"a".repeat(i + 3)).unwrap()),
+                root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap()),
+                timestamp: StarknetBlockTimestamp(i as u64 + 500),
+                gas_price: GasPrice(H128::zero()),
+                sequencer_address: SequencerAddress(StarkHash::ZERO),
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -1261,23 +1261,8 @@ mod tests {
     mod starknet_blocks {
         use super::*;
 
-        /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
-        /// with arbitrary other values.
         fn create_blocks() -> [StarknetBlock; 3] {
-            (0..3)
-                .map(|i| StarknetBlock {
-                    number: StarknetBlockNumber::GENESIS + i,
-                    hash: StarknetBlockHash(
-                        StarkHash::from_hex_str(&"a".repeat(i as usize + 3)).unwrap(),
-                    ),
-                    root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
-                    timestamp: StarknetBlockTimestamp(i + 500),
-                    gas_price: GasPrice(H128::zero()),
-                    sequencer_address: SequencerAddress(StarkHash::ZERO),
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap()
+            crate::storage::test_utils::create_blocks::<3>()
         }
 
         mod get {
@@ -1616,20 +1601,7 @@ mod tests {
         const NUM_BLOCKS: usize = 4;
 
         fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
-            (0..NUM_BLOCKS as u64)
-                .map(|i| StarknetBlock {
-                    number: StarknetBlockNumber::GENESIS + i,
-                    hash: StarknetBlockHash(
-                        StarkHash::from_hex_str(&"a".repeat(i as usize + 3)).unwrap(),
-                    ),
-                    root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
-                    timestamp: StarknetBlockTimestamp(i + 500),
-                    gas_price: GasPrice(H128::zero()),
-                    sequencer_address: SequencerAddress(StarkHash::ZERO),
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap()
+            crate::storage::test_utils::create_blocks::<NUM_BLOCKS>()
         }
 
         const TRANSACTIONS_PER_BLOCK: usize = 10;
