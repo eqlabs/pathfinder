@@ -5,7 +5,9 @@ use std::future::Future;
 use std::sync::Arc;
 
 use crate::{
-    core::{ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
+    core::{
+        ContractRoot, EthereumAddress, GasPrice, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+    },
     ethereum::{
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
@@ -26,6 +28,7 @@ use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{Connection, Transaction};
 use tokio::sync::{mpsc, RwLock};
+use web3::types::{H128, H160};
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
@@ -470,6 +473,11 @@ async fn l2_update(
             hash: block.block_hash.unwrap(),
             root: block.state_root.unwrap(),
             timestamp: block.timestamp,
+            // TODO
+            gas_price: block.gas_price.unwrap_or(GasPrice(H128::zero())),
+            sequencer_address: block
+                .sequencer_address
+                .unwrap_or(EthereumAddress(H160::zero())),
         };
         StarknetBlocksTable::insert(&transaction, &starknet_block)
             .context("Insert block into database")?;
@@ -828,9 +836,9 @@ mod tests {
         pub static ref BLOCK1: reply::Block = reply::Block {
             block_hash: Some(StarknetBlockHash(*B)),
             block_number: Some(StarknetBlockNumber(1)),
-            gas_price: Some(GasPrice(H128::from_slice(b"1"))),
+            gas_price: Some(GasPrice(H128::from([1u8; 16]))),
             parent_block_hash: StarknetBlockHash(*A),
-            sequencer_address: Some(EthereumAddress(H160::from_slice(b"1"))),
+            sequencer_address: Some(EthereumAddress(H160::from([1u8; 20]))),
             state_root: Some(GlobalRoot(*B)),
             status: reply::Status::AcceptedOnL2,
             timestamp: crate::core::StarknetBlockTimestamp(1),
@@ -842,12 +850,16 @@ mod tests {
             hash: StarknetBlockHash(*A),
             root: GlobalRoot(StarkHash::ZERO),
             timestamp: StarknetBlockTimestamp(0),
+            gas_price: GasPrice(H128::zero()),
+            sequencer_address: EthereumAddress(H160::zero()),
         };
         pub static ref STORAGE_BLOCK1: storage::StarknetBlock = storage::StarknetBlock {
             number: StarknetBlockNumber(1),
             hash: StarknetBlockHash(*B),
             root: GlobalRoot(*B),
             timestamp: StarknetBlockTimestamp(1),
+            gas_price: GasPrice(H128::from([1u8; 16])),
+            sequencer_address: EthereumAddress(H160::from([1u8; 20])),
         };
         // Causes root to remain 0
         pub static ref STATE_UPDATE0: ethereum::state_update::StateUpdate = ethereum::state_update::StateUpdate {

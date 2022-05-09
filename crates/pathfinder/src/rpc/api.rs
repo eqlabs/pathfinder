@@ -318,8 +318,8 @@ impl RpcApi {
                 parent_root,
                 timestamp: block.timestamp,
                 status: block_status,
-                sequencer: EthereumAddress(web3::types::H160::zero()), // TODO FIXME
-                gas_price: GasPrice(web3::types::H128::zero()),        // TODO FIXME
+                gas_price: block.gas_price,
+                sequencer: block.sequencer_address,
             };
 
             Ok(block)
