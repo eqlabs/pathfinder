@@ -192,7 +192,7 @@ where
                         .map(|u| u.storage_updates.len())
                         .sum();
                     let update_t = std::time::Instant::now();
-                    l2_update(&mut db_conn, block, diff)
+                    l2_update(&mut db_conn, *block, diff)
                         .await
                         .with_context(|| format!("Update L2 state to {}", block_num))?;
                     let block_time = last_block_start.elapsed();
@@ -1097,9 +1097,13 @@ mod tests {
 
         // A simple L2 sync task
         let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
-            tx.send(l2::Event::Update(block(), state_update(), timings))
-                .await
-                .unwrap();
+            tx.send(l2::Event::Update(
+                Box::new(block()),
+                state_update(),
+                timings,
+            ))
+            .await
+            .unwrap();
             tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())
         };

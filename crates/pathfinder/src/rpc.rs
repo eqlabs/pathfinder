@@ -2289,8 +2289,6 @@ mod tests {
     }
 
     mod events {
-        use web3::types::H128;
-
         use super::*;
 
         use super::types::reply::{EmittedEvent, GetEventsResult};
