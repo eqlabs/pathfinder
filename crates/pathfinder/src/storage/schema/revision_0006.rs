@@ -57,7 +57,7 @@ mod tests {
         schema::revision_0004::migrate(&transaction).unwrap();
         schema::revision_0005::migrate(&transaction).unwrap();
         let action = migrate(&transaction).unwrap();
-        assert_eq!(action, PostMigrationAction::Vacuum);
+        assert_eq!(action, PostMigrationAction::None);
 
         // Collect all the column names in table `starknet_blocks`.
         let mut columns = Vec::new();

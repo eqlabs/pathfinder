@@ -263,6 +263,10 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         })
         .context("Count rows in starknet transactions table")?;
 
+    if todo == 0 {
+        return Ok(PostMigrationAction::None);
+    }
+
     tracing::info!(
         num_transactions=%todo,
         "Decompressing and migrating events, this may take a while.",
