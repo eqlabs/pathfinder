@@ -119,8 +119,8 @@ pub mod reply {
     use super::request::BlockResponseScope;
     use crate::{
         core::{
-            CallParam, ContractAddress, EntryPoint, EthereumAddress, EventData, EventKey, GasPrice,
-            GlobalRoot, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            CallParam, ContractAddress, EntryPoint, EventData, EventKey, GasPrice, GlobalRoot,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
             StarknetTransactionHash,
         },
         rpc::api::RawBlock,
@@ -128,6 +128,7 @@ pub mod reply {
         sequencer::reply::Status as SeqStatus,
     };
     use jsonrpsee::types::{CallError, Error};
+    use pedersen::StarkHash;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
@@ -190,7 +191,7 @@ pub mod reply {
         pub parent_hash: StarknetBlockHash,
         pub block_number: Option<StarknetBlockNumber>,
         pub status: BlockStatus,
-        pub sequencer: EthereumAddress,
+        pub sequencer: SequencerAddress,
         pub new_root: Option<GlobalRoot>,
         pub old_root: GlobalRoot,
         pub accepted_time: StarknetBlockTimestamp,
@@ -229,7 +230,7 @@ pub mod reply {
                 sequencer: block
                     .sequencer_address
                     // TODO
-                    .unwrap_or(EthereumAddress(web3::types::H160::zero())),
+                    .unwrap_or(SequencerAddress(StarkHash::ZERO)),
                 new_root: block.state_root,
                 old_root,
                 accepted_time: block.timestamp,

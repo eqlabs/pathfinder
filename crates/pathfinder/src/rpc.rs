@@ -294,8 +294,8 @@ mod tests {
     use super::*;
     use crate::{
         core::{
-            ContractAddress, ContractHash, EthereumAddress, EventData, EventKey, GasPrice,
-            GlobalRoot, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            ContractAddress, ContractHash, EventData, EventKey, GasPrice, GlobalRoot,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
             StarknetProtocolVersion, StorageAddress,
         },
         ethereum::Chain,
@@ -329,7 +329,6 @@ mod tests {
         sync::Arc,
         time::Duration,
     };
-    use web3::types::H160;
 
     /// Helper function: produces named rpc method args map.
     fn by_name<const N: usize>(params: [(&'_ str, serde_json::Value); N]) -> Option<ParamsSer<'_>> {
@@ -462,7 +461,7 @@ mod tests {
             root: global_root0,
             timestamp: StarknetBlockTimestamp(0),
             gas_price: GasPrice(H128::zero()),
-            sequencer_address: EthereumAddress(H160::zero()),
+            sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
         let block1_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1").unwrap());
         let block1 = StarknetBlock {
@@ -471,7 +470,7 @@ mod tests {
             root: global_root1,
             timestamp: StarknetBlockTimestamp(1),
             gas_price: GasPrice(H128::from([1u8; 16])),
-            sequencer_address: EthereumAddress(H160::from([1u8; 20])),
+            sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[1u8]).unwrap()),
         };
         let latest_hash = StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
         let block2 = StarknetBlock {
@@ -480,7 +479,7 @@ mod tests {
             root: global_root2,
             timestamp: StarknetBlockTimestamp(2),
             gas_price: GasPrice(H128::from([2u8; 16])),
-            sequencer_address: EthereumAddress(H160::from([2u8; 20])),
+            sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[2u8]).unwrap()),
         };
         StarknetBlocksTable::insert(&db_txn, &block0).unwrap();
         StarknetBlocksTable::insert(&db_txn, &block1).unwrap();
@@ -737,7 +736,7 @@ mod tests {
                         root: latest_root,
                         timestamp: StarknetBlockTimestamp(0),
                         gas_price: GasPrice(H128::zero()),
-                        sequencer_address: EthereumAddress(H160::zero()),
+                        sequencer_address: SequencerAddress(StarkHash::ZERO),
                     }),
                     latest_root,
                 ),
@@ -944,7 +943,7 @@ mod tests {
                         root: latest_root,
                         timestamp: StarknetBlockTimestamp(0),
                         gas_price: GasPrice(H128::zero()),
-                        sequencer_address: EthereumAddress(H160::zero()),
+                        sequencer_address: SequencerAddress(StarkHash::ZERO),
                     }),
                     latest_root,
                 ),
@@ -2309,7 +2308,7 @@ mod tests {
                     root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
                     timestamp: StarknetBlockTimestamp(i + 500),
                     gas_price: GasPrice(H128::zero()),
-                    sequencer_address: EthereumAddress(H160::zero()),
+                    sequencer_address: SequencerAddress(StarkHash::ZERO),
                 })
                 .collect::<Vec<_>>()
                 .try_into()

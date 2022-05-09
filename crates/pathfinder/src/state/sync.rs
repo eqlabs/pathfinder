@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use crate::{
     core::{
-        ContractRoot, EthereumAddress, GasPrice, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber,
     },
     ethereum::{
         log::StateUpdateLog,
@@ -28,7 +29,7 @@ use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{Connection, Transaction};
 use tokio::sync::{mpsc, RwLock};
-use web3::types::{H128, H160};
+use web3::types::H128;
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
@@ -477,7 +478,7 @@ async fn l2_update(
             gas_price: block.gas_price.unwrap_or(GasPrice(H128::zero())),
             sequencer_address: block
                 .sequencer_address
-                .unwrap_or(EthereumAddress(H160::zero())),
+                .unwrap_or(SequencerAddress(StarkHash::ZERO)),
         };
         StarknetBlocksTable::insert(&transaction, &starknet_block)
             .context("Insert block into database")?;
@@ -623,11 +624,11 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash, EthereumAddress,
+            ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash,
             EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, StarknetBlockHash,
-            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
-            StorageValue, TransactionVersion,
+            EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, SequencerAddress,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StarknetTransactionHash, StorageAddress, StorageValue, TransactionVersion,
         },
         ethereum,
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
@@ -644,7 +645,7 @@ mod tests {
     use pedersen::StarkHash;
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
-    use web3::types::{H128, H160, H256};
+    use web3::types::{H128, H256};
 
     #[derive(Debug, Clone)]
     struct FakeTransport;
@@ -826,7 +827,7 @@ mod tests {
             block_number: Some(StarknetBlockNumber(0)),
             gas_price: Some(GasPrice(H128::zero())),
             parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-            sequencer_address: Some(EthereumAddress(H160::zero())),
+            sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
             state_root: Some(GlobalRoot(StarkHash::ZERO)),
             status: reply::Status::AcceptedOnL1,
             timestamp: crate::core::StarknetBlockTimestamp(0),
@@ -838,7 +839,7 @@ mod tests {
             block_number: Some(StarknetBlockNumber(1)),
             gas_price: Some(GasPrice(H128::from([1u8; 16]))),
             parent_block_hash: StarknetBlockHash(*A),
-            sequencer_address: Some(EthereumAddress(H160::from([1u8; 20]))),
+            sequencer_address: Some(SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap())),
             state_root: Some(GlobalRoot(*B)),
             status: reply::Status::AcceptedOnL2,
             timestamp: crate::core::StarknetBlockTimestamp(1),
@@ -851,7 +852,7 @@ mod tests {
             root: GlobalRoot(StarkHash::ZERO),
             timestamp: StarknetBlockTimestamp(0),
             gas_price: GasPrice(H128::zero()),
-            sequencer_address: EthereumAddress(H160::zero()),
+            sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
         pub static ref STORAGE_BLOCK1: storage::StarknetBlock = storage::StarknetBlock {
             number: StarknetBlockNumber(1),
@@ -859,7 +860,7 @@ mod tests {
             root: GlobalRoot(*B),
             timestamp: StarknetBlockTimestamp(1),
             gas_price: GasPrice(H128::from([1u8; 16])),
-            sequencer_address: EthereumAddress(H160::from([1u8; 20])),
+            sequencer_address: SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap()),
         };
         // Causes root to remain 0
         pub static ref STATE_UPDATE0: ethereum::state_update::StateUpdate = ethereum::state_update::StateUpdate {

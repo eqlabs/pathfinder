@@ -380,7 +380,7 @@ mod tests {
         use super::super::{sync, Event};
         use crate::{
             core::{
-                ContractAddress, ContractHash, EthereumAddress, GasPrice, GlobalRoot,
+                ContractAddress, ContractHash, GasPrice, GlobalRoot, SequencerAddress,
                 StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
                 StorageValue,
             },
@@ -395,7 +395,7 @@ mod tests {
         use assert_matches::assert_matches;
         use pedersen::StarkHash;
         use std::collections::HashMap;
-        use web3::types::{H128, H160};
+        use web3::types::H128;
 
         const DEF0: &str = r#"{
             "abi": [],
@@ -475,7 +475,7 @@ mod tests {
                 block_number: Some(BLOCK0_NUMBER),
                 gas_price: Some(GasPrice(H128::zero())),
                 parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-                sequencer_address: Some(EthereumAddress(H160::zero())),
+                sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
                 state_root: Some(*GLOBAL_ROOT0),
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp(0),
@@ -487,7 +487,7 @@ mod tests {
                 block_number: Some(BLOCK0_NUMBER),
                 gas_price: Some(GasPrice(H128::from(b"gas price 0 v2--"))),
                 parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-                sequencer_address: Some(EthereumAddress(H160::from(b"sequencer addr. 0 v2"))),
+                sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
                 state_root: Some(*GLOBAL_ROOT0_V2),
                 status: reply::Status::AcceptedOnL2,
                 timestamp: StarknetBlockTimestamp(10),
@@ -499,7 +499,7 @@ mod tests {
                 block_number: Some(BLOCK1_NUMBER),
                 gas_price: Some(GasPrice(H128::from(b"gas price 1-----"))),
                 parent_block_hash: *BLOCK0_HASH,
-                sequencer_address: Some(EthereumAddress(H160::from(b"sequencer address 1-"))),
+                sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 1").unwrap())),
                 state_root: Some(*GLOBAL_ROOT1),
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp(1),
@@ -511,7 +511,7 @@ mod tests {
                 block_number: Some(BLOCK2_NUMBER),
                 gas_price: Some(GasPrice(H128::from(b"gas price 2-----"))),
                 parent_block_hash: *BLOCK1_HASH,
-                sequencer_address: Some(EthereumAddress(H160::from(b"sequencer address 2-"))),
+                sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 2").unwrap())),
                 state_root: Some(*GLOBAL_ROOT2),
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp(2),
@@ -971,7 +971,9 @@ mod tests {
                     block_number: Some(BLOCK1_NUMBER),
                     gas_price: Some(GasPrice(H128::from(b"gas price 1 v2--"))),
                     parent_block_hash: *BLOCK0_HASH_V2,
-                    sequencer_address: Some(EthereumAddress(H160::from(b"sequencer addr. 1 v2"))),
+                    sequencer_address: Some(SequencerAddress(
+                        StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
+                    )),
                     state_root: Some(*GLOBAL_ROOT1_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(4),
@@ -1151,7 +1153,9 @@ mod tests {
                     block_number: Some(BLOCK1_NUMBER),
                     gas_price: Some(GasPrice(H128::from(b"gas price 1 v2--"))),
                     parent_block_hash: *BLOCK0_HASH,
-                    sequencer_address: Some(EthereumAddress(H160::from(b"sequencer addr. 1 v2"))),
+                    sequencer_address: Some(SequencerAddress(
+                        StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
+                    )),
                     state_root: Some(*GLOBAL_ROOT1_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(4),
@@ -1163,7 +1167,9 @@ mod tests {
                     block_number: Some(BLOCK2_NUMBER),
                     gas_price: Some(GasPrice(H128::from(b"gas price 2 v2--"))),
                     parent_block_hash: *BLOCK1_HASH_V2,
-                    sequencer_address: Some(EthereumAddress(H160::from(b"sequencer addr. 2 v2"))),
+                    sequencer_address: Some(SequencerAddress(
+                        StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
+                    )),
                     state_root: Some(*GLOBAL_ROOT2_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(5),
@@ -1175,7 +1181,9 @@ mod tests {
                     block_number: Some(BLOCK3_NUMBER),
                     gas_price: Some(GasPrice(H128::from(b"gas price 2-----"))),
                     parent_block_hash: *BLOCK2_HASH,
-                    sequencer_address: Some(EthereumAddress(H160::from(b"sequencer address 3-"))),
+                    sequencer_address: Some(SequencerAddress(
+                        StarkHash::from_be_slice(b"sequencer address 3").unwrap(),
+                    )),
                     state_root: Some(*GLOBAL_ROOT3),
                     status: reply::Status::AcceptedOnL1,
                     timestamp: StarknetBlockTimestamp(3),
@@ -1343,7 +1351,9 @@ mod tests {
                     block_number: Some(BLOCK2_NUMBER),
                     gas_price: Some(GasPrice(H128::from(b"gas price 2 v2--"))),
                     parent_block_hash: *BLOCK1_HASH,
-                    sequencer_address: Some(EthereumAddress(H160::from(b"sequencer addr. 2 v2"))),
+                    sequencer_address: Some(SequencerAddress(
+                        StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
+                    )),
                     state_root: Some(*GLOBAL_ROOT2_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(5),
@@ -1478,7 +1488,9 @@ mod tests {
                     block_number: Some(BLOCK1_NUMBER),
                     gas_price: Some(GasPrice(H128::from(b"gas price 1 v2--"))),
                     parent_block_hash: *BLOCK0_HASH,
-                    sequencer_address: Some(EthereumAddress(H160::from(b"sequencer addr. 1 v2"))),
+                    sequencer_address: Some(SequencerAddress(
+                        StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
+                    )),
                     state_root: Some(*GLOBAL_ROOT1_V2),
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(4),
@@ -1490,7 +1502,9 @@ mod tests {
                     block_number: Some(BLOCK2_NUMBER),
                     gas_price: Some(GasPrice(H128::from(b"gas price 2-----"))),
                     parent_block_hash: *BLOCK1_HASH_V2,
-                    sequencer_address: Some(EthereumAddress(H160::from(b"sequencer address 2-"))),
+                    sequencer_address: Some(SequencerAddress(
+                        StarkHash::from_be_slice(b"sequencer address 2").unwrap(),
+                    )),
                     state_root: Some(*GLOBAL_ROOT2),
                     status: reply::Status::AcceptedOnL1,
                     timestamp: StarknetBlockTimestamp(5),

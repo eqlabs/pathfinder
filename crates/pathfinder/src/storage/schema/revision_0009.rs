@@ -9,7 +9,7 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
             r"ALTER TABLE starknet_blocks ADD COLUMN gas_price INTEGER NOT NULL
             DEFAULT X'00000000000000000000000000000000';
             ALTER TABLE starknet_blocks ADD COLUMN sequencer_address BLOB NOT NULL
-            DEFAULT X'0000000000000000000000000000000000000000';",
+            DEFAULT X'0000000000000000000000000000000000000000000000000000000000000000';",
         )
         .context("Add columns gas_price and starknet_address to starknet_blocks table")?;
 
@@ -22,7 +22,7 @@ mod tests {
 
     use crate::{
         core::{
-            EthereumAddress, GasPrice, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+            GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
             StarknetBlockTimestamp,
         },
         storage::{schema, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable},
@@ -30,7 +30,7 @@ mod tests {
 
     use pedersen::StarkHash;
     use rusqlite::{named_params, Connection};
-    use web3::types::{H128, H160};
+    use web3::types::H128;
 
     #[test]
     fn empty() {
@@ -97,7 +97,7 @@ mod tests {
                 root,
                 timestamp,
                 gas_price: GasPrice(H128::zero()),
-                sequencer_address: EthereumAddress(H160::zero())
+                sequencer_address: SequencerAddress(StarkHash::ZERO)
             }
         )
     }

@@ -3,7 +3,7 @@ use crate::{
     cairo::ext_py,
     core::{
         CallResultValue, CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
-        ContractCode, EthereumAddress, Fee, GasPrice, GlobalRoot, StarknetBlockHash,
+        ContractCode, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
         StarknetTransactionIndex, StorageValue, TransactionVersion,
     },
@@ -52,7 +52,7 @@ pub struct RawBlock {
     pub parent_root: GlobalRoot,
     pub timestamp: StarknetBlockTimestamp,
     pub status: BlockStatus,
-    pub sequencer: EthereumAddress,
+    pub sequencer: SequencerAddress,
     pub gas_price: GasPrice,
 }
 

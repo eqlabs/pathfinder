@@ -1,13 +1,13 @@
 use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{named_params, params, Connection, OptionalExtension, Transaction};
-use web3::types::{H128, H160, H256};
+use web3::types::{H128, H256};
 
 use crate::{
     core::{
-        ContractAddress, ContractHash, ContractRoot, ContractStateHash, EthereumAddress,
-        EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-        EthereumTransactionIndex, EventData, EventKey, GasPrice, GlobalRoot, StarknetBlockHash,
+        ContractAddress, ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash,
+        EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
+        EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
     },
     ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
@@ -253,7 +253,7 @@ impl StarknetBlocksTable {
                 ":root": block.root.0.as_be_bytes(),
                 ":timestamp": block.timestamp.0,
                 ":gas_price": &block.gas_price.0[..],
-                ":sequencer_address": &block.sequencer_address.0[..],
+                ":sequencer_address": block.sequencer_address.0.as_be_bytes(),
             },
         )?;
 
@@ -308,8 +308,8 @@ impl StarknetBlocksTable {
                 let gas_price = GasPrice(H128(gas_price.try_into().unwrap()));
 
                 let sequencer_address = row.get_ref_unwrap("sequencer_address").as_blob().unwrap();
-                let sequencer_address =
-                    EthereumAddress(H160(sequencer_address.try_into().unwrap()));
+                let sequencer_address = StarkHash::from_be_slice(sequencer_address).unwrap();
+                let sequencer_address = SequencerAddress(sequencer_address);
 
                 let block = StarknetBlock {
                     number,
@@ -909,7 +909,7 @@ pub struct StarknetBlock {
     pub root: GlobalRoot,
     pub timestamp: StarknetBlockTimestamp,
     pub gas_price: GasPrice,
-    pub sequencer_address: EthereumAddress,
+    pub sequencer_address: SequencerAddress,
 }
 
 /// Stores the contract state hash along with its preimage. This is useful to
@@ -1273,7 +1273,7 @@ mod tests {
                     root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
                     timestamp: StarknetBlockTimestamp(i + 500),
                     gas_price: GasPrice(H128::zero()),
-                    sequencer_address: EthereumAddress(H160::zero()),
+                    sequencer_address: SequencerAddress(StarkHash::ZERO),
                 })
                 .collect::<Vec<_>>()
                 .try_into()
@@ -1625,7 +1625,7 @@ mod tests {
                     root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
                     timestamp: StarknetBlockTimestamp(i + 500),
                     gas_price: GasPrice(H128::zero()),
-                    sequencer_address: EthereumAddress(H160::zero()),
+                    sequencer_address: SequencerAddress(StarkHash::ZERO),
                 })
                 .collect::<Vec<_>>()
                 .try_into()
@@ -2123,7 +2123,9 @@ mod tests {
             root: GlobalRoot(StarkHash::from_be_slice(b"root 0").unwrap()),
             timestamp: StarknetBlockTimestamp(0),
             gas_price: GasPrice(H128::from(b"gas_price 0 ----")),
-            sequencer_address: EthereumAddress(H160::from(b"sequencer_address  0")),
+            sequencer_address: SequencerAddress(
+                StarkHash::from_be_slice(b"sequencer_address 0").unwrap(),
+            ),
         };
         let block1 = StarknetBlock {
             hash: StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap()),
@@ -2131,7 +2133,9 @@ mod tests {
             root: GlobalRoot(StarkHash::from_be_slice(b"root 1").unwrap()),
             timestamp: StarknetBlockTimestamp(1),
             gas_price: GasPrice(H128::from(b"gas_price 1 ----")),
-            sequencer_address: EthereumAddress(H160::from(b"sequencer_address  1")),
+            sequencer_address: SequencerAddress(
+                StarkHash::from_be_slice(b"sequencer_address 1").unwrap(),
+            ),
         };
         let contract0_address =
             ContractAddress(StarkHash::from_be_slice(b"contract 0 address").unwrap());

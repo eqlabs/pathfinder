@@ -141,6 +141,10 @@ pub struct EventData(pub StarkHash);
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EventKey(pub StarkHash);
 
+/// StarkNet sequencer address.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct SequencerAddress(pub StarkHash);
+
 /// StarkNet protocol version.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetProtocolVersion(pub H256);
