@@ -238,7 +238,7 @@ impl RpcApi {
 
     /// Fetches a [RawBlock] from storage.
     ///
-    /// Returns [`jsonrpsee::types::Error::Call`] with code [`ErrorCode::InvalidBlockHash`]
+    /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockHash`]
     /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     async fn get_raw_block_by_hash(&self, block_id: StarknetBlocksBlockId) -> RpcResult<RawBlock> {
         self.get_raw_block(block_id, ErrorCode::InvalidBlockHash)
@@ -247,7 +247,7 @@ impl RpcApi {
 
     /// Fetches a [RawBlock] from storage.
     ///
-    /// Returns [`jsonrpsee::types::Error::Call`] with code [`ErrorCode::InvalidBlockNumber`]
+    /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockNumber`]
     /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     async fn get_raw_block_by_number(
         &self,
@@ -1054,7 +1054,7 @@ impl From<EventFilterError> for jsonrpsee::core::Error {
 fn internal_server_error(e: impl std::fmt::Display) -> jsonrpsee::core::Error {
     Error::Call(CallError::Custom(ErrorObject::owned(
         jsonrpsee::types::error::ErrorCode::InternalError.code(),
-        format!("{}: {}", jsonrpsee::types::error::INTERNAL_ERROR_MSG, e).to_string(),
+        format!("{}: {}", jsonrpsee::types::error::INTERNAL_ERROR_MSG, e),
         None::<()>,
     )))
 }

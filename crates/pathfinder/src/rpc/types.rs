@@ -414,17 +414,14 @@ pub mod reply {
             use jsonrpsee::core::error::Error;
             use jsonrpsee::types::error::{CallError, ErrorObject};
 
-            match ecode {
-                ErrorCode::PageSizeTooBig => {
-                    #[cfg(debug_assertions)]
-                    panic!("convert jsonrpsee::...::Error from EventFilterError to get error data");
-                }
-                _ => {}
+            if ecode == ErrorCode::PageSizeTooBig {
+                #[cfg(debug_assertions)]
+                panic!("convert jsonrpsee::...::Error from EventFilterError to get error data");
             }
 
             let error = ecode as i32;
             Error::Call(CallError::Custom(ErrorObject::owned(
-                error.into(),
+                error,
                 ecode.to_string(),
                 // this is insufficient in every situation (PageSizeTooBig)
                 None::<()>,
