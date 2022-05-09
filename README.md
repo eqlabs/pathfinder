@@ -30,7 +30,11 @@ The following are instructions on how to build from source.
 ### Prerequisites
 
 Currently only supports Linux. Windows and MacOS support is planned.
-We need access to a full archive Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
+We need access to a full Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
+
+| :warning:    | If using Infura as an L1 provider, you will need access to their archive node facilities. This is because `pathfinder` requires access to the full log history. |
+|---------------|:------------------------|
+
 
 Before you start, make sure your system is up to date with Curl and Git available:
 
@@ -59,7 +63,7 @@ rustup update
 
 ### Install Python
 
-`pathfinder` requires Python version `3.7` or `3.8`. (In particular, `cairo-lang` 0.7.1 seems incompatible with Python 3.10.)
+`pathfinder` requires Python version `3.8` (in particular, `cairo-lang` 0.7.1 seems incompatible with Python 3.10).
 
 ```bash
 sudo apt install python3 python3-venv python3-dev
@@ -69,7 +73,7 @@ Verify the python version.
 Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
 
 ```bash
-python3 --version # must be 3.7 or 3.8
+python3 --version # must be 3.8
 ```
 
 ### Install build dependencies
@@ -239,7 +243,7 @@ The following environment variables can be passed to the container:
 
 | Name                               | Description                                                  | Default value     | Required |
 | ---------------------------------- | ------------------------------------------------------------ | ----------------- | -------- |
-| PATHFINDER_ETHEREUM_API_URL        | Ethereum (archive) node JSON-RPC endpoint URL                |                   | yes      |
+| PATHFINDER_ETHEREUM_API_URL        | Ethereum full node JSON-RPC endpoint URL                     |                   | yes      |
 | PATHFINDER_ETHEREUM_API_PASSWORD   | Password to use during authentication with Ethereum node API |                   | no       |
 | PATHFINDER_HTTP_RPC_ADDRESS        | Address to bind the `pathfinder` RPC server to               | 0.0.0.0:9545      | no       |
 | PATHFINDER_DATA_DIRECTORY          | Directory used to store `pathfinder` data                    | Current directory | no       |
@@ -259,6 +263,10 @@ docker pull eqlabs/pathfinder
 ```
 
 There is a chance of seeing the release notification before a new docker image is available for download, so just wait a minutes and then retry.
+
+### Available images
+
+Our images are updated on every `pathfinder` release. This means that the `:latest` docker image does not track our `main` branch here, but instead matches the latest `pathfinder` [release](https://github.com/eqlabs/pathfinder/releases).
 
 ### Building the container image yourself
 
