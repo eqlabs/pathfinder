@@ -113,7 +113,7 @@ pub struct StarknetBlockTimestamp(pub u64);
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetTransactionHash(pub StarkHash);
 
-/// A StarkNet transaction hash.
+/// A StarkNet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetTransactionIndex(pub u64);
 

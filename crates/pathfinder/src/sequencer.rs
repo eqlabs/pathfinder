@@ -454,8 +454,6 @@ impl ClientApi for Client {
             },
         );
 
-        eprintln!("WTF!");
-
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC

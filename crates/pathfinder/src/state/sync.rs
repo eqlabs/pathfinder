@@ -474,7 +474,7 @@ async fn l2_update(
             hash: block.block_hash.unwrap(),
             root: block.state_root.unwrap(),
             timestamp: block.timestamp,
-            // TODO
+            // Default value for cairo <0.8.2 is 0
             gas_price: block.gas_price.unwrap_or(GasPrice(H128::zero())),
             sequencer_address: block
                 .sequencer_address

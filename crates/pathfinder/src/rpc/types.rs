@@ -229,14 +229,14 @@ pub mod reply {
                 status: block.status.into(),
                 sequencer: block
                     .sequencer_address
-                    // TODO
+                    // Default value for cairo <0.8.0 is 0
                     .unwrap_or(SequencerAddress(StarkHash::ZERO)),
                 new_root: block.state_root,
                 old_root,
                 accepted_time: block.timestamp,
                 gas_price: block
                     .gas_price
-                    // TODO
+                    // Default value for cairo <0.8.2 is 0
                     .unwrap_or(crate::core::GasPrice(web3::types::H128::zero())),
                 transactions: match scope {
                     BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
