@@ -8,7 +8,7 @@ from starkware.storage.storage import Storage
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 9
-EXPECTED_CAIRO_VERSION = "0.8.2"
+EXPECTED_CAIRO_VERSION = "0.8.2.1"
 
 
 def main():

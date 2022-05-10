@@ -25,7 +25,7 @@ black==21.12b0
     # via -r requirements-dev.in
 cachetools==5.0.0
     # via cairo-lang
-cairo-lang==0.8.2
+cairo-lang==0.8.2.1
     # via -r requirements-dev.in
 certifi==2021.10.8
     # via requests
