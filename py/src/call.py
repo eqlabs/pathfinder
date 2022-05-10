@@ -266,7 +266,7 @@ def resolve_block(connection, at_block):
     sequencer_address = int.from_bytes(sequencer_address, "big")
 
     return (
-        BlockInfo(block_number, block_time, gas_price),
+        BlockInfo(block_number, block_time, gas_price, sequencer_address),
         global_root,
     )
 
