@@ -204,7 +204,6 @@ pub(crate) mod test_utils {
     };
 
     use pedersen::StarkHash;
-    use web3::types::H128;
 
     /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
     /// with arbitrary other values.
@@ -215,8 +214,8 @@ pub(crate) mod test_utils {
                 hash: StarknetBlockHash(StarkHash::from_hex_str(&"a".repeat(i + 3)).unwrap()),
                 root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap()),
                 timestamp: StarknetBlockTimestamp(i as u64 + 500),
-                gas_price: GasPrice(H128::zero()),
-                sequencer_address: SequencerAddress(StarkHash::ZERO),
+                gas_price: GasPrice::from(i as u64),
+                sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[i as u8]).unwrap()),
             })
             .collect::<Vec<_>>()
             .try_into()

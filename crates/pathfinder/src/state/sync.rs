@@ -29,7 +29,6 @@ use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{Connection, Transaction};
 use tokio::sync::{mpsc, RwLock};
-use web3::types::H128;
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
@@ -475,7 +474,7 @@ async fn l2_update(
             root: block.state_root.unwrap(),
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
-            gas_price: block.gas_price.unwrap_or(GasPrice(H128::zero())),
+            gas_price: block.gas_price.unwrap_or(GasPrice::ZERO),
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(StarkHash::ZERO)),
@@ -645,7 +644,7 @@ mod tests {
     use pedersen::StarkHash;
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
-    use web3::types::{H128, H256};
+    use web3::types::H256;
 
     #[derive(Debug, Clone)]
     struct FakeTransport;
@@ -825,7 +824,7 @@ mod tests {
         pub static ref BLOCK0: reply::Block = reply::Block {
             block_hash: Some(StarknetBlockHash(*A)),
             block_number: Some(StarknetBlockNumber(0)),
-            gas_price: Some(GasPrice(H128::zero())),
+            gas_price: Some(GasPrice::ZERO),
             parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
             sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
             state_root: Some(GlobalRoot(StarkHash::ZERO)),
@@ -837,7 +836,7 @@ mod tests {
         pub static ref BLOCK1: reply::Block = reply::Block {
             block_hash: Some(StarknetBlockHash(*B)),
             block_number: Some(StarknetBlockNumber(1)),
-            gas_price: Some(GasPrice(H128::from([1u8; 16]))),
+            gas_price: Some(GasPrice::from(1)),
             parent_block_hash: StarknetBlockHash(*A),
             sequencer_address: Some(SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap())),
             state_root: Some(GlobalRoot(*B)),
@@ -851,7 +850,7 @@ mod tests {
             hash: StarknetBlockHash(*A),
             root: GlobalRoot(StarkHash::ZERO),
             timestamp: StarknetBlockTimestamp(0),
-            gas_price: GasPrice(H128::zero()),
+            gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
         pub static ref STORAGE_BLOCK1: storage::StarknetBlock = storage::StarknetBlock {
@@ -859,7 +858,7 @@ mod tests {
             hash: StarknetBlockHash(*B),
             root: GlobalRoot(*B),
             timestamp: StarknetBlockTimestamp(1),
-            gas_price: GasPrice(H128::from([1u8; 16])),
+            gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap()),
         };
         // Causes root to remain 0

@@ -204,7 +204,8 @@ impl SerializeAs<GasPrice> for GasPriceAsHexStr {
     {
         // GasPrice is "0x" + 32 digits at most
         let mut buf = [0u8; 2 + 32];
-        let s = bytes_as_hex_str(source.0.as_bytes(), &mut buf);
+        let bytes = source.0.to_be_bytes();
+        let s = bytes_as_hex_str(&bytes, &mut buf);
         serializer.serialize_str(s)
     }
 }
@@ -227,9 +228,9 @@ impl<'de> DeserializeAs<'de, GasPrice> for GasPriceAsHexStr {
             where
                 E: serde::de::Error,
             {
-                bytes_from_hex_str::<{ H128::len_bytes() }>(v)
+                bytes_from_hex_str::<16>(v)
                     .map_err(serde::de::Error::custom)
-                    .map(|b| GasPrice(H128::from(b)))
+                    .map(GasPrice::from_be_bytes)
             }
         }
 

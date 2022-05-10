@@ -236,7 +236,7 @@ pub mod reply {
                 gas_price: block
                     .gas_price
                     // Default value for cairo <0.8.2 is 0
-                    .unwrap_or(crate::core::GasPrice(web3::types::H128::zero())),
+                    .unwrap_or(GasPrice::ZERO),
 
                 transactions: match scope {
                     BlockResponseScope::TransactionHashes => Transactions::HashesOnly(

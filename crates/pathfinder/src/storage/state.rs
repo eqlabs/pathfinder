@@ -1,7 +1,7 @@
 use anyhow::Context;
 use pedersen::StarkHash;
 use rusqlite::{named_params, params, Connection, OptionalExtension, Transaction};
-use web3::types::{H128, H256};
+use web3::types::H256;
 
 use crate::{
     core::{
@@ -252,7 +252,7 @@ impl StarknetBlocksTable {
                 ":hash": block.hash.0.as_be_bytes(),
                 ":root": block.root.0.as_be_bytes(),
                 ":timestamp": block.timestamp.0,
-                ":gas_price": &block.gas_price.0[..],
+                ":gas_price": &block.gas_price.to_be_bytes(),
                 ":sequencer_address": block.sequencer_address.0.as_be_bytes(),
             },
         )?;
@@ -305,7 +305,7 @@ impl StarknetBlocksTable {
                 let timestamp = StarknetBlockTimestamp(timestamp);
 
                 let gas_price = row.get_ref_unwrap("gas_price").as_blob().unwrap();
-                let gas_price = GasPrice(H128(gas_price.try_into().unwrap()));
+                let gas_price = GasPrice::from_be_slice(gas_price).unwrap();
 
                 let sequencer_address = row.get_ref_unwrap("sequencer_address").as_blob().unwrap();
                 let sequencer_address = StarkHash::from_be_slice(sequencer_address).unwrap();
@@ -2094,7 +2094,7 @@ mod tests {
             number: block0_number,
             root: GlobalRoot(StarkHash::from_be_slice(b"root 0").unwrap()),
             timestamp: StarknetBlockTimestamp(0),
-            gas_price: GasPrice(H128::from(b"gas_price 0 ----")),
+            gas_price: GasPrice::from(0),
             sequencer_address: SequencerAddress(
                 StarkHash::from_be_slice(b"sequencer_address 0").unwrap(),
             ),
@@ -2104,7 +2104,7 @@ mod tests {
             number: block1_number,
             root: GlobalRoot(StarkHash::from_be_slice(b"root 1").unwrap()),
             timestamp: StarknetBlockTimestamp(1),
-            gas_price: GasPrice(H128::from(b"gas_price 1 ----")),
+            gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(
                 StarkHash::from_be_slice(b"sequencer_address 1").unwrap(),
             ),

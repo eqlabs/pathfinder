@@ -30,7 +30,6 @@ mod tests {
 
     use pedersen::StarkHash;
     use rusqlite::{named_params, Connection};
-    use web3::types::H128;
 
     #[test]
     fn empty() {
@@ -96,7 +95,7 @@ mod tests {
                 hash: block_hash,
                 root,
                 timestamp,
-                gas_price: GasPrice(H128::zero()),
+                gas_price: GasPrice::ZERO,
                 sequencer_address: SequencerAddress(StarkHash::ZERO)
             }
         )

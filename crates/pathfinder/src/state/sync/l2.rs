@@ -395,7 +395,6 @@ mod tests {
         use assert_matches::assert_matches;
         use pedersen::StarkHash;
         use std::collections::HashMap;
-        use web3::types::H128;
 
         const DEF0: &str = r#"{
             "abi": [],
@@ -473,7 +472,7 @@ mod tests {
             static ref BLOCK0: reply::Block = reply::Block {
                 block_hash: Some(*BLOCK0_HASH),
                 block_number: Some(BLOCK0_NUMBER),
-                gas_price: Some(GasPrice(H128::zero())),
+                gas_price: Some(GasPrice::ZERO),
                 parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
                 sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
                 state_root: Some(*GLOBAL_ROOT0),
@@ -485,7 +484,7 @@ mod tests {
             static ref BLOCK0_V2: reply::Block = reply::Block {
                 block_hash: Some(*BLOCK0_HASH_V2),
                 block_number: Some(BLOCK0_NUMBER),
-                gas_price: Some(GasPrice(H128::from(b"gas price 0 v2--"))),
+                gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
                 parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
                 sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
                 state_root: Some(*GLOBAL_ROOT0_V2),
@@ -497,7 +496,7 @@ mod tests {
             static ref BLOCK1: reply::Block = reply::Block {
                 block_hash: Some(*BLOCK1_HASH),
                 block_number: Some(BLOCK1_NUMBER),
-                gas_price: Some(GasPrice(H128::from(b"gas price 1-----"))),
+                gas_price: Some(GasPrice::from(1)),
                 parent_block_hash: *BLOCK0_HASH,
                 sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 1").unwrap())),
                 state_root: Some(*GLOBAL_ROOT1),
@@ -509,7 +508,7 @@ mod tests {
             static ref BLOCK2: reply::Block = reply::Block {
                 block_hash: Some(*BLOCK2_HASH),
                 block_number: Some(BLOCK2_NUMBER),
-                gas_price: Some(GasPrice(H128::from(b"gas price 2-----"))),
+                gas_price: Some(GasPrice::from(2)),
                 parent_block_hash: *BLOCK1_HASH,
                 sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 2").unwrap())),
                 state_root: Some(*GLOBAL_ROOT2),
@@ -969,7 +968,7 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: Some(*BLOCK1_HASH_V2),
                     block_number: Some(BLOCK1_NUMBER),
-                    gas_price: Some(GasPrice(H128::from(b"gas price 1 v2--"))),
+                    gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     parent_block_hash: *BLOCK0_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
@@ -1151,7 +1150,7 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: Some(*BLOCK1_HASH_V2),
                     block_number: Some(BLOCK1_NUMBER),
-                    gas_price: Some(GasPrice(H128::from(b"gas price 1 v2--"))),
+                    gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     parent_block_hash: *BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
@@ -1165,7 +1164,7 @@ mod tests {
                 let block2_v2 = reply::Block {
                     block_hash: Some(*BLOCK2_HASH_V2),
                     block_number: Some(BLOCK2_NUMBER),
-                    gas_price: Some(GasPrice(H128::from(b"gas price 2 v2--"))),
+                    gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
                     parent_block_hash: *BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
@@ -1179,7 +1178,7 @@ mod tests {
                 let block3 = reply::Block {
                     block_hash: Some(*BLOCK3_HASH),
                     block_number: Some(BLOCK3_NUMBER),
-                    gas_price: Some(GasPrice(H128::from(b"gas price 2-----"))),
+                    gas_price: Some(GasPrice::from(3)),
                     parent_block_hash: *BLOCK2_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer address 3").unwrap(),
@@ -1349,7 +1348,7 @@ mod tests {
                 let block2_v2 = reply::Block {
                     block_hash: Some(*BLOCK2_HASH_V2),
                     block_number: Some(BLOCK2_NUMBER),
-                    gas_price: Some(GasPrice(H128::from(b"gas price 2 v2--"))),
+                    gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
                     parent_block_hash: *BLOCK1_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
@@ -1486,7 +1485,7 @@ mod tests {
                 let block1_v2 = reply::Block {
                     block_hash: Some(*BLOCK1_HASH_V2),
                     block_number: Some(BLOCK1_NUMBER),
-                    gas_price: Some(GasPrice(H128::from(b"gas price 1 v2--"))),
+                    gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     parent_block_hash: *BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
@@ -1500,7 +1499,7 @@ mod tests {
                 let block2 = reply::Block {
                     block_hash: Some(*BLOCK2_HASH),
                     block_number: Some(BLOCK2_NUMBER),
-                    gas_price: Some(GasPrice(H128::from(b"gas price 2-----"))),
+                    gas_price: Some(GasPrice::from_be_slice(b"gas price 2").unwrap()),
                     parent_block_hash: *BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer address 2").unwrap(),

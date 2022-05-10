@@ -460,7 +460,7 @@ mod tests {
             hash: genesis_hash,
             root: global_root0,
             timestamp: StarknetBlockTimestamp(0),
-            gas_price: GasPrice(H128::zero()),
+            gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
         let block1_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1").unwrap());
@@ -469,7 +469,7 @@ mod tests {
             hash: block1_hash,
             root: global_root1,
             timestamp: StarknetBlockTimestamp(1),
-            gas_price: GasPrice(H128::from([1u8; 16])),
+            gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[1u8]).unwrap()),
         };
         let latest_hash = StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
@@ -478,7 +478,7 @@ mod tests {
             hash: latest_hash,
             root: global_root2,
             timestamp: StarknetBlockTimestamp(2),
-            gas_price: GasPrice(H128::from([2u8; 16])),
+            gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[2u8]).unwrap()),
         };
         StarknetBlocksTable::insert(&db_txn, &block0).unwrap();

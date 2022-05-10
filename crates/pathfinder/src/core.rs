@@ -155,7 +155,7 @@ pub struct Fee(pub H128);
 
 /// StarkNet gas price.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-pub struct GasPrice(pub H128);
+pub struct GasPrice(pub u128);
 
 /// StarkNet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
@@ -238,5 +238,41 @@ impl From<StarknetBlockNumber> for crate::rpc::types::BlockNumberOrTag {
 impl From<StarknetBlockHash> for crate::rpc::types::BlockHashOrTag {
     fn from(hash: StarknetBlockHash) -> Self {
         crate::rpc::types::BlockHashOrTag::Hash(hash)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("expected slice lenght of 16 or less, got {0}")]
+pub struct FromSliceError(usize);
+
+impl GasPrice {
+    pub const ZERO: GasPrice = GasPrice(0u128);
+
+    /// Returns the big-endian representation of this [GasPrice].
+    pub fn to_be_bytes(&self) -> [u8; 16] {
+        self.0.to_be_bytes()
+    }
+
+    /// Constructs [GasPrice] from an array of bytes. Big endian byte order is assumed.
+    pub fn from_be_bytes(src: [u8; 16]) -> Self {
+        Self(u128::from_be_bytes(src))
+    }
+
+    /// Constructs [GasPrice] from a slice of bytes. Big endian byte order is assumed.
+    pub fn from_be_slice(src: &[u8]) -> Result<Self, FromSliceError> {
+        if src.len() > 16 {
+            return Err(FromSliceError(src.len()));
+        }
+
+        let mut buf = [0u8; 16];
+        buf[16 - src.len()..].copy_from_slice(src);
+
+        Ok(Self::from_be_bytes(buf))
+    }
+}
+
+impl From<u64> for GasPrice {
+    fn from(src: u64) -> Self {
+        Self(u128::from(src))
     }
 }
