@@ -6,7 +6,7 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
     // Add new columns to the blocks table
     transaction
         .execute_batch(
-            r"ALTER TABLE starknet_blocks ADD COLUMN gas_price INTEGER NOT NULL
+            r"ALTER TABLE starknet_blocks ADD COLUMN gas_price BLOB NOT NULL
             DEFAULT X'00000000000000000000000000000000';
             ALTER TABLE starknet_blocks ADD COLUMN sequencer_address BLOB NOT NULL
             DEFAULT X'0000000000000000000000000000000000000000000000000000000000000000';",
