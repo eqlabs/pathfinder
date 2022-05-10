@@ -575,7 +575,6 @@ mod tests {
         };
         use pedersen::StarkHash;
         use pretty_assertions::assert_eq;
-        use web3::types::H128;
 
         #[tokio::test]
         async fn genesis() {
@@ -709,52 +708,23 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            use crate::storage::StarknetBlocksTable;
-
             let storage = Storage::in_memory().unwrap();
-            let connection = storage.connection().unwrap();
             let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-            let client = client(addr);
             let params = rpc_params!(
-                BlockNumberOrTag::Tag(Tag::Pending),
+                BlockHashOrTag::Tag(Tag::Pending),
                 BlockResponseScope::FullTransactions
             );
-
-            let latest_root = GlobalRoot(StarkHash::from_be_slice(b"root for latest").unwrap());
-
-            for (latest_block, expected_old_root) in [
-                // Empty storage, invalid old_root expected
-                (None, GlobalRoot(StarkHash::ZERO)),
-                // Some block(s) in storage, valid old_root expected
-                (
-                    Some(StarknetBlock {
-                        hash: StarknetBlockHash(StarkHash::ZERO),
-                        number: StarknetBlockNumber(0),
-                        root: latest_root,
-                        timestamp: StarknetBlockTimestamp(0),
-                        gas_price: GasPrice(H128::zero()),
-                        sequencer_address: SequencerAddress(StarkHash::ZERO),
-                    }),
-                    latest_root,
-                ),
-            ] {
-                if let Some(some_latest_block) = latest_block {
-                    StarknetBlocksTable::insert(&connection, &some_latest_block).unwrap();
-                }
-
-                let block = client
-                    .request::<Block>("starknet_getBlockByHash", params.clone())
-                    .await
-                    .unwrap();
-                assert_matches!(
-                    block.transactions,
-                    Transactions::Full(_) => ()
-                );
-                assert_eq!(block.old_root, expected_old_root, "");
-            }
+            let block = client(addr)
+                .request::<Block>("starknet_getBlockByHash", params)
+                .await
+                .unwrap();
+            assert_matches!(
+                block.transactions,
+                Transactions::Full(_) => ()
+            );
         }
 
         #[tokio::test]
@@ -784,7 +754,6 @@ mod tests {
             BlockNumberOrTag, Tag,
         };
         use pretty_assertions::assert_eq;
-        use web3::types::H128;
 
         #[tokio::test]
         async fn genesis() {
@@ -916,52 +885,23 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            use crate::storage::StarknetBlocksTable;
-
             let storage = Storage::in_memory().unwrap();
-            let connection = storage.connection().unwrap();
             let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
-            let client = client(addr);
             let params = rpc_params!(
-                BlockNumberOrTag::Tag(Tag::Pending),
+                BlockHashOrTag::Tag(Tag::Pending),
                 BlockResponseScope::FullTransactions
             );
-
-            let latest_root = GlobalRoot(StarkHash::from_be_slice(b"root for latest").unwrap());
-
-            for (latest_block, expected_old_root) in [
-                // Empty storage, invalid old_root expected
-                (None, GlobalRoot(StarkHash::ZERO)),
-                // Some block(s) in storage, valid old_root expected
-                (
-                    Some(StarknetBlock {
-                        hash: StarknetBlockHash(StarkHash::ZERO),
-                        number: StarknetBlockNumber(0),
-                        root: latest_root,
-                        timestamp: StarknetBlockTimestamp(0),
-                        gas_price: GasPrice(H128::zero()),
-                        sequencer_address: SequencerAddress(StarkHash::ZERO),
-                    }),
-                    latest_root,
-                ),
-            ] {
-                if let Some(some_latest_block) = latest_block {
-                    StarknetBlocksTable::insert(&connection, &some_latest_block).unwrap();
-                }
-
-                let block = client
-                    .request::<Block>("starknet_getBlockByNumber", params.clone())
-                    .await
-                    .unwrap();
-                assert_matches!(
-                    block.transactions,
-                    Transactions::Full(_) => ()
-                );
-                assert_eq!(block.old_root, expected_old_root);
-            }
+            let block = client(addr)
+                .request::<Block>("starknet_getBlockByNumber", params)
+                .await
+                .unwrap();
+            assert_matches!(
+                block.transactions,
+                Transactions::Full(_) => ()
+            );
         }
 
         #[tokio::test]
