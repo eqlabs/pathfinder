@@ -202,7 +202,7 @@ impl SerializeAs<GasPrice> for GasPriceAsHexStr {
     where
         S: serde::Serializer,
     {
-        // Fee is "0x" + 32 digits at most
+        // GasPrice is "0x" + 32 digits at most
         let mut buf = [0u8; 2 + 32];
         let s = bytes_as_hex_str(source.0.as_bytes(), &mut buf);
         serializer.serialize_str(s)
