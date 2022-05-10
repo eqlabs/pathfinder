@@ -1,8 +1,8 @@
 # see README.md
-cairo-lang==0.8.1
+cairo-lang==0.8.2
 # We don't use rlp directly, however this needs to be defined for it to help pip-compile
 eth-rlp==0.2.1
-pip-tools==6.4.0
+pip-tools==6.6.0
 pytest==6.2.5
 flake8==4.0.1
 black==21.12b0
