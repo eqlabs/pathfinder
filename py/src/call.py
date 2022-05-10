@@ -233,17 +233,16 @@ def check_schema(connection):
 
 def resolve_block(connection, at_block):
     from starkware.starknet.business_logic.state.state import BlockInfo
-    from starkware.starknet.definitions.general_config import DEFAULT_GAS_PRICE
 
     if at_block == "latest":
         # latest is questionable, but the rust side cannot use it at the moment at least,
         # should probably be removed.
         cursor = connection.execute(
-            "select number, timestamp, root from starknet_blocks order by number desc limit 1"
+            "select number, timestamp, root, gas_price, sequencer_address from starknet_blocks order by number desc limit 1"
         )
     elif type(at_block) == int:
         cursor = connection.execute(
-            "select number, timestamp, root from starknet_blocks where number = ?",
+            "select number, timestamp, root, gas_price, sequencer_address from starknet_blocks where number = ?",
             [at_block],
         )
     else:
@@ -253,20 +252,23 @@ def resolve_block(connection, at_block):
             at_block = b"\x00" * (32 - len(at_block)) + at_block
 
         cursor = connection.execute(
-            "select number, timestamp, root from starknet_blocks where hash = ?",
+            "select number, timestamp, root, gas_price, sequencer_address from starknet_blocks where hash = ?",
             [at_block],
         )
 
     try:
-        [(block_number, block_time, global_root)] = cursor
-        # NOTE: this assumes the rust side to serialize starknet_blocks::timestamp as compatible
-        # for blocks before 0.7.0
-        return (
-            BlockInfo(block_number, block_time, DEFAULT_GAS_PRICE),
-            global_root,
-        )
-    except Exception:
+        [(block_number, block_time, global_root, gas_price, sequencer_address)] = cursor
+    except ValueError:
+        # zero rows, or wrong number of columns (unlikely)
         raise NoSuchBlock(at_block)
+
+    gas_price = int.from_bytes(gas_price, "big")
+    sequencer_address = int.from_bytes(sequencer_address, "big")
+
+    return (
+        BlockInfo(block_number, block_time, gas_price),
+        global_root,
+    )
 
 
 class NoSuchBlock(Exception):
