@@ -2,7 +2,7 @@
 
 use crate::core::{
     CallParam, CallSignatureElem, ConstructorParam, EthereumAddress, EventData, EventKey, Fee,
-    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
+    GasPrice, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
     TransactionSignatureElem, TransactionVersion,
 };
 use num_bigint::BigUint;
@@ -192,6 +192,48 @@ impl<'de> DeserializeAs<'de, Fee> for FeeAsHexStr {
         }
 
         deserializer.deserialize_str(FeeVisitor)
+    }
+}
+
+pub struct GasPriceAsHexStr;
+
+impl SerializeAs<GasPrice> for GasPriceAsHexStr {
+    fn serialize_as<S>(source: &GasPrice, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Fee is "0x" + 32 digits at most
+        let mut buf = [0u8; 2 + 32];
+        let s = bytes_as_hex_str(source.0.as_bytes(), &mut buf);
+        serializer.serialize_str(s)
+    }
+}
+
+impl<'de> DeserializeAs<'de, GasPrice> for GasPriceAsHexStr {
+    fn deserialize_as<D>(deserializer: D) -> Result<GasPrice, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct GasPriceVisitor;
+
+        impl<'de> Visitor<'de> for GasPriceVisitor {
+            type Value = GasPrice;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a hex string of up to 32 digits with an optional '0x' prefix")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                bytes_from_hex_str::<{ H128::len_bytes() }>(v)
+                    .map_err(serde::de::Error::custom)
+                    .map(|b| GasPrice(H128::from(b)))
+            }
+        }
+
+        deserializer.deserialize_str(GasPriceVisitor)
     }
 }
 

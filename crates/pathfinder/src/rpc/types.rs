@@ -123,7 +123,7 @@ pub mod reply {
             SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
             StarknetTransactionHash,
         },
-        rpc::api::RawBlock,
+        rpc::{api::RawBlock, serde::GasPriceAsHexStr},
         sequencer::reply as seq,
         sequencer::reply::Status as SeqStatus,
     };
@@ -184,6 +184,7 @@ pub mod reply {
     }
 
     /// L2 Block as returned by the RPC API.
+    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Block {
@@ -195,6 +196,7 @@ pub mod reply {
         pub new_root: Option<GlobalRoot>,
         pub old_root: GlobalRoot,
         pub accepted_time: StarknetBlockTimestamp,
+        #[serde_as(as = "GasPriceAsHexStr")]
         pub gas_price: GasPrice,
         pub transactions: Transactions,
     }

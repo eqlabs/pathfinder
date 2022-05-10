@@ -4,13 +4,14 @@ use crate::{
         CallResultValue, EthereumAddress, GasPrice, GlobalRoot, SequencerAddress,
         StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
     },
-    rpc::serde::EthereumAddressAsHexStr,
+    rpc::serde::{EthereumAddressAsHexStr, GasPriceAsHexStr},
 };
 use serde::Deserialize;
 use serde_with::serde_as;
 
 /// Used to deserialize replies to [ClientApi::block_by_hash](crate::sequencer::ClientApi::block_by_hash) and
 /// [ClientApi::block_by_number](crate::sequencer::ClientApi::block_by_number).
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
@@ -18,6 +19,7 @@ pub struct Block {
     pub block_hash: Option<StarknetBlockHash>,
     #[serde(default)]
     pub block_number: Option<StarknetBlockNumber>,
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
     pub gas_price: Option<GasPrice>,
     pub parent_block_hash: StarknetBlockHash,
