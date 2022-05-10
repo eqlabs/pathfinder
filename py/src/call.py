@@ -8,7 +8,7 @@ from starkware.storage.storage import Storage
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 9
-
+EXPECTED_CAIRO_VERSION = "0.8.2"
 
 def main():
     """
@@ -49,7 +49,7 @@ def check_cairolang_version():
     import pkg_resources
 
     version = pkg_resources.get_distribution("cairo-lang").version
-    return version == "0.8.1"
+    return version == EXPECTED_CAIRO_VERSION
 
 
 def do_loop(connection, input_gen, output_file):
