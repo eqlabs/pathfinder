@@ -1426,7 +1426,6 @@ mod tests {
             collections::VecDeque, convert::Infallible, net::SocketAddr, sync::Arc, time::Duration,
         };
         use tokio::{sync::Mutex, task::JoinHandle};
-        use tracing_test::traced_test;
         use warp::Filter;
 
         // A test helper
@@ -1463,8 +1462,7 @@ mod tests {
             (server_handle, addr)
         }
 
-        #[tokio::test]
-        #[traced_test]
+        #[test_log::test(tokio::test)]
         async fn stop_on_ok() {
             let statuses = VecDeque::from([
                 (StatusCode::TOO_MANY_REQUESTS, ""),
@@ -1489,8 +1487,7 @@ mod tests {
             assert_eq!(result, "Finally!");
         }
 
-        #[tokio::test]
-        #[traced_test]
+        #[test_log::test(tokio::test)]
         async fn stop_on_fatal() {
             let statuses = VecDeque::from([
                 (StatusCode::TOO_MANY_REQUESTS, ""),
@@ -1521,8 +1518,7 @@ mod tests {
             );
         }
 
-        #[tokio::test]
-        #[traced_test]
+        #[test_log::test(tokio::test)]
         async fn request_timeout() {
             use std::sync::atomic::{AtomicUsize, Ordering};
 
