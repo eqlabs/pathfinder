@@ -6,6 +6,8 @@ import asyncio
 from starkware.starkware_utils.error_handling import WebFriendlyException
 from starkware.storage.storage import Storage
 
+# used from tests, and the query which asserts that the schema is of expected version.
+EXPECTED_SCHEMA_REVISION = 9
 
 def main():
     """
@@ -225,7 +227,7 @@ def check_schema(connection):
     assert cursor is not None, "there has to be an user_version defined in the database"
 
     [version] = next(cursor)
-    return version == 9
+    return version == EXPECTED_SCHEMA_REVISION
 
 
 def resolve_block(connection, at_block):

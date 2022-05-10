@@ -1,4 +1,4 @@
-from call import do_loop, loop_inner
+from call import do_loop, loop_inner, EXPECTED_SCHEMA_REVISION
 import sqlite3
 import io
 import json
@@ -97,7 +97,12 @@ def inmemory_with_tables():
     # strangely this cannot be pulled into the script, maybe pragmas have
     # different kind of semantics than what is normally executed, would explain
     # the similar behaviour of sqlite3 .dump and restore.
-    cur.execute("pragma user_version = 9")
+    #
+    # apparently python sqlite does not support pragmas with parameters
+    # (questionmark or named).
+    assert type(EXPECTED_SCHEMA_REVISION) is int, f"expected schema revision must be just int, not: {type(EXPECTED_SCHEMA_REVISION)}"
+    assert 0 <= EXPECTED_SCHEMA_REVISION < 2**16, f"schema revision out of range: {EXPECTED_SCHEMA_REVISION}"
+    cur.execute("pragma user_version = %d" % EXPECTED_SCHEMA_REVISION)
 
     con.commit()
     return con
