@@ -27,6 +27,7 @@ enum-iterator = "0.7.0"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 hex = "0.4.3"
 home = "0.5.3"
+hyper = { version = "0.14.10", features = ["server", "http1", "http2", "tcp"] }
 jsonrpsee = { version = "0.6.1", features = ["full"] }
 lazy_static = "1.4.0"
 num-bigint = { version = "0.4.3", features = ["serde"] }

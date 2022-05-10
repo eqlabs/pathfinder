@@ -72,6 +72,7 @@ VOLUME /usr/share/pathfinder/data
 
 USER 1000:1000
 EXPOSE 9545
+EXPOSE 8080
 WORKDIR /usr/share/pathfinder/data
 
 ENV PATHFINDER_HTTP_RPC_ADDRESS="0.0.0.0:9545"

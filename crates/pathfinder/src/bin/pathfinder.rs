@@ -11,6 +11,15 @@ use pathfinder_lib::{
 use std::sync::Arc;
 use tracing::info;
 
+use std::{net::SocketAddr};
+use std::convert::Infallible;
+use hyper::{Body, Request, Response, Server};
+use hyper::service::{make_service_fn, service_fn};
+
+async fn healthz(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    Ok(Response::new(Body::from("ok")))
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -73,6 +82,21 @@ async fn main() -> anyhow::Result<()> {
     let (rpc_handle, local_addr) =
         rpc::run_server(config.http_rpc_addr, api).context("Starting the RPC server")?;
     info!("📡 HTTP-RPC server started on: {}", local_addr);
+
+    let addr2 = SocketAddr::from(([0, 0, 0, 0], 8080));
+
+    let make_svc = make_service_fn(|_conn| {
+        // This is the `Service` that will handle the connection.
+        // `service_fn` is a helper to convert a function that
+        // returns a Response into a `Service`.
+        async { Ok::<_, Infallible>(service_fn(healthz)) }
+    });
+
+    let srv2 = Server::bind(&addr2).serve(make_svc);
+
+    info!("📡 Health server started on: {}", addr2);
+
+    tokio::spawn(srv2);
 
     let update_handle = tokio::spawn(pathfinder_lib::update::poll_github_for_releases());
 
