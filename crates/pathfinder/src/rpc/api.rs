@@ -101,10 +101,9 @@ impl RpcApi {
                     .await
                     .map_err(internal_server_error)?;
 
-                let old_root = self.get_latest_block_root().await?;
                 let scope = requested_scope.unwrap_or_default();
 
-                return Ok(Block::from_sequencer_scoped(block, old_root, scope));
+                return Ok(Block::from_sequencer_scoped(block, scope));
             }
             BlockHashOrTag::Hash(hash) => hash.into(),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
@@ -222,10 +221,9 @@ impl RpcApi {
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
 
-                let old_root = self.get_latest_block_root().await?;
                 let scope = requested_scope.unwrap_or_default();
 
-                return Ok(Block::from_sequencer_scoped(block, old_root, scope));
+                return Ok(Block::from_sequencer_scoped(block, scope));
             }
         };
 
@@ -323,38 +321,6 @@ impl RpcApi {
             };
 
             Ok(block)
-        });
-
-        handle
-            .await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            // flatten is unstable
-            .and_then(|x| x)
-    }
-
-    /// Fetches the global root of the latest block from storage.
-    async fn get_latest_block_root(&self) -> Result<GlobalRoot, Error> {
-        let storage = self.storage.clone();
-
-        let handle = tokio::task::spawn_blocking(move || {
-            let mut connection = storage
-                .connection()
-                .context("Opening database connection")
-                .map_err(internal_server_error)?;
-
-            let transaction = connection
-                .transaction()
-                .context("Creating database transaction")
-                .map_err(internal_server_error)?;
-
-            let root = StarknetBlocksTable::get_root(&transaction, StarknetBlocksBlockId::Latest)
-                .context("Read root from database")
-                .map_err(internal_server_error)?
-                // Latest missing in storage means that pending is genesis and there is no parent block
-                .unwrap_or(GlobalRoot(StarkHash::ZERO));
-
-            Ok(root)
         });
 
         handle
