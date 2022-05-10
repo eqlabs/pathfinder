@@ -9,6 +9,7 @@ from starkware.storage.storage import Storage
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 9
 
+
 def main():
     """
     Loops on stdin, reads json commands from lines, outputs single json as a response.
