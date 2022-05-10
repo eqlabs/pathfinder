@@ -242,7 +242,7 @@ impl From<StarknetBlockHash> for crate::rpc::types::BlockHashOrTag {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("expected slice lenght of 16 or less, got {0}")]
+#[error("expected slice length of 16 or less, got {0}")]
 pub struct FromSliceError(usize);
 
 impl GasPrice {
