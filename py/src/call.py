@@ -10,6 +10,7 @@ from starkware.storage.storage import Storage
 EXPECTED_SCHEMA_REVISION = 9
 EXPECTED_CAIRO_VERSION = "0.8.2"
 
+
 def main():
     """
     Loops on stdin, reads json commands from lines, outputs single json as a response.

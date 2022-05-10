@@ -364,6 +364,7 @@ def test_no_such_block():
     assert block_hash == expected
     assert latest == expected
 
+
 def test_check_cairolang_version():
     # run this here as well so that we get earlier than CI feedback
     # of another constant that needs to be upgraded
