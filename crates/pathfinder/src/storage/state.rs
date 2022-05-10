@@ -245,7 +245,7 @@ impl StarknetBlocksTable {
     /// Insert a new [StarknetBlock]. Fails if the block number is not unique.
     pub fn insert(connection: &Connection, block: &StarknetBlock) -> anyhow::Result<()> {
         connection.execute(
-            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp, gas_price, sequencer_address)
+            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address)
                                    VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address)",
             named_params! {
                 ":number": block.number.0,
