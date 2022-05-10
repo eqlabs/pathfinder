@@ -559,10 +559,11 @@ mod tests {
         Client::new(Chain::Goerli).unwrap()
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn client_user_agent() {
+        use crate::core::StarknetBlockTimestamp;
+        use crate::sequencer::reply::{Block, Status};
         use std::convert::Infallible;
-
         use warp::Filter;
 
         let filter = warp::header::optional("user-agent").and_then(
@@ -570,10 +571,21 @@ mod tests {
                 let user_agent = user_agent.expect("user-agent set");
                 let (name, version) = user_agent.split_once('/').unwrap();
 
-                assert_eq!(name, "pathfinder");
+                assert_eq!(name, "starknet-pathfinder");
                 assert_eq!(version, env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"));
 
-                Result::<_, Infallible>::Ok("")
+                Ok::<_, Infallible>(warp::reply::json(&Block {
+                    block_hash: None,
+                    block_number: None,
+                    gas_price: None,
+                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    sequencer_address: None,
+                    state_root: None,
+                    status: Status::NotReceived,
+                    timestamp: StarknetBlockTimestamp(0),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                }))
             },
         );
 

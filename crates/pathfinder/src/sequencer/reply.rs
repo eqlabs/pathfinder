@@ -13,6 +13,7 @@ use serde_with::serde_as;
 /// [ClientApi::block_by_number](crate::sequencer::ClientApi::block_by_number).
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     #[serde(default)]
@@ -35,6 +36,7 @@ pub struct Block {
 
 /// Block and transaction status values.
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields)]
 pub enum Status {
     #[serde(rename = "NOT_RECEIVED")]
