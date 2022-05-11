@@ -769,6 +769,7 @@ mod tests {
             _: ContractAddressSalt,
             _: Vec<ConstructorParam>,
             _: ContractDefinition,
+            _: Option<String>,
         ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
             unimplemented!()
         }

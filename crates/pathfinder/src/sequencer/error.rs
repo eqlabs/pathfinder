@@ -44,7 +44,8 @@ impl From<SequencerError> for rpc::Error {
                 | StarknetErrorCode::SchemaValidationError
                 | StarknetErrorCode::MalformedRequest
                 | StarknetErrorCode::UnsupportedSelectorForFee
-                | StarknetErrorCode::OutOfRangeBlockHash => {
+                | StarknetErrorCode::OutOfRangeBlockHash
+                | StarknetErrorCode::NotPermittedContract => {
                     rpc::Error::Call(rpc::CallError::Failed(e.into()))
                 }
             },
@@ -97,4 +98,6 @@ pub enum StarknetErrorCode {
     UnsupportedSelectorForFee,
     #[serde(rename = "StarknetErrorCode.INVALID_CONTRACT_DEFINITION")]
     InvalidContractDefinition,
+    #[serde(rename = "StarknetErrorCode.NON_PERMITTED_CONTRACT")]
+    NotPermittedContract,
 }

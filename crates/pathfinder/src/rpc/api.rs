@@ -990,6 +990,7 @@ impl RpcApi {
         contract_address_salt: ContractAddressSalt,
         constructor_calldata: Vec<ConstructorParam>,
         contract_definition: ContractDefinition,
+        token: Option<String>,
     ) -> RpcResult<DeployTransactionResult> {
         let result = self
             .sequencer
@@ -997,6 +998,7 @@ impl RpcApi {
                 contract_address_salt,
                 constructor_calldata,
                 contract_definition,
+                token,
             )
             .await?;
         Ok(DeployTransactionResult {
