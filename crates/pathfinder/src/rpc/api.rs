@@ -103,6 +103,8 @@ impl RpcApi {
 
                 let scope = requested_scope.unwrap_or_default();
 
+                // TODO
+
                 return Ok(Block::from_sequencer_scoped(block, scope));
             }
             BlockHashOrTag::Hash(hash) => hash.into(),
@@ -329,6 +331,58 @@ impl RpcApi {
             .map_err(internal_server_error)
             // flatten is unstable
             .and_then(|x| x)
+    }
+
+    /// Fetches [GlobalRoot] of a block by block hash.
+    ///
+    /// Tries storage first, then the sequencer, returns [None] if not found.
+    async fn get_root_by_hash(
+        &self,
+        block_hash: StarknetBlockHash,
+    ) -> RpcResult<Option<GlobalRoot>> {
+        let storage = self.storage.clone();
+
+        let handle = tokio::task::spawn_blocking(move || {
+            let mut connection = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let transaction = connection
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            let root = StarknetBlocksTable::get_root(
+                &transaction,
+                StarknetBlocksBlockId::Hash(block_hash),
+            )
+            .context("Read block from database")
+            .map_err(internal_server_error)?;
+
+            Ok(root)
+        });
+
+        let root = handle
+            .await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            // flatten is unstable
+            .and_then(|x| x)?;
+
+        if root.is_some() {
+            return Ok(root);
+        }
+
+        let root = self
+            .sequencer
+            .block_by_hash(BlockHashOrTag::Hash(block_hash))
+            .await
+            .context("Fetch block from sequencer")
+            .map_err(internal_server_error)?
+            .state_root;
+
+        Ok(root)
     }
 
     // /// Get the information about the result of executing the requested block.
