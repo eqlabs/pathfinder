@@ -1,4 +1,4 @@
-use ::stark_hash::{stark_hash, stark_hash_slow, StarkHash};
+use ::stark_hash::{stark_hash, StarkHash};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
@@ -10,14 +10,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let e0 = StarkHash::from_hex_str(e0).unwrap();
     let e1 = StarkHash::from_hex_str(e1).unwrap();
 
-    c.bench_function("pedersen_hash_preprocessed", |b| {
-        b.iter(|| {
-            black_box(stark_hash(e0, e1));
-        });
-    });
     c.bench_function("pedersen_hash", |b| {
         b.iter(|| {
-            black_box(stark_hash_slow(e0, e1));
+            black_box(stark_hash(e0, e1));
         });
     });
 }

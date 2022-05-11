@@ -2,10 +2,7 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::Display;
 
-use stark_curve::{
-    AffinePoint, FieldElement, FieldElementRepr, ProjectivePoint, PEDERSEN_P0, PEDERSEN_P1,
-    PEDERSEN_P2, PEDERSEN_P3, PEDERSEN_P4,
-};
+use stark_curve::{AffinePoint, FieldElement, FieldElementRepr, ProjectivePoint, PEDERSEN_P0};
 
 use bitvec::{field::BitField, order::Msb0, slice::BitSlice, view::BitView};
 use ff::PrimeField;
@@ -135,31 +132,10 @@ impl std::ops::Add for StarkHash {
     }
 }
 
-/// Computes the [Starknet Pedersen hash] on `a` and `b`.
-///
-/// [Starknet Pedersen hash]: https://docs.starkware.co/starkex-v3/crypto/pedersen-hash-function
-pub fn stark_hash(a: StarkHash, b: StarkHash) -> StarkHash {
-    let a = FieldElement::from(a).into_bits();
-    let b = FieldElement::from(b).into_bits();
-
-    // Compute hash
-    let mut accumulator = PEDERSEN_P0;
-    accumulator.add(&PEDERSEN_P1.multiply(&a[..248])); // Add a_low * P1
-    accumulator.add(&PEDERSEN_P2.multiply(&a[248..252])); // Add a_high * P2
-    accumulator.add(&PEDERSEN_P3.multiply(&b[..248])); // Add b_low * P3
-    accumulator.add(&PEDERSEN_P4.multiply(&b[248..252])); // Add b_high * P4
-
-    // Convert to affine
-    let result = AffinePoint::from(&accumulator);
-
-    // Return x-coordinate
-    StarkHash::from(result.x)
-}
-
 /// Computes the [Starknet Pedersen hash] on `a` and `b` using precomputed points.
 ///
 /// [Starknet Pedersen hash]: https://docs.starkware.co/starkex-v3/crypto/pedersen-hash-function
-pub fn stark_hash_preprocessed(a: StarkHash, b: StarkHash) -> StarkHash {
+pub fn stark_hash(a: StarkHash, b: StarkHash) -> StarkHash {
     let a = FieldElement::from(a).into_bits();
     let b = FieldElement::from(b).into_bits();
 
@@ -418,7 +394,7 @@ mod tests {
         let expected = StarkHash::from_be_bytes(parse_hex(expected)).unwrap();
 
         let hash = stark_hash(a, b);
-        let hash2 = stark_hash_preprocessed(a, b);
+        let hash2 = stark_hash(a, b);
 
         assert_eq!(hash, hash2);
         assert_eq!(hash, expected);
