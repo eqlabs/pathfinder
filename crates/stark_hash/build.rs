@@ -87,6 +87,6 @@ fn push_point(buf: &mut String, p: &AffinePoint) {
 fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("curve_consts.rs");
-    let bits = 1;
+    let bits = 4;
     generate_consts(&dest_path, bits);
 }
