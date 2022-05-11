@@ -84,6 +84,7 @@ pub trait ClientApi {
         contract_address_salt: ContractAddressSalt,
         constructor_calldata: Vec<ConstructorParam>,
         contract_definition: ContractDefinition,
+        token: Option<String>,
     ) -> Result<reply::add_transaction::DeployResponse, SequencerError>;
 }
 
@@ -474,6 +475,7 @@ impl ClientApi for Client {
         contract_address_salt: ContractAddressSalt,
         constructor_calldata: Vec<ConstructorParam>,
         contract_definition: ContractDefinition,
+        token: Option<String>,
     ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
         let req =
             request::add_transaction::AddTransaction::Deploy(request::add_transaction::Deploy {
@@ -481,16 +483,16 @@ impl ClientApi for Client {
                 contract_definition,
                 constructor_calldata,
             });
+        let mut url = self.build_query(&["gateway", "add_transaction"], &[]);
+        // this is an optional token currently required on mainnet
+        if let Some(token) = token {
+            url.query_pairs_mut().append_pair("token", &token);
+        }
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
-        let resp = self
-            .inner
-            .post(self.build_query(&["gateway", "add_transaction"], &[]))
-            .json(&req)
-            .send()
-            .await?;
+        let resp = self.inner.post(url).json(&req).send().await?;
         parse(resp).await
     }
 }
@@ -1411,9 +1413,92 @@ mod tests {
                         program: program.to_owned(),
                         entry_points_by_type,
                     },
+                    None,
                 )
                 .await
                 .unwrap();
+        }
+
+        mod deploy_token {
+            use super::*;
+            use http::StatusCode;
+            use std::collections::HashMap;
+            use warp::{http::Response, Filter};
+
+            const EXPECTED_TOKEN: &str = "magic token value";
+            const EXPECTED_ERROR_MESSAGE: &str = "error message";
+
+            fn test_server() -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
+                fn token_check(params: HashMap<String, String>) -> impl warp::Reply {
+                    match params.get("token") {
+                        Some(token) if token == EXPECTED_TOKEN => Response::builder().status(StatusCode::OK).body(serde_json::to_vec(&serde_json::json!({
+                            "code": "TRANSACTION_ACCEPTED",
+                            "transaction_hash": "0x57ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d",
+                            "address":"0x3926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
+                        })).unwrap()),
+                        _ => Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR).body(serde_json::to_vec(&serde_json::json!({
+                            "code": "StarknetErrorCode.NON_PERMITTED_CONTRACT",
+                            "message": EXPECTED_ERROR_MESSAGE,
+                        })).unwrap())
+                    }
+                }
+
+                let route = warp::any()
+                    .and(warp::query::<HashMap<String, String>>())
+                    .map(token_check);
+                let (addr, run_srv) = warp::serve(route).bind_ephemeral(([127, 0, 0, 1], 0));
+                let server_handle = tokio::spawn(run_srv);
+                (server_handle, addr)
+            }
+
+            #[test_log::test(tokio::test)]
+            async fn test_token_is_passed_to_sequencer_api() {
+                let (_jh, addr) = test_server();
+                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                url.set_port(Some(addr.port())).unwrap();
+                let client = Client::with_url(url).unwrap();
+
+                client
+                    .add_deploy_transaction(
+                        ContractAddressSalt(StarkHash::ZERO),
+                        vec![],
+                        ContractDefinition {
+                            abi: serde_json::json!([]),
+                            program: "".to_owned(),
+                            entry_points_by_type: HashMap::new(),
+                        },
+                        Some(EXPECTED_TOKEN.to_owned()),
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            #[test_log::test(tokio::test)]
+            async fn test_deploy_fails_with_no_token() {
+                let (_jh, addr) = test_server();
+                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                url.set_port(Some(addr.port())).unwrap();
+                let client = Client::with_url(url).unwrap();
+
+                let err = client
+                    .add_deploy_transaction(
+                        ContractAddressSalt(StarkHash::ZERO),
+                        vec![],
+                        ContractDefinition {
+                            abi: serde_json::json!([]),
+                            program: "".to_owned(),
+                            entry_points_by_type: HashMap::new(),
+                        },
+                        None,
+                    )
+                    .await
+                    .unwrap_err();
+
+                assert_matches!(err, SequencerError::StarknetError(se) => {
+                        assert_eq!(se.code, StarknetErrorCode::NotPermittedContract);
+                        assert_eq!(se.message, EXPECTED_ERROR_MESSAGE);
+                });
+            }
         }
     }
 

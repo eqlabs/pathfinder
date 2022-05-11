@@ -273,6 +273,10 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
                 pub contract_address_salt: ContractAddressSalt,
                 pub constructor_calldata: Vec<ConstructorParam>,
                 pub contract_definition: ContractDefinition,
+                // An undocumented parameter that we forward to the sequencer API
+                // A deploy token is required to deploy contracts on Starknet mainnet only.
+                #[serde(default)]
+                pub token: Option<String>,
             }
             let params = params.parse::<NamedArgs>()?;
             context
@@ -280,6 +284,7 @@ pub fn run_server(addr: SocketAddr, api: RpcApi) -> Result<(HttpServerHandle, So
                     params.contract_address_salt,
                     params.constructor_calldata,
                     params.contract_definition,
+                    params.token,
                 )
                 .await
         },
