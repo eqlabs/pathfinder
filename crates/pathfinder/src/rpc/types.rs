@@ -219,7 +219,11 @@ pub mod reply {
         }
 
         /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
-        pub fn from_sequencer_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
+        pub fn from_sequencer_scoped(
+            block: seq::Block,
+            old_root: GlobalRoot,
+            scope: BlockResponseScope,
+        ) -> Self {
             Self {
                 block_hash: block.block_hash,
                 parent_hash: block.parent_block_hash,
@@ -230,8 +234,7 @@ pub mod reply {
                     // Default value for cairo <0.8.0 is 0
                     .unwrap_or(SequencerAddress(StarkHash::ZERO)),
                 new_root: block.state_root,
-                // TODO where to get it from
-                old_root: GlobalRoot(StarkHash::ZERO),
+                old_root,
                 accepted_time: block.timestamp,
                 gas_price: block
                     .gas_price

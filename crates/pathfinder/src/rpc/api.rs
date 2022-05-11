@@ -102,10 +102,9 @@ impl RpcApi {
                     .map_err(internal_server_error)?;
 
                 let scope = requested_scope.unwrap_or_default();
+                let old_root = self.get_root_by_hash(block.parent_block_hash).await?;
 
-                // TODO
-
-                return Ok(Block::from_sequencer_scoped(block, scope));
+                return Ok(Block::from_sequencer_scoped(block, old_root, scope));
             }
             BlockHashOrTag::Hash(hash) => hash.into(),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
@@ -224,8 +223,9 @@ impl RpcApi {
                     .map_err(internal_server_error)?;
 
                 let scope = requested_scope.unwrap_or_default();
+                let old_root = self.get_root_by_hash(block.parent_block_hash).await?;
 
-                return Ok(Block::from_sequencer_scoped(block, scope));
+                return Ok(Block::from_sequencer_scoped(block, old_root, scope));
             }
         };
 
@@ -335,11 +335,8 @@ impl RpcApi {
 
     /// Fetches [GlobalRoot] of a block by block hash.
     ///
-    /// Tries storage first, then the sequencer, returns [None] if not found.
-    async fn get_root_by_hash(
-        &self,
-        block_hash: StarknetBlockHash,
-    ) -> RpcResult<Option<GlobalRoot>> {
+    /// Tries storage first, then the sequencer.
+    async fn get_root_by_hash(&self, block_hash: StarknetBlockHash) -> RpcResult<GlobalRoot> {
         let storage = self.storage.clone();
 
         let handle = tokio::task::spawn_blocking(move || {
@@ -370,19 +367,17 @@ impl RpcApi {
             // flatten is unstable
             .and_then(|x| x)?;
 
-        if root.is_some() {
-            return Ok(root);
+        match root {
+            Some(root) => Ok(root),
+            None => Ok(self
+                .sequencer
+                .block_by_hash(BlockHashOrTag::Hash(block_hash))
+                .await
+                .context("Fetch block from sequencer")
+                .map_err(internal_server_error)?
+                .state_root
+                .expect("State root is always present for non pending block")),
         }
-
-        let root = self
-            .sequencer
-            .block_by_hash(BlockHashOrTag::Hash(block_hash))
-            .await
-            .context("Fetch block from sequencer")
-            .map_err(internal_server_error)?
-            .state_root;
-
-        Ok(root)
     }
 
     // /// Get the information about the result of executing the requested block.
