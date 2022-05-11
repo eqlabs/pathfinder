@@ -1,5 +1,5 @@
+use ::stark_hash::{stark_hash, stark_hash_slow, StarkHash};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pedersen_hash::{pedersen_hash, pedersen_hash_slow, StarkHash};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     // These are the test vectors also used in tests, taken from
@@ -12,12 +12,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("pedersen_hash_preprocessed", |b| {
         b.iter(|| {
-            black_box(pedersen_hash(e0, e1));
+            black_box(stark_hash(e0, e1));
         });
     });
     c.bench_function("pedersen_hash", |b| {
         b.iter(|| {
-            black_box(pedersen_hash_slow(e0, e1));
+            black_box(stark_hash_slow(e0, e1));
         });
     });
 }

@@ -2,8 +2,8 @@ mod parse;
 mod retrieve;
 pub mod state_root;
 
-use pedersen_hash::StarkHash;
 use retrieve::*;
+use stark_hash::StarkHash;
 
 use crate::{
     core::{ContractAddress, ContractHash, StorageAddress, StorageValue},
@@ -96,8 +96,8 @@ impl StateUpdate {
 mod tests {
     use std::str::FromStr;
 
-    use pedersen_hash::StarkHash;
     use pretty_assertions::assert_eq;
+    use stark_hash::StarkHash;
     use web3::types::H256;
 
     use crate::core::{

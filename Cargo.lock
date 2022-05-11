@@ -1615,10 +1615,10 @@ version = "0.1.0"
 dependencies = [
  "goose",
  "pathfinder",
- "pedersen",
  "rand",
  "serde",
  "serde_json",
+ "stark_hash",
  "tokio",
 ]
 
@@ -2059,7 +2059,6 @@ dependencies = [
  "lazy_static",
  "mockall",
  "num-bigint 0.4.3",
- "pedersen_hash",
  "pretty_assertions",
  "reqwest",
  "rusqlite",
@@ -2068,6 +2067,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha3",
+ "stark_hash",
  "tempfile",
  "test-log",
  "thiserror",
@@ -2080,21 +2080,6 @@ dependencies = [
  "warp",
  "web3",
  "zstd",
-]
-
-[[package]]
-name = "pedersen_hash"
-version = "0.1.0"
-dependencies = [
- "assert_matches",
- "bitvec",
- "criterion",
- "ff",
- "hex",
- "pretty_assertions",
- "serde",
- "serde_json",
- "stark_curve",
 ]
 
 [[package]]
@@ -2943,6 +2928,12 @@ dependencies = [
 
 [[package]]
 name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+
+[[package]]
+name = "spin"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c530c2b0d0bf8b69304b39fe2001993e267461948b890cd037d8ad4293fa1a0d"
@@ -2957,6 +2948,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e113fb6f3de07a243d434a56ec6f186dfd51cb08448239fe7bcae73f87ff28ff"
 dependencies = [
  "version_check",
+]
 
 [[package]]
 name = "stark_curve"
@@ -2965,6 +2957,21 @@ dependencies = [
  "bitvec",
  "ff",
  "pretty_assertions",
+]
+
+[[package]]
+name = "stark_hash"
+version = "0.1.0"
+dependencies = [
+ "assert_matches",
+ "bitvec",
+ "criterion",
+ "ff",
+ "hex",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "stark_curve",
 ]
 
 [[package]]

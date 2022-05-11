@@ -2,8 +2,8 @@
 //! home of their own.
 //!
 //! This includes many trivial wrappers around [StarkHash] which help by providing additional type safety.
-use pedersen_hash::StarkHash;
 use serde::{Deserialize, Serialize};
+use stark_hash::StarkHash;
 use web3::types::{H128, H160, H256};
 
 /// The address of a StarkNet contract.

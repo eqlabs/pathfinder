@@ -28,8 +28,8 @@ mod tests {
         storage::{schema, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable},
     };
 
-    use pedersen_hash::StarkHash;
     use rusqlite::{named_params, Connection};
+    use stark_hash::StarkHash;
 
     #[test]
     fn empty() {

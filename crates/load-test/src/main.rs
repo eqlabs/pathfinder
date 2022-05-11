@@ -8,10 +8,10 @@
 //! cargo run --release --bin load-test -- -H http://127.0.0.1:9545 --report-file /tmp/report.html -u 30 -r 5 -t 60 --no-gzip
 //! ```
 use goose::prelude::*;
-use pedersen::StarkHash;
 use rand::{Rng, SeedableRng};
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::json;
+use stark_hash::StarkHash;
 
 use pathfinder_lib::{
     core::{

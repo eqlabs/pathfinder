@@ -26,8 +26,8 @@ use crate::{
 };
 
 use anyhow::Context;
-use pedersen_hash::StarkHash;
 use rusqlite::{Connection, Transaction};
+use stark_hash::StarkHash;
 use tokio::sync::{mpsc, RwLock};
 
 pub struct State {
@@ -641,7 +641,7 @@ mod tests {
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
     use futures::stream::{StreamExt, TryStreamExt};
-    use pedersen_hash::StarkHash;
+    use stark_hash::StarkHash;
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
     use web3::types::H256;

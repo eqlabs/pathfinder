@@ -6,9 +6,9 @@ use crate::core::{
     TransactionSignatureElem, TransactionVersion,
 };
 use num_bigint::BigUint;
-use pedersen_hash::{HexParseError, OverflowError, StarkHash};
 use serde::de::Visitor;
 use serde_with::{serde_conv, DeserializeAs, SerializeAs};
+use stark_hash::{HexParseError, OverflowError, StarkHash};
 use std::borrow::Cow;
 use std::str::FromStr;
 use web3::types::{H128, H160, H256};
@@ -553,7 +553,7 @@ mod tests {
             0, 0, 1, 0,
         ];
 
-        use pedersen_hash::HexParseError;
+        use stark_hash::HexParseError;
         assert_eq!(
             starkhash_from_biguint(BigUint::from_bytes_be(&TOO_LONG_BYTES)),
             Err(OverflowError)

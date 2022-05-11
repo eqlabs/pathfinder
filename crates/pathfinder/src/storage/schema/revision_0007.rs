@@ -331,8 +331,8 @@ pub(crate) fn migrate_with(
 
 #[cfg(test)]
 mod tests {
-    use pedersen_hash::StarkHash;
     use rusqlite::Connection;
+    use stark_hash::StarkHash;
 
     use crate::{
         core::{

@@ -7,7 +7,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
-use pedersen_hash::{pedersen_hash, StarkHash};
+use stark_hash::{stark_hash, StarkHash};
 
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]
@@ -135,7 +135,7 @@ impl BinaryNode {
             None => return,
         };
 
-        self.hash = Some(pedersen_hash(left, right));
+        self.hash = Some(stark_hash(left, right));
     }
 }
 
@@ -233,7 +233,7 @@ impl EdgeNode {
         length[31] = self.path.len() as u8;
 
         let length = StarkHash::from_be_bytes(length).unwrap();
-        let hash = pedersen_hash(child, path) + length;
+        let hash = stark_hash(child, path) + length;
         self.hash = Some(hash);
     }
 }
@@ -327,7 +327,7 @@ mod tests {
             // Test data taken from starkware cairo-lang repo:
             // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L14
             //
-            // Note that the hash function must be exchanged for `async_pedersen_hash_func`, otherwise it just uses some other test hash function.
+            // Note that the hash function must be exchanged for `async_stark_hash_func`, otherwise it just uses some other test hash function.
             let expected = StarkHash::from_hex_str(
                 "0615bb8d47888d2987ad0c63fc06e9e771930986a4dd8adc55617febfcf3639e",
             )
@@ -361,7 +361,7 @@ mod tests {
             // Test data taken from starkware cairo-lang repo:
             // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L38
             //
-            // Note that the hash function must be exchanged for `async_pedersen_hash_func`, otherwise it just uses some other test hash function.
+            // Note that the hash function must be exchanged for `async_stark_hash_func`, otherwise it just uses some other test hash function.
             let expected = StarkHash::from_hex_str(
                 "1d937094c09b5f8e26a662d21911871e3cbc6858d55cc49af9848ea6fed4e9",
             )

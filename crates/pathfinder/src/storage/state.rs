@@ -1,6 +1,6 @@
 use anyhow::Context;
-use pedersen_hash::StarkHash;
 use rusqlite::{named_params, params, Connection, OptionalExtension, Transaction};
+use stark_hash::StarkHash;
 use web3::types::H256;
 
 use crate::{

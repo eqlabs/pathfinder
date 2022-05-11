@@ -138,7 +138,7 @@ impl std::ops::Add for StarkHash {
 /// Computes the [Starknet Pedersen hash] on `a` and `b`.
 ///
 /// [Starknet Pedersen hash]: https://docs.starkware.co/starkex-v3/crypto/pedersen-hash-function
-pub fn pedersen_hash(a: StarkHash, b: StarkHash) -> StarkHash {
+pub fn stark_hash(a: StarkHash, b: StarkHash) -> StarkHash {
     let a = FieldElement::from(a).into_bits();
     let b = FieldElement::from(b).into_bits();
 
@@ -159,7 +159,7 @@ pub fn pedersen_hash(a: StarkHash, b: StarkHash) -> StarkHash {
 /// Computes the [Starknet Pedersen hash] on `a` and `b` using precomputed points.
 ///
 /// [Starknet Pedersen hash]: https://docs.starkware.co/starkex-v3/crypto/pedersen-hash-function
-pub fn pedersen_hash_preprocessed(a: StarkHash, b: StarkHash) -> StarkHash {
+pub fn stark_hash_preprocessed(a: StarkHash, b: StarkHash) -> StarkHash {
     let a = FieldElement::from(a).into_bits();
     let b = FieldElement::from(b).into_bits();
 
@@ -417,8 +417,8 @@ mod tests {
         let b = StarkHash::from_be_bytes(parse_hex(b)).unwrap();
         let expected = StarkHash::from_be_bytes(parse_hex(expected)).unwrap();
 
-        let hash = pedersen_hash(a, b);
-        let hash2 = pedersen_hash_preprocessed(a, b);
+        let hash = stark_hash(a, b);
+        let hash2 = stark_hash_preprocessed(a, b);
 
         assert_eq!(hash, hash2);
         assert_eq!(hash, expected);

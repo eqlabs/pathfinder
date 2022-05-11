@@ -267,7 +267,7 @@ mod tests {
     use super::*;
 
     mod sync_ethereum_state_impl {
-        use pedersen_hash::StarkHash;
+        use stark_hash::StarkHash;
         use web3::types::H256;
 
         use crate::{

@@ -282,8 +282,8 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
 
 #[cfg(test)]
 mod tests {
-    use pedersen_hash::StarkHash;
     use rusqlite::{named_params, Connection};
+    use stark_hash::StarkHash;
 
     use crate::{
         core::{ContractAddress, StarknetTransactionHash, StarknetTransactionIndex},
