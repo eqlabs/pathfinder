@@ -5,7 +5,10 @@ use std::future::Future;
 use std::sync::Arc;
 
 use crate::{
-    core::{ContractRoot, GlobalRoot, StarknetBlockHash, StarknetBlockNumber},
+    core::{
+        ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber,
+    },
     ethereum::{
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
@@ -188,7 +191,7 @@ where
                         .map(|u| u.storage_updates.len())
                         .sum();
                     let update_t = std::time::Instant::now();
-                    l2_update(&mut db_conn, block, diff)
+                    l2_update(&mut db_conn, *block, diff)
                         .await
                         .with_context(|| format!("Update L2 state to {}", block_num))?;
                     let block_time = last_block_start.elapsed();
@@ -470,6 +473,11 @@ async fn l2_update(
             hash: block.block_hash.unwrap(),
             root: block.state_root.unwrap(),
             timestamp: block.timestamp,
+            // Default value for cairo <0.8.2 is 0
+            gas_price: block.gas_price.unwrap_or(GasPrice::ZERO),
+            sequencer_address: block
+                .sequencer_address
+                .unwrap_or(SequencerAddress(StarkHash::ZERO)),
         };
         StarknetBlocksTable::insert(&transaction, &starknet_block)
             .context("Insert block into database")?;
@@ -617,9 +625,9 @@ mod tests {
         core::{
             ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash,
             EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, Fee, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
-            TransactionVersion,
+            EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, SequencerAddress,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StarknetTransactionHash, StorageAddress, StorageValue, TransactionVersion,
         },
         ethereum,
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
@@ -816,7 +824,9 @@ mod tests {
         pub static ref BLOCK0: reply::Block = reply::Block {
             block_hash: Some(StarknetBlockHash(*A)),
             block_number: Some(StarknetBlockNumber(0)),
+            gas_price: Some(GasPrice::ZERO),
             parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+            sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
             state_root: Some(GlobalRoot(StarkHash::ZERO)),
             status: reply::Status::AcceptedOnL1,
             timestamp: crate::core::StarknetBlockTimestamp(0),
@@ -826,7 +836,9 @@ mod tests {
         pub static ref BLOCK1: reply::Block = reply::Block {
             block_hash: Some(StarknetBlockHash(*B)),
             block_number: Some(StarknetBlockNumber(1)),
+            gas_price: Some(GasPrice::from(1)),
             parent_block_hash: StarknetBlockHash(*A),
+            sequencer_address: Some(SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap())),
             state_root: Some(GlobalRoot(*B)),
             status: reply::Status::AcceptedOnL2,
             timestamp: crate::core::StarknetBlockTimestamp(1),
@@ -838,12 +850,16 @@ mod tests {
             hash: StarknetBlockHash(*A),
             root: GlobalRoot(StarkHash::ZERO),
             timestamp: StarknetBlockTimestamp(0),
+            gas_price: GasPrice::ZERO,
+            sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
         pub static ref STORAGE_BLOCK1: storage::StarknetBlock = storage::StarknetBlock {
             number: StarknetBlockNumber(1),
             hash: StarknetBlockHash(*B),
             root: GlobalRoot(*B),
             timestamp: StarknetBlockTimestamp(1),
+            gas_price: GasPrice::from(1),
+            sequencer_address: SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap()),
         };
         // Causes root to remain 0
         pub static ref STATE_UPDATE0: ethereum::state_update::StateUpdate = ethereum::state_update::StateUpdate {
@@ -1080,9 +1096,13 @@ mod tests {
 
         // A simple L2 sync task
         let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
-            tx.send(l2::Event::Update(block(), state_update(), timings))
-                .await
-                .unwrap();
+            tx.send(l2::Event::Update(
+                Box::new(block()),
+                state_update(),
+                timings,
+            ))
+            .await
+            .unwrap();
             tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())
         };

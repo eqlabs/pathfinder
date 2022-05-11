@@ -1,24 +1,31 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use crate::{
     core::{
-        CallResultValue, EthereumAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp,
+        CallResultValue, EthereumAddress, GasPrice, GlobalRoot, SequencerAddress,
+        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
     },
-    rpc::serde::EthereumAddressAsHexStr,
+    rpc::serde::{EthereumAddressAsHexStr, GasPriceAsHexStr},
 };
 use serde::Deserialize;
 use serde_with::serde_as;
 
 /// Used to deserialize replies to [ClientApi::block_by_hash](crate::sequencer::ClientApi::block_by_hash) and
 /// [ClientApi::block_by_number](crate::sequencer::ClientApi::block_by_number).
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     #[serde(default)]
     pub block_hash: Option<StarknetBlockHash>,
     #[serde(default)]
     pub block_number: Option<StarknetBlockNumber>,
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(default)]
+    pub gas_price: Option<GasPrice>,
     pub parent_block_hash: StarknetBlockHash,
+    #[serde(default)]
+    pub sequencer_address: Option<SequencerAddress>,
     #[serde(default)]
     pub state_root: Option<GlobalRoot>,
     pub status: Status,
@@ -29,6 +36,7 @@ pub struct Block {
 
 /// Block and transaction status values.
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(deny_unknown_fields)]
 pub enum Status {
     #[serde(rename = "NOT_RECEIVED")]

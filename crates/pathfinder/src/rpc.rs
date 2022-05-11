@@ -294,8 +294,9 @@ mod tests {
     use super::*;
     use crate::{
         core::{
-            ContractAddress, ContractHash, EventData, EventKey, GlobalRoot, StarknetBlockHash,
-            StarknetBlockNumber, StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress,
+            ContractAddress, ContractHash, EventData, EventKey, GasPrice, GlobalRoot,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StarknetProtocolVersion, StorageAddress,
         },
         ethereum::Chain,
         rpc::run_server,
@@ -459,20 +460,26 @@ mod tests {
             hash: genesis_hash,
             root: global_root0,
             timestamp: StarknetBlockTimestamp(0),
+            gas_price: GasPrice::ZERO,
+            sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
         let block1_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1").unwrap());
         let block1 = StarknetBlock {
             number: StarknetBlockNumber(1),
             hash: block1_hash,
             root: global_root1,
-            timestamp: StarknetBlockTimestamp(0),
+            timestamp: StarknetBlockTimestamp(1),
+            gas_price: GasPrice::from(1),
+            sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[1u8]).unwrap()),
         };
         let latest_hash = StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
         let block2 = StarknetBlock {
             number: StarknetBlockNumber(2),
             hash: latest_hash,
             root: global_root2,
-            timestamp: StarknetBlockTimestamp(0),
+            timestamp: StarknetBlockTimestamp(2),
+            gas_price: GasPrice::from(2),
+            sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[2u8]).unwrap()),
         };
         StarknetBlocksTable::insert(&db_txn, &block0).unwrap();
         StarknetBlocksTable::insert(&db_txn, &block1).unwrap();
@@ -884,7 +891,7 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).unwrap();
             let params = rpc_params!(
-                BlockNumberOrTag::Tag(Tag::Pending),
+                BlockHashOrTag::Tag(Tag::Pending),
                 BlockResponseScope::FullTransactions
             );
             let block = client(addr)
@@ -2228,22 +2235,6 @@ mod tests {
         use crate::sequencer::reply::transaction;
 
         const NUM_BLOCKS: usize = 4;
-
-        fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
-            (0..NUM_BLOCKS as u64)
-                .map(|i| StarknetBlock {
-                    number: StarknetBlockNumber::GENESIS + i,
-                    hash: StarknetBlockHash(
-                        StarkHash::from_hex_str(&"a".repeat(i as usize + 3)).unwrap(),
-                    ),
-                    root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
-                    timestamp: StarknetBlockTimestamp(i + 500),
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap()
-        }
-
         const TRANSACTIONS_PER_BLOCK: usize = 10;
         const EVENTS_PER_BLOCK: usize = TRANSACTIONS_PER_BLOCK;
         const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
@@ -2310,7 +2301,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let connection = storage.connection().unwrap();
 
-            let blocks = create_blocks();
+            let blocks = crate::storage::test_utils::create_blocks::<NUM_BLOCKS>();
             let transactions_and_receipts = create_transactions_and_receipts();
 
             for (i, block) in blocks.iter().enumerate() {
@@ -2890,10 +2881,13 @@ mod tests {
                             "entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
                         }),
                     ),
-                    ("signature", json!([
-                        "3557065757165699682249469970267166698995647077461960906176449260016084767701",
-                        "3202126414680946801789588986259466145787792017299869598314522555275920413944"
-                    ])),
+                    (
+                        "signature",
+                        json!([
+                            "3557065757165699682249469970267166698995647077461960906176449260016084767701",
+                            "3202126414680946801789588986259466145787792017299869598314522555275920413944"
+                        ]),
+                    ),
                     ("max_fee", json!("0x4f388496839")),
                     ("version", json!("0x0")),
                 ]);

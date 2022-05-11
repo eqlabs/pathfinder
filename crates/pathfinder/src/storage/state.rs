@@ -7,8 +7,8 @@ use crate::{
     core::{
         ContractAddress, ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash,
         EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
-        EventData, EventKey, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash,
+        EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
     },
     ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
     sequencer::reply::transaction,
@@ -245,13 +245,15 @@ impl StarknetBlocksTable {
     /// Insert a new [StarknetBlock]. Fails if the block number is not unique.
     pub fn insert(connection: &Connection, block: &StarknetBlock) -> anyhow::Result<()> {
         connection.execute(
-            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp)
-                                   VALUES (:number, :hash, :root, :timestamp)",
+            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address)
+                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address)",
             named_params! {
                 ":number": block.number.0,
                 ":hash": block.hash.0.as_be_bytes(),
                 ":root": block.root.0.as_be_bytes(),
                 ":timestamp": block.timestamp.0,
+                ":gas_price": &block.gas_price.to_be_bytes(),
+                ":sequencer_address": block.sequencer_address.0.as_be_bytes(),
             },
         )?;
 
@@ -264,15 +266,18 @@ impl StarknetBlocksTable {
         block: StarknetBlocksBlockId,
     ) -> anyhow::Result<Option<StarknetBlock>> {
         let mut statement = match block {
-            StarknetBlocksBlockId::Number(_) => {
-                connection.prepare("SELECT hash, number, root, timestamp FROM starknet_blocks WHERE number = ?")
-            }
-            StarknetBlocksBlockId::Hash(_) => {
-                connection.prepare("SELECT hash, number, root, timestamp FROM starknet_blocks WHERE hash = ?")
-            }
-            StarknetBlocksBlockId::Latest => {
-                connection.prepare("SELECT hash, number, root, timestamp FROM starknet_blocks ORDER BY number DESC LIMIT 1")
-            }
+            StarknetBlocksBlockId::Number(_) => connection.prepare(
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address
+                    FROM starknet_blocks WHERE number = ?",
+            ),
+            StarknetBlocksBlockId::Hash(_) => connection.prepare(
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address
+                    FROM starknet_blocks WHERE hash = ?",
+            ),
+            StarknetBlocksBlockId::Latest => connection.prepare(
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address
+                    FROM starknet_blocks ORDER BY number DESC LIMIT 1",
+            ),
         }?;
 
         let mut rows = match block {
@@ -299,11 +304,20 @@ impl StarknetBlocksTable {
                 let timestamp = row.get_ref_unwrap("timestamp").as_i64().unwrap() as u64;
                 let timestamp = StarknetBlockTimestamp(timestamp);
 
+                let gas_price = row.get_ref_unwrap("gas_price").as_blob().unwrap();
+                let gas_price = GasPrice::from_be_slice(gas_price).unwrap();
+
+                let sequencer_address = row.get_ref_unwrap("sequencer_address").as_blob().unwrap();
+                let sequencer_address = StarkHash::from_be_slice(sequencer_address).unwrap();
+                let sequencer_address = SequencerAddress(sequencer_address);
+
                 let block = StarknetBlock {
                     number,
                     hash,
                     root,
                     timestamp,
+                    gas_price,
+                    sequencer_address,
                 };
 
                 Ok(Some(block))
@@ -894,6 +908,8 @@ pub struct StarknetBlock {
     pub hash: StarknetBlockHash,
     pub root: GlobalRoot,
     pub timestamp: StarknetBlockTimestamp,
+    pub gas_price: GasPrice,
+    pub sequencer_address: SequencerAddress,
 }
 
 /// Stores the contract state hash along with its preimage. This is useful to
@@ -1245,21 +1261,8 @@ mod tests {
     mod starknet_blocks {
         use super::*;
 
-        /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
-        /// with arbitrary other values.
         fn create_blocks() -> [StarknetBlock; 3] {
-            (0..3)
-                .map(|i| StarknetBlock {
-                    number: StarknetBlockNumber::GENESIS + i,
-                    hash: StarknetBlockHash(
-                        StarkHash::from_hex_str(&"a".repeat(i as usize + 3)).unwrap(),
-                    ),
-                    root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
-                    timestamp: StarknetBlockTimestamp(i + 500),
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap()
+            crate::storage::test_utils::create_blocks::<3>()
         }
 
         mod get {
@@ -1539,6 +1542,8 @@ mod tests {
                     hash: blocks[0].hash,
                     root: blocks[0].root,
                     timestamp: blocks[0].timestamp,
+                    gas_price: blocks[0].gas_price,
+                    sequencer_address: blocks[0].sequencer_address,
                 };
 
                 assert_eq!(
@@ -1596,18 +1601,7 @@ mod tests {
         const NUM_BLOCKS: usize = 4;
 
         fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
-            (0..NUM_BLOCKS as u64)
-                .map(|i| StarknetBlock {
-                    number: StarknetBlockNumber::GENESIS + i,
-                    hash: StarknetBlockHash(
-                        StarkHash::from_hex_str(&"a".repeat(i as usize + 3)).unwrap(),
-                    ),
-                    root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i as usize + 3)).unwrap()),
-                    timestamp: StarknetBlockTimestamp(i + 500),
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap()
+            crate::storage::test_utils::create_blocks::<NUM_BLOCKS>()
         }
 
         const TRANSACTIONS_PER_BLOCK: usize = 10;
@@ -2100,12 +2094,20 @@ mod tests {
             number: block0_number,
             root: GlobalRoot(StarkHash::from_be_slice(b"root 0").unwrap()),
             timestamp: StarknetBlockTimestamp(0),
+            gas_price: GasPrice::from(0),
+            sequencer_address: SequencerAddress(
+                StarkHash::from_be_slice(b"sequencer_address 0").unwrap(),
+            ),
         };
         let block1 = StarknetBlock {
             hash: StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap()),
             number: block1_number,
             root: GlobalRoot(StarkHash::from_be_slice(b"root 1").unwrap()),
             timestamp: StarknetBlockTimestamp(1),
+            gas_price: GasPrice::from(1),
+            sequencer_address: SequencerAddress(
+                StarkHash::from_be_slice(b"sequencer_address 1").unwrap(),
+            ),
         };
         let contract0_address =
             ContractAddress(StarkHash::from_be_slice(b"contract 0 address").unwrap());

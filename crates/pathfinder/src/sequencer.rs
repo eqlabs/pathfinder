@@ -453,6 +453,7 @@ impl ClientApi for Client {
                 signature: call.signature,
             },
         );
+
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC
@@ -558,10 +559,11 @@ mod tests {
         Client::new(Chain::Goerli).unwrap()
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn client_user_agent() {
+        use crate::core::StarknetBlockTimestamp;
+        use crate::sequencer::reply::{Block, Status};
         use std::convert::Infallible;
-
         use warp::Filter;
 
         let filter = warp::header::optional("user-agent").and_then(
@@ -569,10 +571,21 @@ mod tests {
                 let user_agent = user_agent.expect("user-agent set");
                 let (name, version) = user_agent.split_once('/').unwrap();
 
-                assert_eq!(name, "pathfinder");
+                assert_eq!(name, "starknet-pathfinder");
                 assert_eq!(version, env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"));
 
-                Result::<_, Infallible>::Ok("")
+                Ok::<_, Infallible>(warp::reply::json(&Block {
+                    block_hash: None,
+                    block_number: None,
+                    gas_price: None,
+                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    sequencer_address: None,
+                    state_root: None,
+                    status: Status::NotReceived,
+                    timestamp: StarknetBlockTimestamp(0),
+                    transaction_receipts: vec![],
+                    transactions: vec![],
+                }))
             },
         );
 
@@ -1413,7 +1426,6 @@ mod tests {
             collections::VecDeque, convert::Infallible, net::SocketAddr, sync::Arc, time::Duration,
         };
         use tokio::{sync::Mutex, task::JoinHandle};
-        use tracing_test::traced_test;
         use warp::Filter;
 
         // A test helper
@@ -1450,8 +1462,7 @@ mod tests {
             (server_handle, addr)
         }
 
-        #[tokio::test]
-        #[traced_test]
+        #[test_log::test(tokio::test)]
         async fn stop_on_ok() {
             let statuses = VecDeque::from([
                 (StatusCode::TOO_MANY_REQUESTS, ""),
@@ -1476,8 +1487,7 @@ mod tests {
             assert_eq!(result, "Finally!");
         }
 
-        #[tokio::test]
-        #[traced_test]
+        #[test_log::test(tokio::test)]
         async fn stop_on_fatal() {
             let statuses = VecDeque::from([
                 (StatusCode::TOO_MANY_REQUESTS, ""),
@@ -1508,8 +1518,7 @@ mod tests {
             );
         }
 
-        #[tokio::test]
-        #[traced_test]
+        #[test_log::test(tokio::test)]
         async fn request_timeout() {
             use std::sync::atomic::{AtomicUsize, Ordering};
 

@@ -1,4 +1,4 @@
-from call import do_loop, loop_inner
+from call import do_loop, loop_inner, EXPECTED_SCHEMA_REVISION, check_cairolang_version
 import sqlite3
 import io
 import json
@@ -89,7 +89,9 @@ def inmemory_with_tables():
             number               INTEGER PRIMARY KEY,
             hash                 BLOB    NOT NULL,
             root                 BLOB    NOT NULL,
-            timestamp            INTEGER NOT NULL
+            timestamp            INTEGER NOT NULL,
+            gas_price            BLOB    NOT NULL,
+            sequencer_address    BLOB    NOT NULL
         );
         """
     )
@@ -97,7 +99,16 @@ def inmemory_with_tables():
     # strangely this cannot be pulled into the script, maybe pragmas have
     # different kind of semantics than what is normally executed, would explain
     # the similar behaviour of sqlite3 .dump and restore.
-    cur.execute("pragma user_version = 8")
+    #
+    # apparently python sqlite does not support pragmas with parameters
+    # (questionmark or named).
+    assert (
+        type(EXPECTED_SCHEMA_REVISION) is int
+    ), f"expected schema revision must be just int, not: {type(EXPECTED_SCHEMA_REVISION)}"
+    assert (
+        0 <= EXPECTED_SCHEMA_REVISION < 2 ** 16
+    ), f"schema revision out of range: {EXPECTED_SCHEMA_REVISION}"
+    cur.execute("pragma user_version = %d" % EXPECTED_SCHEMA_REVISION)
 
     con.commit()
     return con
@@ -116,9 +127,9 @@ def populate_test_contract_with_132_on_3(con):
     )
     cur = con.execute("BEGIN")
 
-    def pad(b):
-        assert len(b) <= 32
-        return b"\x00" * (32 - len(b)) + b
+    def left_pad(b, to_length):
+        assert len(b) <= to_length
+        return b"\x00" * (to_length - len(b)) + b
 
     cur.execute(
         "insert into contract_code (hash, definition) values (?, ?)",
@@ -178,13 +189,16 @@ def populate_test_contract_with_132_on_3(con):
         ],
     )
 
+    # interestingly python sqlite does not accept X'0' here:
     cur.execute(
-        """insert into starknet_blocks (hash, number, timestamp, root) values (?, 1, 1, ?)""",
+        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
         [
-            pad(b"some blockhash somewhere"),
+            left_pad(b"some blockhash somewhere", 32),
             bytes.fromhex(
                 "0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd"
             ),
+            left_pad(b"0", 16),
+            left_pad(b"0", 32),
         ],
     )
 
@@ -349,3 +363,9 @@ def test_no_such_block():
     assert number == expected
     assert block_hash == expected
     assert latest == expected
+
+
+def test_check_cairolang_version():
+    # run this here as well so that we get earlier than CI feedback
+    # of another constant that needs to be upgraded
+    assert check_cairolang_version()

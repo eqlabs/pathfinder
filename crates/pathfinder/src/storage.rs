@@ -27,7 +27,7 @@ use tracing::info;
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = 8;
+const DB_VERSION_CURRENT: u32 = 9;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -146,6 +146,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
             5 => schema::revision_0006::migrate(&transaction)?,
             6 => schema::revision_0007::migrate(&transaction)?,
             7 => schema::revision_0008::migrate(&transaction)?,
+            8 => schema::revision_0009::migrate(&transaction)?,
             _ => unreachable!("Database version constraint was already checked!"),
         };
         // If any migration action requires vacuuming, we should vacuum.
@@ -191,6 +192,35 @@ fn enable_foreign_keys(connection: &Connection) -> anyhow::Result<()> {
     use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
     connection.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
     Ok(())
+}
+
+#[cfg(test)]
+pub(crate) mod test_utils {
+    use super::StarknetBlock;
+
+    use crate::core::{
+        GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp,
+    };
+
+    use pedersen::StarkHash;
+
+    /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
+    /// with arbitrary other values.
+    pub(crate) fn create_blocks<const N: usize>() -> [StarknetBlock; N] {
+        (0..N)
+            .map(|i| StarknetBlock {
+                number: StarknetBlockNumber::GENESIS + i as u64,
+                hash: StarknetBlockHash(StarkHash::from_hex_str(&"a".repeat(i + 3)).unwrap()),
+                root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap()),
+                timestamp: StarknetBlockTimestamp(i as u64 + 500),
+                gas_price: GasPrice::from(i as u64),
+                sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[i as u8]).unwrap()),
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+    }
 }
 
 #[cfg(test)]

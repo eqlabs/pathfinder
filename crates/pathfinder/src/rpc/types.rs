@@ -119,11 +119,11 @@ pub mod reply {
     use super::request::BlockResponseScope;
     use crate::{
         core::{
-            CallParam, ContractAddress, EntryPoint, EventData, EventKey, GlobalRoot,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            CallParam, ContractAddress, EntryPoint, EventData, EventKey, GasPrice, GlobalRoot,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
             StarknetTransactionHash,
         },
-        rpc::api::RawBlock,
+        rpc::{api::RawBlock, serde::GasPriceAsHexStr},
         sequencer::reply as seq,
         sequencer::reply::Status as SeqStatus,
     };
@@ -132,7 +132,6 @@ pub mod reply {
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::convert::From;
-    use web3::types::H160;
 
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -185,6 +184,7 @@ pub mod reply {
     }
 
     /// L2 Block as returned by the RPC API.
+    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Block {
@@ -192,41 +192,52 @@ pub mod reply {
         pub parent_hash: StarknetBlockHash,
         pub block_number: Option<StarknetBlockNumber>,
         pub status: BlockStatus,
-        pub sequencer: H160,
+        pub sequencer: SequencerAddress,
         pub new_root: Option<GlobalRoot>,
         pub old_root: GlobalRoot,
         pub accepted_time: StarknetBlockTimestamp,
+        #[serde_as(as = "GasPriceAsHexStr")]
+        pub gas_price: GasPrice,
         pub transactions: Transactions,
     }
 
     impl Block {
+        /// Constructs [Block] from [RawBlock]
         pub fn from_raw(block: RawBlock, transactions: Transactions) -> Self {
             Self {
                 block_hash: Some(block.hash),
                 parent_hash: block.parent_hash,
                 block_number: Some(block.number),
                 status: block.status,
-                // This only matters once the sequencers are distributed.
-                sequencer: H160::zero(),
+                sequencer: block.sequencer,
                 new_root: Some(block.root),
                 old_root: block.parent_root,
                 accepted_time: block.timestamp,
+                gas_price: block.gas_price,
                 transactions,
             }
         }
 
+        /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
         pub fn from_sequencer_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
             Self {
                 block_hash: block.block_hash,
                 parent_hash: block.parent_block_hash,
                 block_number: block.block_number,
                 status: block.status.into(),
-                // This only matters once the sequencers are distributed.
-                sequencer: H160::zero(),
+                sequencer: block
+                    .sequencer_address
+                    // Default value for cairo <0.8.0 is 0
+                    .unwrap_or(SequencerAddress(StarkHash::ZERO)),
                 new_root: block.state_root,
                 // TODO where to get it from
                 old_root: GlobalRoot(StarkHash::ZERO),
                 accepted_time: block.timestamp,
+                gas_price: block
+                    .gas_price
+                    // Default value for cairo <0.8.2 is 0
+                    .unwrap_or(GasPrice::ZERO),
+
                 transactions: match scope {
                     BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
                         block
