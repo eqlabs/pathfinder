@@ -144,9 +144,9 @@ where
 
                     match new_head {
                         Some(head) => {
-                            tracing::warn!("L1 reorg occurred, new L1 head is block {}", head.0)
+                            tracing::info!("L1 reorg occurred, new L1 head is block {}", head.0)
                         }
-                        None => tracing::warn!("L1 reorg occurred, new L1 head is genesis"),
+                        None => tracing::info!("L1 reorg occurred, new L1 head is genesis"),
                     }
                 }
                 Some(l1::Event::QueryUpdate(block, tx)) => {
@@ -247,9 +247,9 @@ where
                     };
                     match new_head {
                         Some(head) => {
-                            tracing::warn!("L2 reorg occurred, new L2 head is block {}", head.0)
+                            tracing::info!("L2 reorg occurred, new L2 head is block {}", head.0)
                         }
-                        None => tracing::warn!("L2 reorg occurred, new L2 head is genesis"),
+                        None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
                     }
                 }
                 Some(l2::Event::NewContract(contract)) => {
