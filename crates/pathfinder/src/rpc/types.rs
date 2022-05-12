@@ -679,6 +679,17 @@ pub mod reply {
         Status(syncing::Status),
     }
 
+    impl std::fmt::Display for Syncing {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Syncing::False(_) => f.write_str("false"),
+                Syncing::Status(status) => {
+                    write!(f, "{}", status)
+                }
+            }
+        }
+    }
+
     /// Starknet's syncing status substructures.
     pub mod syncing {
         use crate::{
@@ -702,6 +713,21 @@ pub mod reply {
             pub highest_block_hash: StarknetBlockHash,
             #[serde_as(as = "StarknetBlockNumberAsHexStr")]
             pub highest_block_num: StarknetBlockNumber,
+        }
+
+        impl std::fmt::Display for Status {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "starting: ({}, {}), current: ({}, {}), highest: ({}, {})",
+                    self.starting_block_num.0,
+                    self.starting_block_hash.0,
+                    self.current_block_num.0,
+                    self.current_block_hash.0,
+                    self.highest_block_num.0,
+                    self.highest_block_hash.0,
+                )
+            }
         }
     }
 

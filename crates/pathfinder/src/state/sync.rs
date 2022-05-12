@@ -346,21 +346,17 @@ async fn update_sync_status_latest(
                         });
 
                         tracing::debug!(
-                            starting_hash=%starting_block_hash.0,
-                            starting_num=%starting_block_num.0,
-                            current_hash=%starting_block_hash.0,
-                            current_num=%starting_block_num.0,
-                            highest_hash=%latest_hash.0,
-                            highest_num=%latest_num.0,
+                            status=%sync_status,
                             "Updated sync status",
                         );
                     }
                     SyncStatus::Status(status) => {
                         if status.highest_block_hash != latest_hash {
                             status.highest_block_hash = latest_hash;
+                            status.highest_block_num = latest_num;
+
                             tracing::debug!(
-                                highest_hash=%latest_hash.0,
-                                highest_num=%latest_num.0,
+                                %status,
                                 "Updated sync status",
                             );
                         }
