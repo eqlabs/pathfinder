@@ -373,7 +373,7 @@ impl RpcApi {
                 .sequencer
                 .block_by_hash(BlockHashOrTag::Hash(block_hash))
                 .await
-                .context("Fetch block from sequencer")
+                .context("Fetch pending - 1 block from sequencer")
                 .map_err(internal_server_error)?
                 .state_root
                 .expect("State root is always present for non pending block")),
