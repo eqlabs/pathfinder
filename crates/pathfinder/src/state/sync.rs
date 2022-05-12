@@ -358,6 +358,8 @@ async fn update_sync_status_latest(
                     SyncStatus::Status(status) => {
                         if status.highest_block_hash != latest_hash {
                             status.highest_block_hash = latest_hash;
+                            status.highest_block_num = latest_num;
+
                             tracing::debug!(
                                 highest_hash=%latest_hash.0,
                                 highest_num=%latest_num.0,
