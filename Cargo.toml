@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/load-test",
     "crates/pathfinder",
     "crates/pedersen",
 ]
