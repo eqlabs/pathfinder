@@ -85,6 +85,13 @@ impl Storage {
     fn open_connection(database_path: &Path) -> anyhow::Result<Connection> {
         // TODO: think about flags?
         let conn = Connection::open(database_path)?;
+        // More information: [SQLite as key-value store for concurrent Rust programs](https://github.com/the-lean-crate/criner/issues/1)
+        conn.execute_batch("
+            PRAGMA journal_mode = WAL;          -- better write-concurrency
+            PRAGMA synchronous = NORMAL;        -- fsync only in critical moments
+            PRAGMA wal_autocheckpoint = 1000;   -- write WAL changes back every 1000 pages, for an in average 1MB WAL file. May affect readers if number is increased
+            PRAGMA wal_checkpoint(TRUNCATE);    -- free some space by truncating possibly massive WAL files from the last run.
+        ")?;
         Ok(conn)
     }
 
