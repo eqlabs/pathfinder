@@ -13,6 +13,7 @@ RUN mkdir crates
 RUN cargo new --lib --vcs none crates/pedersen
 # Correct: --lib. We'll handle the binary later.
 RUN cargo new --lib --vcs none crates/pathfinder
+RUN cargo new --lib --vcs none crates/load-test
 COPY Cargo.toml Cargo.toml
 COPY Cargo.lock Cargo.lock
 
@@ -22,7 +23,7 @@ COPY crates/pedersen/Cargo.toml crates/pedersen/Cargo.toml
 COPY crates/pedersen/benches crates/pedersen/benches
 
 # DEPENDENCY_LAYER=1 should disable any vergen interaction, because the .git directory is not yet available
-RUN DEPENDENCY_LAYER=1 RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release
+RUN DEPENDENCY_LAYER=1 RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release -p pathfinder
 
 # Compile the actual libraries and binary now
 COPY . .
@@ -33,7 +34,7 @@ RUN touch crates/pathfinder/src/lib.rs
 RUN touch crates/pathfinder/src/build.rs
 RUN touch crates/pedersen/src/lib.rs
 
-RUN RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release
+RUN RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release -p pathfinder
 
 #######################################
 # Stage 2: Build the Python libraries #
