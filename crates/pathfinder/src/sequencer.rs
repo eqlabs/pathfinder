@@ -1603,7 +1603,7 @@ mod tests {
             );
         }
 
-        #[test_log::test(tokio::test)]
+        #[tokio::test(flavor = "current_thread", start_paused = true)]
         async fn request_timeout() {
             use std::sync::atomic::{AtomicUsize, Ordering};
 
