@@ -207,6 +207,11 @@ where
                         SyncStatus::Status(status) => {
                             status.current_block_hash = block_hash;
                             status.current_block_num = StarknetBlockNumber(block_num);
+
+                            if status.highest_block_num.0 <= block_num {
+                                status.highest_block_num = StarknetBlockNumber(block_num);
+                                status.highest_block_hash = block_hash;
+                            }
                         }
                     }
 
