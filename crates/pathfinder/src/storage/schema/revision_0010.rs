@@ -122,3 +122,331 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
 
     Ok(PostMigrationAction::None)
 }
+
+#[cfg(test)]
+mod tests {
+    /// This statement simulates the bug that was present in one of the early DB snaphots
+    /// for Goerli that was distributed to aid users with slow syncing
+    const BUGGY_STARKNET_EVENTS_CREATE_STMT: &str = r"CREATE TABLE starknet_events (
+        block_number  INTEGER NOT NULL,
+        idx INTEGER NOT NULL,
+        transaction_hash BLOB NOT NULL,
+        from_address BLOB NOT NULL,
+        -- Keys are represented as base64 encoded strings separated by space
+        keys TEXT,
+        data BLOB,
+        FOREIGN KEY(block_number) REFERENCES starknet_blocks(number)
+        ------------------------------------------------
+        -- Warning! On delete cascade is missing here!
+        ------------------------------------------------
+    );
+
+    -- Event filters can specify ranges of blocks
+    CREATE INDEX starknet_events_block_number ON starknet_events(block_number);
+
+    -- Event filter can specify a contract address
+    CREATE INDEX starknet_events_from_address ON starknet_events(from_address);
+
+    CREATE VIRTUAL TABLE starknet_events_keys
+    USING fts5(
+        keys,
+        content='starknet_events',
+        content_rowid='rowid',
+        tokenize='ascii'
+    );
+
+    CREATE TRIGGER starknet_events_ai
+    AFTER INSERT ON starknet_events
+    BEGIN
+        INSERT INTO starknet_events_keys(rowid, keys)
+        VALUES (
+            new.rowid,
+            new.keys
+        );
+    END;
+
+    CREATE TRIGGER starknet_events_ad
+    AFTER DELETE ON starknet_events
+    BEGIN
+        INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
+        VALUES (
+            'delete',
+            old.rowid,
+            old.keys
+        );
+    END;
+
+    CREATE TRIGGER starknet_events_au
+    AFTER UPDATE ON starknet_events
+    BEGIN
+        INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
+        VALUES (
+            'delete',
+            old.rowid,
+            old.keys
+        );
+        INSERT INTO starknet_events_keys(rowid, keys)
+        VALUES (
+            new.rowid,
+            new.keys
+        );
+    END;";
+
+    mod empty {
+        use crate::storage::schema::{self, PostMigrationAction};
+        use rusqlite::Connection;
+
+        #[test]
+        fn correct_schema_in_rev7() {
+            let mut conn = Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+
+            schema::revision_0001::migrate(&transaction).unwrap();
+            schema::revision_0002::migrate(&transaction).unwrap();
+            schema::revision_0003::migrate(&transaction).unwrap();
+            schema::revision_0004::migrate(&transaction).unwrap();
+            schema::revision_0005::migrate(&transaction).unwrap();
+            schema::revision_0006::migrate(&transaction).unwrap();
+            schema::revision_0007::migrate(&transaction).unwrap();
+            schema::revision_0008::migrate(&transaction).unwrap();
+            schema::revision_0009::migrate(&transaction).unwrap();
+
+            let action = super::super::migrate(&transaction).unwrap();
+            assert_eq!(action, PostMigrationAction::None);
+        }
+
+        #[test]
+        fn buggy_schema_in_rev7() {
+            let mut conn = Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+
+            schema::revision_0001::migrate(&transaction).unwrap();
+            schema::revision_0002::migrate(&transaction).unwrap();
+            schema::revision_0003::migrate(&transaction).unwrap();
+            schema::revision_0004::migrate(&transaction).unwrap();
+            schema::revision_0005::migrate(&transaction).unwrap();
+            schema::revision_0006::migrate(&transaction).unwrap();
+            schema::revision_0007::migrate_with(
+                &transaction,
+                super::BUGGY_STARKNET_EVENTS_CREATE_STMT,
+            )
+            .unwrap();
+            schema::revision_0008::migrate(&transaction).unwrap();
+            schema::revision_0009::migrate(&transaction).unwrap();
+
+            let action = super::super::migrate(&transaction).unwrap();
+            assert_eq!(action, PostMigrationAction::None);
+        }
+    }
+
+    mod stateful {
+        use pedersen::StarkHash;
+        use rusqlite::{self, Connection};
+
+        use crate::{
+            core::{
+                ContractAddress, EventData, EventKey, GlobalRoot, StarknetBlockHash,
+                StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+            },
+            sequencer::reply::transaction::{self, Event, Transaction},
+            storage::{
+                schema::{self, PostMigrationAction},
+                state::PageOfEvents,
+                StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter,
+                StarknetEventsTable,
+            },
+        };
+
+        // This is a copy of the structures and functions as of revision 7,
+        // which allows us to simulate the conditions in which the bug
+        // used to occur.
+        mod storage_rev7 {
+            use super::*;
+            use rusqlite::named_params;
+
+            #[derive(Debug, Clone, PartialEq)]
+            pub struct StarknetBlock {
+                pub number: StarknetBlockNumber,
+                pub hash: StarknetBlockHash,
+                pub root: GlobalRoot,
+                pub timestamp: StarknetBlockTimestamp,
+            }
+
+            pub struct StarknetBlocksTable;
+
+            impl StarknetBlocksTable {
+                pub fn insert(
+                    connection: &Connection,
+                    block: &StarknetBlock,
+                ) -> anyhow::Result<()> {
+                    connection.execute(
+                        r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp)
+                                               VALUES (:number, :hash, :root, :timestamp)",
+                        named_params! {
+                            ":number": block.number.0,
+                            ":hash": block.hash.0.as_be_bytes(),
+                            ":root": block.root.0.as_be_bytes(),
+                            ":timestamp": block.timestamp.0,
+                        },
+                    )?;
+
+                    Ok(())
+                }
+            }
+        }
+
+        /// This is a test helper function which runs a stateful scenario of the migration
+        /// with the revision 7 migration being customisable via a closure provided by the caller
+        fn run_stateful_scenario<Fn: FnOnce(&rusqlite::Transaction)>(revision_0007_migrate_fn: Fn) {
+            let mut connection = Connection::open_in_memory().unwrap();
+            let transaction = connection.transaction().unwrap();
+
+            // 1. Migrate the db up to rev7
+            schema::revision_0001::migrate(&transaction).unwrap();
+            schema::revision_0002::migrate(&transaction).unwrap();
+            schema::revision_0003::migrate(&transaction).unwrap();
+            schema::revision_0004::migrate(&transaction).unwrap();
+            schema::revision_0005::migrate(&transaction).unwrap();
+            schema::revision_0006::migrate(&transaction).unwrap();
+            revision_0007_migrate_fn(&transaction);
+
+            // 2. Insert some data that would cause the regression
+            let block0_number = StarknetBlockNumber(0);
+            let block1_number = StarknetBlockNumber(1);
+            let block0_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap());
+            let block0 = storage_rev7::StarknetBlock {
+                hash: block0_hash,
+                number: block0_number,
+                root: GlobalRoot(StarkHash::from_be_slice(b"root 0").unwrap()),
+                timestamp: StarknetBlockTimestamp(0),
+            };
+            let block1 = storage_rev7::StarknetBlock {
+                hash: StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap()),
+                number: block1_number,
+                root: GlobalRoot(StarkHash::from_be_slice(b"root 1").unwrap()),
+                timestamp: StarknetBlockTimestamp(1),
+            };
+            let contract0_address =
+                ContractAddress(StarkHash::from_be_slice(b"contract 0 address").unwrap());
+            let contract1_address =
+                ContractAddress(StarkHash::from_be_slice(b"contract 1 address").unwrap());
+            let transaction0_hash =
+                StarknetTransactionHash(StarkHash::from_be_slice(b"transaction 0 hash").unwrap());
+            let transaction0 = Transaction {
+                calldata: None,
+                class_hash: None,
+                constructor_calldata: None,
+                contract_address: contract0_address,
+                contract_address_salt: None,
+                entry_point_selector: None,
+                entry_point_type: None,
+                max_fee: None,
+                signature: None,
+                transaction_hash: transaction0_hash,
+                r#type: transaction::Type::Deploy,
+            };
+            let mut transaction1 = transaction0.clone();
+            transaction1.transaction_hash =
+                StarknetTransactionHash(StarkHash::from_be_slice(b"transaction 1 hash").unwrap());
+            let event0_key = EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap());
+            let event1_key = EventKey(StarkHash::from_be_slice(b"event 1 key").unwrap());
+            let event0_data = EventData(StarkHash::from_be_slice(b"event 0 data").unwrap());
+            let event0 = Event {
+                data: vec![event0_data],
+                from_address: contract0_address,
+                keys: vec![event0_key],
+            };
+            let event1 = Event {
+                data: vec![EventData(
+                    StarkHash::from_be_slice(b"event 1 data").unwrap(),
+                )],
+                from_address: contract1_address,
+                keys: vec![event1_key],
+            };
+
+            storage_rev7::StarknetBlocksTable::insert(&transaction, &block0).unwrap();
+            StarknetEventsTable::insert_events(
+                &transaction,
+                block0_number,
+                &transaction0,
+                &[event0],
+            )
+            .unwrap();
+            storage_rev7::StarknetBlocksTable::insert(&transaction, &block1).unwrap();
+            StarknetEventsTable::insert_events(
+                &transaction,
+                block1_number,
+                &transaction1,
+                &[event1],
+            )
+            .unwrap();
+
+            // 3. Migrate up to rev9
+            schema::revision_0008::migrate(&transaction).unwrap();
+            schema::revision_0009::migrate(&transaction).unwrap();
+
+            // 4. Migration to rev10 should fix the problem
+            let action = super::super::migrate(&transaction).unwrap();
+            assert_eq!(action, PostMigrationAction::None);
+
+            // 5. Perform the operation that used to trigger the failure and make sure it does not occur now
+            StarknetBlocksTable::reorg(&transaction, block1_number).unwrap();
+
+            assert_eq!(
+                StarknetBlocksTable::get_latest_number(&transaction)
+                    .unwrap()
+                    .unwrap(),
+                block0_number
+            );
+            let filter0 = StarknetEventFilter {
+                contract_address: None,
+                from_block: None,
+                to_block: None,
+                keys: vec![event0_key],
+                page_size: 10,
+                page_number: 0,
+            };
+            let filter1 = StarknetEventFilter {
+                contract_address: None,
+                from_block: None,
+                to_block: None,
+                keys: vec![event1_key],
+                page_size: 10,
+                page_number: 0,
+            };
+            assert_eq!(
+                StarknetEventsTable::get_events(&transaction, &filter0).unwrap(),
+                PageOfEvents {
+                    events: vec![StarknetEmittedEvent {
+                        block_hash: block0_hash,
+                        block_number: block0_number,
+                        data: vec![event0_data],
+                        from_address: contract0_address,
+                        keys: vec![event0_key],
+                        transaction_hash: transaction0_hash,
+                    }],
+                    is_last_page: true
+                }
+            );
+            assert!(StarknetEventsTable::get_events(&transaction, &filter1)
+                .unwrap()
+                .events
+                .is_empty());
+        }
+
+        #[test]
+        fn correct_schema_in_rev7() {
+            run_stateful_scenario(|tx| {
+                schema::revision_0007::migrate(tx).unwrap();
+            });
+        }
+
+        #[test]
+        fn buggy_schema_in_rev7() {
+            run_stateful_scenario(|tx| {
+                schema::revision_0007::migrate_with(tx, super::BUGGY_STARKNET_EVENTS_CREATE_STMT)
+                    .unwrap();
+            });
+        }
+    }
+}
