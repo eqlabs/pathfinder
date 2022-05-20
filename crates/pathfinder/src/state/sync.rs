@@ -534,7 +534,7 @@ async fn l2_reorg(
         // TODO: clean up state tree's as well...
 
         StarknetBlocksTable::reorg(&transaction, reorg_tail)
-            .context("Delete L1 state from database")?;
+            .context("Delete L2 state from database")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
