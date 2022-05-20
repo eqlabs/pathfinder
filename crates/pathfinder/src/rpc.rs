@@ -2203,19 +2203,11 @@ mod tests {
 
         #[tokio::test]
         async fn syncing() {
+            use crate::rpc::types::reply::syncing::NumberedBlock;
             let expected = Syncing::Status(syncing::Status {
-                starting_block_hash: StarknetBlockHash(
-                    StarkHash::from_be_slice(b"starting").unwrap(),
-                ),
-                starting_block_num: StarknetBlockNumber(1),
-                current_block_hash: StarknetBlockHash(
-                    StarkHash::from_be_slice(b"current").unwrap(),
-                ),
-                current_block_num: StarknetBlockNumber(2),
-                highest_block_hash: StarknetBlockHash(
-                    StarkHash::from_be_slice(b"highest").unwrap(),
-                ),
-                highest_block_num: StarknetBlockNumber(3),
+                starting: NumberedBlock::from(("abbacd", 1)),
+                current: NumberedBlock::from(("abbace", 2)),
+                highest: NumberedBlock::from(("abbacf", 3)),
             });
 
             let storage = setup_storage();

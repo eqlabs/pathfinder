@@ -673,7 +673,6 @@ pub mod reply {
     /// Describes Starknet's syncing status RPC reply.
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
     #[serde(untagged)]
-    #[serde(deny_unknown_fields)]
     pub enum Syncing {
         False(bool),
         Status(syncing::Status),
@@ -700,34 +699,90 @@ pub mod reply {
         use serde_with::serde_as;
 
         /// Represents Starknet node syncing status.
-        #[serde_as]
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
-        #[serde(deny_unknown_fields)]
+        #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
         pub struct Status {
-            pub starting_block_hash: StarknetBlockHash,
-            #[serde_as(as = "StarknetBlockNumberAsHexStr")]
-            pub starting_block_num: StarknetBlockNumber,
-            pub current_block_hash: StarknetBlockHash,
-            #[serde_as(as = "StarknetBlockNumberAsHexStr")]
-            pub current_block_num: StarknetBlockNumber,
-            pub highest_block_hash: StarknetBlockHash,
-            #[serde_as(as = "StarknetBlockNumberAsHexStr")]
-            pub highest_block_num: StarknetBlockNumber,
+            #[serde(flatten, with = "prefix_starting")]
+            pub starting: NumberedBlock,
+            #[serde(flatten, with = "prefix_current")]
+            pub current: NumberedBlock,
+            #[serde(flatten, with = "prefix_highest")]
+            pub highest: NumberedBlock,
         }
+
+        serde_with::with_prefix!(prefix_starting "starting_");
+        serde_with::with_prefix!(prefix_current "current_");
+        serde_with::with_prefix!(prefix_highest "highest_");
 
         impl std::fmt::Display for Status {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(
                     f,
-                    "starting: ({}, {}), current: ({}, {}), highest: ({}, {})",
-                    self.starting_block_num.0,
-                    self.starting_block_hash.0,
-                    self.current_block_num.0,
-                    self.current_block_hash.0,
-                    self.highest_block_num.0,
-                    self.highest_block_hash.0,
+                    "starting: {:?}, current: {:?}, highest: {:?}",
+                    self.starting, self.current, self.highest,
                 )
             }
+        }
+
+        /// Block hash and a number, for `starknet_syncing` response only.
+        #[serde_as]
+        #[derive(Clone, Copy, Serialize, Deserialize, PartialEq)]
+        pub struct NumberedBlock {
+            #[serde(rename = "block_hash")]
+            pub hash: StarknetBlockHash,
+            #[serde_as(as = "StarknetBlockNumberAsHexStr")]
+            #[serde(rename = "block_num")]
+            pub number: StarknetBlockNumber,
+        }
+
+        impl std::fmt::Debug for NumberedBlock {
+            fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(fmt, "({}, {})", self.hash.0, self.number.0)
+            }
+        }
+
+        impl From<(StarknetBlockHash, StarknetBlockNumber)> for NumberedBlock {
+            fn from((hash, number): (StarknetBlockHash, StarknetBlockNumber)) -> Self {
+                NumberedBlock { hash, number }
+            }
+        }
+
+        /// Helper to make it a bit less painful to write examples.
+        #[cfg(test)]
+        impl<'a> From<(&'a str, u64)> for NumberedBlock {
+            fn from((h, n): (&'a str, u64)) -> Self {
+                use pedersen::StarkHash;
+                NumberedBlock {
+                    hash: StarknetBlockHash(StarkHash::from_hex_str(h).unwrap()),
+                    number: StarknetBlockNumber(n),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn roundtrip_syncing() {
+        use syncing::NumberedBlock;
+        let examples = [
+            (line!(), "false", Syncing::False(false)),
+            // this shouldn't exist but it exists now
+            (line!(), "true", Syncing::False(true)),
+            (
+                line!(),
+                r#"{"starting_block_hash":"0xa","starting_block_num":"0x1","current_block_hash":"0xb","current_block_num":"0x2","highest_block_hash":"0xc","highest_block_num":"0x3"}"#,
+                Syncing::Status(syncing::Status {
+                    starting: NumberedBlock::from(("a", 1)),
+                    current: NumberedBlock::from(("b", 2)),
+                    highest: NumberedBlock::from(("c", 3)),
+                }),
+            ),
+        ];
+
+        for (line, input, expected) in examples {
+            let parsed = serde_json::from_str::<Syncing>(input).unwrap();
+            let output = serde_json::to_string(&parsed).unwrap();
+
+            assert_eq!(parsed, expected, "example from line {}", line);
+            assert_eq!(&output, input, "example from line {}", line);
         }
     }
 

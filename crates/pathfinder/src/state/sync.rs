@@ -15,7 +15,7 @@ use crate::{
         transport::EthereumTransport,
         Chain,
     },
-    rpc::types::reply::{syncing, Syncing as SyncStatus},
+    rpc::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer::{self, reply::Block},
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
@@ -205,12 +205,10 @@ where
                     match &mut *state.status.write().await {
                         SyncStatus::False(_) => {}
                         SyncStatus::Status(status) => {
-                            status.current_block_hash = block_hash;
-                            status.current_block_num = StarknetBlockNumber(block_num);
+                            status.current = NumberedBlock::from((block_hash, StarknetBlockNumber(block_num)));
 
-                            if status.highest_block_num.0 <= block_num {
-                                status.highest_block_num = StarknetBlockNumber(block_num);
-                                status.highest_block_hash = block_hash;
+                            if status.highest.number.0 <= block_num {
+                                status.highest = status.current;
                             }
                         }
                     }
@@ -330,24 +328,26 @@ async fn update_sync_status_latest(
     use crate::rpc::types::{BlockNumberOrTag, Tag};
     let poll_interval = head_poll_interval(chain);
 
+    let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
+
     loop {
         match sequencer
             .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
             .await
         {
             Ok(block) => {
-                let latest_hash = block.block_hash.unwrap();
-                let latest_num = block.block_number.unwrap();
+                let latest = {
+                    let latest_hash = block.block_hash.unwrap();
+                    let latest_num = block.block_number.unwrap();
+                    NumberedBlock::from((latest_hash, latest_num))
+                };
                 // Update the sync status.
                 match &mut *state.status.write().await {
                     sync_status @ SyncStatus::False(_) => {
                         *sync_status = SyncStatus::Status(syncing::Status {
-                            starting_block_hash,
-                            starting_block_num,
-                            current_block_hash: starting_block_hash,
-                            current_block_num: starting_block_num,
-                            highest_block_hash: latest_hash,
-                            highest_block_num: latest_num,
+                            starting,
+                            current: starting,
+                            highest: latest,
                         });
 
                         tracing::debug!(
@@ -356,9 +356,8 @@ async fn update_sync_status_latest(
                         );
                     }
                     SyncStatus::Status(status) => {
-                        if status.highest_block_hash != latest_hash {
-                            status.highest_block_hash = latest_hash;
-                            status.highest_block_num = latest_num;
+                        if status.highest.hash != latest.hash {
+                            status.highest = latest;
 
                             tracing::debug!(
                                 %status,
