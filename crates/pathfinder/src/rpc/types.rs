@@ -671,8 +671,9 @@ pub mod reply {
     }
 
     /// Describes Starknet's syncing status RPC reply.
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
     #[serde(untagged)]
+    #[cfg_attr(test, derive(Deserialize))]
     pub enum Syncing {
         False(bool),
         Status(syncing::Status),
@@ -695,11 +696,12 @@ pub mod reply {
             core::{StarknetBlockHash, StarknetBlockNumber},
             rpc::serde::StarknetBlockNumberAsHexStr,
         };
-        use serde::{Deserialize, Serialize};
+        use serde::Serialize;
         use serde_with::serde_as;
 
         /// Represents Starknet node syncing status.
-        #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+        #[derive(Copy, Clone, Debug, PartialEq, Serialize)]
+        #[cfg_attr(test, derive(serde::Deserialize))]
         pub struct Status {
             #[serde(flatten, with = "prefix_starting")]
             pub starting: NumberedBlock,
@@ -725,7 +727,8 @@ pub mod reply {
 
         /// Block hash and a number, for `starknet_syncing` response only.
         #[serde_as]
-        #[derive(Clone, Copy, Serialize, Deserialize, PartialEq)]
+        #[derive(Clone, Copy, Serialize, PartialEq)]
+        #[cfg_attr(test, derive(serde::Deserialize))]
         pub struct NumberedBlock {
             #[serde(rename = "block_hash")]
             pub hash: StarknetBlockHash,
