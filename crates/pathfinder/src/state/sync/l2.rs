@@ -306,10 +306,7 @@ async fn deploy_contracts(
         let contract = state_diff
             .deployed_contracts
             .iter()
-            .find_map(|contract| match contract.contract_hash == contract_hash {
-                true => Some(contract),
-                false => None,
-            })
+            .find(|contract| contract.contract_hash == contract_hash)
             .unwrap();
 
         let contract = download_and_compress_contract(contract, sequencer)
