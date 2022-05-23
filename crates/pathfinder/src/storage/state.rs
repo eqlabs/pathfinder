@@ -1554,7 +1554,7 @@ mod tests {
     mod starknet_events {
         use super::*;
 
-        use crate::core::{EventData, StarknetTransactionIndex};
+        use crate::core::EventData;
         use crate::sequencer::reply::transaction;
 
         #[test]
@@ -1608,59 +1608,7 @@ mod tests {
 
         fn create_transactions_and_receipts(
         ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
-            let transactions = (0..NUM_TRANSACTIONS).map(|i| transaction::Transaction {
-                calldata: None,
-                class_hash: None,
-                constructor_calldata: None,
-                contract_address: ContractAddress(
-                    StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
-                ),
-                contract_address_salt: None,
-                entry_point_type: None,
-                entry_point_selector: None,
-                signature: None,
-                transaction_hash: StarknetTransactionHash(
-                    StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap(),
-                ),
-                r#type: transaction::Type::InvokeFunction,
-                max_fee: None,
-            });
-            let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
-                actual_fee: None,
-                events: vec![transaction::Event {
-                    from_address: ContractAddress(
-                        StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
-                    ),
-                    data: vec![EventData(
-                        StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
-                    )],
-                    keys: vec![
-                        EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
-                        EventKey(StarkHash::from_hex_str("deadbeef").unwrap()),
-                    ],
-                }],
-                execution_resources: transaction::ExecutionResources {
-                    builtin_instance_counter:
-                        transaction::execution_resources::BuiltinInstanceCounter::Empty(
-                            transaction::execution_resources::EmptyBuiltinInstanceCounter {},
-                        ),
-                    n_steps: i as u64 + 987,
-                    n_memory_holes: i as u64 + 1177,
-                },
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: Vec::new(),
-                transaction_hash: StarknetTransactionHash(
-                    StarkHash::from_hex_str(&"e".repeat(i + 3)).unwrap(),
-                ),
-                transaction_index: StarknetTransactionIndex(i as u64 + 2311),
-            });
-
-            transactions
-                .into_iter()
-                .zip(receipts)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap()
+            crate::storage::test_utils::create_transactions_and_receipts::<NUM_TRANSACTIONS>()
         }
 
         fn setup(connection: &Connection) -> Vec<StarknetEmittedEvent> {
