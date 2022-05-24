@@ -37,8 +37,15 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
     // 3. copy the data from the old table
     // 4. drop the old table
     //
-    // Triggers and indexes are dropped with the old table, so they need to be recreated
-    // The virtual table remains unchanged
+    // Important notes:
+    // 1. Triggers and indexes are dropped with the old `starknet_events` table,
+    //    so they need to be recreated
+    // 2. The virtual table `starknet_events_keys` remains unchanged but:
+    //    - we need to make sure that the new `starknet_events` table
+    //      [keeps the same rowids](https://www.sqlite.org/fts5.html#external_content_tables)
+    //      as its older version
+    //    - otherwise `starknet_events_keys` could refer invalid rowids
+    //    - rendering future event queries unreliable
     transaction
         .execute_batch(
             r"
@@ -54,6 +61,7 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
                 ON DELETE CASCADE
             );
 
+            -- Copy rowids to be sure that starknet_events_keys still references valid rows
             INSERT INTO starknet_events_v2 (
                 rowid,
                 block_number,
