@@ -40,7 +40,7 @@ serde_with = "1.9.4"
 sha3 = "0.9"
 tempfile = "3"
 thiserror = "1.0.30"
-tokio = { version = "1.11.0", features = ["test-util"] }
+tokio = "1.11.0"
 tokio-retry = "0.3.0"
 toml = "0.5.8"
 tracing = "0.1.31"
