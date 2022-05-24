@@ -115,7 +115,7 @@ Examples:
                 .long(DATA_DIR_KEY)
                 .help("Directory where the node should store its data".as_ref())
                 .takes_value(true)
-                .value_name("IP:PORT")
+                .value_name("PATH")
                 .env("PATHFINDER_DATA_DIRECTORY")
         )
 }
