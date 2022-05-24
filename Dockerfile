@@ -1,7 +1,7 @@
 ########################################
 # Stage 1: Build the pathfinder binary #
 ########################################
-FROM rust:1.60-alpine AS rust-builder
+FROM rust:1.61-alpine AS rust-builder
 
 RUN apk add --no-cache musl-dev gcc openssl-dev
 
@@ -75,6 +75,7 @@ USER 1000:1000
 EXPOSE 9545
 WORKDIR /usr/share/pathfinder/data
 
+# this is required to have exposing ports work from docker, the default is not this.
 ENV PATHFINDER_HTTP_RPC_ADDRESS="0.0.0.0:9545"
 
 ENTRYPOINT ["/sbin/tini", "--"]
