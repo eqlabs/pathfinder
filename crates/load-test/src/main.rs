@@ -20,7 +20,7 @@ use pathfinder_lib::{
     },
     rpc::types::{
         reply::{
-            Block, GetEventsResult, Syncing, Transaction as StarknetTransaction,
+            Block, GetEventsResult, Transaction as StarknetTransaction,
             TransactionReceipt as StarknetTransactionReceipt, Transactions as StarknetTransactions,
         },
         request::EventFilter,
@@ -342,7 +342,7 @@ async fn block_number(user: &mut GooseUser) -> MethodResult<u64> {
     post_jsonrpc_request(user, "starknet_blockNumber", json!({})).await
 }
 
-async fn syncing(user: &mut GooseUser) -> MethodResult<Syncing> {
+async fn syncing(user: &mut GooseUser) -> MethodResult<serde_json::Value> {
     post_jsonrpc_request(user, "starknet_syncing", json!({})).await
 }
 
