@@ -1,3 +1,13 @@
+# when developing this file, you might want to start by creating a copy of this
+# file away from the source tree and then editing that, finally committing a
+# changed version of this file. editing this file will render most of the
+# layers unusable.
+#
+# our build process requires that all files are copied for the rust build,
+# which uses `git describe --tags` to determine the build identifier.
+# Dockerfile cannot be .dockerignore'd because of this as it would produce a
+# false dirty flag.
+
 ########################################
 # Stage 1: Build the pathfinder binary #
 ########################################
