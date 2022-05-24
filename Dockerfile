@@ -3,6 +3,7 @@
 ########################################
 FROM rust:1.61-alpine AS rust-builder
 
+RUN apk upgrade --no-cache
 RUN apk add --no-cache musl-dev gcc openssl-dev
 
 WORKDIR /usr/src/pathfinder
@@ -41,6 +42,7 @@ RUN RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release -p
 #######################################
 FROM python:3.8-alpine AS python-builder
 
+RUN apk upgrade --no-cache
 RUN apk add --no-cache gcc musl-dev gmp-dev g++
 
 WORKDIR /usr/share/pathfinder
@@ -60,6 +62,7 @@ RUN find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
 #######################
 FROM python:3.8-alpine AS runner
 
+RUN apk upgrade --no-cache
 RUN apk add --no-cache tini gmp libstdc++ libgcc
 
 COPY --from=rust-builder /usr/src/pathfinder/target/release/pathfinder /usr/local/bin/pathfinder
