@@ -27,7 +27,7 @@ use tracing::info;
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = 9;
+const DB_VERSION_CURRENT: u32 = 10;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -147,6 +147,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
             6 => schema::revision_0007::migrate(&transaction)?,
             7 => schema::revision_0008::migrate(&transaction)?,
             8 => schema::revision_0009::migrate(&transaction)?,
+            9 => schema::revision_0010::migrate(&transaction)?,
             _ => unreachable!("Database version constraint was already checked!"),
         };
         // If any migration action requires vacuuming, we should vacuum.
@@ -198,9 +199,13 @@ fn enable_foreign_keys(connection: &Connection) -> anyhow::Result<()> {
 pub(crate) mod test_utils {
     use super::StarknetBlock;
 
-    use crate::core::{
-        GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp,
+    use crate::{
+        core::{
+            ContractAddress, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StarknetTransactionHash, StarknetTransactionIndex,
+        },
+        sequencer::reply::transaction,
     };
 
     use pedersen::StarkHash;
@@ -217,6 +222,60 @@ pub(crate) mod test_utils {
                 gas_price: GasPrice::from(i as u64),
                 sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[i as u8]).unwrap()),
             })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+    }
+
+    /// Creates a set of test transactions and receipts.
+    pub(crate) fn create_transactions_and_receipts<const N: usize>(
+    ) -> [(transaction::Transaction, transaction::Receipt); N] {
+        let transactions = (0..N).map(|i| transaction::Transaction {
+            calldata: None,
+            class_hash: None,
+            constructor_calldata: None,
+            contract_address: ContractAddress(StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap()),
+            contract_address_salt: None,
+            entry_point_type: None,
+            entry_point_selector: None,
+            signature: None,
+            transaction_hash: StarknetTransactionHash(
+                StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap(),
+            ),
+            r#type: transaction::Type::InvokeFunction,
+            max_fee: None,
+        });
+        let receipts = (0..N).map(|i| transaction::Receipt {
+            actual_fee: None,
+            events: vec![transaction::Event {
+                from_address: ContractAddress(StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap()),
+                data: vec![EventData(
+                    StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
+                )],
+                keys: vec![
+                    EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
+                    EventKey(StarkHash::from_hex_str("deadbeef").unwrap()),
+                ],
+            }],
+            execution_resources: transaction::ExecutionResources {
+                builtin_instance_counter:
+                    transaction::execution_resources::BuiltinInstanceCounter::Empty(
+                        transaction::execution_resources::EmptyBuiltinInstanceCounter {},
+                    ),
+                n_steps: i as u64 + 987,
+                n_memory_holes: i as u64 + 1177,
+            },
+            l1_to_l2_consumed_message: None,
+            l2_to_l1_messages: Vec::new(),
+            transaction_hash: StarknetTransactionHash(
+                StarkHash::from_hex_str(&"e".repeat(i + 3)).unwrap(),
+            ),
+            transaction_index: StarknetTransactionIndex(i as u64 + 2311),
+        });
+
+        transactions
+            .into_iter()
+            .zip(receipts)
             .collect::<Vec<_>>()
             .try_into()
             .unwrap()

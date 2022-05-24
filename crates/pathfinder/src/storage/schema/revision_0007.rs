@@ -179,73 +179,80 @@ mod transaction {
     }
 }
 
+const STARKNET_EVENTS_CREATE_STMT: &str = r"CREATE TABLE starknet_events (
+        block_number  INTEGER NOT NULL,
+        idx INTEGER NOT NULL,
+        transaction_hash BLOB NOT NULL,
+        from_address BLOB NOT NULL,
+        -- Keys are represented as base64 encoded strings separated by space
+        keys TEXT,
+        data BLOB,
+        FOREIGN KEY(block_number) REFERENCES starknet_blocks(number)
+        ON DELETE CASCADE
+    );
+
+    -- Event filters can specify ranges of blocks
+    CREATE INDEX starknet_events_block_number ON starknet_events(block_number);
+
+    -- Event filter can specify a contract address
+    CREATE INDEX starknet_events_from_address ON starknet_events(from_address);
+
+    CREATE VIRTUAL TABLE starknet_events_keys
+    USING fts5(
+        keys,
+        content='starknet_events',
+        content_rowid='rowid',
+        tokenize='ascii'
+    );
+
+    CREATE TRIGGER starknet_events_ai
+    AFTER INSERT ON starknet_events
+    BEGIN
+        INSERT INTO starknet_events_keys(rowid, keys)
+        VALUES (
+            new.rowid,
+            new.keys
+        );
+    END;
+
+    CREATE TRIGGER starknet_events_ad
+    AFTER DELETE ON starknet_events
+    BEGIN
+        INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
+        VALUES (
+            'delete',
+            old.rowid,
+            old.keys
+        );
+    END;
+
+    CREATE TRIGGER starknet_events_au
+    AFTER UPDATE ON starknet_events
+    BEGIN
+        INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
+        VALUES (
+            'delete',
+            old.rowid,
+            old.keys
+        );
+        INSERT INTO starknet_events_keys(rowid, keys)
+        VALUES (
+            new.rowid,
+            new.keys
+        );
+    END;";
+
 pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
+    migrate_with(transaction, STARKNET_EVENTS_CREATE_STMT)
+}
+
+pub(crate) fn migrate_with(
+    transaction: &Transaction,
+    starknet_events_create_stmt: &'static str,
+) -> anyhow::Result<PostMigrationAction> {
     // Create the new events table.
     transaction
-        .execute_batch(
-            r"CREATE TABLE starknet_events (
-                block_number  INTEGER NOT NULL,
-                idx INTEGER NOT NULL,
-                transaction_hash BLOB NOT NULL,
-                from_address BLOB NOT NULL,
-                -- Keys are represented as base64 encoded strings separated by space
-                keys TEXT,
-                data BLOB,
-                FOREIGN KEY(block_number) REFERENCES starknet_blocks(number)
-                ON DELETE CASCADE
-            );
-
-            -- Event filters can specify ranges of blocks
-            CREATE INDEX starknet_events_block_number ON starknet_events(block_number);
-
-            -- Event filter can specify a contract address
-            CREATE INDEX starknet_events_from_address ON starknet_events(from_address);
-
-            CREATE VIRTUAL TABLE starknet_events_keys
-            USING fts5(
-                keys,
-                content='starknet_events',
-                content_rowid='rowid',
-                tokenize='ascii'
-            );
-
-            CREATE TRIGGER starknet_events_ai
-            AFTER INSERT ON starknet_events
-            BEGIN
-                INSERT INTO starknet_events_keys(rowid, keys)
-                VALUES (
-                    new.rowid,
-                    new.keys
-                );
-            END;
-
-            CREATE TRIGGER starknet_events_ad
-            AFTER DELETE ON starknet_events
-            BEGIN
-                INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
-                VALUES (
-                    'delete',
-                    old.rowid,
-                    old.keys
-                );
-            END;
-
-            CREATE TRIGGER starknet_events_au
-            AFTER UPDATE ON starknet_events
-            BEGIN
-                INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
-                VALUES (
-                    'delete',
-                    old.rowid,
-                    old.keys
-                );
-                INSERT INTO starknet_events_keys(rowid, keys)
-                VALUES (
-                    new.rowid,
-                    new.keys
-                );
-            END;",
-        )
+        .execute_batch(starknet_events_create_stmt)
         .context("Create starknet events tables and indexes")?;
 
     // Create an index on starknet_blocks(hash) so that we can look up block numbers based
