@@ -1,7 +1,7 @@
 ########################################
 # Stage 1: Build the pathfinder binary #
 ########################################
-FROM rust:1.60-alpine AS rust-builder
+FROM rust:1.61-alpine AS rust-builder
 
 RUN apk add --no-cache musl-dev gcc openssl-dev
 
