@@ -57,6 +57,7 @@ pretty_assertions = "1.0.0"
 tempfile = "3"
 # log crate should be handled through tracing-subscriber if needed
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
+tokio = { version = "1.11.0", features = ["test-util"] }
 warp = "0.3.2"
 
 [build-dependencies]
