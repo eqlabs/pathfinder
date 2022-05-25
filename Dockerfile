@@ -1,8 +1,19 @@
+# when developing this file, you might want to start by creating a copy of this
+# file away from the source tree and then editing that, finally committing a
+# changed version of this file. editing this file will render most of the
+# layers unusable.
+#
+# our build process requires that all files are copied for the rust build,
+# which uses `git describe --tags` to determine the build identifier.
+# Dockerfile cannot be .dockerignore'd because of this as it would produce a
+# false dirty flag.
+
 ########################################
 # Stage 1: Build the pathfinder binary #
 ########################################
 FROM rust:1.61-alpine AS rust-builder
 
+RUN apk upgrade --no-cache
 RUN apk add --no-cache musl-dev gcc openssl-dev
 
 WORKDIR /usr/src/pathfinder
@@ -41,6 +52,7 @@ RUN RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release -p
 #######################################
 FROM python:3.8-alpine AS python-builder
 
+RUN apk upgrade --no-cache
 RUN apk add --no-cache gcc musl-dev gmp-dev g++
 
 WORKDIR /usr/share/pathfinder
@@ -60,9 +72,9 @@ RUN find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
 #######################
 FROM python:3.8-alpine AS runner
 
-RUN apk add --no-cache tini
+RUN apk upgrade --no-cache
+RUN apk add --no-cache tini gmp libstdc++ libgcc
 
-COPY --from=rust-builder ["/usr/lib/libstdc++.so.6", "/usr/lib/libgcc_s.so.1", "/usr/lib/libgmp.so.10", "/usr/lib/" ]
 COPY --from=rust-builder /usr/src/pathfinder/target/release/pathfinder /usr/local/bin/pathfinder
 COPY --from=python-builder /usr/local/lib/python3.8/ /usr/local/lib/python3.8/
 

@@ -67,6 +67,21 @@ rpc_call '[{"jsonrpc":"2.0","id":"34","method":"starknet_call","params":[{"calld
 {"jsonrpc":"2.0","id":"35","method":"starknet_call","params":[{"calldata":["0x1234"],"contract_address":"0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
 "entry_point_selector":"0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"}, "pending"]}]'
 
+# smoke test call on first block of goerli, should return 0x22b; same as examples/call_against_sequencer.rs example.
+rpc_call '{
+    "jsonrpc": "2.0",
+    "id": "1",
+    "method": "starknet_call",
+    "params": {
+        "request": {
+            "calldata": ["0x5"],
+            "contract_address": "0x019245f0f49d23f2379d3e3f20d1f3f46207d1c4a1d09cac8dd50e8d528aabe1",
+            "entry_point_selector": "0x026813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0"
+        },
+        "block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
+    }
+}'
+
 rpc_call '{"jsonrpc":"2.0","id":"36","method":"starknet_blockNumber"}'
 
 rpc_call '{
