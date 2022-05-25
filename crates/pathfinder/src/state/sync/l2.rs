@@ -390,7 +390,7 @@ mod tests {
             state,
         };
         use assert_matches::assert_matches;
-        use pedersen::StarkHash;
+        use stark_hash::StarkHash;
         use std::collections::HashMap;
 
         const DEF0: &str = r#"{

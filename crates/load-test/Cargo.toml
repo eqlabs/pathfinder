@@ -9,8 +9,8 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 goose = "0.16.0"
 pathfinder = { path = "../pathfinder" }
-pedersen = { path = "../pedersen" }
 rand = "0.8.5"
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
+stark_hash = { path = "../stark_hash" }
 tokio = "1.11.0"

@@ -1,6 +1,6 @@
 use anyhow::Context;
-use pedersen::{pedersen_hash, StarkHash};
 use rusqlite::Transaction;
+use stark_hash::{stark_hash, StarkHash};
 
 use crate::{
     core::{ContractHash, ContractRoot, ContractStateHash},
@@ -84,9 +84,9 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
     const CONTRACT_VERSION: StarkHash = StarkHash::ZERO;
 
     // The contract state hash is defined as H(H(H(hash, root), RESERVED), CONTRACT_VERSION)
-    let hash = pedersen_hash(hash.0, root.0);
-    let hash = pedersen_hash(hash, RESERVED);
-    let hash = pedersen_hash(hash, CONTRACT_VERSION);
+    let hash = stark_hash(hash.0, root.0);
+    let hash = stark_hash(hash, RESERVED);
+    let hash = stark_hash(hash, CONTRACT_VERSION);
 
     // Compare this with the HashChain construction used in the contract_hash: the number of
     // elements is not hashed to this hash, and this is supposed to be different.
@@ -97,7 +97,7 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
 mod tests {
     use super::{calculate_contract_state_hash, sync};
     use crate::core::{ContractHash, ContractRoot, ContractStateHash};
-    use pedersen::StarkHash;
+    use stark_hash::StarkHash;
 
     #[test]
     fn hash() {

@@ -367,7 +367,7 @@ pub mod add_transaction {
 
     #[cfg(test)]
     mod serde_test {
-        use pedersen::StarkHash;
+        use stark_hash::StarkHash;
 
         use super::*;
 

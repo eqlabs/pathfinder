@@ -208,7 +208,7 @@ pub(crate) mod test_utils {
         sequencer::reply::transaction,
     };
 
-    use pedersen::StarkHash;
+    use stark_hash::StarkHash;
 
     /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
     /// with arbitrary other values.

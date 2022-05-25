@@ -1,7 +1,7 @@
 use anyhow::{Context, Error, Result};
-use pedersen::{pedersen_hash, StarkHash};
 use serde::Serialize;
 use sha3::Digest;
+use stark_hash::{stark_hash, StarkHash};
 
 use crate::core::ContractHash;
 use crate::sequencer::request::contract::EntryPointType;
@@ -16,7 +16,7 @@ use crate::sequencer::request::contract::EntryPointType;
 ///
 /// 1. contract definition is serialized with python's [`sort_keys=True` option][py-sortkeys], then
 ///    a truncated Keccak256 hash is calculated of the serialized json
-/// 2. a hash chain construction out of [`pedersen_hash`] is used to process in order the contract
+/// 2. a hash chain construction out of [`stark_hash()`] is used to process in order the contract
 ///    entry points, builtins, the truncated keccak hash and bytecodes
 /// 3. each of the hashchains is hash chained together to produce a final contract hash
 ///
@@ -186,7 +186,7 @@ fn compute_contract_hash0(
 /// HashChain is the structure used over at cairo side to represent the hash construction needed
 /// for computing the contract hash.
 ///
-/// Empty hash chained value equals `H(0, 0)` where `H` is the [`pedersen_hash`] function, and the
+/// Empty hash chained value equals `H(0, 0)` where `H` is the [`stark_hash()`] function, and the
 /// second value is the number of values hashed together in this chain. For other values, the
 /// accumulator is on each update replaced with the `H(hash, value)` and the number of count
 /// incremented by one.
@@ -206,7 +206,7 @@ impl Default for HashChain {
 
 impl HashChain {
     fn update(&mut self, value: StarkHash) {
-        self.hash = pedersen_hash(self.hash, value);
+        self.hash = stark_hash(self.hash, value);
         self.count = self
             .count
             .checked_add(1)
@@ -216,7 +216,7 @@ impl HashChain {
     fn finalize(self) -> StarkHash {
         let count = StarkHash::from_be_slice(&self.count.to_be_bytes())
             .expect("usize is smaller than 251-bits");
-        pedersen_hash(self.hash, count)
+        stark_hash(self.hash, count)
     }
 }
 
@@ -382,7 +382,7 @@ mod json {
         async fn first() {
             // this test is a bit on the slow side because of the download and because of the long
             // processing time in dev builds. expected --release speed is 9 contracts/s.
-            let expected = pedersen::StarkHash::from_hex_str(
+            let expected = stark_hash::StarkHash::from_hex_str(
                 "0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576",
             )
             .unwrap();
@@ -415,7 +415,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                pedersen::StarkHash::from_hex_str(
+                stark_hash::StarkHash::from_hex_str(
                     "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
                 )
                 .unwrap()
@@ -425,7 +425,7 @@ mod json {
         #[tokio::test]
         async fn genesis_contract() {
             use crate::sequencer::ClientApi;
-            use pedersen::StarkHash;
+            use stark_hash::StarkHash;
 
             let contract = StarkHash::from_hex_str(
                 "0x0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3",
@@ -451,7 +451,7 @@ mod json {
             use super::super::extract_abi_code_hash;
             use crate::core::{ContractAddress, ContractHash};
             use crate::sequencer::{self, ClientApi};
-            use pedersen::StarkHash;
+            use stark_hash::StarkHash;
 
             // Known contract which triggered a hash mismatch failure.
             let address = ContractAddress(
@@ -539,8 +539,8 @@ mod tests {
     #[test]
     fn truncated_keccak_matches_pythonic() {
         use super::truncated_keccak;
-        use pedersen::StarkHash;
         use sha3::{Digest, Keccak256};
+        use stark_hash::StarkHash;
         let all_set = Keccak256::digest(&[0xffu8; 32]);
         assert!(all_set[0] > 0xf);
         let truncated = truncated_keccak(all_set.into());

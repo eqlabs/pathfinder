@@ -250,8 +250,8 @@ mod tests {
     }
 
     mod stateful {
-        use pedersen::StarkHash;
         use rusqlite::{self, Connection};
+        use stark_hash::StarkHash;
 
         use crate::{
             core::{

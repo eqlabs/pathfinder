@@ -325,9 +325,9 @@ mod tests {
         rpc_params,
         types::{traits::Client, v2::ParamsSer},
     };
-    use pedersen::StarkHash;
     use pretty_assertions::assert_eq;
     use serde_json::json;
+    use stark_hash::StarkHash;
     use std::{
         collections::BTreeMap,
         net::{Ipv4Addr, SocketAddrV4},
@@ -578,8 +578,8 @@ mod tests {
             request::BlockResponseScope,
             BlockHashOrTag, Tag,
         };
-        use pedersen::StarkHash;
         use pretty_assertions::assert_eq;
+        use stark_hash::StarkHash;
 
         #[tokio::test]
         async fn genesis() {
@@ -1619,7 +1619,7 @@ mod tests {
             use anyhow::Context;
             use bytes::Bytes;
             use futures::stream::TryStreamExt;
-            use pedersen::StarkHash;
+            use stark_hash::StarkHash;
 
             let storage = Storage::in_memory().unwrap();
 

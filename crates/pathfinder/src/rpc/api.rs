@@ -28,7 +28,7 @@ use jsonrpsee::types::{
     error::{CallError, Error},
     RpcResult,
 };
-use pedersen::StarkHash;
+use stark_hash::StarkHash;
 use std::convert::TryInto;
 use std::sync::Arc;
 
@@ -367,7 +367,7 @@ impl RpcApi {
             state::state_tree::{ContractsStateTree, GlobalStateTree},
             storage::ContractsStateTable,
         };
-        use pedersen::OverflowError;
+        use stark_hash::OverflowError;
 
         let key = StorageAddress(StarkHash::from_be_bytes(key.0.to_fixed_bytes()).map_err(
             // Report that the value is >= than the field modulus

@@ -61,7 +61,7 @@ pub mod request {
     /// The address of a storage element for a StarkNet contract.
     ///
     /// __This type is not checked for 251 bits overflow__ in contrast to
-    /// [`StarkHash`](pedersen::StarkHash).
+    /// [`StarkHash`](stark_hash::StarkHash).
     #[serde_as]
     #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
     pub struct OverflowingStorageAddress(#[serde_as(as = "H256AsNoLeadingZerosHexStr")] pub H256);
@@ -128,9 +128,9 @@ pub mod reply {
         sequencer::reply::Status as SeqStatus,
     };
     use jsonrpsee::types::{CallError, Error};
-    use pedersen::StarkHash;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
+    use stark_hash::StarkHash;
     use std::convert::From;
 
     /// L2 Block status as returned by the RPC API.
@@ -753,7 +753,7 @@ pub mod reply {
         #[cfg(test)]
         impl<'a> From<(&'a str, u64)> for NumberedBlock {
             fn from((h, n): (&'a str, u64)) -> Self {
-                use pedersen::StarkHash;
+                use stark_hash::StarkHash;
                 NumberedBlock {
                     hash: StarknetBlockHash(StarkHash::from_hex_str(h).unwrap()),
                     number: StarknetBlockNumber(n),
