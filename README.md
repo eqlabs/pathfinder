@@ -154,7 +154,7 @@ This means things like the database will be created and searched for within the 
 
 ### Configuration
 
-The `pathfinder` node options can be configured via the command line as well as a configuration file.
+The `pathfinder` node options can be configured via the command line as well as a configuration file or environment variables.
 The command line configuration overrides the options from the file.
 
 The command line options are passed in after the after the `cargo run` options, as follows:
@@ -163,10 +163,14 @@ The command line options are passed in after the after the `cargo run` options, 
 cargo run --release --bin pathfinder -- <pathfinder options>
 ```
 
-Using `--help` will display the `pathfinder` options:
+Using `--help` will display the `pathfinder` options, including their environment variable names:
 
 ```bash
+# with built from source
 cargo run --release --bin pathfinder -- --help
+
+# with docker images
+docker run --rm eqlabs/pathfinder /usr/local/bin/pathfinder --help
 ```
 
 The configuration file uses the `toml` format:
@@ -238,15 +242,6 @@ docker run \
   -v $HOME/pathfinder:/usr/share/pathfinder/data \
   eqlabs/pathfinder
 ```
-
-The following environment variables can be passed to the container:
-
-| Name                               | Description                                                  | Default value     | Required |
-| ---------------------------------- | ------------------------------------------------------------ | ----------------- | -------- |
-| PATHFINDER_ETHEREUM_API_URL        | Ethereum full node JSON-RPC endpoint URL                     |                   | yes      |
-| PATHFINDER_ETHEREUM_API_PASSWORD   | Password to use during authentication with Ethereum node API |                   | no       |
-| PATHFINDER_HTTP_RPC_ADDRESS        | Address to bind the `pathfinder` RPC server to               | 127.0.0.1.9545    | no       |
-| PATHFINDER_DATA_DIRECTORY          | Directory used to store `pathfinder` data                    | Current directory | no       |
 
 ### Updating the docker image
 
