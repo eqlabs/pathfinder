@@ -239,15 +239,6 @@ docker run \
   eqlabs/pathfinder
 ```
 
-The following environment variables can be passed to the container:
-
-| Name                               | Description                                                  | Default value     | Required |
-| ---------------------------------- | ------------------------------------------------------------ | ----------------- | -------- |
-| PATHFINDER_ETHEREUM_API_URL        | Ethereum full node JSON-RPC endpoint URL                     |                   | yes      |
-| PATHFINDER_ETHEREUM_API_PASSWORD   | Password to use during authentication with Ethereum node API |                   | no       |
-| PATHFINDER_HTTP_RPC_ADDRESS        | Address to bind the `pathfinder` RPC server to               | 127.0.0.1.9545    | no       |
-| PATHFINDER_DATA_DIRECTORY          | Directory used to store `pathfinder` data                    | Current directory | no       |
-
 ### Updating the docker image
 
 When pathfinder detects there has been a new release, it will log a message similar to:
