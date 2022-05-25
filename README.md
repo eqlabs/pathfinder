@@ -154,7 +154,7 @@ This means things like the database will be created and searched for within the 
 
 ### Configuration
 
-The `pathfinder` node options can be configured via the command line as well as a configuration file.
+The `pathfinder` node options can be configured via the command line as well as a configuration file or environment variables.
 The command line configuration overrides the options from the file.
 
 The command line options are passed in after the after the `cargo run` options, as follows:
@@ -163,7 +163,7 @@ The command line options are passed in after the after the `cargo run` options, 
 cargo run --release --bin pathfinder -- <pathfinder options>
 ```
 
-Using `--help` will display the `pathfinder` options:
+Using `--help` will display the `pathfinder` options, including their environment variable names:
 
 ```bash
 cargo run --release --bin pathfinder -- --help
