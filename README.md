@@ -166,7 +166,11 @@ cargo run --release --bin pathfinder -- <pathfinder options>
 Using `--help` will display the `pathfinder` options, including their environment variable names:
 
 ```bash
+# with built from source
 cargo run --release --bin pathfinder -- --help
+
+# with docker images
+docker run --rm eqlabs/pathfinder /usr/local/bin/pathfinder --help
 ```
 
 The configuration file uses the `toml` format:
