@@ -981,9 +981,13 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[tokio::test]
+        #[test_log::test(tokio::test)]
         async fn invalid_contract_address() {
-            let error = client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_full_contract?contractAddress=0x5fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
+                err_fixture!("uninitialized_contract.json"),
+            )]);
+            let error = client
                 .full_contract(*INVALID_CONTRACT_ADDR)
                 .await
                 .unwrap_err();
@@ -995,10 +999,13 @@ mod tests {
 
         #[tokio::test]
         async fn success() {
-            let bytes = client().full_contract(*VALID_CONTRACT_ADDR).await.unwrap();
-            // Fast sanity check
-            // TODO replace with something more meaningful once we figure out the structure to deserialize to
-            assert_eq!(bytes.len(), 53032);
+            use crate::state::contract_hash::json::ContractDefinition;
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_full_contract?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
+                ok_fixture!("valid_full_contract.json"),
+            )]);
+            let bytes = client.full_contract(*VALID_CONTRACT_ADDR).await.unwrap();
+            serde_json::from_slice::<ContractDefinition>(&bytes).unwrap();
         }
     }
 
