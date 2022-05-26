@@ -228,6 +228,7 @@ impl Client {
             .extend(path_segments);
         query_url.query_pairs_mut().extend_pairs(params);
         tracing::trace!(%query_url);
+        eprintln!("{}", query_url.to_string());
         query_url
     }
 }
@@ -1006,9 +1007,14 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[tokio::test]
+        #[test_log::test(tokio::test)]
         async fn invalid_contract_address() {
-            let result = client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_storage_at?contractAddress=0x5fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
+                &key=916907772491729262376534102982219947830828984996257231353398618781993312401&blockNumber=null",
+                (r#""0x0""#, 200),
+            )]);
+            let result = client
                 .storage(
                     *INVALID_CONTRACT_ADDR,
                     *VALID_KEY,
@@ -1021,7 +1027,12 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_key() {
-            let result = client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
+                &key=0&blockNumber=null",
+                (r#""0x0""#, 200),
+            )]);
+            let result = client
                 .storage(
                     *VALID_CONTRACT_ADDR,
                     *ZERO_KEY,
@@ -1034,7 +1045,13 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let error = client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
+                &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
+                &blockHash=0x6d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+                err_fixture!("block_not_found.json"),
+            )]);
+            let error = client
                 .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH)
                 .await
                 .unwrap_err();
@@ -1046,7 +1063,13 @@ mod tests {
 
         #[tokio::test]
         async fn latest_invoke_block() {
-            client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
+                &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
+                &blockHash=0x3871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27",
+                (r#""0x1e240""#, 200),
+            )]);
+            let result = client
                 .storage(
                     *VALID_CONTRACT_ADDR,
                     *VALID_KEY,
@@ -1054,11 +1077,21 @@ mod tests {
                 )
                 .await
                 .unwrap();
+            assert_eq!(
+                result,
+                StorageValue(StarkHash::from_hex_str("0x1e240").unwrap())
+            );
         }
 
         #[tokio::test]
         async fn latest_block() {
-            client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
+                &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
+                &blockNumber=null",
+                (r#""0x1e240""#, 200),
+            )]);
+            let result = client
                 .storage(
                     *VALID_CONTRACT_ADDR,
                     *VALID_KEY,
@@ -1066,11 +1099,21 @@ mod tests {
                 )
                 .await
                 .unwrap();
+            assert_eq!(
+                result,
+                StorageValue(StarkHash::from_hex_str("0x1e240").unwrap())
+            );
         }
 
         #[tokio::test]
         async fn pending_block() {
-            client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
+                &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
+                &blockNumber=pending",
+                (r#""0x1e240""#, 200),
+            )]);
+            let result = client
                 .storage(
                     *VALID_CONTRACT_ADDR,
                     *VALID_KEY,
@@ -1078,6 +1121,10 @@ mod tests {
                 )
                 .await
                 .unwrap();
+            assert_eq!(
+                result,
+                StorageValue(StarkHash::from_hex_str("0x1e240").unwrap())
+            );
         }
     }
 
