@@ -741,19 +741,6 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn block_without_block_hash_field() {
-            client()
-                .block_by_hash(BlockHashOrTag::Hash(
-                    StarknetBlockHash::from_hex_str(
-                        "01cf37f162c3fa3b57c1c4324c240b0c8c65bb5a15e039817a3023b9890e94d1",
-                    )
-                    .unwrap(),
-                ))
-                .await
-                .unwrap();
-        }
-
-        #[tokio::test]
         async fn invalid() {
             // Invalid block hash
             let error = client()
