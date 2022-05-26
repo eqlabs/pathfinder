@@ -228,7 +228,6 @@ impl Client {
             .extend(path_segments);
         query_url.query_pairs_mut().extend_pairs(params);
         tracing::trace!(%query_url);
-        eprintln!("{}", query_url.to_string());
         query_url
     }
 }
@@ -1134,16 +1133,24 @@ mod tests {
 
         #[tokio::test]
         async fn accepted() {
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_transaction?transactionHash=0x493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+                ok_fixture!("valid_tx.json"),
+            )]);
             assert_eq!(
-                client().transaction(*VALID_TX_HASH).await.unwrap().status,
+                client.transaction(*VALID_TX_HASH).await.unwrap().status,
                 Status::AcceptedOnL1
             );
         }
 
         #[tokio::test]
         async fn invalid_hash() {
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_transaction?transactionHash=0x393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+                ok_fixture!("tx_not_received.json"),
+            )]);
             assert_eq!(
-                client().transaction(*INVALID_TX_HASH).await.unwrap().status,
+                client.transaction(*INVALID_TX_HASH).await.unwrap().status,
                 Status::NotReceived,
             );
         }
@@ -1154,8 +1161,12 @@ mod tests {
 
         #[tokio::test]
         async fn accepted() {
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_transaction_status?transactionHash=0x493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+                ok_fixture!("valid_tx_status.json"),
+            )]);
             assert_eq!(
-                client()
+                client
                     .transaction_status(*VALID_TX_HASH)
                     .await
                     .unwrap()
@@ -1166,8 +1177,12 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_transaction?transactionHash=0x393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+                ok_fixture!("tx_not_received.json"),
+            )]);
             assert_eq!(
-                client()
+                client
                     .transaction_status(*INVALID_TX_HASH)
                     .await
                     .unwrap()
@@ -1222,15 +1237,22 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let by_number: OrderedStateUpdate = Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
+            let (_jh, client) = setup(&[
+                (
+                    "/feeder_gateway/get_state_update?blockNumber=0",
+                    ok_fixture!("genesis_state_update.json"),
+                ),
+                (
+                    "/feeder_gateway/get_state_update?blockHash=0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+                    ok_fixture!("genesis_state_update.json"),
+                ),
+            ]);
+            let by_number: OrderedStateUpdate = client
                 .state_update_by_number(*GENESIS_BLOCK_NUMBER)
                 .await
                 .unwrap()
                 .into();
-
-            let by_hash: OrderedStateUpdate = Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
+            let by_hash: OrderedStateUpdate = client
                 .state_update_by_hash(*GENESIS_BLOCK_HASH)
                 .await
                 .unwrap()
@@ -1241,18 +1263,25 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
-            let by_number: OrderedStateUpdate = Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
-                .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(10000)))
+            let (_jh, client) = setup(&[
+                (
+                    "/feeder_gateway/get_state_update?blockNumber=200000",
+                    ok_fixture!("state_update_200k.json"),
+                ),
+                (
+                    "/feeder_gateway/get_state_update?blockHash=0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
+                    ok_fixture!("state_update_200k.json"),
+                ),
+            ]);
+            let by_number: OrderedStateUpdate = client
+                .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(200000)))
                 .await
                 .unwrap()
                 .into();
-
-            let by_hash: OrderedStateUpdate = Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
+            let by_hash: OrderedStateUpdate = client
                 .state_update_by_hash(BlockHashOrTag::Hash(
                     StarknetBlockHash::from_hex_str(
-                        "0x59fc9ede727664c12a5cc72252d1c1dd7d84f9182644f9b39f405d33bedcc99",
+                        "0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
                     )
                     .unwrap(),
                 ))
@@ -1267,10 +1296,13 @@ mod tests {
     mod state_update_by_number {
         use super::*;
 
-        #[tokio::test]
+        #[test_log::test(tokio::test)]
         async fn invalid_number() {
-            let error = Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_state_update?blockNumber=18446744073709551615",
+                err_fixture!("block_not_found.json"),
+            )]);
+            let error = client
                 .state_update_by_number(*INVALID_BLOCK_NUMBER)
                 .await
                 .unwrap_err();
@@ -1282,8 +1314,11 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_state_update?blockNumber=null",
+                ok_fixture!("state_update_200k.json"),
+            )]);
+            client
                 .state_update_by_number(BlockNumberOrTag::Tag(Tag::Latest))
                 .await
                 .unwrap();
@@ -1291,8 +1326,11 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_state_update?blockNumber=pending",
+                ok_fixture!("pending_state_update.json"),
+            )]);
+            client
                 .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
                 .await
                 .unwrap();
@@ -1304,8 +1342,11 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let error = Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_state_update?blockHash=0x6d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+                err_fixture!("block_not_found.json"),
+            )]);
+            let error = client
                 .state_update_by_hash(*INVALID_BLOCK_HASH)
                 .await
                 .unwrap_err();
@@ -1317,8 +1358,11 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_state_update?blockNumber=null",
+                ok_fixture!("state_update_200k.json"),
+            )]);
+            client
                 .state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
                 .await
                 .unwrap();
@@ -1326,8 +1370,11 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            Client::new(crate::ethereum::Chain::Goerli)
-                .unwrap()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_state_update?blockNumber=pending",
+                ok_fixture!("pending_state_update.json"),
+            )]);
+            client
                 .state_update_by_hash(BlockHashOrTag::Tag(Tag::Pending))
                 .await
                 .unwrap();
