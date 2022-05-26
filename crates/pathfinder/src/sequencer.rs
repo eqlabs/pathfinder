@@ -668,27 +668,44 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let by_hash = client().block_by_hash(*GENESIS_BLOCK_HASH).await.unwrap();
-            let by_number = client()
-                .block_by_number(*GENESIS_BLOCK_NUMBER)
-                .await
-                .unwrap();
+            let (_jh, client) = setup(&[
+                (
+                    "/feeder_gateway/get_block?blockHash=0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+                    fixture!("genesis_block.json")
+                ),
+                (
+                    "/feeder_gateway/get_block?blockNumber=0",
+                    fixture!("genesis_block.json")
+                ),
+            ]);
+            let by_hash = client.block_by_hash(*GENESIS_BLOCK_HASH).await.unwrap();
+            let by_number = client.block_by_number(*GENESIS_BLOCK_NUMBER).await.unwrap();
             assert_eq!(by_hash, by_number);
         }
 
         #[tokio::test]
         async fn specific_block() {
-            let by_hash = client()
+            let (_jh, client) = setup(&[
+                (
+                    "/feeder_gateway/get_block?blockHash=0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
+                    fixture!("block_200k.json")
+                ),
+                (
+                    "/feeder_gateway/get_block?blockNumber=200000",
+                    fixture!("block_200k.json")
+                ),
+            ]);
+            let by_hash = client
                 .block_by_hash(BlockHashOrTag::Hash(
                     StarknetBlockHash::from_hex_str(
-                        "0x07187d565e5563658f2b88a9000c6eb84692dcd90a8ab7d8fe75d768205d9b66",
+                        "0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
                     )
                     .unwrap(),
                 ))
                 .await
                 .unwrap();
-            let by_number = client()
-                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(50000)))
+            let by_number = client
+                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(200000)))
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -701,7 +718,11 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_block?blockNumber=null",
+                fixture!("block_200k.json"),
+            )]);
+            client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
                 .await
                 .unwrap();
@@ -709,7 +730,11 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_block?blockNumber=pending",
+                fixture!("pending_block.json"),
+            )]);
+            client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
                 .await
                 .unwrap();
