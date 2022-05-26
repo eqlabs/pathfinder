@@ -567,6 +567,18 @@ mod tests {
         };
     }
 
+    macro_rules! ok_fixture {
+        ($path:literal) => {
+            (fixture!($path), 200)
+        };
+    }
+
+    macro_rules! err_fixture {
+        ($path:literal) => {
+            (fixture!($path), 500)
+        };
+    }
+
     /// Use to initialize a [sequencer::Client] test case. The function does one of the following things:
     ///
     /// 1. if `SEQUENCER_TESTS_LIVE_API` environment variable is set:
@@ -579,7 +591,7 @@ mod tests {
     ///    - creates a [sequencer::Client] instance which connects to the mock server
     ///
     fn setup(
-        url_paths_queries_and_response_fixtures: &'static [(&str, &str)],
+        url_paths_queries_and_response_fixtures: &'static [(&str, (&str, u16))],
     ) -> (Option<tokio::task::JoinHandle<()>>, Client) {
         if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
             (None, Client::new(Chain::Goerli).unwrap())
@@ -596,7 +608,9 @@ mod tests {
                         .iter()
                         .find(|x| x.0 == actual_full_path_and_query)
                     {
-                        Some(&(_, body)) => http::response::Builder::new().status(200).body(body),
+                        Some(&(_, (body, status))) => {
+                            http::response::Builder::new().status(status).body(body)
+                        }
                         None => panic!(
                             "Actual url path and query {} not found in the expected {:?}",
                             actual_full_path_and_query,
@@ -671,11 +685,11 @@ mod tests {
             let (_jh, client) = setup(&[
                 (
                     "/feeder_gateway/get_block?blockHash=0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
-                    fixture!("genesis_block.json")
+                    ok_fixture!("genesis_block.json")
                 ),
                 (
                     "/feeder_gateway/get_block?blockNumber=0",
-                    fixture!("genesis_block.json")
+                    ok_fixture!("genesis_block.json")
                 ),
             ]);
             let by_hash = client.block_by_hash(*GENESIS_BLOCK_HASH).await.unwrap();
@@ -688,11 +702,11 @@ mod tests {
             let (_jh, client) = setup(&[
                 (
                     "/feeder_gateway/get_block?blockHash=0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
-                    fixture!("block_200k.json")
+                    ok_fixture!("block_200k.json")
                 ),
                 (
                     "/feeder_gateway/get_block?blockNumber=200000",
-                    fixture!("block_200k.json")
+                    ok_fixture!("block_200k.json")
                 ),
             ]);
             let by_hash = client
@@ -720,7 +734,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup(&[(
                 "/feeder_gateway/get_block?blockNumber=null",
-                fixture!("block_200k.json"),
+                ok_fixture!("block_200k.json"),
             )]);
             client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
@@ -732,7 +746,7 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup(&[(
                 "/feeder_gateway/get_block?blockNumber=pending",
-                fixture!("pending_block.json"),
+                ok_fixture!("pending_block.json"),
             )]);
             client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
@@ -740,13 +754,13 @@ mod tests {
                 .unwrap();
         }
 
-        #[tokio::test]
+        #[test_log::test(tokio::test)]
         async fn invalid() {
-            // Invalid block hash
-            let error = client()
-                .block_by_hash(*INVALID_BLOCK_HASH)
-                .await
-                .unwrap_err();
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_block?blockHash=0x6d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+                err_fixture!("block_not_found.json"),
+            )]);
+            let error = client.block_by_hash(*INVALID_BLOCK_HASH).await.unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
