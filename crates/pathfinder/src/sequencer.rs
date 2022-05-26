@@ -773,7 +773,11 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_block?blockNumber=null",
+                ok_fixture!("block_200k.json"),
+            )]);
+            client
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
                 .await
                 .unwrap();
@@ -781,15 +785,23 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_block?blockNumber=pending",
+                ok_fixture!("pending_block.json"),
+            )]);
+            client
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
                 .await
                 .unwrap();
         }
 
-        #[tokio::test]
+        #[test_log::test(tokio::test)]
         async fn invalid() {
-            let error = client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_block?blockNumber=18446744073709551615",
+                err_fixture!("block_not_found.json"),
+            )]);
+            let error = client
                 .block_by_number(*INVALID_BLOCK_NUMBER)
                 .await
                 .unwrap_err();
@@ -801,7 +813,11 @@ mod tests {
 
         #[tokio::test]
         async fn contains_receipts_without_status_field() {
-            client()
+            let (_jh, client) = setup(&[(
+                "/feeder_gateway/get_block?blockNumber=1716",
+                ok_fixture!("block_1716.json"),
+            )]);
+            client
                 .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1716)))
                 .await
                 .unwrap();
