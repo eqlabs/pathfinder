@@ -561,6 +561,62 @@ mod tests {
         Client::new(Chain::Goerli).unwrap()
     }
 
+    macro_rules! fixture {
+        ($path:literal) => {
+            include_str!(concat!("../fixtures/sequencer/", $path))
+        };
+    }
+
+    /// Use to initialize a [sequencer::Client] test case. The function does one of the following things:
+    ///
+    /// 1. if `SEQUENCER_TESTS_LIVE_API` environment variable is set:
+    ///    - creates a [sequencer::Client] instance which connects to the Goerli
+    ///      sequencer API
+    ///
+    /// 2. otherwise:
+    ///    - initializes a local mock server instance with the given expected
+    ///      url paths & queries and respective fixtures for replies
+    ///    - creates a [sequencer::Client] instance which connects to the mock server
+    ///
+    fn setup(
+        url_paths_queries_and_response_fixtures: &'static [(&str, &str)],
+    ) -> (Option<tokio::task::JoinHandle<()>>, Client) {
+        if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
+            (None, Client::new(Chain::Goerli).unwrap())
+        } else {
+            use warp::Filter;
+            let path = warp::any()
+                .and(warp::path::full())
+                .and(warp::query::raw())
+                .map(|full_path: warp::path::FullPath, raw_query| {
+                    let actual_full_path_and_query =
+                        format!("{}?{}", full_path.as_str(), raw_query);
+
+                    match url_paths_queries_and_response_fixtures
+                        .iter()
+                        .find(|x| x.0 == actual_full_path_and_query)
+                    {
+                        Some(&(_, body)) => http::response::Builder::new().status(200).body(body),
+                        None => panic!(
+                            "Actual url path and query {} not found in the expected {:?}",
+                            actual_full_path_and_query,
+                            url_paths_queries_and_response_fixtures
+                                .iter()
+                                .map(|(expected_path, _)| expected_path)
+                                .collect::<Vec<_>>()
+                        ),
+                    }
+                });
+
+            let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
+            let server_handle = tokio::spawn(serve_fut);
+            let client =
+                Client::with_url(reqwest::Url::parse(&format!("http://{}", addr)).unwrap())
+                    .unwrap();
+            (Some(server_handle), client)
+        }
+    }
+
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
         use crate::core::StarknetBlockTimestamp;
