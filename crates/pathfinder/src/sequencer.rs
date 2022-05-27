@@ -150,51 +150,76 @@ async fn parse_raw(resp: reqwest::Response) -> Result<reqwest::Response, Sequenc
 }
 
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
+///
+/// Does not retry in tests.
 async fn retry<T, Fut, FutureFactory>(future_factory: FutureFactory) -> Result<T, SequencerError>
 where
     Fut: Future<Output = Result<T, SequencerError>>,
     FutureFactory: FnMut() -> Fut,
 {
+    if cfg!(test) {
+        retry0(future_factory, |_| false).await
+    } else {
+        retry0(future_factory, retry_condition).await
+    }
+}
+
+/// Wrapper function to allow retrying sequencer queries in an exponential manner.
+async fn retry0<T, Fut, FutureFactory, Ret>(
+    future_factory: FutureFactory,
+    retry_condition: Ret,
+) -> Result<T, SequencerError>
+where
+    Fut: Future<Output = Result<T, SequencerError>>,
+    FutureFactory: FnMut() -> Fut,
+    Ret: FnMut(&SequencerError) -> bool,
+{
     use crate::retry::Retry;
-    use reqwest::StatusCode;
     use std::num::NonZeroU64;
-    use tracing::{debug, error, info, warn};
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
         .factor(NonZeroU64::new(15).unwrap())
         .max_delay(Duration::from_secs(60 * 60))
-        .when(|e| match e {
-            SequencerError::ReqwestError(e) => {
-                if e.is_body() || e.is_connect() || e.is_timeout() {
-                    info!(reason=%e, "Request failed, retrying");
-                } else if e.is_status() {
-                    match e.status() {
-                        Some(
-                            StatusCode::NOT_FOUND
-                            | StatusCode::TOO_MANY_REQUESTS
-                            | StatusCode::BAD_GATEWAY
-                            | StatusCode::SERVICE_UNAVAILABLE
-                            | StatusCode::GATEWAY_TIMEOUT,
-                        ) => {
-                            debug!(reason=%e, "Request failed, retrying");
-                        }
-                        Some(StatusCode::INTERNAL_SERVER_ERROR) => {
-                            error!(reason=%e, "Request failed, retrying");
-                        }
-                        Some(_) => warn!(reason=%e, "Request failed, retrying"),
-                        None => unreachable!(),
-                    }
-                } else if e.is_decode() {
-                    error!(reason=%e, "Request failed, retrying");
-                } else {
-                    warn!(reason=%e, "Request failed, retrying");
-                }
-
-                true
-            }
-            SequencerError::StarknetError(_) => false,
-        })
+        .when(retry_condition)
         .await
+}
+
+/// Determines if an error is retryable or not.
+fn retry_condition(e: &SequencerError) -> bool {
+    use reqwest::StatusCode;
+    use tracing::{debug, error, info, warn};
+
+    match e {
+        SequencerError::ReqwestError(e) => {
+            if e.is_body() || e.is_connect() || e.is_timeout() {
+                info!(reason=%e, "Request failed, retrying");
+            } else if e.is_status() {
+                match e.status() {
+                    Some(
+                        StatusCode::NOT_FOUND
+                        | StatusCode::TOO_MANY_REQUESTS
+                        | StatusCode::BAD_GATEWAY
+                        | StatusCode::SERVICE_UNAVAILABLE
+                        | StatusCode::GATEWAY_TIMEOUT,
+                    ) => {
+                        debug!(reason=%e, "Request failed, retrying");
+                    }
+                    Some(StatusCode::INTERNAL_SERVER_ERROR) => {
+                        error!(reason=%e, "Request failed, retrying");
+                    }
+                    Some(_) => warn!(reason=%e, "Request failed, retrying"),
+                    None => unreachable!(),
+                }
+            } else if e.is_decode() {
+                error!(reason=%e, "Request failed, retrying");
+            } else {
+                warn!(reason=%e, "Request failed, retrying");
+            }
+
+            true
+        }
+        SequencerError::StarknetError(_) => false,
+    }
 }
 
 impl Client {
@@ -1223,7 +1248,7 @@ mod tests {
         async fn invalid_hash() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction?transactionHash=0x393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
-                response!("tx_not_received.json"),
+                (r#"{"status": "NOT_RECEIVED"}"#, 200),
             )]);
             assert_eq!(
                 client.transaction(*INVALID_TX_HASH).await.unwrap().status,
@@ -1481,8 +1506,8 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_entry_point_selector() {
-            // test with values dumped from `starknet invoke` for a test contract, except for
-            // an invalid entry point value
+            // test with values dumped from `starknet invoke` for a test contract,
+            // except for an invalid entry point value
             let  error = client()
                 .add_invoke_transaction(
                     Call {
@@ -1835,12 +1860,15 @@ mod tests {
             ]);
 
             let (_jh, addr) = status_queue_server(statuses);
-            let result = super::retry(|| async {
-                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
-                url.set_port(Some(addr.port())).unwrap();
-                let resp = reqwest::get(url).await?;
-                super::parse::<String>(resp).await
-            })
+            let result = super::retry0(
+                || async {
+                    let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                    url.set_port(Some(addr.port())).unwrap();
+                    let resp = reqwest::get(url).await?;
+                    super::parse::<String>(resp).await
+                },
+                super::retry_condition,
+            )
             .await
             .unwrap();
             assert_eq!(result, "Finally!");
@@ -1863,12 +1891,15 @@ mod tests {
             ]);
 
             let (_jh, addr) = status_queue_server(statuses);
-            let error = super::retry(|| async {
-                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
-                url.set_port(Some(addr.port())).unwrap();
-                let resp = reqwest::get(url).await?;
-                super::parse::<String>(resp).await
-            })
+            let error = super::retry0(
+                || async {
+                    let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                    url.set_port(Some(addr.port())).unwrap();
+                    let resp = reqwest::get(url).await?;
+                    super::parse::<String>(resp).await
+                },
+                super::retry_condition,
+            )
             .await
             .unwrap_err();
             assert_matches!(
@@ -1884,22 +1915,25 @@ mod tests {
             let (_jh, addr) = slow_server();
             static CNT: AtomicUsize = AtomicUsize::new(0);
 
-            let fut = super::retry(|| async {
-                let mut url = reqwest::Url::parse("http://localhost/").unwrap();
-                url.set_port(Some(addr.port())).unwrap();
+            let fut = super::retry0(
+                || async {
+                    let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+                    url.set_port(Some(addr.port())).unwrap();
 
-                let client = reqwest::Client::builder().build().unwrap();
+                    let client = reqwest::Client::builder().build().unwrap();
 
-                CNT.fetch_add(1, Ordering::Relaxed);
+                    CNT.fetch_add(1, Ordering::Relaxed);
 
-                // This is the same as using Client::builder().timeout()
-                let resp = client
-                    .get(url)
-                    .timeout(Duration::from_millis(1))
-                    .send()
-                    .await?;
-                super::parse::<String>(resp).await
-            });
+                    // This is the same as using Client::builder().timeout()
+                    let resp = client
+                        .get(url)
+                        .timeout(Duration::from_millis(1))
+                        .send()
+                        .await?;
+                    super::parse::<String>(resp).await
+                },
+                super::retry_condition,
+            );
 
             // The retry loops forever, so wrap it in a timeout and check the counter.
             tokio::time::timeout(Duration::from_millis(250), fut)
