@@ -567,16 +567,20 @@ mod tests {
         };
     }
 
-    macro_rules! ok_fixture {
+    macro_rules! response {
         ($path:literal) => {
             (fixture!($path), 200)
         };
     }
 
-    macro_rules! err_fixture {
-        ($path:literal) => {
-            (fixture!($path), 500)
-        };
+    impl StarknetErrorCode {
+        fn into_response(self) -> (String, u16) {
+            let e = StarknetError {
+                code: self,
+                message: "".to_string(),
+            };
+            (serde_json::to_string(&e).unwrap(), 500)
+        }
     }
 
     /// Use to initialize a [sequencer::Client] test case. The function does one of the following things:
@@ -590,9 +594,20 @@ mod tests {
     ///      url paths & queries and respective fixtures for replies
     ///    - creates a [sequencer::Client] instance which connects to the mock server
     ///
-    fn setup(
-        url_paths_queries_and_response_fixtures: &'static [(&str, (&str, u16))],
-    ) -> (Option<tokio::task::JoinHandle<()>>, Client) {
+    fn setup<S1, S2, const N: usize>(
+        url_paths_queries_and_response_fixtures: [(S1, (S2, u16)); N],
+    ) -> (Option<tokio::task::JoinHandle<()>>, Client)
+    where
+        S1: std::convert::AsRef<str>
+            + std::fmt::Display
+            + std::fmt::Debug
+            + std::cmp::PartialEq
+            + Send
+            + Sync
+            + Clone
+            + 'static,
+        S2: std::string::ToString + Send + Sync + Clone + 'static,
+    {
         if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
             (None, Client::new(Chain::Goerli).unwrap())
         } else {
@@ -600,17 +615,17 @@ mod tests {
             let path = warp::any()
                 .and(warp::path::full())
                 .and(warp::query::raw())
-                .map(|full_path: warp::path::FullPath, raw_query| {
+                .map(move |full_path: warp::path::FullPath, raw_query| {
                     let actual_full_path_and_query =
                         format!("{}?{}", full_path.as_str(), raw_query);
 
                     match url_paths_queries_and_response_fixtures
                         .iter()
-                        .find(|x| x.0 == actual_full_path_and_query)
+                        .find(|x| x.0.as_ref() == actual_full_path_and_query)
                     {
-                        Some(&(_, (body, status))) => {
-                            http::response::Builder::new().status(status).body(body)
-                        }
+                        Some((_, (body, status))) => http::response::Builder::new()
+                            .status(*status)
+                            .body(body.to_string()),
                         None => panic!(
                             "Actual url path and query {} not found in the expected {:?}",
                             actual_full_path_and_query,
@@ -682,14 +697,20 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (_jh, client) = setup(&[
+            let (_jh, client) = setup([
                 (
-                    "/feeder_gateway/get_block?blockHash=0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
-                    ok_fixture!("genesis_block.json")
+                    format!(
+                        "/feeder_gateway/get_block?blockHash={}",
+                        *GENESIS_BLOCK_HASH
+                    ),
+                    response!("genesis_block.json"),
                 ),
                 (
-                    "/feeder_gateway/get_block?blockNumber=0",
-                    ok_fixture!("genesis_block.json")
+                    format!(
+                        "/feeder_gateway/get_block?blockNumber={}",
+                        *GENESIS_BLOCK_NUMBER
+                    ),
+                    response!("genesis_block.json"),
                 ),
             ]);
             let by_hash = client.block_by_hash(*GENESIS_BLOCK_HASH).await.unwrap();
@@ -699,14 +720,14 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
-            let (_jh, client) = setup(&[
+            let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_block?blockHash=0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
-                    ok_fixture!("block_200k.json")
+                    response!("block_200k.json")
                 ),
                 (
                     "/feeder_gateway/get_block?blockNumber=200000",
-                    ok_fixture!("block_200k.json")
+                    response!("block_200k.json")
                 ),
             ]);
             let by_hash = client
@@ -732,9 +753,9 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=null",
-                ok_fixture!("block_200k.json"),
+                response!("block_200k.json"),
             )]);
             client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
@@ -744,9 +765,9 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
-                ok_fixture!("pending_block.json"),
+                response!("pending_block.json"),
             )]);
             client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
@@ -756,9 +777,9 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockHash=0x6d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
-                err_fixture!("block_not_found.json"),
+                StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client.block_by_hash(*INVALID_BLOCK_HASH).await.unwrap_err();
             assert_matches!(
@@ -773,9 +794,9 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=null",
-                ok_fixture!("block_200k.json"),
+                response!("block_200k.json"),
             )]);
             client
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
@@ -785,9 +806,9 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
-                ok_fixture!("pending_block.json"),
+                response!("pending_block.json"),
             )]);
             client
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
@@ -797,9 +818,12 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid() {
-            let (_jh, client) = setup(&[(
-                "/feeder_gateway/get_block?blockNumber=18446744073709551615",
-                err_fixture!("block_not_found.json"),
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_block?blockNumber={}",
+                    *INVALID_BLOCK_NUMBER
+                ),
+                StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
                 .block_by_number(*INVALID_BLOCK_NUMBER)
@@ -813,9 +837,9 @@ mod tests {
 
         #[tokio::test]
         async fn contains_receipts_without_status_field() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=1716",
-                ok_fixture!("block_1716.json"),
+                response!("block_1716.json"),
             )]);
             client
                 .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1716)))
@@ -824,13 +848,18 @@ mod tests {
         }
     }
 
+    // TODO expectation for request body
     mod call {
         use super::*;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn invalid_entry_point() {
-            let error = client()
+            let (_jh, client) = setup([(
+                "/feeder_gateway/call_contract?blockNumber=null",
+                StarknetErrorCode::EntryPointNotFound.into_response(),
+            )]);
+            let error = client
                 .call(
                     request::Call {
                         calldata: VALID_CALL_DATA.clone(),
@@ -850,7 +879,11 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let error = client()
+            let (_jh, client) = setup([(
+                "/feeder_gateway/call_contract?blockNumber=null",
+                StarknetErrorCode::UninitializedContract.into_response(),
+            )]);
+            let error = client
                 .call(
                     request::Call {
                         calldata: VALID_CALL_DATA.clone(),
@@ -870,7 +903,14 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_call_data() {
-            let error = client()
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/call_contract?blockHash={}",
+                    *INVOKE_CONTRACT_BLOCK_HASH
+                ),
+                StarknetErrorCode::TransactionFailed.into_response(),
+            )]);
+            let error = client
                 .call(
                     request::Call {
                         calldata: vec![],
@@ -890,7 +930,14 @@ mod tests {
 
         #[tokio::test]
         async fn uninitialized_contract() {
-            let error = client()
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/call_contract?blockHash={}",
+                    *GENESIS_BLOCK_HASH
+                ),
+                StarknetErrorCode::UninitializedContract.into_response(),
+            )]);
+            let error = client
                 .call(
                     request::Call {
                         calldata: vec![],
@@ -910,7 +957,14 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let error = client()
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/call_contract?blockHash={}",
+                    *INVALID_BLOCK_HASH
+                ),
+                StarknetErrorCode::BlockNotFound.into_response(),
+            )]);
+            let error = client
                 .call(
                     request::Call {
                         calldata: VALID_CALL_DATA.clone(),
@@ -930,7 +984,14 @@ mod tests {
 
         #[tokio::test]
         async fn latest_invoke_block() {
-            client()
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/call_contract?blockHash={}",
+                    *INVOKE_CONTRACT_BLOCK_HASH
+                ),
+                (r#"{"result":[]}"#, 200),
+            )]);
+            client
                 .call(
                     request::Call {
                         calldata: VALID_CALL_DATA.clone(),
@@ -946,7 +1007,11 @@ mod tests {
 
         #[tokio::test]
         async fn latest_block() {
-            client()
+            let (_jh, client) = setup([(
+                "/feeder_gateway/call_contract?blockNumber=null",
+                (r#"{"result":[]}"#, 200),
+            )]);
+            client
                 .call(
                     request::Call {
                         calldata: VALID_CALL_DATA.clone(),
@@ -962,7 +1027,11 @@ mod tests {
 
         #[tokio::test]
         async fn pending_block() {
-            client()
+            let (_jh, client) = setup([(
+                "/feeder_gateway/call_contract?blockNumber=pending",
+                (r#"{"result":[]}"#, 200),
+            )]);
+            client
                 .call(
                     request::Call {
                         calldata: VALID_CALL_DATA.clone(),
@@ -983,9 +1052,9 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_contract_address() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_full_contract?contractAddress=0x5fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
-                err_fixture!("uninitialized_contract.json"),
+                StarknetErrorCode::UninitializedContract.into_response(),
             )]);
             let error = client
                 .full_contract(*INVALID_CONTRACT_ADDR)
@@ -1000,9 +1069,9 @@ mod tests {
         #[tokio::test]
         async fn success() {
             use crate::state::contract_hash::json::ContractDefinition;
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_full_contract?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
-                ok_fixture!("valid_full_contract.json"),
+                response!("valid_full_contract.json"),
             )]);
             let bytes = client.full_contract(*VALID_CONTRACT_ADDR).await.unwrap();
             serde_json::from_slice::<ContractDefinition>(&bytes).unwrap();
@@ -1015,7 +1084,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_contract_address() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_storage_at?contractAddress=0x5fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
                 &key=916907772491729262376534102982219947830828984996257231353398618781993312401&blockNumber=null",
                 (r#""0x0""#, 200),
@@ -1033,7 +1102,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_key() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
                 &key=0&blockNumber=null",
                 (r#""0x0""#, 200),
@@ -1051,11 +1120,11 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
                 &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
                 &blockHash=0x6d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
-                err_fixture!("block_not_found.json"),
+                StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
                 .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH)
@@ -1069,7 +1138,7 @@ mod tests {
 
         #[tokio::test]
         async fn latest_invoke_block() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
                 &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
                 &blockHash=0x3871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27",
@@ -1091,7 +1160,7 @@ mod tests {
 
         #[tokio::test]
         async fn latest_block() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
                 &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
                 &blockNumber=null",
@@ -1113,7 +1182,7 @@ mod tests {
 
         #[tokio::test]
         async fn pending_block() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
                 &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
                 &blockNumber=pending",
@@ -1140,9 +1209,9 @@ mod tests {
 
         #[tokio::test]
         async fn accepted() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction?transactionHash=0x493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
-                ok_fixture!("valid_tx.json"),
+                response!("valid_tx.json"),
             )]);
             assert_eq!(
                 client.transaction(*VALID_TX_HASH).await.unwrap().status,
@@ -1152,9 +1221,9 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction?transactionHash=0x393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
-                ok_fixture!("tx_not_received.json"),
+                response!("tx_not_received.json"),
             )]);
             assert_eq!(
                 client.transaction(*INVALID_TX_HASH).await.unwrap().status,
@@ -1168,9 +1237,9 @@ mod tests {
 
         #[tokio::test]
         async fn accepted() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction_status?transactionHash=0x493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
-                ok_fixture!("valid_tx_status.json"),
+                response!("valid_tx_status.json"),
             )]);
             assert_eq!(
                 client
@@ -1184,9 +1253,9 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let (_jh, client) = setup(&[(
-                "/feeder_gateway/get_transaction?transactionHash=0x393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
-                ok_fixture!("tx_not_received.json"),
+            let (_jh, client) = setup([(
+                "/feeder_gateway/get_transaction_status?transactionHash=0x393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+                (r#"{"tx_status": "NOT_RECEIVED"}"#, 200),
             )]);
             assert_eq!(
                 client
@@ -1244,14 +1313,14 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (_jh, client) = setup(&[
+            let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0",
-                    ok_fixture!("genesis_state_update.json"),
+                    response!("genesis_state_update.json"),
                 ),
                 (
                     "/feeder_gateway/get_state_update?blockHash=0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
-                    ok_fixture!("genesis_state_update.json"),
+                    response!("genesis_state_update.json"),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1270,14 +1339,14 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
-            let (_jh, client) = setup(&[
+            let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=200000",
-                    ok_fixture!("state_update_200k.json"),
+                    response!("state_update_200k.json"),
                 ),
                 (
                     "/feeder_gateway/get_state_update?blockHash=0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
-                    ok_fixture!("state_update_200k.json"),
+                    response!("state_update_200k.json"),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1305,9 +1374,12 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_number() {
-            let (_jh, client) = setup(&[(
-                "/feeder_gateway/get_state_update?blockNumber=18446744073709551615",
-                err_fixture!("block_not_found.json"),
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_state_update?blockNumber={}",
+                    *INVALID_BLOCK_NUMBER
+                ),
+                StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
                 .state_update_by_number(*INVALID_BLOCK_NUMBER)
@@ -1321,9 +1393,9 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=null",
-                ok_fixture!("state_update_200k.json"),
+                response!("state_update_200k.json"),
             )]);
             client
                 .state_update_by_number(BlockNumberOrTag::Tag(Tag::Latest))
@@ -1333,9 +1405,9 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                ok_fixture!("pending_state_update.json"),
+                response!("pending_state_update.json"),
             )]);
             client
                 .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
@@ -1349,9 +1421,12 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let (_jh, client) = setup(&[(
-                "/feeder_gateway/get_state_update?blockHash=0x6d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
-                err_fixture!("block_not_found.json"),
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_state_update?blockHash={}",
+                    *INVALID_BLOCK_HASH
+                ),
+                StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
                 .state_update_by_hash(*INVALID_BLOCK_HASH)
@@ -1365,9 +1440,9 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=null",
-                ok_fixture!("state_update_200k.json"),
+                response!("state_update_200k.json"),
             )]);
             client
                 .state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
@@ -1377,9 +1452,9 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let (_jh, client) = setup(&[(
+            let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                ok_fixture!("pending_state_update.json"),
+                response!("pending_state_update.json"),
             )]);
             client
                 .state_update_by_hash(BlockHashOrTag::Tag(Tag::Pending))

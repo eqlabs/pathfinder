@@ -22,6 +22,15 @@ pub enum Tag {
     Pending,
 }
 
+impl std::fmt::Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Tag::Latest => f.write_str("latest"),
+            Tag::Pending => f.write_str("pending"),
+        }
+    }
+}
+
 /// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a [Tag](self::BlockHashOrTag::Tag).
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -37,6 +46,15 @@ pub enum BlockHashOrTag {
     Tag(Tag),
 }
 
+impl std::fmt::Display for BlockHashOrTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockHashOrTag::Hash(StarknetBlockHash(h)) => f.write_str(&h.to_hex_str()),
+            BlockHashOrTag::Tag(t) => std::fmt::Display::fmt(t, f),
+        }
+    }
+}
+
 /// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -46,6 +64,15 @@ pub enum BlockNumberOrTag {
     Number(StarknetBlockNumber),
     /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
+}
+
+impl std::fmt::Display for BlockNumberOrTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockNumberOrTag::Number(StarknetBlockNumber(n)) => std::fmt::Display::fmt(n, f),
+            BlockNumberOrTag::Tag(t) => std::fmt::Display::fmt(t, f),
+        }
+    }
 }
 
 /// Groups all strictly input types of the RPC API.
