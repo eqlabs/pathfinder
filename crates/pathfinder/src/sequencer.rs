@@ -1490,7 +1490,14 @@ mod tests {
 
     #[tokio::test]
     async fn eth_contract_addresses() {
-        client().eth_contract_addresses().await.unwrap();
+        let (_jh, client) = setup([(
+            "/feeder_gateway/get_contract_addresses?",
+            (
+                r#"{"Starknet":"0xde29d060d45901fb19ed6c6e959eb22d8626708e","GpsStatementVerifier":"0xab43ba48c9edf4c2c4bb01237348d1d7b28ef168"}"#,
+                200,
+            ),
+        )]);
+        client.eth_contract_addresses().await.unwrap();
     }
 
     mod add_transaction {
@@ -1508,7 +1515,11 @@ mod tests {
         async fn invalid_entry_point_selector() {
             // test with values dumped from `starknet invoke` for a test contract,
             // except for an invalid entry point value
-            let  error = client()
+            let (_jh, client) = setup([(
+                "/gateway/add_transaction?",
+                StarknetErrorCode::UnsupportedSelectorForFee.into_response(),
+            )]);
+            let  error = client
                 .add_invoke_transaction(
                     Call {
                         contract_address: ContractAddress(
@@ -1566,8 +1577,15 @@ mod tests {
 
         #[tokio::test]
         async fn invoke_function() {
+            let (_jh, client) = setup([(
+                "/gateway/add_transaction?",
+                (
+                    r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x0389DD0629F42176CC8B6C43ACEFC0713D0064ECDFC0470E0FC179F53421A38B"}"#,
+                    200,
+                ),
+            )]);
             // test with values dumped from `starknet invoke` for a test contract
-            client()
+            client
                 .add_invoke_transaction(
                     Call {
                         contract_address: ContractAddress(
@@ -1674,7 +1692,15 @@ mod tests {
                     (EntryPointType::L1Handler, vec![]),
                 ]);
 
-            client()
+            let (_jh, client) = setup([(
+                "/gateway/add_transaction?",
+                (
+                    r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x057ED4B4C76A1CA0BA044A654DD3EE2D0D3E550343D739350A22AACDD524110D",
+                    "address":"0x03926AEA98213EC34FE9783D803237D221C54C52344422E1F4942A5B340FA6AD"}"#,
+                    200,
+                ),
+            )]);
+            client
                 .add_deploy_transaction(
                     ContractAddressSalt(
                         StarkHash::from_hex_str(
