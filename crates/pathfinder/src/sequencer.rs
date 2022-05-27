@@ -581,19 +581,30 @@ mod tests {
     use assert_matches::assert_matches;
     use stark_hash::StarkHash;
 
-    macro_rules! fixture {
-        ($path:literal) => {
-            include_str!(concat!("../fixtures/sequencer/", $path))
-        };
-    }
-
+    /// Helper macro which creates a successful response tuple
+    /// which can then be used by the [setup] function.
+    ///
+    /// The macro takes the name of the fixture file.
+    /// The fixture file should be a text file containing valid UTF8 characters.
+    ///
+    /// The HTTP status code value of the tuple is `200` (`OK`).
     macro_rules! response {
-        ($path:literal) => {
-            (fixture!($path), 200)
+        ($file_name:literal) => {
+            (
+                include_str!(concat!("../fixtures/sequencer/", $file_name)),
+                200,
+            )
         };
     }
 
     impl StarknetErrorCode {
+        /// Helper funtion which allows for easy creation of a response tuple
+        /// that contains a [StarknetError] for a given [StarknetErrorCode].
+        ///
+        /// The response tuple can then be used by the [setup] function.
+        ///
+        /// The `message` field is always an empty string.
+        /// The HTTP status code for this response is always `500` (`Internal Server Error`).
         fn into_response(self) -> (String, u16) {
             let e = StarknetError {
                 code: self,
