@@ -581,11 +581,6 @@ mod tests {
     use assert_matches::assert_matches;
     use stark_hash::StarkHash;
 
-    /// Convenience wrapper
-    fn client() -> Client {
-        Client::new(Chain::Goerli).unwrap()
-    }
-
     macro_rules! fixture {
         ($path:literal) => {
             include_str!(concat!("../fixtures/sequencer/", $path))
