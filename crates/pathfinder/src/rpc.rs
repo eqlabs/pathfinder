@@ -1,5 +1,6 @@
 //! StarkNet node JSON-RPC related modules.
 pub mod api;
+pub mod metrics;
 pub mod serde;
 pub mod types;
 
@@ -23,6 +24,8 @@ use ::serde::Deserialize;
 use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle, RpcModule};
 
 use std::{net::SocketAddr, result::Result};
+
+use self::metrics::RpcMetricsMiddleware;
 
 /// Helper wrapper for attaching spans to rpc method implementations
 struct RpcModuleWrapper<Context>(jsonrpsee::RpcModule<Context>);
@@ -71,7 +74,9 @@ pub async fn run_server(
     addr: SocketAddr,
     api: RpcApi,
 ) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
+    let metrics_middleware = RpcMetricsMiddleware::new();
     let server = HttpServerBuilder::default()
+        .set_middleware(metrics_middleware)
         .build(addr)
         .await
         .map_err(|e| match e {

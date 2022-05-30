@@ -4,7 +4,7 @@ use anyhow::Context;
 use pathfinder_lib::{
     cairo, config, core,
     ethereum::transport::{EthereumTransport, HttpTransport},
-    rpc, sequencer, state,
+    observability, rpc, sequencer, state,
     storage::{JournalMode, Storage},
 };
 use std::sync::Arc;
@@ -20,6 +20,16 @@ async fn main() -> anyhow::Result<()> {
 
     let config =
         config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
+
+    // initialize opentelemetry_prometheus exporter here so that all other
+    // components can register with it.
+    let exporter = observability::init_prometheus_exporter();
+    let (metrics_handle, metrics_addr) = observability::run_server(config.metrics_addr, exporter)
+        .context("Starting the metrics server")?;
+
+    if let Some(metrics_addr) = metrics_addr {
+        info!("🏥 metrics server started on: {}", metrics_addr);
+    }
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -120,6 +130,10 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         _result = rpc_handle => {
             // This handle returns () so its not very useful.
             tracing::error!("RPC server process ended unexpected");
+        }
+        _result = metrics_handle => {
+            // This handle returns () so its not very useful.
+            tracing::error!("Observability server process ended unexpected");
         }
         result = update_handle => {
             match result {

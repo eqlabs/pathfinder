@@ -1,5 +1,6 @@
 pub mod l1;
 pub mod l2;
+pub mod metrics;
 
 use std::future::Future;
 use std::sync::Arc;
@@ -109,6 +110,8 @@ where
     let mut block_time_avg = std::time::Duration::ZERO;
     const BLOCK_TIME_WEIGHT: f32 = 0.05;
 
+    let metrics = metrics::SyncMetrics::new();
+
     loop {
         tokio::select! {
             l1_event = rx_l1.recv() => match l1_event {
@@ -122,9 +125,11 @@ where
 
                     match updates.as_slice() {
                         [single] => {
+                            metrics.l1.add_updates(1);
                             tracing::info!("L1 sync updated to block {}", single.block_number.0);
                         }
                         [first, .., last] => {
+                            metrics.l1.add_updates(last.block_number.0 - first.block_number.0 + 1);
                             tracing::info!(
                                 "L1 sync updated with blocks {} - {}",
                                 first.block_number.0,
@@ -144,6 +149,8 @@ where
                         other => Some(other - 1),
                     };
 
+                    metrics.l1.inc_reorgs();
+
                     match new_head {
                         Some(head) => {
                             tracing::info!("L1 reorg occurred, new L1 head is block {}", head.0)
@@ -158,6 +165,7 @@ where
 
                     let _ = tx.send(update);
 
+                    metrics.l1.inc_query_updates();
                     tracing::trace!("Query for L1 update for block {}", block.0);
                 }
                 None => {
@@ -179,6 +187,7 @@ where
                     rx_l1 = new_rx;
 
                     l1_handle = tokio::spawn(l1_sync(new_tx, transport.clone(), chain, l1_head));
+                    metrics.l1.inc_restarts();
                     tracing::info!("L1 sync process restarted.")
                 },
             },
@@ -198,7 +207,6 @@ where
                     let block_time = last_block_start.elapsed();
                     let update_t = update_t.elapsed();
                     last_block_start = std::time::Instant::now();
-
                     block_time_avg = block_time_avg.mul_f32(1.0 - BLOCK_TIME_WEIGHT)
                         + block_time.mul_f32(BLOCK_TIME_WEIGHT);
 
@@ -214,6 +222,12 @@ where
                             }
                         }
                     }
+
+                    // update metrics
+                    metrics.l2.inc_updates();
+                    metrics.l2.record_block_time(&block_time);
+                    metrics.l2.record_timings(&timings);
+                    metrics.l2.record_storage_updates(storage_updates);
 
                     // Give a simple log under INFO level, and a more verbose log
                     // with timing information under DEBUG+ level.
@@ -250,6 +264,9 @@ where
                         StarknetBlockNumber::GENESIS => None,
                         other => Some(other - 1),
                     };
+
+                    metrics.l2.inc_reorgs();
+
                     match new_head {
                         Some(head) => {
                             tracing::info!("L2 reorg occurred, new L2 head is block {}", head.0)
@@ -265,6 +282,7 @@ where
                         format!("Insert contract definition with hash: {:?}", contract.hash)
                     })?;
 
+                    metrics.l2.inc_new_contracts();
                     tracing::trace!("Inserted new contract {}", contract.hash.0.to_hex_str());
                 }
                 Some(l2::Event::QueryHash(block, tx)) => {
@@ -275,6 +293,7 @@ where
                     .map(|block| block.hash);
                     let _ = tx.send(hash);
 
+                    metrics.l2.inc_hash_queries();
                     tracing::trace!("Query hash for L2 block {}", block.0);
                 }
                 Some(l2::Event::QueryContractExistance(contracts, tx)) => {
@@ -291,6 +310,7 @@ where
 
                     let _ = tx.send(exists);
 
+                    metrics.l2.inc_contract_existance_queries();
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
                 None => {
@@ -314,6 +334,7 @@ where
                     rx_l2 = new_rx;
 
                     l2_handle = tokio::spawn(l2_sync(new_tx, sequencer.clone(), l2_head, chain));
+                    metrics.l2.inc_restarts();
                     tracing::info!("L2 sync process restarted.");
                 }
             }

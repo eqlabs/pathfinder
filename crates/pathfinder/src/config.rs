@@ -19,6 +19,8 @@ pub enum ConfigOption {
     EthereumPassword,
     /// The HTTP-RPC listening socket address.
     HttpRpcAddress,
+    /// The metrics listening socket address.
+    MetricsAddress,
     /// Path to the node's data directory.
     DataDirectory,
     /// The Sequencer's HTTP URL.
@@ -41,6 +43,7 @@ impl Display for ConfigOption {
             ConfigOption::EnableSQLiteWriteAheadLogging => {
                 f.write_str("Enable SQLite write-ahead logging")
             }
+            ConfigOption::MetricsAddress => f.write_str("metrics socket address"),
         }
     }
 }
@@ -61,6 +64,8 @@ pub struct Configuration {
     pub ethereum: EthereumConfig,
     /// The HTTP-RPC listening address and port.
     pub http_rpc_addr: SocketAddr,
+    /// The metrics listening address and port.
+    pub metrics_addr: Option<SocketAddr>,
     /// The node's data directory.
     pub data_directory: PathBuf,
     /// The Sequencer's HTTP URL.

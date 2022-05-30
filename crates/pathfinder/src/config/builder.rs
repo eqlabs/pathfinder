@@ -129,12 +129,24 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             )
         })?;
 
+        let metrics_addr = self
+            .take(ConfigOption::MetricsAddress)
+            .map(|a| a.parse::<SocketAddr>())
+            .transpose()
+            .map_err(|err| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Invalid metrics listening interface and port: {}", err),
+                )
+            })?;
+
         Ok(Configuration {
             ethereum: EthereumConfig {
                 url: eth_url,
                 password: eth_password,
             },
             http_rpc_addr,
+            metrics_addr,
             data_directory,
             sequencer_url,
             python_subprocesses,
