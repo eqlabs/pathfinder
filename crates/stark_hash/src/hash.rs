@@ -281,7 +281,7 @@ impl StarkHash {
     /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
     /// from a [StarkHash].
     /// Panics if `self.0.len() * 2 + 2 > buf.len()`
-    pub(crate) fn as_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
+    pub fn as_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
         let expected_buf_len = self.0.len() * 2 + 2;
         assert!(
             buf.len() >= expected_buf_len,

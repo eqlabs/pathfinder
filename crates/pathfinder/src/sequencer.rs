@@ -557,7 +557,6 @@ pub mod test_utils {
         pub static ref GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap());
         pub static ref INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap());
         pub static ref PRE_DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f").unwrap());
-        pub static ref DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x07177acba67cb659e336abb3a158c8d29770b87b1b62e2bfa94cd376b72d34c5").unwrap());
         pub static ref INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap());
         pub static ref VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
         pub static ref INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
@@ -565,11 +564,9 @@ pub mod test_utils {
         pub static ref INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
         pub static ref VALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
         pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
-        pub static ref VALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(0u64);
         pub static ref INVALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(u64::MAX);
         pub static ref VALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
-        pub static ref INVALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0106F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
-        pub static ref ZERO_KEY: StorageAddress = StorageAddress(StarkHash::ZERO);
+        pub static ref VALID_KEY_DEC: String = crate::rpc::serde::starkhash_to_dec_str(&VALID_KEY.0);
         pub static ref VALID_CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("0x4d2").unwrap()];
     }
 }
@@ -580,6 +577,22 @@ mod tests {
     use crate::core::{StarknetBlockHash, StarknetBlockNumber};
     use assert_matches::assert_matches;
     use stark_hash::StarkHash;
+
+    impl std::fmt::Display for crate::core::ContractAddress {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut buf = [0u8; 2 + 64];
+            let s = self.0.as_hex_str(&mut buf);
+            f.write_str(s)
+        }
+    }
+
+    impl std::fmt::Display for crate::core::StarknetTransactionHash {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut buf = [0u8; 2 + 64];
+            let s = self.0.as_hex_str(&mut buf);
+            f.write_str(s)
+        }
+    }
 
     /// Helper macro which creates a successful response tuple
     /// which can then be used by the [setup] function.
@@ -809,7 +822,10 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn invalid() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_block?blockHash=0x6d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+                format!(
+                    "/feeder_gateway/get_block?blockHash={}",
+                    *INVALID_BLOCK_HASH
+                ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client.block_by_hash(*INVALID_BLOCK_HASH).await.unwrap_err();
@@ -879,7 +895,6 @@ mod tests {
         }
     }
 
-    // TODO expectation for request body
     mod call {
         use super::*;
         use pretty_assertions::assert_eq;
@@ -1084,7 +1099,10 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn invalid_contract_address() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_full_contract?contractAddress=0x5fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
+                format!(
+                    "/feeder_gateway/get_full_contract?contractAddress={}",
+                    *INVALID_CONTRACT_ADDR
+                ),
                 StarknetErrorCode::UninitializedContract.into_response(),
             )]);
             let error = client
@@ -1100,7 +1118,10 @@ mod tests {
         #[tokio::test]
         async fn success() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_full_contract?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
+                format!(
+                    "/feeder_gateway/get_full_contract?contractAddress={}",
+                    *VALID_CONTRACT_ADDR
+                ),
                 (r#"{"hello":"world"}"#, 200),
             )]);
             let bytes = client.full_contract(*VALID_CONTRACT_ADDR).await.unwrap();
@@ -1115,8 +1136,10 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn invalid_contract_address() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_storage_at?contractAddress=0x5fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
-                &key=916907772491729262376534102982219947830828984996257231353398618781993312401&blockNumber=null",
+                format!(
+                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=null",
+                    *INVALID_CONTRACT_ADDR, *VALID_KEY_DEC
+                ),
                 (r#""0x0""#, 200),
             )]);
             let result = client
@@ -1133,14 +1156,16 @@ mod tests {
         #[tokio::test]
         async fn invalid_key() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
-                &key=0&blockNumber=null",
+                format!(
+                    "/feeder_gateway/get_storage_at?contractAddress={}&key=0&blockNumber=null",
+                    *VALID_CONTRACT_ADDR
+                ),
                 (r#""0x0""#, 200),
             )]);
             let result = client
                 .storage(
                     *VALID_CONTRACT_ADDR,
-                    *ZERO_KEY,
+                    StorageAddress(StarkHash::ZERO),
                     BlockHashOrTag::Tag(Tag::Latest),
                 )
                 .await
@@ -1151,9 +1176,10 @@ mod tests {
         #[tokio::test]
         async fn invalid_block_hash() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
-                &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
-                &blockHash=0x6d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+                format!(
+                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
+                    *VALID_CONTRACT_ADDR, *VALID_KEY_DEC, *INVALID_BLOCK_HASH
+                ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
@@ -1169,9 +1195,10 @@ mod tests {
         #[tokio::test]
         async fn latest_invoke_block() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
-                &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
-                &blockHash=0x3871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27",
+                format!(
+                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
+                    *VALID_CONTRACT_ADDR, *VALID_KEY_DEC, *INVOKE_CONTRACT_BLOCK_HASH
+                ),
                 (r#""0x1e240""#, 200),
             )]);
             let result = client
@@ -1191,9 +1218,10 @@ mod tests {
         #[tokio::test]
         async fn latest_block() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
-                &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
-                &blockNumber=null",
+                format!(
+                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=null",
+                    *VALID_CONTRACT_ADDR, *VALID_KEY_DEC,
+                ),
                 (r#""0x1e240""#, 200),
             )]);
             let result = client
@@ -1213,9 +1241,10 @@ mod tests {
         #[tokio::test]
         async fn pending_block() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_storage_at?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39\
-                &key=916907772491729262376534102982219947830828984996257231353398618781993312401\
-                &blockNumber=pending",
+                format!(
+                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=pending",
+                    *VALID_CONTRACT_ADDR, *VALID_KEY_DEC
+                ),
                 (r#""0x1e240""#, 200),
             )]);
             let result = client
@@ -1240,7 +1269,10 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction?transactionHash=0x493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+                format!(
+                    "/feeder_gateway/get_transaction?transactionHash={}",
+                    *VALID_TX_HASH
+                ),
                 response!("valid_tx.json"),
             )]);
             assert_eq!(
@@ -1252,7 +1284,10 @@ mod tests {
         #[tokio::test]
         async fn invalid_hash() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction?transactionHash=0x393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+                format!(
+                    "/feeder_gateway/get_transaction?transactionHash={}",
+                    *INVALID_TX_HASH
+                ),
                 (r#"{"status": "NOT_RECEIVED"}"#, 200),
             )]);
             assert_eq!(
@@ -1268,7 +1303,10 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction_status?transactionHash=0x493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+                format!(
+                    "/feeder_gateway/get_transaction_status?transactionHash={}",
+                    *VALID_TX_HASH
+                ),
                 response!("valid_tx_status.json"),
             )]);
             assert_eq!(
@@ -1284,7 +1322,10 @@ mod tests {
         #[tokio::test]
         async fn invalid_hash() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction_status?transactionHash=0x393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+                format!(
+                    "/feeder_gateway/get_transaction_status?transactionHash={}",
+                    *INVALID_TX_HASH
+                ),
                 (r#"{"tx_status": "NOT_RECEIVED"}"#, 200),
             )]);
             assert_eq!(
@@ -1345,11 +1386,14 @@ mod tests {
         async fn genesis() {
             let (_jh, client) = setup([
                 (
-                    "/feeder_gateway/get_state_update?blockNumber=0",
+                    "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
                     response!("genesis_state_update.json"),
                 ),
                 (
-                    "/feeder_gateway/get_state_update?blockHash=0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+                    format!(
+                        "/feeder_gateway/get_state_update?blockHash={}",
+                        *GENESIS_BLOCK_HASH
+                    ),
                     response!("genesis_state_update.json"),
                 ),
             ]);
