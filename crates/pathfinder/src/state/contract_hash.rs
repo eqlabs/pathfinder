@@ -284,7 +284,7 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
     }
 }
 
-pub(crate) mod json {
+mod json {
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
 

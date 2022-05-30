@@ -1099,13 +1099,12 @@ mod tests {
 
         #[tokio::test]
         async fn success() {
-            use crate::state::contract_hash::json::ContractDefinition;
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_full_contract?contractAddress=0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
-                response!("valid_full_contract.json"),
+                (r#"{"hello":"world"}"#, 200),
             )]);
             let bytes = client.full_contract(*VALID_CONTRACT_ADDR).await.unwrap();
-            serde_json::from_slice::<ContractDefinition>(&bytes).unwrap();
+            serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
         }
     }
 
