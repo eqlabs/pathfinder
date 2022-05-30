@@ -110,7 +110,7 @@ pub struct Client {
 fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
     match hash {
         BlockHashOrTag::Hash(h) => ("blockHash", h.0.to_hex_str()),
-        BlockHashOrTag::Tag(Tag::Latest) => ("blockNumber", Cow::from("null")),
+        BlockHashOrTag::Tag(Tag::Latest) => ("blockNumber", Cow::from("latest")),
         BlockHashOrTag::Tag(Tag::Pending) => ("blockNumber", Cow::from("pending")),
     }
 }
@@ -119,7 +119,7 @@ fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
 fn block_number_str(number: BlockNumberOrTag) -> Cow<'static, str> {
     match number {
         BlockNumberOrTag::Number(n) => Cow::from(n.0.to_string()),
-        BlockNumberOrTag::Tag(Tag::Latest) => Cow::from("null"),
+        BlockNumberOrTag::Tag(Tag::Latest) => Cow::from("latest"),
         BlockNumberOrTag::Tag(Tag::Pending) => Cow::from("pending"),
     }
 }
@@ -798,7 +798,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_block?blockNumber=null",
+                "/feeder_gateway/get_block?blockNumber=latest",
                 response!("block_200k.json"),
             )]);
             client
@@ -842,7 +842,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_block?blockNumber=null",
+                "/feeder_gateway/get_block?blockNumber=latest",
                 response!("block_200k.json"),
             )]);
             client
@@ -902,7 +902,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_entry_point() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/call_contract?blockNumber=null",
+                "/feeder_gateway/call_contract?blockNumber=latest",
                 StarknetErrorCode::EntryPointNotFound.into_response(),
             )]);
             let error = client
@@ -926,7 +926,7 @@ mod tests {
         #[tokio::test]
         async fn invalid_contract_address() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/call_contract?blockNumber=null",
+                "/feeder_gateway/call_contract?blockNumber=latest",
                 StarknetErrorCode::UninitializedContract.into_response(),
             )]);
             let error = client
@@ -1054,7 +1054,7 @@ mod tests {
         #[tokio::test]
         async fn latest_block() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/call_contract?blockNumber=null",
+                "/feeder_gateway/call_contract?blockNumber=latest",
                 (r#"{"result":[]}"#, 200),
             )]);
             client
@@ -1137,7 +1137,7 @@ mod tests {
         async fn invalid_contract_address() {
             let (_jh, client) = setup([(
                 format!(
-                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=null",
+                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
                     *INVALID_CONTRACT_ADDR, *VALID_KEY_DEC
                 ),
                 (r#""0x0""#, 200),
@@ -1157,7 +1157,7 @@ mod tests {
         async fn invalid_key() {
             let (_jh, client) = setup([(
                 format!(
-                    "/feeder_gateway/get_storage_at?contractAddress={}&key=0&blockNumber=null",
+                    "/feeder_gateway/get_storage_at?contractAddress={}&key=0&blockNumber=latest",
                     *VALID_CONTRACT_ADDR
                 ),
                 (r#""0x0""#, 200),
@@ -1219,7 +1219,7 @@ mod tests {
         async fn latest_block() {
             let (_jh, client) = setup([(
                 format!(
-                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=null",
+                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
                     *VALID_CONTRACT_ADDR, *VALID_KEY_DEC,
                 ),
                 (r#""0x1e240""#, 200),
@@ -1468,7 +1468,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_state_update?blockNumber=null",
+                "/feeder_gateway/get_state_update?blockNumber=latest",
                 response!("state_update_200k.json"),
             )]);
             client
@@ -1515,7 +1515,7 @@ mod tests {
         #[tokio::test]
         async fn latest() {
             let (_jh, client) = setup([(
-                "/feeder_gateway/get_state_update?blockNumber=null",
+                "/feeder_gateway/get_state_update?blockNumber=latest",
                 response!("state_update_200k.json"),
             )]);
             client
