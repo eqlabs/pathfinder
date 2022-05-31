@@ -154,7 +154,6 @@ pub mod reply {
         sequencer::reply as seq,
         sequencer::reply::Status as SeqStatus,
     };
-    use jsonrpsee::types::{CallError, Error};
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use stark_hash::StarkHash;
@@ -331,58 +330,31 @@ pub mod reply {
     /// accessed with [`Result::unwrap_err`], then compared to the expected [`ErrorCode`] with
     /// [`assert_eq!`].
     #[cfg(test)]
-    impl PartialEq<jsonrpsee::types::Error> for ErrorCode {
-        fn eq(&self, other: &jsonrpsee::types::Error) -> bool {
-            use jsonrpsee::types::Error::*;
+    impl PartialEq<jsonrpsee::core::error::Error> for ErrorCode {
+        fn eq(&self, other: &jsonrpsee::core::error::Error) -> bool {
+            use jsonrpsee::core::error::Error;
+            use jsonrpsee::types::error::CallError;
 
-            // the interesting variant Error::Request holds the whole error value as a raw string,
-            // which looks like FailedResponse.
-            //
-            // RpcError could have more user error body, which is why there's the
-            // deny_unknown_fields, as when writing this there were no such extra types being used.
-
-            #[derive(serde::Deserialize, Debug)]
-            pub struct FailedResponse<'a> {
-                // we don't really care about this when testing; version
-                #[serde(borrow, rename = "jsonrpc")]
-                _jsonrpc: &'a serde_json::value::RawValue,
-                // don't care: request id
-                #[serde(borrow, rename = "id")]
-                _id: &'a serde_json::value::RawValue,
-                #[serde(borrow)]
-                error: RpcError<'a>,
-            }
-
-            #[derive(serde::Deserialize, Debug)]
-            #[serde(deny_unknown_fields)]
-            pub struct RpcError<'a> {
-                code: i32,
-                #[serde(borrow)]
-                message: std::borrow::Cow<'a, str>,
-            }
-
-            impl PartialEq<ErrorCode> for FailedResponse<'_> {
-                fn eq(&self, rhs: &ErrorCode) -> bool {
-                    if let Ok(lhs) = ErrorCode::try_from(self.error.code) {
-                        // make sure the error matches what we think it was; it's ... a bit extra,
-                        // but shouldn't really be an issue.
-                        &*self.error.message == lhs.as_str() && &lhs == rhs
-                    } else {
-                        false
+            if let Error::Call(CallError::Custom(custom)) = other {
+                // this is quite ackward dance to go back to error level then come back to the
+                // custom error object. it however allows not having the json structure in two
+                // places, and leaning on ErrorObject partialeq impl.
+                let repr = match self {
+                    ErrorCode::PageSizeTooBig => {
+                        Error::from(crate::storage::EventFilterError::PageSizeTooBig(
+                            crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT,
+                        ))
                     }
-                }
-            }
+                    other => Error::from(*other),
+                };
 
-            let resp = match other {
-                Request(ref s) => serde_json::from_str::<FailedResponse>(s),
-                _ => return false,
-            };
+                let repr = match repr {
+                    Error::Call(CallError::Custom(repr)) => repr,
+                    unexpected => unreachable!("using pathfinders ErrorCode to create jsonrpsee did not create a custom error: {unexpected:?}")
+                };
 
-            if let Ok(resp) = resp {
-                &resp == self
+                &repr == custom
             } else {
-                // Parsing failure doesn't really matter, and we don't need to panic; the assert_eq
-                // will make sure we'll have informative panic.
                 false
             }
         }
@@ -412,6 +384,7 @@ pub mod reply {
     }
 
     impl ErrorCode {
+        /// Returns the message specified in the openrpc api spec.
         fn as_str(&self) -> &'static str {
             match self {
                 ErrorCode::FailedToReceiveTransaction => "Failed to write transaction",
@@ -436,13 +409,23 @@ pub mod reply {
         }
     }
 
-    impl From<ErrorCode> for Error {
+    impl From<ErrorCode> for jsonrpsee::core::error::Error {
         fn from(ecode: ErrorCode) -> Self {
-            Error::Call(CallError::Custom {
-                code: ecode as i32,
-                message: ecode.to_string(),
-                data: None,
-            })
+            use jsonrpsee::core::error::Error;
+            use jsonrpsee::types::error::{CallError, ErrorObject};
+
+            if ecode == ErrorCode::PageSizeTooBig {
+                #[cfg(debug_assertions)]
+                panic!("convert jsonrpsee::...::Error from EventFilterError to get error data");
+            }
+
+            let error = ecode as i32;
+            Error::Call(CallError::Custom(ErrorObject::owned(
+                error,
+                ecode.to_string(),
+                // this is insufficient in every situation (PageSizeTooBig)
+                None::<()>,
+            )))
         }
     }
 

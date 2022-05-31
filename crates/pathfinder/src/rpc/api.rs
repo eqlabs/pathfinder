@@ -24,9 +24,9 @@ use crate::{
     },
 };
 use anyhow::Context;
-use jsonrpsee::types::{
-    error::{CallError, Error},
-    RpcResult,
+use jsonrpsee::{
+    core::{error::Error, RpcResult},
+    types::{error::CallError, ErrorObject},
 };
 use stark_hash::StarkHash;
 use std::convert::TryInto;
@@ -238,7 +238,7 @@ impl RpcApi {
 
     /// Fetches a [RawBlock] from storage.
     ///
-    /// Returns [`jsonrpsee::types::Error::Call`] with code [`ErrorCode::InvalidBlockHash`]
+    /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockHash`]
     /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     async fn get_raw_block_by_hash(&self, block_id: StarknetBlocksBlockId) -> RpcResult<RawBlock> {
         self.get_raw_block(block_id, ErrorCode::InvalidBlockHash)
@@ -247,7 +247,7 @@ impl RpcApi {
 
     /// Fetches a [RawBlock] from storage.
     ///
-    /// Returns [`jsonrpsee::types::Error::Call`] with code [`ErrorCode::InvalidBlockNumber`]
+    /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockNumber`]
     /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     async fn get_raw_block_by_number(
         &self,
@@ -1015,7 +1015,7 @@ impl RpcApi {
     }
 }
 
-impl From<ext_py::CallFailure> for jsonrpsee::types::Error {
+impl From<ext_py::CallFailure> for jsonrpsee::core::Error {
     fn from(e: ext_py::CallFailure) -> Self {
         match e {
             ext_py::CallFailure::NoSuchBlock => Error::from(ErrorCode::InvalidBlockHash),
@@ -1029,19 +1029,17 @@ impl From<ext_py::CallFailure> for jsonrpsee::types::Error {
     }
 }
 
-impl From<EventFilterError> for jsonrpsee::types::Error {
+impl From<EventFilterError> for jsonrpsee::core::Error {
     fn from(e: EventFilterError) -> Self {
         match e {
-            EventFilterError::PageSizeTooBig(max_size) => Error::Call(CallError::Custom {
-                code: ErrorCode::PageSizeTooBig as i32,
-                message: ErrorCode::PageSizeTooBig.to_string(),
-                data: Some(
-                    serde_json::value::RawValue::from_string(
-                        serde_json::json!({ "max_page_size": max_size }).to_string(),
-                    )
-                    .unwrap(),
-                ),
-            }),
+            EventFilterError::PageSizeTooBig(max_size) => {
+                let error = ErrorCode::PageSizeTooBig as i32;
+                Error::Call(CallError::Custom(ErrorObject::owned(
+                    error,
+                    ErrorCode::PageSizeTooBig.to_string(),
+                    Some(serde_json::json!({ "max_page_size": max_size })),
+                )))
+            }
         }
     }
 }
@@ -1053,18 +1051,16 @@ impl From<EventFilterError> for jsonrpsee::types::Error {
 //
 // This error is used for all instances of operations that are not explicitly specified in the StarkNet spec.
 // See <https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json>
-fn internal_server_error(e: impl std::fmt::Display) -> jsonrpsee::types::Error {
-    Error::Call(CallError::Custom {
-        code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
-        message: format!("{}: {}", jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG, e),
-        data: None,
-    })
+fn internal_server_error(e: impl std::fmt::Display) -> jsonrpsee::core::Error {
+    Error::Call(CallError::Custom(ErrorObject::owned(
+        jsonrpsee::types::error::ErrorCode::InternalError.code(),
+        format!("{}: {}", jsonrpsee::types::error::INTERNAL_ERROR_MSG, e),
+        None::<()>,
+    )))
 }
 
-fn static_internal_server_error() -> jsonrpsee::types::Error {
-    Error::Call(CallError::Custom {
-        code: jsonrpsee::types::v2::error::INTERNAL_ERROR_CODE,
-        message: jsonrpsee::types::v2::error::INTERNAL_ERROR_MSG.to_owned(),
-        data: None,
-    })
+fn static_internal_server_error() -> jsonrpsee::core::Error {
+    Error::Call(CallError::Custom(ErrorObject::from(
+        jsonrpsee::types::error::ErrorCode::InternalError,
+    )))
 }

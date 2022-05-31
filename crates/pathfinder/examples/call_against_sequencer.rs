@@ -1,5 +1,5 @@
 use futures::future::TryFutureExt;
-use jsonrpsee::types::error::Error;
+use jsonrpsee::core::error::Error;
 use pathfinder_lib::{
     rpc::types::{request::Call, BlockHashOrTag},
     sequencer::ClientApi,

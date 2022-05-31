@@ -70,8 +70,9 @@ async fn main() -> anyhow::Result<()> {
     let api = rpc::api::RpcApi::new(storage, sequencer, network_chain, sync_state)
         .with_call_handling(call_handle);
 
-    let (rpc_handle, local_addr) =
-        rpc::run_server(config.http_rpc_addr, api).context("Starting the RPC server")?;
+    let (rpc_handle, local_addr) = rpc::run_server(config.http_rpc_addr, api)
+        .await
+        .context("Starting the RPC server")?;
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
     let update_handle = tokio::spawn(pathfinder_lib::update::poll_github_for_releases());

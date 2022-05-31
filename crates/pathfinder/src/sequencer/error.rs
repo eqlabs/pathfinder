@@ -1,6 +1,6 @@
 //! Sequencer related error types.
 use crate::rpc::types::reply::ErrorCode as RpcErrorCode;
-use jsonrpsee::types as rpc;
+use jsonrpsee::{core::error::Error, types::error::CallError};
 use serde::{Deserialize, Serialize};
 
 /// Sequencer errors.
@@ -14,10 +14,10 @@ pub enum SequencerError {
     ReqwestError(#[from] reqwest::Error),
 }
 
-impl From<SequencerError> for rpc::Error {
+impl From<SequencerError> for Error {
     fn from(e: SequencerError) -> Self {
         match e {
-            SequencerError::ReqwestError(e) => rpc::Error::Call(rpc::CallError::Failed(e.into())),
+            SequencerError::ReqwestError(e) => Error::Call(CallError::Failed(e.into())),
             SequencerError::StarknetError(e) => match e.code {
                 StarknetErrorCode::OutOfRangeBlockHash | StarknetErrorCode::BlockNotFound
                     if e.message.contains("Block hash") =>
@@ -46,7 +46,7 @@ impl From<SequencerError> for rpc::Error {
                 | StarknetErrorCode::UnsupportedSelectorForFee
                 | StarknetErrorCode::OutOfRangeBlockHash
                 | StarknetErrorCode::NotPermittedContract => {
-                    rpc::Error::Call(rpc::CallError::Failed(e.into()))
+                    Error::Call(CallError::Failed(e.into()))
                 }
             },
         }
