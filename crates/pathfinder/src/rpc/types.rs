@@ -82,7 +82,7 @@ pub mod request {
         rpc::serde::H256AsNoLeadingZerosHexStr,
     };
     use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
+    use serde_with::{serde_as, skip_serializing_none};
     use web3::types::H256;
 
     /// The address of a storage element for a StarkNet contract.
@@ -121,6 +121,7 @@ pub mod request {
     }
 
     /// Contains event filter parameters passed to `starknet_getEvents`.
+    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct EventFilter {
@@ -154,7 +155,7 @@ pub mod reply {
         sequencer,
     };
     use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
+    use serde_with::{serde_as, skip_serializing_none};
     use stark_hash::StarkHash;
     use std::convert::From;
 
@@ -210,6 +211,7 @@ pub mod reply {
 
     /// L2 Block as returned by the RPC API.
     #[serde_as]
+    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Block {
@@ -479,13 +481,16 @@ pub mod reply {
     }
 
     /// L2 transaction as returned by the RPC API.
+    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
         pub txn_hash: StarknetTransactionHash,
         pub contract_address: ContractAddress,
-        /// Absent for "deploy" transactions
+        /// Absent for [Deploy](crate::sequencer::reply::transaction::DeployTransaction) and
+        /// [Declare](crate::sequencer::reply::transaction::DeclareTransaction) transactions
         pub entry_point_selector: Option<EntryPoint>,
-        /// Absent for "deploy" transactions
+        /// Absent for [Deploy](crate::sequencer::reply::transaction::DeployTransaction) and
+        /// [Declare](crate::sequencer::reply::transaction::DeclareTransaction) transactions
         pub calldata: Option<Vec<CallParam>>,
     }
 
@@ -517,6 +522,7 @@ pub mod reply {
     }
 
     /// L2 transaction receipt as returned by the RPC API.
+    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionReceipt {
         pub txn_hash: StarknetTransactionHash,
@@ -628,7 +634,7 @@ pub mod reply {
 
     /// Used in [Block](crate::rpc::types::reply::Block) when the requested scope of
     /// reply is [BlockResponseScope::FullTransactionsAndReceipts](crate::rpc::types::request::BlockResponseScope).
-    #[serde_as]
+    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionAndReceipt {
         pub txn_hash: StarknetTransactionHash,
