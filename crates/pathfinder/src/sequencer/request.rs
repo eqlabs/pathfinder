@@ -72,9 +72,9 @@ pub mod contract {
 pub mod add_transaction {
     use std::collections::HashMap;
 
-    use crate::core::{ConstructorParam, ContractAddressSalt, TransactionVersion};
+    use crate::core::{ConstructorParam, ContractAddressSalt, Nonce, TransactionVersion};
     use crate::rpc::serde::{
-        CallParamAsDecimalStr, CallSignatureElemAsDecimalStr, FeeAsHexStr,
+        CallParamAsDecimalStr, CallSignatureElemAsDecimalStr, FeeAsHexStr, NonceAsHexStr,
         TransactionVersionAsHexStr,
     };
 
@@ -124,6 +124,26 @@ pub mod add_transaction {
         pub signature: Vec<CallSignatureElem>,
     }
 
+    /// Declare transaction details.
+    #[serde_as]
+    #[derive(serde::Deserialize, serde::Serialize)]
+    pub struct Declare {
+        pub contract_class: ContractDefinition,
+        pub sender_address: ContractAddress,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
+        pub signature: Vec<CallSignatureElem>,
+        #[serde_as(as = "NonceAsHexStr")]
+        pub nonce: Nonce,
+        /// Transaction version
+        /// starknet.py just sets it to 0.
+        /// starknet-cli either sets it to 0 (TRANSACTION_VERSION in constants.py) for invoke
+        /// and offsets it with 2**128 (QUERY_VERSION_BASE in constants.py) for calls
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+    }
+
     /// Add transaction API operation.
     ///
     /// This adds the "type" attribute to the JSON request according the type of
@@ -135,6 +155,8 @@ pub mod add_transaction {
         Invoke(InvokeFunction),
         #[serde(rename = "DEPLOY")]
         Deploy(Deploy),
+        #[serde(rename = "DECLARE")]
+        Declare(Declare),
     }
 
     #[cfg(test)]
