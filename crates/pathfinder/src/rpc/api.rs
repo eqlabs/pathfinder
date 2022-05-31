@@ -860,9 +860,16 @@ impl RpcApi {
     ) -> RpcResult<Vec<CallResultValue>> {
         use futures::future::TryFutureExt;
 
-        match self.call_handle.as_ref() {
-            Some(h) => h.call(request, block_hash).map_err(Error::from).await,
-            None => {
+        match (self.call_handle.as_ref(), &block_hash) {
+            (Some(h), &BlockHashOrTag::Hash(_)) => {
+                // only forward calls to specific blocks to our local impl, because we currently
+                // don't do an on-demand poll and flush for the pending block.
+                //
+                // unsure about the expected Tag::Latest semantics either.
+                h.call(request, block_hash).map_err(Error::from).await
+            }
+            (Some(_), _) | (None, _) => {
+                // just forward it to the sequencer for now.
                 self.sequencer
                     .call(request.into(), block_hash)
                     .map_ok(|x| x.result)
