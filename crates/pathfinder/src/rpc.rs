@@ -485,6 +485,8 @@ mod tests {
             max_fee: Some(Fee(H128::zero())),
             signature: None,
             transaction_hash: txn0_hash,
+            sender_address: None,
+            nonce: None,
             r#type: Type::Deploy,
         };
         let mut receipt0 = Receipt {
@@ -2206,8 +2208,10 @@ mod tests {
                 transaction_hash: StarknetTransactionHash(
                     StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap(),
                 ),
-                r#type: transaction::Type::InvokeFunction,
                 max_fee: None,
+                sender_address: None,
+                nonce: None,
+                r#type: transaction::Type::InvokeFunction,
             });
             let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
                 actual_fee: None,

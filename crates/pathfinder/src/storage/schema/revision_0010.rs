@@ -353,6 +353,8 @@ mod tests {
                 max_fee: None,
                 signature: None,
                 transaction_hash: transaction0_hash,
+                sender_address: None,
+                nonce: None,
                 r#type: transaction::Type::Deploy,
             };
             let mut transaction1 = transaction0.clone();
