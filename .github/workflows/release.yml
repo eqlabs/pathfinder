@@ -1,0 +1,24 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Pathfinder release version. This will also create this as a tag.'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update package version in source code
+      - run: echo 'Might be difficult to do and commit to main?' # Might not be worth doing..
+
+      - name: Create and upload docker image
+      - run: echo 'set PATHFINDER_VERSION=${{ github.event.inputs.version }}'
+
+      - name: Tag this commit with ${{ github.event.inputs.version }}
+      - run: echo 'todo'
+
+      - name: Create new github release from the tag
+      - run: echo 'maybe with default release notes'

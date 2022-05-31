@@ -1,0 +1,15 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # every day at midnight
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create and upload docker image
+      - run: echo 'set PATHFINDER_VERSION=nightly+date' # or some other string
+
+      - name: Tag this commit with nightly+date
+      - run: echo 'todo'
