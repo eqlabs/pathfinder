@@ -113,6 +113,14 @@ pub struct StarknetTransactionHash(pub StarkHash);
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetTransactionIndex(pub u64);
 
+/// StarkNet transaction version.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct StarknetTransactionVersion(pub u64);
+
+/// A StarkNet transaction nonce.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct StarknetTransactionNonce(pub StarkHash);
+
 /// A single element of a signature used to secure a StarkNet transaction.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TransactionSignatureElem(pub StarkHash);
