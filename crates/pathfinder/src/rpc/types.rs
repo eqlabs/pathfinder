@@ -146,9 +146,9 @@ pub mod reply {
     use super::request::BlockResponseScope;
     use crate::{
         core::{
-            CallParam, ContractAddress, EntryPoint, EventData, EventKey, GasPrice, GlobalRoot,
-            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash,
+            CallParam, ClassHash, ContractAddress, EntryPoint, EventData, EventKey, GasPrice,
+            GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+            StarknetBlockTimestamp, StarknetTransactionHash,
         },
         rpc::{api::RawBlock, serde::GasPriceAsHexStr},
         sequencer::reply as seq,
@@ -838,6 +838,14 @@ pub mod reply {
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionResult {
         pub transaction_hash: StarknetTransactionHash,
+    }
+
+    // Result type for starknet_addDeclareTransaction
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeclareTransactionResult {
+        pub transaction_hash: StarknetTransactionHash,
+        pub class_hash: ClassHash,
     }
 
     // Result type for starknet_addDeployTransaction

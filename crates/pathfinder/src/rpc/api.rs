@@ -3,7 +3,7 @@ use crate::{
     cairo::ext_py,
     core::{
         CallResultValue, CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
-        ContractCode, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        ContractCode, Fee, GasPrice, GlobalRoot, Nonce, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
         StarknetTransactionIndex, StorageValue, TransactionVersion,
     },
@@ -31,8 +31,11 @@ use jsonrpsee::{
 use stark_hash::StarkHash;
 use std::convert::TryInto;
 use std::sync::Arc;
+use web3::types::H256;
 
-use super::types::reply::{DeployTransactionResult, InvokeTransactionResult};
+use super::types::reply::{
+    DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult,
+};
 
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
@@ -985,6 +988,39 @@ impl RpcApi {
             .await?;
         Ok(InvokeTransactionResult {
             transaction_hash: result.transaction_hash,
+        })
+    }
+
+    /// Submit a new declare transaction.
+    ///
+    /// "Similarly to deploy, declare transactions will contain the contract class.
+    /// The state of StarkNet will contain a list of declared classes, that can
+    /// be appended to via the new declare transaction."
+    ///
+    /// This method just forwards the request received over the JSON-RPC
+    /// interface to the sequencer.
+    pub async fn add_declare_transaction(
+        &self,
+        contract_class: ContractDefinition,
+        version: TransactionVersion,
+        token: Option<String>,
+    ) -> RpcResult<DeclareTransactionResult> {
+        let result = self
+            .sequencer
+            .add_declare_transaction(
+                contract_class,
+                // actual address dumped from a `starknet declare` call
+                ContractAddress(StarkHash::from_hex_str("0x1").unwrap()),
+                Fee(0u128.to_be_bytes().into()),
+                vec![],
+                Nonce(H256::zero()),
+                version,
+                token,
+            )
+            .await?;
+        Ok(DeclareTransactionResult {
+            transaction_hash: result.transaction_hash,
+            class_hash: result.class_hash,
         })
     }
 
