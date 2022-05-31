@@ -320,6 +320,7 @@ pub mod reply {
         InvalidTransactionHash = 25,
         InvalidBlockNumber = 26,
         InvalidTransactionIndex = 27,
+        InvalidContractClassHash = 28,
         PageSizeTooBig = 31,
         ContractError = 40,
         InvalidContractDefinition = 50,
@@ -375,6 +376,7 @@ pub mod reply {
                 25 => InvalidTransactionHash,
                 26 => InvalidBlockNumber,
                 27 => InvalidTransactionIndex,
+                28 => InvalidContractClassHash,
                 31 => PageSizeTooBig,
                 40 => ContractError,
                 50 => InvalidContractDefinition,
@@ -396,6 +398,9 @@ pub mod reply {
                 ErrorCode::InvalidTransactionHash => "Invalid transaction hash",
                 ErrorCode::InvalidBlockNumber => "Invalid block number",
                 ErrorCode::InvalidTransactionIndex => "Invalid transaction index in a block",
+                ErrorCode::InvalidContractClassHash => {
+                    "The supplied contract class hash is invalid or unknown"
+                }
                 ErrorCode::PageSizeTooBig => "Requested page size is too big",
                 ErrorCode::ContractError => "Contract error",
                 ErrorCode::InvalidContractDefinition => "Invalid contract definition",
