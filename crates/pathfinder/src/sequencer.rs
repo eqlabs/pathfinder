@@ -238,7 +238,7 @@ impl Client {
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
-                .user_agent(crate::consts::USER_AGENT)
+                .user_agent(crate::consts::user_agent())
                 .build()?,
             sequencer_url: url,
         })

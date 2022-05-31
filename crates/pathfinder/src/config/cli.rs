@@ -63,7 +63,7 @@ fn clap_app() -> clap::Command<'static> {
             format!("HTTP-RPC listening address [default: {}]", DEFAULT_HTTP_RPC_ADDR);
     }
 
-    let version = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT");
+    let version = crate::consts::version();
     clap::Command::new("Pathfinder")
         .version(version)
         .about("A StarkNet node implemented by Equilibrium. Submit bug reports and issues at https://github.com/eqlabs/pathfinder.")
