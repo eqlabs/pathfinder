@@ -65,7 +65,7 @@ fn clap_app() -> clap::Command<'static> {
 
     let version = crate::consts::version();
     clap::Command::new("Pathfinder")
-        .version(version)
+        .version(&*version)
         .about("A StarkNet node implemented by Equilibrium. Submit bug reports and issues at https://github.com/eqlabs/pathfinder.")
         .arg(
             Arg::new(CONFIG_KEY)
