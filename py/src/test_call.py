@@ -5,7 +5,7 @@ import json
 
 
 # this is from 64a7f6aed9757d3d8d6c28bd972df73272b0cb0a of cairo-lang
-# with needless parts ripped out of it
+# with needless parts ripped out of it. updated for 0.9.0
 SIMPLIFIED_TEST_CONTRACT = """
 %lang starknet
 
@@ -19,8 +19,9 @@ end
 
 @external
 func increase_value{syscall_ptr : felt*}(address : felt, value : felt):
-    let (res) = storage_read(address=address)
-    return storage_write(address=address, value=res + value)
+    let (prev_value) = storage_read(address=address)
+    storage_write(address, value=prev_value + 1)
+    return ()
 end
 
 @external
@@ -32,7 +33,8 @@ end
 
 @external
 func get_value{syscall_ptr : felt*}(address : felt) -> (res : felt):
-    return storage_read(address=address)
+    let (value) = storage_read(address=address)
+    return (res=value)
 end
 """
 
@@ -210,7 +212,7 @@ def compile_test_contract():
     from starkware.starknet.compiler.compile import compile_starknet_codes
     import zstandard
 
-    # FIXME: use crates/pathfinder/fixtures/contract_definition.json.zst here, it's the same.
+    # crates/pathfinder/fixtures/contract_definition.json.zst used to be the same, but is no longer with 0.9
 
     raw = compile_starknet_codes(
         [(SIMPLIFIED_TEST_CONTRACT, "-")], debug_info=False
