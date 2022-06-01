@@ -112,8 +112,8 @@ pub mod transaction {
         core::{
             CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
             EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
-            L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, Nonce, StarknetTransactionHash,
-            StarknetTransactionIndex, TransactionSignatureElem,
+            L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
+            StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem,
         },
         rpc::serde::{
             CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
@@ -269,7 +269,7 @@ pub mod transaction {
         pub sender_address: Option<ContractAddress>,
         /// None for Invoke and Deploy, Some() for Declare
         #[serde(default)]
-        pub nonce: Option<Nonce>,
+        pub nonce: Option<TransactionNonce>,
         pub r#type: Type,
     }
 

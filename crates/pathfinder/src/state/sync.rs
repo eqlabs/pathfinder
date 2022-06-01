@@ -625,9 +625,10 @@ mod tests {
         core::{
             CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
             ContractHash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, Nonce,
+            EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice, GlobalRoot,
             SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress, StorageValue, TransactionVersion,
+            StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
+            TransactionVersion,
         },
         ethereum,
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
@@ -770,7 +771,7 @@ mod tests {
             _: ContractAddress,
             _: Fee,
             _: Vec<CallSignatureElem>,
-            _: Nonce,
+            _: TransactionNonce,
             _: TransactionVersion,
             _: Option<String>,
         ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {

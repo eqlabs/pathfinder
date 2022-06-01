@@ -3,9 +3,9 @@ use crate::{
     cairo::ext_py,
     core::{
         CallResultValue, CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
-        ContractCode, Fee, GasPrice, GlobalRoot, Nonce, SequencerAddress, StarknetBlockHash,
+        ContractCode, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-        StarknetTransactionIndex, StorageValue, TransactionVersion,
+        StarknetTransactionIndex, StorageValue, TransactionNonce, TransactionVersion,
     },
     ethereum::Chain,
     rpc::types::{
@@ -1012,7 +1012,7 @@ impl RpcApi {
                 ContractAddress(StarkHash::from_hex_str("0x1").unwrap()),
                 Fee(0u128.to_be_bytes().into()),
                 vec![],
-                Nonce(StarkHash::ZERO),
+                TransactionNonce(StarkHash::ZERO),
                 version,
                 token,
             )

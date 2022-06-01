@@ -9,8 +9,9 @@ use self::{
 };
 use crate::{
     core::{
-        CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt, Fee, Nonce,
-        StarknetTransactionHash, StorageAddress, StorageValue, TransactionVersion,
+        CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
+        TransactionVersion,
     },
     ethereum::Chain,
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
@@ -86,7 +87,7 @@ pub trait ClientApi {
         sender_address: ContractAddress,
         max_fee: Fee,
         signature: Vec<CallSignatureElem>,
-        nonce: Nonce,
+        nonce: TransactionNonce,
         version: TransactionVersion,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError>;
@@ -520,7 +521,7 @@ impl ClientApi for Client {
         sender_address: ContractAddress,
         max_fee: Fee,
         signature: Vec<CallSignatureElem>,
-        nonce: Nonce,
+        nonce: TransactionNonce,
         version: TransactionVersion,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
@@ -1782,7 +1783,7 @@ mod tests {
                     ContractAddress(StarkHash::from_hex_str("0x1").unwrap()),
                     Fee(0u128.to_be_bytes().into()),
                     vec![],
-                    Nonce(StarkHash::ZERO),
+                    TransactionNonce(StarkHash::ZERO),
                     TransactionVersion(H256::zero()),
                     None,
                 )
