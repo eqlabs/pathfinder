@@ -31,7 +31,6 @@ use jsonrpsee::{
 use stark_hash::StarkHash;
 use std::convert::TryInto;
 use std::sync::Arc;
-use web3::types::H256;
 
 use super::types::reply::{
     DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult,
@@ -1013,7 +1012,7 @@ impl RpcApi {
                 ContractAddress(StarkHash::from_hex_str("0x1").unwrap()),
                 Fee(0u128.to_be_bytes().into()),
                 vec![],
-                Nonce(H256::zero()),
+                Nonce(StarkHash::ZERO),
                 version,
                 token,
             )

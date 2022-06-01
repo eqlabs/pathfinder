@@ -1775,7 +1775,7 @@ mod tests {
                     ContractAddress(StarkHash::from_hex_str("0x1").unwrap()),
                     Fee(0u128.to_be_bytes().into()),
                     vec![],
-                    Nonce(H256::zero()),
+                    Nonce(StarkHash::ZERO),
                     TransactionVersion(H256::zero()),
                     None,
                 )

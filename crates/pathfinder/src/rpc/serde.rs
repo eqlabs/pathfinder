@@ -2,7 +2,7 @@
 
 use crate::core::{
     CallParam, CallSignatureElem, ConstructorParam, EthereumAddress, EventData, EventKey, Fee,
-    GasPrice, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, Nonce, StarknetBlockNumber,
+    GasPrice, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
     TransactionSignatureElem, TransactionVersion,
 };
 use num_bigint::BigUint;
@@ -287,13 +287,6 @@ serde_with::serde_conv!(
     TransactionVersion,
     |serialize_me: &TransactionVersion| bytes_to_hex_str(serialize_me.0.as_bytes()),
     |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(|b| TransactionVersion(H256::from(b)))
-);
-
-serde_with::serde_conv!(
-    pub NonceAsHexStr,
-    Nonce,
-    |serialize_me: &Nonce| bytes_to_hex_str(serialize_me.0.as_bytes()),
-    |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(|b| Nonce(H256::from(b)))
 );
 
 /// A helper conversion function. Only use with __sequencer API related types__.

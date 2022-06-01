@@ -74,7 +74,7 @@ pub mod add_transaction {
 
     use crate::core::{ConstructorParam, ContractAddressSalt, Nonce, TransactionVersion};
     use crate::rpc::serde::{
-        CallParamAsDecimalStr, CallSignatureElemAsDecimalStr, FeeAsHexStr, NonceAsHexStr,
+        CallParamAsDecimalStr, CallSignatureElemAsDecimalStr, FeeAsHexStr,
         TransactionVersionAsHexStr,
     };
 
@@ -134,7 +134,6 @@ pub mod add_transaction {
         pub max_fee: Fee,
         #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
         pub signature: Vec<CallSignatureElem>,
-        #[serde_as(as = "NonceAsHexStr")]
         pub nonce: Nonce,
         /// Transaction version
         /// starknet.py just sets it to 0.

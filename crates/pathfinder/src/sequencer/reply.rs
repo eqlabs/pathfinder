@@ -119,7 +119,7 @@ pub mod transaction {
             CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
             EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
             L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-            NonceAsHexStr, TransactionSignatureElemAsDecimalStr,
+            TransactionSignatureElemAsDecimalStr,
         },
     };
     use serde::{Deserialize, Serialize};
@@ -268,7 +268,6 @@ pub mod transaction {
         #[serde(default)]
         pub sender_address: Option<ContractAddress>,
         /// None for Invoke and Deploy, Some() for Declare
-        #[serde_as(as = "Option<NonceAsHexStr>")]
         #[serde(default)]
         pub nonce: Option<Nonce>,
         pub r#type: Type,

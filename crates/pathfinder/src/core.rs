@@ -163,7 +163,7 @@ pub struct GasPrice(pub u128);
 
 // Starknet transaction nonce.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-pub struct Nonce(pub H256);
+pub struct Nonce(pub StarkHash);
 
 /// StarkNet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
