@@ -2546,7 +2546,7 @@ mod tests {
                         keys: event.keys.clone(),
                         block_hash: block.hash,
                         block_number: block.number,
-                        transaction_hash: txn.transaction_hash,
+                        transaction_hash: txn.hash(),
                     }
                 })
                 .collect();

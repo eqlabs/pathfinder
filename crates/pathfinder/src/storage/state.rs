@@ -443,7 +443,7 @@ impl StarknetTransactionsTable {
 
             connection.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
         named_params![
-                    ":hash": transaction.transaction_hash.0.as_be_bytes(),
+                    ":hash": transaction.hash().0.as_be_bytes(),
                     ":idx": i,
                     ":block_hash": block_hash.0.as_be_bytes(),
                     ":tx": &tx_data,
@@ -728,27 +728,37 @@ impl StarknetEventsTable {
         transaction: &transaction::Transaction,
         events: &[transaction::Event],
     ) -> anyhow::Result<()> {
-        if transaction.contract_address.is_none() && !events.is_empty() {
-            anyhow::bail!("Declare transactions cannot emit events");
+        match transaction {
+            transaction::Transaction::Declare(_) => {
+                anyhow::bail!("Declare transactions cannot emit events")
+            }
+            transaction::Transaction::Deploy(transaction::DeployTransaction {
+                transaction_hash,
+                ..
+            })
+            | transaction::Transaction::Invoke(transaction::InvokeTransaction {
+                transaction_hash,
+                ..
+            }) => {
+                for (idx, event) in events.iter().enumerate() {
+                    connection
+                        .execute(
+                            r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
+                                                   VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
+                            named_params![
+                                ":block_number": block_number.0,
+                                ":idx": idx,
+                                ":transaction_hash": &transaction_hash.0.as_be_bytes()[..],
+                                ":from_address": &event.from_address.0.as_be_bytes()[..],
+                                ":keys": Self::event_keys_to_base64_strings(&event.keys),
+                                ":data": Self::event_data_to_bytes(&event.data),
+                            ],
+                        )
+                        .context("Insert events into events table")?;
+                }
+                Ok(())
+            }
         }
-
-        for (idx, event) in events.iter().enumerate() {
-            connection
-                .execute(
-                    r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
-                                           VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
-                    named_params![
-                        ":block_number": block_number.0,
-                        ":idx": idx,
-                        ":transaction_hash": &transaction.transaction_hash.0.as_be_bytes()[..],
-                        ":from_address": &event.from_address.0.as_be_bytes()[..],
-                        ":keys": Self::event_keys_to_base64_strings(&event.keys),
-                        ":data": Self::event_data_to_bytes(&event.data),
-                    ],
-                )
-                .context("Insert events into events table")?;
-        }
-        Ok(())
     }
 
     pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
@@ -1644,7 +1654,7 @@ mod tests {
                         keys: event.keys.clone(),
                         block_hash: block.hash,
                         block_number: block.number,
-                        transaction_hash: txn.transaction_hash,
+                        transaction_hash: txn.hash(),
                     }
                 })
                 .collect()

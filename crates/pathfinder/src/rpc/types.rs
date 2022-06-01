@@ -329,8 +329,8 @@ pub mod reply {
                     BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
                         block
                             .transactions
-                            .into_iter()
-                            .map(|t| t.transaction_hash)
+                            .iter()
+                            .map(sequencer::reply::transaction::Transaction::hash)
                             .collect(),
                     ),
                     BlockResponseScope::FullTransactions => Transactions::Full(
@@ -571,24 +571,47 @@ pub mod reply {
             let txn = txn
                 .transaction
                 .ok_or_else(|| anyhow::anyhow!("Transaction not found."))?;
-            Ok(Self {
-                txn_hash: txn.transaction_hash,
-                contract_address: txn.contract_address,
-                entry_point_selector: txn.entry_point_selector,
-                calldata: txn.calldata,
-                max_fee: txn.max_fee,
+
+            Ok(match txn {
+                sequencer::reply::transaction::Transaction::Invoke(txn) => Self {
+                    // TODO
+                    txn_hash: txn.transaction_hash,
+                    contract_address: Some(txn.contract_address),
+                    entry_point_selector: Some(txn.entry_point_selector),
+                    calldata: Some(txn.calldata),
+                    max_fee: Some(txn.max_fee),
+                },
+                _ => Self {
+                    // TODO
+                    txn_hash: txn.hash(),
+                    contract_address: None,
+                    entry_point_selector: None,
+                    calldata: None,
+                    max_fee: None,
+                },
             })
         }
     }
 
     impl From<sequencer::reply::transaction::Transaction> for Transaction {
         fn from(txn: sequencer::reply::transaction::Transaction) -> Self {
-            Self {
-                txn_hash: txn.transaction_hash,
-                contract_address: txn.contract_address,
-                entry_point_selector: txn.entry_point_selector,
-                calldata: txn.calldata,
-                max_fee: txn.max_fee,
+            match txn {
+                sequencer::reply::transaction::Transaction::Invoke(txn) => Self {
+                    // TODO
+                    txn_hash: txn.transaction_hash,
+                    contract_address: Some(txn.contract_address),
+                    entry_point_selector: Some(txn.entry_point_selector),
+                    calldata: Some(txn.calldata),
+                    max_fee: Some(txn.max_fee),
+                },
+                _ => Self {
+                    // TODO
+                    txn_hash: txn.hash(),
+                    contract_address: None,
+                    entry_point_selector: None,
+                    calldata: None,
+                    max_fee: None,
+                },
             }
         }
     }
