@@ -336,7 +336,37 @@ pub mod state_update {
     #[serde(deny_unknown_fields)]
     pub struct Contract {
         pub address: ContractAddress,
+        /// `class_hash` is the field name from cairo 0.9.0 onwards
+        /// `contract_hash` is the name for cairo before 0.9.0
+        #[serde(alias = "class_hash")]
         pub contract_hash: ClassHash,
+    }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn contract_field_backward_compatibility() {
+            use super::{ClassHash, Contract, ContractAddress};
+            use stark_hash::StarkHash;
+
+            let expected = Contract {
+                address: ContractAddress(StarkHash::from_hex_str("0x01").unwrap()),
+                contract_hash: ClassHash(StarkHash::from_hex_str("0x02").unwrap()),
+            };
+
+            // cario <0.9.0
+            assert_eq!(
+                serde_json::from_str::<Contract>(r#"{"address":"0x01","contract_hash":"0x02"}"#)
+                    .unwrap(),
+                expected
+            );
+            // cario >=0.9.0
+            assert_eq!(
+                serde_json::from_str::<Contract>(r#"{"address":"0x01","class_hash":"0x02"}"#)
+                    .unwrap(),
+                expected
+            );
+        }
     }
 }
 
