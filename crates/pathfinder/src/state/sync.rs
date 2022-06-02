@@ -787,6 +787,10 @@ mod tests {
         ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
             unimplemented!()
         }
+
+        async fn class_hash(&self, _: ContractAddress) -> Result<ClassHash, SequencerError> {
+            unimplemented!()
+        }
     }
 
     async fn l1_noop(

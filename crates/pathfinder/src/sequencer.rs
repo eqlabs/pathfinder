@@ -9,7 +9,7 @@ use self::{
 };
 use crate::{
     core::{
-        CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        CallSignatureElem, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
         StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
         TransactionVersion,
     },
@@ -99,6 +99,11 @@ pub trait ClientApi {
         contract_definition: ContractDefinition,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeployResponse, SequencerError>;
+
+    async fn class_hash(
+        &self,
+        contract_address: ContractAddress,
+    ) -> Result<ClassHash, SequencerError>;
 }
 
 /// StarkNet sequencer client using REST API.
@@ -573,6 +578,26 @@ impl ClientApi for Client {
         // client instead.
         let resp = self.inner.post(url).json(&req).send().await?;
         parse(resp).await
+    }
+
+    /// Gets class hash for a particular contract address.
+    #[tracing::instrument(skip(self))]
+    async fn class_hash(
+        &self,
+        contract_address: ContractAddress,
+    ) -> Result<ClassHash, SequencerError> {
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query(
+                    &["feeder_gateway", "get_class_hash_at"],
+                    &[("contractAddress", &contract_address.0.to_hex_str())],
+                ))
+                .send()
+                .await?;
+            parse(resp).await
+        })
+        .await
     }
 }
 
