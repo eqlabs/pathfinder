@@ -82,7 +82,7 @@ pub mod request {
         rpc::serde::H256AsNoLeadingZerosHexStr,
     };
     use serde::{Deserialize, Serialize};
-    use serde_with::{serde_as, skip_serializing_none};
+    use serde_with::serde_as;
     use web3::types::H256;
 
     /// The address of a storage element for a StarkNet contract.
@@ -121,7 +121,6 @@ pub mod request {
     }
 
     /// Contains event filter parameters passed to `starknet_getEvents`.
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct EventFilter {
@@ -155,7 +154,7 @@ pub mod reply {
         sequencer,
     };
     use serde::{Deserialize, Serialize};
-    use serde_with::{serde_as, skip_serializing_none};
+    use serde_with::serde_as;
     use stark_hash::StarkHash;
     use std::convert::From;
 
@@ -211,7 +210,6 @@ pub mod reply {
 
     /// L2 Block as returned by the RPC API.
     #[serde_as]
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Block {
@@ -484,7 +482,6 @@ pub mod reply {
     ///
     /// `entry_point_selector` and `calldata` fields are available only
     /// for Invoke transactions.
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
         pub txn_hash: StarknetTransactionHash,
@@ -521,7 +518,6 @@ pub mod reply {
     }
 
     /// L2 transaction receipt as returned by the RPC API.
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionReceipt {
         pub txn_hash: StarknetTransactionHash,
@@ -633,7 +629,7 @@ pub mod reply {
 
     /// Used in [Block](crate::rpc::types::reply::Block) when the requested scope of
     /// reply is [BlockResponseScope::FullTransactionsAndReceipts](crate::rpc::types::request::BlockResponseScope).
-    #[skip_serializing_none]
+    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionAndReceipt {
         pub txn_hash: StarknetTransactionHash,
