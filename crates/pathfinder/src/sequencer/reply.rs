@@ -114,6 +114,7 @@ pub mod transaction {
             EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
             L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
             StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem,
+            TransactionVersion,
         },
         rpc::serde::{
             CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
@@ -237,6 +238,8 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction data.
+    ///
+    /// TODO refactor into a 3-variant enum (Declare, Deploy, Invoke)
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
@@ -244,13 +247,15 @@ pub mod transaction {
         #[serde_as(as = "Option<Vec<CallParamAsDecimalStr>>")]
         #[serde(default)]
         pub calldata: Option<Vec<CallParam>>,
-        /// None for Invoke, Some() for Deploy
+        /// None for Invoke, Some() for Deploy and Declare
         #[serde(default)]
         pub class_hash: Option<ClassHash>,
         #[serde_as(as = "Option<Vec<ConstructorParamAsDecimalStr>>")]
         #[serde(default)]
         pub constructor_calldata: Option<Vec<ConstructorParam>>,
-        pub contract_address: ContractAddress,
+        /// None for Declare
+        #[serde(default)]
+        pub contract_address: Option<ContractAddress>,
         #[serde(default)]
         pub contract_address_salt: Option<ContractAddressSalt>,
         #[serde(default)]
@@ -260,17 +265,31 @@ pub mod transaction {
         #[serde_as(as = "Option<FeeAsHexStr>")]
         #[serde(default)]
         pub max_fee: Option<Fee>,
+        #[serde(default)]
+        pub nonce: Option<TransactionNonce>,
+        /// Some() for Declare
+        #[serde(default)]
+        pub sender_address: Option<ContractAddress>,
         #[serde_as(as = "Option<Vec<TransactionSignatureElemAsDecimalStr>>")]
         #[serde(default)]
         pub signature: Option<Vec<TransactionSignatureElem>>,
         pub transaction_hash: StarknetTransactionHash,
-        /// None for Invoke and Deploy, Some() for Declare
-        #[serde(default)]
-        pub sender_address: Option<ContractAddress>,
-        /// None for Invoke and Deploy, Some() for Declare
-        #[serde(default)]
-        pub nonce: Option<TransactionNonce>,
         pub r#type: Type,
+        #[serde(default)]
+        pub version: Option<TransactionVersion>,
+    }
+
+    impl Transaction {
+        /// Retruns either the `contract_address` or `sender_address` depending on the
+        /// transaction type.
+        ///
+        /// This function is a temporary measure until [Transaction] is refactored
+        /// into a 3-variant enum.
+        pub fn source_address(&self) -> ContractAddress {
+            // Unwrap is safe because either `contract_address` or `sender_address` is always present
+            self.contract_address
+                .unwrap_or_else(|| self.sender_address.unwrap())
+        }
     }
 
     /// Describes L2 transaction types.

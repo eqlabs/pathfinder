@@ -737,7 +737,7 @@ impl StarknetEventsTable {
                         ":block_number": block_number.0,
                         ":idx": idx,
                         ":transaction_hash": &transaction.transaction_hash.0.as_be_bytes()[..],
-                        ":from_address": &transaction.contract_address.0.as_be_bytes()[..],
+                        ":from_address": &transaction.source_address().0.as_be_bytes()[..],
                         ":keys": Self::event_keys_to_base64_strings(&event.keys),
                         ":data": Self::event_data_to_bytes(&event.data),
                     ],

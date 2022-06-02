@@ -481,16 +481,15 @@ pub mod reply {
     }
 
     /// L2 transaction as returned by the RPC API.
+    ///
+    /// `entry_point_selector` and `calldata` fields are available only
+    /// for Invoke transactions.
     #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
         pub txn_hash: StarknetTransactionHash,
         pub contract_address: ContractAddress,
-        /// Absent for [Deploy](crate::sequencer::reply::transaction::DeployTransaction) and
-        /// [Declare](crate::sequencer::reply::transaction::DeclareTransaction) transactions
         pub entry_point_selector: Option<EntryPoint>,
-        /// Absent for [Deploy](crate::sequencer::reply::transaction::DeployTransaction) and
-        /// [Declare](crate::sequencer::reply::transaction::DeclareTransaction) transactions
         pub calldata: Option<Vec<CallParam>>,
     }
 
@@ -503,7 +502,7 @@ pub mod reply {
                 .ok_or_else(|| anyhow::anyhow!("Transaction not found."))?;
             Ok(Self {
                 txn_hash: txn.transaction_hash,
-                contract_address: txn.contract_address,
+                contract_address: txn.source_address(),
                 entry_point_selector: txn.entry_point_selector,
                 calldata: txn.calldata,
             })
@@ -514,7 +513,7 @@ pub mod reply {
         fn from(txn: sequencer::reply::transaction::Transaction) -> Self {
             Self {
                 txn_hash: txn.transaction_hash,
-                contract_address: txn.contract_address,
+                contract_address: txn.source_address(),
                 entry_point_selector: txn.entry_point_selector,
                 calldata: txn.calldata,
             }

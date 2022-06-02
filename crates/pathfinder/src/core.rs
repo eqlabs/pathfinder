@@ -161,10 +161,6 @@ pub struct TransactionNonce(pub StarkHash);
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TransactionVersion(pub H256);
 
-/// A StarkNet transaction nonce.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
-pub struct TransactionNonce(pub StarkHash);
-
 /// An Ethereum address.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EthereumAddress(pub H160);
