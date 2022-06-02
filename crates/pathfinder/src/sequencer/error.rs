@@ -48,6 +48,7 @@ impl From<SequencerError> for Error {
                 | StarknetErrorCode::NotPermittedContract => {
                     Error::Call(CallError::Failed(e.into()))
                 }
+                StarknetErrorCode::UndeclaredClass => RpcErrorCode::InvalidContractClassHash.into(),
             },
         }
     }
@@ -100,4 +101,6 @@ pub enum StarknetErrorCode {
     InvalidContractDefinition,
     #[serde(rename = "StarknetErrorCode.NON_PERMITTED_CONTRACT")]
     NotPermittedContract,
+    #[serde(rename = "StarknetErrorCode.UNDECLARED_CLASS")]
+    UndeclaredClass,
 }

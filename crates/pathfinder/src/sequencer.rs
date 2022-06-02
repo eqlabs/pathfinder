@@ -626,8 +626,9 @@ impl ClientApi for Client {
 pub mod test_utils {
     use crate::{
         core::{
-            CallParam, ContractAddress, EntryPoint, StarknetBlockHash, StarknetBlockNumber,
-            StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
+            CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
+            StarknetBlockNumber, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
+            StorageValue,
         },
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
     };
@@ -644,6 +645,7 @@ pub mod test_utils {
     }
 
     impl_from_hex_str!(CallParam);
+    impl_from_hex_str!(ClassHash);
     impl_from_hex_str!(ContractAddress);
     impl_from_hex_str!(EntryPoint);
     impl_from_hex_str!(StarknetBlockHash);
@@ -668,6 +670,9 @@ pub mod test_utils {
         pub static ref VALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
         pub static ref VALID_KEY_DEC: String = crate::rpc::serde::starkhash_to_dec_str(&VALID_KEY.0);
         pub static ref VALID_CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("0x4d2").unwrap()];
+        // TODO these values are for external.integration.starknet.io and should be fixed when goerli gets to 0.9.0
+        pub static ref VALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x187f3d2b5c92198003975ba4d07a4664dac3690fab3a461ac8b136816b95c2c").unwrap();
+        pub static ref INVALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x087f3d2b5c92198003975ba4d07a4664dac3690fab3a461ac8b136816b95c2c").unwrap();
     }
 }
 
@@ -687,6 +692,14 @@ mod tests {
     }
 
     impl std::fmt::Display for crate::core::StarknetTransactionHash {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut buf = [0u8; 2 + 64];
+            let s = self.0.as_hex_str(&mut buf);
+            f.write_str(s)
+        }
+    }
+
+    impl std::fmt::Display for crate::core::ClassHash {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let mut buf = [0u8; 2 + 64];
             let s = self.0.as_hex_str(&mut buf);
@@ -1226,6 +1239,73 @@ mod tests {
             )]);
             let bytes = client.full_contract(*VALID_CONTRACT_ADDR).await.unwrap();
             serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
+        }
+    }
+
+    mod class_by_hash {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[test_log::test(tokio::test)]
+        async fn invalid_class_hash() {
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_class_by_hash?classHash={}",
+                    *INVALID_CLASS_HASH
+                ),
+                StarknetErrorCode::UndeclaredClass.into_response(),
+            )]);
+            let error = client.class_by_hash(*INVALID_CLASS_HASH).await.unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UndeclaredClass)
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_class_by_hash?classHash={}",
+                    *VALID_CLASS_HASH
+                ),
+                (r#"{"hello":"world"}"#, 200),
+            )]);
+            let bytes = client.class_by_hash(*VALID_CLASS_HASH).await.unwrap();
+            serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
+        }
+    }
+
+    mod class_hash {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[test_log::test(tokio::test)]
+        async fn invalid_contract_address() {
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_class_hash_at?contractAddress={}",
+                    *INVALID_CONTRACT_ADDR
+                ),
+                StarknetErrorCode::UninitializedContract.into_response(),
+            )]);
+            let error = client.class_hash(*INVALID_CONTRACT_ADDR).await.unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_class_hash_at?contractAddress={}",
+                    *VALID_CONTRACT_ADDR
+                ),
+                (r#""0x01""#, 200),
+            )]);
+            client.class_hash(*VALID_CONTRACT_ADDR).await.unwrap();
         }
     }
 
