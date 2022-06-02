@@ -438,7 +438,7 @@ mod json {
                 .await
                 .expect("Download contract from sequencer");
 
-            let _ = crate::state::contract_hash::compute_class_hash(&contract_definition)
+            let _ = super::super::compute_class_hash(&contract_definition)
                 .expect("Extract and compute  hash");
         }
 

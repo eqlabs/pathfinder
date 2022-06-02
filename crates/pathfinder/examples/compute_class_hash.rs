@@ -2,8 +2,10 @@ use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().count() != 1 {
-        println!("compute_contract_hash -- reads from stdin, outputs a contract hash");
-        println!("the input read from stdin is expected to be a contract definition, which is a json blob.");
+        println!("compute_class_hash -- reads from stdin, outputs a class hash");
+        println!(
+            "the input read from stdin is expected to be a class definition, which is a json blob."
+        );
         std::process::exit(1);
     }
     let mut s = Vec::new();

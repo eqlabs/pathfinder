@@ -47,7 +47,7 @@ impl EntryPoint {
     /// See: <https://starknet.io/documentation/contracts/#function_selector>
     pub fn hashed(input: &[u8]) -> Self {
         use sha3::Digest;
-        EntryPoint(crate::state::contract_hash::truncated_keccak(
+        EntryPoint(crate::state::class_hash::truncated_keccak(
             <[u8; 32]>::from(sha3::Keccak256::digest(input)),
         ))
     }

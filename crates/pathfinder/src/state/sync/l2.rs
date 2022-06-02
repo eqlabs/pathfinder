@@ -11,7 +11,7 @@ use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{Contract, StateDiff};
 use crate::sequencer::reply::Block;
 use crate::sequencer::{self};
-use crate::state::contract_hash::extract_abi_code_hash;
+use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
 
 #[derive(Debug, Clone, Copy)]

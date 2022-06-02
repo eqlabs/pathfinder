@@ -9,13 +9,13 @@ use crate::{
     storage::{ContractsStateTable, ContractsTable},
 };
 
-pub(crate) mod contract_hash;
+pub(crate) mod class_hash;
 mod merkle_node;
 pub(crate) mod merkle_tree;
 pub(crate) mod state_tree;
 mod sync;
 
-pub use contract_hash::compute_class_hash;
+pub use class_hash::compute_class_hash;
 pub use sync::{l1, l2, sync, State as SyncState};
 
 #[derive(Clone, PartialEq)]

@@ -1631,8 +1631,7 @@ mod tests {
                 .unwrap();
 
                 let (abi, bytecode, hash) =
-                    crate::state::contract_hash::extract_abi_code_hash(&*contract_definition)
-                        .unwrap();
+                    crate::state::class_hash::extract_abi_code_hash(&*contract_definition).unwrap();
 
                 assert_eq!(hash.0, expected_hash);
 
