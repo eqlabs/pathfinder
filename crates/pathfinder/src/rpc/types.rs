@@ -447,7 +447,7 @@ pub mod reply {
 
     /// State update related substructures.
     pub mod state_update {
-        use crate::core::{ContractAddress, ContractHash, StorageAddress, StorageValue};
+        use crate::core::{ClassHash, ContractAddress, StorageAddress, StorageValue};
         use serde::{Deserialize, Serialize};
 
         /// L2 state diff.
@@ -472,7 +472,7 @@ pub mod reply {
         #[serde(deny_unknown_fields)]
         pub struct Contract {
             address: ContractAddress,
-            contract_hash: ContractHash,
+            contract_hash: ClassHash,
         }
     }
 

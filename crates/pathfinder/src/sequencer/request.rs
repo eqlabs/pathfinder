@@ -88,7 +88,7 @@ pub mod add_transaction {
     /// Definition of a contract.
     ///
     /// This is somewhat different compared to the contract definition we're using
-    /// for contract hash calculation. The actual program contents are not relevant
+    /// for class hash calculation. The actual program contents are not relevant
     /// for us, and they are sent as a gzip + base64 encoded string via the API.
     #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
     pub struct ContractDefinition {

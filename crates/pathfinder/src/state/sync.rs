@@ -597,7 +597,7 @@ fn deploy_contract(
     ContractsStateTable::upsert(transaction, state_hash, contract.hash, contract_root)
         .context("Insert constract state hash into contracts state table")?;
     ContractsTable::upsert(transaction, contract.address, contract.hash)
-        .context("Inserting contract hash into contracts table")
+        .context("Inserting class hash into contracts table")
 }
 
 /// Interval at which poll for new data when at the head of chain.
@@ -623,10 +623,10 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
-            ContractHash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice, GlobalRoot,
-            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            CallSignatureElem, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, SequencerAddress,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
             StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
             TransactionVersion,
         },
@@ -1245,7 +1245,7 @@ mod tests {
                 abi: zstd_magic.clone(),
                 bytecode: zstd_magic.clone(),
                 definition: zstd_magic,
-                hash: ContractHash(*A),
+                hash: ClassHash(*A),
             }))
             .await
             .unwrap();
@@ -1269,7 +1269,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         assert_eq!(
-            storage::ContractCodeTable::exists(&connection, &[ContractHash(*A)]).unwrap(),
+            storage::ContractCodeTable::exists(&connection, &[ClassHash(*A)]).unwrap(),
             vec![true]
         );
     }
@@ -1322,7 +1322,7 @@ mod tests {
                 abi: zstd_magic.clone(),
                 bytecode: zstd_magic.clone(),
                 definition: zstd_magic,
-                hash: ContractHash(*A),
+                hash: ClassHash(*A),
             },
         )
         .unwrap();
@@ -1331,12 +1331,9 @@ mod tests {
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel::<Vec<bool>>();
 
-            tx.send(l2::Event::QueryContractExistance(
-                vec![ContractHash(*A)],
-                tx1,
-            ))
-            .await
-            .unwrap();
+            tx.send(l2::Event::QueryContractExistance(vec![ClassHash(*A)], tx1))
+                .await
+                .unwrap();
 
             // Check the result straight away ¯\_(ツ)_/¯
             assert_eq!(rx1.await.unwrap(), vec![true]);

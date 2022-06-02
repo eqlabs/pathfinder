@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::core::{ContractHash, StarknetBlockHash, StarknetBlockNumber};
+use crate::core::{ClassHash, StarknetBlockHash, StarknetBlockNumber};
 use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
 use crate::rpc::types::{BlockNumberOrTag, Tag};
 use crate::sequencer::error::SequencerError;
@@ -40,11 +40,11 @@ pub enum Event {
         StarknetBlockNumber,
         oneshot::Sender<Option<StarknetBlockHash>>,
     ),
-    /// Query for the existance of the the given [contracts](ContractHash) in storage.
+    /// Query for the existance of the the given [contracts](ClassHash) in storage.
     ///
     /// The receiver should return true (if the contract exists) or false (if it does not exist)
     /// for each contract using the [oneshot::channel].
-    QueryContractExistance(Vec<ContractHash>, oneshot::Sender<Vec<bool>>),
+    QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
 }
 
 pub async fn sync(
@@ -331,7 +331,7 @@ async fn download_and_compress_contract(
         .await
         .context("Download contract from sequencer")?;
 
-    // Parse the contract definition for ABI, code and calculate the contract hash. This can
+    // Parse the contract definition for ABI, code and calculate the class hash. This can
     // be expensive, so perform in a blocking task.
     let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let (abi, bytecode, hash) = extract_abi_code_hash(&contract_definition)?;
@@ -344,7 +344,7 @@ async fn download_and_compress_contract(
     // Sanity check.
     anyhow::ensure!(
         contract.contract_hash == hash,
-        "Contract hash mismatch for contract {:?}",
+        "Class hash mismatch for contract {:?}",
         contract.address
     );
 
@@ -377,7 +377,7 @@ mod tests {
         use super::super::{sync, Event};
         use crate::{
             core::{
-                ContractAddress, ContractHash, GasPrice, GlobalRoot, SequencerAddress,
+                ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
                 StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
                 StorageValue,
             },
@@ -436,19 +436,19 @@ mod tests {
             static ref CONTRACT0_ADDR_V2: ContractAddress = ContractAddress(StarkHash::from_be_slice(b"contract 0 addr v2").unwrap());
             static ref CONTRACT1_ADDR: ContractAddress = ContractAddress(StarkHash::from_be_slice(b"contract 1 addr").unwrap());
 
-            static ref CONTRACT0_HASH: ContractHash = ContractHash(
+            static ref CONTRACT0_HASH: ClassHash = ClassHash(
                 StarkHash::from_hex_str(
                     "0x03CC4D0167577958ADD7DD759418506E0930BB061597519CCEB8C3AC6277692E",
                 )
                 .unwrap(),
             );
-            static ref CONTRACT0_HASH_V2: ContractHash = ContractHash(
+            static ref CONTRACT0_HASH_V2: ClassHash = ClassHash(
                 StarkHash::from_hex_str(
                     "0x01BE539E97D3BEFAE5D56D780BAF433802B3203DC6B2947FDB90C384AEF39F3E",
                 )
                 .unwrap(),
             );
-            static ref CONTRACT1_HASH: ContractHash = ContractHash(
+            static ref CONTRACT1_HASH: ClassHash = ClassHash(
                 StarkHash::from_hex_str(
                     "0x071B088C5C8CD884F3106D62C6CB8B423D1D3A58BFAD2EAA8AAC9E4E3E73529D",
                 )

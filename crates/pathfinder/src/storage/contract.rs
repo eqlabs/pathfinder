@@ -1,5 +1,5 @@
 use crate::{
-    core::{ByteCodeWord, ContractAddress, ContractCode, ContractHash},
+    core::{ByteCodeWord, ClassHash, ContractAddress, ContractCode},
     state::CompressedContract,
 };
 
@@ -9,19 +9,19 @@ use stark_hash::StarkHash;
 
 /// Stores StarkNet contract information, specifically a contract's
 ///
-/// - [hash](ContractHash)
+/// - [hash](ClassHash)
 /// - byte code
 /// - ABI
 /// - definition
 pub struct ContractCodeTable {}
 
 impl ContractCodeTable {
-    /// Insert a contract into the table.
+    /// Insert a class into the table.
     ///
-    /// Does nothing if the contract [hash](ContractHash) is already populated.
+    /// Does nothing if the class [hash](ClassHash) is already populated.
     pub fn insert(
         transaction: &Transaction,
-        hash: ContractHash,
+        hash: ClassHash,
         abi: &[u8],
         bytecode: &[u8],
         definition: &[u8],
@@ -117,11 +117,8 @@ impl ContractCodeTable {
         Ok(Some(ContractCode { bytecode, abi }))
     }
 
-    /// Returns true for each [ContractHash] if the contract definition already exists in the table.
-    pub fn exists(
-        connection: &Connection,
-        contracts: &[ContractHash],
-    ) -> anyhow::Result<Vec<bool>> {
+    /// Returns true for each [ClassHash] if the class definition already exists in the table.
+    pub fn exists(connection: &Connection, contracts: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
         let mut stmt = connection.prepare("select 1 from contract_code where hash = ?")?;
 
         Ok(contracts
@@ -131,17 +128,17 @@ impl ContractCodeTable {
     }
 }
 
-/// Stores the mapping from StarkNet contract [address](ContractAddress) to [hash](ContractHash).
+/// Stores the mapping from StarkNet contract [address](ContractAddress) to [hash](ClassHash).
 pub struct ContractsTable {}
 
 impl ContractsTable {
     /// Insert a contract into the table, overwrites the data if it already exists.
     ///
-    /// Note that [hash](ContractHash) must reference a contract stored in [ContractCodeTable].
+    /// Note that [hash](ClassHash) must reference a class stored in [ContractCodeTable].
     pub fn upsert(
         transaction: &Transaction,
         address: ContractAddress,
-        hash: ContractHash,
+        hash: ClassHash,
     ) -> anyhow::Result<()> {
         // A contract may be deployed multiple times due to L2 reorgs, so we ignore all after the first.
         transaction.execute(
@@ -154,11 +151,11 @@ impl ContractsTable {
         Ok(())
     }
 
-    /// Gets the specified contract's hash.
+    /// Gets the specified contract's class hash.
     pub fn get_hash(
         transaction: &Transaction,
         address: ContractAddress,
-    ) -> anyhow::Result<Option<ContractHash>> {
+    ) -> anyhow::Result<Option<ClassHash>> {
         let bytes: Option<Vec<u8>> = transaction
             .query_row(
                 "SELECT hash FROM contracts WHERE address = :address",
@@ -176,11 +173,11 @@ impl ContractsTable {
 
         let bytes: [u8; 32] = match bytes.try_into() {
             Ok(bytes) => bytes,
-            Err(bytes) => anyhow::bail!("Bad contract hash length: {}", bytes.len()),
+            Err(bytes) => anyhow::bail!("Bad class hash length: {}", bytes.len()),
         };
 
         let hash = StarkHash::from_be_bytes(bytes)?;
-        let hash = ContractHash(hash);
+        let hash = ClassHash(hash);
 
         Ok(Some(hash))
     }
@@ -199,7 +196,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
-        let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
+        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
 
         ContractsTable::upsert(&transaction, address, hash).unwrap_err();
     }
@@ -211,7 +208,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
-        let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
+        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
         let definition = vec![9, 13, 25];
 
         ContractCodeTable::insert(&transaction, hash, &[][..], &[][..], &definition[..]).unwrap();
@@ -229,7 +226,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
 
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
-        let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
+        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
 
         // list of objects
         let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
@@ -260,7 +257,7 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
 
-        let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
+        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
 
         // list of objects
         let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
@@ -270,7 +267,7 @@ mod tests {
         ContractCodeTable::insert(&transaction, hash, &abi[..], &code[..], &definition[..])
             .unwrap();
 
-        let non_existent = ContractHash(StarkHash::from_hex_str("456").unwrap());
+        let non_existent = ClassHash(StarkHash::from_hex_str("456").unwrap());
 
         let result = ContractCodeTable::exists(&transaction, &[hash, non_existent]).unwrap();
         let expected = vec![true, false];

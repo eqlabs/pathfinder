@@ -5,7 +5,7 @@ use web3::types::H256;
 
 use crate::{
     core::{
-        ContractAddress, ContractHash, ContractRoot, ContractStateHash, EthereumBlockHash,
+        ClassHash, ContractAddress, ContractRoot, ContractStateHash, EthereumBlockHash,
         EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
         EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
@@ -918,7 +918,7 @@ pub struct StarknetBlock {
 /// Specifically it stores
 ///
 /// - [contract state hash](ContractStateHash)
-/// - [contract hash](ContractHash)
+/// - [class hash](ClassHash)
 /// - [contract root](ContractRoot)
 pub struct ContractsStateTable {}
 
@@ -927,7 +927,7 @@ impl ContractsStateTable {
     pub fn upsert(
         transaction: &Transaction,
         state_hash: ContractStateHash,
-        hash: ContractHash,
+        hash: ClassHash,
         root: ContractRoot,
     ) -> anyhow::Result<()> {
         transaction.execute(
@@ -989,7 +989,7 @@ mod tests {
             let transaction = connection.transaction().unwrap();
 
             let state_hash = ContractStateHash(StarkHash::from_hex_str("abc").unwrap());
-            let hash = ContractHash(StarkHash::from_hex_str("123").unwrap());
+            let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
             let root = ContractRoot(StarkHash::from_hex_str("def").unwrap());
 
             ContractsStateTable::upsert(&transaction, state_hash, hash, root).unwrap();

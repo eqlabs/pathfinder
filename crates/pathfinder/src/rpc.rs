@@ -322,7 +322,7 @@ mod tests {
     use super::*;
     use crate::{
         core::{
-            ContractAddress, ContractHash, EventData, EventKey, GasPrice, GlobalRoot,
+            ClassHash, ContractAddress, EventData, EventKey, GasPrice, GlobalRoot,
             SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
             StarknetProtocolVersion, StorageAddress,
         },
@@ -392,8 +392,8 @@ mod tests {
         let contract0_addr = ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap());
         let contract1_addr = ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap());
 
-        let contract0_hash = ContractHash(StarkHash::from_be_slice(b"contract 0 hash").unwrap());
-        let contract1_hash = ContractHash(StarkHash::from_be_slice(b"contract 1 hash").unwrap());
+        let class0_hash = ClassHash(StarkHash::from_be_slice(b"class 0 hash").unwrap());
+        let class1_hash = ClassHash(StarkHash::from_be_slice(b"class 1 hash").unwrap());
 
         let contract0_update = ContractUpdate {
             address: contract0_addr,
@@ -422,16 +422,16 @@ mod tests {
             abi: zstd_magic.clone(),
             bytecode: zstd_magic.clone(),
             definition: zstd_magic,
-            hash: contract0_hash,
+            hash: class0_hash,
         };
         let mut contract1_code = contract0_code.clone();
-        contract1_code.hash = contract1_hash;
+        contract1_code.hash = class1_hash;
 
         ContractCodeTable::insert_compressed(&db_txn, &contract0_code).unwrap();
         ContractCodeTable::insert_compressed(&db_txn, &contract1_code).unwrap();
 
-        ContractsTable::upsert(&db_txn, contract0_addr, contract0_hash).unwrap();
-        ContractsTable::upsert(&db_txn, contract1_addr, contract1_hash).unwrap();
+        ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
+        ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
 
         let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
         let contract_state_hash =
