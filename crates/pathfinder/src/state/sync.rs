@@ -713,6 +713,14 @@ mod tests {
             unimplemented!()
         }
 
+        async fn class_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn class_hash(&self, _: ContractAddress) -> Result<ClassHash, SequencerError> {
+            unimplemented!()
+        }
+
         async fn storage(
             &self,
             _: ContractAddress,
@@ -785,10 +793,6 @@ mod tests {
             _: ContractDefinition,
             _: Option<String>,
         ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn class_hash(&self, _: ContractAddress) -> Result<ClassHash, SequencerError> {
             unimplemented!()
         }
     }
