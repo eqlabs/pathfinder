@@ -2,6 +2,8 @@
 # Dockerfile
 # rust temporary files
 target/
+# Python virtualenv
+.venv
 # database files
 *.sqlite
 # compressed database dump files
