@@ -11,10 +11,12 @@
 ########################################
 # Stage 1: Build the pathfinder binary #
 ########################################
-FROM rust:1.61-alpine AS rust-builder
+# Note that we're explicitly using the Debian bullseye image to make sure we're
+# compatible with the Python container we'll be copying the pathfinder
+# executable to.
+FROM rust:1.61-bullseye AS rust-builder
 
-RUN apk upgrade --no-cache
-RUN apk add --no-cache musl-dev gcc openssl-dev
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y libssl-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/pathfinder
 
@@ -36,7 +38,7 @@ COPY crates/stark_hash/Cargo.toml crates/stark_hash/Cargo.toml
 COPY crates/stark_hash/benches crates/stark_hash/benches
 
 # DEPENDENCY_LAYER=1 should disable any vergen interaction, because the .git directory is not yet available
-RUN DEPENDENCY_LAYER=1 RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release -p pathfinder
+RUN DEPENDENCY_LAYER=1 cargo build --release -p pathfinder
 
 # Compile the actual libraries and binary now
 COPY . .
@@ -48,19 +50,17 @@ RUN touch crates/pathfinder/src/build.rs
 RUN touch crates/stark_curve/src/lib.rs
 RUN touch crates/stark_hash/src/lib.rs
 
-RUN RUSTFLAGS='-L/usr/lib -Ctarget-feature=-crt-static' cargo build --release -p pathfinder
+RUN cargo build --release -p pathfinder
 
 #######################################
 # Stage 2: Build the Python libraries #
 #######################################
-FROM python:3.8-alpine AS python-builder
+FROM python:3.8-slim-bullseye AS python-builder
 
-RUN apk upgrade --no-cache
-RUN apk add --no-cache gcc musl-dev gmp-dev g++
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y libgmp-dev gcc && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/share/pathfinder
 COPY py py
-RUN python3 -m pip install --upgrade pip
 RUN python3 -m pip install -r py/requirements-dev.txt
 
 # This reduces the size of the python libs by about 50%
@@ -73,13 +73,14 @@ RUN find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
 #######################
 # Final Stage: Runner #
 #######################
-FROM python:3.8-alpine AS runner
+# Note that we're explicitly using the Debian bullseye image to make sure we're
+# compatible with the Rust builder we've built the pathfinder executable in.
+FROM python:3.8-slim-bullseye AS runner
 
-RUN apk upgrade --no-cache
-RUN apk add --no-cache tini gmp libstdc++ libgcc
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y libgmp10 tini && rm -rf /var/lib/apt/lists/*
 
 COPY --from=rust-builder /usr/src/pathfinder/target/release/pathfinder /usr/local/bin/pathfinder
-COPY --from=python-builder /usr/local/lib/python3.8/ /usr/local/lib/python3.8/
+COPY --from=python-builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
 
 # Create directory and volume for persistent data
 RUN mkdir -p /usr/share/pathfinder/data
@@ -93,5 +94,5 @@ WORKDIR /usr/share/pathfinder/data
 # this is required to have exposing ports work from docker, the default is not this.
 ENV PATHFINDER_HTTP_RPC_ADDRESS="0.0.0.0:9545"
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/usr/local/bin/pathfinder"]
