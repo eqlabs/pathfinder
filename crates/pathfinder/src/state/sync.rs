@@ -623,11 +623,12 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash,
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress, StorageValue, TransactionVersion,
+            CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
+            ContractHash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
+            EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice, GlobalRoot,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
+            TransactionVersion,
         },
         ethereum,
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
@@ -761,6 +762,19 @@ mod tests {
             _: Fee,
             _: TransactionVersion,
         ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn add_declare_transaction(
+            &self,
+            _: ContractDefinition,
+            _: ContractAddress,
+            _: Fee,
+            _: Vec<CallSignatureElem>,
+            _: TransactionNonce,
+            _: TransactionVersion,
+            _: Option<String>,
+        ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
             unimplemented!()
         }
 

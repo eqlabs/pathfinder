@@ -110,10 +110,10 @@ pub struct TransactionStatus {
 pub mod transaction {
     use crate::{
         core::{
-            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, ContractHash,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
             EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
             L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
-            StarknetTransactionIndex, TransactionSignatureElem,
+            StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem,
         },
         rpc::serde::{
             CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
@@ -246,7 +246,7 @@ pub mod transaction {
         pub calldata: Option<Vec<CallParam>>,
         /// None for Invoke, Some() for Deploy
         #[serde(default)]
-        pub class_hash: Option<ContractHash>,
+        pub class_hash: Option<ClassHash>,
         #[serde_as(as = "Option<Vec<ConstructorParamAsDecimalStr>>")]
         #[serde(default)]
         pub constructor_calldata: Option<Vec<ConstructorParam>>,
@@ -264,6 +264,12 @@ pub mod transaction {
         #[serde(default)]
         pub signature: Option<Vec<TransactionSignatureElem>>,
         pub transaction_hash: StarknetTransactionHash,
+        /// None for Invoke and Deploy, Some() for Declare
+        #[serde(default)]
+        pub sender_address: Option<ContractAddress>,
+        /// None for Invoke and Deploy, Some() for Declare
+        #[serde(default)]
+        pub nonce: Option<TransactionNonce>,
         pub r#type: Type,
     }
 
@@ -275,6 +281,8 @@ pub mod transaction {
         Deploy,
         #[serde(rename = "INVOKE_FUNCTION")]
         InvokeFunction,
+        #[serde(rename = "DECLARE")]
+        Declare,
     }
 
     /// Describes L2 transaction failure details.
@@ -346,7 +354,7 @@ pub struct EthContractAddresses {
 }
 
 pub mod add_transaction {
-    use crate::core::{ContractAddress, StarknetTransactionHash};
+    use crate::core::{ClassHash, ContractAddress, StarknetTransactionHash};
 
     /// API response for an INVOKE_FUNCTION transaction
     #[derive(Clone, Debug, serde::Deserialize, PartialEq)]
@@ -354,6 +362,15 @@ pub mod add_transaction {
     pub struct InvokeResponse {
         pub code: String, // TRANSACTION_RECEIVED
         pub transaction_hash: StarknetTransactionHash,
+    }
+
+    /// API response for a DECLARE transaction
+    #[derive(Clone, Debug, serde::Deserialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeclareResponse {
+        pub code: String, // TRANSACTION_RECEIVED
+        pub transaction_hash: StarknetTransactionHash,
+        pub class_hash: ClassHash,
     }
 
     /// API response for a DEPLOY transaction

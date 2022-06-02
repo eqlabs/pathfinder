@@ -242,8 +242,10 @@ pub(crate) mod test_utils {
             transaction_hash: StarknetTransactionHash(
                 StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap(),
             ),
-            r#type: transaction::Type::InvokeFunction,
             max_fee: None,
+            sender_address: None,
+            nonce: None,
+            r#type: transaction::Type::InvokeFunction,
         });
         let receipts = (0..N).map(|i| transaction::Receipt {
             actual_fee: None,

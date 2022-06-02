@@ -9,8 +9,9 @@ use self::{
 };
 use crate::{
     core::{
-        ConstructorParam, ContractAddress, ContractAddressSalt, Fee, StarknetTransactionHash,
-        StorageAddress, StorageValue, TransactionVersion,
+        CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
+        TransactionVersion,
     },
     ethereum::Chain,
     rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
@@ -78,6 +79,18 @@ pub trait ClientApi {
         max_fee: Fee,
         version: TransactionVersion,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn add_declare_transaction(
+        &self,
+        contract_definition: ContractDefinition,
+        sender_address: ContractAddress,
+        max_fee: Fee,
+        signature: Vec<CallSignatureElem>,
+        nonce: TransactionNonce,
+        version: TransactionVersion,
+        token: Option<String>,
+    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError>;
 
     async fn add_deploy_transaction(
         &self,
@@ -231,6 +244,13 @@ impl Client {
         };
 
         Self::with_url(url)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn integration() -> reqwest::Result<Self> {
+        let integration_url = Url::parse("https://external.integration.starknet.io").unwrap();
+
+        Self::with_url(integration_url)
     }
 
     /// Create a Sequencer client for the given [Url].
@@ -490,6 +510,40 @@ impl ClientApi for Client {
             .json(&req)
             .send()
             .await?;
+        parse(resp).await
+    }
+
+    /// Adds a transaction declaring a class.
+    #[tracing::instrument(skip(self))]
+    async fn add_declare_transaction(
+        &self,
+        contract_definition: ContractDefinition,
+        sender_address: ContractAddress,
+        max_fee: Fee,
+        signature: Vec<CallSignatureElem>,
+        nonce: TransactionNonce,
+        version: TransactionVersion,
+        token: Option<String>,
+    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
+        let req =
+            request::add_transaction::AddTransaction::Declare(request::add_transaction::Declare {
+                contract_class: contract_definition,
+                sender_address,
+                max_fee,
+                signature,
+                nonce,
+                version,
+            });
+        let mut url = self.build_query(&["gateway", "add_transaction"], &[]);
+        // this is an optional token currently required on mainnet
+        if let Some(token) = token {
+            url.query_pairs_mut().append_pair("token", &token);
+        }
+        // Note that we don't do retries here.
+        // This method is used to proxy an add transaction operation from the JSON-RPC
+        // API to the sequencer. Retries should be implemented in the JSON-RPC
+        // client instead.
+        let resp = self.inner.post(url).json(&req).send().await?;
         parse(resp).await
     }
 
@@ -1709,37 +1763,37 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn declare_class() {
+            let contract_class = get_contract_class_from_fixture();
+
+            let (_jh, client) = setup([(
+                "/gateway/add_transaction?",
+                (
+                    r#"{"code": "TRANSACTION_RECEIVED",
+                        "transaction_hash": "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed",
+                        "class_hash": "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"}"#,
+                    200,
+                ),
+            )]);
+
+            client
+                .add_declare_transaction(
+                    contract_class,
+                    // actual address dumped from a `starknet declare` call
+                    ContractAddress(StarkHash::from_hex_str("0x1").unwrap()),
+                    Fee(0u128.to_be_bytes().into()),
+                    vec![],
+                    TransactionNonce(StarkHash::ZERO),
+                    TransactionVersion(H256::zero()),
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
         async fn deploy_contract() {
-            // test with values dumped from `starknet deploy` for a test contract
-            let json = include_bytes!("../resources/deploy_transaction.json");
-            let json: serde_json::Value = serde_json::from_slice(json).unwrap();
-            let program = json["contract_definition"]["program"].as_str().unwrap();
-            let entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
-                HashMap::from([
-                    (EntryPointType::Constructor, vec![]),
-                    (
-                        EntryPointType::External,
-                        vec![
-                            SelectorAndOffset {
-                                offset: ByteCodeOffset(StarkHash::from_hex_str("0x3a").unwrap()),
-                                selector: EntryPoint(StarkHash::from_hex_str(
-                                        "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
-                                    )
-                                    .unwrap()
-                                ),
-                            },
-                            SelectorAndOffset{
-                                offset: ByteCodeOffset(StarkHash::from_hex_str("0x5b").unwrap()),
-                                selector: EntryPoint(StarkHash::from_hex_str(
-                                        "0x39e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695",
-                                    )
-                                    .unwrap()
-                                ),
-                            },
-                        ],
-                    ),
-                    (EntryPointType::L1Handler, vec![]),
-                ]);
+            let contract_definition = get_contract_class_from_fixture();
 
             let (_jh, client) = setup([(
                 "/gateway/add_transaction?",
@@ -1758,39 +1812,73 @@ mod tests {
                         .unwrap(),
                     ),
                     vec![],
-                    ContractDefinition {
-                        abi: serde_json::json!([
-                            {
-                                "inputs": [
-                                    {
-                                        "name": "amount",
-                                        "type": "felt"
-                                    }
-                                ],
-                                "name": "increase_balance",
-                                "outputs": [],
-                                "type": "function"
-                            },
-                            {
-                                "inputs": [],
-                                "name": "get_balance",
-                                "outputs": [
-                                    {
-                                        "name": "res",
-                                        "type": "felt"
-                                    }
-                                ],
-                                "stateMutability": "view",
-                                "type": "function"
-                            }
-                        ]),
-                        program: program.to_owned(),
-                        entry_points_by_type,
-                    },
+                    contract_definition,
                     None,
                 )
                 .await
                 .unwrap();
+        }
+
+        /// Return a contract definition that was dumped from a `starknet deploy`.
+        fn get_contract_class_from_fixture() -> ContractDefinition {
+            let json = include_bytes!("../resources/deploy_transaction.json");
+            let json: serde_json::Value = serde_json::from_slice(json).unwrap();
+            let program = json["contract_definition"]["program"].as_str().unwrap();
+            let entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
+                        HashMap::from([
+                            (EntryPointType::Constructor, vec![]),
+                            (
+                                EntryPointType::External,
+                                vec![
+                                    SelectorAndOffset {
+                                        offset: ByteCodeOffset(StarkHash::from_hex_str("0x3a").unwrap()),
+                                        selector: EntryPoint(StarkHash::from_hex_str(
+                                                "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
+                                            )
+                                            .unwrap()
+                                        ),
+                                    },
+                                    SelectorAndOffset{
+                                        offset: ByteCodeOffset(StarkHash::from_hex_str("0x5b").unwrap()),
+                                        selector: EntryPoint(StarkHash::from_hex_str(
+                                                "0x39e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695",
+                                            )
+                                            .unwrap()
+                                        ),
+                                    },
+                                ],
+                            ),
+                            (EntryPointType::L1Handler, vec![]),
+                        ]);
+            ContractDefinition {
+                abi: serde_json::json!([
+                    {
+                        "inputs": [
+                            {
+                                "name": "amount",
+                                "type": "felt"
+                            }
+                        ],
+                        "name": "increase_balance",
+                        "outputs": [],
+                        "type": "function"
+                    },
+                    {
+                        "inputs": [],
+                        "name": "get_balance",
+                        "outputs": [
+                            {
+                                "name": "res",
+                                "type": "felt"
+                            }
+                        ],
+                        "stateMutability": "view",
+                        "type": "function"
+                    }
+                ]),
+                program: program.to_owned(),
+                entry_points_by_type,
+            }
         }
 
         mod deploy_token {

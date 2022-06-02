@@ -269,6 +269,26 @@ pub async fn run_server(
         },
     )?;
     module.register_async_method(
+        "starknet_addDeclareTransaction",
+        |params, context| async move {
+            #[serde_with::serde_as]
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub contract_class: ContractDefinition,
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                pub version: TransactionVersion,
+                // An undocumented parameter that we forward to the sequencer API
+                // A deploy token is required to deploy contracts on Starknet mainnet only.
+                #[serde(default)]
+                pub token: Option<String>,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .add_declare_transaction(params.contract_class, params.version, params.token)
+                .await
+        },
+    )?;
+    module.register_async_method(
         "starknet_addDeployTransaction",
         |params, context| async move {
             #[derive(Debug, Deserialize)]
@@ -485,6 +505,8 @@ mod tests {
             max_fee: Some(Fee(H128::zero())),
             signature: None,
             transaction_hash: txn0_hash,
+            sender_address: None,
+            nonce: None,
             r#type: Type::Deploy,
         };
         let mut receipt0 = Receipt {
@@ -2206,8 +2228,10 @@ mod tests {
                 transaction_hash: StarknetTransactionHash(
                     StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap(),
                 ),
-                r#type: transaction::Type::InvokeFunction,
                 max_fee: None,
+                sender_address: None,
+                nonce: None,
+                r#type: transaction::Type::InvokeFunction,
             });
             let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
                 actual_fee: None,
@@ -2582,7 +2606,9 @@ mod tests {
 
     mod add_transaction {
         use super::*;
-        use crate::rpc::types::reply::{DeployTransactionResult, InvokeTransactionResult};
+        use crate::rpc::types::reply::{
+            DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult,
+        };
 
         lazy_static::lazy_static! {
             pub static ref CONTRACT_DEFINITION_JSON: serde_json::Value = {
@@ -2597,7 +2623,7 @@ mod tests {
 
             use super::*;
             use crate::{
-                core::{ByteCodeOffset, CallParam, EntryPoint},
+                core::{ByteCodeOffset, CallParam, ClassHash, EntryPoint},
                 sequencer::request::contract::{EntryPointType, SelectorAndOffset},
             };
 
@@ -2742,6 +2768,42 @@ mod tests {
             }
 
             #[tokio::test]
+            async fn declare_transaction() {
+                let storage = setup_storage();
+                let sequencer = SeqClient::integration().unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let contract_class = CONTRACT_DEFINITION.clone();
+
+                let params = rpc_params!(contract_class, *TRANSACTION_VERSION);
+
+                let rpc_result = client(addr)
+                    .request::<DeclareTransactionResult>("starknet_addDeclareTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    DeclareTransactionResult {
+                        transaction_hash: StarknetTransactionHash(
+                            StarkHash::from_hex_str(
+                                "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
+                            )
+                            .unwrap()
+                        ),
+                        class_hash: ClassHash(
+                            StarkHash::from_hex_str(
+                                "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
+                            )
+                            .unwrap()
+                        ),
+                    }
+                );
+            }
+
+            #[tokio::test]
             async fn deploy_transaction() {
                 let storage = setup_storage();
                 let sequencer = SeqClient::new(Chain::Goerli).unwrap();
@@ -2790,6 +2852,8 @@ mod tests {
         }
 
         mod named_args {
+            use crate::core::ClassHash;
+
             use super::*;
 
             use pretty_assertions::assert_eq;
@@ -2845,6 +2909,43 @@ mod tests {
                             )
                             .unwrap()
                         )
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn declare_transaction() {
+                let storage = setup_storage();
+                let sequencer = SeqClient::integration().unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = by_name([
+                    ("contract_class", CONTRACT_DEFINITION_JSON.clone()),
+                    ("version", json!("0x0")),
+                ]);
+
+                let rpc_result = client(addr)
+                    .request::<DeclareTransactionResult>("starknet_addDeclareTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    DeclareTransactionResult {
+                        transaction_hash: StarknetTransactionHash(
+                            StarkHash::from_hex_str(
+                                "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
+                            )
+                            .unwrap()
+                        ),
+                        class_hash: ClassHash(
+                            StarkHash::from_hex_str(
+                                "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
+                            )
+                            .unwrap()
+                        ),
                     }
                 );
             }

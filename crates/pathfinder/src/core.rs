@@ -10,6 +10,10 @@ use web3::types::{H128, H160, H256};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddress(pub StarkHash);
 
+/// The hash of a StarkNet class.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
+pub struct ClassHash(pub StarkHash);
+
 /// The salt of a StarkNet contract address.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddressSalt(pub StarkHash);
@@ -156,6 +160,10 @@ pub struct Fee(pub H128);
 /// StarkNet gas price.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct GasPrice(pub u128);
+
+// Starknet transaction nonce.
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct TransactionNonce(pub StarkHash);
 
 /// StarkNet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
