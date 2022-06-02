@@ -10,25 +10,17 @@ use web3::types::{H128, H160, H256};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddress(pub StarkHash);
 
-/// The hash of a StarkNet class.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
-pub struct ClassHash(pub StarkHash);
-
 /// The salt of a StarkNet contract address.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddressSalt(pub StarkHash);
 
-/// A StarkNet contract's hash. This is a hash over a contract's
+/// The hash of a StarkNet contract. This is a hash over a class'
 /// deployment properties e.g. code and ABI.
-///
-/// Not to be confused with [ContractStateHash].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
-pub struct ContractHash(pub StarkHash);
+pub struct ClassHash(pub StarkHash);
 
 /// A StarkNet contract's state hash. This is the value stored
 /// in the global state tree.
-///
-/// Not to be confused with [ContractHash].
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractStateHash(pub StarkHash);
 
@@ -55,7 +47,7 @@ impl EntryPoint {
     /// See: <https://starknet.io/documentation/contracts/#function_selector>
     pub fn hashed(input: &[u8]) -> Self {
         use sha3::Digest;
-        EntryPoint(crate::state::contract_hash::truncated_keccak(
+        EntryPoint(crate::state::class_hash::truncated_keccak(
             <[u8; 32]>::from(sha3::Keccak256::digest(input)),
         ))
     }
@@ -64,7 +56,7 @@ impl EntryPoint {
 /// Offset of an entry point into the bytecode of a StarkNet contract.
 ///
 /// This is a StarkHash because we use it directly for computing the
-/// contract hashes.
+/// class hashes.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ByteCodeOffset(pub StarkHash);
 

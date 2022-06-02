@@ -5,7 +5,7 @@ use stark_hash::StarkHash;
 use web3::types::U256;
 
 use crate::{
-    core::{ContractAddress, ContractHash, StorageAddress, StorageValue},
+    core::{ClassHash, ContractAddress, StorageAddress, StorageValue},
     ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
 };
 
@@ -64,9 +64,9 @@ impl StateUpdateParser {
 
             let hash = deployment_data
                 .next()
-                .context("Deployed contract hash missing")?;
-            let hash = parse_starkhash(hash).context("Parsing contract hash")?;
-            let hash = ContractHash(hash);
+                .context("Deployed class hash missing")?;
+            let hash = parse_starkhash(hash).context("Parsing class hash")?;
+            let hash = ClassHash(hash);
 
             let num_constructor_args = deployment_data
                 .next()
@@ -270,7 +270,7 @@ mod tests {
     fn deployed_contract() -> DeployedContract {
         DeployedContract {
             address: ContractAddress(StarkHash::from_hex_str("45691").unwrap()),
-            hash: ContractHash(StarkHash::from_hex_str("22513").unwrap()),
+            hash: ClassHash(StarkHash::from_hex_str("22513").unwrap()),
             call_data: vec![
                 StarkHash::from_hex_str("1").unwrap(),
                 StarkHash::from_hex_str("2").unwrap(),

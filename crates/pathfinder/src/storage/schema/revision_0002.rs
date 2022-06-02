@@ -87,7 +87,7 @@ pub(crate) fn migrate(tx: &Transaction) -> anyhow::Result<PostMigrationAction> {
             let definition = r.get_ref_unwrap(0).as_blob()?;
             let raw_definition = zstd::decode_all(definition)?;
             let (abi, code, hash) =
-                crate::state::contract_hash::extract_abi_code_hash(&raw_definition).with_context(
+                crate::state::class_hash::extract_abi_code_hash(&raw_definition).with_context(
                     || format!("Failed to process {} bytes of definition", definition.len()),
                 )?;
 

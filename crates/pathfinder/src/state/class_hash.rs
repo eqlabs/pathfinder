@@ -3,22 +3,22 @@ use serde::Serialize;
 use sha3::Digest;
 use stark_hash::{stark_hash, StarkHash};
 
-use crate::core::ContractHash;
+use crate::core::ClassHash;
 use crate::sequencer::request::contract::EntryPointType;
 
-/// Computes the starknet contract hash for given contract definition json blob.
+/// Computes the starknet class hash for given class definition json blob.
 ///
 /// The structure of the blob is not strictly defined, so it lives in privacy under `json` module
-/// of this module. The contract hash has [official documentation][starknet-doc] and [cairo-lang
+/// of this module. The class hash has [official documentation][starknet-doc] and [cairo-lang
 /// has an implementation][cairo-compute] which is half-python and half-[cairo][cairo-contract].
 ///
 /// Outline of the hashing is:
 ///
-/// 1. contract definition is serialized with python's [`sort_keys=True` option][py-sortkeys], then
+/// 1. class definition is serialized with python's [`sort_keys=True` option][py-sortkeys], then
 ///    a truncated Keccak256 hash is calculated of the serialized json
 /// 2. a hash chain construction out of [`stark_hash()`] is used to process in order the contract
 ///    entry points, builtins, the truncated keccak hash and bytecodes
-/// 3. each of the hashchains is hash chained together to produce a final contract hash
+/// 3. each of the hashchains is hash chained together to produce a final class hash
 ///
 /// Hash chain construction is explained at the [official documentation][starknet-doc], but it's
 /// text explanations are much more complex than the actual implementation in `HashChain`, which
@@ -28,37 +28,35 @@ use crate::sequencer::request::contract::EntryPointType;
 /// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py
 /// [cairo-contract]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contracts.cairo#L76-L118
 /// [py-sortkeys]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py#L58-L71
-pub fn compute_contract_hash(contract_definition_dump: &[u8]) -> Result<ContractHash> {
+pub fn compute_class_hash(contract_definition_dump: &[u8]) -> Result<ClassHash> {
     let contract_definition =
         serde_json::from_slice::<json::ContractDefinition>(contract_definition_dump)
             .context("Failed to parse contract_definition")?;
 
-    compute_contract_hash0(contract_definition).context("Compute contract hash")
+    compute_class_hash0(contract_definition).context("Compute class hash")
 }
 
-/// Sibling functionality to only [`compute_contract_hash`], returning also the ABI, and bytecode
+/// Sibling functionality to only [`compute_class_hash`], returning also the ABI, and bytecode
 /// parts as json bytes.
 pub(crate) fn extract_abi_code_hash(
     contract_definition_dump: &[u8],
-) -> Result<(Vec<u8>, Vec<u8>, ContractHash)> {
+) -> Result<(Vec<u8>, Vec<u8>, ClassHash)> {
     let contract_definition =
         serde_json::from_slice::<json::ContractDefinition>(contract_definition_dump)
             .context("Failed to parse contract_definition")?;
 
-    // just in case we'd accidentially modify these in the compute_contract_hash0
+    // just in case we'd accidentially modify these in the compute_class_hash0
     let abi = serde_json::to_vec(&contract_definition.abi)
         .context("Serialize contract_definition.abi")?;
     let code = serde_json::to_vec(&contract_definition.program.data)
         .context("Serialize contract_definition.program.data")?;
 
-    let hash = compute_contract_hash0(contract_definition).context("Compute contract hash")?;
+    let hash = compute_class_hash0(contract_definition).context("Compute class hash")?;
 
     Ok((abi, code, hash))
 }
 
-fn compute_contract_hash0(
-    mut contract_definition: json::ContractDefinition<'_>,
-) -> Result<ContractHash> {
+fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) -> Result<ClassHash> {
     use EntryPointType::*;
 
     // the other modification is handled by skipping if the attributes vec is empty
@@ -119,7 +117,7 @@ fn compute_contract_hash0(
 
     // This wasn't in the docs, but similarly to contract_state hash, we start with this 0, so this
     // will yield outer == H(0, 0); However, dissimilarly to contract_state hash, we do include the
-    // number of items in this contract_hash.
+    // number of items in this class_hash.
     outer.update(API_VERSION);
 
     // It is important process the different entrypoint hashchains in correct order.
@@ -180,11 +178,11 @@ fn compute_contract_hash0(
 
     outer.update(bytecodes.finalize());
 
-    Ok(ContractHash(outer.finalize()))
+    Ok(ClassHash(outer.finalize()))
 }
 
 /// HashChain is the structure used over at cairo side to represent the hash construction needed
-/// for computing the contract hash.
+/// for computing the class hash.
 ///
 /// Empty hash chained value equals `H(0, 0)` where `H` is the [`stark_hash()`] function, and the
 /// second value is the number of values hashed together in this chain. For other values, the
@@ -230,7 +228,7 @@ pub(crate) fn truncated_keccak(mut plain: [u8; 32]) -> StarkHash {
 }
 
 /// `std::io::Write` adapter for Keccak256; we don't need the serialized version in
-/// compute_contract_hash, but we need the truncated_keccak hash.
+/// compute_class_hash, but we need the truncated_keccak hash.
 ///
 /// When debugging mismatching hashes, it might be useful to check the length of each before trying
 /// to find the wrongly serialized spot. Example length > 500kB.
@@ -398,7 +396,7 @@ mod json {
             // 500
             // {"code": "StarknetErrorCode.UNINITIALIZED_CONTRACT", "message": "Contract with address 2116724861677265616176388745625154424116334641142188761834194304782006389228 is not deployed."}
 
-            let hash = super::super::compute_contract_hash(payload.as_bytes()).unwrap();
+            let hash = super::super::compute_class_hash(payload.as_bytes()).unwrap();
 
             assert_eq!(hash.0, expected);
         }
@@ -411,7 +409,7 @@ mod json {
             )
             .unwrap();
 
-            let hash = super::super::compute_contract_hash(&contract_definition).unwrap();
+            let hash = super::super::compute_class_hash(&contract_definition).unwrap();
 
             assert_eq!(
                 hash.0,
@@ -440,16 +438,16 @@ mod json {
                 .await
                 .expect("Download contract from sequencer");
 
-            let _ = crate::state::contract_hash::compute_contract_hash(&contract_definition)
+            let _ = super::super::compute_class_hash(&contract_definition)
                 .expect("Extract and compute  hash");
         }
 
         #[tokio::test]
         async fn cairo_0_8() {
-            // Cairo 0.8 update broke our contract hash calculation by adding new attribute fields (which
+            // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
             // we now need to ignore if empty).
             use super::super::extract_abi_code_hash;
-            use crate::core::{ContractAddress, ContractHash};
+            use crate::core::{ClassHash, ContractAddress};
             use crate::sequencer::{self, ClientApi};
             use stark_hash::StarkHash;
 
@@ -461,7 +459,7 @@ mod json {
                 .unwrap(),
             );
 
-            let expected = ContractHash(
+            let expected = ClassHash(
                 StarkHash::from_hex_str(
                     "0x056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3",
                 )
@@ -486,7 +484,7 @@ mod json {
         fn serde_json_value_sorts_maps() {
             // this property is leaned on and the default implementation of serde_json works like
             // this. serde_json has a feature called "preserve_order" which could get enabled by
-            // accident, and it would destroy the ability to compute_contract_hash.
+            // accident, and it would destroy the ability to compute_class_hash.
 
             let input = r#"{"foo": 1, "bar": 2}"#;
             let parsed = serde_json::from_str::<serde_json::Value>(input).unwrap();

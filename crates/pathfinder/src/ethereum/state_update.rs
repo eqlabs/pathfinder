@@ -6,7 +6,7 @@ use retrieve::*;
 use stark_hash::StarkHash;
 
 use crate::{
-    core::{ContractAddress, ContractHash, StorageAddress, StorageValue},
+    core::{ClassHash, ContractAddress, StorageAddress, StorageValue},
     ethereum::{
         log::StateUpdateLog,
         state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
@@ -19,7 +19,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeployedContract {
     pub address: ContractAddress,
-    pub hash: ContractHash,
+    pub hash: ClassHash,
     pub call_data: Vec<StarkHash>,
 }
 
@@ -150,7 +150,7 @@ mod tests {
         let expected = StateUpdate {
             deployed_contracts: vec![DeployedContract {
                 address: ContractAddress(StarkHash::from_hex_str("6CF1C6DCA6DE4CE15DB3EB7AEE1C6191537C82E2F2DE22FE4426199EE50E9A").unwrap()),
-                hash: ContractHash(StarkHash::from_hex_str("484DE75F165C844F9D8C5B07A7D1A650A476815DC7A061126FD41BB998C043D").unwrap()),
+                hash: ClassHash(StarkHash::from_hex_str("484DE75F165C844F9D8C5B07A7D1A650A476815DC7A061126FD41BB998C043D").unwrap()),
                 call_data: vec![StarkHash::from_hex_str("5D7C088BB051DB0A4C5A9C435A2009E2A82EE896080DDF4E6E953770F313EAF").unwrap()],
             }],
             contract_updates: vec![

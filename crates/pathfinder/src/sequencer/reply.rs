@@ -308,7 +308,7 @@ pub struct StateUpdate {
 
 /// Types used when deserializing state update related data.
 pub mod state_update {
-    use crate::core::{ContractAddress, ContractHash, StorageAddress, StorageValue};
+    use crate::core::{ClassHash, ContractAddress, StorageAddress, StorageValue};
     use serde::Deserialize;
     use serde_with::serde_as;
     use std::collections::HashMap;
@@ -336,7 +336,7 @@ pub mod state_update {
     #[serde(deny_unknown_fields)]
     pub struct Contract {
         pub address: ContractAddress,
-        pub contract_hash: ContractHash,
+        pub contract_hash: ClassHash,
     }
 }
 

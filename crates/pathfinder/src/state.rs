@@ -3,19 +3,19 @@ use rusqlite::Transaction;
 use stark_hash::{stark_hash, StarkHash};
 
 use crate::{
-    core::{ContractHash, ContractRoot, ContractStateHash},
+    core::{ClassHash, ContractRoot, ContractStateHash},
     ethereum::state_update::ContractUpdate,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{ContractsStateTable, ContractsTable},
 };
 
-pub(crate) mod contract_hash;
+pub(crate) mod class_hash;
 mod merkle_node;
 pub(crate) mod merkle_tree;
 pub(crate) mod state_tree;
 mod sync;
 
-pub use contract_hash::compute_contract_hash;
+pub use class_hash::compute_class_hash;
 pub use sync::{l1, l2, sync, State as SyncState};
 
 #[derive(Clone, PartialEq)]
@@ -23,7 +23,7 @@ pub struct CompressedContract {
     pub abi: Vec<u8>,
     pub bytecode: Vec<u8>,
     pub definition: Vec<u8>,
-    pub hash: ContractHash,
+    pub hash: ClassHash,
 }
 
 impl std::fmt::Debug for CompressedContract {
@@ -67,19 +67,19 @@ pub(crate) fn update_contract_state(
         .context("Apply contract storage tree changes")?;
 
     // Calculate contract state hash, update global state tree and persist pre-image.
-    let contract_hash = ContractsTable::get_hash(db, update.address)
-        .context("Read contract hash from contracts table")?
-        .context("Contract hash is missing from contracts table")?;
-    let contract_state_hash = calculate_contract_state_hash(contract_hash, new_contract_root);
+    let class_hash = ContractsTable::get_hash(db, update.address)
+        .context("Read class hash from contracts table")?
+        .context("Class hash is missing from contracts table")?;
+    let contract_state_hash = calculate_contract_state_hash(class_hash, new_contract_root);
 
-    ContractsStateTable::upsert(db, contract_state_hash, contract_hash, new_contract_root)
+    ContractsStateTable::upsert(db, contract_state_hash, class_hash, new_contract_root)
         .context("Insert constract state hash into contracts state table")?;
 
     Ok(contract_state_hash)
 }
 
 /// Calculates the contract state hash from its preimage.
-fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> ContractStateHash {
+fn calculate_contract_state_hash(hash: ClassHash, root: ContractRoot) -> ContractStateHash {
     const RESERVED: StarkHash = StarkHash::ZERO;
     const CONTRACT_VERSION: StarkHash = StarkHash::ZERO;
 
@@ -96,7 +96,7 @@ fn calculate_contract_state_hash(hash: ContractHash, root: ContractRoot) -> Cont
 #[cfg(test)]
 mod tests {
     use super::{calculate_contract_state_hash, sync};
-    use crate::core::{ContractHash, ContractRoot, ContractStateHash};
+    use crate::core::{ClassHash, ContractRoot, ContractStateHash};
     use stark_hash::StarkHash;
 
     #[test]
@@ -111,7 +111,7 @@ mod tests {
             "02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779",
         )
         .unwrap();
-        let hash = ContractHash(hash);
+        let hash = ClassHash(hash);
 
         let expected = StarkHash::from_hex_str(
             "07161b591c893836263a64f2a7e0d829c92f6956148a60ce5e99a3f55c7973f3",
@@ -135,7 +135,7 @@ mod tests {
 
         // let s = crate::storage::Storage::in_memory().unwrap();
 
-        // let contract_hash = ContractHash(StarkHash::from_hex_str("0x11").unwrap());
+        // let contract_hash = ClassHash(StarkHash::from_hex_str("0x11").unwrap());
         // let contract_addr = ContractAddress(StarkHash::from_hex_str("1").unwrap());
         // let contract_deploy = DeployedContract {
         //     address: contract_addr,
@@ -263,9 +263,9 @@ mod tests {
         // let s = crate::storage::Storage::in_memory().unwrap();
 
         // let shared_hash =
-        //     ContractHash(StarkHash::from_be_slice(&b"this is shared by multiple"[..]).unwrap());
+        //     ClassHash(StarkHash::from_be_slice(&b"this is shared by multiple"[..]).unwrap());
         // let unique_hash =
-        //     ContractHash(StarkHash::from_be_slice(&b"this is unique contract"[..]).unwrap());
+        //     ClassHash(StarkHash::from_be_slice(&b"this is unique contract"[..]).unwrap());
 
         // let one = ContractAddress(StarkHash::from_hex_str("1").unwrap());
         // let two = ContractAddress(StarkHash::from_hex_str("2").unwrap());
