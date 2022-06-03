@@ -46,7 +46,7 @@ pub trait ClientApi {
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
 
-    async fn class_hash(
+    async fn class_hash_at(
         &self,
         contract_address: ContractAddress,
     ) -> Result<ClassHash, SequencerError>;
@@ -388,7 +388,7 @@ impl ClientApi for Client {
 
     /// Gets class hash for a particular contract address.
     #[tracing::instrument(skip(self))]
-    async fn class_hash(
+    async fn class_hash_at(
         &self,
         contract_address: ContractAddress,
     ) -> Result<ClassHash, SequencerError> {
@@ -1289,7 +1289,10 @@ mod tests {
                 ),
                 StarknetErrorCode::UninitializedContract.into_response(),
             )]);
-            let error = client.class_hash(*INVALID_CONTRACT_ADDR).await.unwrap_err();
+            let error = client
+                .class_hash_at(*INVALID_CONTRACT_ADDR)
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
@@ -1305,7 +1308,7 @@ mod tests {
                 ),
                 (r#""0x01""#, 200),
             )]);
-            client.class_hash(*VALID_CONTRACT_ADDR).await.unwrap();
+            client.class_hash_at(*VALID_CONTRACT_ADDR).await.unwrap();
         }
     }
 

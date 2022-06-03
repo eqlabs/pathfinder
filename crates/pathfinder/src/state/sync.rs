@@ -717,7 +717,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn class_hash(&self, _: ContractAddress) -> Result<ClassHash, SequencerError> {
+        async fn class_hash_at(&self, _: ContractAddress) -> Result<ClassHash, SequencerError> {
             unimplemented!()
         }
 
