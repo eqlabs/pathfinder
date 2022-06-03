@@ -213,6 +213,59 @@ pub mod reply {
         Full(Vec<Transaction>),
     }
 
+    #[cfg(test)]
+    mod transactions {
+        /// This enum is not deserialized in production however
+        /// we rely on deserialization into the correct variant
+        /// in some RPC tests.
+        mod deserialize {
+            use super::super::Transactions;
+            use assert_matches::assert_matches;
+
+            #[test]
+            fn hashes_only() {
+                assert_matches!(
+                    serde_json::from_str::<Transactions>(r#"["0x01"]"#).unwrap(),
+                    Transactions::HashesOnly(_)
+                );
+            }
+
+            #[test]
+            fn full_transactions_only() {
+                assert_matches!(
+                    serde_json::from_str::<Transactions>(
+                        r#"[{"txn_hash":"0x01","contract_address":"0x02"}]"#
+                    )
+                    .unwrap(),
+                    Transactions::Full(_)
+                );
+            }
+
+            #[test]
+            fn full_transactions_and_receipts() {
+                assert_matches!(
+                    serde_json::from_str::<Transactions>(
+                        r#"[{"txn_hash":"0x01","contract_address":"0x02","status":"RECEIVED","status_data":"","messages_sent":[],"events":[]}]"#
+                    )
+                    .unwrap(),
+                    Transactions::FullWithReceipts(_)
+                );
+            }
+
+            #[test]
+            fn unknown_fields_are_denied() {
+                serde_json::from_str::<Transactions>(
+                    r#"[{"txn_hash":"0x01","contract_address":"0x02","denied":0}]"#,
+                )
+                .unwrap_err();
+                serde_json::from_str::<Transactions>(
+                    r#"[{"txn_hash":"0x01","contract_address":"0x02","status":"RECEIVED","status_data":"","messages_sent":[],"events":[],"denied":0}]"#,
+                )
+                .unwrap_err();
+            }
+        }
+    }
+
     /// L2 Block as returned by the RPC API.
     #[serde_as]
     #[skip_serializing_none]
