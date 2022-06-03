@@ -201,10 +201,11 @@ pub mod reply {
     #[serde(untagged)]
     pub enum Transactions {
         HashesOnly(Vec<StarknetTransactionHash>),
-        // __Extremely important!!!__
-        // This variant needs to come __before__ `Full`
-        // as it contains a structure which has the same fields
-        // as `Full` plus some additional fields.
+        // 1. The following two variants can come in any order as long
+        // as they both internally do `#[serde(deny_unknown_fields)]`.
+        // 2. Otherwise the larger variant, `FullWithReceipts` needs
+        // to come __before__ `Full`  as it contains a structure
+        // which has the same fields as `Full` plus some additional fields.
         // Which means that `serde` would always wrongly deserialize
         // to the smaller variant if the order here was swapped
         // (ie. smaller variant first, bigger next).
@@ -493,12 +494,17 @@ pub mod reply {
     #[serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct Transaction {
         pub txn_hash: StarknetTransactionHash,
+        #[serde(default)]
         pub contract_address: Option<ContractAddress>,
+        #[serde(default)]
         pub entry_point_selector: Option<EntryPoint>,
+        #[serde(default)]
         pub calldata: Option<Vec<CallParam>>,
         #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
         pub max_fee: Option<Fee>,
     }
 
@@ -535,13 +541,16 @@ pub mod reply {
     #[serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct TransactionReceipt {
         pub txn_hash: StarknetTransactionHash,
         #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
         pub actual_fee: Option<Fee>,
         pub status: TransactionStatus,
         pub status_data: String,
         pub messages_sent: Vec<transaction_receipt::MessageToL1>,
+        #[serde(default)]
         pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
         pub events: Vec<transaction_receipt::Event>,
     }
@@ -655,18 +664,25 @@ pub mod reply {
     #[serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct TransactionAndReceipt {
         pub txn_hash: StarknetTransactionHash,
+        #[serde(default)]
         pub contract_address: Option<ContractAddress>,
+        #[serde(default)]
         pub entry_point_selector: Option<EntryPoint>,
+        #[serde(default)]
         pub calldata: Option<Vec<CallParam>>,
         #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
         pub max_fee: Option<Fee>,
         #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
         pub actual_fee: Option<Fee>,
         pub status: TransactionStatus,
         pub status_data: String,
         pub messages_sent: Vec<transaction_receipt::MessageToL1>,
+        #[serde(default)]
         pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
         pub events: Vec<transaction_receipt::Event>,
     }
