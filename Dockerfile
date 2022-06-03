@@ -78,13 +78,13 @@ RUN find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
 FROM python:3.8-slim-bullseye AS runner
 
 RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y libgmp10 tini && rm -rf /var/lib/apt/lists/*
+RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pathfinder --no-create-home pathfinder
 
 COPY --from=rust-builder /usr/src/pathfinder/target/release/pathfinder /usr/local/bin/pathfinder
 COPY --from=python-builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
 
 # Create directory and volume for persistent data
-RUN mkdir -p /usr/share/pathfinder/data
-RUN chown 1000:1000 /usr/share/pathfinder/data
+RUN install --owner 1000 --group 1000 --mode 0755 -d /usr/share/pathfinder/data
 VOLUME /usr/share/pathfinder/data
 
 USER 1000:1000
