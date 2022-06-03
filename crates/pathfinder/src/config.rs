@@ -15,10 +15,6 @@ const DEFAULT_HTTP_RPC_ADDR: &str = "127.0.0.1:9545";
 pub enum ConfigOption {
     /// The Ethereum URL.
     EthereumHttpUrl,
-    /// The User Agent header value to use for the Ethereum URL.
-    ///
-    /// Deprecated, we now set a version specific user-agent.
-    EthereumUserAgent,
     /// The Ethereum password.
     EthereumPassword,
     /// The HTTP-RPC listening socket address.
@@ -31,7 +27,6 @@ impl Display for ConfigOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfigOption::EthereumHttpUrl => f.write_str("Ethereum HTTP URL"),
-            ConfigOption::EthereumUserAgent => f.write_str("Ethereum user agent"),
             ConfigOption::EthereumPassword => f.write_str("Ethereum password"),
             ConfigOption::DataDirectory => f.write_str("Data directory"),
             ConfigOption::HttpRpcAddress => f.write_str("HTTP-RPC socket address"),
@@ -44,8 +39,6 @@ impl Display for ConfigOption {
 pub struct EthereumConfig {
     /// The Ethereum URL.
     pub url: Url,
-    /// The optional HTTP User-Agent header value to use for Ethereum.
-    pub user_agent: Option<String>,
     /// The optional Ethereum password.
     pub password: Option<String>,
 }
@@ -98,12 +91,6 @@ impl Configuration {
         };
 
         let cfg = cfg.try_build()?;
-
-        if cfg.ethereum.user_agent.is_some() {
-            tracing::warn!(
-                "Ethereum user-agent was provided in the configuration but this option is deprecated. It will be no longer accepted in future releases"
-            );
-        }
 
         Ok(cfg)
     }
