@@ -50,7 +50,6 @@ impl ConfigBuilder {
         })?;
 
         // Optional parameters.
-        let eth_user_agent = self.take(ConfigOption::EthereumUserAgent);
         let eth_password = self.take(ConfigOption::EthereumPassword);
 
         // Optional parameters with defaults.
@@ -76,7 +75,6 @@ impl ConfigBuilder {
         Ok(Configuration {
             ethereum: EthereumConfig {
                 url: eth_url,
-                user_agent: eth_user_agent,
                 password: eth_password,
             },
             http_rpc_addr,
