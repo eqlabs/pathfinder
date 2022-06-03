@@ -38,7 +38,7 @@ COPY crates/stark_hash/Cargo.toml crates/stark_hash/Cargo.toml
 COPY crates/stark_hash/benches crates/stark_hash/benches
 
 # DEPENDENCY_LAYER=1 should disable any vergen interaction, because the .git directory is not yet available
-RUN DEPENDENCY_LAYER=1 cargo build --release -p pathfinder
+RUN CARGO_INCREMENTAL=0 DEPENDENCY_LAYER=1 cargo build --release -p pathfinder
 
 # Compile the actual libraries and binary now
 COPY . .
@@ -50,7 +50,7 @@ RUN touch crates/pathfinder/src/build.rs
 RUN touch crates/stark_curve/src/lib.rs
 RUN touch crates/stark_hash/src/lib.rs
 
-RUN cargo build --release -p pathfinder
+RUN CARGO_INCREMENTAL=0 cargo build --release -p pathfinder
 
 #######################################
 # Stage 2: Build the Python libraries #
