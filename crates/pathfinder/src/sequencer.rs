@@ -670,9 +670,9 @@ pub mod test_utils {
         pub static ref VALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
         pub static ref VALID_KEY_DEC: String = crate::rpc::serde::starkhash_to_dec_str(&VALID_KEY.0);
         pub static ref VALID_CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("0x4d2").unwrap()];
-        // TODO these values are for external.integration.starknet.io and should be fixed when goerli gets to 0.9.0
-        pub static ref VALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x187f3d2b5c92198003975ba4d07a4664dac3690fab3a461ac8b136816b95c2c").unwrap();
-        pub static ref INVALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x087f3d2b5c92198003975ba4d07a4664dac3690fab3a461ac8b136816b95c2c").unwrap();
+        /// Class hash for VALID_CONTRACT_ADDR
+        pub static ref VALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x021a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2").unwrap();
+        pub static ref INVALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2").unwrap();
     }
 }
 
