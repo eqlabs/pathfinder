@@ -169,8 +169,8 @@ Using `--help` will display the `pathfinder` options, including their environmen
 # with built from source
 cargo run --release --bin pathfinder -- --help
 
-# with docker images
-docker run --rm eqlabs/pathfinder /usr/local/bin/pathfinder --help
+# with docker images (0.2.0 onwards)
+docker run --rm eqlabs/pathfinder
 ```
 
 The configuration file uses the `toml` format:
