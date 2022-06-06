@@ -279,19 +279,6 @@ pub mod transaction {
         pub version: Option<TransactionVersion>,
     }
 
-    impl Transaction {
-        /// Retruns either the `contract_address` or `sender_address` depending on the
-        /// transaction type.
-        ///
-        /// This function is a temporary measure until [Transaction] is refactored
-        /// into a 3-variant enum.
-        pub fn source_address(&self) -> ContractAddress {
-            // Unwrap is safe because either `contract_address` or `sender_address` is always present
-            self.contract_address
-                .unwrap_or_else(|| self.sender_address.unwrap())
-        }
-    }
-
     /// Describes L2 transaction types.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]

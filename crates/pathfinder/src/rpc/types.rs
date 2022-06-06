@@ -480,12 +480,13 @@ pub mod reply {
 
     /// L2 transaction as returned by the RPC API.
     ///
+    /// `contract_address` field is available for Deploy and Invoke transactions.
     /// `entry_point_selector` and `calldata` fields are available only
     /// for Invoke transactions.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
         pub txn_hash: StarknetTransactionHash,
-        pub contract_address: ContractAddress,
+        pub contract_address: Option<ContractAddress>,
         pub entry_point_selector: Option<EntryPoint>,
         pub calldata: Option<Vec<CallParam>>,
     }
@@ -499,7 +500,7 @@ pub mod reply {
                 .ok_or_else(|| anyhow::anyhow!("Transaction not found."))?;
             Ok(Self {
                 txn_hash: txn.transaction_hash,
-                contract_address: txn.source_address(),
+                contract_address: txn.contract_address,
                 entry_point_selector: txn.entry_point_selector,
                 calldata: txn.calldata,
             })
@@ -510,7 +511,7 @@ pub mod reply {
         fn from(txn: sequencer::reply::transaction::Transaction) -> Self {
             Self {
                 txn_hash: txn.transaction_hash,
-                contract_address: txn.source_address(),
+                contract_address: txn.contract_address,
                 entry_point_selector: txn.entry_point_selector,
                 calldata: txn.calldata,
             }
@@ -629,14 +630,16 @@ pub mod reply {
 
     /// Used in [Block](crate::rpc::types::reply::Block) when the requested scope of
     /// reply is [BlockResponseScope::FullTransactionsAndReceipts](crate::rpc::types::request::BlockResponseScope).
+    ///
+    /// `contract_address` field is available for Deploy and Invoke transactions.
+    /// `entry_point_selector` and `calldata` fields are available only
+    /// for Invoke transactions.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionAndReceipt {
         pub txn_hash: StarknetTransactionHash,
-        pub contract_address: ContractAddress,
-        /// Absent in "deploy" transaction
+        pub contract_address: Option<ContractAddress>,
         pub entry_point_selector: Option<EntryPoint>,
-        /// Absent in "deploy" transaction
         pub calldata: Option<Vec<CallParam>>,
         pub status: TransactionStatus,
         pub status_data: String,
