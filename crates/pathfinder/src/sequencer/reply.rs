@@ -304,9 +304,10 @@ pub mod transaction {
 /// Used to deserialize a reply from
 /// [ClientApi::state_update_by_hash](crate::sequencer::ClientApi::state_update_by_hash).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct StateUpdate {
-    // At the moment when querying by block hash there is an additional `block_hash` field available.
-    // Which btw is not available when querying by block number, so let's just ignore it.
+    /// This field is absent for a `pending` state update
+    pub block_hash: Option<StarknetBlockHash>,
     pub new_root: GlobalRoot,
     pub old_root: GlobalRoot,
     pub state_diff: state_update::StateDiff,
