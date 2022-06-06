@@ -63,6 +63,12 @@
     },
     {
         "anonymous": false,
+        "inputs": [],
+        "name": "Finalized",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
         "inputs": [
             {
                 "indexed": true,
@@ -324,7 +330,13 @@
             }
         ],
         "name": "cancelL1ToL2Message",
-        "outputs": [],
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
         "stateMutability": "nonpayable",
         "type": "function"
     },
@@ -428,7 +440,7 @@
         "inputs": [
             {
                 "internalType": "address",
-                "name": "testedOperator",
+                "name": "user",
                 "type": "address"
             }
         ],
@@ -576,6 +588,11 @@
                 "internalType": "bytes32",
                 "name": "",
                 "type": "bytes32"
+            },
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
             }
         ],
         "stateMutability": "nonpayable",
@@ -638,7 +655,7 @@
         "inputs": [
             {
                 "internalType": "address",
-                "name": "testGovernor",
+                "name": "user",
                 "type": "address"
             }
         ],
@@ -703,7 +720,13 @@
             }
         ],
         "name": "startL1ToL2MessageCancellation",
-        "outputs": [],
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
         "stateMutability": "nonpayable",
         "type": "function"
     },
