@@ -12,18 +12,16 @@ jobs:
     steps:
       - name: Free up space
         run: |
+          echo "before freeing up space:"
           df -h
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          echo "after freeing up space:"
           df -h
      # Workaround for https://github.com/rust-lang/cargo/issues/8719
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@v1.0
         with:
-          swap-size-gb: 20
-      - run: |
-          sudo mkdir -p /var/lib/docker
-          sudo mount -t tmpfs -o size=10G none /var/lib/docker
-          sudo systemctl restart docker
+          swap-size-gb: 14
       - name: Checkout sources
         uses: actions/checkout@v2
       - name: Set up QEMU
