@@ -16,7 +16,7 @@
 # executable to.
 FROM rust:1.61-bullseye AS rust-builder
 
-RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/pathfinder
 
@@ -50,14 +50,14 @@ RUN touch crates/pathfinder/src/build.rs
 RUN touch crates/stark_curve/src/lib.rs
 RUN touch crates/stark_hash/src/lib.rs
 
-RUN CARGO_INCREMENTAL=0 cargo build --release -p pathfinder
+RUN CARGO_INCREMENTAL=0 cargo build --release -p pathfinder --bin pathfinder
 
 #######################################
 # Stage 2: Build the Python libraries #
 #######################################
 FROM python:3.8-slim-bullseye AS python-builder
 
-RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y libgmp-dev gcc && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-dev gcc && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/share/pathfinder
 COPY py py
@@ -77,7 +77,7 @@ RUN find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
 # compatible with the Rust builder we've built the pathfinder executable in.
 FROM python:3.8-slim-bullseye AS runner
 
-RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y libgmp10 tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp10 tini && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pathfinder --no-create-home pathfinder
 
 COPY --from=rust-builder /usr/src/pathfinder/target/release/pathfinder /usr/local/bin/pathfinder
