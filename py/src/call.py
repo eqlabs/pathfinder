@@ -8,7 +8,7 @@ from starkware.storage.storage import Storage
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 10
-EXPECTED_CAIRO_VERSION = "0.8.2.1"
+EXPECTED_CAIRO_VERSION = "0.9.0"
 
 
 def main():
@@ -448,7 +448,9 @@ async def do_call(
 
     # the root tree has to always be height=251
     shared_state = SharedState(PatriciaTree(root=root, height=251), block_info)
-    state_selector = StateSelector(contract_addresses={contract_address})
+    state_selector = StateSelector(
+        contract_addresses={contract_address}, class_hashes=set()
+    )
     carried_state = await shared_state.get_filled_carried_state(
         ffc, state_selector=state_selector
     )
