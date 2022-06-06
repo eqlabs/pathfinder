@@ -120,7 +120,7 @@ pub mod transaction {
             CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
             EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
             L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-            TransactionSignatureElemAsDecimalStr,
+            TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
         },
     };
     use serde::{Deserialize, Serialize};
@@ -275,6 +275,7 @@ pub mod transaction {
         pub signature: Option<Vec<TransactionSignatureElem>>,
         pub transaction_hash: StarknetTransactionHash,
         pub r#type: Type,
+        #[serde_as(as = "Option<TransactionVersionAsHexStr>")]
         #[serde(default)]
         pub version: Option<TransactionVersion>,
     }
