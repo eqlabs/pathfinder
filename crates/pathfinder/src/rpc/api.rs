@@ -189,6 +189,8 @@ impl RpcApi {
                                 contract_address: t.contract_address,
                                 entry_point_selector: t.entry_point_selector,
                                 calldata: t.calldata,
+                                max_fee: t.max_fee,
+                                actual_fee: r.actual_fee,
                                 status: r.status,
                                 status_data: r.status_data,
                                 messages_sent: r.messages_sent,

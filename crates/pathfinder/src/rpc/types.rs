@@ -147,11 +147,14 @@ pub mod reply {
     use super::request::BlockResponseScope;
     use crate::{
         core::{
-            CallParam, ClassHash, ContractAddress, EntryPoint, EventData, EventKey, GasPrice,
+            CallParam, ClassHash, ContractAddress, EntryPoint, EventData, EventKey, Fee, GasPrice,
             GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
             StarknetBlockTimestamp, StarknetTransactionHash,
         },
-        rpc::{api::RawBlock, serde::GasPriceAsHexStr},
+        rpc::{
+            api::RawBlock,
+            serde::{FeeAsHexStr, GasPriceAsHexStr},
+        },
         sequencer,
     };
     use serde::{Deserialize, Serialize};
@@ -198,15 +201,69 @@ pub mod reply {
     #[serde(untagged)]
     pub enum Transactions {
         HashesOnly(Vec<StarknetTransactionHash>),
-        // __Extremely important!!!__
-        // This variant needs to come __before__ `Full`
-        // as it contains a structure which has the same fields
-        // as `Full` plus some additional fields.
+        // 1. The following two variants can come in any order as long
+        // as they both internally do `#[serde(deny_unknown_fields)]`.
+        // 2. Otherwise the larger variant, `FullWithReceipts` needs
+        // to come __before__ `Full`  as it contains a structure
+        // which has the same fields as `Full` plus some additional fields.
         // Which means that `serde` would always wrongly deserialize
         // to the smaller variant if the order here was swapped
         // (ie. smaller variant first, bigger next).
         FullWithReceipts(Vec<TransactionAndReceipt>),
         Full(Vec<Transaction>),
+    }
+
+    #[cfg(test)]
+    mod transactions {
+        /// This enum is not deserialized in production however
+        /// we rely on deserialization into the correct variant
+        /// in some RPC tests.
+        mod deserialize {
+            use super::super::Transactions;
+            use assert_matches::assert_matches;
+
+            #[test]
+            fn hashes_only() {
+                assert_matches!(
+                    serde_json::from_str::<Transactions>(r#"["0x01"]"#).unwrap(),
+                    Transactions::HashesOnly(_)
+                );
+            }
+
+            #[test]
+            fn full_transactions_only() {
+                assert_matches!(
+                    serde_json::from_str::<Transactions>(
+                        r#"[{"txn_hash":"0x01","contract_address":"0x02"}]"#
+                    )
+                    .unwrap(),
+                    Transactions::Full(_)
+                );
+            }
+
+            #[test]
+            fn full_transactions_and_receipts() {
+                assert_matches!(
+                    serde_json::from_str::<Transactions>(
+                        r#"[{"txn_hash":"0x01","contract_address":"0x02","status":"RECEIVED","status_data":"","messages_sent":[],"events":[]}]"#
+                    )
+                    .unwrap(),
+                    Transactions::FullWithReceipts(_)
+                );
+            }
+
+            #[test]
+            fn unknown_fields_are_denied() {
+                serde_json::from_str::<Transactions>(
+                    r#"[{"txn_hash":"0x01","contract_address":"0x02","denied":0}]"#,
+                )
+                .unwrap_err();
+                serde_json::from_str::<Transactions>(
+                    r#"[{"txn_hash":"0x01","contract_address":"0x02","status":"RECEIVED","status_data":"","messages_sent":[],"events":[],"denied":0}]"#,
+                )
+                .unwrap_err();
+            }
+        }
     }
 
     /// L2 Block as returned by the RPC API.
@@ -294,6 +351,8 @@ pub mod reply {
                                         contract_address: t.contract_address,
                                         entry_point_selector: t.entry_point_selector,
                                         calldata: t.calldata,
+                                        max_fee: t.max_fee,
+                                        actual_fee: r.actual_fee,
                                         status: r.status,
                                         status_data: r.status_data,
                                         messages_sent: r.messages_sent,
@@ -485,13 +544,21 @@ pub mod reply {
     /// `contract_address` field is available for Deploy and Invoke transactions.
     /// `entry_point_selector` and `calldata` fields are available only
     /// for Invoke transactions.
+    #[serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct Transaction {
         pub txn_hash: StarknetTransactionHash,
+        #[serde(default)]
         pub contract_address: Option<ContractAddress>,
+        #[serde(default)]
         pub entry_point_selector: Option<EntryPoint>,
+        #[serde(default)]
         pub calldata: Option<Vec<CallParam>>,
+        #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
+        pub max_fee: Option<Fee>,
     }
 
     impl TryFrom<sequencer::reply::Transaction> for Transaction {
@@ -506,6 +573,7 @@ pub mod reply {
                 contract_address: txn.contract_address,
                 entry_point_selector: txn.entry_point_selector,
                 calldata: txn.calldata,
+                max_fee: txn.max_fee,
             })
         }
     }
@@ -517,18 +585,25 @@ pub mod reply {
                 contract_address: txn.contract_address,
                 entry_point_selector: txn.entry_point_selector,
                 calldata: txn.calldata,
+                max_fee: txn.max_fee,
             }
         }
     }
 
     /// L2 transaction receipt as returned by the RPC API.
+    #[serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct TransactionReceipt {
         pub txn_hash: StarknetTransactionHash,
+        #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
+        pub actual_fee: Option<Fee>,
         pub status: TransactionStatus,
         pub status_data: String,
         pub messages_sent: Vec<transaction_receipt::MessageToL1>,
+        #[serde(default)]
         pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
         pub events: Vec<transaction_receipt::Event>,
     }
@@ -540,6 +615,7 @@ pub mod reply {
         ) -> Self {
             Self {
                 txn_hash: receipt.transaction_hash,
+                actual_fee: receipt.actual_fee,
                 status: status.into(),
                 // TODO at the moment not available in sequencer replies
                 status_data: String::new(),
@@ -638,16 +714,28 @@ pub mod reply {
     /// `contract_address` field is available for Deploy and Invoke transactions.
     /// `entry_point_selector` and `calldata` fields are available only
     /// for Invoke transactions.
+    #[serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
     pub struct TransactionAndReceipt {
         pub txn_hash: StarknetTransactionHash,
+        #[serde(default)]
         pub contract_address: Option<ContractAddress>,
+        #[serde(default)]
         pub entry_point_selector: Option<EntryPoint>,
+        #[serde(default)]
         pub calldata: Option<Vec<CallParam>>,
+        #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
+        pub max_fee: Option<Fee>,
+        #[serde_as(as = "Option<FeeAsHexStr>")]
+        #[serde(default)]
+        pub actual_fee: Option<Fee>,
         pub status: TransactionStatus,
         pub status_data: String,
         pub messages_sent: Vec<transaction_receipt::MessageToL1>,
+        #[serde(default)]
         pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
         pub events: Vec<transaction_receipt::Event>,
     }
