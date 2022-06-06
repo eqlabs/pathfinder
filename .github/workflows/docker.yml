@@ -14,7 +14,7 @@ jobs:
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@v1.0
         with:
-          swap-size-gb: 10
+          swap-size-gb: 20
       - run: |
           sudo mkdir -p /var/lib/docker
           sudo mount -t tmpfs -o size=10G none /var/lib/docker
