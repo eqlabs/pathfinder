@@ -498,10 +498,13 @@ pub mod reply {
     }
 
     /// L2 state update as returned by the RPC API.
+    #[skip_serializing_none]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct StateUpdate {
-        block_hash: StarknetBlockHash,
+        /// None for `pending`
+        #[serde(default)]
+        block_hash: Option<StarknetBlockHash>,
         new_root: GlobalRoot,
         old_root: GlobalRoot,
         accepted_time: u64,
