@@ -169,8 +169,8 @@ Using `--help` will display the `pathfinder` options, including their environmen
 # with built from source
 cargo run --release --bin pathfinder -- --help
 
-# with docker images
-docker run --rm eqlabs/pathfinder /usr/local/bin/pathfinder --help
+# with docker images (0.2.0 onwards)
+docker run --rm eqlabs/pathfinder
 ```
 
 The configuration file uses the `toml` format:
@@ -236,6 +236,7 @@ If the directory gets created by docker upon startup, it might be unusable for c
 # ensure the directory has been created before invoking docker
 mkdir -p $HOME/pathfinder
 docker run \
+  --rm \
   -p 9545:9545 \
   -e RUST_LOG=info \
   -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
@@ -271,20 +272,6 @@ You can build the image by running:
 ```bash
 docker build -t pathfinder .
 ```
-
-You can then start the node with:
-
-```bash
-docker run \
-  --rm \
-  -it \
-  -p 9545:9545 \
-  -e RUST_LOG=info \
-  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
-  -v $HOME/pathfinder:/usr/share/pathfinder/data \
-  pathfinder
-```
-
 
 ## API
 

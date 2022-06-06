@@ -94,5 +94,8 @@ WORKDIR /usr/share/pathfinder/data
 # this is required to have exposing ports work from docker, the default is not this.
 ENV PATHFINDER_HTTP_RPC_ADDRESS="0.0.0.0:9545"
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/usr/local/bin/pathfinder"]
+# this has been changed in #335 to follow docker best practices example; every
+# time it is changed it will be a breaking change. this allows `docker run
+# eqlabs/pathfinder` to give an introductory path to configuration.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/pathfinder"]
+CMD ["--help"]
