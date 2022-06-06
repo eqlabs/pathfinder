@@ -22,10 +22,6 @@ jobs:
         uses: pierotofy/set-swap-space@v1.0
         with:
           swap-size-gb: 14
-      - run: |
-          sudo mkdir -p /var/lib/docker
-          sudo mount -t tmpfs -o size=10G none /var/lib/docker
-          sudo systemctl restart docker
       - name: Checkout sources
         uses: actions/checkout@v2
       - name: Set up QEMU
