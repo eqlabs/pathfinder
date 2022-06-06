@@ -50,7 +50,7 @@ RUN touch crates/pathfinder/src/build.rs
 RUN touch crates/stark_curve/src/lib.rs
 RUN touch crates/stark_hash/src/lib.rs
 
-RUN CARGO_INCREMENTAL=0 cargo build --release -p pathfinder
+RUN CARGO_INCREMENTAL=0 cargo build --release -p pathfinder --bin pathfinder
 
 #######################################
 # Stage 2: Build the Python libraries #
