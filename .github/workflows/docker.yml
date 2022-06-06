@@ -10,6 +10,11 @@ jobs:
   update-docker-images:
     runs-on: ubuntu-latest
     steps:
+      - name: Free up space
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h
      # Workaround for https://github.com/rust-lang/cargo/issues/8719
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@v1.0
