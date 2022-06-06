@@ -9,7 +9,7 @@ use self::{
 };
 use crate::{
     core::{
-        CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        CallSignatureElem, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
         StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
         TransactionVersion,
     },
@@ -43,6 +43,13 @@ pub trait ClientApi {
         &self,
         contract_addr: ContractAddress,
     ) -> Result<bytes::Bytes, SequencerError>;
+
+    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
+
+    async fn class_hash_at(
+        &self,
+        contract_address: ContractAddress,
+    ) -> Result<ClassHash, SequencerError>;
 
     async fn storage(
         &self,
@@ -360,6 +367,45 @@ impl ClientApi for Client {
         .await
     }
 
+    /// Gets class for a particular class hash.
+    #[tracing::instrument(skip(self))]
+    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query(
+                    &["feeder_gateway", "get_class_by_hash"],
+                    &[("classHash", &class_hash.0.to_hex_str())],
+                ))
+                .send()
+                .await?;
+            let resp = parse_raw(resp).await?;
+            let resp = resp.bytes().await?;
+            Ok(resp)
+        })
+        .await
+    }
+
+    /// Gets class hash for a particular contract address.
+    #[tracing::instrument(skip(self))]
+    async fn class_hash_at(
+        &self,
+        contract_address: ContractAddress,
+    ) -> Result<ClassHash, SequencerError> {
+        retry(|| async {
+            let resp = self
+                .inner
+                .get(self.build_query(
+                    &["feeder_gateway", "get_class_hash_at"],
+                    &[("contractAddress", &contract_address.0.to_hex_str())],
+                ))
+                .send()
+                .await?;
+            parse(resp).await
+        })
+        .await
+    }
+
     /// Gets storage value associated with a `key` for a prticular contract.
     #[tracing::instrument(skip(self))]
     async fn storage(
@@ -580,8 +626,9 @@ impl ClientApi for Client {
 pub mod test_utils {
     use crate::{
         core::{
-            CallParam, ContractAddress, EntryPoint, StarknetBlockHash, StarknetBlockNumber,
-            StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
+            CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
+            StarknetBlockNumber, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
+            StorageValue,
         },
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
     };
@@ -598,6 +645,7 @@ pub mod test_utils {
     }
 
     impl_from_hex_str!(CallParam);
+    impl_from_hex_str!(ClassHash);
     impl_from_hex_str!(ContractAddress);
     impl_from_hex_str!(EntryPoint);
     impl_from_hex_str!(StarknetBlockHash);
@@ -622,6 +670,9 @@ pub mod test_utils {
         pub static ref VALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
         pub static ref VALID_KEY_DEC: String = crate::rpc::serde::starkhash_to_dec_str(&VALID_KEY.0);
         pub static ref VALID_CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("0x4d2").unwrap()];
+        /// Class hash for VALID_CONTRACT_ADDR
+        pub static ref VALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x021a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2").unwrap();
+        pub static ref INVALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2").unwrap();
     }
 }
 
@@ -641,6 +692,14 @@ mod tests {
     }
 
     impl std::fmt::Display for crate::core::StarknetTransactionHash {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut buf = [0u8; 2 + 64];
+            let s = self.0.as_hex_str(&mut buf);
+            f.write_str(s)
+        }
+    }
+
+    impl std::fmt::Display for crate::core::ClassHash {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let mut buf = [0u8; 2 + 64];
             let s = self.0.as_hex_str(&mut buf);
@@ -1180,6 +1239,76 @@ mod tests {
             )]);
             let bytes = client.full_contract(*VALID_CONTRACT_ADDR).await.unwrap();
             serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
+        }
+    }
+
+    mod class_by_hash {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[test_log::test(tokio::test)]
+        async fn invalid_class_hash() {
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_class_by_hash?classHash={}",
+                    *INVALID_CLASS_HASH
+                ),
+                StarknetErrorCode::UndeclaredClass.into_response(),
+            )]);
+            let error = client.class_by_hash(*INVALID_CLASS_HASH).await.unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UndeclaredClass)
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_class_by_hash?classHash={}",
+                    *VALID_CLASS_HASH
+                ),
+                (r#"{"hello":"world"}"#, 200),
+            )]);
+            let bytes = client.class_by_hash(*VALID_CLASS_HASH).await.unwrap();
+            serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
+        }
+    }
+
+    mod class_hash {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[test_log::test(tokio::test)]
+        async fn invalid_contract_address() {
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_class_hash_at?contractAddress={}",
+                    *INVALID_CONTRACT_ADDR
+                ),
+                StarknetErrorCode::UninitializedContract.into_response(),
+            )]);
+            let error = client
+                .class_hash_at(*INVALID_CONTRACT_ADDR)
+                .await
+                .unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_class_hash_at?contractAddress={}",
+                    *VALID_CONTRACT_ADDR
+                ),
+                (r#""0x01""#, 200),
+            )]);
+            client.class_hash_at(*VALID_CONTRACT_ADDR).await.unwrap();
         }
     }
 

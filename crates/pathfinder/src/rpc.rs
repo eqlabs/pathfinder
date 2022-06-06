@@ -498,16 +498,17 @@ mod tests {
             calldata: None,
             class_hash: None,
             constructor_calldata: None,
-            contract_address: contract0_addr,
+            contract_address: Some(contract0_addr),
             contract_address_salt: None,
             entry_point_type: None,
             entry_point_selector: None,
             max_fee: Some(Fee(H128::zero())),
+            nonce: None,
+            sender_address: None,
             signature: None,
             transaction_hash: txn0_hash,
-            sender_address: None,
-            nonce: None,
             r#type: Type::Deploy,
+            version: None,
         };
         let mut receipt0 = Receipt {
             actual_fee: None,
@@ -534,14 +535,14 @@ mod tests {
         let mut txn3 = txn0.clone();
         let mut txn4 = txn0.clone();
         txn1.transaction_hash = txn1_hash;
-        txn1.contract_address = contract1_addr;
+        txn1.contract_address = Some(contract1_addr);
         txn2.transaction_hash = txn2_hash;
-        txn2.contract_address = contract1_addr;
+        txn2.contract_address = Some(contract1_addr);
         txn3.transaction_hash = txn3_hash;
-        txn3.contract_address = contract1_addr;
+        txn3.contract_address = Some(contract1_addr);
         txn4.transaction_hash = txn4_hash;
 
-        txn4.contract_address = ContractAddress(StarkHash::ZERO);
+        txn4.contract_address = Some(ContractAddress(StarkHash::ZERO));
         let mut txn5 = txn4.clone();
         txn5.transaction_hash = txn5_hash;
         let mut receipt1 = receipt0.clone();
@@ -2217,20 +2218,21 @@ mod tests {
                 calldata: None,
                 class_hash: None,
                 constructor_calldata: None,
-                contract_address: ContractAddress(
+                contract_address: Some(ContractAddress(
                     StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
-                ),
+                )),
                 contract_address_salt: None,
                 entry_point_type: None,
                 entry_point_selector: None,
+                max_fee: None,
+                nonce: None,
+                sender_address: None,
                 signature: None,
                 transaction_hash: StarknetTransactionHash(
                     StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap(),
                 ),
-                max_fee: None,
-                sender_address: None,
-                nonce: None,
                 r#type: transaction::Type::InvokeFunction,
+                version: None,
             });
             let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
                 actual_fee: None,

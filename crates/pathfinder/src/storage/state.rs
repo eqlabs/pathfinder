@@ -728,6 +728,10 @@ impl StarknetEventsTable {
         transaction: &transaction::Transaction,
         events: &[transaction::Event],
     ) -> anyhow::Result<()> {
+        if transaction.contract_address.is_none() && !events.is_empty() {
+            anyhow::bail!("Declare transactions cannot emit events");
+        }
+
         for (idx, event) in events.iter().enumerate() {
             connection
                 .execute(
@@ -737,7 +741,7 @@ impl StarknetEventsTable {
                         ":block_number": block_number.0,
                         ":idx": idx,
                         ":transaction_hash": &transaction.transaction_hash.0.as_be_bytes()[..],
-                        ":from_address": &transaction.contract_address.0.as_be_bytes()[..],
+                        ":from_address": &transaction.contract_address.expect("contract_address should exist for non-declare transactions").0.as_be_bytes()[..],
                         ":keys": Self::event_keys_to_base64_strings(&event.keys),
                         ":data": Self::event_data_to_bytes(&event.data),
                     ],

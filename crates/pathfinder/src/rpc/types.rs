@@ -151,8 +151,7 @@ pub mod reply {
             StarknetBlockTimestamp, StarknetTransactionHash,
         },
         rpc::{api::RawBlock, serde::GasPriceAsHexStr},
-        sequencer::reply as seq,
-        sequencer::reply::Status as SeqStatus,
+        sequencer,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -175,18 +174,18 @@ pub mod reply {
         Rejected,
     }
 
-    impl From<SeqStatus> for BlockStatus {
-        fn from(status: SeqStatus) -> Self {
+    impl From<sequencer::reply::Status> for BlockStatus {
+        fn from(status: sequencer::reply::Status) -> Self {
             match status {
                 // TODO verify this mapping with Starkware
-                SeqStatus::AcceptedOnL1 => BlockStatus::AcceptedOnL1,
-                SeqStatus::AcceptedOnL2 => BlockStatus::AcceptedOnL2,
-                SeqStatus::NotReceived => BlockStatus::Rejected,
-                SeqStatus::Pending => BlockStatus::Pending,
-                SeqStatus::Received => BlockStatus::Pending,
-                SeqStatus::Rejected => BlockStatus::Rejected,
-                SeqStatus::Reverted => BlockStatus::Rejected,
-                SeqStatus::Aborted => BlockStatus::Rejected,
+                sequencer::reply::Status::AcceptedOnL1 => BlockStatus::AcceptedOnL1,
+                sequencer::reply::Status::AcceptedOnL2 => BlockStatus::AcceptedOnL2,
+                sequencer::reply::Status::NotReceived => BlockStatus::Rejected,
+                sequencer::reply::Status::Pending => BlockStatus::Pending,
+                sequencer::reply::Status::Received => BlockStatus::Pending,
+                sequencer::reply::Status::Rejected => BlockStatus::Rejected,
+                sequencer::reply::Status::Reverted => BlockStatus::Rejected,
+                sequencer::reply::Status::Aborted => BlockStatus::Rejected,
             }
         }
     }
@@ -245,7 +244,10 @@ pub mod reply {
         }
 
         /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
-        pub fn from_sequencer_scoped(block: seq::Block, scope: BlockResponseScope) -> Self {
+        pub fn from_sequencer_scoped(
+            block: sequencer::reply::Block,
+            scope: BlockResponseScope,
+        ) -> Self {
             Self {
                 block_hash: block.block_hash,
                 parent_hash: block.parent_block_hash,
@@ -477,20 +479,22 @@ pub mod reply {
     }
 
     /// L2 transaction as returned by the RPC API.
+    ///
+    /// `contract_address` field is available for Deploy and Invoke transactions.
+    /// `entry_point_selector` and `calldata` fields are available only
+    /// for Invoke transactions.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct Transaction {
         pub txn_hash: StarknetTransactionHash,
-        pub contract_address: ContractAddress,
-        /// Absent for "deploy" transactions
+        pub contract_address: Option<ContractAddress>,
         pub entry_point_selector: Option<EntryPoint>,
-        /// Absent for "deploy" transactions
         pub calldata: Option<Vec<CallParam>>,
     }
 
-    impl TryFrom<seq::Transaction> for Transaction {
+    impl TryFrom<sequencer::reply::Transaction> for Transaction {
         type Error = anyhow::Error;
 
-        fn try_from(txn: seq::Transaction) -> Result<Self, Self::Error> {
+        fn try_from(txn: sequencer::reply::Transaction) -> Result<Self, Self::Error> {
             let txn = txn
                 .transaction
                 .ok_or_else(|| anyhow::anyhow!("Transaction not found."))?;
@@ -503,8 +507,8 @@ pub mod reply {
         }
     }
 
-    impl From<seq::transaction::Transaction> for Transaction {
-        fn from(txn: seq::transaction::Transaction) -> Self {
+    impl From<sequencer::reply::transaction::Transaction> for Transaction {
+        fn from(txn: sequencer::reply::transaction::Transaction) -> Self {
             Self {
                 txn_hash: txn.transaction_hash,
                 contract_address: txn.contract_address,
@@ -526,7 +530,10 @@ pub mod reply {
     }
 
     impl TransactionReceipt {
-        pub fn with_status(receipt: seq::transaction::Receipt, status: BlockStatus) -> Self {
+        pub fn with_status(
+            receipt: sequencer::reply::transaction::Receipt,
+            status: BlockStatus,
+        ) -> Self {
             Self {
                 txn_hash: receipt.transaction_hash,
                 status: status.into(),
@@ -623,14 +630,16 @@ pub mod reply {
 
     /// Used in [Block](crate::rpc::types::reply::Block) when the requested scope of
     /// reply is [BlockResponseScope::FullTransactionsAndReceipts](crate::rpc::types::request::BlockResponseScope).
+    ///
+    /// `contract_address` field is available for Deploy and Invoke transactions.
+    /// `entry_point_selector` and `calldata` fields are available only
+    /// for Invoke transactions.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     pub struct TransactionAndReceipt {
         pub txn_hash: StarknetTransactionHash,
-        pub contract_address: ContractAddress,
-        /// Absent in "deploy" transaction
+        pub contract_address: Option<ContractAddress>,
         pub entry_point_selector: Option<EntryPoint>,
-        /// Absent in "deploy" transaction
         pub calldata: Option<Vec<CallParam>>,
         pub status: TransactionStatus,
         pub status_data: String,
@@ -657,18 +666,18 @@ pub mod reply {
         Rejected,
     }
 
-    impl From<seq::Status> for TransactionStatus {
-        fn from(status: SeqStatus) -> Self {
+    impl From<sequencer::reply::Status> for TransactionStatus {
+        fn from(status: sequencer::reply::Status) -> Self {
             match status {
                 // TODO verify this mapping with Starkware
-                SeqStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
-                SeqStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnL2,
-                SeqStatus::NotReceived => TransactionStatus::Unknown,
-                SeqStatus::Pending => TransactionStatus::Pending,
-                SeqStatus::Received => TransactionStatus::Received,
-                SeqStatus::Rejected => TransactionStatus::Rejected,
-                SeqStatus::Reverted => TransactionStatus::Unknown,
-                SeqStatus::Aborted => TransactionStatus::Unknown,
+                sequencer::reply::Status::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
+                sequencer::reply::Status::AcceptedOnL2 => TransactionStatus::AcceptedOnL2,
+                sequencer::reply::Status::NotReceived => TransactionStatus::Unknown,
+                sequencer::reply::Status::Pending => TransactionStatus::Pending,
+                sequencer::reply::Status::Received => TransactionStatus::Received,
+                sequencer::reply::Status::Rejected => TransactionStatus::Rejected,
+                sequencer::reply::Status::Reverted => TransactionStatus::Unknown,
+                sequencer::reply::Status::Aborted => TransactionStatus::Unknown,
             }
         }
     }

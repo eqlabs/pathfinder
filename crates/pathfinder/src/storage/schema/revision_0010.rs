@@ -346,16 +346,17 @@ mod tests {
                 calldata: None,
                 class_hash: None,
                 constructor_calldata: None,
-                contract_address: contract0_address,
+                contract_address: Some(contract0_address),
                 contract_address_salt: None,
                 entry_point_selector: None,
                 entry_point_type: None,
                 max_fee: None,
+                nonce: None,
+                sender_address: None,
                 signature: None,
                 transaction_hash: transaction0_hash,
-                sender_address: None,
-                nonce: None,
                 r#type: transaction::Type::Deploy,
+                version: None,
             };
             let mut transaction1 = transaction0.clone();
             transaction1.transaction_hash =
