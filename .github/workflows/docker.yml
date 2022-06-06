@@ -12,8 +12,10 @@ jobs:
     steps:
       - name: Free up space
         run: |
+          echo "before freeing up space:"
           df -h
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          echo "after freeing up space:"
           df -h
      # Workaround for https://github.com/rust-lang/cargo/issues/8719
       - name: Set Swap Space
