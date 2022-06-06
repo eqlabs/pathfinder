@@ -236,6 +236,7 @@ If the directory gets created by docker upon startup, it might be unusable for c
 # ensure the directory has been created before invoking docker
 mkdir -p $HOME/pathfinder
 docker run \
+  --rm \
   -p 9545:9545 \
   -e RUST_LOG=info \
   -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
