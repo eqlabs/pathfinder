@@ -272,20 +272,6 @@ You can build the image by running:
 docker build -t pathfinder .
 ```
 
-You can then start the node with:
-
-```bash
-docker run \
-  --rm \
-  -it \
-  -p 9545:9545 \
-  -e RUST_LOG=info \
-  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
-  -v $HOME/pathfinder:/usr/share/pathfinder/data \
-  pathfinder
-```
-
-
 ## API
 
 The full specification is available [here](https://github.com/starkware-libs/starknet-specs).
