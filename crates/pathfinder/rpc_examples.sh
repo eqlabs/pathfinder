@@ -53,7 +53,7 @@ rpc_call '[{"jsonrpc":"2.0","id":"20","method":"starknet_getTransactionByBlockHa
 
 rpc_call '{"jsonrpc":"2.0","id":"26","method":"starknet_getTransactionReceipt","params":["0x74ec6667e6057becd3faff77d9ab14aecf5dde46edb7c599ee771f70f9e80ba"]}'
 
-rpc_call '{"jsonrpc":"2.0","id":"27","method":"starknet_getCode","params":["0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"]}'
+rpc_call '{"jsonrpc":"2.0","id":"27","method":"starknet_getClassAt","params":["0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"]}'
 
 rpc_call '[{"jsonrpc":"2.0","id":"28","method":"starknet_getBlockTransactionCountByHash","params":["latest"]},
 {"jsonrpc":"2.0","id":"29","method":"starknet_getBlockTransactionCountByNumber","params":["latest"]},

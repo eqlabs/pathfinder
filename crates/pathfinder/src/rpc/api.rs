@@ -699,9 +699,9 @@ impl RpcApi {
             .and_then(|x| x)
     }
 
-    /// Get the code of a specific contract.
+    /// Get the class of a specific contract.
     /// `contract_address` is the address of the contract to read from.
-    pub async fn get_code(&self, contract_address: ContractAddress) -> RpcResult<ContractCode> {
+    pub async fn get_class_at(&self, contract_address: ContractAddress) -> RpcResult<ContractCode> {
         use crate::storage::ContractCodeTable;
 
         let storage = self.storage.clone();

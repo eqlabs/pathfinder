@@ -181,13 +181,13 @@ pub async fn run_server(
                 .await
         },
     )?;
-    module.register_async_method("starknet_getCode", |params, context| async move {
+    module.register_async_method("starknet_getClassAt", |params, context| async move {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
             pub contract_address: ContractAddress,
         }
         context
-            .get_code(params.parse::<NamedArgs>()?.contract_address)
+            .get_class_at(params.parse::<NamedArgs>()?.contract_address)
             .await
     })?;
     module.register_async_method(
@@ -1565,7 +1565,7 @@ mod tests {
         }
     }
 
-    mod get_code {
+    mod get_class_at {
         use super::*;
         use crate::core::ContractCode;
         use crate::rpc::types::reply::ErrorCode;
@@ -1580,7 +1580,7 @@ mod tests {
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
             let error = client(addr)
-                .request::<ContractCode>("starknet_getCode", params)
+                .request::<ContractCode>("starknet_getClassAt", params)
                 .await
                 .unwrap_err();
             assert_eq!(ErrorCode::ContractNotFound, error);
@@ -1596,7 +1596,7 @@ mod tests {
 
             let not_found = client(addr)
                 .request::<ContractCode>(
-                    "starknet_getCode",
+                    "starknet_getClassAt",
                     rpc_params!(
                         "0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc"
                     ),
@@ -1675,7 +1675,7 @@ mod tests {
                 )]),
             ]
             .into_iter()
-            .map(|arg| client.request::<ContractCode>("starknet_getCode", arg))
+            .map(|arg| client.request::<ContractCode>("starknet_getClassAt", arg))
             .collect::<futures::stream::FuturesOrdered<_>>()
             .try_collect::<Vec<_>>()
             .await
