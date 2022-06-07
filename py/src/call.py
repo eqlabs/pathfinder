@@ -239,8 +239,8 @@ def resolve_block(connection, at_block):
     from starkware.starknet.business_logic.state.state import BlockInfo
 
     if at_block == "latest":
-        # latest is questionable, but the rust side cannot use it at the moment at least,
-        # should probably be removed.
+        # it has been decided that the latest is whatever pathfinder knows to be latest synced block
+        # regardless of it being the highest known (not yet synced)
         cursor = connection.execute(
             "select number, timestamp, root, gas_price, sequencer_address from starknet_blocks order by number desc limit 1"
         )
