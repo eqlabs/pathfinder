@@ -860,14 +860,14 @@ mod tests {
                         "/feeder_gateway/get_block?blockHash={}",
                         *GENESIS_BLOCK_HASH
                     ),
-                    response!("genesis_block.json"),
+                    response!("0.8.2/block/genesis.json"),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_block?blockNumber={}",
                         *GENESIS_BLOCK_NUMBER
                     ),
-                    response!("genesis_block.json"),
+                    response!("0.8.2/block/genesis.json"),
                 ),
             ]);
             let by_hash = client.block_by_hash(*GENESIS_BLOCK_HASH).await.unwrap();
@@ -880,11 +880,11 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_block?blockHash=0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
-                    response!("block_200k.json")
+                    response!("0.8.2/block/200000.json")
                 ),
                 (
                     "/feeder_gateway/get_block?blockNumber=200000",
-                    response!("block_200k.json")
+                    response!("0.8.2/block/200000.json")
                 ),
             ]);
             let by_hash = client
@@ -912,7 +912,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
-                response!("block_200k.json"),
+                response!("0.8.2/block/200000.json"),
             )]);
             client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
@@ -924,7 +924,7 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
-                response!("pending_block.json"),
+                response!("0.8.2/block/pending.json"),
             )]);
             client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
@@ -956,7 +956,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
-                response!("block_200k.json"),
+                response!("0.8.2/block/200000.json"),
             )]);
             client
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
@@ -968,7 +968,7 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
-                response!("pending_block.json"),
+                response!("0.8.2/block/pending.json"),
             )]);
             client
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
@@ -999,7 +999,7 @@ mod tests {
         async fn contains_receipts_without_status_field() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=1716",
-                response!("block_1716.json"),
+                response!("0.8.2/block/1716.json"),
             )]);
             client
                 .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1716)))
@@ -1456,7 +1456,7 @@ mod tests {
                     "/feeder_gateway/get_transaction?transactionHash={}",
                     *VALID_TX_HASH
                 ),
-                response!("valid_tx.json"),
+                response!("0.8.2/txn/invoke.json"),
             )]);
             assert_eq!(
                 client.transaction(*VALID_TX_HASH).await.unwrap().status,
@@ -1490,7 +1490,7 @@ mod tests {
                     "/feeder_gateway/get_transaction_status?transactionHash={}",
                     *VALID_TX_HASH
                 ),
-                response!("valid_tx_status.json"),
+                response!("0.8.2/txn/status.json"),
             )]);
             assert_eq!(
                 client
@@ -1570,14 +1570,14 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
-                    response!("genesis_state_update.json"),
+                    response!("0.8.2/state_update/genesis.json"),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_state_update?blockHash={}",
                         *GENESIS_BLOCK_HASH
                     ),
-                    response!("genesis_state_update.json"),
+                    response!("0.8.2/state_update/genesis.json"),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1599,11 +1599,11 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=200000",
-                    response!("state_update_200k.json"),
+                    response!("0.8.2/state_update/200000.json"),
                 ),
                 (
                     "/feeder_gateway/get_state_update?blockHash=0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
-                    response!("state_update_200k.json"),
+                    response!("0.8.2/state_update/200000.json"),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1652,7 +1652,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
-                response!("state_update_200k.json"),
+                response!("0.8.2/state_update/200000.json"),
             )]);
             client
                 .state_update_by_number(BlockNumberOrTag::Tag(Tag::Latest))
@@ -1664,7 +1664,7 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                response!("pending_state_update.json"),
+                response!("0.8.2/state_update/200000.json"),
             )]);
             client
                 .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
@@ -1699,7 +1699,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
-                response!("state_update_200k.json"),
+                response!("0.8.2/state_update/200000.json"),
             )]);
             client
                 .state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
@@ -1711,7 +1711,7 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                response!("pending_state_update.json"),
+                response!("0.8.2/state_update/200000.json"),
             )]);
             client
                 .state_update_by_hash(BlockHashOrTag::Tag(Tag::Pending))
