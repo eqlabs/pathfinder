@@ -69,54 +69,6 @@ impl ContractCodeTable {
         Ok(())
     }
 
-    /// Gets the specified contract's [code](ContractCode).
-    pub fn get_class_at(
-        transaction: &Transaction<'_>,
-        address: ContractAddress,
-    ) -> anyhow::Result<Option<ContractCode>> {
-        let row = transaction
-            .query_row(
-                "SELECT contract_code.bytecode, contract_code.abi
-                FROM contracts
-                JOIN contract_code ON contracts.hash = contract_code.hash
-                WHERE contracts.address = :address
-                LIMIT 1",
-                named_params! {
-                    ":address": &address.0.to_be_bytes()[..]
-                },
-                |row| {
-                    let bytecode: Vec<u8> = row.get("bytecode")?;
-                    let abi: Vec<u8> = row.get("abi")?;
-
-                    Ok((bytecode, abi))
-                },
-            )
-            .optional()?;
-
-        let (bytecode, abi) = match row {
-            None => return Ok(None),
-            Some((bytecode, abi)) => (bytecode, abi),
-        };
-
-        // It might be dangerious to not have some upper bound on the compressed size.
-        // someone could put a very tight bomb to our database, and then have it OOM during
-        // runtime, but if you can already modify our database at will, maybe there's more useful
-        // things to do.
-
-        let bytecode = zstd::decode_all(&*bytecode)
-            .context("Corruption: invalid compressed column (bytecode)")?;
-
-        let abi = zstd::decode_all(&*abi).context("Corruption: invalid compressed column (abi)")?;
-
-        let abi =
-            String::from_utf8(abi).context("Corruption: invalid uncompressed column (abi)")?;
-
-        let bytecode = serde_json::from_slice::<Vec<ByteCodeWord>>(&bytecode)
-            .context("Corruption: invalid uncompressed column (bytecode)")?;
-
-        Ok(Some(ContractCode { bytecode, abi }))
-    }
-
     pub fn get_class(
         transaction: &Transaction<'_>,
         hash: ClassHash,
@@ -273,21 +225,6 @@ mod tests {
         let (hash, contract_code) = setup_class(&transaction);
 
         let result = ContractCodeTable::get_class(&transaction, hash).unwrap();
-
-        assert_eq!(result, Some(contract_code));
-    }
-
-    #[test]
-    fn get_class_at() {
-        let storage = Storage::in_memory().unwrap();
-        let mut conn = storage.connection().unwrap();
-        let transaction = conn.transaction().unwrap();
-
-        let (hash, contract_code) = setup_class(&transaction);
-        let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
-        ContractsTable::upsert(&transaction, address, hash).unwrap();
-
-        let result = ContractCodeTable::get_class_at(&transaction, address).unwrap();
 
         assert_eq!(result, Some(contract_code));
     }
