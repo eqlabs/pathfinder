@@ -190,7 +190,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fails_if_contract_hash_missing() {
+    fn fails_if_class_hash_missing() {
         let storage = Storage::in_memory().unwrap();
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
