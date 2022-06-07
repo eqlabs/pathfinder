@@ -27,7 +27,7 @@ use tracing::info;
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = 10;
+const DB_VERSION_CURRENT: u32 = 11;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -139,15 +139,16 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
             .context("Create database transaction")?;
         let action = match from_version {
             DB_VERSION_EMPTY => schema::revision_0001::migrate(&transaction)?,
-            1 => schema::revision_0002::migrate(&transaction)?,
-            2 => schema::revision_0003::migrate(&transaction)?,
-            3 => schema::revision_0004::migrate(&transaction)?,
-            4 => schema::revision_0005::migrate(&transaction)?,
-            5 => schema::revision_0006::migrate(&transaction)?,
-            6 => schema::revision_0007::migrate(&transaction)?,
-            7 => schema::revision_0008::migrate(&transaction)?,
-            8 => schema::revision_0009::migrate(&transaction)?,
-            9 => schema::revision_0010::migrate(&transaction)?,
+            1 => schema::revision_0002::migrate(&transaction).context("migrating from 1")?,
+            2 => schema::revision_0003::migrate(&transaction).context("migrating from 2")?,
+            3 => schema::revision_0004::migrate(&transaction).context("migrating from 3")?,
+            4 => schema::revision_0005::migrate(&transaction).context("migrating from 4")?,
+            5 => schema::revision_0006::migrate(&transaction).context("migrating from 5")?,
+            6 => schema::revision_0007::migrate(&transaction).context("migrating from 6")?,
+            7 => schema::revision_0008::migrate(&transaction).context("migrating from 7")?,
+            8 => schema::revision_0009::migrate(&transaction).context("migrating from 8")?,
+            9 => schema::revision_0010::migrate(&transaction).context("migrating from 9")?,
+            10 => schema::revision_0011::migrate(&transaction).context("migrating from 10")?,
             _ => unreachable!("Database version constraint was already checked!"),
         };
         // If any migration action requires vacuuming, we should vacuum.
