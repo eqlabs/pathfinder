@@ -865,11 +865,9 @@ impl RpcApi {
         use futures::future::TryFutureExt;
 
         match (self.call_handle.as_ref(), &block_hash) {
-            (Some(h), &BlockHashOrTag::Hash(_)) => {
-                // only forward calls to specific blocks to our local impl, because we currently
-                // don't do an on-demand poll and flush for the pending block.
-                //
-                // unsure about the expected Tag::Latest semantics either.
+            (Some(h), &BlockHashOrTag::Hash(_) | &BlockHashOrTag::Tag(Tag::Latest)) => {
+                // we don't yet handle pending at all, and latest has been decided to be whatever
+                // block we have, which is exactly how the py/src/call.py handles it.
                 h.call(request, block_hash).map_err(Error::from).await
             }
             (Some(_), _) | (None, _) => {
