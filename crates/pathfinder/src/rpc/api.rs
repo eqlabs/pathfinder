@@ -19,7 +19,7 @@ use crate::{
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
     state::SyncState,
     storage::{
-        EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
+        ContractsTable, EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
         StarknetEventsTable, StarknetTransactionsTable, Storage,
     },
 };
@@ -718,7 +718,16 @@ impl RpcApi {
                 .context("Creating database transaction")
                 .map_err(internal_server_error)?;
 
-            let code = ContractCodeTable::get_class_at(&tx, contract_address)
+            let class_hash = ContractsTable::get_hash(&tx, contract_address)
+                .context("Fetching class hash from database")
+                .map_err(internal_server_error)?;
+
+            let class_hash = match class_hash {
+                Some(hash) => hash,
+                None => return Err(ErrorCode::ContractNotFound.into()),
+            };
+
+            let code = ContractCodeTable::get_class(&tx, class_hash)
                 .context("Fetching code from database")
                 .map_err(internal_server_error)?;
 
