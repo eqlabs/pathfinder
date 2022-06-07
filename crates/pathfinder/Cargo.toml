@@ -27,7 +27,7 @@ enum-iterator = "0.7.0"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 hex = "0.4.3"
 home = "0.5.3"
-jsonrpsee = { version = "0.11.0", features = ["full"] }
+jsonrpsee = { version = "0.11.0", features = ["server"] }
 lazy_static = "1.4.0"
 num-bigint = { version = "0.4.3", features = ["serde"] }
 reqwest = { version = "0.11.4", features = ["json"] }
@@ -52,6 +52,7 @@ zstd = "0.10"
 assert_matches = "1.5.0"
 flate2 = "1.0.23"
 http = "0.2.6"
+jsonrpsee = { version = "0.11.0", features = ["server", "client"] }
 mockall = "0.11.0"
 pretty_assertions = "1.0.0"
 tempfile = "3"
