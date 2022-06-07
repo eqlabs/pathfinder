@@ -718,7 +718,7 @@ impl RpcApi {
                 .context("Creating database transaction")
                 .map_err(internal_server_error)?;
 
-            let code = ContractCodeTable::get_code(&tx, contract_address)
+            let code = ContractCodeTable::get_class_at(&tx, contract_address)
                 .context("Fetching code from database")
                 .map_err(internal_server_error)?;
 

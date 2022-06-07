@@ -70,7 +70,7 @@ impl ContractCodeTable {
     }
 
     /// Gets the specified contract's [code](ContractCode).
-    pub fn get_code(
+    pub fn get_class_at(
         transaction: &Transaction<'_>,
         address: ContractAddress,
     ) -> anyhow::Result<Option<ContractCode>> {
@@ -118,10 +118,10 @@ impl ContractCodeTable {
     }
 
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
-    pub fn exists(connection: &Connection, contracts: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+    pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
         let mut stmt = connection.prepare("select 1 from contract_code where hash = ?")?;
 
-        Ok(contracts
+        Ok(classes
             .iter()
             .map(|hash| stmt.exists(&[&hash.0.to_be_bytes()[..]]))
             .collect::<Result<Vec<_>, _>>()?)
@@ -220,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn get_code() {
+    fn get_class_at() {
         let storage = Storage::in_memory().unwrap();
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
@@ -240,7 +240,7 @@ mod tests {
             .unwrap();
         ContractsTable::upsert(&transaction, address, hash).unwrap();
 
-        let result = ContractCodeTable::get_code(&transaction, address).unwrap();
+        let result = ContractCodeTable::get_class_at(&transaction, address).unwrap();
 
         assert_eq!(
             result,
