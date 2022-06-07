@@ -96,6 +96,9 @@ ENV PATHFINDER_HTTP_RPC_ADDRESS="0.0.0.0:9545"
 
 # this has been changed in #335 to follow docker best practices example; every
 # time it is changed it will be a breaking change. this allows `docker run
-# eqlabs/pathfinder` to give an introductory path to configuration.
+# eqlabs/pathfinder --help` to give an introductory path to configuration.
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/pathfinder"]
-CMD ["--help"]
+
+# empty CMD is needed and cannot be --help because otherwise configuring from
+# environment variables only would be impossible and require a workaround.
+CMD []
