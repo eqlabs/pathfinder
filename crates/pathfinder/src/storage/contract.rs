@@ -225,30 +225,32 @@ mod tests {
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
+        let (hash, contract_code) = setup_class(&transaction);
         let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
-        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
-
-        // list of objects
-        let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
-
-        // this is list of hex
-        let code = br#"["0x40780017fff7fff","0x1","0x208b7fff7fff7ffe"]"#;
-
-        let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
-
-        ContractCodeTable::insert(&transaction, hash, &abi[..], &code[..], &definition[..])
-            .unwrap();
         ContractsTable::upsert(&transaction, address, hash).unwrap();
 
         let result = ContractCodeTable::get_class_at(&transaction, address).unwrap();
 
-        assert_eq!(
-            result,
-            Some(ContractCode {
+        assert_eq!(result, Some(contract_code));
+    }
+
+    fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, ContractCode) {
+        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
+
+        // list of objects
+        let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
+        // this is list of hex
+        let code = br#"["0x40780017fff7fff","0x1","0x208b7fff7fff7ffe"]"#;
+        let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
+        ContractCodeTable::insert(transaction, hash, &abi[..], &code[..], &definition[..]).unwrap();
+
+        (
+            hash,
+            ContractCode {
                 abi: String::from_utf8(abi.to_vec()).unwrap(),
                 bytecode: serde_json::from_slice::<Vec<ByteCodeWord>>(code).unwrap(),
-            })
-        );
+            },
+        )
     }
 
     #[test]
@@ -257,16 +259,7 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
 
-        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
-
-        // list of objects
-        let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
-        // this is list of hex
-        let code = br#"["0x40780017fff7fff","0x1","0x208b7fff7fff7ffe"]"#;
-        let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
-        ContractCodeTable::insert(&transaction, hash, &abi[..], &code[..], &definition[..])
-            .unwrap();
-
+        let (hash, _) = setup_class(&transaction);
         let non_existent = ClassHash(StarkHash::from_hex_str("456").unwrap());
 
         let result = ContractCodeTable::exists(&transaction, &[hash, non_existent]).unwrap();
