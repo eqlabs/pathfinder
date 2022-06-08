@@ -1,4 +1,4 @@
-use crate::{sequencer::reply::transaction, storage::schema::PostMigrationAction};
+use crate::storage::schema::PostMigrationAction;
 
 use anyhow::Context;
 use rusqlite::{named_params, Transaction};
@@ -53,7 +53,7 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         let transaction_hash = r.get_ref_unwrap("hash").as_blob()?;
         let receipt = r.get_ref_unwrap("receipt").as_blob()?;
         let receipt = zstd::decode_all(receipt).context("Decompress receipt")?;
-        let receipt: transaction::Receipt =
+        let receipt: LightReceipt =
             serde_json::de::from_slice(&receipt).context("Deserializing transaction receipt")?;
 
         receipt.events.into_iter().enumerate().try_for_each(
@@ -103,4 +103,15 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         .context("Recreate trigger")?;
 
     Ok(PostMigrationAction::None)
+}
+
+/// Real receipt json has a bunch of fields which we don't need
+#[derive(serde::Deserialize)]
+struct LightReceipt {
+    events: Vec<LightEvent>,
+}
+
+#[derive(serde::Deserialize)]
+struct LightEvent {
+    from_address: crate::core::ContractAddress,
 }
