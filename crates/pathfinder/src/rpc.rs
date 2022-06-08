@@ -181,6 +181,15 @@ pub async fn run_server(
                 .await
         },
     )?;
+    module.register_async_method("starknet_getClassHashAt", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        pub struct NamedArgs {
+            pub contract_address: ContractAddress,
+        }
+        context
+            .get_class_hash_at(params.parse::<NamedArgs>()?.contract_address)
+            .await
+    })?;
     module.register_async_method("starknet_getClassAt", |params, context| async move {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
@@ -1562,6 +1571,83 @@ mod tests {
                 crate::rpc::types::reply::ErrorCode::InvalidTransactionHash,
                 error
             );
+        }
+    }
+
+    mod get_class_hash_at {
+        use super::*;
+
+        mod positional_args {
+            use super::contract_setup::setup_class_and_contract;
+            use super::*;
+            use crate::rpc::types::reply::ErrorCode;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_contract_not_found_for_nonexistent_contract() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = rpc_params!(*INVALID_CONTRACT_ADDR);
+                let error = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap_err();
+                assert_eq!(ErrorCode::ContractNotFound, error);
+            }
+
+            #[tokio::test]
+            async fn returns_class_hash_for_existing_contract() {
+                let storage = Storage::in_memory().unwrap();
+
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (contract_address, expected_class_hash) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
+
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = rpc_params!(contract_address);
+                let class_hash = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap();
+                assert_eq!(class_hash, expected_class_hash);
+            }
+        }
+
+        mod named_args {
+            use super::contract_setup::setup_class_and_contract;
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_class_hash_for_existing_contract() {
+                let storage = Storage::in_memory().unwrap();
+
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (contract_address, expected_class_hash) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
+
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = by_name([("contract_address", json!(contract_address))]);
+                let class_hash = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap();
+                assert_eq!(class_hash, expected_class_hash);
+            }
         }
     }
 

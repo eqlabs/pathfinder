@@ -2,9 +2,9 @@
 use crate::{
     cairo::ext_py,
     core::{
-        CallResultValue, CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
-        ContractCode, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        CallResultValue, CallSignatureElem, ClassHash, ConstructorParam, ContractAddress,
+        ContractAddressSalt, ContractCode, Fee, GasPrice, GlobalRoot, SequencerAddress,
+        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
         StarknetTransactionIndex, StorageValue, TransactionNonce, TransactionVersion,
     },
     ethereum::Chain,
@@ -690,6 +690,71 @@ impl RpcApi {
                     Ok(TransactionReceipt::with_status(receipt, block_status))
                 }
                 None => Err(ErrorCode::InvalidTransactionHash.into()),
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
+    }
+
+    /// Get the class based on its hash.
+    pub async fn get_class(&self, class_hash: ClassHash) -> RpcResult<ContractCode> {
+        use crate::storage::ContractCodeTable;
+
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            let code = ContractCodeTable::get_class(&tx, class_hash)
+                .context("Fetching code from database")
+                .map_err(internal_server_error)?;
+
+            match code {
+                Some(code) => Ok(code),
+                None => Err(ErrorCode::InvalidContractClassHash.into()),
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
+    }
+
+    /// Get the class hash of a specific contract.
+    pub async fn get_class_hash_at(
+        &self,
+        contract_address: ContractAddress,
+    ) -> RpcResult<ClassHash> {
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            let class_hash = ContractsTable::get_hash(&tx, contract_address)
+                .context("Fetching class hash from database")
+                .map_err(internal_server_error)?;
+
+            match class_hash {
+                Some(hash) => Ok(hash),
+                None => Err(ErrorCode::ContractNotFound.into()),
             }
         });
 
