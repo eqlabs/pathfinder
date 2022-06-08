@@ -32,8 +32,8 @@ The following are instructions on how to build from source.
 Currently only supports Linux. Windows and MacOS support is planned.
 We need access to a full Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
 
-| :warning:    | If using Infura as an L1 provider, you will need access to their archive node facilities. This is because `pathfinder` requires access to the full log history. |
-|---------------|:------------------------|
+| :warning: | If using Infura as an L1 provider, you will need access to their archive node facilities. This is because `pathfinder` requires access to the full log history. |
+| --------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 
 Before you start, make sure your system is up to date with Curl and Git available:
@@ -293,8 +293,12 @@ starknet_getTransactionReceipt
 # Block transaction counts
 starknet_getBlockTransactionCountByHash
 starknet_getBlockTransactionCountByNumber
+# The code of a class
+starknet_getClass
+# The class hash of a specific contract
+starknet_getClassHashAt
 # The code of a specific contract
-starknet_getCode
+starknet_getClassAt
 # Call a StarkNet function without creating a transaction
 starknet_call
 # The latest StarkNet block height
