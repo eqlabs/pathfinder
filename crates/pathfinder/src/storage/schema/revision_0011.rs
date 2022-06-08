@@ -21,6 +21,14 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         "Decompressing transactions and fixing event addresses, this may take a while.",
     );
 
+    transaction
+        .execute("DROP INDEX starknet_events_from_address", [])
+        .context("Failed to drop the index before updates")?;
+
+    transaction
+        .execute("DROP TRIGGER starknet_events_au", [])
+        .context("Failed to drop after update trigger")?;
+
     let mut stmt = transaction
         .prepare("SELECT hash, receipt FROM starknet_transactions")
         .context("Prepare transaction query")?;
@@ -52,6 +60,33 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
             },
         )?;
     }
+
+    transaction
+        .execute(
+            "CREATE INDEX starknet_events_from_address ON starknet_events(from_address)",
+            [],
+        )
+        .context("Recreate index")?;
+    transaction
+        .execute(
+            "CREATE TRIGGER starknet_events_au
+            AFTER UPDATE ON starknet_events
+            BEGIN
+                INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
+                VALUES (
+                    'delete',
+                    old.rowid,
+                    old.keys
+                );
+                INSERT INTO starknet_events_keys(rowid, keys)
+                VALUES (
+                    new.rowid,
+                    new.keys
+                );
+            END",
+            [],
+        )
+        .context("Recreate trigger")?;
 
     Ok(PostMigrationAction::None)
 }
