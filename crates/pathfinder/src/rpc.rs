@@ -1566,6 +1566,7 @@ mod tests {
     }
 
     mod get_class_at {
+        use super::contract_setup::setup_class_and_contract;
         use super::*;
         use crate::core::ContractCode;
         use crate::rpc::types::reply::ErrorCode;
@@ -1610,54 +1611,14 @@ mod tests {
         #[tokio::test]
         async fn returns_abi_and_code_for_known() {
             use crate::core::ContractCode;
-            use anyhow::Context;
-            use bytes::Bytes;
             use futures::stream::TryStreamExt;
-            use stark_hash::StarkHash;
 
             let storage = Storage::in_memory().unwrap();
 
-            let contract_definition = include_bytes!("../fixtures/contract_definition.json.zst");
-            let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition)).unwrap();
-            let contract_definition = Bytes::from(buffer);
-
-            {
-                let mut conn = storage.connection().unwrap();
-                let tx = conn.transaction().unwrap();
-
-                let address = StarkHash::from_hex_str(
-                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
-                )
-                .unwrap();
-                let expected_hash = StarkHash::from_hex_str(
-                    "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b",
-                )
-                .unwrap();
-
-                let (abi, bytecode, hash) =
-                    crate::state::class_hash::extract_abi_code_hash(&*contract_definition).unwrap();
-
-                assert_eq!(hash.0, expected_hash);
-
-                crate::storage::ContractCodeTable::insert(
-                    &tx,
-                    hash,
-                    &abi,
-                    &bytecode,
-                    &contract_definition,
-                )
-                .context("Deploy testing contract")
-                .unwrap();
-
-                crate::storage::ContractsTable::upsert(
-                    &tx,
-                    crate::core::ContractAddress(address),
-                    hash,
-                )
-                .unwrap();
-
-                tx.commit().unwrap();
-            }
+            let mut conn = storage.connection().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let (contract_address, _class_hash) = setup_class_and_contract(&transaction).unwrap();
+            transaction.commit().unwrap();
 
             let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
@@ -1668,11 +1629,8 @@ mod tests {
 
             // both parameters, these used to be separate tests
             let rets = [
-                rpc_params!("0x057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"),
-                by_name([(
-                    "contract_address",
-                    json!("0x057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"),
-                )]),
+                rpc_params!(contract_address),
+                by_name([("contract_address", json!(contract_address))]),
             ]
             .into_iter()
             .map(|arg| client.request::<ContractCode>("starknet_getClassAt", arg))
@@ -1692,6 +1650,50 @@ mod tests {
                 r#"[{"inputs":[{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"contract_address","type":"felt"},{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"call_increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"address","type":"felt"}],"name":"get_value","outputs":[{"name":"res","type":"felt"}],"type":"function"}]"#
             );
             assert_eq!(rets[0].bytecode.len(), 132);
+        }
+    }
+
+    mod contract_setup {
+        use super::*;
+        use anyhow::Context;
+        use bytes::Bytes;
+        use pretty_assertions::assert_eq;
+
+        pub fn setup_class_and_contract(
+            transaction: &rusqlite::Transaction<'_>,
+        ) -> anyhow::Result<(ContractAddress, ClassHash)> {
+            let contract_definition = include_bytes!("../fixtures/contract_definition.json.zst");
+            let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition))?;
+            let contract_definition = Bytes::from(buffer);
+
+            let contract_address = ContractAddress(
+                StarkHash::from_hex_str(
+                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                )
+                .unwrap(),
+            );
+            let expected_hash = StarkHash::from_hex_str(
+                "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b",
+            )
+            .unwrap();
+
+            let (abi, bytecode, hash) =
+                crate::state::class_hash::extract_abi_code_hash(&*contract_definition)?;
+
+            assert_eq!(hash.0, expected_hash);
+
+            crate::storage::ContractCodeTable::insert(
+                transaction,
+                hash,
+                &abi,
+                &bytecode,
+                &contract_definition,
+            )
+            .context("Deploy testing contract")?;
+
+            crate::storage::ContractsTable::upsert(transaction, contract_address, hash)?;
+
+            Ok((contract_address, hash))
         }
     }
 
