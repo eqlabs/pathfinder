@@ -58,7 +58,7 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
     let mut processed_rows = 0;
     let start_of_run = std::time::Instant::now();
     let mut start_of_batch = start_of_run;
-    let batch_size = if todo < 10000 { 0 } else { todo / 11 };
+    let batch_size = (todo / 11).max(10_000);
     let mut decompression_time = std::time::Duration::default();
     let mut parsing_time = std::time::Duration::default();
 
@@ -90,7 +90,7 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
 
         processed_rows += 1;
 
-        if batch_size > 0 && processed_rows % batch_size == 0 {
+        if processed_rows % batch_size == 0 {
             let now = std::time::Instant::now();
             let total_elapsed = now - start_of_run;
             let batch_elapsed = now - start_of_batch;
