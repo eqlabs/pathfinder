@@ -1,4 +1,8 @@
 fn main() {
+    if std::env::var_os("RUST_LOG").is_none() {
+        std::env::set_var("RUST_LOG", "pathfinder=info");
+    }
+    tracing_subscriber::fmt::init();
     // simple tool for running and timing the database migrations on a given file.
     let path = match std::env::args().nth(1) {
         Some(name) if std::env::args().count() == 2 => name,
