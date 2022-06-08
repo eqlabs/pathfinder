@@ -21,6 +21,8 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         "Decompressing transactions and fixing event addresses, this may take a while.",
     );
 
+    let prepping_started = std::time::Instant::now();
+
     transaction
         .execute("DROP INDEX starknet_events_from_address", [])
         .context("Failed to drop the index before updates")?;
@@ -38,6 +40,10 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         .execute("DROP TRIGGER starknet_events_au", [])
         .context("Failed to drop after update trigger")?;
 
+    let prepping_time = prepping_started.elapsed();
+
+    tracing::info!(?prepping_time, "Migration preparations complete");
+
     let mut stmt = transaction
         .prepare("SELECT hash, receipt FROM starknet_transactions")
         .context("Prepare transaction query")?;
@@ -49,12 +55,24 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
            WHERE idx=:idx AND transaction_hash=:transaction_hash",
     )?;
 
+    let mut processed_rows = 0;
+    let start_of_run = std::time::Instant::now();
+    let mut start_of_batch = start_of_run;
+    let batch_size = if todo < 10000 { 0 } else { todo / 11 };
+    let mut decompression_time = std::time::Duration::default();
+    let mut parsing_time = std::time::Duration::default();
+
     while let Some(r) = rows.next()? {
         let transaction_hash = r.get_ref_unwrap("hash").as_blob()?;
         let receipt = r.get_ref_unwrap("receipt").as_blob()?;
+        let decompression_started = std::time::Instant::now();
         let receipt = zstd::decode_all(receipt).context("Decompress receipt")?;
+        decompression_time += decompression_started.elapsed();
+
+        let parsing_started = std::time::Instant::now();
         let receipt: LightReceipt =
             serde_json::de::from_slice(&receipt).context("Deserializing transaction receipt")?;
+        parsing_time += parsing_started.elapsed();
 
         receipt.events.into_iter().enumerate().try_for_each(
             |(idx, event)| -> anyhow::Result<_> {
@@ -69,18 +87,48 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
                 Ok(())
             },
         )?;
+
+        processed_rows += 1;
+
+        if batch_size > 0 && processed_rows % batch_size == 0 {
+            let now = std::time::Instant::now();
+            let total_elapsed = now - start_of_run;
+            let batch_elapsed = now - start_of_batch;
+
+            let total_per_row = total_elapsed.div_f64(processed_rows as f64);
+            let batch_per_row = batch_elapsed.div_f64(batch_size as f64);
+
+            // this is non-scientific, but perhaps the latest helps? seems to be very much off until 75% when divided by 2, 50% when divided by 1.5
+            let est_per_row = (total_per_row + batch_per_row).div_f64(1.5);
+            let remaining = est_per_row * ((todo - processed_rows) as u32);
+
+            tracing::info!(
+                "Fixing {:.1}% complete, estimated remaining {remaining:?}",
+                (100.0 * processed_rows as f64 / todo as f64)
+            );
+            start_of_batch = now;
+        }
     }
+
+    tracing::info!(
+        ?decompression_time,
+        ?parsing_time,
+        total_time=?start_of_run.elapsed(),
+        "Fixing complete, restoring"
+    );
+
+    let recreate_started = std::time::Instant::now();
 
     transaction
         .execute("DROP INDEX temp_starknet_events_q", [])
-        .context("drop temp index")?;
+        .context("Failed to drop temporary index")?;
 
     transaction
         .execute(
             "CREATE INDEX starknet_events_from_address ON starknet_events(from_address)",
             [],
         )
-        .context("Recreate index")?;
+        .context("Failed to recreate index")?;
     transaction
         .execute(
             "CREATE TRIGGER starknet_events_au
@@ -100,7 +148,11 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
             END",
             [],
         )
-        .context("Recreate trigger")?;
+        .context("Failed to recreate trigger")?;
+
+    let recreation_time = recreate_started.elapsed();
+
+    tracing::info!(?recreation_time, "Recreation complete");
 
     Ok(PostMigrationAction::None)
 }
