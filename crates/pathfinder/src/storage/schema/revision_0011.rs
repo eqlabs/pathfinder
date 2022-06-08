@@ -25,6 +25,15 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         .execute("DROP INDEX starknet_events_from_address", [])
         .context("Failed to drop the index before updates")?;
 
+    // the inner loop of the migration does a lot of updates based on transaction_hash and the
+    // index, so there should be an index for that, and it's unique since it can be.
+    transaction
+        .execute(
+            "CREATE UNIQUE INDEX temp_starknet_events_q ON starknet_events (idx, transaction_hash)",
+            [],
+        )
+        .context("create temporary index")?;
+
     transaction
         .execute("DROP TRIGGER starknet_events_au", [])
         .context("Failed to drop after update trigger")?;
@@ -61,6 +70,10 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
             },
         )?;
     }
+
+    transaction
+        .execute("DROP INDEX temp_starknet_events_q", [])
+        .context("drop temp index")?;
 
     transaction
         .execute(
