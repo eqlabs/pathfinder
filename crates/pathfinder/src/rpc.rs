@@ -5,7 +5,7 @@ pub mod types;
 
 use crate::{
     core::{
-        CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        CallSignatureElem, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
         StarknetTransactionHash, StarknetTransactionIndex, TransactionVersion,
     },
     rpc::{
@@ -181,6 +181,15 @@ pub async fn run_server(
                 .await
         },
     )?;
+    module.register_async_method("starknet_getClass", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        pub struct NamedArgs {
+            pub class_hash: ClassHash,
+        }
+        context
+            .get_class(params.parse::<NamedArgs>()?.class_hash)
+            .await
+    })?;
     module.register_async_method("starknet_getClassHashAt", |params, context| async move {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
@@ -1571,6 +1580,100 @@ mod tests {
                 crate::rpc::types::reply::ErrorCode::InvalidTransactionHash,
                 error
             );
+        }
+    }
+
+    mod get_class {
+        use super::contract_setup::setup_class_and_contract;
+        use super::*;
+        use crate::core::ContractCode;
+        use crate::rpc::types::reply::ErrorCode;
+
+        mod positional_args {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_invalid_contract_class_hash_for_nonexistent_class() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = rpc_params!(*INVALID_CLASS_HASH);
+                let error = client(addr)
+                    .request::<ContractCode>("starknet_getClass", params)
+                    .await
+                    .unwrap_err();
+                assert_eq!(ErrorCode::InvalidContractClassHash, error);
+            }
+
+            #[tokio::test]
+            async fn returns_abi_and_code_for_known_class() {
+                let storage = Storage::in_memory().unwrap();
+
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (_contract_address, class_hash) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
+
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = rpc_params!(class_hash);
+                let code = client(addr)
+                    .request::<ContractCode>("starknet_getClass", params)
+                    .await
+                    .unwrap();
+
+                let abi = code.abi.to_string();
+                assert_eq!(
+                    abi,
+                    // this should not have the quotes because that'd be in json:
+                    // `"abi":"\"[{....}]\""`
+                    r#"[{"inputs":[{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"contract_address","type":"felt"},{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"call_increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"address","type":"felt"}],"name":"get_value","outputs":[{"name":"res","type":"felt"}],"type":"function"}]"#
+                );
+                assert_eq!(code.bytecode.len(), 132);
+            }
+        }
+
+        mod named_args {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_abi_and_code_for_known_class() {
+                let storage = Storage::in_memory().unwrap();
+
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (_contract_address, class_hash) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
+
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = by_name([("class_hash", json!(class_hash))]);
+                let code = client(addr)
+                    .request::<ContractCode>("starknet_getClass", params)
+                    .await
+                    .unwrap();
+
+                let abi = code.abi.to_string();
+                assert_eq!(
+                    abi,
+                    // this should not have the quotes because that'd be in json:
+                    // `"abi":"\"[{....}]\""`
+                    r#"[{"inputs":[{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"contract_address","type":"felt"},{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"call_increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"address","type":"felt"}],"name":"get_value","outputs":[{"name":"res","type":"felt"}],"type":"function"}]"#
+                );
+                assert_eq!(code.bytecode.len(), 132);
+            }
         }
     }
 
