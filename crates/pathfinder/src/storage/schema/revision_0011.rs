@@ -34,6 +34,12 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
         .context("Prepare transaction query")?;
     let mut rows = stmt.query([])?;
 
+    let mut update = transaction.prepare(
+        r"UPDATE starknet_events
+             SET from_address=:from_address
+           WHERE idx=:idx AND transaction_hash=:transaction_hash",
+    )?;
+
     while let Some(r) = rows.next()? {
         let transaction_hash = r.get_ref_unwrap("hash").as_blob()?;
         let receipt = r.get_ref_unwrap("receipt").as_blob()?;
@@ -43,17 +49,12 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
 
         receipt.events.into_iter().enumerate().try_for_each(
             |(idx, event)| -> anyhow::Result<_> {
-                transaction
-                    .execute(
-                        r"UPDATE starknet_events 
-                            SET from_address=:from_address
-                            WHERE idx=:idx AND transaction_hash=:transaction_hash",
-                        named_params![
-                            ":idx": idx,
-                            ":transaction_hash": transaction_hash,
-                            ":from_address": &event.from_address.0.as_be_bytes()[..],
-                        ],
-                    )
+                update
+                    .execute(named_params![
+                        ":idx": idx,
+                        ":transaction_hash": transaction_hash,
+                        ":from_address": &event.from_address.0.as_be_bytes()[..],
+                    ])
                     .context("Insert event data into events table")?;
 
                 Ok(())
