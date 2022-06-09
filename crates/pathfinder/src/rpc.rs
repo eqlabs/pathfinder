@@ -196,14 +196,12 @@ pub async fn run_server(
                 .await
         },
     )?;
-    module.register_async_method("starknet_getCode", |params, context| async move {
+    module.register_blocking_method("starknet_getCode", |params, context| {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
             pub contract_address: ContractAddress,
         }
-        context
-            .get_code(params.parse::<NamedArgs>()?.contract_address)
-            .await
+        context.get_code(params.parse::<NamedArgs>()?.contract_address)
     })?;
     module.register_async_method(
         "starknet_getBlockTransactionCountByHash",
@@ -238,9 +236,7 @@ pub async fn run_server(
         let params = params.parse::<NamedArgs>()?;
         context.call(params.request, params.block_hash).await
     })?;
-    module.register_async_method("starknet_blockNumber", |_, context| async move {
-        context.block_number().await
-    })?;
+    module.register_blocking_method("starknet_blockNumber", |_, context| context.block_number())?;
     module.register_async_method("starknet_chainId", |_, context| async move {
         context.chain_id().await
     })?;
@@ -253,13 +249,13 @@ pub async fn run_server(
     module.register_async_method("starknet_syncing", |_, context| async move {
         context.syncing().await
     })?;
-    module.register_async_method("starknet_getEvents", |params, context| async move {
+    module.register_blocking_method("starknet_getEvents", |params, context| {
         #[derive(Debug, Deserialize)]
         struct NamedArgs {
             pub filter: EventFilter,
         }
         let request = params.parse::<NamedArgs>()?.filter;
-        context.get_events(request).await
+        context.get_events(request)
     })?;
     module.register_async_method(
         "starknet_addInvokeTransaction",

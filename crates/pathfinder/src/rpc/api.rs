@@ -697,34 +697,27 @@ impl RpcApi {
 
     /// Get the code of a specific contract.
     /// `contract_address` is the address of the contract to read from.
-    pub async fn get_code(&self, contract_address: ContractAddress) -> RpcResult<ContractCode> {
+    pub fn get_code(&self, contract_address: ContractAddress) -> RpcResult<ContractCode> {
         use crate::storage::ContractCodeTable;
 
-        let storage = self.storage.clone();
-        let span = tracing::Span::current();
+        let mut db = self
+            .storage
+            .connection()
+            .context("Opening database connection")
+            .map_err(internal_server_error)?;
+        let tx = db
+            .transaction()
+            .context("Creating database transaction")
+            .map_err(internal_server_error)?;
 
-        let jh = tokio::task::spawn_blocking(move || {
-            let _g = span.enter();
-            let mut db = storage
-                .connection()
-                .context("Opening database connection")
-                .map_err(internal_server_error)?;
-            let tx = db
-                .transaction()
-                .context("Creating database transaction")
-                .map_err(internal_server_error)?;
+        let code = ContractCodeTable::get_code(&tx, contract_address)
+            .context("Fetching code from database")
+            .map_err(internal_server_error)?;
 
-            let code = ContractCodeTable::get_code(&tx, contract_address)
-                .context("Fetching code from database")
-                .map_err(internal_server_error)?;
-
-            match code {
-                Some(code) => Ok(code),
-                None => Err(ErrorCode::ContractNotFound.into()),
-            }
-        });
-
-        jh.await.into_rpc_result()
+        match code {
+            Some(code) => Ok(code),
+            None => Err(ErrorCode::ContractNotFound.into()),
+        }
     }
 
     /// Get the number of transactions in a block given a block hash.
@@ -883,30 +876,24 @@ impl RpcApi {
     }
 
     /// Get the most recent accepted block number.
-    pub async fn block_number(&self) -> RpcResult<u64> {
+    pub fn block_number(&self) -> RpcResult<u64> {
         let storage = self.storage.clone();
-        let span = tracing::Span::current();
 
-        let jh = tokio::task::spawn_blocking(move || {
-            let _g = span.enter();
-            let mut db = storage
-                .connection()
-                .context("Opening database connection")
-                .map_err(internal_server_error)?;
-            let tx = db
-                .transaction()
-                .context("Creating database transaction")
-                .map_err(internal_server_error)?;
+        let mut db = storage
+            .connection()
+            .context("Opening database connection")
+            .map_err(internal_server_error)?;
+        let tx = db
+            .transaction()
+            .context("Creating database transaction")
+            .map_err(internal_server_error)?;
 
-            StarknetBlocksTable::get_latest_number(&tx)
-                .context("Reading latest block number from database")
-                .map_err(internal_server_error)?
-                .context("Database is empty")
-                .map_err(internal_server_error)
-                .map(|number| number.0)
-        });
-
-        jh.await.into_rpc_result()
+        StarknetBlocksTable::get_latest_number(&tx)
+            .context("Reading latest block number from database")
+            .map_err(internal_server_error)?
+            .context("Database is empty")
+            .map_err(internal_server_error)
+            .map(|number| number.0)
     }
 
     /// Return the currently configured StarkNet chain id.
@@ -932,37 +919,30 @@ impl RpcApi {
     }
 
     /// Returns events matching the specified filter
-    pub async fn get_events(&self, request: EventFilter) -> RpcResult<GetEventsResult> {
-        let storage = self.storage.clone();
-        let span = tracing::Span::current();
+    pub fn get_events(&self, request: EventFilter) -> RpcResult<GetEventsResult> {
+        let connection = self
+            .storage
+            .connection()
+            .context("Opening database connection")
+            .map_err(internal_server_error)?;
 
-        let jh = tokio::task::spawn_blocking(move || {
-            let _g = span.enter();
-            let connection = storage
-                .connection()
-                .context("Opening database connection")
-                .map_err(internal_server_error)?;
+        let filter = request.into();
+        // We don't add context here, because [StarknetEventsTable::get_events] adds its
+        // own context to the errors. This way we get meaningful error information
+        // for errors related to query parameters.
+        let page = StarknetEventsTable::get_events(&connection, &filter).map_err(|e| {
+            if let Some(e) = e.downcast_ref::<EventFilterError>() {
+                Error::from(*e)
+            } else {
+                internal_server_error(e)
+            }
+        })?;
 
-            let filter = request.into();
-            // We don't add context here, because [StarknetEventsTable::get_events] adds its
-            // own context to the errors. This way we get meaningful error information
-            // for errors related to query parameters.
-            let page = StarknetEventsTable::get_events(&connection, &filter).map_err(|e| {
-                if let Some(e) = e.downcast_ref::<EventFilterError>() {
-                    Error::from(*e)
-                } else {
-                    internal_server_error(e)
-                }
-            })?;
-
-            Ok(GetEventsResult {
-                events: page.events.into_iter().map(|e| e.into()).collect(),
-                page_number: filter.page_number,
-                is_last_page: page.is_last_page,
-            })
-        });
-
-        jh.await.into_rpc_result()
+        Ok(GetEventsResult {
+            events: page.events.into_iter().map(|e| e.into()).collect(),
+            page_number: filter.page_number,
+            is_last_page: page.is_last_page,
+        })
     }
 
     /// Submit a new transaction to be added to the chain.
