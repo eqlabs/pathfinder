@@ -1,4 +1,5 @@
 //! StarkNet L2 sequencer client.
+mod builder;
 pub mod error;
 pub mod reply;
 pub mod request;
@@ -14,11 +15,11 @@ use crate::{
         TransactionVersion,
     },
     ethereum::Chain,
-    rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
+    rpc::types::{BlockHashOrTag, BlockNumberOrTag},
     sequencer::error::SequencerError,
 };
 use reqwest::Url;
-use std::{borrow::Cow, fmt::Debug, future::Future, result::Result, time::Duration};
+use std::{fmt::Debug, future::Future, result::Result, time::Duration};
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
@@ -124,24 +125,6 @@ pub struct Client {
     inner: reqwest::Client,
     /// StarkNet sequencer URL.
     sequencer_url: Url,
-}
-
-/// Helper function which simplifies the handling of optional block hashes in queries.
-fn block_hash_str(hash: BlockHashOrTag) -> (&'static str, Cow<'static, str>) {
-    match hash {
-        BlockHashOrTag::Hash(h) => ("blockHash", h.0.to_hex_str()),
-        BlockHashOrTag::Tag(Tag::Latest) => ("blockNumber", Cow::from("latest")),
-        BlockHashOrTag::Tag(Tag::Pending) => ("blockNumber", Cow::from("pending")),
-    }
-}
-
-/// Helper function which simplifies the handling of optional block numbers in queries.
-fn block_number_str(number: BlockNumberOrTag) -> Cow<'static, str> {
-    match number {
-        BlockNumberOrTag::Number(n) => Cow::from(n.0.to_string()),
-        BlockNumberOrTag::Tag(Tag::Latest) => Cow::from("latest"),
-        BlockNumberOrTag::Tag(Tag::Pending) => Cow::from("pending"),
-    }
 }
 
 /// __Mandatory__ function to parse every sequencer query response and deserialize
@@ -270,18 +253,6 @@ impl Client {
             sequencer_url: url,
         })
     }
-
-    /// Helper function that constructs a URL for particular query.
-    fn build_query(&self, path_segments: &[&str], params: &[(&str, &str)]) -> Url {
-        let mut query_url = self.sequencer_url.clone();
-        query_url
-            .path_segments_mut()
-            .expect("Base URL is valid")
-            .extend(path_segments);
-        query_url.query_pairs_mut().extend_pairs(params);
-        tracing::trace!(%query_url);
-        query_url
-    }
 }
 
 #[async_trait::async_trait]
@@ -292,16 +263,13 @@ impl ClientApi for Client {
         &self,
         block_number: BlockNumberOrTag,
     ) -> Result<reply::Block, SequencerError> {
-        let number = block_number_str(block_number);
-        retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(
-                    &["feeder_gateway", "get_block"],
-                    &[("blockNumber", &number)],
-                ))
-                .send()
-                .await?;
+        retry(|| async move {
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_block()
+                .at_block(block_number)
+                .finalize();
+            let resp = self.inner.get(query).send().await?;
             parse::<reply::Block>(resp).await
         })
         .await
@@ -313,13 +281,13 @@ impl ClientApi for Client {
         &self,
         block_hash: BlockHashOrTag,
     ) -> Result<reply::Block, SequencerError> {
-        let (tag, hash) = block_hash_str(block_hash);
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(&["feeder_gateway", "get_block"], &[(tag, &hash)]))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_block()
+                .at_block(block_hash)
+                .finalize();
+            let resp = self.inner.get(query).send().await?;
             parse::<reply::Block>(resp).await
         })
         .await
@@ -332,14 +300,14 @@ impl ClientApi for Client {
         payload: request::Call,
         block_hash: BlockHashOrTag,
     ) -> Result<reply::Call, SequencerError> {
-        let (tag, hash) = block_hash_str(block_hash);
         retry(|| async {
-            let resp = self
-                .inner
-                .post(self.build_query(&["feeder_gateway", "call_contract"], &[(tag, &hash)]))
-                .json(&payload)
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .call_contract()
+                .at_block(block_hash)
+                .finalize();
+
+            let resp = self.inner.post(query).json(&payload).send().await?;
             parse(resp).await
         })
         .await
@@ -352,14 +320,13 @@ impl ClientApi for Client {
         contract_addr: ContractAddress,
     ) -> Result<bytes::Bytes, SequencerError> {
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(
-                    &["feeder_gateway", "get_full_contract"],
-                    &[("contractAddress", &contract_addr.0.to_hex_str())],
-                ))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_full_contract()
+                .with_contract_address(contract_addr)
+                .finalize();
+
+            let resp = self.inner.get(query).send().await?;
             let resp = parse_raw(resp).await?;
             let resp = resp.bytes().await?;
             Ok(resp)
@@ -371,14 +338,13 @@ impl ClientApi for Client {
     #[tracing::instrument(skip(self))]
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(
-                    &["feeder_gateway", "get_class_by_hash"],
-                    &[("classHash", &class_hash.0.to_hex_str())],
-                ))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_class_by_hash()
+                .with_class_hash(class_hash)
+                .finalize();
+
+            let resp = self.inner.get(query).send().await?;
             let resp = parse_raw(resp).await?;
             let resp = resp.bytes().await?;
             Ok(resp)
@@ -393,14 +359,13 @@ impl ClientApi for Client {
         contract_address: ContractAddress,
     ) -> Result<ClassHash, SequencerError> {
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(
-                    &["feeder_gateway", "get_class_hash_at"],
-                    &[("contractAddress", &contract_address.0.to_hex_str())],
-                ))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_class_hash_at()
+                .with_contract_address(contract_address)
+                .finalize();
+
+            let resp = self.inner.get(query).send().await?;
             parse(resp).await
         })
         .await
@@ -414,22 +379,16 @@ impl ClientApi for Client {
         key: StorageAddress,
         block_hash: BlockHashOrTag,
     ) -> Result<StorageValue, SequencerError> {
-        use crate::rpc::serde::starkhash_to_dec_str;
-
-        let (tag, hash) = block_hash_str(block_hash);
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(
-                    &["feeder_gateway", "get_storage_at"],
-                    &[
-                        ("contractAddress", &contract_addr.0.to_hex_str()),
-                        ("key", &starkhash_to_dec_str(&key.0)),
-                        (tag, &hash),
-                    ],
-                ))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_storage_at()
+                .with_contract_address(contract_addr)
+                .with_storage_address(key)
+                .at_block(block_hash)
+                .finalize();
+
+            let resp = self.inner.get(query).send().await?;
             parse::<StorageValue>(resp).await
         })
         .await
@@ -442,14 +401,13 @@ impl ClientApi for Client {
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError> {
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(
-                    &["feeder_gateway", "get_transaction"],
-                    &[("transactionHash", &transaction_hash.0.to_hex_str())],
-                ))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_transaction()
+                .with_transaction_hash(transaction_hash)
+                .finalize();
+
+            let resp = self.inner.get(query).send().await?;
             parse(resp).await
         })
         .await
@@ -462,14 +420,13 @@ impl ClientApi for Client {
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::TransactionStatus, SequencerError> {
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(
-                    &["feeder_gateway", "get_transaction_status"],
-                    &[("transactionHash", &transaction_hash.0.to_hex_str())],
-                ))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_transaction_status()
+                .with_transaction_hash(transaction_hash)
+                .finalize();
+
+            let resp = self.inner.get(query).send().await?;
             parse(resp).await
         })
         .await
@@ -481,13 +438,14 @@ impl ClientApi for Client {
         &self,
         block_hash: BlockHashOrTag,
     ) -> Result<reply::StateUpdate, SequencerError> {
-        let (tag, hash) = block_hash_str(block_hash);
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(&["feeder_gateway", "get_state_update"], &[(tag, &hash)]))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_state_update()
+                .at_block(block_hash)
+                .finalize();
+
+            let resp = self.inner.get(query).send().await?;
             parse(resp).await
         })
         .await
@@ -500,14 +458,13 @@ impl ClientApi for Client {
         block_number: BlockNumberOrTag,
     ) -> Result<reply::StateUpdate, SequencerError> {
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(
-                    &["feeder_gateway", "get_state_update"],
-                    &[("blockNumber", &block_number_str(block_number))],
-                ))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_state_update()
+                .at_block(block_number)
+                .finalize();
+
+            let resp = self.inner.get(query).send().await?;
             parse(resp).await
         })
         .await
@@ -517,11 +474,12 @@ impl ClientApi for Client {
     #[tracing::instrument(skip(self))]
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
         retry(|| async {
-            let resp = self
-                .inner
-                .get(self.build_query(&["feeder_gateway", "get_contract_addresses"], &[]))
-                .send()
-                .await?;
+            let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+                .feeder_gateway()
+                .get_contract_addresses()
+                .finalize();
+
+            let resp = self.inner.get(query).send().await?;
             parse(resp).await
         })
         .await
@@ -546,16 +504,16 @@ impl ClientApi for Client {
             },
         );
 
+        let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+            .gateway()
+            .add_transaction()
+            .finalize();
+
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
-        let resp = self
-            .inner
-            .post(self.build_query(&["gateway", "add_transaction"], &[]))
-            .json(&req)
-            .send()
-            .await?;
+        let resp = self.inner.post(query).json(&req).send().await?;
         parse(resp).await
     }
 
@@ -580,16 +538,19 @@ impl ClientApi for Client {
                 nonce,
                 version,
             });
-        let mut url = self.build_query(&["gateway", "add_transaction"], &[]);
-        // this is an optional token currently required on mainnet
-        if let Some(token) = token {
-            url.query_pairs_mut().append_pair("token", &token);
-        }
+
+        let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+            .gateway()
+            .add_transaction()
+            // mainnet requires a token (but testnet does not so its optional).
+            .with_optional_token(token.as_deref())
+            .finalize();
+
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
-        let resp = self.inner.post(url).json(&req).send().await?;
+        let resp = self.inner.post(query).json(&req).send().await?;
         parse(resp).await
     }
 
@@ -608,16 +569,19 @@ impl ClientApi for Client {
                 contract_definition,
                 constructor_calldata,
             });
-        let mut url = self.build_query(&["gateway", "add_transaction"], &[]);
-        // this is an optional token currently required on mainnet
-        if let Some(token) = token {
-            url.query_pairs_mut().append_pair("token", &token);
-        }
+
+        let query = builder::Request::with_sequencer_url(self.sequencer_url.clone())
+            .gateway()
+            .add_transaction()
+            // mainnet requires a token (but testnet does not so its optional).
+            .with_optional_token(token.as_deref())
+            .finalize();
+
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
-        let resp = self.inner.post(url).json(&req).send().await?;
+        let resp = self.inner.post(query).json(&req).send().await?;
         parse(resp).await
     }
 }
@@ -680,7 +644,10 @@ pub mod test_utils {
 #[cfg(test)]
 mod tests {
     use super::{error::StarknetErrorCode, test_utils::*, *};
-    use crate::core::{StarknetBlockHash, StarknetBlockNumber};
+    use crate::{
+        core::{StarknetBlockHash, StarknetBlockNumber},
+        rpc::types::Tag,
+    };
     use assert_matches::assert_matches;
     use stark_hash::StarkHash;
 
@@ -767,6 +734,7 @@ mod tests {
         S2: std::string::ToString + Send + Sync + Clone + 'static,
     {
         if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
+            println!("LIVE");
             (None, Client::new(Chain::Goerli).unwrap())
         } else {
             use warp::Filter;
@@ -1976,7 +1944,7 @@ mod tests {
             let contract_definition = get_contract_class_from_fixture();
 
             let (_jh, client) = setup([(
-                "/gateway/add_transaction?",
+                "/gateway/add_transaction",
                 (
                     r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x057ED4B4C76A1CA0BA044A654DD3EE2D0D3E550343D739350A22AACDD524110D",
                     "address":"0x03926AEA98213EC34FE9783D803237D221C54C52344422E1F4942A5B340FA6AD"}"#,
