@@ -466,6 +466,10 @@ pub mod add_transaction {
 
 #[cfg(test)]
 mod tests {
+    /// The aim of these tests is to make sure pathfinder is still able to correctly
+    /// deserialize replies from the mainnet sequencer when it still is using some
+    /// previous version of cairo while at the same time the goerli sequencer is
+    /// already using a newer version.
     mod backward_compatibility {
 
         use super::super::{Block, StateUpdate, Transaction};
