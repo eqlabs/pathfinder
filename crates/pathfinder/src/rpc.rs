@@ -34,10 +34,6 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
     /// This wrapper helper adds a tracing span around all rpc methods with name = method_name.
     ///
     /// It could do more, for example trace the outputs, durations.
-    ///
-    /// This is the only one method provided at the moment, because it's the only one used. If you
-    /// need to use some other `register_*` method from [`jsonrpsee::RpcModule`], just add it to
-    /// this wrapper.
     fn register_async_method<R, Fun, Fut>(
         &mut self,
         method_name: &'static str,
@@ -58,6 +54,28 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
             // why info here? it's the same used in warp tracing filter for example.
             let span = tracing::info_span!("rpc_method", name = method_name);
             callback(p, c).instrument(span)
+        })
+    }
+
+    /// Adds tracing around a blocking rpc method implementation, similar to
+    /// `register_async_method`.
+    fn register_blocking_method<R, Fun>(
+        &mut self,
+        method_name: &'static str,
+        callback: Fun,
+    ) -> Result<jsonrpsee::core::server::rpc_module::MethodResourcesBuilder, jsonrpsee::core::Error>
+    where
+        R: ::serde::Serialize + Send + Sync + 'static,
+        Fun: (Fn(jsonrpsee::types::Params<'_>, std::sync::Arc<Context>) -> Result<R, Error>)
+            + Copy
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.0.register_blocking_method(method_name, move |p, c| {
+            let span = tracing::info_span!("rpc_method", name = method_name);
+            let _g = span.enter();
+            callback(p, c)
         })
     }
 
