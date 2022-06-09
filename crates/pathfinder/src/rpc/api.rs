@@ -58,6 +58,22 @@ pub struct RawBlock {
     pub gas_price: GasPrice,
 }
 
+/// Nice postfix for joinhandle, sadly we cannot have just an into.
+trait JoinHandleResultExt<T> {
+    fn into_rpc_result(self) -> RpcResult<T>;
+}
+
+impl<T> JoinHandleResultExt<T> for Result<RpcResult<T>, tokio::task::JoinError> {
+    /// Used on any result coming out of `spawn_blocking`, attaching the same context and
+    /// transforming the error into [`internal_server_error`].
+    fn into_rpc_result(self) -> RpcResult<T> {
+        self.context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            // flatten is unstable
+            .and_then(|x| x)
+    }
+}
+
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
 impl RpcApi {
     pub fn new(
@@ -135,9 +151,7 @@ impl RpcApi {
             Ok(Block::from_raw(block, transactions))
         })
         .await
-        .context("Database read panic or shutting down")
-        .map_err(internal_server_error)
-        .and_then(|x| x)
+        .into_rpc_result()
     }
 
     /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
@@ -253,9 +267,7 @@ impl RpcApi {
             Ok(Block::from_raw(block, transactions))
         })
         .await
-        .context("Database read panic or shutting down")
-        .map_err(internal_server_error)
-        .and_then(|x| x)
+        .into_rpc_result()
     }
 
     /// Fetches a [RawBlock] from storage.
@@ -454,11 +466,7 @@ impl RpcApi {
             Ok(storage_val)
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            // flatten is unstable
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Get the details and status of a submitted transaction.
@@ -489,10 +497,7 @@ impl RpcApi {
                 .map(|tx| tx.into())
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Get the details of a transaction by a given block hash and index.
@@ -564,10 +569,7 @@ impl RpcApi {
             }
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Get the details of a transaction by a given block number and index.
@@ -639,10 +641,7 @@ impl RpcApi {
             }
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Get the transaction receipt by the transaction hash.
@@ -693,10 +692,7 @@ impl RpcApi {
             }
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Get the code of a specific contract.
@@ -728,10 +724,7 @@ impl RpcApi {
             }
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Get the number of transactions in a block given a block hash.
@@ -795,10 +788,7 @@ impl RpcApi {
             }
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Get the number of transactions in a block given a block hash.
@@ -862,10 +852,7 @@ impl RpcApi {
             }
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Call a starknet function without creating a StarkNet transaction.
@@ -919,10 +906,7 @@ impl RpcApi {
                 .map(|number| number.0)
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Return the currently configured StarkNet chain id.
@@ -978,11 +962,7 @@ impl RpcApi {
             })
         });
 
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            // flatten is unstable
-            .and_then(|x| x)
+        jh.await.into_rpc_result()
     }
 
     /// Submit a new transaction to be added to the chain.
