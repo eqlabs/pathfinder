@@ -2,14 +2,18 @@
 
 use std::marker::PhantomData;
 
-use crate::core::{
-    ClassHash, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
-    StorageAddress,
+use crate::{
+    core::{
+        ClassHash, ContractAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetTransactionHash, StorageAddress,
+    },
+    sequencer::error::SequencerError,
 };
 
-pub struct Request<S: RequestState> {
+pub struct Request<'a, S: RequestState> {
     marker: PhantomData<S>,
     url: reqwest::Url,
+    client: &'a reqwest::Client,
 }
 
 pub struct Start;
@@ -37,87 +41,89 @@ impl BlockId {
     }
 }
 
-impl Request<Start> {
-    pub fn with_sequencer_url(url: reqwest::Url) -> Request<WithUrl> {
+impl<'a> Request<'a, Start> {
+    pub fn new(client: &'a reqwest::Client, url: reqwest::Url) -> Request<'a, WithUrl> {
         Request {
             url,
+            client,
             marker: PhantomData::default(),
         }
     }
 }
 
-impl Request<WithUrl> {
-    pub fn gateway(self) -> Request<WithGateWay> {
+impl<'a> Request<'a, WithUrl> {
+    pub fn gateway(self) -> Request<'a, WithGateWay> {
         self.with_gateway("gateway")
     }
 
-    pub fn feeder_gateway(self) -> Request<WithGateWay> {
+    pub fn feeder_gateway(self) -> Request<'a, WithGateWay> {
         self.with_gateway("feeder_gateway")
     }
 
-    fn with_gateway(mut self, gateway: &str) -> Request<WithGateWay> {
+    fn with_gateway(mut self, gateway: &str) -> Request<'a, WithGateWay> {
         self.url
             .path_segments_mut()
             .expect("Base URL is valid")
             .push(gateway);
         Request {
             url: self.url,
+            client: self.client,
             marker: PhantomData::default(),
         }
     }
 }
 
-impl Request<WithGateWay> {
-    pub fn add_transaction(self) -> Request<WithMethod> {
+impl<'a> Request<'a, WithGateWay> {
+    pub fn add_transaction(self) -> Request<'a, WithMethod> {
         self.with_method("add_transaction")
     }
 
-    pub fn call_contract(self) -> Request<WithMethod> {
+    pub fn call_contract(self) -> Request<'a, WithMethod> {
         self.with_method("call_contract")
     }
 
-    pub fn get_block(self) -> Request<WithMethod> {
+    pub fn get_block(self) -> Request<'a, WithMethod> {
         self.with_method("get_block")
     }
 
-    pub fn get_full_contract(self) -> Request<WithMethod> {
+    pub fn get_full_contract(self) -> Request<'a, WithMethod> {
         self.with_method("get_full_contract")
     }
 
-    pub fn get_class_by_hash(self) -> Request<WithMethod> {
+    pub fn get_class_by_hash(self) -> Request<'a, WithMethod> {
         self.with_method("get_class_by_hash")
     }
 
-    pub fn get_class_hash_at(self) -> Request<WithMethod> {
+    pub fn get_class_hash_at(self) -> Request<'a, WithMethod> {
         self.with_method("get_class_hash_at")
     }
 
-    pub fn get_storage_at(self) -> Request<WithMethod> {
+    pub fn get_storage_at(self) -> Request<'a, WithMethod> {
         self.with_method("get_storage_at")
     }
 
-    pub fn get_transaction(self) -> Request<WithMethod> {
+    pub fn get_transaction(self) -> Request<'a, WithMethod> {
         self.with_method("get_transaction")
     }
 
-    pub fn get_transaction_status(self) -> Request<WithMethod> {
+    pub fn get_transaction_status(self) -> Request<'a, WithMethod> {
         self.with_method("get_transaction_status")
     }
 
-    pub fn get_state_update(self) -> Request<WithMethod> {
+    pub fn get_state_update(self) -> Request<'a, WithMethod> {
         self.with_method("get_state_update")
     }
 
-    pub fn get_contract_addresses(self) -> Request<WithMethod> {
+    pub fn get_contract_addresses(self) -> Request<'a, WithMethod> {
         self.with_method("get_contract_addresses")
     }
 
     #[cfg(test)]
-    pub fn custom(self, method: &'static str) -> Request<WithMethod> {
+    pub fn custom(self, method: &'static str) -> Request<'a, WithMethod> {
         self.with_method(method)
     }
 
-    fn with_method(mut self, method: &str) -> Request<WithMethod> {
+    fn with_method(mut self, method: &str) -> Request<'a, WithMethod> {
         self.url
             .path_segments_mut()
             .expect("Base URL is valid")
@@ -125,12 +131,13 @@ impl Request<WithGateWay> {
 
         Request {
             url: self.url,
+            client: self.client,
             marker: PhantomData::default(),
         }
     }
 }
 
-impl Request<WithMethod> {
+impl<'a> Request<'a, WithMethod> {
     pub fn at_block<B: Into<BlockId>>(self, block: B) -> Self {
         use std::borrow::Cow;
 
@@ -177,6 +184,19 @@ impl Request<WithMethod> {
 
     pub fn finalize(self) -> reqwest::Url {
         self.url
+    }
+
+    pub async fn get(self) -> Result<reqwest::Response, SequencerError> {
+        let response = self.client.get(self.url).send().await?;
+        Ok(response)
+    }
+
+    pub async fn post_json<T>(self, json: &T) -> Result<reqwest::Response, SequencerError>
+    where
+        T: serde::Serialize + ?Sized,
+    {
+        let response = self.client.post(self.url).json(json).send().await?;
+        Ok(response)
     }
 }
 
