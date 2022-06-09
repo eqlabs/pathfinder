@@ -309,6 +309,8 @@ starknet_getEvents
 starknet_addInvokeTransaction
 # Submit a new deploy contract transaction
 starknet_addDeployTransaction
+# Submit a new declare contract transaction
+starknet_addDeclareTransaction
 ```
 
 ## License
