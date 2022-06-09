@@ -463,3 +463,37 @@ pub mod add_transaction {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    mod backward_compatibility {
+
+        use super::super::{Block, StateUpdate, Transaction};
+
+        macro_rules! fixture {
+            ($file_name:literal) => {
+                include_str!(concat!("../../fixtures/sequencer/", $file_name))
+            };
+        }
+
+        #[test]
+        fn block() {
+            serde_json::from_str::<Block>(fixture!("0.8.2/block/genesis.json")).unwrap();
+            serde_json::from_str::<Block>(fixture!("0.8.2/block/1716.json")).unwrap();
+            serde_json::from_str::<Block>(fixture!("0.8.2/block/pending.json")).unwrap();
+        }
+
+        #[test]
+        fn state_update() {
+            serde_json::from_str::<StateUpdate>(fixture!("0.8.2/state_update/genesis.json"))
+                .unwrap();
+            serde_json::from_str::<StateUpdate>(fixture!("0.8.2/state_update/pending.json"))
+                .unwrap();
+        }
+
+        #[test]
+        fn transaction() {
+            serde_json::from_str::<Transaction>(fixture!("0.8.2/txn/invoke.json")).unwrap();
+        }
+    }
+}
