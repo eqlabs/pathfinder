@@ -114,11 +114,21 @@ impl RpcApi {
         let storage = self.storage.clone();
 
         tokio::task::spawn_blocking(move || {
+            let mut connection = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let transaction = connection
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
             // Need to get the block status. This also tests that the block hash is valid.
-            let block = Self::get_raw_block_by_hash(&storage, block_id)?;
+            let block = Self::get_raw_block_by_hash(&transaction, block_id)?;
             let scope = requested_scope.unwrap_or_default();
 
-            let transactions = Self::get_block_transactions(&storage, block.number, scope)?;
+            let transactions = Self::get_block_transactions(&transaction, block.number, scope)?;
 
             Ok(Block::from_raw(block, transactions))
         })
@@ -129,27 +139,17 @@ impl RpcApi {
 
     /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
     pub fn get_block_transactions(
-        storage: &Storage,
+        db_tx: &rusqlite::Transaction,
         block_number: StarknetBlockNumber,
         scope: BlockResponseScope,
     ) -> RpcResult<super::types::reply::Transactions> {
-        let mut db = storage
-            .connection()
-            .context("Opening database connection")
-            .map_err(internal_server_error)?;
-
-        let db_tx = db
-            .transaction()
-            .context("Creating database transaction")
-            .map_err(internal_server_error)?;
-
         let transactions_receipts =
-            StarknetTransactionsTable::get_transaction_data_for_block(&db_tx, block_number.into())
+            StarknetTransactionsTable::get_transaction_data_for_block(db_tx, block_number.into())
                 .context("Reading transactions from database")
                 .map_err(internal_server_error)?;
 
         // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
-        let l1_l2_head = RefsTable::get_l1_l2_head(&db_tx)
+        let l1_l2_head = RefsTable::get_l1_l2_head(db_tx)
             .context("Read latest L1 head from database")
             .map_err(internal_server_error)?;
         let block_status = match l1_l2_head {
@@ -229,11 +229,21 @@ impl RpcApi {
         let storage = self.storage.clone();
 
         tokio::task::spawn_blocking(move || {
+            let mut connection = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let transaction = connection
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
             // Need to get the block status. This also tests that the block hash is valid.
-            let block = Self::get_raw_block_by_number(&storage, block_id)?;
+            let block = Self::get_raw_block_by_number(&transaction, block_id)?;
             let scope = requested_scope.unwrap_or_default();
 
-            let transactions = Self::get_block_transactions(&storage, block.number, scope)?;
+            let transactions = Self::get_block_transactions(&transaction, block.number, scope)?;
 
             Ok(Block::from_raw(block, transactions))
         })
@@ -247,10 +257,10 @@ impl RpcApi {
     /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockHash`]
     /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     fn get_raw_block_by_hash(
-        storage: &Storage,
+        tx: &rusqlite::Transaction,
         block_id: StarknetBlocksBlockId,
     ) -> RpcResult<RawBlock> {
-        Self::get_raw_block(storage, block_id, ErrorCode::InvalidBlockHash)
+        Self::get_raw_block(tx, block_id, ErrorCode::InvalidBlockHash)
     }
 
     /// Fetches a [RawBlock] from storage.
@@ -258,10 +268,10 @@ impl RpcApi {
     /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockNumber`]
     /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     fn get_raw_block_by_number(
-        storage: &Storage,
+        tx: &rusqlite::Transaction,
         block_id: StarknetBlocksBlockId,
     ) -> RpcResult<RawBlock> {
-        Self::get_raw_block(storage, block_id, ErrorCode::InvalidBlockNumber)
+        Self::get_raw_block(tx, block_id, ErrorCode::InvalidBlockNumber)
     }
 
     /// Fetches a [RawBlock] from storage.
@@ -269,27 +279,17 @@ impl RpcApi {
     /// `error_code_for_latest` is the error code when the `latest` block is missing,
     /// ie. when the storage is empty.
     fn get_raw_block(
-        storage: &Storage,
+        transaction: &rusqlite::Transaction,
         block_id: StarknetBlocksBlockId,
         error_code_for_latest: ErrorCode,
     ) -> RpcResult<RawBlock> {
-        let mut connection = storage
-            .connection()
-            .context("Opening database connection")
-            .map_err(internal_server_error)?;
-
-        let transaction = connection
-            .transaction()
-            .context("Creating database transaction")
-            .map_err(internal_server_error)?;
-
-        let block = StarknetBlocksTable::get(&transaction, block_id)
+        let block = StarknetBlocksTable::get(transaction, block_id)
             .context("Read block from database")
             .map_err(internal_server_error)?
             .ok_or_else(|| Error::from(error_code_for_latest))?;
 
         // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
-        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction)
+        let l1_l2_head = RefsTable::get_l1_l2_head(transaction)
             .context("Read latest L1 head from database")
             .map_err(internal_server_error)?;
         let block_status = match l1_l2_head {
@@ -303,7 +303,7 @@ impl RpcApi {
                 GlobalRoot(StarkHash::ZERO),
             ),
             other => {
-                let parent_block = StarknetBlocksTable::get(&transaction, (other - 1).into())
+                let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
                     .context("Read parent block from database")
                     .map_err(internal_server_error)?
                     .context("Parent block missing")?;
