@@ -462,57 +462,6 @@ mod tests {
             });
         }
 
-        const NUM_BLOCKS: usize = 4;
-        const TXNS_PER_BLOCK: usize = 10;
-        const NUM_TXNS: usize = NUM_BLOCKS * TXNS_PER_BLOCK;
-
-        fn setup(connection: &Connection) -> Vec<StarknetEmittedEvent> {
-            let blocks = crate::storage::test_utils::create_blocks::<NUM_BLOCKS>();
-            let transactions_and_receipts =
-                crate::storage::test_utils::create_transactions_and_receipts::<NUM_TXNS>();
-
-            for (i, block) in blocks.iter().enumerate() {
-                connection
-                    .execute(
-                        r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp)
-                                               VALUES (:number, :hash, :root, :timestamp)",
-                        rusqlite::named_params! {
-                            ":number": block.number.0,
-                            ":hash": block.hash.0.as_be_bytes(),
-                            ":root": block.root.0.as_be_bytes(),
-                            ":timestamp": block.timestamp.0,
-                        },
-                    )
-                    .unwrap();
-
-                crate::storage::StarknetTransactionsTable::upsert(
-                    connection,
-                    block.hash,
-                    block.number,
-                    &transactions_and_receipts[i * TXNS_PER_BLOCK..(i + 1) * TXNS_PER_BLOCK],
-                )
-                .unwrap();
-            }
-
-            transactions_and_receipts
-                .iter()
-                .enumerate()
-                .map(|(i, (txn, receipt))| {
-                    let event = &receipt.events[0];
-                    let block = &blocks[i / 10];
-
-                    StarknetEmittedEvent {
-                        data: event.data.clone(),
-                        from_address: event.from_address,
-                        keys: event.keys.clone(),
-                        block_hash: block.hash,
-                        block_number: block.number,
-                        transaction_hash: txn.transaction_hash,
-                    }
-                })
-                .collect()
-        }
-
         #[test]
         fn virtual_table_still_references_valid_data() {
             use crate::storage::schema;
@@ -538,12 +487,12 @@ mod tests {
 
             // 2. Simulate rowids of the old `starknet_events` table to be different from
             // the new, migrated `starknet_events` table
-            let emitted_events = setup(&transaction);
+            let emitted_events = schema::fixtures::setup_events(&transaction);
             let changed = transaction
                 .execute(r"UPDATE starknet_events SET rowid = rowid + 1000000", [])
                 .context("Force arbitrary rowids")
                 .unwrap();
-            assert_eq!(changed, NUM_TXNS);
+            assert_eq!(changed, schema::fixtures::NUM_TXNS);
 
             let expected_event = &emitted_events[1];
             let filter = StarknetEventFilter {
@@ -552,7 +501,7 @@ mod tests {
                 contract_address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
                 keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
-                page_size: NUM_TXNS,
+                page_size: schema::fixtures::NUM_TXNS,
                 page_number: 0,
             };
 
