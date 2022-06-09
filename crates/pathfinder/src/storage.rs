@@ -27,7 +27,7 @@ use tracing::info;
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = 11;
+const DB_VERSION_CURRENT: u32 = 12;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -149,6 +149,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
             8 => schema::revision_0009::migrate(&transaction).context("migrating from 8")?,
             9 => schema::revision_0010::migrate(&transaction).context("migrating from 9")?,
             10 => schema::revision_0011::migrate(&transaction).context("migrating from 10")?,
+            11 => schema::revision_0012::migrate(&transaction).context("migrating from 11")?,
             _ => unreachable!("Database version constraint was already checked!"),
         };
         // If any migration action requires vacuuming, we should vacuum.

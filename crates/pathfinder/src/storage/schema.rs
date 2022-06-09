@@ -9,6 +9,7 @@ pub(crate) mod revision_0008;
 pub(crate) mod revision_0009;
 pub(crate) mod revision_0010;
 pub(crate) mod revision_0011;
+pub(crate) mod revision_0012;
 
 /// Used to indicate which action the caller should perform after a schema migration.
 #[derive(Debug, Clone, Copy, PartialEq)]
