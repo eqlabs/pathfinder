@@ -31,7 +31,7 @@ pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigration
     // index, so there should be an index for that, and it's unique since it can be.
     transaction
         .execute(
-            "CREATE UNIQUE INDEX temp_starknet_events_q ON starknet_events (idx, transaction_hash)",
+            "CREATE UNIQUE INDEX temp_starknet_events_q ON starknet_events (transaction_hash, idx)",
             [],
         )
         .context("create temporary index")?;
