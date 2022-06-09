@@ -17,7 +17,15 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           echo "after freeing up space:"
           df -h
-     # Workaround for https://github.com/rust-lang/cargo/issues/8719
+      - name: Determine Docker image metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: eqlabs/pathfinder
+          tags: |
+            type=semver,pattern={{raw}}
+            type=raw,value=snapshot-{{branch}}-{{sha}}
+      # Workaround for https://github.com/rust-lang/cargo/issues/8719
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@v1.0
         with:
@@ -44,7 +52,7 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
       - name: Build
         id: docker_build
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v3
         with:
           context: .
           platforms: |
@@ -53,6 +61,7 @@ jobs:
           file: ./Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           push: true
-          tags:  eqlabs/pathfinder:latest, eqlabs/pathfinder:${{github.ref_name}}
+          tags:  ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
