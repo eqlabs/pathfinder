@@ -133,6 +133,7 @@ impl RpcApi {
             Ok(Block::from_raw(block, transactions))
         })
         .await
+        .context("Database read panic or shutting down")
         .map_err(internal_server_error)
         .and_then(|x| x)
     }
@@ -248,6 +249,7 @@ impl RpcApi {
             Ok(Block::from_raw(block, transactions))
         })
         .await
+        .context("Database read panic or shutting down")
         .map_err(internal_server_error)
         .and_then(|x| x)
     }
