@@ -33,23 +33,26 @@ fn main() {
         size_after_migration - size_before
     );
 
-    let conn = storage.connection().unwrap();
+    // in general one does not want to do the full vacuum because it's going to take a long time
+    if false {
+        let conn = storage.connection().unwrap();
 
-    let vacuum_started = std::time::Instant::now();
-    let vacuum_ret = conn.execute("VACUUM", []).expect("vacuum failed");
-    drop(conn);
-    drop(storage);
+        let vacuum_started = std::time::Instant::now();
+        let vacuum_ret = conn.execute("VACUUM", []).expect("vacuum failed");
+        drop(conn);
+        drop(storage);
 
-    let vacuumed_at = std::time::Instant::now();
+        let vacuumed_at = std::time::Instant::now();
 
-    let size_after_vacuum = std::fs::metadata(&path)
-        .expect("Vacuuming removed the database?")
-        .len() as i64;
+        let size_after_vacuum = std::fs::metadata(&path)
+            .expect("Vacuuming removed the database?")
+            .len() as i64;
 
-    println!(
-        "vacuumed in {:?}, size change: {}, VACUUM returned {}",
-        vacuumed_at - vacuum_started,
-        size_after_vacuum - size_after_migration,
-        vacuum_ret
-    );
+        println!(
+            "vacuumed in {:?}, size change: {}, VACUUM returned {}",
+            vacuumed_at - vacuum_started,
+            size_after_vacuum - size_after_migration,
+            vacuum_ret
+        );
+    }
 }
