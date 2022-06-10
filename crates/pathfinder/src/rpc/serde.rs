@@ -575,6 +575,12 @@ mod tests {
                 actual: 65
             })
         );
+        // Regression: previously max in the error message was hard-coded at 64,
+        // so try another buf size to make sure it is not anymore
+        assert_eq!(
+            &format!("{}", bytes_from_hex_str::<1>("abc").unwrap_err()),
+            "More than 2 digits found: 3"
+        );
     }
 
     #[test]
