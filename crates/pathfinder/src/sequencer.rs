@@ -1980,31 +1980,6 @@ mod tests {
                             (EntryPointType::L1Handler, vec![]),
                         ]);
             ContractDefinition {
-                abi: serde_json::json!([
-                    {
-                        "inputs": [
-                            {
-                                "name": "amount",
-                                "type": "felt"
-                            }
-                        ],
-                        "name": "increase_balance",
-                        "outputs": [],
-                        "type": "function"
-                    },
-                    {
-                        "inputs": [],
-                        "name": "get_balance",
-                        "outputs": [
-                            {
-                                "name": "res",
-                                "type": "felt"
-                            }
-                        ],
-                        "stateMutability": "view",
-                        "type": "function"
-                    }
-                ]),
                 program: program.to_owned(),
                 entry_points_by_type,
             }
@@ -2054,7 +2029,6 @@ mod tests {
                         ContractAddressSalt(StarkHash::ZERO),
                         vec![],
                         ContractDefinition {
-                            abi: serde_json::json!([]),
                             program: "".to_owned(),
                             entry_points_by_type: HashMap::new(),
                         },
@@ -2076,7 +2050,6 @@ mod tests {
                         ContractAddressSalt(StarkHash::ZERO),
                         vec![],
                         ContractDefinition {
-                            abi: serde_json::json!([]),
                             program: "".to_owned(),
                             entry_points_by_type: HashMap::new(),
                         },
