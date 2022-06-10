@@ -76,8 +76,8 @@ pub mod add_transaction {
         ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
     };
     use crate::rpc::serde::{
-        CallParamAsDecimalStr, CallSignatureElemAsDecimalStr, FeeAsHexStr,
-        TransactionVersionAsHexStr,
+        CallParamAsDecimalStr, CallSignatureElemAsDecimalStr, ConstructorParamAsDecimalStr,
+        FeeAsHexStr, TransactionVersionAsHexStr,
     };
 
     use serde_with::serde_as;
@@ -99,10 +99,12 @@ pub mod add_transaction {
     }
 
     /// Contract deployment transaction details.
+    #[serde_as]
     #[derive(serde::Deserialize, serde::Serialize)]
     pub struct Deploy {
         pub contract_address_salt: ContractAddressSalt,
         pub contract_definition: ContractDefinition,
+        #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
     }
 
