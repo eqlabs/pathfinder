@@ -626,7 +626,7 @@ impl ClientApi for Client {
 pub mod test_utils {
     use crate::{
         core::{
-            CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, EntryPoint, StarknetBlockHash,
             StarknetBlockNumber, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
             StorageValue,
         },
@@ -646,6 +646,7 @@ pub mod test_utils {
 
     impl_from_hex_str!(CallParam);
     impl_from_hex_str!(ClassHash);
+    impl_from_hex_str!(ConstructorParam);
     impl_from_hex_str!(ContractAddress);
     impl_from_hex_str!(EntryPoint);
     impl_from_hex_str!(StarknetBlockHash);
@@ -1990,7 +1991,9 @@ mod tests {
                         )
                         .unwrap(),
                     ),
-                    vec![],
+                    // Regression: use a dummy constructor param here to make sure that
+                    // it is serialized properly
+                    vec![ConstructorParam::from_hex_str("0x01").unwrap()],
                     contract_definition,
                     None,
                 )
