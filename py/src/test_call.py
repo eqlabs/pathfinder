@@ -235,6 +235,10 @@ def default_132_on_3_scenario(con, input_jsons):
     print(output)
 
     def strip_timings(loaded_json):
+        """
+        Remove the timings because that's not really interesting for our tests here,
+        cannot be compared for equality.
+        """
         del loaded_json["timings"]
         return loaded_json
 
