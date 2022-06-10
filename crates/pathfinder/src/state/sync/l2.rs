@@ -96,7 +96,7 @@ pub async fn sync(
         let block_hash = block.block_hash.unwrap();
         let t_update = std::time::Instant::now();
         let state_update = sequencer
-            .state_update_by_hash(block_hash.into())
+            .state_update(block_hash)
             .await
             .with_context(|| format!("Fetch state diff for block {:?} from sequencer", next))?;
         let state_update_block_hash = state_update.block_hash.unwrap();
@@ -392,7 +392,7 @@ mod tests {
                 StorageValue,
             },
             ethereum::state_update,
-            rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
+            rpc::types::BlockHashOrTag,
             sequencer::{
                 error::{SequencerError, StarknetError, StarknetErrorCode},
                 reply, MockClientApi,
@@ -673,8 +673,11 @@ mod tests {
             block_number: StarknetBlockNumber,
             returned_result: Result<reply::Block, SequencerError>,
         ) {
+            use crate::core::BlockId;
+            use mockall::predicate::eq;
+
             mock.expect_block()
-                .withf(move |x: &BlockNumberOrTag| x == &BlockNumberOrTag::Number(block_number))
+                .with(eq(BlockId::Number(block_number)))
                 .times(1)
                 .in_sequence(seq)
                 .return_once(move |_| returned_result);
@@ -686,8 +689,10 @@ mod tests {
             seq: &mut mockall::Sequence,
             returned_result: Result<reply::Block, SequencerError>,
         ) {
+            use crate::core::BlockId;
+
             mock.expect_block()
-                .withf(move |x: &BlockNumberOrTag| x == &BlockNumberOrTag::Tag(Tag::Latest))
+                .withf(move |x: &BlockId| x == &BlockId::Latest)
                 .times(1)
                 .in_sequence(seq)
                 .return_once(move |_| returned_result);
@@ -700,8 +705,8 @@ mod tests {
             block_hash: StarknetBlockHash,
             returned_result: Result<reply::StateUpdate, SequencerError>,
         ) {
-            mock.expect_state_update_by_hash()
-                .withf(move |x| x == &BlockHashOrTag::Hash(block_hash))
+            mock.expect_state_update()
+                .withf(move |x: &BlockHashOrTag| x == &BlockHashOrTag::Hash(block_hash))
                 .times(1)
                 .in_sequence(seq)
                 .return_once(|_| returned_result);

@@ -629,7 +629,7 @@ mod tests {
             TransactionVersion,
         },
         ethereum,
-        rpc::types::{BlockHashOrTag, BlockNumberOrTag},
+        rpc::types::BlockHashOrTag,
         sequencer::{
             self,
             error::SequencerError,
@@ -688,10 +688,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl sequencer::ClientApi for FakeSequencer {
-        async fn block<B: 'static + Into<crate::core::BlockId> + Send + core::fmt::Debug>(
-            &self,
-            block: B,
-        ) -> Result<reply::Block, SequencerError> {
+        async fn block<B>(&self, block: B) -> Result<reply::Block, SequencerError>
+        where
+            B: 'static + Into<crate::core::BlockId> + Send + std::fmt::Debug,
+        {
             use crate::core::BlockId;
 
             match block.into() {
@@ -743,17 +743,10 @@ mod tests {
             unimplemented!()
         }
 
-        async fn state_update_by_hash(
-            &self,
-            _: BlockHashOrTag,
-        ) -> Result<reply::StateUpdate, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn state_update_by_number(
-            &self,
-            _: BlockNumberOrTag,
-        ) -> Result<reply::StateUpdate, SequencerError> {
+        async fn state_update<B>(&self, _: B) -> Result<reply::StateUpdate, SequencerError>
+        where
+            B: 'static + Into<crate::core::BlockId> + Send + std::fmt::Debug,
+        {
             unimplemented!()
         }
 

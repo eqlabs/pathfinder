@@ -303,7 +303,7 @@ pub mod transaction {
 }
 
 /// Used to deserialize a reply from
-/// [ClientApi::state_update_by_hash](crate::sequencer::ClientApi::state_update_by_hash).
+/// [ClientApi::state_update](crate::sequencer::ClientApi::state_update).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
