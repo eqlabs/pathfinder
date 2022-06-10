@@ -221,7 +221,10 @@ impl StarkHash {
 
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
         if hex_str.len() > 64 {
-            return Err(HexParseError::InvalidLength(hex_str.len()));
+            return Err(HexParseError::InvalidLength {
+                max: 64,
+                actual: hex_str.len(),
+            });
         }
 
         let mut buf = [0u8; 32];
@@ -316,7 +319,7 @@ impl StarkHash {
 #[derive(Debug, PartialEq)]
 pub enum HexParseError {
     InvalidNibble(u8),
-    InvalidLength(usize),
+    InvalidLength { max: usize, actual: usize },
     Overflow,
 }
 
@@ -332,8 +335,8 @@ impl std::fmt::Display for HexParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidNibble(n) => f.write_fmt(format_args!("Invalid nibble found: 0x{:x}", *n)),
-            Self::InvalidLength(n) => {
-                f.write_fmt(format_args!("More than 64 digits found: {}", *n))
+            Self::InvalidLength { max, actual } => {
+                f.write_fmt(format_args!("More than {} digits found: {}", *max, *actual))
             }
             Self::Overflow => f.write_str(OVERFLOW_MSG),
         }
@@ -598,7 +601,7 @@ mod tests {
 
         #[test]
         fn invalid_len() {
-            assert_matches!(StarkHash::from_hex_str(&"1".repeat(65)).unwrap_err(), HexParseError::InvalidLength(n) => assert_eq!(n, 65))
+            assert_matches!(StarkHash::from_hex_str(&"1".repeat(65)).unwrap_err(), HexParseError::InvalidLength{max: 64, actual: n} => assert_eq!(n, 65))
         }
 
         #[test]
