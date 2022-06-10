@@ -6,7 +6,6 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::core::{ClassHash, StarknetBlockHash, StarknetBlockNumber};
 use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
-use crate::rpc::types::{BlockNumberOrTag, Tag};
 use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{Contract, StateDiff};
 use crate::sequencer::reply::Block;
@@ -180,9 +179,10 @@ async fn download_block(
     prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
+    use crate::core::BlockId;
     use sequencer::error::StarknetErrorCode::BlockNotFound;
 
-    let result = sequencer.block_by_number(block_number.into()).await;
+    let result = sequencer.block(block_number).await;
 
     match result {
         Ok(block) => Ok(DownloadBlock::Block(Box::new(block))),
@@ -191,7 +191,7 @@ async fn download_block(
             // a reorg hasn't put us too far in the future. This does run into race conditions with
             // the sequencer but this is the best we can do I think.
             let latest = sequencer
-                .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+                .block(BlockId::Latest)
                 .await
                 .context("Query sequencer for latest block")?;
 
@@ -673,8 +673,8 @@ mod tests {
             block_number: StarknetBlockNumber,
             returned_result: Result<reply::Block, SequencerError>,
         ) {
-            mock.expect_block_by_number()
-                .withf(move |x| x == &BlockNumberOrTag::Number(block_number))
+            mock.expect_block()
+                .withf(move |x: &BlockNumberOrTag| x == &BlockNumberOrTag::Number(block_number))
                 .times(1)
                 .in_sequence(seq)
                 .return_once(move |_| returned_result);
@@ -686,8 +686,8 @@ mod tests {
             seq: &mut mockall::Sequence,
             returned_result: Result<reply::Block, SequencerError>,
         ) {
-            mock.expect_block_by_number()
-                .withf(move |x| x == &BlockNumberOrTag::Tag(Tag::Latest))
+            mock.expect_block()
+                .withf(move |x: &BlockNumberOrTag| x == &BlockNumberOrTag::Tag(Tag::Latest))
                 .times(1)
                 .in_sequence(seq)
                 .return_once(move |_| returned_result);

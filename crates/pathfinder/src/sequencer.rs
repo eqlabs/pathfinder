@@ -21,15 +21,9 @@ use std::{fmt::Debug, result::Result, time::Duration};
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 pub trait ClientApi {
-    async fn block_by_number(
-        &self,
-        block_number: BlockNumberOrTag,
-    ) -> Result<reply::Block, SequencerError>;
-
-    async fn block_by_hash(
-        &self,
-        block_hash: BlockHashOrTag,
-    ) -> Result<reply::Block, SequencerError>;
+    async fn block<B>(&self, block: B) -> Result<reply::Block, SequencerError>
+    where
+        B: 'static + Into<crate::core::BlockId> + Send + Debug;
 
     async fn call(
         &self,
@@ -160,31 +154,15 @@ impl Client {
 
 #[async_trait::async_trait]
 impl ClientApi for Client {
-    /// Gets block by number.
     #[tracing::instrument(skip(self))]
-    async fn block_by_number(
-        &self,
-        block_number: BlockNumberOrTag,
-    ) -> Result<reply::Block, SequencerError> {
+    async fn block<B>(&self, block: B) -> Result<reply::Block, SequencerError>
+    where
+        B: 'static + Into<crate::core::BlockId> + Send + Debug,
+    {
         self.request()
             .feeder_gateway()
             .get_block()
-            .at_block(block_number)
-            .auto_retry()
-            .get()
-            .await
-    }
-
-    /// Get block by hash.
-    #[tracing::instrument(skip(self))]
-    async fn block_by_hash(
-        &self,
-        block_hash: BlockHashOrTag,
-    ) -> Result<reply::Block, SequencerError> {
-        self.request()
-            .feeder_gateway()
-            .get_block()
-            .at_block(block_hash)
+            .at_block(block)
             .auto_retry()
             .get()
             .await
@@ -666,12 +644,12 @@ mod tests {
         let url = Url::parse(&url).unwrap();
         let client = Client::with_url(url).unwrap();
 
-        let _ = client.block_by_hash(BlockHashOrTag::Tag(Tag::Latest)).await;
+        let _ = client.block(BlockHashOrTag::Tag(Tag::Latest)).await;
         shutdown_tx.send(()).unwrap();
         server_handle.await.unwrap();
     }
 
-    mod block_by_number_matches_by_hash_on {
+    mod block_matches_by_hash_on {
         use super::*;
 
         #[tokio::test]
@@ -692,8 +670,8 @@ mod tests {
                     response!("0.9.0/block/genesis.json"),
                 ),
             ]);
-            let by_hash = client.block_by_hash(*GENESIS_BLOCK_HASH).await.unwrap();
-            let by_number = client.block_by_number(*GENESIS_BLOCK_NUMBER).await.unwrap();
+            let by_hash = client.block(*GENESIS_BLOCK_HASH).await.unwrap();
+            let by_number = client.block(*GENESIS_BLOCK_NUMBER).await.unwrap();
             assert_eq!(by_hash, by_number);
         }
 
@@ -710,7 +688,7 @@ mod tests {
                 ),
             ]);
             let by_hash = client
-                .block_by_hash(BlockHashOrTag::Hash(
+                .block(BlockHashOrTag::Hash(
                     StarknetBlockHash::from_hex_str(
                         "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
                     )
@@ -719,43 +697,41 @@ mod tests {
                 .await
                 .unwrap();
             let by_number = client
-                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(231579)))
+                .block(BlockNumberOrTag::Number(StarknetBlockNumber(231579)))
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
         }
     }
 
-    mod block_by_hash {
+    mod block {
         use super::*;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn latest() {
+            use crate::core::BlockId;
+
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
                 response!("0.9.0/block/231579.json"),
             )]);
-            client
-                .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
-                .await
-                .unwrap();
+            client.block(BlockId::Latest).await.unwrap();
         }
 
         #[tokio::test]
         async fn pending() {
+            use crate::core::BlockId;
+
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
                 response!("0.9.0/block/pending.json"),
             )]);
-            client
-                .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
-                .await
-                .unwrap();
+            client.block(BlockId::Pending).await.unwrap();
         }
 
         #[test_log::test(tokio::test)]
-        async fn invalid() {
+        async fn invalid_hash() {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_block?blockHash={}",
@@ -763,43 +739,15 @@ mod tests {
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
-            let error = client.block_by_hash(*INVALID_BLOCK_HASH).await.unwrap_err();
+            let error = client.block(*INVALID_BLOCK_HASH).await.unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
             );
         }
-    }
-
-    mod block_by_number {
-        use super::*;
-
-        #[tokio::test]
-        async fn latest() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_block?blockNumber=latest",
-                response!("0.9.0/block/231579.json"),
-            )]);
-            client
-                .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
-                .await
-                .unwrap();
-        }
-
-        #[tokio::test]
-        async fn pending() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_block?blockNumber=pending",
-                response!("0.9.0/block/pending.json"),
-            )]);
-            client
-                .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
-                .await
-                .unwrap();
-        }
 
         #[test_log::test(tokio::test)]
-        async fn invalid() {
+        async fn invalid_number() {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_block?blockNumber={}",
@@ -807,26 +755,11 @@ mod tests {
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
-            let error = client
-                .block_by_number(*INVALID_BLOCK_NUMBER)
-                .await
-                .unwrap_err();
+            let error = client.block(*INVALID_BLOCK_NUMBER).await.unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
             );
-        }
-
-        #[tokio::test]
-        async fn contains_receipts_without_status_field() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_block?blockNumber=1716",
-                response!("0.9.0/block/1716.json"),
-            )]);
-            client
-                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1716)))
-                .await
-                .unwrap();
         }
     }
 

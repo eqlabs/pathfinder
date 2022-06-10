@@ -325,16 +325,14 @@ async fn update_sync_status_latest(
     starting_block_num: StarknetBlockNumber,
     chain: Chain,
 ) -> anyhow::Result<()> {
-    use crate::rpc::types::{BlockNumberOrTag, Tag};
+    use crate::core::BlockId;
+
     let poll_interval = head_poll_interval(chain);
 
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
     loop {
-        match sequencer
-            .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
-            .await
-        {
+        match sequencer.block(BlockId::Latest).await {
             Ok(block) => {
                 let latest = {
                     let latest_hash = block.block_hash.unwrap();
@@ -690,15 +688,16 @@ mod tests {
 
     #[async_trait::async_trait]
     impl sequencer::ClientApi for FakeSequencer {
-        async fn block_by_number(
+        async fn block<B: 'static + Into<crate::core::BlockId> + Send + core::fmt::Debug>(
             &self,
-            _: BlockNumberOrTag,
-        ) -> Result<reply::Block, sequencer::error::SequencerError> {
-            Ok(BLOCK0.clone())
-        }
+            block: B,
+        ) -> Result<reply::Block, SequencerError> {
+            use crate::core::BlockId;
 
-        async fn block_by_hash(&self, _: BlockHashOrTag) -> Result<reply::Block, SequencerError> {
-            unimplemented!()
+            match block.into() {
+                BlockId::Number(_) => Ok(BLOCK0.clone()),
+                _ => unimplemented!(),
+            }
         }
 
         async fn call(

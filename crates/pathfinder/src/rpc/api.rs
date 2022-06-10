@@ -99,7 +99,7 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block_by_hash(block_hash)
+                    .block(block_hash)
                     .await
                     .map_err(internal_server_error)?;
 
@@ -218,7 +218,7 @@ impl RpcApi {
             BlockNumberOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block_by_number(block_number)
+                    .block(block_number)
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
@@ -514,7 +514,7 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block_by_hash(block_hash)
+                    .block(block_hash)
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
@@ -589,7 +589,7 @@ impl RpcApi {
             BlockNumberOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block_by_number(block_number)
+                    .block(block_number)
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
@@ -747,7 +747,7 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block_by_hash(block_hash)
+                    .block(block_hash)
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
@@ -814,7 +814,7 @@ impl RpcApi {
             BlockNumberOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block_by_number(block_number)
+                    .block(block_number)
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
