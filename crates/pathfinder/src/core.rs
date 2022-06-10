@@ -185,6 +185,15 @@ pub struct EthereumTransactionIndex(pub u64);
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub struct EthereumLogIndex(pub u64);
 
+/// A way of identifying a specific block.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum BlockId {
+    Number(StarknetBlockNumber),
+    Hash(StarknetBlockHash),
+    Latest,
+    Pending,
+}
+
 impl StarknetBlockNumber {
     pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber(0);
 }
@@ -274,5 +283,43 @@ impl GasPrice {
 impl From<u64> for GasPrice {
     fn from(src: u64) -> Self {
         Self(u128::from(src))
+    }
+}
+
+impl From<crate::rpc::types::BlockNumberOrTag> for BlockId {
+    fn from(block: crate::rpc::types::BlockNumberOrTag) -> Self {
+        use crate::rpc::types::BlockNumberOrTag::*;
+        use crate::rpc::types::Tag::*;
+
+        match block {
+            Number(number) => Self::Number(number),
+            Tag(Latest) => Self::Latest,
+            Tag(Pending) => Self::Pending,
+        }
+    }
+}
+
+impl From<crate::rpc::types::BlockHashOrTag> for BlockId {
+    fn from(block: crate::rpc::types::BlockHashOrTag) -> Self {
+        use crate::rpc::types::BlockHashOrTag::*;
+        use crate::rpc::types::Tag::*;
+
+        match block {
+            Hash(hash) => Self::Hash(hash),
+            Tag(Latest) => Self::Latest,
+            Tag(Pending) => Self::Pending,
+        }
+    }
+}
+
+impl From<StarknetBlockNumber> for BlockId {
+    fn from(number: StarknetBlockNumber) -> Self {
+        Self::Number(number)
+    }
+}
+
+impl From<StarknetBlockHash> for BlockId {
+    fn from(hash: StarknetBlockHash) -> Self {
+        Self::Hash(hash)
     }
 }

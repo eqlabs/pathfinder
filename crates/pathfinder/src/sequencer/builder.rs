@@ -3,10 +3,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    core::{
-        ClassHash, ContractAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetTransactionHash, StorageAddress,
-    },
+    core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
     sequencer::error::SequencerError,
 };
 
@@ -22,26 +19,6 @@ pub struct WithGateWay;
 pub struct WithMethod;
 pub struct WithRetry;
 pub struct WithoutRetry;
-
-pub enum BlockId {
-    Number(StarknetBlockNumber),
-    Hash(StarknetBlockHash),
-    Latest,
-    Pending,
-}
-
-impl BlockId {
-    fn to_str(&self) -> std::borrow::Cow<'static, str> {
-        use std::borrow::Cow;
-
-        match self {
-            BlockId::Number(number) => Cow::from(number.0.to_string()),
-            BlockId::Hash(hash) => hash.0.to_hex_str(),
-            BlockId::Latest => Cow::from("latest"),
-            BlockId::Pending => Cow::from("pending"),
-        }
-    }
-}
 
 impl<'a> Request<'a, Start> {
     pub fn new(client: &'a reqwest::Client, url: reqwest::Url) -> Request<'a, WithUrl> {
@@ -140,7 +117,8 @@ impl<'a> Request<'a, WithGateWay> {
 }
 
 impl<'a> Request<'a, WithMethod> {
-    pub fn at_block<B: Into<BlockId>>(self, block: B) -> Self {
+    pub fn at_block<B: Into<crate::core::BlockId>>(self, block: B) -> Self {
+        use crate::core::BlockId;
         use std::borrow::Cow;
 
         let block: BlockId = block.into();
@@ -320,32 +298,6 @@ impl RequestState for WithGateWay {}
 impl RequestState for WithMethod {}
 impl RequestState for WithRetry {}
 impl RequestState for WithoutRetry {}
-
-impl From<crate::rpc::types::BlockNumberOrTag> for BlockId {
-    fn from(block: crate::rpc::types::BlockNumberOrTag) -> Self {
-        use crate::rpc::types::BlockNumberOrTag::*;
-        use crate::rpc::types::Tag::*;
-
-        match block {
-            Number(number) => Self::Number(number),
-            Tag(Latest) => Self::Latest,
-            Tag(Pending) => Self::Pending,
-        }
-    }
-}
-
-impl From<crate::rpc::types::BlockHashOrTag> for BlockId {
-    fn from(block: crate::rpc::types::BlockHashOrTag) -> Self {
-        use crate::rpc::types::BlockHashOrTag::*;
-        use crate::rpc::types::Tag::*;
-
-        match block {
-            Hash(hash) => Self::Hash(hash),
-            Tag(Latest) => Self::Latest,
-            Tag(Pending) => Self::Pending,
-        }
-    }
-}
 
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
 async fn retry0<T, Fut, FutureFactory, Ret>(
