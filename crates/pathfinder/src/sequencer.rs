@@ -860,14 +860,14 @@ mod tests {
                         "/feeder_gateway/get_block?blockHash={}",
                         *GENESIS_BLOCK_HASH
                     ),
-                    response!("genesis_block.json"),
+                    response!("0.9.0/block/genesis.json"),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_block?blockNumber={}",
                         *GENESIS_BLOCK_NUMBER
                     ),
-                    response!("genesis_block.json"),
+                    response!("0.9.0/block/genesis.json"),
                 ),
             ]);
             let by_hash = client.block_by_hash(*GENESIS_BLOCK_HASH).await.unwrap();
@@ -879,25 +879,25 @@ mod tests {
         async fn specific_block() {
             let (_jh, client) = setup([
                 (
-                    "/feeder_gateway/get_block?blockHash=0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
-                    response!("block_200k.json")
+                    "/feeder_gateway/get_block?blockHash=0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
+                    response!("0.9.0/block/231579.json")
                 ),
                 (
-                    "/feeder_gateway/get_block?blockNumber=200000",
-                    response!("block_200k.json")
+                    "/feeder_gateway/get_block?blockNumber=231579",
+                    response!("0.9.0/block/231579.json")
                 ),
             ]);
             let by_hash = client
                 .block_by_hash(BlockHashOrTag::Hash(
                     StarknetBlockHash::from_hex_str(
-                        "0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
+                        "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
                     )
                     .unwrap(),
                 ))
                 .await
                 .unwrap();
             let by_number = client
-                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(200000)))
+                .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(231579)))
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -912,7 +912,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
-                response!("block_200k.json"),
+                response!("0.9.0/block/231579.json"),
             )]);
             client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Latest))
@@ -924,7 +924,7 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
-                response!("pending_block.json"),
+                response!("0.9.0/block/pending.json"),
             )]);
             client
                 .block_by_hash(BlockHashOrTag::Tag(Tag::Pending))
@@ -956,7 +956,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
-                response!("block_200k.json"),
+                response!("0.9.0/block/231579.json"),
             )]);
             client
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
@@ -968,7 +968,7 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
-                response!("pending_block.json"),
+                response!("0.9.0/block/pending.json"),
             )]);
             client
                 .block_by_number(BlockNumberOrTag::Tag(Tag::Pending))
@@ -999,7 +999,7 @@ mod tests {
         async fn contains_receipts_without_status_field() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=1716",
-                response!("block_1716.json"),
+                response!("0.9.0/block/1716.json"),
             )]);
             client
                 .block_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(1716)))
@@ -1450,16 +1450,64 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn accepted() {
+        async fn declare() {
             let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_transaction?transactionHash={}",
-                    *VALID_TX_HASH
-                ),
-                response!("valid_tx.json"),
+                "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
+                response!("0.9.0/txn/invoke.json"),
             )]);
             assert_eq!(
-                client.transaction(*VALID_TX_HASH).await.unwrap().status,
+                client
+                    .transaction(
+                        StarknetTransactionHash::from_hex_str(
+                            "0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
+                        )
+                        .unwrap()
+                    )
+                    .await
+                    .unwrap()
+                    .status,
+                Status::AcceptedOnL1
+            );
+        }
+
+        #[tokio::test]
+        async fn deploy() {
+            let (_jh, client) = setup([(
+                "/feeder_gateway/get_transaction?transactionHash=0x3d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8",
+                response!("0.9.0/txn/deploy.json"),
+            )]);
+            assert_eq!(
+                client
+                    .transaction(
+                        StarknetTransactionHash::from_hex_str(
+                            "0x3d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
+                        )
+                        .unwrap()
+                    )
+                    .await
+                    .unwrap()
+                    .status,
+                Status::AcceptedOnL1
+            );
+        }
+
+        #[tokio::test]
+        async fn invoke() {
+            let (_jh, client) = setup([(
+                "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
+                response!("0.9.0/txn/invoke.json"),
+            )]);
+            assert_eq!(
+                client
+                    .transaction(
+                        StarknetTransactionHash::from_hex_str(
+                            "0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
+                        )
+                        .unwrap()
+                    )
+                    .await
+                    .unwrap()
+                    .status,
                 Status::AcceptedOnL1
             );
         }
@@ -1486,15 +1534,17 @@ mod tests {
         #[tokio::test]
         async fn accepted() {
             let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_transaction_status?transactionHash={}",
-                    *VALID_TX_HASH
-                ),
-                response!("valid_tx_status.json"),
+                "/feeder_gateway/get_transaction_status?transactionHash=0x79cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205",
+                response!("0.9.0/txn/status.json"),
             )]);
             assert_eq!(
                 client
-                    .transaction_status(*VALID_TX_HASH)
+                    .transaction_status(
+                        StarknetTransactionHash::from_hex_str(
+                            "0x79cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205"
+                        )
+                        .unwrap()
+                    )
                     .await
                     .unwrap()
                     .tx_status,
@@ -1570,14 +1620,14 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
-                    response!("genesis_state_update.json"),
+                    response!("0.9.0/state_update/genesis.json"),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_state_update?blockHash={}",
                         *GENESIS_BLOCK_HASH
                     ),
-                    response!("genesis_state_update.json"),
+                    response!("0.9.0/state_update/genesis.json"),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1598,23 +1648,23 @@ mod tests {
         async fn specific_block() {
             let (_jh, client) = setup([
                 (
-                    "/feeder_gateway/get_state_update?blockNumber=200000",
-                    response!("state_update_200k.json"),
+                    "/feeder_gateway/get_state_update?blockNumber=231579",
+                    response!("0.9.0/state_update/231579.json"),
                 ),
                 (
-                    "/feeder_gateway/get_state_update?blockHash=0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
-                    response!("state_update_200k.json"),
+                    "/feeder_gateway/get_state_update?blockHash=0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
+                    response!("0.9.0/state_update/231579.json"),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(200000)))
+                .state_update_by_number(BlockNumberOrTag::Number(StarknetBlockNumber(231579)))
                 .await
                 .unwrap()
                 .into();
             let by_hash: OrderedStateUpdate = client
                 .state_update_by_hash(BlockHashOrTag::Hash(
                     StarknetBlockHash::from_hex_str(
-                        "0x7448f26fd6604a4b93008915e26bd226c39d8b4e2a6bdd99b0c923a9d6970e0",
+                        "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
                     )
                     .unwrap(),
                 ))
@@ -1652,7 +1702,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
-                response!("state_update_200k.json"),
+                response!("0.9.0/state_update/231579.json"),
             )]);
             client
                 .state_update_by_number(BlockNumberOrTag::Tag(Tag::Latest))
@@ -1664,7 +1714,7 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                response!("pending_state_update.json"),
+                response!("0.9.0/state_update/pending.json"),
             )]);
             client
                 .state_update_by_number(BlockNumberOrTag::Tag(Tag::Pending))
@@ -1699,7 +1749,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
-                response!("state_update_200k.json"),
+                response!("0.9.0/state_update/231579.json"),
             )]);
             client
                 .state_update_by_hash(BlockHashOrTag::Tag(Tag::Latest))
@@ -1711,7 +1761,7 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                response!("pending_state_update.json"),
+                response!("0.9.0/state_update/pending.json"),
             )]);
             client
                 .state_update_by_hash(BlockHashOrTag::Tag(Tag::Pending))
