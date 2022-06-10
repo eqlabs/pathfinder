@@ -688,14 +688,9 @@ mod tests {
 
     #[async_trait::async_trait]
     impl sequencer::ClientApi for FakeSequencer {
-        async fn block<B>(&self, block: B) -> Result<reply::Block, SequencerError>
-        where
-            B: 'static + Into<crate::core::BlockId> + Send + std::fmt::Debug,
-        {
-            use crate::core::BlockId;
-
-            match block.into() {
-                BlockId::Number(_) => Ok(BLOCK0.clone()),
+        async fn block(&self, block: crate::core::BlockId) -> Result<reply::Block, SequencerError> {
+            match block {
+                crate::core::BlockId::Number(_) => Ok(BLOCK0.clone()),
                 _ => unimplemented!(),
             }
         }
@@ -743,10 +738,10 @@ mod tests {
             unimplemented!()
         }
 
-        async fn state_update<B>(&self, _: B) -> Result<reply::StateUpdate, SequencerError>
-        where
-            B: 'static + Into<crate::core::BlockId> + Send + std::fmt::Debug,
-        {
+        async fn state_update(
+            &self,
+            _: crate::core::BlockId,
+        ) -> Result<reply::StateUpdate, SequencerError> {
             unimplemented!()
         }
 

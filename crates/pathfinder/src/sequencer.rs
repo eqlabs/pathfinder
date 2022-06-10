@@ -7,9 +7,9 @@ pub mod request;
 use self::request::{add_transaction::ContractDefinition, Call};
 use crate::{
     core::{
-        CallSignatureElem, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
-        StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
-        TransactionVersion,
+        BlockId, CallSignatureElem, ClassHash, ConstructorParam, ContractAddress,
+        ContractAddressSalt, Fee, StarknetTransactionHash, StorageAddress, StorageValue,
+        TransactionNonce, TransactionVersion,
     },
     ethereum::Chain,
     rpc::types::BlockHashOrTag,
@@ -21,9 +21,7 @@ use std::{fmt::Debug, result::Result, time::Duration};
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 pub trait ClientApi {
-    async fn block<B>(&self, block: B) -> Result<reply::Block, SequencerError>
-    where
-        B: 'static + Into<crate::core::BlockId> + Send + Debug;
+    async fn block(&self, block: BlockId) -> Result<reply::Block, SequencerError>;
 
     async fn call(
         &self,
@@ -60,9 +58,7 @@ pub trait ClientApi {
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::TransactionStatus, SequencerError>;
 
-    async fn state_update<B>(&self, block: B) -> Result<reply::StateUpdate, SequencerError>
-    where
-        B: 'static + Into<crate::core::BlockId> + Send + Debug;
+    async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError>;
 
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
 
@@ -149,10 +145,7 @@ impl Client {
 #[async_trait::async_trait]
 impl ClientApi for Client {
     #[tracing::instrument(skip(self))]
-    async fn block<B>(&self, block: B) -> Result<reply::Block, SequencerError>
-    where
-        B: 'static + Into<crate::core::BlockId> + Send + Debug,
-    {
+    async fn block(&self, block: BlockId) -> Result<reply::Block, SequencerError> {
         self.request()
             .feeder_gateway()
             .get_block()
@@ -270,10 +263,7 @@ impl ClientApi for Client {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn state_update<B>(&self, block: B) -> Result<reply::StateUpdate, SequencerError>
-    where
-        B: 'static + Into<crate::core::BlockId> + Send + Debug,
-    {
+    async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError> {
         self.request()
             .feeder_gateway()
             .get_state_update()
@@ -622,7 +612,7 @@ mod tests {
         let url = Url::parse(&url).unwrap();
         let client = Client::with_url(url).unwrap();
 
-        let _ = client.block(BlockHashOrTag::Tag(Tag::Latest)).await;
+        let _ = client.block(BlockId::Latest).await;
         shutdown_tx.send(()).unwrap();
         server_handle.await.unwrap();
     }
@@ -648,15 +638,19 @@ mod tests {
                     response!("0.9.0/block/genesis.json"),
                 ),
             ]);
-            let by_hash = client.block(*GENESIS_BLOCK_HASH).await.unwrap();
-            let by_number = client.block(*GENESIS_BLOCK_NUMBER).await.unwrap();
+            let by_hash = client
+                .block(BlockId::from(*GENESIS_BLOCK_HASH))
+                .await
+                .unwrap();
+            let by_number = client
+                .block(BlockId::from(*GENESIS_BLOCK_NUMBER))
+                .await
+                .unwrap();
             assert_eq!(by_hash, by_number);
         }
 
         #[tokio::test]
         async fn specific_block() {
-            use crate::rpc::types::BlockNumberOrTag;
-
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_block?blockHash=0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
@@ -668,16 +662,17 @@ mod tests {
                 ),
             ]);
             let by_hash = client
-                .block(BlockHashOrTag::Hash(
+                .block(
                     StarknetBlockHash::from_hex_str(
                         "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
                     )
-                    .unwrap(),
-                ))
+                    .unwrap()
+                    .into(),
+                )
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockNumberOrTag::Number(StarknetBlockNumber(231579)))
+                .block(StarknetBlockNumber(231579).into())
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -719,7 +714,10 @@ mod tests {
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
-            let error = client.block(*INVALID_BLOCK_HASH).await.unwrap_err();
+            let error = client
+                .block(BlockId::from(*INVALID_BLOCK_HASH))
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -735,7 +733,10 @@ mod tests {
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
-            let error = client.block(*INVALID_BLOCK_NUMBER).await.unwrap_err();
+            let error = client
+                .block(BlockId::from(*INVALID_BLOCK_NUMBER))
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -1366,12 +1367,12 @@ mod tests {
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update(*GENESIS_BLOCK_NUMBER)
+                .state_update(BlockId::from(*GENESIS_BLOCK_NUMBER))
                 .await
                 .unwrap()
                 .into();
             let by_hash: OrderedStateUpdate = client
-                .state_update(*GENESIS_BLOCK_HASH)
+                .state_update(BlockId::from(*GENESIS_BLOCK_HASH))
                 .await
                 .unwrap()
                 .into();
@@ -1381,8 +1382,6 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
-            use crate::rpc::types::BlockNumberOrTag;
-
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=231579",
@@ -1394,17 +1393,18 @@ mod tests {
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update(BlockNumberOrTag::Number(StarknetBlockNumber(231579)))
+                .state_update(StarknetBlockNumber(231579).into())
                 .await
                 .unwrap()
                 .into();
             let by_hash: OrderedStateUpdate = client
-                .state_update(BlockHashOrTag::Hash(
+                .state_update(
                     StarknetBlockHash::from_hex_str(
                         "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
                     )
-                    .unwrap(),
-                ))
+                    .unwrap()
+                    .into(),
+                )
                 .await
                 .unwrap()
                 .into();
@@ -1426,7 +1426,7 @@ mod tests {
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
-                .state_update(*INVALID_BLOCK_NUMBER)
+                .state_update(BlockId::from(*INVALID_BLOCK_NUMBER))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1444,7 +1444,10 @@ mod tests {
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
-            let error = client.state_update(*INVALID_BLOCK_HASH).await.unwrap_err();
+            let error = client
+                .state_update(BlockId::from(*INVALID_BLOCK_HASH))
+                .await
+                .unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
@@ -1453,30 +1456,20 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            use crate::rpc::types::BlockNumberOrTag;
-
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
                 response!("0.9.0/state_update/231579.json"),
             )]);
-            client
-                .state_update(BlockNumberOrTag::Tag(Tag::Latest))
-                .await
-                .unwrap();
+            client.state_update(BlockId::Latest).await.unwrap();
         }
 
         #[tokio::test]
         async fn pending() {
-            use crate::rpc::types::BlockNumberOrTag;
-
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
                 response!("0.9.0/state_update/pending.json"),
             )]);
-            client
-                .state_update(BlockNumberOrTag::Tag(Tag::Pending))
-                .await
-                .unwrap();
+            client.state_update(BlockId::Pending).await.unwrap();
         }
     }
 
