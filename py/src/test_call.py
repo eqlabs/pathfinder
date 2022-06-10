@@ -286,7 +286,7 @@ def test_positive_directly():
 
     con.execute("BEGIN")
 
-    output = loop_inner(con, command)
+    (verb, output) = loop_inner(con, command)
 
     assert output == [3]
 
@@ -378,3 +378,61 @@ def test_check_cairolang_version():
     # run this here as well so that we get earlier than CI feedback
     # of another constant that needs to be upgraded
     assert check_cairolang_version()
+
+
+def test_fee_estimate_on_positive_directly():
+    # fee estimation is a new thing on top of a call, but returning only the estimated fee
+    con = inmemory_with_tables()
+    contract_address = populate_test_contract_with_132_on_3(con)
+
+    con.execute("BEGIN")
+
+    # f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}'
+    command = {
+        "command": "estimate_fee",
+        "at_block": "latest",
+        "contract_address": contract_address,
+        "entry_point_selector": "get_value",
+        "calldata": [132],
+        # gas_price is missing => use block's (zero)
+    }
+
+    (verb, output) = loop_inner(con, command)
+
+    assert output == {
+        "gas_consumed": 0,
+        "gas_price": 0,
+        "overall_fee": 0,
+    }
+
+
+def test_fee_estimate_on_positive():
+    # fee estimation is a new thing on top of a call, but returning only the estimated fee
+    con = inmemory_with_tables()
+    contract_address = populate_test_contract_with_132_on_3(con)
+
+    (first, second) = default_132_on_3_scenario(
+        con,
+        [
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": "0xa"}}',
+        ],
+    )
+
+    assert first == {
+        "status": "ok",
+        "output": {
+            "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
+            "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
+        },
+    }
+
+    assert second == {
+        "status": "ok",
+        "output": {
+            "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
+            "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (690).to_bytes(32, "big").hex(),
+        },
+    }
