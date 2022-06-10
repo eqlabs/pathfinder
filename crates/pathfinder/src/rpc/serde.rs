@@ -332,7 +332,10 @@ fn bytes_from_hex_str<const N: usize>(hex_str: &str) -> Result<[u8; N], HexParse
 
     let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
     if hex_str.len() > N * 2 {
-        return Err(HexParseError::InvalidLength(hex_str.len()));
+        return Err(HexParseError::InvalidLength {
+            max: N * 2,
+            actual: hex_str.len(),
+        });
     }
 
     let mut buf = [0u8; N];
@@ -567,7 +570,10 @@ mod tests {
         );
         assert_eq!(
             bytes_from_hex_str::<32>(TOO_LONG_HEX_STR),
-            Err(HexParseError::InvalidLength(65))
+            Err(HexParseError::InvalidLength {
+                max: 64,
+                actual: 65
+            })
         );
     }
 
