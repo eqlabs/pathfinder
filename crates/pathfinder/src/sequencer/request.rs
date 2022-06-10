@@ -92,7 +92,6 @@ pub mod add_transaction {
     /// for us, and they are sent as a gzip + base64 encoded string via the API.
     #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
     pub struct ContractDefinition {
-        pub abi: serde_json::Value,
         // gzip + base64 encoded JSON of the compiled contract JSON
         pub program: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
