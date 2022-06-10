@@ -145,7 +145,7 @@ impl<'a> Request<'a, WithMethod> {
         let (name, value) = match block {
             BlockId::Number(number) => ("blockNumber", Cow::from(number.0.to_string())),
             BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str()),
-            // The name for these two could be either "blockNumber" or "blockHash".
+            // These have to use "blockNumber", "blockHash" does not accept tags.
             BlockId::Latest => ("blockNumber", Cow::from("latest")),
             BlockId::Pending => ("blockNumber", Cow::from("pending")),
         };
@@ -182,22 +182,52 @@ impl<'a> Request<'a, WithMethod> {
         self
     }
 
-    pub fn finalize(self) -> reqwest::Url {
-        self.url
-    }
-
-    pub async fn get(self) -> Result<reqwest::Response, SequencerError> {
-        let response = self.client.get(self.url).send().await?;
-        Ok(response)
-    }
-
-    pub async fn post_json<T>(self, json: &T) -> Result<reqwest::Response, SequencerError>
+    pub async fn get<T>(self) -> Result<T, SequencerError>
     where
-        T: serde::Serialize + ?Sized,
+        T: serde::de::DeserializeOwned,
+    {
+        let response = self.client.get(self.url).send().await?;
+        parse::<T>(response).await
+    }
+
+    pub async fn get_as_bytes(self) -> Result<bytes::Bytes, SequencerError> {
+        let response = self.client.get(self.url).send().await?;
+        let bytes = parse_raw(response).await?.bytes().await?;
+        Ok(bytes)
+    }
+
+    pub async fn post_with_json<T, J>(self, json: &J) -> Result<T, SequencerError>
+    where
+        T: serde::de::DeserializeOwned,
+        J: serde::Serialize + ?Sized,
     {
         let response = self.client.post(self.url).json(json).send().await?;
-        Ok(response)
+        parse::<T>(response).await
     }
+}
+
+pub async fn parse<T>(response: reqwest::Response) -> Result<T, SequencerError>
+where
+    T: ::serde::de::DeserializeOwned,
+{
+    let response = parse_raw(response).await?;
+    // Attempt to deserialize the actual data we are looking for
+    let response = response.json::<T>().await?;
+    Ok(response)
+}
+
+/// Helper function which allows skipping deserialization when required.
+async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, SequencerError> {
+    use crate::sequencer::error::StarknetError;
+    // Starknet specific errors end with a 500 status code
+    // but the body contains a JSON object with the error description
+    if response.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
+        let starknet_error = response.json::<StarknetError>().await?;
+        return Err(SequencerError::StarknetError(starknet_error));
+    }
+    // Status codes <400;499> and <501;599> are mapped to SequencerError::TransportError
+    response.error_for_status_ref().map(|_| ())?;
+    Ok(response)
 }
 
 pub trait RequestState {}
