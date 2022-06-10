@@ -1,6 +1,6 @@
 use crate::{
-    core::{ByteCodeWord, ClassHash, ContractAddress, ContractCode},
-    state::CompressedContract,
+    core::{ByteCodeWord, ClassHash, ContractAddress, ContractClass, ContractCode},
+    state::{class_hash::extract_entry_points_by_type, CompressedContract},
 };
 
 use anyhow::Context;
@@ -69,7 +69,7 @@ impl ContractCodeTable {
         Ok(())
     }
 
-    pub fn get_class(
+    pub fn get_code(
         transaction: &Transaction<'_>,
         hash: ClassHash,
     ) -> anyhow::Result<Option<ContractCode>> {
@@ -112,6 +112,50 @@ impl ContractCodeTable {
             .context("Corruption: invalid uncompressed column (bytecode)")?;
 
         Ok(Some(ContractCode { bytecode, abi }))
+    }
+
+    pub fn get_class(
+        transaction: &Transaction<'_>,
+        hash: ClassHash,
+    ) -> anyhow::Result<Option<ContractClass>> {
+        let row = transaction
+            .query_row(
+                "SELECT bytecode, definition
+                FROM contract_code
+                WHERE hash = :hash",
+                named_params! {
+                    ":hash": &hash.0.to_be_bytes()
+                },
+                |row| {
+                    let bytecode: Vec<u8> = row.get("bytecode")?;
+                    let definition: Vec<u8> = row.get("definition")?;
+
+                    Ok((bytecode, definition))
+                },
+            )
+            .optional()?;
+
+        let (bytecode, definition) = match row {
+            None => return Ok(None),
+            Some((bytecode, definition)) => (bytecode, definition),
+        };
+
+        let bytecode = zstd::decode_all(&*bytecode)
+            .context("Corruption: invalid compressed column (bytecode)")?;
+
+        let bytecode = serde_json::from_slice::<Vec<ByteCodeWord>>(&bytecode)
+            .context("Corruption: invalid uncompressed column (bytecode)")?;
+
+        let definition = zstd::decode_all(&*definition)
+            .context("Corruption: invalid compressed column (abi)")?;
+
+        let entry_points_by_type = extract_entry_points_by_type(&definition)
+            .context("Failed to extract entry points from contract definition")?;
+
+        Ok(Some(ContractClass {
+            program: bytecode,
+            entry_points_by_type,
+        }))
     }
 
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
@@ -224,7 +268,7 @@ mod tests {
 
         let (hash, contract_code) = setup_class(&transaction);
 
-        let result = ContractCodeTable::get_class(&transaction, hash).unwrap();
+        let result = ContractCodeTable::get_code(&transaction, hash).unwrap();
 
         assert_eq!(result, Some(contract_code));
     }
