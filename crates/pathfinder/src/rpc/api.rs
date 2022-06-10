@@ -112,8 +112,10 @@ impl RpcApi {
         };
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut connection = storage
                 .connection()
                 .context("Opening database connection")
@@ -228,8 +230,10 @@ impl RpcApi {
         };
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut connection = storage
                 .connection()
                 .context("Opening database connection")
@@ -390,8 +394,10 @@ impl RpcApi {
         };
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -462,8 +468,10 @@ impl RpcApi {
         transaction_hash: StarknetTransactionHash,
     ) -> RpcResult<Transaction> {
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -522,8 +530,10 @@ impl RpcApi {
         };
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -595,8 +605,10 @@ impl RpcApi {
         };
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -640,8 +652,10 @@ impl RpcApi {
         transaction_hash: StarknetTransactionHash,
     ) -> RpcResult<TransactionReceipt> {
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -691,8 +705,10 @@ impl RpcApi {
         use crate::storage::ContractCodeTable;
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -746,8 +762,10 @@ impl RpcApi {
         };
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -811,8 +829,10 @@ impl RpcApi {
         };
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -878,8 +898,10 @@ impl RpcApi {
     /// Get the most recent accepted block number.
     pub async fn block_number(&self) -> RpcResult<u64> {
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -928,8 +950,10 @@ impl RpcApi {
     /// Returns events matching the specified filter
     pub async fn get_events(&self, request: EventFilter) -> RpcResult<GetEventsResult> {
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let connection = storage
                 .connection()
                 .context("Opening database connection")
