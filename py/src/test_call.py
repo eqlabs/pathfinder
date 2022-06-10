@@ -223,6 +223,9 @@ def compile_test_contract():
 
 
 def default_132_on_3_scenario(con, input_jsons):
+    assert isinstance(input_jsons, list) or isinstance(
+        input_jsons, tuple
+    ), f"input_jsons need to be a list or tuple, not a {type(input_jsons)}"
     output_catcher = io.StringIO()
 
     do_loop(con, input_jsons, output_catcher)
