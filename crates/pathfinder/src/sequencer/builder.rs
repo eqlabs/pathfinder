@@ -9,11 +9,7 @@
 //!   2. [Gateway](stage::Gateway) where you select between the read and write gateways.
 //!   3. [Method](stage::Method) where you select the REST API method.
 //!   4. [Params](stage::Params) where you select the retry behavior.
-//!   5. [WithRetry](stage::WithRetry) and [WithoutRetry](stage::WithoutRetry) provide the same API (with retry behavior
-//!      based on your selection in the [Params](stage::Params) stage). In this final stage you select the REST operation
-//!      type, which is then executed.
-
-use std::marker::PhantomData;
+//!   5. [Final](stage::Final) where you select the REST operation type, which is then executed.
 
 use crate::{
     core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
@@ -22,16 +18,25 @@ use crate::{
 
 /// A Sequencer Request builder.
 pub struct Request<'a, S: RequestState> {
-    marker: PhantomData<S>,
+    state: S,
     url: reqwest::Url,
     client: &'a reqwest::Client,
+}
+
+/// Describes the retry behavior of a [Request] and is specified using
+#[allow(dead_code)]
+pub enum Retry {
+    Enabled,
+    Disabled,
 }
 
 pub mod stage {
     /// Provides the [builder](super::Request::builder) entry-point.
     pub struct Init;
+
     /// Select between the [read](super::Request::feeder_gateway) and [write](super::Request::gateway) Sequencer gateways.
     pub struct Gateway;
+
     /// Select the Sequencer API method to call:
     /// - [add_transaction](super::Request::add_transaction)
     /// - [call_contract](super::Request::call_contract)
@@ -45,6 +50,7 @@ pub mod stage {
     /// - [get_state_update](super::Request::get_state_update)
     /// - [get_contract_addresses](super::Request::get_contract_addresses)
     pub struct Method;
+
     /// Specify the request parameters:
     /// - [at_block](super::Request::with_block)
     /// - [with_contract_address](super::Request::with_contract_address)
@@ -54,28 +60,22 @@ pub mod stage {
     /// - [with_transaction_hash](super::Request::with_transaction_hash)
     /// - [add_param](super::Request::add_param) (allows adding custom (name, value) parameter)
     ///
-    /// and then specify the retry behavior:
-    /// - [auto_retry](super::Request::auto_retry)
-    /// - [without_retry](super::Request::without_retry)
-    ///
+    /// and then specify the [retry behavior](super::Request::with_retry).
     pub struct Params;
-    /// Execute the request by providing the REST operation to perform:
+
+    /// Specify the REST operation send the request:
     /// - [get](super::Request::get)
     /// - [get_as_bytes](super::Request::get_as_bytes)
     /// - [post_with_json](super::Request::post_with_json)
-    pub struct WithRetry;
-    /// Execute the request by providing the REST operation to perform:
-    /// - [get](super::Request::get)
-    /// - [get_as_bytes](super::Request::get_as_bytes)
-    /// - [post_with_json](super::Request::post_with_json)
-    pub struct WithoutRetry;
+    pub struct Final {
+        pub retry: super::Retry,
+    }
 
     impl super::RequestState for Init {}
     impl super::RequestState for Gateway {}
     impl super::RequestState for Method {}
     impl super::RequestState for Params {}
-    impl super::RequestState for WithRetry {}
-    impl super::RequestState for WithoutRetry {}
+    impl super::RequestState for Final {}
 }
 
 impl<'a> Request<'a, stage::Init> {
@@ -84,7 +84,7 @@ impl<'a> Request<'a, stage::Init> {
         Request {
             url,
             client,
-            marker: PhantomData::default(),
+            state: stage::Gateway,
         }
     }
 }
@@ -108,7 +108,7 @@ impl<'a> Request<'a, stage::Gateway> {
         Request {
             url: self.url,
             client: self.client,
-            marker: PhantomData::default(),
+            state: stage::Method,
         }
     }
 }
@@ -168,7 +168,7 @@ impl<'a> Request<'a, stage::Method> {
         Request {
             url: self.url,
             client: self.client,
-            marker: PhantomData::default(),
+            state: stage::Params,
         }
     }
 }
@@ -219,42 +219,71 @@ impl<'a> Request<'a, stage::Params> {
         self
     }
 
-    /// The query will be indefinitely retried on transient connection errors.
-    ///
-    /// See [retry](retry0) for more information on the backoff-strategy, retry conditions and behavior.
-    pub fn auto_retry(self) -> Request<'a, stage::WithRetry> {
+    /// Sets the request retry behavior.
+    pub fn with_retry(self, retry: Retry) -> Request<'a, stage::Final> {
         Request {
             url: self.url,
             client: self.client,
-            marker: PhantomData::default(),
-        }
-    }
-
-    /// The query will be run only once, with no retry attempts at all.
-    pub fn without_retry(self) -> Request<'a, stage::WithoutRetry> {
-        Request {
-            url: self.url,
-            client: self.client,
-            marker: PhantomData::default(),
+            state: stage::Final { retry },
         }
     }
 }
 
-impl<'a> Request<'a, stage::WithoutRetry> {
+impl<'a> Request<'a, stage::Final> {
     /// Sends the Sequencer request as a REST `GET` operation and parses the response into `T`.
     pub async fn get<T>(self) -> Result<T, SequencerError>
     where
         T: serde::de::DeserializeOwned,
     {
-        let response = self.client.get(self.url).send().await?;
-        parse::<T>(response).await
+        async fn send_request<T: serde::de::DeserializeOwned>(
+            url: reqwest::Url,
+            client: &reqwest::Client,
+        ) -> Result<T, SequencerError> {
+            dbg!(&url);
+
+            let response = client.get(url).send().await?;
+            parse::<T>(response).await
+        }
+
+        match self.state.retry {
+            Retry::Disabled => send_request(self.url, self.client).await,
+            Retry::Enabled => {
+                retry0(
+                    || async {
+                        let clone_url = self.url.clone();
+                        send_request(clone_url, self.client).await
+                    },
+                    retry_condition,
+                )
+                .await
+            }
+        }
     }
 
     /// Sends the Sequencer request as a REST `GET` operation and returns the response's bytes.
     pub async fn get_as_bytes(self) -> Result<bytes::Bytes, SequencerError> {
-        let response = self.client.get(self.url).send().await?;
-        let bytes = parse_raw(response).await?.bytes().await?;
-        Ok(bytes)
+        async fn get_as_bytes_inner(
+            url: reqwest::Url,
+            client: &reqwest::Client,
+        ) -> Result<bytes::Bytes, SequencerError> {
+            let response = client.get(url).send().await?;
+            let bytes = response.bytes().await?;
+            Ok(bytes)
+        }
+
+        match self.state.retry {
+            Retry::Disabled => get_as_bytes_inner(self.url, self.client).await,
+            Retry::Enabled => {
+                retry0(
+                    || async {
+                        let clone_url = self.url.clone();
+                        get_as_bytes_inner(clone_url, self.client).await
+                    },
+                    retry_condition,
+                )
+                .await
+            }
+        }
     }
 
     /// Sends the Sequencer request as a REST `POST` operation, in addition to the specified
@@ -264,75 +293,32 @@ impl<'a> Request<'a, stage::WithoutRetry> {
         T: serde::de::DeserializeOwned,
         J: serde::Serialize + ?Sized,
     {
-        let response = self.client.post(self.url).json(json).send().await?;
-        parse::<T>(response).await
-    }
-}
+        async fn post_with_json_inner<T, J>(
+            url: reqwest::Url,
+            client: &reqwest::Client,
+            json: &J,
+        ) -> Result<T, SequencerError>
+        where
+            T: serde::de::DeserializeOwned,
+            J: serde::Serialize + ?Sized,
+        {
+            let response = client.post(url).json(json).send().await?;
+            parse::<T>(response).await
+        }
 
-impl<'a> Request<'a, stage::WithRetry> {
-    /// Sends the Sequencer request as a REST `GET` operation and parses the response into `T`.
-    pub async fn get<T>(self) -> Result<T, SequencerError>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        retry0(
-            || {
-                let clone_url = self.url.clone();
-                async move {
-                    let r = Request::<stage::WithoutRetry> {
-                        url: clone_url,
-                        client: self.client,
-                        marker: PhantomData::default(),
-                    };
-                    r.get().await
-                }
-            },
-            retry_condition,
-        )
-        .await
-    }
-
-    /// Sends the Sequencer request as a REST `GET` operation and returns the response's bytes.
-    pub async fn get_as_bytes(self) -> Result<bytes::Bytes, SequencerError> {
-        retry0(
-            || {
-                let clone_url = self.url.clone();
-                async move {
-                    let r = Request::<stage::WithoutRetry> {
-                        url: clone_url,
-                        client: self.client,
-                        marker: PhantomData::default(),
-                    };
-                    r.get_as_bytes().await
-                }
-            },
-            retry_condition,
-        )
-        .await
-    }
-
-    /// Sends the Sequencer request as a REST `POST` operation, in addition to the specified
-    /// JSON body. The response is parsed as type `T`.
-    pub async fn post_with_json<T, J>(self, json: &J) -> Result<T, SequencerError>
-    where
-        T: serde::de::DeserializeOwned,
-        J: serde::Serialize + ?Sized,
-    {
-        retry0(
-            || {
-                let clone_url = self.url.clone();
-                async move {
-                    let r = Request::<stage::WithoutRetry> {
-                        url: clone_url,
-                        client: self.client,
-                        marker: PhantomData::default(),
-                    };
-                    r.post_with_json(json).await
-                }
-            },
-            retry_condition,
-        )
-        .await
+        match self.state.retry {
+            Retry::Disabled => post_with_json_inner(self.url, self.client, json).await,
+            Retry::Enabled => {
+                retry0(
+                    || async {
+                        let clone_url = self.url.clone();
+                        post_with_json_inner(clone_url, self.client, json).await
+                    },
+                    retry_condition,
+                )
+                .await
+            }
+        }
     }
 }
 

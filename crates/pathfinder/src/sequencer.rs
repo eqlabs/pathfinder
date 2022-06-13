@@ -109,6 +109,11 @@ pub struct Client {
 }
 
 impl Client {
+    #[cfg(not(test))]
+    const RETRY: builder::Retry = builder::Retry::Enabled;
+    #[cfg(test)]
+    const RETRY: builder::Retry = builder::Retry::Disabled;
+
     /// Creates a new Sequencer client for the given chain.
     pub fn new(chain: Chain) -> reqwest::Result<Self> {
         let url = match chain {
@@ -150,7 +155,7 @@ impl ClientApi for Client {
             .feeder_gateway()
             .get_block()
             .with_block(block)
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .get()
             .await
     }
@@ -166,7 +171,7 @@ impl ClientApi for Client {
             .feeder_gateway()
             .call_contract()
             .with_block(block_hash)
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .post_with_json(&payload)
             .await
     }
@@ -181,7 +186,7 @@ impl ClientApi for Client {
             .feeder_gateway()
             .get_full_contract()
             .with_contract_address(contract_addr)
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .get_as_bytes()
             .await
     }
@@ -193,7 +198,7 @@ impl ClientApi for Client {
             .feeder_gateway()
             .get_class_by_hash()
             .with_class_hash(class_hash)
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .get_as_bytes()
             .await
     }
@@ -208,7 +213,7 @@ impl ClientApi for Client {
             .feeder_gateway()
             .get_class_hash_at()
             .with_contract_address(contract_address)
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .get()
             .await
     }
@@ -227,7 +232,7 @@ impl ClientApi for Client {
             .with_contract_address(contract_addr)
             .with_storage_address(key)
             .with_block(block_hash)
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .get()
             .await
     }
@@ -242,7 +247,7 @@ impl ClientApi for Client {
             .feeder_gateway()
             .get_transaction()
             .with_transaction_hash(transaction_hash)
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .get()
             .await
     }
@@ -257,7 +262,7 @@ impl ClientApi for Client {
             .feeder_gateway()
             .get_transaction_status()
             .with_transaction_hash(transaction_hash)
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .get()
             .await
     }
@@ -268,7 +273,7 @@ impl ClientApi for Client {
             .feeder_gateway()
             .get_state_update()
             .with_block(block)
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .get()
             .await
     }
@@ -279,7 +284,7 @@ impl ClientApi for Client {
         self.request()
             .feeder_gateway()
             .get_contract_addresses()
-            .auto_retry()
+            .with_retry(Self::RETRY)
             .get()
             .await
     }
@@ -310,7 +315,7 @@ impl ClientApi for Client {
         self.request()
             .gateway()
             .add_transaction()
-            .without_retry()
+            .with_retry(builder::Retry::Disabled)
             .post_with_json(&req)
             .await
     }
@@ -346,7 +351,7 @@ impl ClientApi for Client {
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
             .with_optional_token(token.as_deref())
-            .without_retry()
+            .with_retry(builder::Retry::Disabled)
             .post_with_json(&req)
             .await
     }
@@ -377,7 +382,7 @@ impl ClientApi for Client {
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
             .with_optional_token(token.as_deref())
-            .without_retry()
+            .with_retry(builder::Retry::Disabled)
             .post_with_json(&req)
             .await
     }
@@ -1476,7 +1481,7 @@ mod tests {
     #[tokio::test]
     async fn eth_contract_addresses() {
         let (_jh, client) = setup([(
-            "/feeder_gateway/get_contract_addresses?",
+            "/feeder_gateway/get_contract_addresses",
             (
                 r#"{"Starknet":"0xde29d060d45901fb19ed6c6e959eb22d8626708e","GpsStatementVerifier":"0xab43ba48c9edf4c2c4bb01237348d1d7b28ef168"}"#,
                 200,
