@@ -542,12 +542,13 @@ mod tests {
             (None, Client::new(Chain::Goerli).unwrap())
         } else {
             use warp::Filter;
-            let path = warp::any()
-                .and(warp::path::full())
-                .and(warp::query::raw())
-                .map(move |full_path: warp::path::FullPath, raw_query| {
+            let opt_query_raw = warp::query::raw()
+                .map(Some)
+                .or_else(|_| async { Ok::<(Option<String>,), std::convert::Infallible>((None,)) });
+            let path = warp::any().and(warp::path::full()).and(opt_query_raw).map(
+                move |full_path: warp::path::FullPath, raw_query: Option<String>| {
                     let actual_full_path_and_query =
-                        format!("{}?{}", full_path.as_str(), raw_query);
+                        format!("{}?{}", full_path.as_str(), raw_query.unwrap_or_default());
 
                     match url_paths_queries_and_response_fixtures
                         .iter()
@@ -565,7 +566,8 @@ mod tests {
                                 .collect::<Vec<_>>()
                         ),
                     }
-                });
+                },
+            );
 
             let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
             let server_handle = tokio::spawn(serve_fut);
