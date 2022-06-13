@@ -1,4 +1,17 @@
-#![allow(dead_code)]
+//! Provides a builder API for creating and sending Sequencer REST requests.
+//!
+//! This builder utilises a type state builder pattern with generics to only allow valid operations at each stage of the build process.
+//! Each stage is consumed to generate the next stage and the final stage executes the query.
+//!
+//! Here is an overview of the five builder stages.
+//!
+//!   1. [Init](stage::Init) which provides the entry point of the [builder](Request).
+//!   2. [Gateway](stage::Gateway) where you select between the read and write gateways.
+//!   3. [Method](stage::Method) where you select the REST API method.
+//!   4. [Params](stage::Params) where you select the retry behavior.
+//!   5. [WithRetry](stage::WithRetry) and [WithoutRetry](stage::WithoutRetry) provide the same API (with retry behavior
+//!      based on your selection in the [Params](stage::Params) stage). In this final stage you select the REST operation
+//!      type, which is then executed.
 
 use std::marker::PhantomData;
 
@@ -7,21 +20,67 @@ use crate::{
     sequencer::error::SequencerError,
 };
 
+/// A Sequencer Request builder.
 pub struct Request<'a, S: RequestState> {
     marker: PhantomData<S>,
     url: reqwest::Url,
     client: &'a reqwest::Client,
 }
 
-pub struct Start;
-pub struct WithUrl;
-pub struct WithGateWay;
-pub struct WithMethod;
-pub struct WithRetry;
-pub struct WithoutRetry;
+pub mod stage {
+    /// Provides the [builder](super::Request::builder) entry-point.
+    pub struct Init;
+    /// Select between the [read](super::Request::feeder_gateway) and [write](super::Request::gateway) Sequencer gateways.
+    pub struct Gateway;
+    /// Select the Sequencer API method to call:
+    /// - [add_transaction](super::Request::add_transaction)
+    /// - [call_contract](super::Request::call_contract)
+    /// - [get_block](super::Request::get_block)
+    /// - [get_full_contract](super::Request::get_full_contract)
+    /// - [get_class_by_hash](super::Request::get_class_by_hash)
+    /// - [get_class_hash_at](super::Request::get_class_hash_at)
+    /// - [get_storage_at](super::Request::get_storage_at)
+    /// - [get_transaction](super::Request::get_transaction)
+    /// - [get_transaction_status](super::Request::get_transaction_status)
+    /// - [get_state_update](super::Request::get_state_update)
+    /// - [get_contract_addresses](super::Request::get_contract_addresses)
+    pub struct Method;
+    /// Specify the request parameters:
+    /// - [at_block](super::Request::with_block)
+    /// - [with_contract_address](super::Request::with_contract_address)
+    /// - [with_class_hash](super::Request::with_class_hash)
+    /// - [with_optional_token](super::Request::with_optional_token)
+    /// - [with_storage_address](super::Request::with_storage_address)
+    /// - [with_transaction_hash](super::Request::with_transaction_hash)
+    /// - [add_param](super::Request::add_param) (allows adding custom (name, value) parameter)
+    ///
+    /// and then specify the retry behavior:
+    /// - [auto_retry](super::Request::auto_retry)
+    /// - [without_retry](super::Request::without_retry)
+    ///
+    pub struct Params;
+    /// Execute the request by providing the REST operation to perform:
+    /// - [get](super::Request::get)
+    /// - [get_as_bytes](super::Request::get_as_bytes)
+    /// - [post_with_json](super::Request::post_with_json)
+    pub struct WithRetry;
+    /// Execute the request by providing the REST operation to perform:
+    /// - [get](super::Request::get)
+    /// - [get_as_bytes](super::Request::get_as_bytes)
+    /// - [post_with_json](super::Request::post_with_json)
+    pub struct WithoutRetry;
 
-impl<'a> Request<'a, Start> {
-    pub fn new(client: &'a reqwest::Client, url: reqwest::Url) -> Request<'a, WithUrl> {
+    impl super::RequestState for Init {}
+    impl super::RequestState for Gateway {}
+    impl super::RequestState for Method {}
+    impl super::RequestState for Params {}
+    impl super::RequestState for WithRetry {}
+    impl super::RequestState for WithoutRetry {}
+}
+
+impl<'a> Request<'a, stage::Init> {
+    /// Initialize a [Request] builder.
+    pub fn builder(client: &'a reqwest::Client, url: reqwest::Url) -> Request<'a, stage::Gateway> {
         Request {
             url,
             client,
@@ -30,16 +89,18 @@ impl<'a> Request<'a, Start> {
     }
 }
 
-impl<'a> Request<'a, WithUrl> {
-    pub fn gateway(self) -> Request<'a, WithGateWay> {
+impl<'a> Request<'a, stage::Gateway> {
+    /// The Sequencer write gateway, typically only used for submitting StarkNet transactions.
+    pub fn gateway(self) -> Request<'a, stage::Method> {
         self.with_gateway("gateway")
     }
 
-    pub fn feeder_gateway(self) -> Request<'a, WithGateWay> {
+    /// The Sequencer read gateway, used for all queries which are not submitting transactions.
+    pub fn feeder_gateway(self) -> Request<'a, stage::Method> {
         self.with_gateway("feeder_gateway")
     }
 
-    fn with_gateway(mut self, gateway: &str) -> Request<'a, WithGateWay> {
+    fn with_gateway(mut self, gateway: &str) -> Request<'a, stage::Method> {
         self.url
             .path_segments_mut()
             .expect("Base URL is valid")
@@ -52,57 +113,53 @@ impl<'a> Request<'a, WithUrl> {
     }
 }
 
-impl<'a> Request<'a, WithGateWay> {
-    pub fn add_transaction(self) -> Request<'a, WithMethod> {
+impl<'a> Request<'a, stage::Method> {
+    pub fn add_transaction(self) -> Request<'a, stage::Params> {
         self.with_method("add_transaction")
     }
 
-    pub fn call_contract(self) -> Request<'a, WithMethod> {
+    pub fn call_contract(self) -> Request<'a, stage::Params> {
         self.with_method("call_contract")
     }
 
-    pub fn get_block(self) -> Request<'a, WithMethod> {
+    pub fn get_block(self) -> Request<'a, stage::Params> {
         self.with_method("get_block")
     }
 
-    pub fn get_full_contract(self) -> Request<'a, WithMethod> {
+    pub fn get_full_contract(self) -> Request<'a, stage::Params> {
         self.with_method("get_full_contract")
     }
 
-    pub fn get_class_by_hash(self) -> Request<'a, WithMethod> {
+    pub fn get_class_by_hash(self) -> Request<'a, stage::Params> {
         self.with_method("get_class_by_hash")
     }
 
-    pub fn get_class_hash_at(self) -> Request<'a, WithMethod> {
+    pub fn get_class_hash_at(self) -> Request<'a, stage::Params> {
         self.with_method("get_class_hash_at")
     }
 
-    pub fn get_storage_at(self) -> Request<'a, WithMethod> {
+    pub fn get_storage_at(self) -> Request<'a, stage::Params> {
         self.with_method("get_storage_at")
     }
 
-    pub fn get_transaction(self) -> Request<'a, WithMethod> {
+    pub fn get_transaction(self) -> Request<'a, stage::Params> {
         self.with_method("get_transaction")
     }
 
-    pub fn get_transaction_status(self) -> Request<'a, WithMethod> {
+    pub fn get_transaction_status(self) -> Request<'a, stage::Params> {
         self.with_method("get_transaction_status")
     }
 
-    pub fn get_state_update(self) -> Request<'a, WithMethod> {
+    pub fn get_state_update(self) -> Request<'a, stage::Params> {
         self.with_method("get_state_update")
     }
 
-    pub fn get_contract_addresses(self) -> Request<'a, WithMethod> {
+    pub fn get_contract_addresses(self) -> Request<'a, stage::Params> {
         self.with_method("get_contract_addresses")
     }
 
-    #[cfg(test)]
-    pub fn custom(self, method: &'static str) -> Request<'a, WithMethod> {
-        self.with_method(method)
-    }
-
-    fn with_method(mut self, method: &str) -> Request<'a, WithMethod> {
+    /// Appends the given method to the request url.
+    fn with_method(mut self, method: &str) -> Request<'a, stage::Params> {
         self.url
             .path_segments_mut()
             .expect("Base URL is valid")
@@ -116,8 +173,8 @@ impl<'a> Request<'a, WithGateWay> {
     }
 }
 
-impl<'a> Request<'a, WithMethod> {
-    pub fn at_block<B: Into<crate::core::BlockId>>(self, block: B) -> Self {
+impl<'a> Request<'a, stage::Params> {
+    pub fn with_block<B: Into<crate::core::BlockId>>(self, block: B) -> Self {
         use crate::core::BlockId;
         use std::borrow::Cow;
 
@@ -162,7 +219,10 @@ impl<'a> Request<'a, WithMethod> {
         self
     }
 
-    pub fn auto_retry(self) -> Request<'a, WithRetry> {
+    /// The query will be indefinitely retried on transient connection errors.
+    ///
+    /// See [retry](retry0) for more information on the backoff-strategy, retry conditions and behavior.
+    pub fn auto_retry(self) -> Request<'a, stage::WithRetry> {
         Request {
             url: self.url,
             client: self.client,
@@ -170,7 +230,8 @@ impl<'a> Request<'a, WithMethod> {
         }
     }
 
-    pub fn without_retry(self) -> Request<'a, WithoutRetry> {
+    /// The query will be run only once, with no retry attempts at all.
+    pub fn without_retry(self) -> Request<'a, stage::WithoutRetry> {
         Request {
             url: self.url,
             client: self.client,
@@ -179,7 +240,8 @@ impl<'a> Request<'a, WithMethod> {
     }
 }
 
-impl<'a> Request<'a, WithoutRetry> {
+impl<'a> Request<'a, stage::WithoutRetry> {
+    /// Sends the Sequencer request as a REST `GET` operation and parses the response into `T`.
     pub async fn get<T>(self) -> Result<T, SequencerError>
     where
         T: serde::de::DeserializeOwned,
@@ -188,12 +250,15 @@ impl<'a> Request<'a, WithoutRetry> {
         parse::<T>(response).await
     }
 
+    /// Sends the Sequencer request as a REST `GET` operation and returns the response's bytes.
     pub async fn get_as_bytes(self) -> Result<bytes::Bytes, SequencerError> {
         let response = self.client.get(self.url).send().await?;
         let bytes = parse_raw(response).await?.bytes().await?;
         Ok(bytes)
     }
 
+    /// Sends the Sequencer request as a REST `POST` operation, in addition to the specified
+    /// JSON body. The response is parsed as type `T`.
     pub async fn post_with_json<T, J>(self, json: &J) -> Result<T, SequencerError>
     where
         T: serde::de::DeserializeOwned,
@@ -204,7 +269,8 @@ impl<'a> Request<'a, WithoutRetry> {
     }
 }
 
-impl<'a> Request<'a, WithRetry> {
+impl<'a> Request<'a, stage::WithRetry> {
+    /// Sends the Sequencer request as a REST `GET` operation and parses the response into `T`.
     pub async fn get<T>(self) -> Result<T, SequencerError>
     where
         T: serde::de::DeserializeOwned,
@@ -213,7 +279,7 @@ impl<'a> Request<'a, WithRetry> {
             || {
                 let clone_url = self.url.clone();
                 async move {
-                    let r = Request::<WithoutRetry> {
+                    let r = Request::<stage::WithoutRetry> {
                         url: clone_url,
                         client: self.client,
                         marker: PhantomData::default(),
@@ -226,12 +292,13 @@ impl<'a> Request<'a, WithRetry> {
         .await
     }
 
+    /// Sends the Sequencer request as a REST `GET` operation and returns the response's bytes.
     pub async fn get_as_bytes(self) -> Result<bytes::Bytes, SequencerError> {
         retry0(
             || {
                 let clone_url = self.url.clone();
                 async move {
-                    let r = Request::<WithoutRetry> {
+                    let r = Request::<stage::WithoutRetry> {
                         url: clone_url,
                         client: self.client,
                         marker: PhantomData::default(),
@@ -244,6 +311,8 @@ impl<'a> Request<'a, WithRetry> {
         .await
     }
 
+    /// Sends the Sequencer request as a REST `POST` operation, in addition to the specified
+    /// JSON body. The response is parsed as type `T`.
     pub async fn post_with_json<T, J>(self, json: &J) -> Result<T, SequencerError>
     where
         T: serde::de::DeserializeOwned,
@@ -253,7 +322,7 @@ impl<'a> Request<'a, WithRetry> {
             || {
                 let clone_url = self.url.clone();
                 async move {
-                    let r = Request::<WithoutRetry> {
+                    let r = Request::<stage::WithoutRetry> {
                         url: clone_url,
                         client: self.client,
                         marker: PhantomData::default(),
@@ -267,7 +336,7 @@ impl<'a> Request<'a, WithRetry> {
     }
 }
 
-pub async fn parse<T>(response: reqwest::Response) -> Result<T, SequencerError>
+async fn parse<T>(response: reqwest::Response) -> Result<T, SequencerError>
 where
     T: ::serde::de::DeserializeOwned,
 {
@@ -292,12 +361,6 @@ async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, Seq
 }
 
 pub trait RequestState {}
-impl RequestState for Start {}
-impl RequestState for WithUrl {}
-impl RequestState for WithGateWay {}
-impl RequestState for WithMethod {}
-impl RequestState for WithRetry {}
-impl RequestState for WithoutRetry {}
 
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
 async fn retry0<T, Fut, FutureFactory, Ret>(

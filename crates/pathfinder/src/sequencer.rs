@@ -137,8 +137,8 @@ impl Client {
         })
     }
 
-    fn request(&self) -> builder::Request<builder::WithUrl> {
-        builder::Request::new(&self.inner, self.sequencer_url.clone())
+    fn request(&self) -> builder::Request<builder::stage::Gateway> {
+        builder::Request::builder(&self.inner, self.sequencer_url.clone())
     }
 }
 
@@ -149,7 +149,7 @@ impl ClientApi for Client {
         self.request()
             .feeder_gateway()
             .get_block()
-            .at_block(block)
+            .with_block(block)
             .auto_retry()
             .get()
             .await
@@ -165,7 +165,7 @@ impl ClientApi for Client {
         self.request()
             .feeder_gateway()
             .call_contract()
-            .at_block(block_hash)
+            .with_block(block_hash)
             .auto_retry()
             .post_with_json(&payload)
             .await
@@ -226,7 +226,7 @@ impl ClientApi for Client {
             .get_storage_at()
             .with_contract_address(contract_addr)
             .with_storage_address(key)
-            .at_block(block_hash)
+            .with_block(block_hash)
             .auto_retry()
             .get()
             .await
@@ -267,7 +267,7 @@ impl ClientApi for Client {
         self.request()
             .feeder_gateway()
             .get_state_update()
-            .at_block(block)
+            .with_block(block)
             .auto_retry()
             .get()
             .await

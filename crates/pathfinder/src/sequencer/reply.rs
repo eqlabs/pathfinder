@@ -9,8 +9,7 @@ use crate::{
 use serde::Deserialize;
 use serde_with::serde_as;
 
-/// Used to deserialize replies to [ClientApi::block_by_hash](crate::sequencer::ClientApi::block_by_hash) and
-/// [ClientApi::block_by_number](crate::sequencer::ClientApi::block_by_number).
+/// Used to deserialize replies to [ClientApi::block](crate::sequencer::ClientApi::block).
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(serde::Serialize))]
