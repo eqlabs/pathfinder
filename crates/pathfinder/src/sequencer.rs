@@ -546,8 +546,12 @@ mod tests {
                 .or_else(|_| async { Ok::<(Option<String>,), std::convert::Infallible>((None,)) });
             let path = warp::any().and(warp::path::full()).and(opt_query_raw).map(
                 move |full_path: warp::path::FullPath, raw_query: Option<String>| {
-                    let actual_full_path_and_query =
-                        format!("{}?{}", full_path.as_str(), raw_query.unwrap_or_default());
+                    let actual_full_path_and_query = match raw_query {
+                        Some(some_raw_query) => {
+                            format!("{}?{}", full_path.as_str(), some_raw_query.as_str())
+                        }
+                        None => full_path.as_str().to_owned(),
+                    };
 
                     match url_paths_queries_and_response_fixtures
                         .iter()
@@ -1482,7 +1486,7 @@ mod tests {
     #[tokio::test]
     async fn eth_contract_addresses() {
         let (_jh, client) = setup([(
-            "/feeder_gateway/get_contract_addresses?",
+            "/feeder_gateway/get_contract_addresses",
             (
                 r#"{"Starknet":"0xde29d060d45901fb19ed6c6e959eb22d8626708e","GpsStatementVerifier":"0xab43ba48c9edf4c2c4bb01237348d1d7b28ef168"}"#,
                 200,
@@ -1507,7 +1511,7 @@ mod tests {
             // test with values dumped from `starknet invoke` for a test contract,
             // except for an invalid entry point value
             let (_jh, client) = setup([(
-                "/gateway/add_transaction?",
+                "/gateway/add_transaction",
                 StarknetErrorCode::UnsupportedSelectorForFee.into_response(),
             )]);
             let  error = client
@@ -1569,7 +1573,7 @@ mod tests {
         #[tokio::test]
         async fn invoke_function() {
             let (_jh, client) = setup([(
-                "/gateway/add_transaction?",
+                "/gateway/add_transaction",
                 (
                     r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x0389DD0629F42176CC8B6C43ACEFC0713D0064ECDFC0470E0FC179F53421A38B"}"#,
                     200,
@@ -1655,7 +1659,7 @@ mod tests {
             let contract_class = get_contract_class_from_fixture();
 
             let (_jh, client) = setup([(
-                "/gateway/add_transaction?",
+                "/gateway/add_transaction",
                 (
                     r#"{"code": "TRANSACTION_RECEIVED",
                         "transaction_hash": "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed",
@@ -1684,7 +1688,7 @@ mod tests {
             let contract_definition = get_contract_class_from_fixture();
 
             let (_jh, client) = setup([(
-                "/gateway/add_transaction?",
+                "/gateway/add_transaction",
                 (
                     r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x057ED4B4C76A1CA0BA044A654DD3EE2D0D3E550343D739350A22AACDD524110D",
                     "address":"0x03926AEA98213EC34FE9783D803237D221C54C52344422E1F4942A5B340FA6AD"}"#,
