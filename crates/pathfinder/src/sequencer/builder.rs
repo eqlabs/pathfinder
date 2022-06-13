@@ -239,8 +239,6 @@ impl<'a> Request<'a, stage::Final> {
             url: reqwest::Url,
             client: &reqwest::Client,
         ) -> Result<T, SequencerError> {
-            dbg!(&url);
-
             let response = client.get(url).send().await?;
             parse::<T>(response).await
         }

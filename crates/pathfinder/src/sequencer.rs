@@ -1483,7 +1483,7 @@ mod tests {
     #[tokio::test]
     async fn eth_contract_addresses() {
         let (_jh, client) = setup([(
-            "/feeder_gateway/get_contract_addresses",
+            "/feeder_gateway/get_contract_addresses?",
             (
                 r#"{"Starknet":"0xde29d060d45901fb19ed6c6e959eb22d8626708e","GpsStatementVerifier":"0xab43ba48c9edf4c2c4bb01237348d1d7b28ef168"}"#,
                 200,
@@ -1685,7 +1685,7 @@ mod tests {
             let contract_definition = get_contract_class_from_fixture();
 
             let (_jh, client) = setup([(
-                "/gateway/add_transaction",
+                "/gateway/add_transaction?",
                 (
                     r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x057ED4B4C76A1CA0BA044A654DD3EE2D0D3E550343D739350A22AACDD524110D",
                     "address":"0x03926AEA98213EC34FE9783D803237D221C54C52344422E1F4942A5B340FA6AD"}"#,
