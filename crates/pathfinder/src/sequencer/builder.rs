@@ -265,6 +265,7 @@ impl<'a> Request<'a, stage::Final> {
             client: &reqwest::Client,
         ) -> Result<bytes::Bytes, SequencerError> {
             let response = client.get(url).send().await?;
+            let response = parse_raw(response).await?;
             let bytes = response.bytes().await?;
             Ok(bytes)
         }
@@ -333,13 +334,14 @@ where
 /// Helper function which allows skipping deserialization when required.
 async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, SequencerError> {
     use crate::sequencer::error::StarknetError;
+
     // Starknet specific errors end with a 500 status code
     // but the body contains a JSON object with the error description
-    if response.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
+    if dbg!(response.status()) == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
         let starknet_error = response.json::<StarknetError>().await?;
         return Err(SequencerError::StarknetError(starknet_error));
     }
-    // Status codes <400;499> and <501;599> are mapped to SequencerError::TransportError
+    // Status codes 400..499 and 501..599 are mapped to SequencerError::TransportError
     response.error_for_status_ref().map(|_| ())?;
     Ok(response)
 }
