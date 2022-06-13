@@ -538,7 +538,6 @@ mod tests {
         S2: std::string::ToString + Send + Sync + Clone + 'static,
     {
         if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
-            println!("LIVE");
             (None, Client::new(Chain::Goerli).unwrap())
         } else {
             use warp::Filter;
