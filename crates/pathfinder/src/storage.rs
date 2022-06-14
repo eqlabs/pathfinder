@@ -359,7 +359,7 @@ pub(crate) mod test_utils {
     }
 
     /// Creates a storage instance in memory with a set of expected emitted events
-    pub(crate) fn setup_storage() -> (Storage, Vec<StarknetEmittedEvent>) {
+    pub(crate) fn setup_test_storage() -> (Storage, Vec<StarknetEmittedEvent>) {
         let storage = Storage::in_memory().unwrap();
         let connection = storage.connection().unwrap();
 
