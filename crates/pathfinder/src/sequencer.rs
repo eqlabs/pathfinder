@@ -1871,12 +1871,19 @@ mod tests {
         use crate::sequencer;
 
         #[derive(Copy, Clone, PartialEq, Eq)]
+        /// Used by [setup_server] to determine which block to return.
         enum TargetChain {
             Goerli,
             Mainnet,
             Invalid,
         }
 
+        /// Creates a [sequencer::Client] whose Sequencer gateway is either the real Sequencer,
+        /// or a local warp server. A local server is created if:
+        /// - SEQUENCER_TESTS_LIVE_API is not set, __or__
+        /// - `target == TargetChain::Invalid`
+        ///
+        /// The local server only supports the `feeder_gateway/get_block?blockNumber=0` queries.
         fn setup_server(
             target: TargetChain,
         ) -> (Option<tokio::task::JoinHandle<()>>, sequencer::Client) {
