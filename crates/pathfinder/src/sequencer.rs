@@ -145,6 +145,41 @@ impl Client {
     fn request(&self) -> builder::Request<'_, builder::stage::Gateway> {
         builder::Request::builder(&self.inner, self.sequencer_url.clone())
     }
+
+    /// Returns the [network chain](Chain) this client is operating on.
+    pub async fn chain(&self) -> anyhow::Result<Chain> {
+        use crate::core::{StarknetBlockHash, StarknetBlockNumber};
+        use stark_hash::StarkHash;
+
+        lazy_static::lazy_static!(
+            static ref GOERLI_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(
+                StarkHash::from_hex_str(
+                    "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
+                )
+                .unwrap(),
+            );
+
+            static ref MAINNET_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(
+                StarkHash::from_hex_str(
+                    "0x047C3637B57C2B079B93C61539950C17E868A28F46CDEF28F88521067F21E943",
+                )
+                .unwrap(),
+            );
+        );
+
+        // unwrap is safe as `block_hash` is always present for non-pending blocks.
+        let genesis_hash = self
+            .block(StarknetBlockNumber::GENESIS.into())
+            .await?
+            .block_hash
+            .unwrap();
+
+        match genesis_hash {
+            goerli if goerli == *GOERLI_GENESIS_HASH => Ok(Chain::Goerli),
+            mainnet if mainnet == *MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
+            other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -1828,6 +1863,104 @@ mod tests {
                         assert_eq!(se.message, EXPECTED_ERROR_MESSAGE);
                 });
             }
+        }
+    }
+
+    mod chain {
+        use crate::ethereum::Chain;
+        use crate::sequencer;
+
+        #[derive(Copy, Clone, PartialEq, Eq)]
+        enum TargetChain {
+            Goerli,
+            Mainnet,
+            Invalid,
+        }
+
+        fn setup_server(
+            target: TargetChain,
+        ) -> (Option<tokio::task::JoinHandle<()>>, sequencer::Client) {
+            use warp::http::{Response, StatusCode};
+            use warp::Filter;
+
+            // `TargetChain::Invalid` always uses the local server setup as the Sequencer
+            // won't return an invalid genesis block.
+            if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some()
+                && target != TargetChain::Invalid
+            {
+                match target {
+                    TargetChain::Mainnet => (None, sequencer::Client::new(Chain::Mainnet).unwrap()),
+                    TargetChain::Goerli => (None, sequencer::Client::new(Chain::Goerli).unwrap()),
+                    // Escaped above already
+                    TargetChain::Invalid => unreachable!(),
+                }
+            } else {
+                #[derive(serde::Deserialize, serde::Serialize)]
+                #[serde(deny_unknown_fields)]
+                struct Params {
+                    #[serde(rename = "blockNumber")]
+                    block_number: u64,
+                }
+
+                let filter = warp::get()
+                    .and(warp::path("feeder_gateway"))
+                    .and(warp::path("get_block"))
+                    .and(warp::query::<Params>())
+                    .map(move |params: Params| match params.block_number {
+                        0 => {
+                            const GOERLI_GENESIS: &str =
+                                include_str!("../fixtures/sequencer/0.9.0/block/genesis.json");
+
+                            let data = match target {
+                                TargetChain::Goerli => GOERLI_GENESIS.to_owned(),
+                                // This is a bit of a cheat, but we don't currently have a mainnet fixture and I'm hesitant to introduce one
+                                // since it requires re-organising all the fixtures.
+                                TargetChain::Mainnet => GOERLI_GENESIS.replace(
+                                    r#""block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"#,
+                                    r#""block_hash": "0x047C3637B57C2B079B93C61539950C17E868A28F46CDEF28F88521067F21E943"#,
+                                ),
+                                TargetChain::Invalid => GOERLI_GENESIS.replace(
+                                    r#"block_hash": "0x7d328"#,
+                                    r#"block_hash": "0x11111"#,
+                                ),
+                            };
+                            Response::new(data)
+                        }
+                        _ => Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .body("Only supports genesis block request".to_owned())
+                            .unwrap(),
+                    });
+
+                let (addr, serve_fut) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
+                let server_handle = tokio::spawn(serve_fut);
+                let client = sequencer::Client::with_url(
+                    reqwest::Url::parse(&format!("http://{}", addr)).unwrap(),
+                )
+                .unwrap();
+
+                (Some(server_handle), client)
+            }
+        }
+
+        #[tokio::test]
+        async fn goerli() {
+            let (_server_handle, sequencer) = setup_server(TargetChain::Goerli);
+            let chain = sequencer.chain().await.unwrap();
+            assert_eq!(chain, crate::ethereum::Chain::Goerli);
+        }
+
+        #[tokio::test]
+        async fn mainnet() {
+            let (_server_handle, sequencer) = setup_server(TargetChain::Mainnet);
+            let chain = sequencer.chain().await.unwrap();
+            assert_eq!(chain, crate::ethereum::Chain::Mainnet);
+        }
+
+        #[tokio::test]
+        async fn invalid() {
+            let (_server_handle, sequencer) = setup_server(TargetChain::Invalid);
+            sequencer.chain().await.unwrap_err();
         }
     }
 }
