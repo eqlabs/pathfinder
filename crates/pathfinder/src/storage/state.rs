@@ -29,12 +29,18 @@ impl From<StarknetBlockNumber> for L1TableBlockId {
     }
 }
 
+lazy_static::lazy_static!(
+    /// Tracks the latest L1 reorg in an attempt to make sense of a primary key related reorg bug.
+    ///
+    /// Stores the latest reorg's (pre-reorg head, post-reorg head, rows deleted)
+    static ref L1_LATEST_REORG: std::sync::Mutex<(u64,u64,u64)> = std::sync::Mutex::new((0, 0, 0));
+);
+
 impl L1StateTable {
     /// Inserts a new [update](StateUpdateLog), fails if it already exists.
     pub fn insert(connection: &Connection, update: &StateUpdateLog) -> anyhow::Result<()> {
-        connection
-            .execute(
-                r"INSERT INTO l1_state (
+        let result = connection.execute(
+            r"INSERT INTO l1_state (
                         starknet_block_number,
                         starknet_global_root,
                         ethereum_block_hash,
@@ -51,28 +57,103 @@ impl L1StateTable {
                         :ethereum_transaction_index,
                         :ethereum_log_index
                     )",
-                named_params! {
-                    ":starknet_block_number": update.block_number.0,
-                    ":starknet_global_root": update.global_root.0.as_be_bytes(),
-                    ":ethereum_block_hash": &update.origin.block.hash.0[..],
-                    ":ethereum_block_number": update.origin.block.number.0,
-                    ":ethereum_transaction_hash": &update.origin.transaction.hash.0[..],
-                    ":ethereum_transaction_index": update.origin.transaction.index.0,
-                    ":ethereum_log_index": update.origin.log_index.0,
-                },
-            )
-            .context("Insert L1 state update")?;
+            named_params! {
+                ":starknet_block_number": update.block_number.0,
+                ":starknet_global_root": update.global_root.0.as_be_bytes(),
+                ":ethereum_block_hash": &update.origin.block.hash.0[..],
+                ":ethereum_block_number": update.origin.block.number.0,
+                ":ethereum_transaction_hash": &update.origin.transaction.hash.0[..],
+                ":ethereum_transaction_index": update.origin.transaction.index.0,
+                ":ethereum_log_index": update.origin.log_index.0,
+            },
+        );
 
-        Ok(())
+        match result {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                if err.to_string().contains("A PRIMARY KEY constraint failed") {
+                    let latest = L1_LATEST_REORG
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("L1 accounting lock is poisoned"))
+                        .context("Aquire L1 accounting lock")?;
+
+                    tracing::error!(pre_reorg=%latest.0, post_reorg=%latest.1, count=%latest.2, "Additional L1 reorg bug information");
+                }
+
+                Err(anyhow::anyhow!(err))
+            }
+        }
     }
 
     /// Deletes all rows from __head down-to reorg_tail__
     /// i.e. it deletes all rows where `block number >= reorg_tail`.
     pub fn reorg(connection: &Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
-        connection.execute(
+        // Added to trace a primary key constraint failure bug.
+        let original_head: Option<u64> = connection
+            .query_row(
+                "SELECT MAX(starknet_block_number) FROM l1_state",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let reorg_count = connection.execute(
             "DELETE FROM l1_state WHERE starknet_block_number >= ?",
             params![reorg_tail.0],
-        )?;
+        )? as u64;
+
+        // Added to trace a primary key constraint failure bug.
+        let new_head: Option<u64> = connection
+            .query_row(
+                "SELECT MAX(starknet_block_number) FROM l1_state",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        // Sanity check the result of reorg.
+        if let Some(new_head) = new_head {
+            anyhow::ensure!(
+                reorg_tail.0 - 1 == new_head,
+                "New L1 head ({}) did not match expectations of reorg tail ({})",
+                new_head,
+                reorg_tail.0
+            );
+        }
+        match (original_head, new_head) {
+            (Some(orig), Some(new_head)) => {
+                anyhow::ensure!(
+                    orig - new_head == reorg_count,
+                    "Deletion count ({}) did not match head change ({} -> {})",
+                    reorg_count,
+                    orig,
+                    new_head
+                );
+
+                let mut latest = L1_LATEST_REORG
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("L1 accounting lock is poisoned"))
+                    .context("Aquire L1 accounting lock")?;
+
+                latest.0 = orig;
+                latest.1 = new_head;
+                latest.2 = reorg_count;
+            }
+            (Some(orig), None) => {
+                anyhow::ensure!(
+                    orig == reorg_count,
+                    "Deletion count ({}) did not match head change ({} -> None)",
+                    reorg_count,
+                    orig
+                )
+            }
+            (None, None) => anyhow::bail!("Reorg attempted on an empty database"),
+            (None, Some(new_head)) => anyhow::bail!(
+                "Reorg attempted on an empty database and somehow ended with a new head ({})",
+                new_head
+            ),
+        }
+
         Ok(())
     }
 
