@@ -1,4 +1,3 @@
-use crate::storage::schema::PostMigrationAction;
 use anyhow::Context;
 use rusqlite::{named_params, Transaction};
 use tracing::info;
@@ -181,7 +180,7 @@ mod transaction {
 ///
 /// This migration has a non-fatal bug where it fails to drop the columns if the table is empty.
 /// This bug is fixed in [schema revision 6](super::revision_0006::migrate).
-pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     // Create the new transaction and transaction receipt tables.
     transaction
         .execute(
@@ -272,12 +271,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigra
         )
         .context("Dropping transaction receipts from starknet_blocks table")?;
 
-    if todo > 0 {
-        // Database should be vacuum'd to defrag removal of transaction columns.
-        Ok(PostMigrationAction::Vacuum)
-    } else {
-        Ok(PostMigrationAction::None)
-    }
+    Ok(())
 }
 
 #[cfg(test)]

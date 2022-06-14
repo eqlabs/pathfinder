@@ -13,12 +13,3 @@ pub(crate) mod revision_0012;
 
 #[cfg(test)]
 pub(crate) mod fixtures;
-
-/// Used to indicate which action the caller should perform after a schema migration.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PostMigrationAction {
-    /// A database VACUUM should be performed.
-    Vacuum,
-    /// No further action requried.
-    None,
-}

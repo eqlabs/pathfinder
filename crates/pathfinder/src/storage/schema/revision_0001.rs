@@ -1,8 +1,6 @@
 use rusqlite::Transaction;
 
-use crate::storage::schema::PostMigrationAction;
-
-pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     transaction.execute(
         r"CREATE TABLE contract_code (
             hash       BLOB PRIMARY KEY,
@@ -60,5 +58,5 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigra
         [],
     )?;
 
-    Ok(PostMigrationAction::None)
+    Ok(())
 }

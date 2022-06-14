@@ -1,15 +1,13 @@
-use crate::storage::schema::PostMigrationAction;
-
 use anyhow::Context;
 use rusqlite::Transaction;
 
-pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     let todo: usize = transaction
         .query_row("SELECT count(1) FROM starknet_events", [], |r| r.get(0))
         .context("Count rows in starknet events table")?;
 
     if todo == 0 {
-        return Ok(PostMigrationAction::None);
+        return Ok(());
     }
 
     tracing::info!(
@@ -153,12 +151,12 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigra
 
     tracing::info!("Re-created the full-text index for starknet_events");
 
-    Ok(PostMigrationAction::None)
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::schema::{self, PostMigrationAction};
+    use crate::storage::schema::{self};
     use rusqlite::Connection;
 
     #[test]
@@ -178,8 +176,7 @@ mod tests {
         schema::revision_0010::migrate(&transaction).unwrap();
         schema::revision_0011::migrate(&transaction).unwrap();
 
-        let action = super::migrate(&transaction).unwrap();
-        assert_eq!(action, PostMigrationAction::None);
+        super::migrate(&transaction).unwrap();
     }
 
     #[test]
