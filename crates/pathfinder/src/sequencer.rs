@@ -132,7 +132,7 @@ impl Client {
     }
 
     /// Create a Sequencer client for the given [Url].
-    fn with_url(url: Url) -> reqwest::Result<Self> {
+    pub fn with_url(url: Url) -> reqwest::Result<Self> {
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))

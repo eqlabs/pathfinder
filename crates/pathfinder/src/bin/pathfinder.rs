@@ -44,7 +44,13 @@ async fn main() -> anyhow::Result<()> {
     let storage = Storage::migrate(database_path.clone()).unwrap();
     info!(location=?database_path, "Database migrated.");
 
-    let sequencer = sequencer::Client::new(network_chain).unwrap();
+    let sequencer = match config.sequencer_url {
+        Some(url) => {
+            info!(?url, "Using custom Sequencer address");
+            sequencer::Client::with_url(url).unwrap()
+        }
+        None => sequencer::Client::new(network_chain).unwrap(),
+    };
     let sync_state = Arc::new(state::SyncState::default());
 
     let sync_handle = tokio::spawn(state::sync(
