@@ -181,7 +181,7 @@ mod transaction {
 ///
 /// This migration has a non-fatal bug where it fails to drop the columns if the table is empty.
 /// This bug is fixed in [schema revision 6](super::revision_0006::migrate).
-pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
     // Create the new transaction and transaction receipt tables.
     transaction
         .execute(

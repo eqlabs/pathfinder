@@ -30,7 +30,7 @@ use crate::sequencer::request::contract::EntryPointType;
 /// [py-sortkeys]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py#L58-L71
 pub fn compute_class_hash(contract_definition_dump: &[u8]) -> Result<ClassHash> {
     let contract_definition =
-        serde_json::from_slice::<json::ContractDefinition>(contract_definition_dump)
+        serde_json::from_slice::<json::ContractDefinition<'_>>(contract_definition_dump)
             .context("Failed to parse contract_definition")?;
 
     compute_class_hash0(contract_definition).context("Compute class hash")
@@ -42,7 +42,7 @@ pub(crate) fn extract_abi_code_hash(
     contract_definition_dump: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>, ClassHash)> {
     let contract_definition =
-        serde_json::from_slice::<json::ContractDefinition>(contract_definition_dump)
+        serde_json::from_slice::<json::ContractDefinition<'_>>(contract_definition_dump)
             .context("Failed to parse contract_definition")?;
 
     // just in case we'd accidentially modify these in the compute_class_hash0
@@ -519,7 +519,7 @@ mod json {
                 debug_info: Option<&'a serde_json::value::RawValue>,
             }
 
-            let mut input = serde_json::from_str::<Program>(
+            let mut input = serde_json::from_str::<Program<'_>>(
                 r#"{"debug_info": {"long": {"tree": { "which": ["we dont", "care", "about", 0] }}}}"#,
             ).unwrap();
 

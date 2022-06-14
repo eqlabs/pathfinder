@@ -108,7 +108,7 @@ impl<'a> MerkleTree<RcNodeStorage<'a>> {
     /// is encountered, the transaction should be rolled back to prevent database corruption.
     pub fn load(
         table: String,
-        transaction: &'a Transaction,
+        transaction: &'a Transaction<'_>,
         root: StarkHash,
     ) -> anyhow::Result<Self> {
         let storage = RcNodeStorage::open(table, transaction)?;

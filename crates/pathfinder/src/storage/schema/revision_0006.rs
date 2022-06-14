@@ -9,7 +9,7 @@ use crate::storage::schema::PostMigrationAction;
 ///
 /// This mistake has since been rectified, but we should still fix databases that included
 /// this bug.
-pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
     // Check if the columns still exist. Checking just one is enough as either both exist, or neither.
     //
     // This is necessary as sqlite will error when dropping a non-existant column. As a benefit

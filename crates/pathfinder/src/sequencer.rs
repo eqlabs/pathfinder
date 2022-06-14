@@ -142,7 +142,7 @@ impl Client {
         })
     }
 
-    fn request(&self) -> builder::Request<builder::stage::Gateway> {
+    fn request(&self) -> builder::Request<'_, builder::stage::Gateway> {
         builder::Request::builder(&self.inner, self.sequencer_url.clone())
     }
 }

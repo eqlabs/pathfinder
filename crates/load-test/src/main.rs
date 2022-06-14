@@ -1,3 +1,5 @@
+#![deny(rust_2018_idioms)]
+
 //! Load test for pathfinder JSON-RPC endpoints.
 //!
 //! This program expects a mainnet pathfinder node synced until block 1800,

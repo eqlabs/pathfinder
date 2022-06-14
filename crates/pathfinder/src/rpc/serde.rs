@@ -93,7 +93,7 @@ impl<'de> DeserializeAs<'de, EthereumAddress> for EthereumAddressAsHexStr {
         impl<'de> Visitor<'de> for EthereumAddressVisitor {
             type Value = EthereumAddress;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("a hex string of up to 40 digits with an optional '0x' prefix")
             }
 
@@ -135,7 +135,7 @@ impl<'de> DeserializeAs<'de, H256> for H256AsNoLeadingZerosHexStr {
         impl<'de> Visitor<'de> for H256Visitor {
             type Value = H256;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("a hex string of up to 64 digits with an optional '0x' prefix")
             }
 
@@ -177,7 +177,7 @@ impl<'de> DeserializeAs<'de, Fee> for FeeAsHexStr {
         impl<'de> Visitor<'de> for FeeVisitor {
             type Value = Fee;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("a hex string of up to 32 digits with an optional '0x' prefix")
             }
 
@@ -220,7 +220,7 @@ impl<'de> DeserializeAs<'de, GasPrice> for GasPriceAsHexStr {
         impl<'de> Visitor<'de> for GasPriceVisitor {
             type Value = GasPrice;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("a hex string of up to 32 digits with an optional '0x' prefix")
             }
 
@@ -263,7 +263,7 @@ impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexSt
         impl<'de> Visitor<'de> for StarknetBlockNumberVisitor {
             type Value = StarknetBlockNumber;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("a hex string of up to 16 digits with an optional '0x' prefix")
             }
 

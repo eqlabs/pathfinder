@@ -1,3 +1,5 @@
+#![deny(rust_2018_idioms)]
+
 use anyhow::Context;
 use pathfinder_lib::{
     cairo, config,

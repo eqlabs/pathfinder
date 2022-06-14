@@ -23,7 +23,7 @@ impl<'de> Deserialize<'de> for StarkHash {
         impl<'de> Visitor<'de> for StarkHashVisitor {
             type Value = StarkHash;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("a hex string of up to 64 digits with an optional '0x' prefix")
             }
 

@@ -551,7 +551,7 @@ async fn l2_reorg(
 }
 
 fn update_starknet_state(
-    transaction: &Transaction,
+    transaction: &Transaction<'_>,
     diff: StateUpdate,
 ) -> anyhow::Result<GlobalRoot> {
     let global_root = StarknetBlocksTable::get(transaction, StarknetBlocksBlockId::Latest)
@@ -582,8 +582,8 @@ fn update_starknet_state(
 }
 
 fn deploy_contract(
-    transaction: &Transaction,
-    global_tree: &mut GlobalStateTree,
+    transaction: &Transaction<'_>,
+    global_tree: &mut GlobalStateTree<'_>,
     contract: DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.

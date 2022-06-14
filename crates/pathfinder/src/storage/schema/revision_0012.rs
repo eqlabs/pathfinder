@@ -3,7 +3,7 @@ use crate::storage::schema::PostMigrationAction;
 use anyhow::Context;
 use rusqlite::Transaction;
 
-pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
     let todo: usize = transaction
         .query_row("SELECT count(1) FROM starknet_events", [], |r| r.get(0))
         .context("Count rows in starknet events table")?;

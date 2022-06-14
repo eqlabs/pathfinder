@@ -929,7 +929,7 @@ pub struct ContractsStateTable {}
 impl ContractsStateTable {
     /// Insert a state hash into the table, overwrites the data if the hash already exists.
     pub fn upsert(
-        transaction: &Transaction,
+        transaction: &Transaction<'_>,
         state_hash: ContractStateHash,
         hash: ClassHash,
         root: ContractRoot,
@@ -948,7 +948,7 @@ impl ContractsStateTable {
     /// Gets the root associated with the given state hash, or [None]
     /// if it does not exist.
     pub fn get_root(
-        transaction: &Transaction,
+        transaction: &Transaction<'_>,
         state_hash: ContractStateHash,
     ) -> anyhow::Result<Option<ContractRoot>> {
         let bytes: Option<Vec<u8>> = transaction
