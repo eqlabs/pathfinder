@@ -331,7 +331,7 @@ pub(crate) mod test_utils {
     }
 
     /// Creates a set of emitted events from given blocks and transactions.
-    pub(crate) fn create_emitted_events(
+    pub(crate) fn extract_events(
         blocks: &[StarknetBlock],
         transactions_and_receipts: &[(transaction::Transaction, transaction::Receipt)],
     ) -> Vec<StarknetEmittedEvent> {
