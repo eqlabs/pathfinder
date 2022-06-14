@@ -261,20 +261,23 @@ impl StarkHash {
         (it, start, len)
     }
 
+    const LUT_LOWER: [u8; 16] = *b"0123456789abcdef";
+    const LUT_UPPER: [u8; 16] = *b"0123456789ABCDEF";
+
     /// The second stage of conversion - map bytes to hex str
     fn it_to_hex_str<'a>(
         it: impl Iterator<Item = &'a u8>,
         start: usize,
         len: usize,
         buf: &'a mut [u8],
+        lut: &[u8],
     ) -> &'a [u8] {
-        const LUT: [u8; 16] = *b"0123456789abcdef";
         buf[0] = b'0';
         // Same small lookup table is ~25% faster than hex::encode_from_slice 🤷
         it.enumerate().for_each(|(i, &b)| {
             let idx = b as usize;
             let pos = start + i * 2;
-            let x = [LUT[(idx & 0xf0) >> 4], LUT[idx & 0x0f]];
+            let x = [lut[(idx & 0xf0) >> 4], lut[idx & 0x0f]];
             buf[pos..pos + 2].copy_from_slice(&x);
         });
         buf[1] = b'x';
@@ -284,7 +287,8 @@ impl StarkHash {
     /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
     /// from a [StarkHash].
     /// Panics if `self.0.len() * 2 + 2 > buf.len()`
-    pub fn as_lower_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
+    /// TODO
+    fn as_hex_str<'a>(&'a self, buf: &'a mut [u8], lut: &[u8]) -> &'a str {
         let expected_buf_len = self.0.len() * 2 + 2;
         assert!(
             buf.len() >= expected_buf_len,
@@ -298,21 +302,50 @@ impl StarkHash {
         }
 
         let (it, start, len) = self.skip_zeros();
-        let res = Self::it_to_hex_str(it, start, len, buf);
+        let res = Self::it_to_hex_str(it, start, len, buf, lut);
         // Unwrap is safe because `buf` holds valid UTF8 characters.
         std::str::from_utf8(res).unwrap()
     }
 
     /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-    pub fn to_lower_hex_str(&self) -> Cow<'static, str> {
+    /// TODO
+    fn to_hex_str(&self, lut: &[u8]) -> Cow<'static, str> {
         if !self.0.iter().any(|b| *b != 0) {
             return Cow::from("0x0");
         }
         let (it, start, len) = self.skip_zeros();
         let mut buf = vec![0u8; len];
-        Self::it_to_hex_str(it, start, len, &mut buf);
+        Self::it_to_hex_str(it, start, len, &mut buf, lut);
         // Unwrap is safe as the buffer contains valid utf8
         String::from_utf8(buf).unwrap().into()
+    }
+
+    /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
+    /// from a [StarkHash].
+    /// Panics if `self.0.len() * 2 + 2 > buf.len()`
+    /// TODO
+    pub fn as_lower_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
+        self.as_hex_str(buf, &Self::LUT_LOWER)
+    }
+
+    /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
+    /// from a [StarkHash].
+    /// Panics if `self.0.len() * 2 + 2 > buf.len()`
+    /// TODO
+    pub fn as_upper_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
+        self.as_hex_str(buf, &Self::LUT_UPPER)
+    }
+
+    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+    /// TODO
+    pub fn to_lower_hex_str(&self) -> Cow<'static, str> {
+        self.to_hex_str(&Self::LUT_LOWER)
+    }
+
+    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+    /// TODO
+    pub fn to_upper_hex_str(&self) -> Cow<'static, str> {
+        self.to_hex_str(&Self::LUT_UPPER)
     }
 }
 
