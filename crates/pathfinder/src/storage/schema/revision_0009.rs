@@ -1,8 +1,7 @@
-use crate::storage::schema::PostMigrationAction;
 use anyhow::Context;
 use rusqlite::Transaction;
 
-pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     // Add new columns to the blocks table
     transaction
         .execute_batch(
@@ -13,13 +12,11 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigra
         )
         .context("Add columns gas_price and starknet_address to starknet_blocks table")?;
 
-    Ok(PostMigrationAction::None)
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::PostMigrationAction;
-
     use crate::{
         core::{
             GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
@@ -45,8 +42,7 @@ mod tests {
         schema::revision_0007::migrate(&transaction).unwrap();
         schema::revision_0008::migrate(&transaction).unwrap();
 
-        let action = super::migrate(&transaction).unwrap();
-        assert_eq!(action, PostMigrationAction::None);
+        super::migrate(&transaction).unwrap();
     }
 
     #[test]
@@ -81,8 +77,7 @@ mod tests {
             )
             .unwrap();
 
-        let action = super::migrate(&transaction).unwrap();
-        assert_eq!(action, PostMigrationAction::None);
+        super::migrate(&transaction).unwrap();
 
         let block = StarknetBlocksTable::get(&transaction, StarknetBlocksBlockId::Hash(block_hash))
             .unwrap()

@@ -1,4 +1,4 @@
-use crate::storage::{schema::PostMigrationAction, state::StarknetEventsTable};
+use crate::storage::state::StarknetEventsTable;
 use anyhow::Context;
 use rusqlite::{named_params, Transaction};
 
@@ -242,14 +242,14 @@ const STARKNET_EVENTS_CREATE_STMT: &str = r"CREATE TABLE starknet_events (
         );
     END;";
 
-pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     migrate_with(transaction, STARKNET_EVENTS_CREATE_STMT)
 }
 
 pub(crate) fn migrate_with(
     transaction: &Transaction<'_>,
     starknet_events_create_stmt: &'static str,
-) -> anyhow::Result<PostMigrationAction> {
+) -> anyhow::Result<()> {
     // Create the new events table.
     transaction
         .execute_batch(starknet_events_create_stmt)
@@ -271,7 +271,7 @@ pub(crate) fn migrate_with(
         .context("Count rows in starknet transactions table")?;
 
     if todo == 0 {
-        return Ok(PostMigrationAction::None);
+        return Ok(());
     }
 
     tracing::info!(
@@ -326,7 +326,7 @@ pub(crate) fn migrate_with(
         )?;
     }
 
-    Ok(PostMigrationAction::None)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -361,8 +361,7 @@ mod tests {
         schema::revision_0005::migrate(&transaction).unwrap();
         schema::revision_0006::migrate(&transaction).unwrap();
 
-        let action = super::migrate(&transaction).unwrap();
-        assert_eq!(action, PostMigrationAction::None);
+        super::migrate(&transaction).unwrap();
     }
 
     #[test]
@@ -469,8 +468,7 @@ mod tests {
                     ]).unwrap();
             });
 
-        let action = super::migrate(&transaction).unwrap();
-        assert_eq!(action, PostMigrationAction::None);
+        super::migrate(&transaction).unwrap();
 
         let mut stmt = transaction
             .prepare("SELECT * FROM starknet_events")

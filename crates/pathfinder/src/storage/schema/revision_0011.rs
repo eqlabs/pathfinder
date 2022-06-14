@@ -1,11 +1,9 @@
-use crate::storage::schema::PostMigrationAction;
-
 use anyhow::Context;
 use rusqlite::{named_params, Transaction};
 
 /// This migration fixes event addresses. Events were incorrectly stored using the transaction's
 /// contract address instead of the event's `from_address`.
-pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     let todo: usize = transaction
         .query_row("SELECT count(1) FROM starknet_transactions", [], |r| {
             r.get(0)
@@ -13,7 +11,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigra
         .context("Count rows in starknet transactions table")?;
 
     if todo == 0 {
-        return Ok(PostMigrationAction::None);
+        return Ok(());
     }
 
     tracing::info!(
@@ -154,7 +152,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigra
 
     tracing::info!(?recreation_time, "Recreation complete");
 
-    Ok(PostMigrationAction::None)
+    Ok(())
 }
 
 /// Real receipt json has a bunch of fields which we don't need

@@ -1,9 +1,7 @@
-use crate::storage::schema::PostMigrationAction;
-
 use anyhow::Context;
 use rusqlite::Transaction;
 
-pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     // We need to check if this db needs fixing at all
     let update_is_not_required = {
         let mut stmt = transaction
@@ -22,7 +20,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigra
     };
 
     if update_is_not_required {
-        return Ok(PostMigrationAction::None);
+        return Ok(());
     }
 
     // When altering a table in a way that requires recreating it through copying and deletion
@@ -130,7 +128,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigra
         )
         .context("Recreating the starknet_events table, related triggers and indexes")?;
 
-    Ok(PostMigrationAction::None)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -203,7 +201,7 @@ mod tests {
     END;";
 
     mod empty {
-        use crate::storage::schema::{self, PostMigrationAction};
+        use crate::storage::schema::{self};
         use rusqlite::Connection;
 
         #[test]
@@ -221,8 +219,7 @@ mod tests {
             schema::revision_0008::migrate(&transaction).unwrap();
             schema::revision_0009::migrate(&transaction).unwrap();
 
-            let action = super::super::migrate(&transaction).unwrap();
-            assert_eq!(action, PostMigrationAction::None);
+            super::super::migrate(&transaction).unwrap();
         }
 
         #[test]
@@ -244,8 +241,7 @@ mod tests {
             schema::revision_0008::migrate(&transaction).unwrap();
             schema::revision_0009::migrate(&transaction).unwrap();
 
-            let action = super::super::migrate(&transaction).unwrap();
-            assert_eq!(action, PostMigrationAction::None);
+            super::super::migrate(&transaction).unwrap();
         }
     }
 
@@ -260,7 +256,7 @@ mod tests {
             },
             sequencer::reply::transaction::{self, Event, Transaction},
             storage::{
-                schema::{self, PostMigrationAction},
+                schema::{self},
                 state::PageOfEvents,
                 StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter,
                 StarknetEventsTable,
@@ -401,8 +397,7 @@ mod tests {
             schema::revision_0009::migrate(&transaction).unwrap();
 
             // 4. Migration to rev10 should fix the problem
-            let action = super::super::migrate(&transaction).unwrap();
-            assert_eq!(action, PostMigrationAction::None);
+            super::super::migrate(&transaction).unwrap();
 
             // 5. Perform the operation that used to trigger the failure and make sure it does not occur now
             StarknetBlocksTable::reorg(&transaction, block1_number).unwrap();
