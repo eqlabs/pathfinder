@@ -654,46 +654,72 @@ mod tests {
     mod to_hex_str {
         use super::*;
         use pretty_assertions::assert_eq;
-        const ODD: &str = "0x1234567890abcde";
-        const EVEN: &str = "0x1234567890abcdef";
+        const ODD_LOWER: &str = "0x1234567890abcde";
+        const ODD_UPPER: &str = "0x1234567890ABCDE";
+        const EVEN_LOWER: &str = "0x1234567890abcdef";
+        const EVEN_UPPER: &str = "0x1234567890ABCDEF";
         const MAX: &str = "0x800000000000011000000000000000000000000000000000000000000000000";
 
         #[test]
         fn zero() {
+            assert_eq!(StarkHash::from_hex_str("0x0").unwrap(), StarkHash::ZERO);
             assert_eq!(StarkHash::ZERO.to_lower_hex_str(), "0x0");
+            assert_eq!(StarkHash::ZERO.to_upper_hex_str(), "0x0");
             let mut buf = [0u8; 66];
             assert_eq!(StarkHash::ZERO.as_lower_hex_str(&mut buf), "0x0");
+            assert_eq!(StarkHash::ZERO.as_upper_hex_str(&mut buf), "0x0");
         }
 
         #[test]
         fn odd() {
-            let hash = StarkHash::from_hex_str(ODD).unwrap();
-            assert_eq!(hash.to_lower_hex_str(), ODD);
+            let hash0 = StarkHash::from_hex_str(ODD_LOWER).unwrap();
+            let hash = StarkHash::from_hex_str(ODD_UPPER).unwrap();
+            assert_eq!(hash0, hash);
+            assert_eq!(hash.to_lower_hex_str(), ODD_LOWER);
+            assert_eq!(hash.to_upper_hex_str(), ODD_UPPER);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.as_lower_hex_str(&mut buf), ODD);
+            assert_eq!(hash.as_lower_hex_str(&mut buf), ODD_LOWER);
+            assert_eq!(hash.as_upper_hex_str(&mut buf), ODD_UPPER);
         }
 
         #[test]
         fn even() {
-            let hash = StarkHash::from_hex_str(EVEN).unwrap();
-            assert_eq!(hash.to_lower_hex_str(), EVEN);
+            let hash0 = StarkHash::from_hex_str(EVEN_LOWER).unwrap();
+            let hash = StarkHash::from_hex_str(EVEN_UPPER).unwrap();
+            assert_eq!(hash0, hash);
+            assert_eq!(hash.to_lower_hex_str(), EVEN_LOWER);
+            assert_eq!(hash.to_upper_hex_str(), EVEN_UPPER);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.as_lower_hex_str(&mut buf), EVEN);
+            assert_eq!(hash.as_lower_hex_str(&mut buf), EVEN_LOWER);
+            assert_eq!(hash.as_upper_hex_str(&mut buf), EVEN_UPPER);
         }
 
         #[test]
         fn max() {
             let hash = StarkHash::from_hex_str(MAX).unwrap();
             assert_eq!(hash.to_lower_hex_str(), MAX);
+            assert_eq!(hash.to_upper_hex_str(), MAX);
             let mut buf = [0u8; 66];
             assert_eq!(hash.as_lower_hex_str(&mut buf), MAX);
+            assert_eq!(hash.as_upper_hex_str(&mut buf), MAX);
         }
 
-        #[test]
-        #[should_panic]
-        fn buffer_too_small() {
-            let mut buf = [0u8; 65];
-            StarkHash::ZERO.as_lower_hex_str(&mut buf);
+        mod buffer_too_small {
+            use super::StarkHash;
+
+            #[test]
+            #[should_panic]
+            fn lower() {
+                let mut buf = [0u8; 65];
+                StarkHash::ZERO.as_lower_hex_str(&mut buf);
+            }
+
+            #[test]
+            #[should_panic]
+            fn upper() {
+                let mut buf = [0u8; 65];
+                StarkHash::ZERO.as_upper_hex_str(&mut buf);
+            }
         }
     }
 
