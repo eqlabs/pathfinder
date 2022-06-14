@@ -311,7 +311,7 @@ impl StarkHash {
 
     /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
     /// TODO
-    fn to_hex_str(&self, lut: &[u8]) -> Cow<'static, str> {
+    fn to_hex_str(self, lut: &[u8]) -> Cow<'static, str> {
         if !self.0.iter().any(|b| *b != 0) {
             return Cow::from("0x0");
         }
