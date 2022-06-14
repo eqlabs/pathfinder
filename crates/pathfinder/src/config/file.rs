@@ -16,6 +16,8 @@ struct FileConfig {
     http_rpc: Option<String>,
     #[serde(rename = "data-directory")]
     data_directory: Option<String>,
+    #[serde(rename = "sequencer-url")]
+    sequencer_url: Option<String>,
 }
 
 impl FileConfig {
@@ -29,6 +31,7 @@ impl FileConfig {
         }
         .with(ConfigOption::DataDirectory, self.data_directory)
         .with(ConfigOption::HttpRpcAddress, self.http_rpc)
+        .with(ConfigOption::SequencerHttpUrl, self.sequencer_url)
     }
 }
 
@@ -96,6 +99,14 @@ password = "{}""#,
         let toml = format!(r#"data-directory = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::DataDirectory), Some(value));
+    }
+
+    #[test]
+    fn sequencer_url() {
+        let value = "value".to_owned();
+        let toml = format!(r#"sequencer-url = "{}""#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
     }
 
     #[test]

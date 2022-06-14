@@ -21,6 +21,8 @@ pub enum ConfigOption {
     HttpRpcAddress,
     /// Path to the node's data directory.
     DataDirectory,
+    /// The Sequencer's HTTP URL.
+    SequencerHttpUrl,
 }
 
 impl Display for ConfigOption {
@@ -30,6 +32,7 @@ impl Display for ConfigOption {
             ConfigOption::EthereumPassword => f.write_str("Ethereum password"),
             ConfigOption::DataDirectory => f.write_str("Data directory"),
             ConfigOption::HttpRpcAddress => f.write_str("HTTP-RPC socket address"),
+            ConfigOption::SequencerHttpUrl => f.write_str("Sequencer HTTP URL"),
         }
     }
 }
@@ -52,6 +55,8 @@ pub struct Configuration {
     pub http_rpc_addr: SocketAddr,
     /// The node's data directory.
     pub data_directory: PathBuf,
+    /// The Sequencer's HTTP URL.
+    pub sequencer_url: Option<Url>,
 }
 
 impl Configuration {
