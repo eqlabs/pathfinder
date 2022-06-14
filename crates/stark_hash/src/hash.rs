@@ -284,7 +284,7 @@ impl StarkHash {
     /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
     /// from a [StarkHash].
     /// Panics if `self.0.len() * 2 + 2 > buf.len()`
-    pub fn as_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
+    pub fn as_lower_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
         let expected_buf_len = self.0.len() * 2 + 2;
         assert!(
             buf.len() >= expected_buf_len,
@@ -304,7 +304,7 @@ impl StarkHash {
     }
 
     /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-    pub fn to_hex_str(&self) -> Cow<'static, str> {
+    pub fn to_lower_hex_str(&self) -> Cow<'static, str> {
         if !self.0.iter().any(|b| *b != 0) {
             return Cow::from("0x0");
         }
@@ -627,40 +627,40 @@ mod tests {
 
         #[test]
         fn zero() {
-            assert_eq!(StarkHash::ZERO.to_hex_str(), "0x0");
+            assert_eq!(StarkHash::ZERO.to_lower_hex_str(), "0x0");
             let mut buf = [0u8; 66];
-            assert_eq!(StarkHash::ZERO.as_hex_str(&mut buf), "0x0");
+            assert_eq!(StarkHash::ZERO.as_lower_hex_str(&mut buf), "0x0");
         }
 
         #[test]
         fn odd() {
             let hash = StarkHash::from_hex_str(ODD).unwrap();
-            assert_eq!(hash.to_hex_str(), ODD);
+            assert_eq!(hash.to_lower_hex_str(), ODD);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.as_hex_str(&mut buf), ODD);
+            assert_eq!(hash.as_lower_hex_str(&mut buf), ODD);
         }
 
         #[test]
         fn even() {
             let hash = StarkHash::from_hex_str(EVEN).unwrap();
-            assert_eq!(hash.to_hex_str(), EVEN);
+            assert_eq!(hash.to_lower_hex_str(), EVEN);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.as_hex_str(&mut buf), EVEN);
+            assert_eq!(hash.as_lower_hex_str(&mut buf), EVEN);
         }
 
         #[test]
         fn max() {
             let hash = StarkHash::from_hex_str(MAX).unwrap();
-            assert_eq!(hash.to_hex_str(), MAX);
+            assert_eq!(hash.to_lower_hex_str(), MAX);
             let mut buf = [0u8; 66];
-            assert_eq!(hash.as_hex_str(&mut buf), MAX);
+            assert_eq!(hash.as_lower_hex_str(&mut buf), MAX);
         }
 
         #[test]
         #[should_panic]
         fn buffer_too_small() {
             let mut buf = [0u8; 65];
-            StarkHash::ZERO.as_hex_str(&mut buf);
+            StarkHash::ZERO.as_lower_hex_str(&mut buf);
         }
     }
 

@@ -49,7 +49,7 @@ pub enum BlockHashOrTag {
 impl std::fmt::Display for BlockHashOrTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BlockHashOrTag::Hash(StarknetBlockHash(h)) => f.write_str(&h.to_hex_str()),
+            BlockHashOrTag::Hash(StarknetBlockHash(h)) => f.write_str(&h.to_lower_hex_str()),
             BlockHashOrTag::Tag(t) => std::fmt::Display::fmt(t, f),
         }
     }

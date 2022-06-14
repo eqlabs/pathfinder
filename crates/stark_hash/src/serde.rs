@@ -8,7 +8,7 @@ impl Serialize for StarkHash {
     {
         // StarkHash has a leading "0x" and at most 64 digits
         let mut buf = [0u8; 2 + 64];
-        let s = self.as_hex_str(&mut buf);
+        let s = self.as_lower_hex_str(&mut buf);
         serializer.serialize_str(s)
     }
 }

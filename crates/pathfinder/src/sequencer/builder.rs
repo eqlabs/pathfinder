@@ -181,7 +181,7 @@ impl<'a> Request<'a, stage::Params> {
         let block: BlockId = block.into();
         let (name, value) = match block {
             BlockId::Number(number) => ("blockNumber", Cow::from(number.0.to_string())),
-            BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str()),
+            BlockId::Hash(hash) => ("blockHash", hash.0.to_lower_hex_str()),
             // These have to use "blockNumber", "blockHash" does not accept tags.
             BlockId::Latest => ("blockNumber", Cow::from("latest")),
             BlockId::Pending => ("blockNumber", Cow::from("pending")),
@@ -191,11 +191,11 @@ impl<'a> Request<'a, stage::Params> {
     }
 
     pub fn with_contract_address(self, address: ContractAddress) -> Self {
-        self.add_param("contractAddress", &address.0.to_hex_str())
+        self.add_param("contractAddress", &address.0.to_lower_hex_str())
     }
 
     pub fn with_class_hash(self, class_hash: ClassHash) -> Self {
-        self.add_param("classHash", &class_hash.0.to_hex_str())
+        self.add_param("classHash", &class_hash.0.to_lower_hex_str())
     }
 
     pub fn with_optional_token(self, token: Option<&str>) -> Self {
@@ -211,7 +211,7 @@ impl<'a> Request<'a, stage::Params> {
     }
 
     pub fn with_transaction_hash(self, hash: StarknetTransactionHash) -> Self {
-        self.add_param("transactionHash", &hash.0.to_hex_str())
+        self.add_param("transactionHash", &hash.0.to_lower_hex_str())
     }
 
     pub fn add_param(mut self, name: &str, value: &str) -> Self {
