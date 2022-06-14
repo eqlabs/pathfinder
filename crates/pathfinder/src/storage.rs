@@ -246,8 +246,9 @@ pub(crate) mod test_utils {
                     version: Some(TransactionVersion(H256::zero())),
                 })
             }
-            x if x >= INVOKE_TRANSACTIONS_PER_BLOCK
-                && x < INVOKE_TRANSACTIONS_PER_BLOCK + DEPLOY_TRANSACTIONS_PER_BLOCK =>
+            x if (INVOKE_TRANSACTIONS_PER_BLOCK
+                ..INVOKE_TRANSACTIONS_PER_BLOCK + DEPLOY_TRANSACTIONS_PER_BLOCK)
+                .contains(&x) =>
             {
                 transaction::Transaction::Deploy(DeployTransaction {
                     contract_address: ContractAddress(
