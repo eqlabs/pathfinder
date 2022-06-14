@@ -24,19 +24,21 @@ impl std::fmt::Debug for StarkHash {
 impl std::fmt::Display for StarkHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // 0xABCDEF1234567890
-        write!(f, "0x{:X}", self)
+        self.0.iter().try_for_each(|&b| write!(f, "{:02X}", b))
     }
 }
 
 impl std::fmt::LowerHex for StarkHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.iter().try_for_each(|&b| write!(f, "{:02x}", b))
+        let mut buf = [0u8; 66];
+        f.write_str(self.as_lower_hex_str(&mut buf))
     }
 }
 
 impl std::fmt::UpperHex for StarkHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.iter().try_for_each(|&b| write!(f, "{:02X}", b))
+        let mut buf = [0u8; 66];
+        f.write_str(self.as_upper_hex_str(&mut buf))
     }
 }
 
@@ -536,16 +538,15 @@ mod tests {
         }
 
         #[test]
-        fn fmt() {
+        fn display() {
             let hex_str = "1234567890abcdef000edcba0987654321";
             let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
-            let result = format!("{:x}", starkhash);
+            let result = format!("{starkhash}");
 
             let mut expected = "0".repeat(64 - hex_str.len());
             expected.push_str(hex_str);
 
-            // We don't really care which casing is used by fmt.
-            assert_eq!(result.to_lowercase(), expected.to_lowercase());
+            assert_eq!(result, expected.to_uppercase());
         }
 
         #[test]
@@ -554,10 +555,9 @@ mod tests {
             let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
             let result = format!("{:x}", starkhash);
 
-            let mut expected = "0".repeat(64 - hex_str.len());
-            expected.push_str(hex_str);
+            let expected = format!("0x{hex_str}");
 
-            assert_eq!(result, expected.to_lowercase());
+            assert_eq!(result, expected);
         }
 
         #[test]
@@ -566,10 +566,9 @@ mod tests {
             let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
             let result = format!("{:X}", starkhash);
 
-            let mut expected = "0".repeat(64 - hex_str.len());
-            expected.push_str(hex_str);
+            let expected = format!("0x{}", hex_str.to_uppercase());
 
-            assert_eq!(result, expected.to_uppercase());
+            assert_eq!(result, expected);
         }
     }
 
