@@ -5,7 +5,7 @@ pub mod types;
 
 use crate::{
     core::{
-        CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        CallSignatureElem, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
         StarknetTransactionHash, StarknetTransactionIndex, TransactionVersion,
     },
     rpc::{
@@ -181,6 +181,35 @@ pub async fn run_server(
                 .await
         },
     )?;
+    module.register_async_method("starknet_getClass", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        pub struct NamedArgs {
+            pub class_hash: ClassHash,
+        }
+        context
+            .get_class(params.parse::<NamedArgs>()?.class_hash)
+            .await
+    })?;
+    module.register_async_method("starknet_getClassHashAt", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        pub struct NamedArgs {
+            pub contract_address: ContractAddress,
+        }
+        context
+            .get_class_hash_at(params.parse::<NamedArgs>()?.contract_address)
+            .await
+    })?;
+    module.register_async_method("starknet_getClassAt", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        pub struct NamedArgs {
+            pub contract_address: ContractAddress,
+        }
+        context
+            .get_class_at(params.parse::<NamedArgs>()?.contract_address)
+            .await
+    })?;
+    // This is the old, now deprecated name of `starknet_getClassAt`. We keep this around for a while to avoid introducing
+    // a breaking change.
     module.register_async_method("starknet_getCode", |params, context| async move {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
@@ -1565,9 +1594,169 @@ mod tests {
         }
     }
 
-    mod get_code {
+    mod get_class {
+        use super::contract_setup::setup_class_and_contract;
         use super::*;
-        use crate::core::ContractCode;
+        use crate::core::ContractClass;
+        use crate::rpc::types::reply::ErrorCode;
+
+        mod positional_args {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_invalid_contract_class_hash_for_nonexistent_class() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = rpc_params!(*INVALID_CLASS_HASH);
+                let error = client(addr)
+                    .request::<ContractClass>("starknet_getClass", params)
+                    .await
+                    .unwrap_err();
+                assert_eq!(ErrorCode::InvalidContractClassHash, error);
+            }
+
+            #[tokio::test]
+            async fn returns_program_and_entry_points_for_known_class() {
+                let storage = Storage::in_memory().unwrap();
+
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (_contract_address, class_hash, entry_points) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
+
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = rpc_params!(class_hash);
+                let class = client(addr)
+                    .request::<ContractClass>("starknet_getClass", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(class.entry_points_by_type, entry_points);
+                assert_eq!(class.program.len(), 132);
+            }
+        }
+
+        mod named_args {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_program_and_entry_points_for_known_class() {
+                let storage = Storage::in_memory().unwrap();
+
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (_contract_address, class_hash, entry_points) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
+
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = by_name([("class_hash", json!(class_hash))]);
+                let class = client(addr)
+                    .request::<ContractClass>("starknet_getClass", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(class.entry_points_by_type, entry_points);
+                assert_eq!(class.program.len(), 132);
+            }
+        }
+    }
+
+    mod get_class_hash_at {
+        use super::*;
+
+        mod positional_args {
+            use super::contract_setup::setup_class_and_contract;
+            use super::*;
+            use crate::rpc::types::reply::ErrorCode;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_contract_not_found_for_nonexistent_contract() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = rpc_params!(*INVALID_CONTRACT_ADDR);
+                let error = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap_err();
+                assert_eq!(ErrorCode::ContractNotFound, error);
+            }
+
+            #[tokio::test]
+            async fn returns_class_hash_for_existing_contract() {
+                let storage = Storage::in_memory().unwrap();
+
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (contract_address, expected_class_hash, _entry_points) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
+
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = rpc_params!(contract_address);
+                let class_hash = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap();
+                assert_eq!(class_hash, expected_class_hash);
+            }
+        }
+
+        mod named_args {
+            use super::contract_setup::setup_class_and_contract;
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_class_hash_for_existing_contract() {
+                let storage = Storage::in_memory().unwrap();
+
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (contract_address, expected_class_hash, _entry_points) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
+
+                let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = by_name([("contract_address", json!(contract_address))]);
+                let class_hash = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap();
+                assert_eq!(class_hash, expected_class_hash);
+            }
+        }
+    }
+
+    mod get_class_at {
+        use super::contract_setup::setup_class_and_contract;
+        use super::*;
+        use crate::core::ContractClass;
         use crate::rpc::types::reply::ErrorCode;
         use pretty_assertions::assert_eq;
 
@@ -1580,7 +1769,7 @@ mod tests {
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
             let error = client(addr)
-                .request::<ContractCode>("starknet_getCode", params)
+                .request::<ContractClass>("starknet_getClassAt", params)
                 .await
                 .unwrap_err();
             assert_eq!(ErrorCode::ContractNotFound, error);
@@ -1595,8 +1784,8 @@ mod tests {
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
             let not_found = client(addr)
-                .request::<ContractCode>(
-                    "starknet_getCode",
+                .request::<ContractClass>(
+                    "starknet_getClassAt",
                     rpc_params!(
                         "0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc"
                     ),
@@ -1608,56 +1797,17 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn returns_abi_and_code_for_known() {
-            use crate::core::ContractCode;
-            use anyhow::Context;
-            use bytes::Bytes;
+        async fn returns_program_and_entry_points_for_known_class() {
+            use crate::core::ContractClass;
             use futures::stream::TryStreamExt;
-            use stark_hash::StarkHash;
 
             let storage = Storage::in_memory().unwrap();
 
-            let contract_definition = include_bytes!("../fixtures/contract_definition.json.zst");
-            let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition)).unwrap();
-            let contract_definition = Bytes::from(buffer);
-
-            {
-                let mut conn = storage.connection().unwrap();
-                let tx = conn.transaction().unwrap();
-
-                let address = StarkHash::from_hex_str(
-                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
-                )
-                .unwrap();
-                let expected_hash = StarkHash::from_hex_str(
-                    "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b",
-                )
-                .unwrap();
-
-                let (abi, bytecode, hash) =
-                    crate::state::class_hash::extract_abi_code_hash(&*contract_definition).unwrap();
-
-                assert_eq!(hash.0, expected_hash);
-
-                crate::storage::ContractCodeTable::insert(
-                    &tx,
-                    hash,
-                    &abi,
-                    &bytecode,
-                    &contract_definition,
-                )
-                .context("Deploy testing contract")
-                .unwrap();
-
-                crate::storage::ContractsTable::upsert(
-                    &tx,
-                    crate::core::ContractAddress(address),
-                    hash,
-                )
-                .unwrap();
-
-                tx.commit().unwrap();
-            }
+            let mut conn = storage.connection().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let (contract_address, _class_hash, entry_points) =
+                setup_class_and_contract(&transaction).unwrap();
+            transaction.commit().unwrap();
 
             let sequencer = SeqClient::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
@@ -1668,11 +1818,53 @@ mod tests {
 
             // both parameters, these used to be separate tests
             let rets = [
-                rpc_params!("0x057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"),
-                by_name([(
-                    "contract_address",
-                    json!("0x057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"),
-                )]),
+                rpc_params!(contract_address),
+                by_name([("contract_address", json!(contract_address))]),
+            ]
+            .into_iter()
+            .map(|arg| client.request::<ContractClass>("starknet_getClassAt", arg))
+            .collect::<futures::stream::FuturesOrdered<_>>()
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+
+            assert_eq!(rets.len(), 2);
+
+            assert_eq!(rets[0], rets[1]);
+            assert_eq!(rets[0].entry_points_by_type, entry_points);
+            assert_eq!(rets[0].program.len(), 132);
+        }
+    }
+
+    mod get_code {
+        use super::contract_setup::setup_class_and_contract;
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn returns_abi_and_code_for_known() {
+            use crate::core::ContractCode;
+            use futures::stream::TryStreamExt;
+
+            let storage = Storage::in_memory().unwrap();
+
+            let mut conn = storage.connection().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let (contract_address, _class_hash, _entry_points) =
+                setup_class_and_contract(&transaction).unwrap();
+            transaction.commit().unwrap();
+
+            let sequencer = SeqClient::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            let client = client(addr);
+
+            // both parameters, these used to be separate tests
+            let rets = [
+                rpc_params!(contract_address),
+                by_name([("contract_address", json!(contract_address))]),
             ]
             .into_iter()
             .map(|arg| client.request::<ContractCode>("starknet_getCode", arg))
@@ -1692,6 +1884,53 @@ mod tests {
                 r#"[{"inputs":[{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"contract_address","type":"felt"},{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"call_increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"address","type":"felt"}],"name":"get_value","outputs":[{"name":"res","type":"felt"}],"type":"function"}]"#
             );
             assert_eq!(rets[0].bytecode.len(), 132);
+        }
+    }
+
+    mod contract_setup {
+        use super::*;
+        use anyhow::Context;
+        use bytes::Bytes;
+        use pretty_assertions::assert_eq;
+
+        pub fn setup_class_and_contract(
+            transaction: &rusqlite::Transaction<'_>,
+        ) -> anyhow::Result<(ContractAddress, ClassHash, serde_json::Value)> {
+            let contract_definition = include_bytes!("../fixtures/contract_definition.json.zst");
+            let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition))?;
+            let contract_definition = Bytes::from(buffer);
+
+            let contract_address = ContractAddress(
+                StarkHash::from_hex_str(
+                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                )
+                .unwrap(),
+            );
+            let expected_hash = StarkHash::from_hex_str(
+                "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b",
+            )
+            .unwrap();
+
+            let (abi, bytecode, hash) =
+                crate::state::class_hash::extract_abi_code_hash(&*contract_definition)?;
+
+            assert_eq!(hash.0, expected_hash);
+
+            let entry_points =
+                crate::state::class_hash::extract_entry_points_by_type(&*contract_definition)?;
+
+            crate::storage::ContractCodeTable::insert(
+                transaction,
+                hash,
+                &abi,
+                &bytecode,
+                &contract_definition,
+            )
+            .context("Deploy testing contract")?;
+
+            crate::storage::ContractsTable::upsert(transaction, contract_address, hash)?;
+
+            Ok((contract_address, hash, entry_points))
         }
     }
 

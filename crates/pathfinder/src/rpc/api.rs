@@ -2,10 +2,11 @@
 use crate::{
     cairo::ext_py,
     core::{
-        CallResultValue, CallSignatureElem, ConstructorParam, ContractAddress, ContractAddressSalt,
-        ContractCode, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-        StarknetTransactionIndex, StorageValue, TransactionNonce, TransactionVersion,
+        CallResultValue, CallSignatureElem, ClassHash, ConstructorParam, ContractAddress,
+        ContractAddressSalt, ContractClass, ContractCode, Fee, GasPrice, GlobalRoot,
+        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        StarknetTransactionHash, StarknetTransactionIndex, StorageValue, TransactionNonce,
+        TransactionVersion,
     },
     ethereum::Chain,
     rpc::types::{
@@ -19,7 +20,7 @@ use crate::{
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
     state::SyncState,
     storage::{
-        EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
+        ContractsTable, EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
         StarknetEventsTable, StarknetTransactionsTable, Storage,
     },
 };
@@ -699,9 +700,121 @@ impl RpcApi {
             .and_then(|x| x)
     }
 
-    /// Get the code of a specific contract.
-    /// `contract_address` is the address of the contract to read from.
+    /// Get the class based on its hash.
+    ///
+    /// This is for the deprecated starknet_getCode API that requires returning the
+    /// contract bytecode and abi.
     pub async fn get_code(&self, contract_address: ContractAddress) -> RpcResult<ContractCode> {
+        use crate::storage::ContractCodeTable;
+
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            let class_hash = ContractsTable::get_hash(&tx, contract_address)
+                .context("Fetching class hash from database")
+                .map_err(internal_server_error)?;
+
+            let class_hash = match class_hash {
+                Some(hash) => hash,
+                None => return Err(ErrorCode::ContractNotFound.into()),
+            };
+
+            let code = ContractCodeTable::get_code(&tx, class_hash)
+                .context("Fetching code from database")
+                .map_err(internal_server_error)?;
+
+            match code {
+                Some(code) => Ok(code),
+                None => Err(ErrorCode::InvalidContractClassHash.into()),
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
+    }
+
+    /// Get the class based on its hash.
+    pub async fn get_class(&self, class_hash: ClassHash) -> RpcResult<ContractClass> {
+        use crate::storage::ContractCodeTable;
+
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            let class = ContractCodeTable::get_class(&tx, class_hash)
+                .context("Fetching code from database")
+                .map_err(internal_server_error)?;
+
+            match class {
+                Some(class) => Ok(class),
+                None => Err(ErrorCode::InvalidContractClassHash.into()),
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
+    }
+
+    /// Get the class hash of a specific contract.
+    pub async fn get_class_hash_at(
+        &self,
+        contract_address: ContractAddress,
+    ) -> RpcResult<ClassHash> {
+        let storage = self.storage.clone();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            let class_hash = ContractsTable::get_hash(&tx, contract_address)
+                .context("Fetching class hash from database")
+                .map_err(internal_server_error)?;
+
+            match class_hash {
+                Some(hash) => Ok(hash),
+                None => Err(ErrorCode::ContractNotFound.into()),
+            }
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
+    }
+
+    /// Get the class of a specific contract.
+    /// `contract_address` is the address of the contract to read from.
+    pub async fn get_class_at(
+        &self,
+        contract_address: ContractAddress,
+    ) -> RpcResult<ContractClass> {
         use crate::storage::ContractCodeTable;
 
         let storage = self.storage.clone();
@@ -718,7 +831,16 @@ impl RpcApi {
                 .context("Creating database transaction")
                 .map_err(internal_server_error)?;
 
-            let code = ContractCodeTable::get_code(&tx, contract_address)
+            let class_hash = ContractsTable::get_hash(&tx, contract_address)
+                .context("Fetching class hash from database")
+                .map_err(internal_server_error)?;
+
+            let class_hash = match class_hash {
+                Some(hash) => hash,
+                None => return Err(ErrorCode::ContractNotFound.into()),
+            };
+
+            let code = ContractCodeTable::get_class(&tx, class_hash)
                 .context("Fetching code from database")
                 .map_err(internal_server_error)?;
 

@@ -1,6 +1,6 @@
 use crate::{
-    core::{ByteCodeWord, ClassHash, ContractAddress, ContractCode},
-    state::CompressedContract,
+    core::{ByteCodeWord, ClassHash, ContractAddress, ContractClass, ContractCode},
+    state::{class_hash::extract_entry_points_by_type, CompressedContract},
 };
 
 use anyhow::Context;
@@ -69,20 +69,17 @@ impl ContractCodeTable {
         Ok(())
     }
 
-    /// Gets the specified contract's [code](ContractCode).
     pub fn get_code(
         transaction: &Transaction<'_>,
-        address: ContractAddress,
+        hash: ClassHash,
     ) -> anyhow::Result<Option<ContractCode>> {
         let row = transaction
             .query_row(
-                "SELECT contract_code.bytecode, contract_code.abi
-                FROM contracts
-                JOIN contract_code ON contracts.hash = contract_code.hash
-                WHERE contracts.address = :address
-                LIMIT 1",
+                "SELECT bytecode, abi
+                FROM contract_code
+                WHERE hash = :hash",
                 named_params! {
-                    ":address": &address.0.to_be_bytes()[..]
+                    ":hash": &hash.0.to_be_bytes()
                 },
                 |row| {
                     let bytecode: Vec<u8> = row.get("bytecode")?;
@@ -117,11 +114,55 @@ impl ContractCodeTable {
         Ok(Some(ContractCode { bytecode, abi }))
     }
 
+    pub fn get_class(
+        transaction: &Transaction<'_>,
+        hash: ClassHash,
+    ) -> anyhow::Result<Option<ContractClass>> {
+        let row = transaction
+            .query_row(
+                "SELECT bytecode, definition
+                FROM contract_code
+                WHERE hash = :hash",
+                named_params! {
+                    ":hash": &hash.0.to_be_bytes()
+                },
+                |row| {
+                    let bytecode: Vec<u8> = row.get("bytecode")?;
+                    let definition: Vec<u8> = row.get("definition")?;
+
+                    Ok((bytecode, definition))
+                },
+            )
+            .optional()?;
+
+        let (bytecode, definition) = match row {
+            None => return Ok(None),
+            Some((bytecode, definition)) => (bytecode, definition),
+        };
+
+        let bytecode = zstd::decode_all(&*bytecode)
+            .context("Corruption: invalid compressed column (bytecode)")?;
+
+        let bytecode = serde_json::from_slice::<Vec<ByteCodeWord>>(&bytecode)
+            .context("Corruption: invalid uncompressed column (bytecode)")?;
+
+        let definition = zstd::decode_all(&*definition)
+            .context("Corruption: invalid compressed column (abi)")?;
+
+        let entry_points_by_type = extract_entry_points_by_type(&definition)
+            .context("Failed to extract entry points from contract definition")?;
+
+        Ok(Some(ContractClass {
+            program: bytecode,
+            entry_points_by_type,
+        }))
+    }
+
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
-    pub fn exists(connection: &Connection, contracts: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+    pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
         let mut stmt = connection.prepare("select 1 from contract_code where hash = ?")?;
 
-        Ok(contracts
+        Ok(classes
             .iter()
             .map(|hash| stmt.exists(&[&hash.0.to_be_bytes()[..]]))
             .collect::<Result<Vec<_>, _>>()?)
@@ -190,7 +231,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fails_if_contract_hash_missing() {
+    fn fails_if_class_hash_missing() {
         let storage = Storage::in_memory().unwrap();
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
@@ -220,35 +261,35 @@ mod tests {
     }
 
     #[test]
-    fn get_code() {
+    fn get_class() {
         let storage = Storage::in_memory().unwrap();
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
+        let (hash, contract_code) = setup_class(&transaction);
+
+        let result = ContractCodeTable::get_code(&transaction, hash).unwrap();
+
+        assert_eq!(result, Some(contract_code));
+    }
+
+    fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, ContractCode) {
         let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
 
         // list of objects
         let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
-
         // this is list of hex
         let code = br#"["0x40780017fff7fff","0x1","0x208b7fff7fff7ffe"]"#;
-
         let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
+        ContractCodeTable::insert(transaction, hash, &abi[..], &code[..], &definition[..]).unwrap();
 
-        ContractCodeTable::insert(&transaction, hash, &abi[..], &code[..], &definition[..])
-            .unwrap();
-        ContractsTable::upsert(&transaction, address, hash).unwrap();
-
-        let result = ContractCodeTable::get_code(&transaction, address).unwrap();
-
-        assert_eq!(
-            result,
-            Some(ContractCode {
+        (
+            hash,
+            ContractCode {
                 abi: String::from_utf8(abi.to_vec()).unwrap(),
                 bytecode: serde_json::from_slice::<Vec<ByteCodeWord>>(code).unwrap(),
-            })
-        );
+            },
+        )
     }
 
     #[test]
@@ -257,16 +298,7 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
 
-        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
-
-        // list of objects
-        let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
-        // this is list of hex
-        let code = br#"["0x40780017fff7fff","0x1","0x208b7fff7fff7ffe"]"#;
-        let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
-        ContractCodeTable::insert(&transaction, hash, &abi[..], &code[..], &definition[..])
-            .unwrap();
-
+        let (hash, _) = setup_class(&transaction);
         let non_existent = ClassHash(StarkHash::from_hex_str("456").unwrap());
 
         let result = ContractCodeTable::exists(&transaction, &[hash, non_existent]).unwrap();

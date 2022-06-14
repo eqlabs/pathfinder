@@ -37,6 +37,17 @@ pub struct ContractCode {
     pub abi: String,
 }
 
+// Bytecode and entry point list of a class
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContractClass {
+    pub program: Vec<ByteCodeWord>,
+    // A JSON representation of the entry points
+    // We don't actually process this value, just serialize/deserialize
+    // from an already validated JSON.
+    // This is kept as a Value to avoid dependency on sequencer API types.
+    pub entry_points_by_type: serde_json::Value,
+}
+
 /// Entry point of a StarkNet `call`.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EntryPoint(pub StarkHash);
