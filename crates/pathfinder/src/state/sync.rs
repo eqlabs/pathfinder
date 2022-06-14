@@ -325,16 +325,14 @@ async fn update_sync_status_latest(
     starting_block_num: StarknetBlockNumber,
     chain: Chain,
 ) -> anyhow::Result<()> {
-    use crate::rpc::types::{BlockNumberOrTag, Tag};
+    use crate::core::BlockId;
+
     let poll_interval = head_poll_interval(chain);
 
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
     loop {
-        match sequencer
-            .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
-            .await
-        {
+        match sequencer.block(BlockId::Latest).await {
             Ok(block) => {
                 let latest = {
                     let latest_hash = block.block_hash.unwrap();
@@ -631,7 +629,7 @@ mod tests {
             TransactionVersion,
         },
         ethereum,
-        rpc::types::{BlockHashOrTag, BlockNumberOrTag},
+        rpc::types::BlockHashOrTag,
         sequencer::{
             self,
             error::SequencerError,
@@ -690,15 +688,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl sequencer::ClientApi for FakeSequencer {
-        async fn block_by_number(
-            &self,
-            _: BlockNumberOrTag,
-        ) -> Result<reply::Block, sequencer::error::SequencerError> {
-            Ok(BLOCK0.clone())
-        }
-
-        async fn block_by_hash(&self, _: BlockHashOrTag) -> Result<reply::Block, SequencerError> {
-            unimplemented!()
+        async fn block(&self, block: crate::core::BlockId) -> Result<reply::Block, SequencerError> {
+            match block {
+                crate::core::BlockId::Number(_) => Ok(BLOCK0.clone()),
+                _ => unimplemented!(),
+            }
         }
 
         async fn call(
@@ -744,16 +738,9 @@ mod tests {
             unimplemented!()
         }
 
-        async fn state_update_by_hash(
+        async fn state_update(
             &self,
-            _: BlockHashOrTag,
-        ) -> Result<reply::StateUpdate, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn state_update_by_number(
-            &self,
-            _: BlockNumberOrTag,
+            _: crate::core::BlockId,
         ) -> Result<reply::StateUpdate, SequencerError> {
             unimplemented!()
         }

@@ -369,8 +369,6 @@ mod tests {
         bits.set(3, false);
         bits.set(4, false);
 
-        dbg!(bits.len());
-
         let res = StarkHash::from_bits(&bits).unwrap();
 
         let x = res.view_bits();

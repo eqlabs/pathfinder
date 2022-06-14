@@ -6,7 +6,6 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::core::{ClassHash, StarknetBlockHash, StarknetBlockNumber};
 use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
-use crate::rpc::types::{BlockNumberOrTag, Tag};
 use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{Contract, StateDiff};
 use crate::sequencer::reply::Block;
@@ -97,7 +96,7 @@ pub async fn sync(
         let block_hash = block.block_hash.unwrap();
         let t_update = std::time::Instant::now();
         let state_update = sequencer
-            .state_update_by_hash(block_hash.into())
+            .state_update(block_hash.into())
             .await
             .with_context(|| format!("Fetch state diff for block {:?} from sequencer", next))?;
         let state_update_block_hash = state_update.block_hash.unwrap();
@@ -180,9 +179,10 @@ async fn download_block(
     prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
+    use crate::core::BlockId;
     use sequencer::error::StarknetErrorCode::BlockNotFound;
 
-    let result = sequencer.block_by_number(block_number.into()).await;
+    let result = sequencer.block(block_number.into()).await;
 
     match result {
         Ok(block) => Ok(DownloadBlock::Block(Box::new(block))),
@@ -191,7 +191,7 @@ async fn download_block(
             // a reorg hasn't put us too far in the future. This does run into race conditions with
             // the sequencer but this is the best we can do I think.
             let latest = sequencer
-                .block_by_number(BlockNumberOrTag::Tag(Tag::Latest))
+                .block(BlockId::Latest)
                 .await
                 .context("Query sequencer for latest block")?;
 
@@ -387,12 +387,11 @@ mod tests {
         use super::super::{sync, Event};
         use crate::{
             core::{
-                ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
+                BlockId, ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
                 StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
                 StorageValue,
             },
             ethereum::state_update,
-            rpc::types::{BlockHashOrTag, BlockNumberOrTag, Tag},
             sequencer::{
                 error::{SequencerError, StarknetError, StarknetErrorCode},
                 reply, MockClientApi,
@@ -670,24 +669,13 @@ mod tests {
         fn expect_block(
             mock: &mut MockClientApi,
             seq: &mut mockall::Sequence,
-            block_number: StarknetBlockNumber,
+            block: BlockId,
             returned_result: Result<reply::Block, SequencerError>,
         ) {
-            mock.expect_block_by_number()
-                .withf(move |x| x == &BlockNumberOrTag::Number(block_number))
-                .times(1)
-                .in_sequence(seq)
-                .return_once(move |_| returned_result);
-        }
+            use mockall::predicate::eq;
 
-        /// Convenience wrapper
-        fn expect_latest_block(
-            mock: &mut MockClientApi,
-            seq: &mut mockall::Sequence,
-            returned_result: Result<reply::Block, SequencerError>,
-        ) {
-            mock.expect_block_by_number()
-                .withf(move |x| x == &BlockNumberOrTag::Tag(Tag::Latest))
+            mock.expect_block()
+                .with(eq(block))
                 .times(1)
                 .in_sequence(seq)
                 .return_once(move |_| returned_result);
@@ -697,11 +685,13 @@ mod tests {
         fn expect_state_update(
             mock: &mut MockClientApi,
             seq: &mut mockall::Sequence,
-            block_hash: StarknetBlockHash,
+            block: BlockId,
             returned_result: Result<reply::StateUpdate, SequencerError>,
         ) {
-            mock.expect_state_update_by_hash()
-                .withf(move |x| x == &BlockHashOrTag::Hash(block_hash))
+            use mockall::predicate::eq;
+
+            mock.expect_state_update()
+                .with(eq(block))
                 .times(1)
                 .in_sequence(seq)
                 .return_once(|_| returned_result);
@@ -741,8 +731,18 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 // Downlad the genesis block with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK0_HASH).into(),
+                    Ok(STATE_UPDATE0.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -750,8 +750,18 @@ mod tests {
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Downlad block #1 with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(BLOCK1.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(BLOCK1.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK1_HASH).into(),
+                    Ok(STATE_UPDATE1.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -759,8 +769,13 @@ mod tests {
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Stay at head, no more blocks available
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Err(block_not_found()));
-                expect_latest_block(&mut mock, &mut seq, Ok(BLOCK1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Err(block_not_found()),
+                );
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK1.clone()));
 
                 // Let's run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -809,8 +824,18 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 // Start with downloading block #1
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(BLOCK1.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(BLOCK1.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK1_HASH).into(),
+                    Ok(STATE_UPDATE1.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -819,8 +844,13 @@ mod tests {
                 );
 
                 // Stay at head, no more blocks available
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Err(block_not_found()));
-                expect_latest_block(&mut mock, &mut seq, Ok(BLOCK1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Err(block_not_found()),
+                );
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK1.clone()));
 
                 // Let's run the UUT
                 let _jh = tokio::spawn(sync(
@@ -878,8 +908,18 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 // Fetch the genesis block with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK0_HASH).into(),
+                    Ok(STATE_UPDATE0.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -888,19 +928,29 @@ mod tests {
                 );
 
                 // Block #1 is not there
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Err(block_not_found()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Err(block_not_found()),
+                );
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at genesis
-                expect_latest_block(&mut mock, &mut seq, Ok(BLOCK0_V2.clone()));
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK0_V2.clone()));
 
                 // Finally the L2 sync task is downloading the new genesis block
                 // from the fork with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0_V2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0_V2.clone()),
+                );
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    *BLOCK0_HASH_V2,
+                    (*BLOCK0_HASH_V2).into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
                 expect_full_contract(
@@ -911,10 +961,15 @@ mod tests {
                 );
 
                 // Indicate that we are still staying at the head - no new blocks
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Err(block_not_found()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Err(block_not_found()),
+                );
 
                 // Indicate that we are still staying at the head - the latest block matches our head
-                expect_latest_block(&mut mock, &mut seq, Ok(BLOCK0_V2.clone()));
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK0_V2.clone()));
 
                 // Let's run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -995,8 +1050,18 @@ mod tests {
                 };
 
                 // Fetch the genesis block with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK0_HASH).into(),
+                    Ok(STATE_UPDATE0.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -1004,8 +1069,18 @@ mod tests {
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(BLOCK1.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(BLOCK1.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK1_HASH).into(),
+                    Ok(STATE_UPDATE1.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -1013,27 +1088,57 @@ mod tests {
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(BLOCK2.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK2_HASH, Ok(STATE_UPDATE2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Ok(BLOCK2.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK2_HASH).into(),
+                    Ok(STATE_UPDATE2.clone()),
+                );
 
                 // Block #3 is not there
-                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK3_NUMBER.into(),
+                    Err(block_not_found()),
+                );
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at genesis by setting the latest on the new genesis block
-                expect_latest_block(&mut mock, &mut seq, Ok(BLOCK0_V2.clone()));
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK0_V2.clone()));
                 // Then the L2 sync task goes back block by block to find the last block where the block hash matches the DB
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0_V2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(block1_v2.clone()),
+                );
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0_V2.clone()),
+                );
 
                 // Once the L2 sync task has found where reorg occured,
                 // it can get back to downloading the new blocks
                 // Fetch the new genesis block from the fork with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0_V2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0_V2.clone()),
+                );
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    *BLOCK0_HASH_V2,
+                    (*BLOCK0_HASH_V2).into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
                 expect_full_contract(
@@ -1043,18 +1148,28 @@ mod tests {
                     Ok(CONTRACT0_DEF_V2.clone()),
                 );
                 // Fetch the new block #1 from the fork with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(block1_v2.clone()),
+                );
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    *BLOCK1_HASH_V2,
+                    (*BLOCK1_HASH_V2).into(),
                     Ok(STATE_UPDATE1_V2.clone()),
                 );
 
                 // Indicate that we are still staying at the head
                 // No new blocks found and the latest block matches our head
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Err(block_not_found()));
-                expect_latest_block(&mut mock, &mut seq, Ok(block1_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Err(block_not_found()),
+                );
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block1_v2.clone()));
 
                 // Run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -1205,8 +1320,18 @@ mod tests {
                 };
 
                 // Fetch the genesis block with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK0_HASH).into(),
+                    Ok(STATE_UPDATE0.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -1214,8 +1339,18 @@ mod tests {
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(BLOCK1.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(BLOCK1.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK1_HASH).into(),
+                    Ok(STATE_UPDATE1.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -1223,44 +1358,99 @@ mod tests {
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(BLOCK2.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK2_HASH, Ok(STATE_UPDATE2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Ok(BLOCK2.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK2_HASH).into(),
+                    Ok(STATE_UPDATE2.clone()),
+                );
                 // Fetch block #3 with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Ok(block3.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK3_HASH, Ok(STATE_UPDATE3.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK3_NUMBER.into(),
+                    Ok(block3.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK3_HASH).into(),
+                    Ok(STATE_UPDATE3.clone()),
+                );
                 // Block #4 is not there
-                expect_block(&mut mock, &mut seq, BLOCK4_NUMBER, Err(block_not_found()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK4_NUMBER.into(),
+                    Err(block_not_found()),
+                );
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at block #1
-                expect_latest_block(&mut mock, &mut seq, Ok(block1_v2.clone()));
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block1_v2.clone()));
 
                 // L2 sync task goes back block by block to find where the block hash matches the DB
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2_v2.clone()));
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Ok(block2_v2.clone()),
+                );
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(block1_v2.clone()),
+                );
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone()),
+                );
 
                 // Finally the L2 sync task is downloading the new blocks once it knows where to start again
                 // Fetch the new block #1 from the fork with respective state update
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(block1_v2.clone()),
+                );
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    *BLOCK1_HASH_V2,
+                    (*BLOCK1_HASH_V2).into(),
                     Ok(STATE_UPDATE1_V2.clone()),
                 );
                 // Fetch the new block #2 from the fork with respective state update
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Ok(block2_v2.clone()),
+                );
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    *BLOCK2_HASH_V2,
+                    (*BLOCK2_HASH_V2).into(),
                     Ok(STATE_UPDATE2_V2.clone()),
                 );
 
                 // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
-                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
-                expect_latest_block(&mut mock, &mut seq, Ok(block2_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK3_NUMBER.into(),
+                    Err(block_not_found()),
+                );
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block2_v2.clone()));
 
                 // Run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -1375,8 +1565,18 @@ mod tests {
                 };
 
                 // Fetch the genesis block with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK0_HASH).into(),
+                    Ok(STATE_UPDATE0.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -1384,8 +1584,18 @@ mod tests {
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(BLOCK1.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(BLOCK1.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK1_HASH).into(),
+                    Ok(STATE_UPDATE1.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -1393,31 +1603,61 @@ mod tests {
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(BLOCK2.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK2_HASH, Ok(STATE_UPDATE2.clone()));
-                // Block #3 is not there
-                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
-
-                // L2 sync task is then looking if reorg occured
-                // We indicate that reorg started at block #2
-                expect_latest_block(&mut mock, &mut seq, Ok(block2_v2.clone()));
-
-                // L2 sync task goes back block by block to find where the block hash matches the DB
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(BLOCK1.clone()));
-
-                // Finally the L2 sync task is downloading the new blocks once it knows where to start again
-                // Fetch the new block #2 from the fork with respective state update
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Ok(BLOCK2.clone()),
+                );
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    *BLOCK2_HASH_V2,
+                    (*BLOCK2_HASH).into(),
+                    Ok(STATE_UPDATE2.clone()),
+                );
+                // Block #3 is not there
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK3_NUMBER.into(),
+                    Err(block_not_found()),
+                );
+
+                // L2 sync task is then looking if reorg occured
+                // We indicate that reorg started at block #2
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block2_v2.clone()));
+
+                // L2 sync task goes back block by block to find where the block hash matches the DB
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(BLOCK1.clone()),
+                );
+
+                // Finally the L2 sync task is downloading the new blocks once it knows where to start again
+                // Fetch the new block #2 from the fork with respective state update
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Ok(block2_v2.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK2_HASH_V2).into(),
                     Ok(STATE_UPDATE2_V2.clone()),
                 );
 
                 // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
-                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
-                expect_latest_block(&mut mock, &mut seq, Ok(block2_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK3_NUMBER.into(),
+                    Err(block_not_found()),
+                );
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block2_v2.clone()));
 
                 // Run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -1526,8 +1766,18 @@ mod tests {
                 };
 
                 // Fetch the genesis block with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK0_HASH).into(),
+                    Ok(STATE_UPDATE0.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -1535,8 +1785,18 @@ mod tests {
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(BLOCK1.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK1_HASH, Ok(STATE_UPDATE1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(BLOCK1.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK1_HASH).into(),
+                    Ok(STATE_UPDATE1.clone()),
+                );
                 expect_full_contract(
                     &mut mock,
                     &mut seq,
@@ -1544,28 +1804,58 @@ mod tests {
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 whose parent hash does not match block #1 hash
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Ok(block2.clone()),
+                );
 
                 // L2 sync task goes back block by block to find where the block hash matches the DB
                 // It starts at the previous block to which the mismatch happened
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone()),
+                );
 
                 // Finally the L2 sync task is downloading the new blocks once it knows where to start again
                 // Fetch the new block #1 from the fork with respective state update
-                expect_block(&mut mock, &mut seq, BLOCK1_NUMBER, Ok(block1_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK1_NUMBER.into(),
+                    Ok(block1_v2.clone()),
+                );
                 expect_state_update(
                     &mut mock,
                     &mut seq,
-                    *BLOCK1_HASH_V2,
+                    (*BLOCK1_HASH_V2).into(),
                     Ok(STATE_UPDATE1_V2.clone()),
                 );
                 // Fetch the block #2 again, now with respective state update
-                expect_block(&mut mock, &mut seq, BLOCK2_NUMBER, Ok(block2.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK2_HASH, Ok(STATE_UPDATE2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK2_NUMBER.into(),
+                    Ok(block2.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK2_HASH).into(),
+                    Ok(STATE_UPDATE2.clone()),
+                );
 
                 // Indicate that we are still staying at the head - no new blocks and the latest block matches our head
-                expect_block(&mut mock, &mut seq, BLOCK3_NUMBER, Err(block_not_found()));
-                expect_latest_block(&mut mock, &mut seq, Ok(block2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK3_NUMBER.into(),
+                    Err(block_not_found()),
+                );
+                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block2.clone()));
 
                 // Run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -1640,8 +1930,18 @@ mod tests {
                 let mut mock = MockClientApi::new();
                 let mut seq = mockall::Sequence::new();
 
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER, Ok(BLOCK0.clone()));
-                expect_state_update(&mut mock, &mut seq, *BLOCK0_HASH, Ok(STATE_UPDATE0.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK0_HASH).into(),
+                    Ok(STATE_UPDATE0.clone()),
+                );
 
                 // Run the UUT
                 let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
