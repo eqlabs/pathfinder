@@ -537,7 +537,6 @@ mod tests {
             signature: vec![],
             transaction_hash: txn0_hash,
             r#type: Type::Deploy,
-            version: None,
         };
         let mut receipt0 = Receipt {
             actual_fee: None,

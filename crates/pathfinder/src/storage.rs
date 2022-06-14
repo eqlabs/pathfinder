@@ -246,7 +246,6 @@ pub(crate) mod test_utils {
                         StarkHash::from_hex_str(&"4".repeat(i + 3)).unwrap(),
                     ),
                     r#type: transaction::Type::InvokeFunction,
-                    version: Some(TransactionVersion(H256::zero())),
                 })
             }
             x if (INVOKE_TRANSACTIONS_PER_BLOCK

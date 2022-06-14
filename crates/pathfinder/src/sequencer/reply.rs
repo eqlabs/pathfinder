@@ -307,9 +307,6 @@ pub mod transaction {
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: StarknetTransactionHash,
         pub r#type: Type,
-        #[serde_as(as = "Option<TransactionVersionAsHexStr>")]
-        #[serde(default)]
-        pub version: Option<TransactionVersion>,
     }
 
     /// Describes L2 transaction types.
