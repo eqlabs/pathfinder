@@ -574,7 +574,6 @@ pub mod reply {
 
             Ok(match txn {
                 sequencer::reply::transaction::Transaction::Invoke(txn) => Self {
-                    // TODO
                     txn_hash: txn.transaction_hash,
                     contract_address: Some(txn.contract_address),
                     entry_point_selector: Some(txn.entry_point_selector),
@@ -582,7 +581,8 @@ pub mod reply {
                     max_fee: Some(txn.max_fee),
                 },
                 _ => Self {
-                    // TODO
+                    // TODO this is probably the best we can do until the RPC spec introduces
+                    // 3 variants for all the transaction types
                     txn_hash: txn.hash(),
                     contract_address: None,
                     entry_point_selector: None,
@@ -597,7 +597,6 @@ pub mod reply {
         fn from(txn: sequencer::reply::transaction::Transaction) -> Self {
             match txn {
                 sequencer::reply::transaction::Transaction::Invoke(txn) => Self {
-                    // TODO
                     txn_hash: txn.transaction_hash,
                     contract_address: Some(txn.contract_address),
                     entry_point_selector: Some(txn.entry_point_selector),
@@ -605,7 +604,8 @@ pub mod reply {
                     max_fee: Some(txn.max_fee),
                 },
                 _ => Self {
-                    // TODO
+                    // TODO this is probably the best we can do until the RPC spec introduces
+                    // 3 variants for all the transaction types
                     txn_hash: txn.hash(),
                     contract_address: None,
                     entry_point_selector: None,
