@@ -11,7 +11,7 @@ use crate::{
     ethereum::Chain,
     rpc::types::{
         reply::{
-            Block, BlockStatus, ErrorCode, GetEventsResult, Syncing, Transaction,
+            Block, BlockStatus, ErrorCode, FeeEstimate, GetEventsResult, Syncing, Transaction,
             TransactionReceipt,
         },
         request::{BlockResponseScope, Call, EventFilter, OverflowingStorageAddress},
@@ -1159,6 +1159,47 @@ impl RpcApi {
             transaction_hash: result.transaction_hash,
             contract_address: result.address,
         })
+    }
+
+    pub async fn estimate_fee(
+        &self,
+        request: Call,
+        block_hash: BlockHashOrTag,
+    ) -> RpcResult<FeeEstimate> {
+        use crate::cairo::ext_py::GasPriceSource;
+        use web3::types::H256;
+
+        fn get_this_value_from_somewhere() -> H256 {
+            todo!()
+        }
+
+        match (self.call_handle.as_ref(), &block_hash) {
+            (Some(h), &BlockHashOrTag::Hash(_)) => {
+                // discussed during estimateFee work: when using block_hash use the gasPrice from
+                // the starknet_blocks::gas_price column, otherwise (tags) get the latest eth_gasPrice.
+                h.estimate_fee(request, block_hash, GasPriceSource::PastBlock)
+                    .await
+                    .map_err(Error::from)
+            }
+            (Some(h), &BlockHashOrTag::Tag(Tag::Latest)) => {
+                // now we want the gas_price from our hopefully pre-fetched source, it will be the
+                // same when we finally have pending support
+                h.estimate_fee(
+                    request,
+                    block_hash,
+                    GasPriceSource::Current(get_this_value_from_somewhere()),
+                )
+                .await
+                .map_err(Error::from)
+            }
+            (Some(_), &BlockHashOrTag::Tag(Tag::Pending)) => {
+                Err(internal_server_error("Unimplemented"))
+            }
+            (None, _) => {
+                // sequencer return type is incompatible with jsonrpc api return type
+                Err(internal_server_error("Unsupported configuration"))
+            }
+        }
     }
 }
 

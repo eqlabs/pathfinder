@@ -987,4 +987,22 @@ pub mod reply {
         pub transaction_hash: StarknetTransactionHash,
         pub contract_address: ContractAddress,
     }
+
+    /// Return type of transaction fee estimation
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct FeeEstimate {
+        /// The Ethereum gas cost of the transaction
+        #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+        #[serde(rename = "gas_consumed")]
+        pub consumed: web3::types::H256,
+        /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
+        #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+        pub gas_price: web3::types::H256,
+        /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
+        #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+        #[serde(rename = "overall_fee")]
+        pub fee: web3::types::H256,
+    }
 }

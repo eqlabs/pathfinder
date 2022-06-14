@@ -252,6 +252,17 @@ pub async fn run_server(
         let params = params.parse::<NamedArgs>()?;
         context.call(params.request, params.block_hash).await
     })?;
+    module.register_async_method("starknet_estimateFee", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        pub struct NamedArgs {
+            pub request: Call,
+            pub block_hash: BlockHashOrTag,
+        }
+        let params = params.parse::<NamedArgs>()?;
+        context
+            .estimate_fee(params.request, params.block_hash)
+            .await
+    })?;
     module.register_async_method("starknet_blockNumber", |_, context| async move {
         context.block_number().await
     })?;
