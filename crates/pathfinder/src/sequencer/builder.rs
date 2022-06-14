@@ -337,7 +337,7 @@ async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, Seq
 
     // Starknet specific errors end with a 500 status code
     // but the body contains a JSON object with the error description
-    if dbg!(response.status()) == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
+    if response.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
         let starknet_error = response.json::<StarknetError>().await?;
         return Err(SequencerError::StarknetError(starknet_error));
     }
