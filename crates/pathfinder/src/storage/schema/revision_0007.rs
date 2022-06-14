@@ -242,12 +242,12 @@ const STARKNET_EVENTS_CREATE_STMT: &str = r"CREATE TABLE starknet_events (
         );
     END;";
 
-pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
     migrate_with(transaction, STARKNET_EVENTS_CREATE_STMT)
 }
 
 pub(crate) fn migrate_with(
-    transaction: &Transaction,
+    transaction: &Transaction<'_>,
     starknet_events_create_stmt: &'static str,
 ) -> anyhow::Result<PostMigrationAction> {
     // Create the new events table.

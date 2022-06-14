@@ -233,7 +233,7 @@ mod tests {
         jh.await.unwrap();
     }
 
-    fn fill_example_state(tx: &rusqlite::Transaction) {
+    fn fill_example_state(tx: &rusqlite::Transaction<'_>) {
         let contract_definition = zstd::decode_all(std::io::Cursor::new(include_bytes!(
             "../../fixtures/contract_definition.json.zst"
         )))

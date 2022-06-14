@@ -184,7 +184,7 @@ impl<'a> RcNodeStorage<'a> {
     ///
     /// None of the [RcNodeStorage] functions rollback on failure. This means that if any error
     /// is encountered, the transaction should be rolled back to prevent database corruption.
-    pub fn open(table: String, transaction: &'a Transaction) -> anyhow::Result<Self> {
+    pub fn open(table: String, transaction: &'a Transaction<'_>) -> anyhow::Result<Self> {
         transaction.execute(
             &format!(
                 r"CREATE TABLE IF NOT EXISTS {}(
@@ -373,7 +373,7 @@ mod tests {
     use bitvec::bitvec;
 
     /// Test helper function to query a node's current reference count from the database.
-    fn get_ref_count(storage: &RcNodeStorage, key: StarkHash) -> u16 {
+    fn get_ref_count(storage: &RcNodeStorage<'_>, key: StarkHash) -> u16 {
         let hash = key.to_be_bytes();
         storage
             .transaction

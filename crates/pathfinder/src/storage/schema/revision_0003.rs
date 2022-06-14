@@ -8,7 +8,7 @@ use crate::storage::schema::PostMigrationAction;
 /// In addition, it also adds a refs table which only contains a single column.
 /// This columns references the latest Starknet block for which the L1 and L2
 /// states are the same.
-pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
     // Create the new L1 table.
     transaction.execute(
         r"CREATE TABLE l1_state (

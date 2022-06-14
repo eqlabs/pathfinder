@@ -3,7 +3,7 @@ use crate::storage::schema::PostMigrationAction;
 use anyhow::Context;
 use rusqlite::Transaction;
 
-pub(crate) fn migrate(transaction: &Transaction) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
     // We need to check if this db needs fixing at all
     let update_is_not_required = {
         let mut stmt = transaction
@@ -307,7 +307,9 @@ mod tests {
 
         /// This is a test helper function which runs a stateful scenario of the migration
         /// with the revision 7 migration being customisable via a closure provided by the caller
-        fn run_stateful_scenario<Fn: FnOnce(&rusqlite::Transaction)>(revision_0007_migrate_fn: Fn) {
+        fn run_stateful_scenario<Fn: for<'a> FnOnce(&rusqlite::Transaction<'a>)>(
+            revision_0007_migrate_fn: Fn,
+        ) {
             let mut connection = Connection::open_in_memory().unwrap();
             let transaction = connection.transaction().unwrap();
 

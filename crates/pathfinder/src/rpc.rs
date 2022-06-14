@@ -42,7 +42,10 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
         &mut self,
         method_name: &'static str,
         callback: Fun,
-    ) -> Result<jsonrpsee::core::server::rpc_module::MethodResourcesBuilder, jsonrpsee::core::Error>
+    ) -> Result<
+        jsonrpsee::core::server::rpc_module::MethodResourcesBuilder<'_>,
+        jsonrpsee::core::Error,
+    >
     where
         R: ::serde::Serialize + Send + Sync + 'static,
         Fut: std::future::Future<Output = Result<R, Error>> + Send,

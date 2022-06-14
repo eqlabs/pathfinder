@@ -372,7 +372,7 @@ async fn rpc_round<'a>(
     }
 
     let resp =
-        serde_json::from_str::<ChildResponse>(buffer).map_err(SubprocessError::InvalidJson)?;
+        serde_json::from_str::<ChildResponse<'_>>(buffer).map_err(SubprocessError::InvalidJson)?;
 
     resp.refine()
 }

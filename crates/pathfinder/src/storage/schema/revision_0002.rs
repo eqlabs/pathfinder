@@ -4,7 +4,7 @@ use sha3::{Digest, Keccak256};
 
 use crate::storage::schema::PostMigrationAction;
 
-pub(crate) fn migrate(tx: &Transaction) -> anyhow::Result<PostMigrationAction> {
+pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<PostMigrationAction> {
     // we had a mishap of forking the schema at version 1 so to really support all combinations of
     // schema at version 1 we need to make sure that contracts table still looks like:
     // CREATE TABLE contracts (

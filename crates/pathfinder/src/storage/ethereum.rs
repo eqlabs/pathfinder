@@ -17,7 +17,7 @@ impl EthereumBlocksTable {
     ///
     /// overwrites the data if the hash already exists.
     pub fn insert(
-        transaction: &Transaction,
+        transaction: &Transaction<'_>,
         hash: EthereumBlockHash,
         number: EthereumBlockNumber,
     ) -> anyhow::Result<()> {
@@ -49,7 +49,7 @@ impl EthereumTransactionsTable {
     /// Note that [block_hash](EthereumBlockHash) must reference an
     /// Ethereum block stored in [EthereumBlocksTable].
     pub fn upsert(
-        transaction: &Transaction,
+        transaction: &Transaction<'_>,
         block_hash: EthereumBlockHash,
         tx_hash: EthereumTransactionHash,
         tx_index: EthereumTransactionIndex,

@@ -20,7 +20,7 @@ pub struct ContractsStateTree<'a> {
 }
 
 impl<'a> ContractsStateTree<'a> {
-    pub fn load(transaction: &'a Transaction, root: ContractRoot) -> anyhow::Result<Self> {
+    pub fn load(transaction: &'a Transaction<'_>, root: ContractRoot) -> anyhow::Result<Self> {
         // TODO: move the string into storage.
         let tree = MerkleTree::load("tree_contracts".to_string(), transaction, root.0)?;
 
@@ -51,7 +51,7 @@ pub struct GlobalStateTree<'a> {
 }
 
 impl<'a> GlobalStateTree<'a> {
-    pub fn load(transaction: &'a Transaction, root: GlobalRoot) -> anyhow::Result<Self> {
+    pub fn load(transaction: &'a Transaction<'_>, root: GlobalRoot) -> anyhow::Result<Self> {
         // TODO: move the string into storage.
         let tree = MerkleTree::load("tree_global".to_string(), transaction, root.0)?;
 

@@ -20,7 +20,7 @@ impl ContractCodeTable {
     ///
     /// Does nothing if the class [hash](ClassHash) is already populated.
     pub fn insert(
-        transaction: &Transaction,
+        transaction: &Transaction<'_>,
         hash: ClassHash,
         abi: &[u8],
         bytecode: &[u8],
@@ -71,7 +71,7 @@ impl ContractCodeTable {
 
     /// Gets the specified contract's [code](ContractCode).
     pub fn get_code(
-        transaction: &Transaction,
+        transaction: &Transaction<'_>,
         address: ContractAddress,
     ) -> anyhow::Result<Option<ContractCode>> {
         let row = transaction
@@ -136,7 +136,7 @@ impl ContractsTable {
     ///
     /// Note that [hash](ClassHash) must reference a class stored in [ContractCodeTable].
     pub fn upsert(
-        transaction: &Transaction,
+        transaction: &Transaction<'_>,
         address: ContractAddress,
         hash: ClassHash,
     ) -> anyhow::Result<()> {
@@ -153,7 +153,7 @@ impl ContractsTable {
 
     /// Gets the specified contract's class hash.
     pub fn get_hash(
-        transaction: &Transaction,
+        transaction: &Transaction<'_>,
         address: ContractAddress,
     ) -> anyhow::Result<Option<ClassHash>> {
         let bytes: Option<Vec<u8>> = transaction
