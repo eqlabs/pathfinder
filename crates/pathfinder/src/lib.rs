@@ -1,3 +1,5 @@
+#![deny(rust_2018_idioms)]
+
 pub mod cairo;
 pub mod config;
 pub(crate) mod consts;
