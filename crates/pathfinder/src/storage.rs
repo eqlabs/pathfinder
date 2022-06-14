@@ -378,7 +378,7 @@ pub(crate) mod test_utils {
             .unwrap();
         }
 
-        let events = create_emitted_events(&blocks, &transactions_and_receipts);
+        let events = extract_events(&blocks, &transactions_and_receipts);
 
         (storage, events)
     }

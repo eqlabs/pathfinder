@@ -31,5 +31,5 @@ pub fn setup_events(connection: &Connection) -> Vec<StarknetEmittedEvent> {
         .unwrap();
     }
 
-    test_utils::create_emitted_events(&blocks, &transactions_and_receipts)
+    test_utils::extract_events(&blocks, &transactions_and_receipts)
 }

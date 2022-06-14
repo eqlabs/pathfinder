@@ -1616,7 +1616,7 @@ mod tests {
 
         #[test]
         fn get_events_with_fully_specified_filter() {
-            let (storage, emitted_events) = test_utils::setup_storage();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             let expected_event = &emitted_events[1];
@@ -1642,7 +1642,7 @@ mod tests {
 
         #[test]
         fn get_events_by_block() {
-            let (storage, emitted_events) = test_utils::setup_storage();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             const BLOCK_NUMBER: usize = 2;
@@ -1669,7 +1669,7 @@ mod tests {
 
         #[test]
         fn get_events_up_to_block() {
-            let (storage, emitted_events) = test_utils::setup_storage();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             const UNTIL_BLOCK_NUMBER: usize = 2;
@@ -1696,7 +1696,7 @@ mod tests {
 
         #[test]
         fn get_events_from_block_onwards() {
-            let (storage, emitted_events) = test_utils::setup_storage();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             const FROM_BLOCK_NUMBER: usize = 2;
@@ -1723,7 +1723,7 @@ mod tests {
 
         #[test]
         fn get_events_from_contract() {
-            let (storage, emitted_events) = test_utils::setup_storage();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             let expected_event = &emitted_events[33];
@@ -1749,7 +1749,7 @@ mod tests {
 
         #[test]
         fn get_events_by_key() {
-            let (storage, emitted_events) = test_utils::setup_storage();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             let expected_event = &emitted_events[27];
@@ -1774,7 +1774,7 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter() {
-            let (storage, emitted_events) = test_utils::setup_storage();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             let filter = StarknetEventFilter {
@@ -1798,7 +1798,7 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter_and_paging() {
-            let (storage, emitted_events) = test_utils::setup_storage();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             let filter = StarknetEventFilter {
@@ -1855,7 +1855,7 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter_and_nonexistent_page() {
-            let (storage, _) = test_utils::setup_storage();
+            let (storage, _) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             const PAGE_SIZE: usize = 10;
@@ -1880,7 +1880,7 @@ mod tests {
 
         #[test]
         fn get_events_with_invalid_page_size() {
-            let (storage, _) = test_utils::setup_storage();
+            let (storage, _) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             let filter = StarknetEventFilter {
@@ -1913,7 +1913,7 @@ mod tests {
 
         #[test]
         fn get_events_by_key_with_paging() {
-            let (storage, emitted_events) = test_utils::setup_storage();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let connection = storage.connection().unwrap();
 
             let expected_events = &emitted_events[27..32];

@@ -2451,7 +2451,7 @@ mod tests {
         use crate::storage::test_utils;
 
         fn setup() -> (Storage, Vec<EmittedEvent>) {
-            let (storage, events) = test_utils::setup_storage();
+            let (storage, events) = test_utils::setup_test_storage();
             let events = events.into_iter().map(EmittedEvent::from).collect();
             (storage, events)
         }
