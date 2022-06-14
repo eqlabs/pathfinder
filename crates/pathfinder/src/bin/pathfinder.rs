@@ -32,12 +32,12 @@ async fn main() -> anyhow::Result<()> {
     let eth_transport =
         HttpTransport::from_config(config.ethereum).context("Creating Ethereum transport")?;
 
-    let network_chain = eth_transport
+    let ethereum_chain = eth_transport
         .chain()
         .await
         .context("Determining Ethereum chain")?;
 
-    let database_path = config.data_directory.join(match network_chain {
+    let database_path = config.data_directory.join(match ethereum_chain {
         ethereum::Chain::Mainnet => "mainnet.sqlite",
         ethereum::Chain::Goerli => "goerli.sqlite",
     });
@@ -47,16 +47,22 @@ async fn main() -> anyhow::Result<()> {
     let sequencer = match config.sequencer_url {
         Some(url) => {
             info!(?url, "Using custom Sequencer address");
-            sequencer::Client::with_url(url).unwrap()
+            let client = sequencer::Client::with_url(url).unwrap();
+            let sequencer_chain = client.chain().await.unwrap();
+            if sequencer_chain != ethereum_chain {
+                tracing::error!(sequencer=%sequencer_chain, ethereum=%ethereum_chain, "Sequencer and Ethereum network mismatch");
+                anyhow::bail!("Sequencer and Ethereum network mismatch. Sequencer is on {sequencer_chain} but Ethereum is on {ethereum_chain}");
+            }
+            client
         }
-        None => sequencer::Client::new(network_chain).unwrap(),
+        None => sequencer::Client::new(ethereum_chain).unwrap(),
     };
     let sync_state = Arc::new(state::SyncState::default());
 
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
         eth_transport,
-        network_chain,
+        ethereum_chain,
         sequencer.clone(),
         sync_state.clone(),
         state::l1::sync,
@@ -75,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
 
-    let api = rpc::api::RpcApi::new(storage, sequencer, network_chain, sync_state)
+    let api = rpc::api::RpcApi::new(storage, sequencer, ethereum_chain, sync_state)
         .with_call_handling(call_handle);
 
     let (rpc_handle, local_addr) = rpc::run_server(config.http_rpc_addr, api)
