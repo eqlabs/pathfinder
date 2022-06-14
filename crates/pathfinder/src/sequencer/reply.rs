@@ -301,7 +301,6 @@ pub mod transaction {
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
         pub entry_point_type: EntryPointType,
-        // TODO check if should be Optional for old data ?
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]

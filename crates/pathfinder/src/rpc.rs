@@ -2452,29 +2452,8 @@ mod tests {
         use crate::storage::test_utils;
 
         fn setup() -> (Storage, Vec<EmittedEvent>) {
-            let storage = Storage::in_memory().unwrap();
-            let connection = storage.connection().unwrap();
-
-            let blocks = test_utils::create_blocks();
-            let transactions_and_receipts = test_utils::create_transactions_and_receipts();
-
-            for (i, block) in blocks.iter().enumerate() {
-                StarknetBlocksTable::insert(&connection, block).unwrap();
-                StarknetTransactionsTable::upsert(
-                    &connection,
-                    block.hash,
-                    block.number,
-                    &transactions_and_receipts[i * test_utils::TRANSACTIONS_PER_BLOCK
-                        ..(i + 1) * test_utils::TRANSACTIONS_PER_BLOCK],
-                )
-                .unwrap();
-            }
-
-            let events = test_utils::create_emitted_events(&blocks, &transactions_and_receipts)
-                .into_iter()
-                .map(EmittedEvent::from)
-                .collect();
-
+            let (storage, events) = test_utils::setup_storage();
+            let events = events.into_iter().map(EmittedEvent::from).collect();
             (storage, events)
         }
 

@@ -173,7 +173,10 @@ fn enable_foreign_keys(connection: &Connection) -> anyhow::Result<()> {
 
 #[cfg(test)]
 pub(crate) mod test_utils {
-    use super::{StarknetBlock, StarknetEmittedEvent};
+    use super::{
+        StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable,
+        Storage,
+    };
 
     use crate::{
         core::{
@@ -354,6 +357,31 @@ pub(crate) mod test_utils {
                 }
             })
             .collect()
+    }
+
+    /// Creates a storage instance in memory with a set of expected emitted events
+    pub(crate) fn setup_storage() -> (Storage, Vec<StarknetEmittedEvent>) {
+        let storage = Storage::in_memory().unwrap();
+        let connection = storage.connection().unwrap();
+
+        let blocks = create_blocks();
+        let transactions_and_receipts = create_transactions_and_receipts();
+
+        for (i, block) in blocks.iter().enumerate() {
+            StarknetBlocksTable::insert(&connection, block).unwrap();
+            StarknetTransactionsTable::upsert(
+                &connection,
+                block.hash,
+                block.number,
+                &transactions_and_receipts
+                    [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK],
+            )
+            .unwrap();
+        }
+
+        let events = create_emitted_events(&blocks, &transactions_and_receipts);
+
+        (storage, events)
     }
 }
 

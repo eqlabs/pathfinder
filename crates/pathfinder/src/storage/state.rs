@@ -1614,31 +1614,10 @@ mod tests {
             );
         }
 
-        fn setup(connection: &Connection) -> Vec<StarknetEmittedEvent> {
-            let blocks = test_utils::create_blocks();
-            let transactions_and_receipts = test_utils::create_transactions_and_receipts();
-
-            for (i, block) in blocks.iter().enumerate() {
-                StarknetBlocksTable::insert(connection, block).unwrap();
-                StarknetTransactionsTable::upsert(
-                    connection,
-                    block.hash,
-                    block.number,
-                    &transactions_and_receipts[i * test_utils::TRANSACTIONS_PER_BLOCK
-                        ..(i + 1) * test_utils::TRANSACTIONS_PER_BLOCK],
-                )
-                .unwrap();
-            }
-
-            test_utils::create_emitted_events(&blocks, &transactions_and_receipts)
-        }
-
         #[test]
         fn get_events_with_fully_specified_filter() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let emitted_events = setup(&connection);
 
             let expected_event = &emitted_events[1];
             let filter = StarknetEventFilter {
@@ -1663,10 +1642,8 @@ mod tests {
 
         #[test]
         fn get_events_by_block() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let emitted_events = setup(&connection);
 
             const BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
@@ -1692,10 +1669,8 @@ mod tests {
 
         #[test]
         fn get_events_up_to_block() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let emitted_events = setup(&connection);
 
             const UNTIL_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
@@ -1721,10 +1696,8 @@ mod tests {
 
         #[test]
         fn get_events_from_block_onwards() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let emitted_events = setup(&connection);
 
             const FROM_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
@@ -1750,10 +1723,8 @@ mod tests {
 
         #[test]
         fn get_events_from_contract() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let emitted_events = setup(&connection);
 
             let expected_event = &emitted_events[33];
 
@@ -1778,10 +1749,8 @@ mod tests {
 
         #[test]
         fn get_events_by_key() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let emitted_events = setup(&connection);
 
             let expected_event = &emitted_events[27];
             let filter = StarknetEventFilter {
@@ -1805,10 +1774,8 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let emitted_events = setup(&connection);
 
             let filter = StarknetEventFilter {
                 from_block: None,
@@ -1831,10 +1798,8 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter_and_paging() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let emitted_events = setup(&connection);
 
             let filter = StarknetEventFilter {
                 from_block: None,
@@ -1890,10 +1855,8 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter_and_nonexistent_page() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, _) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let _emitted_events = setup(&connection);
 
             const PAGE_SIZE: usize = 10;
             let filter = StarknetEventFilter {
@@ -1917,10 +1880,8 @@ mod tests {
 
         #[test]
         fn get_events_with_invalid_page_size() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, _) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let _emitted_events = setup(&connection);
 
             let filter = StarknetEventFilter {
                 from_block: None,
@@ -1952,10 +1913,8 @@ mod tests {
 
         #[test]
         fn get_events_by_key_with_paging() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_storage();
             let connection = storage.connection().unwrap();
-
-            let emitted_events = setup(&connection);
 
             let expected_events = &emitted_events[27..32];
             let keys_for_expected_events: Vec<_> =
