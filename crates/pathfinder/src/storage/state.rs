@@ -730,7 +730,8 @@ impl StarknetEventsTable {
     ) -> anyhow::Result<()> {
         match transaction {
             transaction::Transaction::Declare(_) => {
-                anyhow::bail!("Declare transactions cannot emit events")
+                anyhow::ensure!(events.is_empty(), "Declare transactions cannot emit events");
+                Ok(())
             }
             transaction::Transaction::Deploy(transaction::DeployTransaction {
                 transaction_hash,
@@ -1272,22 +1273,19 @@ mod tests {
     mod starknet_blocks {
         use super::*;
 
-        fn create_blocks() -> [StarknetBlock; 3] {
-            crate::storage::test_utils::create_blocks::<3>()
-        }
-
         mod get {
             use super::*;
 
             mod by_number {
                 use super::*;
+                use crate::storage::test_utils;
 
                 #[test]
                 fn some() {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1306,7 +1304,7 @@ mod tests {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1321,13 +1319,14 @@ mod tests {
 
             mod by_hash {
                 use super::*;
+                use crate::storage::test_utils;
 
                 #[test]
                 fn some() {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1346,7 +1345,7 @@ mod tests {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1362,13 +1361,14 @@ mod tests {
 
             mod latest {
                 use super::*;
+                use crate::storage::test_utils;
 
                 #[test]
                 fn some() {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1400,13 +1400,14 @@ mod tests {
 
             mod by_number {
                 use super::*;
+                use crate::storage::test_utils;
 
                 #[test]
                 fn some() {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1425,7 +1426,7 @@ mod tests {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1440,13 +1441,14 @@ mod tests {
 
             mod by_hash {
                 use super::*;
+                use crate::storage::test_utils;
 
                 #[test]
                 fn some() {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1465,7 +1467,7 @@ mod tests {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1481,13 +1483,14 @@ mod tests {
 
             mod latest {
                 use super::*;
+                use crate::storage::test_utils;
 
                 #[test]
                 fn some() {
                     let storage = Storage::in_memory().unwrap();
                     let connection = storage.connection().unwrap();
 
-                    let blocks = create_blocks();
+                    let blocks = test_utils::create_blocks();
                     for block in &blocks {
                         StarknetBlocksTable::insert(&connection, block).unwrap();
                     }
@@ -1516,13 +1519,14 @@ mod tests {
 
         mod reorg {
             use super::*;
+            use crate::storage::test_utils;
 
             #[test]
             fn full() {
                 let storage = Storage::in_memory().unwrap();
                 let connection = storage.connection().unwrap();
 
-                let blocks = create_blocks();
+                let blocks = test_utils::create_blocks();
                 for block in &blocks {
                     StarknetBlocksTable::insert(&connection, block).unwrap();
                 }
@@ -1540,7 +1544,7 @@ mod tests {
                 let storage = Storage::in_memory().unwrap();
                 let connection = storage.connection().unwrap();
 
-                let blocks = create_blocks();
+                let blocks = test_utils::create_blocks();
                 for block in &blocks {
                     StarknetBlocksTable::insert(&connection, block).unwrap();
                 }
@@ -1570,6 +1574,7 @@ mod tests {
 
         use crate::core::EventData;
         use crate::sequencer::reply::transaction;
+        use crate::storage::test_utils;
 
         #[test]
         fn event_data_serialization() {
@@ -1609,25 +1614,9 @@ mod tests {
             );
         }
 
-        const NUM_BLOCKS: usize = 4;
-
-        fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
-            crate::storage::test_utils::create_blocks::<NUM_BLOCKS>()
-        }
-
-        const TRANSACTIONS_PER_BLOCK: usize = 10;
-        const EVENTS_PER_BLOCK: usize = TRANSACTIONS_PER_BLOCK;
-        const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
-        const NUM_EVENTS: usize = NUM_BLOCKS * EVENTS_PER_BLOCK;
-
-        fn create_transactions_and_receipts(
-        ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
-            crate::storage::test_utils::create_transactions_and_receipts::<NUM_TRANSACTIONS>()
-        }
-
         fn setup(connection: &Connection) -> Vec<StarknetEmittedEvent> {
-            let blocks = create_blocks();
-            let transactions_and_receipts = create_transactions_and_receipts();
+            let blocks = test_utils::create_blocks();
+            let transactions_and_receipts = test_utils::create_transactions_and_receipts();
 
             for (i, block) in blocks.iter().enumerate() {
                 StarknetBlocksTable::insert(connection, block).unwrap();
@@ -1635,29 +1624,13 @@ mod tests {
                     connection,
                     block.hash,
                     block.number,
-                    &transactions_and_receipts
-                        [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK],
+                    &transactions_and_receipts[i * test_utils::TRANSACTIONS_PER_BLOCK
+                        ..(i + 1) * test_utils::TRANSACTIONS_PER_BLOCK],
                 )
                 .unwrap();
             }
 
-            transactions_and_receipts
-                .iter()
-                .enumerate()
-                .map(|(i, (txn, receipt))| {
-                    let event = &receipt.events[0];
-                    let block = &blocks[i / TRANSACTIONS_PER_BLOCK];
-
-                    StarknetEmittedEvent {
-                        data: event.data.clone(),
-                        from_address: event.from_address,
-                        keys: event.keys.clone(),
-                        block_hash: block.hash,
-                        block_number: block.number,
-                        transaction_hash: txn.hash(),
-                    }
-                })
-                .collect()
+            test_utils::create_emitted_events(&blocks, &transactions_and_receipts)
         }
 
         #[test]
@@ -1674,7 +1647,7 @@ mod tests {
                 contract_address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
                 keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
@@ -1701,12 +1674,12 @@ mod tests {
                 to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
-            let expected_events = &emitted_events
-                [EVENTS_PER_BLOCK * BLOCK_NUMBER..EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
+            let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
+                ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
             assert_eq!(
                 events,
@@ -1730,12 +1703,12 @@ mod tests {
                 to_block: Some(StarknetBlockNumber(UNTIL_BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
             let expected_events =
-                &emitted_events[..TRANSACTIONS_PER_BLOCK * (UNTIL_BLOCK_NUMBER + 1)];
+                &emitted_events[..test_utils::EVENTS_PER_BLOCK * (UNTIL_BLOCK_NUMBER + 1)];
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
             assert_eq!(
                 events,
@@ -1759,11 +1732,12 @@ mod tests {
                 to_block: None,
                 contract_address: None,
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
-            let expected_events = &emitted_events[TRANSACTIONS_PER_BLOCK * FROM_BLOCK_NUMBER..];
+            let expected_events =
+                &emitted_events[test_utils::EVENTS_PER_BLOCK * FROM_BLOCK_NUMBER..];
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
             assert_eq!(
                 events,
@@ -1788,7 +1762,7 @@ mod tests {
                 to_block: None,
                 contract_address: Some(expected_event.from_address),
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
@@ -1815,7 +1789,7 @@ mod tests {
                 to_block: None,
                 contract_address: None,
                 keys: vec![expected_event.keys[0]],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
@@ -1841,7 +1815,7 @@ mod tests {
                 to_block: None,
                 contract_address: None,
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
@@ -1929,7 +1903,7 @@ mod tests {
                 keys: vec![],
                 page_size: PAGE_SIZE,
                 // one page _after_ the last one
-                page_number: NUM_BLOCKS * EVENTS_PER_BLOCK / PAGE_SIZE,
+                page_number: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK / PAGE_SIZE,
             };
             let events = StarknetEventsTable::get_events(&connection, &filter).unwrap();
             assert_eq!(

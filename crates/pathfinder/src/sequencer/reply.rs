@@ -272,6 +272,7 @@ pub mod transaction {
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: StarknetTransactionHash,
         pub r#type: Type,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
     }
 

@@ -213,7 +213,7 @@ mod tests {
             contract_address: Some(expected_event.from_address),
             // we're using a key which is present in _all_ events
             keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
-            page_size: schema::fixtures::NUM_TXNS,
+            page_size: crate::storage::test_utils::NUM_TRANSACTIONS,
             page_number: 0,
         };
 
