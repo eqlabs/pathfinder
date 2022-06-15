@@ -474,49 +474,61 @@ mod tests {
 
         let c: [u8; 1] = bytes_from_hex_str(ZERO_HEX_STR).unwrap();
         assert!(c.iter().all(|x| *x == 0));
-        assert_eq!(bytes_to_hex_str(&c[..]), ZERO_HEX_STR);
+        assert_eq!(bytes_to_lower_hex_str(&c[..]), ZERO_HEX_STR);
+        assert_eq!(bytes_to_upper_hex_str(&c[..]), ZERO_HEX_STR);
         let mut buf = [0u8; 2 + 2];
-        assert_eq!(bytes_as_hex_str(&c[..], &mut buf), ZERO_HEX_STR);
+        assert_eq!(bytes_as_lower_hex_str(&c[..], &mut buf), ZERO_HEX_STR);
+        assert_eq!(bytes_as_upper_hex_str(&c[..], &mut buf), ZERO_HEX_STR);
     }
 
     #[test]
     fn odd() {
-        const ODD_HEX_STR: &str = "0x1234567890abcde";
+        const ODD_HEX_STR_LOWER: &str = "0x1234567890abcde";
+        const ODD_HEX_STR_UPPER: &str = "0x1234567890ABCDE";
         const ODD_DEC_STR: &str = "81985529205931230";
         const ODD_BYTES: [u8; 8] = [1, 0x23, 0x45, 0x67, 0x89, 0x0a, 0xbc, 0xde];
 
         let a = starkhash_from_biguint(BigUint::from_bytes_be(&ODD_BYTES)).unwrap();
         let b = starkhash_from_dec_str(ODD_DEC_STR).unwrap();
-        let expected = StarkHash::from_hex_str(ODD_HEX_STR).unwrap();
+        let expected = StarkHash::from_hex_str(ODD_HEX_STR_LOWER).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
         assert_eq!(starkhash_to_dec_str(&expected), ODD_DEC_STR);
 
-        let c: [u8; 8] = bytes_from_hex_str(ODD_HEX_STR).unwrap();
+        let c: [u8; 8] = bytes_from_hex_str(ODD_HEX_STR_LOWER).unwrap();
         assert_eq!(c, ODD_BYTES);
-        assert_eq!(bytes_to_hex_str(&c[..]), ODD_HEX_STR);
+        let d: [u8; 8] = bytes_from_hex_str(ODD_HEX_STR_UPPER).unwrap();
+        assert_eq!(d, ODD_BYTES);
+        assert_eq!(bytes_to_lower_hex_str(&d[..]), ODD_HEX_STR_LOWER);
+        assert_eq!(bytes_to_upper_hex_str(&d[..]), ODD_HEX_STR_UPPER);
         let mut buf = [0u8; 2 + 16];
-        assert_eq!(bytes_as_hex_str(&c[..], &mut buf), ODD_HEX_STR);
+        assert_eq!(bytes_as_lower_hex_str(&d[..], &mut buf), ODD_HEX_STR_LOWER);
+        assert_eq!(bytes_as_upper_hex_str(&d[..], &mut buf), ODD_HEX_STR_UPPER);
     }
 
     #[test]
     fn even() {
-        const EVEN_HEX_STR: &str = "0x1234567890abcdef";
+        const EVEN_HEX_STR_LOWER: &str = "0x1234567890abcdef";
+        const EVEN_HEX_STR_UPPER: &str = "0x1234567890ABCDEF";
         const EVEN_DEC_STR: &str = "1311768467294899695";
         const EVEN_BYTES: [u8; 8] = [0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef];
 
         let a = starkhash_from_biguint(BigUint::from_bytes_be(&EVEN_BYTES)).unwrap();
         let b = starkhash_from_dec_str(EVEN_DEC_STR).unwrap();
-        let expected = StarkHash::from_hex_str(EVEN_HEX_STR).unwrap();
+        let expected = StarkHash::from_hex_str(EVEN_HEX_STR_LOWER).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
         assert_eq!(starkhash_to_dec_str(&expected), EVEN_DEC_STR);
 
-        let c: [u8; 8] = bytes_from_hex_str(EVEN_HEX_STR).unwrap();
+        let c: [u8; 8] = bytes_from_hex_str(EVEN_HEX_STR_LOWER).unwrap();
         assert_eq!(c, EVEN_BYTES);
-        assert_eq!(bytes_to_hex_str(&c[..]), EVEN_HEX_STR);
+        let d: [u8; 8] = bytes_from_hex_str(EVEN_HEX_STR_UPPER).unwrap();
+        assert_eq!(d, EVEN_BYTES);
+        assert_eq!(bytes_to_lower_hex_str(&d[..]), EVEN_HEX_STR_LOWER);
+        assert_eq!(bytes_to_upper_hex_str(&d[..]), EVEN_HEX_STR_UPPER);
         let mut buf = [0u8; 2 + 16];
-        assert_eq!(bytes_as_hex_str(&c[..], &mut buf), EVEN_HEX_STR);
+        assert_eq!(bytes_as_lower_hex_str(&d[..], &mut buf), EVEN_HEX_STR_LOWER);
+        assert_eq!(bytes_as_upper_hex_str(&d[..], &mut buf), EVEN_HEX_STR_UPPER);
     }
 
     #[test]
@@ -539,16 +551,27 @@ mod tests {
 
         let c: [u8; 32] = bytes_from_hex_str(MAX_HEX_STR).unwrap();
         assert_eq!(c, MAX_BYTES);
-        assert_eq!(bytes_to_hex_str(&c[..]), MAX_HEX_STR);
+        assert_eq!(bytes_to_lower_hex_str(&c[..]), MAX_HEX_STR);
+        assert_eq!(bytes_to_upper_hex_str(&c[..]), MAX_HEX_STR);
         let mut buf = [0u8; 2 + 64];
-        assert_eq!(bytes_as_hex_str(&c[..], &mut buf), MAX_HEX_STR);
+        assert_eq!(bytes_as_lower_hex_str(&c[..], &mut buf), MAX_HEX_STR);
+        assert_eq!(bytes_as_upper_hex_str(&c[..], &mut buf), MAX_HEX_STR);
     }
 
-    #[test]
-    #[should_panic]
-    fn buffer_too_small() {
-        let mut buf = [0u8; 2 + 1];
-        bytes_as_hex_str(&[0u8], &mut buf);
+    mod buffer_too_small {
+        #[test]
+        #[should_panic]
+        fn lower() {
+            let mut buf = [0u8; 2 + 1];
+            super::bytes_as_lower_hex_str(&[0u8], &mut buf);
+        }
+
+        #[test]
+        #[should_panic]
+        fn upper() {
+            let mut buf = [0u8; 2 + 1];
+            super::bytes_as_upper_hex_str(&[0u8], &mut buf);
+        }
     }
 
     #[test]
