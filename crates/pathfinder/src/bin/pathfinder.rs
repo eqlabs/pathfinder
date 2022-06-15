@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
     // not be other reason for the start to fail than python script not firing up.
     let (call_handle, cairo_handle) = cairo::ext_py::start(
         storage.path().into(),
-        std::num::NonZeroUsize::new(2).unwrap(),
+        config.python_subprocesses,
         futures::future::pending(),
     )
     .await
