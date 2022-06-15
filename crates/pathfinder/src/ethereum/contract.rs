@@ -183,7 +183,7 @@ mod tests {
                 // update the address and more importantly, the ABI.
 
                 // The current address of Starknet's core contract implementation.
-                const CORE_IMPL_ADDR: &str = "0xdc109c4a1a3084ed15a97692fbef3e1fb32a6955";
+                const CORE_IMPL_ADDR: &str = "0x2B3B750f1f10c85c8A6D476Fc209A8DC7E4Ca3F8";
                 let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
 
                 // The proxy's ABI.
