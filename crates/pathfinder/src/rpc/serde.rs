@@ -78,7 +78,7 @@ impl SerializeAs<EthereumAddress> for EthereumAddressAsHexStr {
     {
         // EthereumAddress is "0x" + 40 digits at most
         let mut buf = [0u8; 2 + 40];
-        let s = bytes_as_hex_str(source.0.as_bytes(), &mut buf);
+        let s = bytes_as_lower_hex_str(source.0.as_bytes(), &mut buf);
         serializer.serialize_str(s)
     }
 }
@@ -120,7 +120,7 @@ impl SerializeAs<H256> for H256AsNoLeadingZerosHexStr {
     {
         // H256 is "0x" + 64 digits at most
         let mut buf = [0u8; 2 + 64];
-        let s = bytes_as_hex_str(source.as_bytes(), &mut buf);
+        let s = bytes_as_lower_hex_str(source.as_bytes(), &mut buf);
         serializer.serialize_str(s)
     }
 }
@@ -162,7 +162,7 @@ impl SerializeAs<Fee> for FeeAsHexStr {
     {
         // Fee is "0x" + 32 digits at most
         let mut buf = [0u8; 2 + 32];
-        let s = bytes_as_hex_str(source.0.as_bytes(), &mut buf);
+        let s = bytes_as_lower_hex_str(source.0.as_bytes(), &mut buf);
         serializer.serialize_str(s)
     }
 }
@@ -205,7 +205,7 @@ impl SerializeAs<GasPrice> for GasPriceAsHexStr {
         // GasPrice is "0x" + 32 digits at most
         let mut buf = [0u8; 2 + 32];
         let bytes = source.0.to_be_bytes();
-        let s = bytes_as_hex_str(&bytes, &mut buf);
+        let s = bytes_as_lower_hex_str(&bytes, &mut buf);
         serializer.serialize_str(s)
     }
 }
@@ -248,7 +248,7 @@ impl SerializeAs<StarknetBlockNumber> for StarknetBlockNumberAsHexStr {
         let bytes = source.0.to_be_bytes();
         // StarknetBlockNumber is "0x" + 16 digits at most
         let mut buf = [0u8; 2 + 16];
-        let s = bytes_as_hex_str(&bytes, &mut buf);
+        let s = bytes_as_lower_hex_str(&bytes, &mut buf);
         serializer.serialize_str(s)
     }
 }
@@ -285,7 +285,7 @@ impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexSt
 serde_with::serde_conv!(
     pub TransactionVersionAsHexStr,
     TransactionVersion,
-    |serialize_me: &TransactionVersion| bytes_to_hex_str(serialize_me.0.as_bytes()),
+    |serialize_me: &TransactionVersion| bytes_to_lower_hex_str(serialize_me.0.as_bytes()),
     |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(|b| TransactionVersion(H256::from(b)))
 );
 
@@ -371,20 +371,23 @@ fn skip_zeros(bytes: &[u8]) -> (impl Iterator<Item = &u8>, usize, usize) {
     (it, start, len)
 }
 
+const LUT_LOWER: [u8; 16] = *b"0123456789abcdef";
+const LUT_UPPER: [u8; 16] = *b"0123456789ABCDEF";
+
 /// The second stage of conversion - map bytes to hex str
 fn it_to_hex_str<'a>(
     it: impl Iterator<Item = &'a u8>,
     start: usize,
     len: usize,
     buf: &'a mut [u8],
+    lut: &[u8],
 ) -> &'a [u8] {
-    const LUT: [u8; 16] = *b"0123456789abcdef";
     buf[0] = b'0';
     // Same small lookup table is ~25% faster than hex::encode_from_slice 🤷
     it.enumerate().for_each(|(i, &b)| {
         let idx = b as usize;
         let pos = start + i * 2;
-        let x = [LUT[(idx & 0xf0) >> 4], LUT[idx & 0x0f]];
+        let x = [lut[(idx & 0xf0) >> 4], lut[idx & 0x0f]];
         buf[pos..pos + 2].copy_from_slice(&x);
     });
     buf[1] = b'x';
@@ -394,7 +397,8 @@ fn it_to_hex_str<'a>(
 /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
 /// from an array of bytes.
 /// Panics if `bytes.len() * 2 + 2 > buf.len()`
-pub(crate) fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
+/// TODO
+fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8], lut: &[u8]) -> &'a str {
     let expected_buf_len = bytes.len() * 2 + 2;
     assert!(
         buf.len() >= expected_buf_len,
@@ -408,22 +412,46 @@ pub(crate) fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a st
     }
 
     let (it, start, len) = skip_zeros(bytes);
-    let res = it_to_hex_str(it, start, len, buf);
+    let res = it_to_hex_str(it, start, len, buf, lut);
     // Unwrap is safe because `buf` holds valid UTF8 characters.
     std::str::from_utf8(res).unwrap()
 }
 
 /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+/// TODO
 #[allow(dead_code)]
-fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
+fn bytes_to_hex_str(bytes: &[u8], lut: &[u8]) -> Cow<'static, str> {
     if !bytes.iter().any(|b| *b != 0) {
         return Cow::from("0x0");
     }
     let (it, start, len) = skip_zeros(bytes);
     let mut buf = vec![0u8; len];
-    it_to_hex_str(it, start, len, &mut buf);
+    it_to_hex_str(it, start, len, &mut buf, lut);
     // Unwrap is safe as the buffer contains valid utf8
     String::from_utf8(buf).unwrap().into()
+}
+
+/// TODO
+fn bytes_as_lower_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
+    bytes_as_hex_str(bytes, buf, &LUT_LOWER)
+}
+
+/// TODO
+#[allow(dead_code)]
+fn bytes_as_upper_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
+    bytes_as_hex_str(bytes, buf, &LUT_UPPER)
+}
+
+/// TODO
+#[allow(dead_code)]
+fn bytes_to_lower_hex_str(bytes: &[u8]) -> Cow<'static, str> {
+    bytes_to_hex_str(bytes, &LUT_LOWER)
+}
+
+/// TODO
+#[allow(dead_code)]
+fn bytes_to_upper_hex_str(bytes: &[u8]) -> Cow<'static, str> {
+    bytes_to_hex_str(bytes, &LUT_UPPER)
 }
 
 #[cfg(test)]
