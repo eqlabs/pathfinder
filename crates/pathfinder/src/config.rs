@@ -23,6 +23,8 @@ pub enum ConfigOption {
     DataDirectory,
     /// The Sequencer's HTTP URL.
     SequencerHttpUrl,
+    /// Number of Python sub-processes to start.
+    PythonSubprocesses,
 }
 
 impl Display for ConfigOption {
@@ -33,6 +35,7 @@ impl Display for ConfigOption {
             ConfigOption::DataDirectory => f.write_str("Data directory"),
             ConfigOption::HttpRpcAddress => f.write_str("HTTP-RPC socket address"),
             ConfigOption::SequencerHttpUrl => f.write_str("Sequencer HTTP URL"),
+            ConfigOption::PythonSubprocesses => f.write_str("Number of Python subprocesses"),
         }
     }
 }
@@ -57,6 +60,8 @@ pub struct Configuration {
     pub data_directory: PathBuf,
     /// The Sequencer's HTTP URL.
     pub sequencer_url: Option<Url>,
+    /// The number of Python subprocesses to start.
+    pub python_subprocesses: std::num::NonZeroUsize,
 }
 
 impl Configuration {
