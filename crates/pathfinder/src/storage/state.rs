@@ -72,15 +72,12 @@ impl L1StateTable {
             Ok(_) => Ok(()),
             Err(err) => {
                 if err.to_string().contains("A PRIMARY KEY constraint failed") {
-                    let latest = L1_LATEST_REORG
-                        .lock()
-                        .map_err(|_| anyhow::anyhow!("L1 accounting lock is poisoned"))
-                        .context("Aquire L1 accounting lock")?;
+                    let latest = L1_LATEST_REORG.lock().unwrap_or_else(|e| e.into_inner());
 
                     tracing::error!(pre_reorg=%latest.0, post_reorg=%latest.1, count=%latest.2, "Additional L1 reorg bug information");
                 }
 
-                Err(anyhow::anyhow!(err))
+                Err(err.into())
             }
         }
     }
@@ -130,10 +127,7 @@ impl L1StateTable {
                     new_head
                 );
 
-                let mut latest = L1_LATEST_REORG
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("L1 accounting lock is poisoned"))
-                    .context("Aquire L1 accounting lock")?;
+                let mut latest = L1_LATEST_REORG.lock().unwrap_or_else(|e| e.into_inner());
 
                 latest.0 = orig;
                 latest.1 = new_head;
