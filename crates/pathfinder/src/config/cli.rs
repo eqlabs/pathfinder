@@ -115,7 +115,8 @@ Examples:
                 .long(SEQ_URL_KEY)
                 .help("Sequencer REST API endpoint")
                 .long_help("Lets you customise the Sequencer address. Useful if you have a proxy in front of the Sequencer.")
-                .takes_value(true).value_name("HTTP(s) URL")
+                .takes_value(true)
+                .value_name("HTTP(s) URL")
                 .env("PATHFINDER_SEQUENCER_URL")
         )
 }
