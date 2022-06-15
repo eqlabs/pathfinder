@@ -184,6 +184,10 @@ data-directory = "..."
 # have a caching proxy in front of the actual Sequencer gateway. If you're unsure
 # of what this does, then you don't need it.
 sequencer-url = "https://..."
+# Set the number of Python subprocesses pathfinder starts. These processes are used
+# to service the `starknet_call` JSON-RPC method and their number limits the maximal
+# number of call requests that can be processed in parallel. Defaults to 2.
+python-subprocesses = 2
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
