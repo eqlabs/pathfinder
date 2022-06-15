@@ -337,7 +337,10 @@ mod tests {
                     events: &[transaction::Event],
                 ) -> anyhow::Result<()> {
                     if transaction.contract_address.is_none() && !events.is_empty() {
-                        anyhow::bail!("Declare transactions cannot emit events");
+                        anyhow::bail!(
+                            "Declare transactions cannot emit events: block {block_number}, transaction {}",
+                            transaction.transaction_hash
+                        );
                     }
 
                     for (idx, event) in events.iter().enumerate() {

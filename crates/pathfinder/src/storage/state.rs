@@ -730,7 +730,12 @@ impl StarknetEventsTable {
     ) -> anyhow::Result<()> {
         match transaction {
             transaction::Transaction::Declare(_) => {
-                anyhow::ensure!(events.is_empty(), "Declare transactions cannot emit events");
+                anyhow::ensure!(
+                    events.is_empty(),
+                    "Declare transactions cannot emit events: block {}, transaction {}",
+                    block_number,
+                    transaction.hash().0
+                );
                 Ok(())
             }
             transaction::Transaction::Deploy(transaction::DeployTransaction {

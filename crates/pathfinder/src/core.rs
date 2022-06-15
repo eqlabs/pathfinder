@@ -109,7 +109,7 @@ pub struct GlobalRoot(pub StarkHash);
 pub struct StarknetBlockHash(pub StarkHash);
 
 /// A StarkNet block number.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockNumber(pub u64);
 
 /// The timestamp of a Starknet block.
@@ -240,6 +240,18 @@ impl std::ops::Sub<u64> for StarknetBlockNumber {
 impl std::ops::SubAssign<u64> for StarknetBlockNumber {
     fn sub_assign(&mut self, rhs: u64) {
         self.0 -= rhs;
+    }
+}
+
+impl std::fmt::Display for StarknetBlockNumber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::fmt::Debug for StarknetBlockNumber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "StarknetBlockNumber({})", self.0)
     }
 }
 
