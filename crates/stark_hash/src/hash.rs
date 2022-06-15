@@ -12,14 +12,8 @@ include!(concat!(env!("OUT_DIR"), "/curve_consts.rs"));
 /// The Starknet elliptic curve Field Element.
 ///
 /// Forms the basic building block of most Starknet interactions.
-#[derive(Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub struct StarkHash([u8; 32]);
-
-impl std::fmt::Debug for StarkHash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StarkHash({})", self)
-    }
-}
 
 impl std::fmt::Display for StarkHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
