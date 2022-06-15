@@ -11,6 +11,7 @@ const DATA_DIR_KEY: &str = "data-directory";
 const ETH_URL_KEY: &str = "ethereum.url";
 const ETH_PASS_KEY: &str = "ethereum.password";
 const HTTP_RPC_ADDR_KEY: &str = "http-rpc";
+const SEQ_URL_KEY: &str = "sequencer-url";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -40,12 +41,14 @@ where
     let ethereum_url = args.value_of(ETH_URL_KEY).map(|s| s.to_owned());
     let ethereum_password = args.value_of(ETH_PASS_KEY).map(|s| s.to_owned());
     let http_rpc_addr = args.value_of(HTTP_RPC_ADDR_KEY).map(|s| s.to_owned());
+    let sequencer_url = args.value_of(SEQ_URL_KEY).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
         .with(ConfigOption::EthereumPassword, ethereum_password)
         .with(ConfigOption::HttpRpcAddress, http_rpc_addr)
-        .with(ConfigOption::DataDirectory, data_directory);
+        .with(ConfigOption::DataDirectory, data_directory)
+        .with(ConfigOption::SequencerHttpUrl, sequencer_url);
 
     Ok((config_filepath, cfg))
 }
@@ -107,6 +110,15 @@ Examples:
                 .value_name("PATH")
                 .env("PATHFINDER_DATA_DIRECTORY")
         )
+        .arg(
+            Arg::new(SEQ_URL_KEY)
+                .long(SEQ_URL_KEY)
+                .help("Sequencer REST API endpoint")
+                .long_help("Lets you customise the Sequencer address. Useful if you have a proxy in front of the Sequencer.")
+                .takes_value(true)
+                .value_name("HTTP(s) URL")
+                .env("PATHFINDER_SEQUENCER_URL")
+        )
 }
 
 #[cfg(test)]
@@ -126,6 +138,7 @@ mod tests {
         env::remove_var("PATHFINDER_ETHEREUM_API_URL");
         env::remove_var("PATHFINDER_HTTP_RPC_ADDRESS");
         env::remove_var("PATHFINDER_DATA_DIRECTORY");
+        env::remove_var("PATHFINDER_SEQUENCER_URL");
     }
 
     #[test]
@@ -230,6 +243,27 @@ mod tests {
         env::set_var("PATHFINDER_DATA_DIRECTORY", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::DataDirectory), Some(value));
+    }
+
+    #[test]
+    fn sequencer_url_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--sequencer-url", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
+    }
+
+    #[test]
+    fn sequencer_url_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_SEQUENCER_URL", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
     }
 
     #[test]

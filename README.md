@@ -180,6 +180,10 @@ The configuration file uses the `toml` format:
 http-rpc = "127.0.0.1:1235"
 # The directory the node will use to store its data. Defaults to the current directory.
 data-directory = "..."
+# Override the Sequencer gateway address with your own. This is can be useful if you
+# have a caching proxy in front of the actual Sequencer gateway. If you're unsure
+# of what this does, then you don't need it.
+sequencer-url = "https://..."
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.

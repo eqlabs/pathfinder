@@ -51,6 +51,19 @@ impl ConfigBuilder {
 
         // Optional parameters.
         let eth_password = self.take(ConfigOption::EthereumPassword);
+        let sequencer_url = match self.take(ConfigOption::SequencerHttpUrl) {
+            Some(url) => {
+                let url = url.parse::<Url>().map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Invalid Sequencer URL ({}): {}", url, err),
+                    )
+                })?;
+
+                Some(url)
+            }
+            None => None,
+        };
 
         // Optional parameters with defaults.
         let data_directory = self
@@ -79,6 +92,7 @@ impl ConfigBuilder {
             },
             http_rpc_addr,
             data_directory,
+            sequencer_url,
         })
     }
 
