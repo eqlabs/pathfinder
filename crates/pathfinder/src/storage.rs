@@ -259,9 +259,7 @@ pub(crate) mod test_utils {
                     contract_address_salt: ContractAddressSalt(
                         StarkHash::from_hex_str(&"6".repeat(i + 3)).unwrap(),
                     ),
-                    class_hash: Some(ClassHash(
-                        StarkHash::from_hex_str(&"7".repeat(i + 3)).unwrap(),
-                    )),
+                    class_hash: ClassHash(StarkHash::from_hex_str(&"7".repeat(i + 3)).unwrap()),
                     constructor_calldata: vec![ConstructorParam(
                         StarkHash::from_hex_str(&"8".repeat(i + 3)).unwrap(),
                     )],

@@ -283,8 +283,7 @@ pub mod transaction {
     pub struct DeployTransaction {
         pub contract_address: ContractAddress,
         pub contract_address_salt: ContractAddressSalt,
-        #[serde(default)]
-        pub class_hash: Option<ClassHash>,
+        pub class_hash: ClassHash,
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
         pub transaction_hash: StarknetTransactionHash,
