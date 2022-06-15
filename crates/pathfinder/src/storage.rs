@@ -21,6 +21,8 @@ pub use state::{
 };
 
 use anyhow::Context;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 
 /// Indicates database is non-existant.
@@ -30,6 +32,8 @@ const DB_VERSION_CURRENT: u32 = 12;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
+type PooledConnection = r2d2::PooledConnection<SqliteConnectionManager>;
+
 /// Used to create [Connection's](Connection) to the pathfinder database.
 ///
 /// Intended usage:
@@ -38,17 +42,12 @@ const VERSION_KEY: &str = "user_version";
 /// - Use [Storage::connection] to create connection's to the database, which can in turn
 ///   be used to interact with the various [tables](self).
 #[derive(Clone)]
-pub struct Storage(std::sync::Arc<Inner>);
+pub struct Storage(Inner);
 
+#[derive(Clone)]
 struct Inner {
     database_path: PathBuf,
-    /// Required to keep the in-memory variant alive. Sqlite drops in-memory databases
-    /// as soon as all living connections are dropped, so we prevent this by storing
-    /// a keep-alive connection.
-    ///
-    /// [Connection] is !Sync so we wrap it in [Mutex] to get sync back.
-    #[cfg(test)]
-    _keep_alive: Mutex<Connection>,
+    pool: Pool<SqliteConnectionManager>,
 }
 
 impl Storage {
@@ -59,31 +58,25 @@ impl Storage {
     ///
     /// May be cloned safely.
     pub fn migrate(database_path: PathBuf) -> anyhow::Result<Self> {
-        let mut conn = Self::open_connection(&database_path)?;
+        let manager = SqliteConnectionManager::file(&database_path);
+        let pool = Pool::builder().build(manager)?;
+
+        let mut conn = pool.get()?;
         migrate_database(&mut conn).context("Migrate database")?;
 
-        #[cfg(not(test))]
-        let inner = Inner { database_path };
-        #[cfg(test)]
         let inner = Inner {
             database_path,
-            _keep_alive: Mutex::new(conn),
+            pool,
         };
 
-        let storage = Storage(std::sync::Arc::new(inner));
+        let storage = Storage(inner);
 
         Ok(storage)
     }
 
     /// Returns a new Sqlite [Connection] to the database.
-    pub fn connection(&self) -> anyhow::Result<Connection> {
-        Self::open_connection(&self.0.database_path)
-    }
-
-    /// Opens a connection the given database path.
-    fn open_connection(database_path: &Path) -> anyhow::Result<Connection> {
-        // TODO: think about flags?
-        let conn = Connection::open(database_path)?;
+    pub fn connection(&self) -> anyhow::Result<PooledConnection> {
+        let conn = self.0.pool.get()?;
         Ok(conn)
     }
 
