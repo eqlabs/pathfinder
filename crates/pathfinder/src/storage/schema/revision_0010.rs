@@ -362,7 +362,7 @@ mod tests {
                     Ok(())
                 }
 
-                pub fn event_data_to_bytes(data: &[EventData]) -> Vec<u8> {
+                fn event_data_to_bytes(data: &[EventData]) -> Vec<u8> {
                     data.iter()
                         .flat_map(|e| (*e.0.as_be_bytes()).into_iter())
                         .collect()
@@ -372,7 +372,7 @@ mod tests {
                     base64::encode(key.0.as_be_bytes())
                 }
 
-                pub fn event_keys_to_base64_strings(keys: &[EventKey]) -> String {
+                fn event_keys_to_base64_strings(keys: &[EventKey]) -> String {
                     // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
                     let keys: Vec<String> =
                         keys.iter().map(Self::event_key_to_base64_string).collect();
