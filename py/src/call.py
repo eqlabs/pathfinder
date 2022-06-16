@@ -61,12 +61,12 @@ def do_loop(connection, input_gen, output_file):
     required = {
         # FIXME: this should be hash_or_latest
         "at_block": int_hash_or_latest,
-        "contract_address": hash_or_int,
+        "contract_address": int_param,
         "entry_point_selector": string_or_int,
-        "calldata": list_of_hash_or_int,
+        "calldata": list_of_int,
     }
 
-    optional = {"caller_address": hash_or_int, "signature": hash_or_int}
+    optional = {"caller_address": int_param, "signature": int_param}
 
     for line in input_gen:
         if line == "" or line.startswith("#"):
@@ -184,7 +184,7 @@ def int_hash_or_latest(s):
     return len_safe_hex(s)
 
 
-def hash_or_int(s):
+def int_param(s):
     if type(s) == int:
         return s
     if s.startswith("0x"):
@@ -212,7 +212,7 @@ def string_or_int(s):
 
     if type(s) == str:
         if s.startswith("0x"):
-            return hash_or_int(s)
+            return int_param(s)
         # not sure if this should be supported but strings get ran through the
         # truncated keccak
         return s
@@ -220,9 +220,9 @@ def string_or_int(s):
     raise TypeError(f"expected string or int, not {type(s)}")
 
 
-def list_of_hash_or_int(s):
+def list_of_int(s):
     assert type(s) == list, f"Expected list, got {type(s)}"
-    return list(map(hash_or_int, s))
+    return list(map(int_param, s))
 
 
 def check_schema(connection):
