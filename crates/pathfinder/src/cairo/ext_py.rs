@@ -334,6 +334,95 @@ mod tests {
         jh.await.unwrap();
     }
 
+    #[test_log::test(tokio::test)]
+    #[ignore] // these tests require that you've entered into python venv
+    async fn estimate_fee_for_example() {
+        // TODO: refactor the outer parts to a with_test_env or similar?
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+
+        let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
+
+        let mut conn = s.connection().unwrap();
+        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
+
+        let tx = conn.transaction().unwrap();
+
+        fill_example_state(&tx);
+
+        tx.commit().unwrap();
+
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let (handle, jh) = super::start(
+            PathBuf::from(db_file.path()),
+            std::num::NonZeroUsize::new(1).unwrap(),
+            async move {
+                let _ = shutdown_rx.await;
+            },
+        )
+        .await
+        .unwrap();
+
+        let call = super::Call {
+            contract_address: crate::core::ContractAddress(
+                StarkHash::from_hex_str(
+                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                )
+                .unwrap(),
+            ),
+            calldata: vec![crate::core::CallParam(
+                StarkHash::from_hex_str("0x84").unwrap(),
+            )],
+            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+        };
+
+        let at_block_fee = handle
+            .estimate_fee(
+                call.clone(),
+                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+                )),
+                super::GasPriceSource::PastBlock,
+            )
+            .await
+            .unwrap();
+
+        use web3::types::H256;
+
+        assert_eq!(
+            at_block_fee,
+            crate::rpc::types::reply::FeeEstimate {
+                consumed: H256::from_low_u64_be(0),
+                gas_price: H256::from_low_u64_be(1),
+                fee: H256::from_low_u64_be(69)
+            }
+        );
+
+        let current_fee = handle
+            .estimate_fee(
+                call,
+                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+                )),
+                super::GasPriceSource::Current(H256::from_low_u64_be(10)),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            current_fee,
+            crate::rpc::types::reply::FeeEstimate {
+                consumed: H256::from_low_u64_be(0),
+                gas_price: H256::from_low_u64_be(10),
+                fee: H256::from_low_u64_be(690)
+            }
+        );
+
+        shutdown_tx.send(()).unwrap();
+
+        jh.await.unwrap();
+    }
+
     fn fill_example_state(tx: &rusqlite::Transaction<'_>) {
         let contract_definition = zstd::decode_all(std::io::Cursor::new(include_bytes!(
             "../../fixtures/contract_definition.json.zst"
@@ -402,7 +491,7 @@ mod tests {
         .unwrap();
 
         tx.execute(
-            "insert into starknet_blocks (hash, number, timestamp, root) values (?, 1, 1, ?)",
+            "insert into starknet_blocks (hash, number, timestamp, root, gas_price) values (?, 1, 1, ?, X'01')",
             rusqlite::params![
                 &StarkHash::from_be_slice(&b"some blockhash somewhere"[..])
                     .unwrap()
