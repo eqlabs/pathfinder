@@ -199,8 +199,8 @@ def populate_test_contract_with_132_on_3(con):
             bytes.fromhex(
                 "0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd"
             ),
-            left_pad(b"0", 16),
-            left_pad(b"0", 32),
+            left_pad(b"\x00", 16),
+            left_pad(b"\x00", 32),
         ],
     )
 
