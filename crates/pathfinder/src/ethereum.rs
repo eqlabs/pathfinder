@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
+use stark_hash::StarkHash;
 
 use crate::core::{
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
@@ -19,6 +20,22 @@ pub enum Chain {
     Mainnet,
     /// The Ethereum Goerli test network chain.
     Goerli,
+}
+
+lazy_static::lazy_static! {
+    static ref MAINNET_CHAIN_ID: StarkHash = StarkHash::from(0x534e5f4d41494eu128);
+    static ref GOERLI_CHAIN_ID: StarkHash = StarkHash::from(0x534e5f474f45524c49u128);
+}
+
+impl Chain {
+    pub fn starknet_chain_id(&self) -> &'static StarkHash {
+        match self {
+            // SN_MAIN
+            Chain::Mainnet => &MAINNET_CHAIN_ID,
+            // SN_GOERLI
+            Chain::Goerli => &GOERLI_CHAIN_ID,
+        }
+    }
 }
 
 impl std::fmt::Display for Chain {

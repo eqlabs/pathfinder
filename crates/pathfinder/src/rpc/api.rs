@@ -41,7 +41,7 @@ use super::types::reply::{
 pub struct RpcApi {
     storage: Storage,
     sequencer: sequencer::Client,
-    chain_id: &'static str,
+    chain: Chain,
     call_handle: Option<ext_py::Handle>,
     shared_gas_price: Option<Cached>,
     sync_state: Arc<SyncState>,
@@ -71,12 +71,7 @@ impl RpcApi {
         Self {
             storage,
             sequencer,
-            chain_id: match chain {
-                // Hex str for b"SN_GOERLI"
-                Chain::Goerli => "0x534e5f474f45524c49",
-                // Hex str for b"SN_MAIN"
-                Chain::Mainnet => "0x534e5f4d41494e",
-            },
+            chain,
             call_handle: None,
             shared_gas_price: None,
             sync_state,
@@ -1033,8 +1028,8 @@ impl RpcApi {
     }
 
     /// Return the currently configured StarkNet chain id.
-    pub async fn chain_id(&self) -> RpcResult<&'static str> {
-        Ok(self.chain_id)
+    pub async fn chain_id(&self) -> RpcResult<String> {
+        Ok(self.chain.starknet_chain_id().to_hex_str().into_owned())
     }
 
     // /// Returns the transactions in the transaction pool, recognized by this sequencer.
