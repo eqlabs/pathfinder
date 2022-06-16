@@ -211,7 +211,7 @@ mod tests {
                                     .unwrap(),
                                 ),
                                 calldata: vec![crate::core::CallParam(
-                                    StarkHash::from_hex_str("84").unwrap(),
+                                    StarkHash::from_hex_str("0x84").unwrap(),
                                 )],
                                 entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
                             },
