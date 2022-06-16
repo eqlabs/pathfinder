@@ -24,7 +24,8 @@ def main():
     # make sure that regardless of the interesting platform we communicate sanely to pathfinder
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
-    # stderr should not be used
+    # stderr is only for logging, it's piped to tracing::trace one line at a time
+    sys.stderr.reconfigure(encoding="utf-8")
 
     if not check_cairolang_version():
         print(
