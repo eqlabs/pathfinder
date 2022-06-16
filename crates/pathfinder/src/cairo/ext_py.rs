@@ -292,7 +292,7 @@ mod tests {
         .unwrap();
 
         tx.execute(
-            "insert into tree_global (hash, data, ref_count) values (?1, ?2, 1)",
+            "insert into tree_global (hash, data, ref_count) values (?, ?, 1)",
             rusqlite::params![
                 &hex::decode("0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd").unwrap()[..],
                 &hex::decode("002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374fb").unwrap()[..],
@@ -301,7 +301,7 @@ mod tests {
         .unwrap();
 
         tx.execute(
-            "insert into starknet_blocks (hash, number, timestamp, root) values (?1, 1, 1, ?)",
+            "insert into starknet_blocks (hash, number, timestamp, root) values (?, 1, 1, ?)",
             rusqlite::params![
                 &StarkHash::from_be_slice(&b"some blockhash somewhere"[..])
                     .unwrap()
