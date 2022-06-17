@@ -1,0 +1,62 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        target:
+          - { name: Linux, os: ubuntu-latest, triple: x86_64-unknown-linux-gnu }
+          - { name: macOS, os: macos-latest, triple: aarch64-apple-darwin }
+          - { name: Windows, os: windows-2022, triple: x86_64-pc-windows-msvc }
+        rust-version: ["1.58"]
+        python-version: ["3.10"]
+
+    name: ${{ matrix.target.name }} / ${{ matrix.version }}
+    runs-on: ${{ matrix.target.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install gmp(Windows)
+        if: matrix.target.triple == 'x86_64-pc-windows-msvc'
+        run: |
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
+          vcpkg install gmp:x64-windows
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Rust ${{ matrix.rust-version }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust-version }}
+          components: rustfmt, clippy
+
+      - name: Install dependencies(Linux|macOS)
+        if: matrix.target.triple != 'x86_64-pc-windows-msvc'
+        run: |
+          cd py
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Install dependencies(Windows)
+        if: matrix.target.triple == 'x86_64-pc-windows-msvc'
+        run: |
+          cd py
+          python -m venv .venv
+          .venv/Scripts/activate.bat
+          pip install --upgrade pip
+          pip install fastecdsa==2.2.3 --global-option=build_ext --global-option="-IC:\vcpkg\packages\gmp_x64-windows\include" --global-option="-LC:\vcpkg\packages\gmp_x64-windows\lib"
+          pip install -r requirements-dev.txt
+      - name: Build
+        run: |
+          cargo build --release --bin pathfinder
