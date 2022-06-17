@@ -10,6 +10,7 @@ use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{Contract, StateDiff};
 use crate::sequencer::reply::Block;
 use crate::sequencer::{self};
+use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
 
@@ -63,7 +64,7 @@ pub async fn sync(
 
         let t_block = std::time::Instant::now();
         let block = loop {
-            match download_block(next, head_hash, &sequencer).await? {
+            match download_block(next, chain, head_hash, &sequencer).await? {
                 DownloadBlock::Block(block) => break block,
                 DownloadBlock::AtHead => {
                     let poll_interval = head_poll_interval(chain);
@@ -72,7 +73,7 @@ pub async fn sync(
                 }
                 DownloadBlock::Reorg => {
                     let some_head = head.unwrap();
-                    head = reorg(some_head, &tx_event, &sequencer)
+                    head = reorg(some_head, chain, &tx_event, &sequencer)
                         .await
                         .context("L2 reorg")?;
 
@@ -84,7 +85,7 @@ pub async fn sync(
 
         if let Some(some_head) = head {
             if some_head.1 != block.parent_block_hash {
-                head = reorg(some_head, &tx_event, &sequencer)
+                head = reorg(some_head, chain, &tx_event, &sequencer)
                     .await
                     .context("L2 reorg")?;
 
@@ -176,6 +177,7 @@ enum DownloadBlock {
 
 async fn download_block(
     block_number: StarknetBlockNumber,
+    chain: crate::ethereum::Chain,
     prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
@@ -185,7 +187,15 @@ async fn download_block(
     let result = sequencer.block(block_number.into()).await;
 
     match result {
-        Ok(block) => Ok(DownloadBlock::Block(Box::new(block))),
+        Ok(block) => {
+            // Check if block hash is correct.
+            let expected_block_hash = block.block_hash.unwrap();
+            if verify_block_hash(&block, chain, expected_block_hash)? == VerifyResult::Mismatch {
+                let block_number = block.block_number.unwrap();
+                tracing::warn!(?block_number, block_hash = ?expected_block_hash, "Block hash mismatch");
+            }
+            Ok(DownloadBlock::Block(Box::new(block)))
+        }
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound => {
             // This would occur if we queried past the head of the chain. We now need to check that
             // a reorg hasn't put us too far in the future. This does run into race conditions with
@@ -219,6 +229,7 @@ async fn download_block(
 
 async fn reorg(
     head: (StarknetBlockNumber, StarknetBlockHash),
+    chain: crate::ethereum::Chain,
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash)>> {
@@ -244,7 +255,7 @@ async fn reorg(
             None => break None,
         };
 
-        match download_block(previous_block_number, Some(previous_hash), sequencer)
+        match download_block(previous_block_number, chain, Some(previous_hash), sequencer)
             .await
             .with_context(|| format!("Download block {} from sequencer", previous_block_number.0))?
         {
