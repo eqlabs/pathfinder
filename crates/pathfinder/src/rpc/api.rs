@@ -43,6 +43,7 @@ pub struct RpcApi {
     sequencer: sequencer::Client,
     chain_id: &'static str,
     call_handle: Option<ext_py::Handle>,
+    shared_gas_price: Option<Cached>,
     sync_state: Arc<SyncState>,
 }
 
@@ -77,6 +78,7 @@ impl RpcApi {
                 Chain::Mainnet => "0x534e5f4d41494e",
             },
             call_handle: None,
+            shared_gas_price: None,
             sync_state,
         }
     }
@@ -84,6 +86,13 @@ impl RpcApi {
     pub fn with_call_handling(self, call_handle: ext_py::Handle) -> Self {
         Self {
             call_handle: Some(call_handle),
+            ..self
+        }
+    }
+
+    pub fn with_eth_gas_price(self, shared: Cached) -> Self {
+        Self {
+            shared_gas_price: Some(shared),
             ..self
         }
     }
@@ -1167,35 +1176,36 @@ impl RpcApi {
         block_hash: BlockHashOrTag,
     ) -> RpcResult<FeeEstimate> {
         use crate::cairo::ext_py::GasPriceSource;
-        use web3::types::H256;
 
-        fn get_this_value_from_somewhere() -> H256 {
-            todo!()
-        }
-
-        match (self.call_handle.as_ref(), &block_hash) {
-            (Some(h), &BlockHashOrTag::Hash(_)) => {
+        match (
+            self.call_handle.as_ref(),
+            self.shared_gas_price.as_ref(),
+            &block_hash,
+        ) {
+            (Some(h), _, &BlockHashOrTag::Hash(_)) => {
                 // discussed during estimateFee work: when using block_hash use the gasPrice from
                 // the starknet_blocks::gas_price column, otherwise (tags) get the latest eth_gasPrice.
                 h.estimate_fee(request, block_hash, GasPriceSource::PastBlock)
                     .await
                     .map_err(Error::from)
             }
-            (Some(h), &BlockHashOrTag::Tag(Tag::Latest)) => {
+            (Some(h), Some(g), &BlockHashOrTag::Tag(Tag::Latest)) => {
                 // now we want the gas_price from our hopefully pre-fetched source, it will be the
                 // same when we finally have pending support
-                h.estimate_fee(
-                    request,
-                    block_hash,
-                    GasPriceSource::Current(get_this_value_from_somewhere()),
-                )
-                .await
-                .map_err(Error::from)
+
+                let gas_price = g
+                    .get()
+                    .await
+                    .ok_or_else(|| internal_server_error("eth_gasPrice unavailable"))?;
+
+                h.estimate_fee(request, block_hash, GasPriceSource::Current(gas_price))
+                    .await
+                    .map_err(Error::from)
             }
-            (Some(_), &BlockHashOrTag::Tag(Tag::Pending)) => {
+            (Some(_), Some(_), &BlockHashOrTag::Tag(Tag::Pending)) => {
                 Err(internal_server_error("Unimplemented"))
             }
-            (None, _) => {
+            _ => {
                 // sequencer return type is incompatible with jsonrpc api return type
                 Err(internal_server_error("Unsupported configuration"))
             }
@@ -1251,4 +1261,104 @@ fn static_internal_server_error() -> jsonrpsee::core::Error {
     Error::Call(CallError::Custom(ErrorObject::from(
         jsonrpsee::types::error::ErrorCode::InternalError,
     )))
+}
+
+/// Caching of `eth_gasPrice` with single request at a time refreshing.
+///
+/// The `gasPrice` is used for [`RpcApi::estimate_fee`] when user requests for [`BlockHashOrTag::Tag`].
+#[derive(Clone)]
+pub struct Cached {
+    inner: std::sync::Arc<std::sync::Mutex<Inner>>,
+    eth: Arc<dyn crate::ethereum::transport::EthereumTransport + Send + Sync + 'static>,
+}
+
+impl Cached {
+    pub fn new(
+        eth: Arc<dyn crate::ethereum::transport::EthereumTransport + Send + Sync + 'static>,
+    ) -> Self {
+        Cached {
+            inner: Default::default(),
+            eth,
+        }
+    }
+
+    /// Returns either a fast fresh value, slower a periodically polled value or fails because
+    /// polling has stopped.
+    async fn get(&self) -> Option<web3::types::H256> {
+        let mut rx = {
+            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+
+            let stale_limit = std::time::Duration::from_secs(10);
+
+            if let Some((fetched_at, gas_price)) = g.latest.as_ref() {
+                if fetched_at.elapsed() < stale_limit {
+                    // fresh
+                    let accepted = *gas_price;
+                    return Some(accepted);
+                }
+            }
+
+            // clear stale since it's not going to be useful for anyone
+            g.latest = None;
+
+            // this is an adaptation of https://fasterthanli.me/articles/request-coalescing-in-async-rust
+
+            if let Some(tx) = g.next.upgrade() {
+                // there's already an existing request being fulfilled
+                tx.subscribe()
+            } else {
+                let (tx, rx) = tokio::sync::broadcast::channel(1);
+
+                // the use of Weak works here, because the only strong reference is being sent to
+                // the async task, which upon completion holds the lock again while sending
+                // everyone listening the response, and clears the weak.
+                let tx = std::sync::Arc::new(tx);
+
+                let inner = self.inner.clone();
+                let eth = self.eth.clone();
+
+                g.next = std::sync::Arc::downgrade(&tx);
+
+                // in general, asking eth_gasPrice seems to be fast enough especially as we already
+                // have a connection open because the EthereumTransport impl is being used for sync
+                // as well.
+                //
+                // it being fast enough, allows us to just coalesce the requests, but also not poll
+                // for fun while no one is using the gas estimation.
+                tokio::spawn(async move {
+                    let price = match eth.gas_price().await {
+                        Ok(price) => price,
+                        Err(_e) => {
+                            let _ = tx.send(None);
+                            return;
+                        }
+                    };
+
+                    let now = std::time::Instant::now();
+
+                    let mut out = [0u8; 32];
+                    price.to_big_endian(&mut out[..]);
+                    let gas_price = web3::types::H256::from(out);
+
+                    let mut g = inner.lock().unwrap_or_else(|e| e.into_inner());
+                    g.latest.replace((now, gas_price));
+
+                    let _ = tx.send(Some(gas_price));
+                    drop(tx);
+                    // when g is dropped and the mutex unlocked, no one will be able to upgrade
+                    // the weak, because the only strong has been dropped.
+                });
+
+                rx
+            }
+        };
+
+        rx.recv().await.ok().and_then(|i| i)
+    }
+}
+
+#[derive(Default)]
+struct Inner {
+    latest: Option<(std::time::Instant, web3::types::H256)>,
+    next: std::sync::Weak<tokio::sync::broadcast::Sender<Option<web3::types::H256>>>,
 }

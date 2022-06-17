@@ -29,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
         version = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"),
         "🏁 Starting node."
     );
+
     let eth_transport =
         HttpTransport::from_config(config.ethereum).context("Creating Ethereum transport")?;
 
@@ -61,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
 
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
-        eth_transport,
+        eth_transport.clone(),
         ethereum_chain,
         sequencer.clone(),
         sync_state.clone(),
@@ -81,8 +82,11 @@ async fn main() -> anyhow::Result<()> {
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
 
+    let shared = rpc::api::Cached::new(Arc::new(eth_transport));
+
     let api = rpc::api::RpcApi::new(storage, sequencer, ethereum_chain, sync_state)
-        .with_call_handling(call_handle);
+        .with_call_handling(call_handle)
+        .with_eth_gas_price(shared);
 
     let (rpc_handle, local_addr) = rpc::run_server(config.http_rpc_addr, api)
         .await
