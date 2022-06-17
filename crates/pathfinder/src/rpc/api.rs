@@ -255,10 +255,6 @@ impl RpcApi {
         .and_then(|x| x)
     }
 
-    /// Fetches a [RawBlock] from storage.
-    ///
-    /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockHash`]
-    /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     fn get_raw_block_by_hash(
         tx: &rusqlite::Transaction<'_>,
         block_id: StarknetBlocksBlockId,
@@ -266,10 +262,6 @@ impl RpcApi {
         Self::get_raw_block(tx, block_id, ErrorCode::InvalidBlockHash)
     }
 
-    /// Fetches a [RawBlock] from storage.
-    ///
-    /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockNumber`]
-    /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     fn get_raw_block_by_number(
         tx: &rusqlite::Transaction<'_>,
         block_id: StarknetBlocksBlockId,
@@ -280,7 +272,8 @@ impl RpcApi {
     /// Fetches a [RawBlock] from storage.
     ///
     /// `error_code_for_latest` is the error code when the `latest` block is missing,
-    /// ie. when the storage is empty.
+    /// ie. when the storage is empty, wrapped by [`Self::get_raw_block_by_number`] and
+    /// [`Self::get_raw_block_by_number`] for the two different usecases.
     fn get_raw_block(
         transaction: &rusqlite::Transaction<'_>,
         block_id: StarknetBlocksBlockId,
