@@ -123,6 +123,18 @@ impl StarkHash {
     }
 }
 
+impl From<u64> for StarkHash {
+    fn from(value: u64) -> Self {
+        Self::from_be_slice(&value.to_be_bytes()).expect("64 bits is less than 251 bits")
+    }
+}
+
+impl From<u128> for StarkHash {
+    fn from(value: u128) -> Self {
+        Self::from_be_slice(&value.to_be_bytes()).expect("128 bits is less than 251 bits")
+    }
+}
+
 impl std::ops::Add for StarkHash {
     type Output = StarkHash;
 
