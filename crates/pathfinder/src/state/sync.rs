@@ -678,6 +678,10 @@ mod tests {
         ) -> web3::Result<Option<web3::types::Transaction>> {
             unimplemented!()
         }
+
+        async fn gas_price(&self) -> web3::Result<web3::types::U256> {
+            unimplemented!()
+        }
     }
 
     // We need a simple clonable mock here. Satisfies the sync() internals,
