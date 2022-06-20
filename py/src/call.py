@@ -65,13 +65,13 @@ def do_loop(connection, input_gen, output_file):
         "contract_address": int_param,
         "entry_point_selector": string_or_int,
         "calldata": list_of_int,
+        "command": required_command,
+        "gas_price": required_gas_price,
     }
 
     optional = {
         "caller_address": int_param,
         "signature": int_param,
-        "command": maybe_command,
-        "gas_price": maybe_gas_price,
     }
 
     for line in input_gen:
@@ -130,9 +130,7 @@ def loop_inner(connection, command):
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
 
-    # default to "call" in case I forget to fix up old tests and make this
-    # required
-    verb = command["command"] if "command" in command else "call"
+    verb = command["command"]
 
     # the later parts will have access to gas_price through this block_info
     (block_info, global_root) = resolve_block(
@@ -259,12 +257,12 @@ def list_of_int(s):
     return list(map(int_param, s))
 
 
-def maybe_command(s):
+def required_command(s):
     assert s in SUPPORTED_COMMANDS
     return s
 
 
-def maybe_gas_price(s):
+def required_gas_price(s):
     if s is None:
         # this means, use the block gas price
         return None

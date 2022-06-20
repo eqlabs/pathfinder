@@ -257,9 +257,9 @@ def test_success():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
-            f'{{ "at_block": "0x{(b"some blockhash somewhere").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
-            f'{{ "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": "0x{(b"some blockhash somewhere").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
         ],
     )
 
@@ -278,10 +278,12 @@ def test_positive_directly():
     contract_address = populate_test_contract_with_132_on_3(con)
 
     command = {
+        "command": "call",
         "at_block": 1,
         "contract_address": contract_address,
         "entry_point_selector": "get_value",
         "calldata": [132],
+        "gas_price": None,
     }
 
     con.execute("BEGIN")
@@ -303,7 +305,7 @@ def test_called_contract_not_found():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "at_block": 1, "contract_address": {contract_address + 1}, "entry_point_selector": "get_value", "calldata": [132] }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address + 1}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
         ],
     )
 
@@ -319,7 +321,7 @@ def test_nested_called_contract_not_found():
         con,
         [
             # call neighbouring contract, which doesn't exist in the global state tree
-            f'{{ "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value", "calldata": [{contract_address - 1}, 132, 4] }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null }}'
         ],
     )
 
@@ -341,7 +343,7 @@ def test_invalid_schema_version():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
         ],
     )
 
@@ -359,9 +361,9 @@ def test_no_such_block():
         con,
         (
             # there's only block 1
-            f'{{ "at_block": 99999999999, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
-            f'{{ "at_block": "0x{(b"no such block").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
-            f'{{ "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
+            f'{{ "command": "call", "at_block": 99999999999, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": "0x{(b"no such block").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
         ),
     )
 
@@ -387,14 +389,15 @@ def test_fee_estimate_on_positive_directly():
 
     con.execute("BEGIN")
 
-    # f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}'
+    # f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
     command = {
         "command": "estimate_fee",
         "at_block": "latest",
         "contract_address": contract_address,
         "entry_point_selector": "get_value",
         "calldata": [132],
-        # gas_price is missing => use block's (zero)
+        # gas_price is None for null => use block's (zero)
+        "gas_price": None,
     }
 
     (verb, output) = loop_inner(con, command)
@@ -414,8 +417,8 @@ def test_fee_estimate_on_positive():
     (first, second) = default_132_on_3_scenario(
         con,
         [
-            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
-            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": "0xa"}}',
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": "0xa" }}',
         ],
     )
 
