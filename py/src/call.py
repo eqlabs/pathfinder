@@ -61,7 +61,6 @@ def check_cairolang_version():
 def do_loop(connection, input_gen, output_file):
 
     required = {
-        # FIXME: this should be hash_or_latest
         "at_block": int_hash_or_latest,
         "contract_address": int_param,
         "entry_point_selector": string_or_int,
@@ -326,12 +325,11 @@ def resolve_block(connection, at_block, forced_gas_price):
     gas_price = int.from_bytes(gas_price, "big")
 
     if forced_gas_price is not None:
-        # allow caller to override any
+        # allow caller to override any; see rust side's GasPriceSource for more rationale
         gas_price = forced_gas_price
 
     sequencer_address = int.from_bytes(sequencer_address, "big")
 
-    # TODO: eth gas_price needs to be added, received from command
     return (
         BlockInfo(block_number, block_time, gas_price, sequencer_address),
         global_root,
