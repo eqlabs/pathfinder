@@ -12,6 +12,7 @@ const ETH_URL_KEY: &str = "ethereum.url";
 const ETH_PASS_KEY: &str = "ethereum.password";
 const HTTP_RPC_ADDR_KEY: &str = "http-rpc";
 const SEQ_URL_KEY: &str = "sequencer-url";
+const PYTHON_SUBPROCESSES_KEY: &str = "python-subprocesses";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -42,13 +43,15 @@ where
     let ethereum_password = args.value_of(ETH_PASS_KEY).map(|s| s.to_owned());
     let http_rpc_addr = args.value_of(HTTP_RPC_ADDR_KEY).map(|s| s.to_owned());
     let sequencer_url = args.value_of(SEQ_URL_KEY).map(|s| s.to_owned());
+    let python_subprocesses = args.value_of(PYTHON_SUBPROCESSES_KEY).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
         .with(ConfigOption::EthereumPassword, ethereum_password)
         .with(ConfigOption::HttpRpcAddress, http_rpc_addr)
         .with(ConfigOption::DataDirectory, data_directory)
-        .with(ConfigOption::SequencerHttpUrl, sequencer_url);
+        .with(ConfigOption::SequencerHttpUrl, sequencer_url)
+        .with(ConfigOption::PythonSubprocesses, python_subprocesses);
 
     Ok((config_filepath, cfg))
 }
@@ -118,6 +121,14 @@ Examples:
                 .takes_value(true)
                 .value_name("HTTP(s) URL")
                 .env("PATHFINDER_SEQUENCER_URL")
+        )
+        .arg(
+            Arg::new(PYTHON_SUBPROCESSES_KEY)
+                .long(PYTHON_SUBPROCESSES_KEY)
+                .help("Number of Python subprocesses to start")
+                .takes_value(true)
+                .value_name("NUM")
+                .env("PATHFINDER_PYTHON_SUBPROCESSES")
         )
 }
 
@@ -264,6 +275,27 @@ mod tests {
         env::set_var("PATHFINDER_SEQUENCER_URL", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
+    }
+
+    #[test]
+    fn python_subprocesses_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--python-subprocesses", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::PythonSubprocesses), Some(value));
+    }
+
+    #[test]
+    fn python_subprocesses_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_PYTHON_SUBPROCESSES", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::PythonSubprocesses), Some(value));
     }
 
     #[test]

@@ -73,6 +73,26 @@ impl ConfigBuilder {
         let http_rpc_addr = self
             .take(ConfigOption::HttpRpcAddress)
             .unwrap_or_else(|| DEFAULT_HTTP_RPC_ADDR.to_owned());
+        let python_subprocesses = match self.take(ConfigOption::PythonSubprocesses) {
+            Some(python_subprocesses) => {
+                let num: usize = python_subprocesses.parse().map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!(
+                            "Invalid number for Python subprocesses ({}): {}",
+                            python_subprocesses, err
+                        ),
+                    )
+                })?;
+                std::num::NonZeroUsize::new(num).ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Number of Python subprocesses must be non-zero".to_owned(),
+                    )
+                })?
+            }
+            None => std::num::NonZeroUsize::new(2).unwrap(),
+        };
 
         // Parse the HTTP-RPC listening address and port.
         let http_rpc_addr = http_rpc_addr.parse::<SocketAddr>().map_err(|err| {
@@ -93,6 +113,7 @@ impl ConfigBuilder {
             http_rpc_addr,
             data_directory,
             sequencer_url,
+            python_subprocesses,
         })
     }
 
@@ -272,6 +293,15 @@ mod tests {
 
                 let config = builder_with_all_required().try_build().unwrap();
                 assert_eq!(config.http_rpc_addr, expected);
+            }
+
+            #[test]
+            fn python_subprocesses() {
+                use std::num::NonZeroUsize;
+
+                let expected = NonZeroUsize::new(2).unwrap();
+                let config = builder_with_all_required().try_build().unwrap();
+                assert_eq!(config.python_subprocesses, expected);
             }
         }
     }
