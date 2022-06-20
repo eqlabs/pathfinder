@@ -207,10 +207,9 @@ impl Display for InvalidBufferSizeError {
 }
 
 impl StarkHash {
-    /// A convenience function which parses a hex string into a [StarkHash].
+    /// Parse a hex string into a [StarkHash].
     ///
-    /// Supports both upper and lower case hex strings, as well as an
-    /// optional "0x" prefix.
+    /// Upper or lower case hex strings, and an optional "0x" prefix are allowed.
     pub fn from_hex_str(hex_str: &str) -> Result<Self, HexParseError> {
         fn parse_hex_digit(digit: u8) -> Result<u8, HexParseError> {
             match digit {
@@ -286,10 +285,12 @@ impl StarkHash {
         &buf[..len]
     }
 
-    /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
-    /// from a [StarkHash].
-    /// Panics if `self.0.len() * 2 + 2 > buf.len()`
-    /// TODO
+    /// Produce a "0x" prefixed hex str slice from this [StarkHash].
+    ///
+    /// The result is written to `buf` and the conversion is performed
+    /// based on a nibble to char lookup table `lut`.
+    ///
+    /// Panics if `bytes.len() * 2 + 2 > buf.len()`
     fn as_hex_str<'a>(&'a self, buf: &'a mut [u8], lut: &[u8]) -> &'a str {
         let expected_buf_len = self.0.len() * 2 + 2;
         assert!(
@@ -309,8 +310,8 @@ impl StarkHash {
         std::str::from_utf8(res).unwrap()
     }
 
-    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-    /// TODO
+    /// Produce a "0x" prefixed hex string from this [StarkHash]
+    /// based on a nibble to char lookup table `lut`.
     fn to_hex_str(self, lut: &[u8]) -> Cow<'static, str> {
         if !self.0.iter().any(|b| *b != 0) {
             return Cow::from("0x0");
@@ -322,30 +323,26 @@ impl StarkHash {
         String::from_utf8(buf).unwrap().into()
     }
 
-    /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
-    /// from a [StarkHash].
+    /// Produce a "0x" prefixed lower hex str slice in `buf` from this [StarkHash].
+    ///
     /// Panics if `self.0.len() * 2 + 2 > buf.len()`
-    /// TODO
     pub fn as_lower_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
         self.as_hex_str(buf, &Self::LUT_LOWER)
     }
 
-    /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
-    /// from a [StarkHash].
+    /// Produce a "0x" prefixed upper hex str slice in `buf` from this [StarkHash].
+    ///
     /// Panics if `self.0.len() * 2 + 2 > buf.len()`
-    /// TODO
     pub fn as_upper_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
         self.as_hex_str(buf, &Self::LUT_UPPER)
     }
 
-    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-    /// TODO
+    /// Produce a "0x" prefixed lower hex string from this [StarkHash].
     pub fn to_lower_hex_str(&self) -> Cow<'static, str> {
         self.to_hex_str(&Self::LUT_LOWER)
     }
 
-    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-    /// TODO
+    /// Produce a "0x" prefixed upper hex string from this [StarkHash].
     pub fn to_upper_hex_str(&self) -> Cow<'static, str> {
         self.to_hex_str(&Self::LUT_UPPER)
     }

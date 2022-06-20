@@ -394,10 +394,12 @@ fn it_to_hex_str<'a>(
     &buf[..len]
 }
 
-/// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
-/// from an array of bytes.
+/// Produce a "0x" prefixed hex str slice from an array of bytes.
+///
+/// The result is written to `buf` and the conversion is performed
+/// based on a nibble to char lookup table `lut`.
+///
 /// Panics if `bytes.len() * 2 + 2 > buf.len()`
-/// TODO
 fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8], lut: &[u8]) -> &'a str {
     let expected_buf_len = bytes.len() * 2 + 2;
     assert!(
@@ -417,8 +419,8 @@ fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8], lut: &[u8]) -> &'a s
     std::str::from_utf8(res).unwrap()
 }
 
-/// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
-/// TODO
+/// Produce a "0x" prefixed hex string from an array of bytes
+/// based on a nibble to char lookup table `lut`.
 #[allow(dead_code)]
 fn bytes_to_hex_str(bytes: &[u8], lut: &[u8]) -> Cow<'static, str> {
     if !bytes.iter().any(|b| *b != 0) {
@@ -431,24 +433,24 @@ fn bytes_to_hex_str(bytes: &[u8], lut: &[u8]) -> Cow<'static, str> {
     String::from_utf8(buf).unwrap().into()
 }
 
-/// TODO
+/// Produce a "0x" prefixed lower hex str slice in `buf` from an array of bytes.
 fn bytes_as_lower_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
     bytes_as_hex_str(bytes, buf, &LUT_LOWER)
 }
 
-/// TODO
+/// Produce a "0x" prefixed upper hex str slice in `buf` from an array of bytes.
 #[allow(dead_code)]
 fn bytes_as_upper_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
     bytes_as_hex_str(bytes, buf, &LUT_UPPER)
 }
 
-/// TODO
+/// Produce a "0x" prefixed lower hex string from an array of bytes.
 #[allow(dead_code)]
 fn bytes_to_lower_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     bytes_to_hex_str(bytes, &LUT_LOWER)
 }
 
-/// TODO
+/// Produce a "0x" prefixed upper hex string from an array of bytes.
 #[allow(dead_code)]
 fn bytes_to_upper_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     bytes_to_hex_str(bytes, &LUT_UPPER)
