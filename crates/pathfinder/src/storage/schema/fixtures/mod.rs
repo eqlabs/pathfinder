@@ -1,14 +1,11 @@
 use crate::storage::StarknetEmittedEvent;
 use rusqlite::Connection;
 
-pub const NUM_BLOCKS: usize = 4;
-pub const TXNS_PER_BLOCK: usize = 10;
-pub const NUM_TXNS: usize = NUM_BLOCKS * TXNS_PER_BLOCK;
-
 pub fn setup_events(connection: &Connection) -> Vec<StarknetEmittedEvent> {
-    let blocks = crate::storage::test_utils::create_blocks::<NUM_BLOCKS>();
-    let transactions_and_receipts =
-        crate::storage::test_utils::create_transactions_and_receipts::<NUM_TXNS>();
+    use crate::storage::test_utils;
+
+    let blocks = test_utils::create_blocks();
+    let transactions_and_receipts = test_utils::create_transactions_and_receipts();
 
     for (i, block) in blocks.iter().enumerate() {
         connection
@@ -28,26 +25,11 @@ pub fn setup_events(connection: &Connection) -> Vec<StarknetEmittedEvent> {
             connection,
             block.hash,
             block.number,
-            &transactions_and_receipts[i * TXNS_PER_BLOCK..(i + 1) * TXNS_PER_BLOCK],
+            &transactions_and_receipts[i * test_utils::TRANSACTIONS_PER_BLOCK
+                ..(i + 1) * test_utils::TRANSACTIONS_PER_BLOCK],
         )
         .unwrap();
     }
 
-    transactions_and_receipts
-        .iter()
-        .enumerate()
-        .map(|(i, (txn, receipt))| {
-            let event = &receipt.events[0];
-            let block = &blocks[i / 10];
-
-            StarknetEmittedEvent {
-                data: event.data.clone(),
-                from_address: event.from_address,
-                keys: event.keys.clone(),
-                block_hash: block.hash,
-                block_number: block.number,
-                transaction_hash: txn.transaction_hash,
-            }
-        })
-        .collect()
+    test_utils::extract_events(&blocks, &transactions_and_receipts)
 }

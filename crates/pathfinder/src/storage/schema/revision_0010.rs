@@ -254,10 +254,11 @@ mod tests {
                 ContractAddress, EventData, EventKey, GlobalRoot, StarknetBlockHash,
                 StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
             },
-            sequencer::reply::transaction::{self, Event, Transaction},
+            sequencer::reply::transaction::{self, Event},
             storage::{
                 schema::{self},
                 state::PageOfEvents,
+                test_utils::NUM_EVENTS,
                 StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter,
                 StarknetEventsTable,
             },
@@ -266,8 +267,17 @@ mod tests {
         // This is a copy of the structures and functions as of revision 7,
         // which allows us to simulate the conditions in which the bug
         // used to occur.
-        mod storage_rev7 {
+        mod revision7 {
+            use crate::{
+                core::{
+                    CallParam, ClassHash, ConstructorParam, ContractAddressSalt, EntryPoint, Fee,
+                    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+                },
+                sequencer::reply::transaction::{EntryPointType, Type},
+            };
+
             use super::*;
+            use anyhow::Context;
             use rusqlite::named_params;
 
             #[derive(Debug, Clone, PartialEq)]
@@ -299,6 +309,76 @@ mod tests {
                     Ok(())
                 }
             }
+
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct Transaction {
+                pub calldata: Option<Vec<CallParam>>,
+                pub class_hash: Option<ClassHash>,
+                pub constructor_calldata: Option<Vec<ConstructorParam>>,
+                pub contract_address: Option<ContractAddress>,
+                pub contract_address_salt: Option<ContractAddressSalt>,
+                pub entry_point_type: Option<EntryPointType>,
+                pub entry_point_selector: Option<EntryPoint>,
+                pub max_fee: Option<Fee>,
+                pub nonce: Option<TransactionNonce>,
+                pub sender_address: Option<ContractAddress>,
+                pub signature: Option<Vec<TransactionSignatureElem>>,
+                pub transaction_hash: StarknetTransactionHash,
+                pub r#type: Type,
+                pub version: Option<TransactionVersion>,
+            }
+
+            pub struct StarknetEventsTable {}
+            impl StarknetEventsTable {
+                pub fn insert_events(
+                    connection: &Connection,
+                    block_number: StarknetBlockNumber,
+                    transaction: &Transaction,
+                    events: &[transaction::Event],
+                ) -> anyhow::Result<()> {
+                    if transaction.contract_address.is_none() && !events.is_empty() {
+                        anyhow::bail!(
+                            "Declare transactions cannot emit events: block {block_number}, transaction {}",
+                            transaction.transaction_hash
+                        );
+                    }
+
+                    for (idx, event) in events.iter().enumerate() {
+                        connection
+                        .execute(
+                            r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
+                                                   VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
+                            named_params![
+                                ":block_number": block_number.0,
+                                ":idx": idx,
+                                ":transaction_hash": &transaction.transaction_hash.0.as_be_bytes()[..],
+                                ":from_address": &event.from_address.0.as_be_bytes()[..],
+                                ":keys": Self::event_keys_to_base64_strings(&event.keys),
+                                ":data": Self::event_data_to_bytes(&event.data),
+                            ],
+                        )
+                        .context("Insert events into events table")?;
+                    }
+                    Ok(())
+                }
+
+                fn event_data_to_bytes(data: &[EventData]) -> Vec<u8> {
+                    data.iter()
+                        .flat_map(|e| (*e.0.as_be_bytes()).into_iter())
+                        .collect()
+                }
+
+                fn event_key_to_base64_string(key: &EventKey) -> String {
+                    base64::encode(key.0.as_be_bytes())
+                }
+
+                fn event_keys_to_base64_strings(keys: &[EventKey]) -> String {
+                    // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
+                    let keys: Vec<String> =
+                        keys.iter().map(Self::event_key_to_base64_string).collect();
+                    keys.join(" ")
+                }
+            }
         }
 
         /// This is a test helper function which runs a stateful scenario of the migration
@@ -322,13 +402,13 @@ mod tests {
             let block0_number = StarknetBlockNumber(0);
             let block1_number = StarknetBlockNumber(1);
             let block0_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap());
-            let block0 = storage_rev7::StarknetBlock {
+            let block0 = revision7::StarknetBlock {
                 hash: block0_hash,
                 number: block0_number,
                 root: GlobalRoot(StarkHash::from_be_slice(b"root 0").unwrap()),
                 timestamp: StarknetBlockTimestamp(0),
             };
-            let block1 = storage_rev7::StarknetBlock {
+            let block1 = revision7::StarknetBlock {
                 hash: StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap()),
                 number: block1_number,
                 root: GlobalRoot(StarkHash::from_be_slice(b"root 1").unwrap()),
@@ -340,7 +420,7 @@ mod tests {
                 ContractAddress(StarkHash::from_be_slice(b"contract 1 address").unwrap());
             let transaction0_hash =
                 StarknetTransactionHash(StarkHash::from_be_slice(b"transaction 0 hash").unwrap());
-            let transaction0 = Transaction {
+            let transaction0 = revision7::Transaction {
                 calldata: None,
                 class_hash: None,
                 constructor_calldata: None,
@@ -375,16 +455,16 @@ mod tests {
                 keys: vec![event1_key],
             };
 
-            storage_rev7::StarknetBlocksTable::insert(&transaction, &block0).unwrap();
-            StarknetEventsTable::insert_events(
+            revision7::StarknetBlocksTable::insert(&transaction, &block0).unwrap();
+            revision7::StarknetEventsTable::insert_events(
                 &transaction,
                 block0_number,
                 &transaction0,
                 &[event0],
             )
             .unwrap();
-            storage_rev7::StarknetBlocksTable::insert(&transaction, &block1).unwrap();
-            StarknetEventsTable::insert_events(
+            revision7::StarknetBlocksTable::insert(&transaction, &block1).unwrap();
+            revision7::StarknetEventsTable::insert_events(
                 &transaction,
                 block1_number,
                 &transaction1,
@@ -489,7 +569,7 @@ mod tests {
                 .execute(r"UPDATE starknet_events SET rowid = rowid + 1000000", [])
                 .context("Force arbitrary rowids")
                 .unwrap();
-            assert_eq!(changed, schema::fixtures::NUM_TXNS);
+            assert_eq!(changed, NUM_EVENTS);
 
             let expected_event = &emitted_events[1];
             let filter = StarknetEventFilter {
@@ -498,7 +578,7 @@ mod tests {
                 contract_address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
                 keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
-                page_size: schema::fixtures::NUM_TXNS,
+                page_size: NUM_EVENTS,
                 page_number: 0,
             };
 

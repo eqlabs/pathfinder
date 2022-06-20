@@ -173,23 +173,42 @@ fn enable_foreign_keys(connection: &Connection) -> anyhow::Result<()> {
 
 #[cfg(test)]
 pub(crate) mod test_utils {
-    use super::StarknetBlock;
+    use super::{
+        StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable,
+        Storage,
+    };
 
     use crate::{
         core::{
-            ContractAddress, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+            EntryPoint, EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress,
             StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StarknetTransactionIndex,
+            StarknetTransactionHash, StarknetTransactionIndex, TransactionNonce,
+            TransactionSignatureElem, TransactionVersion,
         },
-        sequencer::reply::transaction,
+        sequencer::reply::transaction::{
+            self, DeclareTransaction, DeployTransaction, EntryPointType, InvokeTransaction,
+        },
     };
 
     use stark_hash::StarkHash;
+    use web3::types::{H128, H256};
+
+    pub(crate) const NUM_BLOCKS: usize = 4;
+    pub(crate) const TRANSACTIONS_PER_BLOCK: usize = 15;
+    const INVOKE_TRANSACTIONS_PER_BLOCK: usize = 5;
+    const DEPLOY_TRANSACTIONS_PER_BLOCK: usize = 5;
+    const DECLARE_TRANSACTIONS_PER_BLOCK: usize =
+        TRANSACTIONS_PER_BLOCK - (INVOKE_TRANSACTIONS_PER_BLOCK + DEPLOY_TRANSACTIONS_PER_BLOCK);
+    pub(crate) const EVENTS_PER_BLOCK: usize =
+        INVOKE_TRANSACTIONS_PER_BLOCK + DECLARE_TRANSACTIONS_PER_BLOCK;
+    pub(crate) const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
+    pub(crate) const NUM_EVENTS: usize = NUM_BLOCKS * EVENTS_PER_BLOCK;
 
     /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
     /// with arbitrary other values.
-    pub(crate) fn create_blocks<const N: usize>() -> [StarknetBlock; N] {
-        (0..N)
+    pub(crate) fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
+        (0..NUM_BLOCKS)
             .map(|i| StarknetBlock {
                 number: StarknetBlockNumber::GENESIS + i as u64,
                 hash: StarknetBlockHash(StarkHash::from_hex_str(&"a".repeat(i + 3)).unwrap()),
@@ -204,40 +223,87 @@ pub(crate) mod test_utils {
     }
 
     /// Creates a set of test transactions and receipts.
-    pub(crate) fn create_transactions_and_receipts<const N: usize>(
-    ) -> [(transaction::Transaction, transaction::Receipt); N] {
-        let transactions = (0..N).map(|i| transaction::Transaction {
-            calldata: None,
-            class_hash: None,
-            constructor_calldata: None,
-            contract_address: Some(ContractAddress(
-                StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
-            )),
-            contract_address_salt: None,
-            entry_point_type: None,
-            entry_point_selector: None,
-            signature: None,
-            transaction_hash: StarknetTransactionHash(
-                StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap(),
-            ),
-            max_fee: None,
-            nonce: None,
-            r#type: transaction::Type::InvokeFunction,
-            sender_address: None,
-            version: None,
-        });
-        let receipts = (0..N).map(|i| transaction::Receipt {
-            actual_fee: None,
-            events: vec![transaction::Event {
-                from_address: ContractAddress(StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap()),
-                data: vec![EventData(
+    pub(crate) fn create_transactions_and_receipts(
+    ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
+        let transactions = (0..NUM_TRANSACTIONS).map(|i| match i % TRANSACTIONS_PER_BLOCK {
+            x if x < INVOKE_TRANSACTIONS_PER_BLOCK => {
+                transaction::Transaction::Invoke(InvokeTransaction {
+                    calldata: vec![CallParam::from_hex_str(&"0".repeat(i + 3)).unwrap()],
+                    contract_address: ContractAddress(
+                        StarkHash::from_hex_str(&"1".repeat(i + 3)).unwrap(),
+                    ),
+                    entry_point_selector: EntryPoint::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                    entry_point_type: if i & 1 == 0 {
+                        EntryPointType::External
+                    } else {
+                        EntryPointType::L1Handler
+                    },
+                    max_fee: Fee(H128::zero()),
+                    signature: vec![TransactionSignatureElem(
+                        StarkHash::from_hex_str(&"3".repeat(i + 3)).unwrap(),
+                    )],
+                    transaction_hash: StarknetTransactionHash(
+                        StarkHash::from_hex_str(&"4".repeat(i + 3)).unwrap(),
+                    ),
+                    r#type: transaction::Type::InvokeFunction,
+                })
+            }
+            x if (INVOKE_TRANSACTIONS_PER_BLOCK
+                ..INVOKE_TRANSACTIONS_PER_BLOCK + DEPLOY_TRANSACTIONS_PER_BLOCK)
+                .contains(&x) =>
+            {
+                transaction::Transaction::Deploy(DeployTransaction {
+                    contract_address: ContractAddress(
+                        StarkHash::from_hex_str(&"5".repeat(i + 3)).unwrap(),
+                    ),
+                    contract_address_salt: ContractAddressSalt(
+                        StarkHash::from_hex_str(&"6".repeat(i + 3)).unwrap(),
+                    ),
+                    class_hash: ClassHash(StarkHash::from_hex_str(&"7".repeat(i + 3)).unwrap()),
+                    constructor_calldata: vec![ConstructorParam(
+                        StarkHash::from_hex_str(&"8".repeat(i + 3)).unwrap(),
+                    )],
+                    transaction_hash: StarknetTransactionHash(
+                        StarkHash::from_hex_str(&"9".repeat(i + 3)).unwrap(),
+                    ),
+                    r#type: transaction::Type::Deploy,
+                })
+            }
+            _ => transaction::Transaction::Declare(DeclareTransaction {
+                class_hash: ClassHash(StarkHash::from_hex_str(&"a".repeat(i + 3)).unwrap()),
+                max_fee: Fee(H128::zero()),
+                nonce: TransactionNonce(StarkHash::from_hex_str(&"b".repeat(i + 3)).unwrap()),
+                sender_address: ContractAddress(
                     StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
+                ),
+                signature: vec![TransactionSignatureElem(
+                    StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap(),
                 )],
-                keys: vec![
-                    EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
-                    EventKey(StarkHash::from_hex_str("deadbeef").unwrap()),
-                ],
-            }],
+                transaction_hash: StarknetTransactionHash(
+                    StarkHash::from_hex_str(&"e".repeat(i + 3)).unwrap(),
+                ),
+                r#type: transaction::Type::Deploy,
+                version: TransactionVersion(H256::zero()),
+            }),
+        });
+        let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
+            actual_fee: None,
+            events: if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
+                vec![transaction::Event {
+                    from_address: ContractAddress(
+                        StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                    ),
+                    data: vec![EventData(
+                        StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
+                    )],
+                    keys: vec![
+                        EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
+                        EventKey(StarkHash::from_hex_str("deadbeef").unwrap()),
+                    ],
+                }]
+            } else {
+                vec![]
+            },
             execution_resources: transaction::ExecutionResources {
                 builtin_instance_counter:
                     transaction::execution_resources::BuiltinInstanceCounter::Empty(
@@ -260,6 +326,59 @@ pub(crate) mod test_utils {
             .collect::<Vec<_>>()
             .try_into()
             .unwrap()
+    }
+
+    /// Creates a set of emitted events from given blocks and transactions.
+    pub(crate) fn extract_events(
+        blocks: &[StarknetBlock],
+        transactions_and_receipts: &[(transaction::Transaction, transaction::Receipt)],
+    ) -> Vec<StarknetEmittedEvent> {
+        transactions_and_receipts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (txn, receipt))| {
+                if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
+                    let event = &receipt.events[0];
+                    let block = &blocks[i / TRANSACTIONS_PER_BLOCK];
+
+                    Some(StarknetEmittedEvent {
+                        data: event.data.clone(),
+                        from_address: event.from_address,
+                        keys: event.keys.clone(),
+                        block_hash: block.hash,
+                        block_number: block.number,
+                        transaction_hash: txn.hash(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Creates a storage instance in memory with a set of expected emitted events
+    pub(crate) fn setup_test_storage() -> (Storage, Vec<StarknetEmittedEvent>) {
+        let storage = Storage::in_memory().unwrap();
+        let connection = storage.connection().unwrap();
+
+        let blocks = create_blocks();
+        let transactions_and_receipts = create_transactions_and_receipts();
+
+        for (i, block) in blocks.iter().enumerate() {
+            StarknetBlocksTable::insert(&connection, block).unwrap();
+            StarknetTransactionsTable::upsert(
+                &connection,
+                block.hash,
+                block.number,
+                &transactions_and_receipts
+                    [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK],
+            )
+            .unwrap();
+        }
+
+        let events = extract_events(&blocks, &transactions_and_receipts);
+
+        (storage, events)
     }
 }
 

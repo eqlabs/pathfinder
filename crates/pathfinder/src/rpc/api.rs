@@ -164,7 +164,7 @@ impl RpcApi {
             BlockResponseScope::TransactionHashes => reply::Transactions::HashesOnly(
                 transactions_receipts
                     .into_iter()
-                    .map(|(t, _)| t.transaction_hash)
+                    .map(|(t, _)| t.hash())
                     .collect(),
             ),
             BlockResponseScope::FullTransactions => reply::Transactions::Full(

@@ -243,6 +243,12 @@ impl std::ops::SubAssign<u64> for StarknetBlockNumber {
     }
 }
 
+impl std::fmt::Display for StarknetBlockNumber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl From<EthereumBlockNumber> for web3::types::BlockId {
     fn from(number: EthereumBlockNumber) -> Self {
         web3::types::BlockId::Number(web3::types::BlockNumber::Number(number.0.into()))
