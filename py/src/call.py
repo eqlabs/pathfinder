@@ -163,8 +163,6 @@ def render(verb, vals):
         return f"0x{x.to_bytes(32, 'big').hex()}"
 
     if verb == "call":
-        # FIXME: if you set this to throw, for example forgetting result.call_info.retdata
-        # on the RHS nested element, tests will still pass.
         return list(map(prefixed_hex, vals))
     else:
         assert verb == "estimate_fee"
