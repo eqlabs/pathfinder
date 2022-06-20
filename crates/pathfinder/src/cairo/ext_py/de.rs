@@ -22,7 +22,8 @@ pub(crate) struct ChildResponse<'a> {
     #[serde(default)]
     timings: Timings,
     /// The real output from the contract when `status` is [`Status::Ok`].
-    output: OutputValue,
+    #[serde(default)]
+    output: Option<OutputValue>,
 }
 
 /// Deserializes either the call output value or the fee estimate.
@@ -37,7 +38,7 @@ impl<'a> ChildResponse<'a> {
     pub(super) fn refine(mut self) -> Result<RefinedChildResponse<'a>, SubprocessError> {
         match (&self.status, &mut self.kind, &mut self.exception) {
             (Status::Ok, None, None) => Ok(RefinedChildResponse {
-                status: RefinedStatus::Ok(self.output),
+                status: RefinedStatus::Ok(self.output.ok_or(SubprocessError::InvalidResponse)?),
                 timings: self.timings,
             }),
             (Status::Error, x @ Some(_), None) => Ok(RefinedChildResponse {

@@ -100,7 +100,7 @@ impl Handle {
 }
 
 /// Reasons for a call to fail.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CallFailure {
     /// The requested block could not be found.
     NoSuchBlock,
@@ -420,6 +420,64 @@ mod tests {
 
         shutdown_tx.send(()).unwrap();
 
+        jh.await.unwrap();
+    }
+
+    #[test_log::test(tokio::test)]
+    #[ignore]
+    async fn call_with_unknown_contract() {
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+
+        let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
+
+        let mut conn = s.connection().unwrap();
+        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
+
+        let tx = conn.transaction().unwrap();
+
+        fill_example_state(&tx);
+
+        tx.commit().unwrap();
+
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let (handle, jh) = super::start(
+            PathBuf::from(db_file.path()),
+            std::num::NonZeroUsize::new(1).unwrap(),
+            async move {
+                let _ = shutdown_rx.await;
+            },
+        )
+        .await
+        .unwrap();
+
+        let call = super::Call {
+            contract_address: crate::core::ContractAddress(
+                StarkHash::from_hex_str(
+                    // this is one bit off from other examples
+                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375",
+                )
+                .unwrap(),
+            ),
+            calldata: vec![crate::core::CallParam(
+                StarkHash::from_hex_str("0x84").unwrap(),
+            )],
+            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+        };
+
+        let result = handle
+            .call(
+                call,
+                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+                )),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(result, super::CallFailure::NoSuchContract);
+
+        let _ = shutdown_tx.send(());
         jh.await.unwrap();
     }
 
