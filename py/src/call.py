@@ -274,7 +274,6 @@ def required_gas_price(s):
 
 
 def check_schema(connection):
-    global first
     assert connection.in_transaction
     cursor = connection.execute("select user_version from pragma_user_version")
     assert cursor is not None, "there has to be an user_version defined in the database"
