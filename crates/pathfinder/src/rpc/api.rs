@@ -89,8 +89,6 @@ impl RpcApi {
     }
 
     /// Get block information given the block hash.
-    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    /// of the requested block.
     pub async fn get_block_by_hash(
         &self,
         block_hash: BlockHashOrTag,
@@ -206,8 +204,6 @@ impl RpcApi {
     }
 
     /// Get block information given the block number (its height).
-    /// `block_number` is the [Number](crate::rpc::types::BlockNumberOrTag::Number) (height) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    /// of the requested block.
     pub async fn get_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
@@ -259,10 +255,6 @@ impl RpcApi {
         .and_then(|x| x)
     }
 
-    /// Fetches a [RawBlock] from storage.
-    ///
-    /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockHash`]
-    /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     fn get_raw_block_by_hash(
         tx: &rusqlite::Transaction<'_>,
         block_id: StarknetBlocksBlockId,
@@ -270,10 +262,6 @@ impl RpcApi {
         Self::get_raw_block(tx, block_id, ErrorCode::InvalidBlockHash)
     }
 
-    /// Fetches a [RawBlock] from storage.
-    ///
-    /// Returns [`jsonrpsee::core::Error::Call`] with code [`ErrorCode::InvalidBlockNumber`]
-    /// when called with [`StarknetBlocksBlockId::Latest`] on an empty storage.
     fn get_raw_block_by_number(
         tx: &rusqlite::Transaction<'_>,
         block_id: StarknetBlocksBlockId,
@@ -284,7 +272,8 @@ impl RpcApi {
     /// Fetches a [RawBlock] from storage.
     ///
     /// `error_code_for_latest` is the error code when the `latest` block is missing,
-    /// ie. when the storage is empty.
+    /// ie. when the storage is empty, wrapped by [`Self::get_raw_block_by_number`] and
+    /// [`Self::get_raw_block_by_number`] for the two different usecases.
     fn get_raw_block(
         transaction: &rusqlite::Transaction<'_>,
         block_id: StarknetBlocksBlockId,
@@ -335,8 +324,6 @@ impl RpcApi {
     }
 
     // /// Get the information about the result of executing the requested block.
-    // /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    // /// of the requested block.
     // pub async fn get_state_update_by_hash(
     //     &self,
     //     block_hash: BlockHashOrTag,
@@ -352,9 +339,6 @@ impl RpcApi {
     // }
 
     /// Get the value of the storage at the given address and key.
-    /// `contract_address` is the address of the contract to read from, `key` is the key to the storage value for the given contract,
-    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    /// of the requested block.
     ///
     /// We are using overflowing type for `key` to be able to correctly report `INVALID_STORAGE_KEY` as per
     /// [StarkNet RPC spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json),
@@ -463,7 +447,6 @@ impl RpcApi {
     }
 
     /// Get the details and status of a submitted transaction.
-    /// `transaction_hash` is the hash of the requested transaction.
     pub async fn get_transaction_by_hash(
         &self,
         transaction_hash: StarknetTransactionHash,
@@ -497,8 +480,6 @@ impl RpcApi {
     }
 
     /// Get the details of a transaction by a given block hash and index.
-    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    /// of the requested block.
     pub async fn get_transaction_by_block_hash_and_index(
         &self,
         block_hash: BlockHashOrTag,
@@ -572,8 +553,6 @@ impl RpcApi {
     }
 
     /// Get the details of a transaction by a given block number and index.
-    /// `block_number` is the [Number](crate::rpc::types::BlockNumberOrTag::Number) (height) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    /// of the requested block.
     pub async fn get_transaction_by_block_number_and_index(
         &self,
         block_number: BlockNumberOrTag,
@@ -647,7 +626,6 @@ impl RpcApi {
     }
 
     /// Get the transaction receipt by the transaction hash.
-    /// `transaction_hash` is the hash of the requested transaction.
     pub async fn get_transaction_receipt(
         &self,
         transaction_hash: StarknetTransactionHash,
@@ -857,8 +835,6 @@ impl RpcApi {
     }
 
     /// Get the number of transactions in a block given a block hash.
-    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    /// of the requested block.
     pub async fn get_block_transaction_count_by_hash(
         &self,
         block_hash: BlockHashOrTag,
@@ -924,8 +900,6 @@ impl RpcApi {
     }
 
     /// Get the number of transactions in a block given a block hash.
-    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    /// of the requested block.
     pub async fn get_block_transaction_count_by_number(
         &self,
         block_number: BlockNumberOrTag,
@@ -991,8 +965,6 @@ impl RpcApi {
     }
 
     /// Call a starknet function without creating a StarkNet transaction.
-    /// `block_hash` is the [Hash](crate::rpc::types::BlockHashOrTag::Hash) or [Tag](crate::rpc::types::BlockHashOrTag::Tag)
-    /// of the requested block.
     pub async fn call(
         &self,
         request: Call,
