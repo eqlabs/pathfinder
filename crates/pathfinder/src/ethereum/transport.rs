@@ -211,11 +211,7 @@ impl EthereumTransport for HttpTransport {
     }
 
     async fn gas_price(&self) -> web3::Result<U256> {
-        Retry::exponential(|| self.0.eth().gas_price(), NonZeroU64::new(1).unwrap())
-            .factor(NonZeroU64::new(2).unwrap())
-            .max_delay(Duration::from_secs(5))
-            .when(log_and_always_retry)
-            .await
+        retry(|| self.0.eth().gas_price(), log_and_always_retry).await
     }
 }
 
