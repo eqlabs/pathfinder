@@ -29,11 +29,23 @@ impl From<StarknetBlockNumber> for L1TableBlockId {
     }
 }
 
+/// An aid to investigate a bug where an L1 reorg followed by an insert
+/// in rare cases results in a primary key violation.
+///
+/// This struct helps audit L1 reorgs when this occurs.
+#[derive(Debug)]
+#[allow(dead_code)]
+struct L1BugAudit {
+    head_pre_reorg: u64,
+    head_post_reorg: u64,
+    reorg_count: u64,
+}
+
 lazy_static::lazy_static!(
     /// Tracks the latest L1 reorg in an attempt to make sense of a primary key related reorg bug.
     ///
     /// Stores the latest reorg's (pre-reorg head, post-reorg head, rows deleted)
-    static ref L1_LATEST_REORG: std::sync::Mutex<(u64,u64,u64)> = std::sync::Mutex::new((0, 0, 0));
+    static ref L1_LATEST_REORG: std::sync::Mutex<Option<L1BugAudit>> = std::sync::Mutex::new(None);
 );
 
 impl L1StateTable {
@@ -71,10 +83,19 @@ impl L1StateTable {
         match result {
             Ok(_) => Ok(()),
             Err(err) => {
-                if err.to_string().contains("A PRIMARY KEY constraint failed") {
-                    let latest = L1_LATEST_REORG.lock().unwrap_or_else(|e| e.into_inner());
+                // Log L1 reorg bug audit information.
+                match err {
+                    rusqlite::Error::SqliteFailure(code, _)
+                        if code.code == rusqlite::ErrorCode::ConstraintViolation =>
+                    {
+                        let latest = L1_LATEST_REORG.lock().unwrap_or_else(|e| e.into_inner());
+                        // Attempt to query for conflicting entry.
+                        let existing = Self::get(connection, update.block_number.into())
+                            .context("Read L1 block for PK constraint audit")?;
 
-                    tracing::error!(pre_reorg=%latest.0, post_reorg=%latest.1, count=%latest.2, "Additional L1 reorg bug information");
+                        tracing::error!(reorg=?latest, ?existing, ?update, "Additional L1 reorg bug information");
+                    }
+                    _ => {}
                 }
 
                 Err(err.into())
@@ -129,9 +150,12 @@ impl L1StateTable {
 
                 let mut latest = L1_LATEST_REORG.lock().unwrap_or_else(|e| e.into_inner());
 
-                latest.0 = orig;
-                latest.1 = new_head;
-                latest.2 = reorg_count;
+                let new_info = L1BugAudit {
+                    head_pre_reorg: orig,
+                    head_post_reorg: new_head,
+                    reorg_count,
+                };
+                *latest = Some(new_info);
             }
             (Some(orig), None) => {
                 anyhow::ensure!(
