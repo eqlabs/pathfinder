@@ -22,6 +22,8 @@ use std::{fmt::Debug, result::Result, time::Duration};
 pub trait ClientApi {
     async fn block(&self, block: BlockId) -> Result<reply::Block, SequencerError>;
 
+    async fn pending_block(&self) -> Result<reply::PendingBlock, SequencerError>;
+
     async fn call(
         &self,
         payload: request::Call,
@@ -173,6 +175,17 @@ impl ClientApi for Client {
             .feeder_gateway()
             .get_block()
             .with_block(block)
+            .with_retry(Self::RETRY)
+            .get()
+            .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn pending_block(&self) -> Result<reply::PendingBlock, SequencerError> {
+        self.request()
+            .feeder_gateway()
+            .get_block()
+            .with_block(BlockId::Pending)
             .with_retry(Self::RETRY)
             .get()
             .await
