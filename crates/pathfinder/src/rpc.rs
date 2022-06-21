@@ -365,11 +365,10 @@ mod tests {
     use super::*;
     use crate::{
         core::{
-            ClassHash, ContractAddress, EntryPoint, EventData, EventKey, GasPrice, GlobalRoot,
-            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetProtocolVersion, StorageAddress,
+            Chain, ClassHash, ContractAddress, EntryPoint, EventData, EventKey, GasPrice,
+            GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+            StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress,
         },
-        ethereum::Chain,
         rpc::run_server,
         sequencer::{
             reply::transaction::{

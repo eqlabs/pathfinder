@@ -29,12 +29,12 @@ impl<'a> ContractsStateTree<'a> {
 
     #[allow(dead_code)]
     pub fn get(&self, address: StorageAddress) -> anyhow::Result<StorageValue> {
-        let value = self.tree.get(address.0)?;
+        let value = self.tree.get(address.0.view_bits())?;
         Ok(StorageValue(value))
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
-        self.tree.set(address.0, value.0)
+        self.tree.set(address.0.view_bits(), value.0)
     }
 
     /// Applies and persists any changes. Returns the new tree root.
@@ -59,7 +59,7 @@ impl<'a> GlobalStateTree<'a> {
     }
 
     pub fn get(&self, address: ContractAddress) -> anyhow::Result<ContractStateHash> {
-        let value = self.tree.get(address.0)?;
+        let value = self.tree.get(address.0.view_bits())?;
         Ok(ContractStateHash(value))
     }
 
@@ -68,7 +68,7 @@ impl<'a> GlobalStateTree<'a> {
         address: ContractAddress,
         value: ContractStateHash,
     ) -> anyhow::Result<()> {
-        self.tree.set(address.0, value.0)
+        self.tree.set(address.0.view_bits(), value.0)
     }
 
     /// Applies and persists any changes. Returns the new global root.

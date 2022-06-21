@@ -12,24 +12,6 @@ pub mod log;
 pub mod state_update;
 pub mod transport;
 
-/// Ethereum network chains running Starknet.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Chain {
-    /// The Ethereum mainnet chain.
-    Mainnet,
-    /// The Ethereum Goerli test network chain.
-    Goerli,
-}
-
-impl std::fmt::Display for Chain {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Chain::Mainnet => f.write_str("Mainnet"),
-            Chain::Goerli => f.write_str("Görli"),
-        }
-    }
-}
-
 /// List of semi-official Ethereum RPC errors taken from [EIP-1474] (which is stagnant).
 ///
 /// The issue of standardizing the Ethereum RPC seems to now be taking
@@ -153,10 +135,8 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     mod chain {
-        use super::*;
+        use crate::core::Chain;
         use crate::ethereum::transport::{EthereumTransport, HttpTransport};
 
         #[tokio::test]

@@ -11,8 +11,7 @@ use serde_with::serde_as;
 
 /// Used to deserialize replies to [ClientApi::block](crate::sequencer::ClientApi::block).
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[cfg_attr(test, derive(serde::Serialize))]
+#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     #[serde(default)]
@@ -34,8 +33,7 @@ pub struct Block {
 }
 
 /// Block and transaction status values.
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
-#[cfg_attr(test, derive(serde::Serialize))]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub enum Status {
     #[serde(rename = "NOT_RECEIVED")]

@@ -43,7 +43,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // non-configurable options, which might become command line options:
-    let network = pathfinder_lib::ethereum::Chain::Goerli;
+    let network = pathfinder_lib::core::Chain::Goerli;
 
     let db_file = std::env::args()
         .nth(1)

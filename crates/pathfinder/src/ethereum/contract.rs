@@ -3,7 +3,7 @@
 use web3::ethabi::{Contract, Event, Function};
 use web3::types::H160;
 
-use crate::ethereum::Chain;
+use crate::core::Chain;
 
 /// Groups the Starknet contract addresses for a specific chain.
 pub struct ContractAddresses {
@@ -98,7 +98,8 @@ mod tests {
             types::{BlockId, BlockNumber},
         };
 
-        use crate::ethereum::{transport::HttpTransport, Chain};
+        use crate::core::Chain;
+        use crate::ethereum::transport::HttpTransport;
 
         use super::*;
 

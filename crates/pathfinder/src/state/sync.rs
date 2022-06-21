@@ -6,14 +6,13 @@ use std::sync::Arc;
 
 use crate::{
     core::{
-        ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        Chain, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber,
     },
     ethereum::{
         log::StateUpdateLog,
         state_update::{DeployedContract, StateUpdate},
         transport::EthereumTransport,
-        Chain,
     },
     rpc::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer::{self, reply::Block},
@@ -62,7 +61,7 @@ where
             mpsc::Sender<l2::Event>,
             SequencerClient,
             Option<(StarknetBlockNumber, StarknetBlockHash)>,
-            crate::ethereum::Chain,
+            Chain,
         ) -> F2
         + Copy,
 {
@@ -604,8 +603,8 @@ fn deploy_contract(
 /// interval is chosen to provide a good balance between spamming and getting new
 /// block information as it is available. The interval is based on the block creation
 /// time, which is 2 minutes for Goerlie and 2 hours for Mainnet.
-pub fn head_poll_interval(chain: crate::ethereum::Chain) -> std::time::Duration {
-    use crate::ethereum::Chain::*;
+pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
+    use crate::core::Chain::*;
     use std::time::Duration;
 
     match chain {
@@ -621,10 +620,10 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            CallSignatureElem, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            CallSignatureElem, Chain, ClassHash, ConstructorParam, ContractAddress,
+            ContractAddressSalt, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
+            EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice, GlobalRoot,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
             StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
             TransactionVersion,
         },
@@ -661,7 +660,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn chain(&self) -> anyhow::Result<ethereum::Chain> {
+        async fn chain(&self) -> anyhow::Result<Chain> {
             unimplemented!()
         }
 
@@ -791,7 +790,7 @@ mod tests {
     async fn l1_noop(
         _: mpsc::Sender<l1::Event>,
         _: FakeTransport,
-        _: ethereum::Chain,
+        _: Chain,
         _: Option<ethereum::log::StateUpdateLog>,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
@@ -803,7 +802,7 @@ mod tests {
         _: mpsc::Sender<l2::Event>,
         _: impl sequencer::ClientApi,
         _: Option<(StarknetBlockNumber, StarknetBlockHash)>,
-        _: crate::ethereum::Chain,
+        _: Chain,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         let () = std::future::pending().await;
@@ -884,7 +883,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_update() {
-        let chain = ethereum::Chain::Goerli;
+        let chain = Chain::Goerli;
         let sync_state = Arc::new(state::SyncState::default());
 
         lazy_static::lazy_static! {
@@ -994,7 +993,7 @@ mod tests {
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
                 FakeTransport,
-                ethereum::Chain::Goerli,
+                Chain::Goerli,
                 FakeSequencer,
                 Arc::new(state::SyncState::default()),
                 l1,
@@ -1054,7 +1053,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            ethereum::Chain::Goerli,
+            Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1,
@@ -1082,7 +1081,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            ethereum::Chain::Goerli,
+            Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1,
@@ -1096,7 +1095,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
-        let chain = ethereum::Chain::Goerli;
+        let chain = Chain::Goerli;
         let sync_state = Arc::new(state::SyncState::default());
 
         // Incoming L2 update
@@ -1200,7 +1199,7 @@ mod tests {
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
                 FakeTransport,
-                ethereum::Chain::Goerli,
+                Chain::Goerli,
                 FakeSequencer,
                 Arc::new(state::SyncState::default()),
                 l1_noop,
@@ -1257,7 +1256,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            ethereum::Chain::Goerli,
+            Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,
@@ -1300,7 +1299,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            ethereum::Chain::Goerli,
+            Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,
@@ -1345,7 +1344,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            ethereum::Chain::Goerli,
+            Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,
@@ -1371,7 +1370,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            ethereum::Chain::Goerli,
+            Chain::Goerli,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,

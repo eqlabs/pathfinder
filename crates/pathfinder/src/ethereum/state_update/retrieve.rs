@@ -6,6 +6,7 @@ use web3::{
     types::{FilterBuilder, Transaction, TransactionId, U256},
 };
 
+use crate::core::Chain;
 use crate::ethereum::{
     contract::{REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
     log::{
@@ -14,7 +15,6 @@ use crate::ethereum::{
     },
     state_update::RetrieveStateUpdateError,
     transport::EthereumTransport,
-    Chain,
 };
 
 /// Retrieves the [StateTransitionFactLog] associated with the given [StateUpdateLog].

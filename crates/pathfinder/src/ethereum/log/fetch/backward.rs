@@ -1,9 +1,9 @@
 use web3::types::{BlockNumber, FilterBuilder};
 
+use crate::core::Chain;
 use crate::ethereum::{
     log::fetch::{EitherMetaLog, MetaLog},
     transport::{EthereumTransport, LogsError},
-    Chain,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -209,7 +209,7 @@ mod tests {
 
         // We use the same log type twice; this shouldn't matter and let's us check
         // the block number sequence.
-        let chain = crate::ethereum::Chain::Goerli;
+        let chain = crate::core::Chain::Goerli;
         let mut fetcher = BackwardLogFetcher::<StateUpdateLog, StateUpdateLog>::new(
             EitherMetaLog::Left(update_log.clone()),
             chain,

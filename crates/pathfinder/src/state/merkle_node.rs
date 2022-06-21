@@ -99,8 +99,8 @@ impl BinaryNode {
     /// This can be used to check which direction the key descibes in the context
     /// of this binary node i.e. which direction the child along the key's path would
     /// take.
-    pub fn direction(&self, key: StarkHash) -> Direction {
-        key.view_bits()[self.height].into()
+    pub fn direction(&self, key: &BitSlice<Msb0, u8>) -> Direction {
+        key[self.height].into()
     }
 
     /// Returns the [Left] or [Right] child.
@@ -193,16 +193,15 @@ impl Node {
 
 impl EdgeNode {
     /// Returns true if the edge node's path matches the same path given by the key.
-    pub fn path_matches(&self, key: StarkHash) -> bool {
-        let key = key.view_bits();
+    pub fn path_matches(&self, key: &BitSlice<Msb0, u8>) -> bool {
         self.path == key[self.height..self.height + self.path.len()]
     }
 
     /// Returns the common bit prefix between the edge node's path and the given key.
     ///
     /// This is calculated with the edge's height taken into account.
-    pub fn common_path(&self, key: StarkHash) -> &BitSlice<Msb0, u8> {
-        let key_path = key.view_bits().iter().skip(self.height);
+    pub fn common_path(&self, key: &BitSlice<Msb0, u8>) -> &BitSlice<Msb0, u8> {
+        let key_path = key.iter().skip(self.height);
         let common_length = key_path
             .zip(self.path.iter())
             .take_while(|(a, b)| a == b)
@@ -288,14 +287,12 @@ mod tests {
 
             let mut zero_key = bitvec![Msb0, u8; 1; 251];
             zero_key.set(1, false);
-            let zero_key = StarkHash::from_bits(&zero_key).unwrap();
 
             let mut one_key = bitvec![Msb0, u8; 0; 251];
             one_key.set(1, true);
-            let one_key = StarkHash::from_bits(&one_key).unwrap();
 
-            let zero_direction = uut.direction(zero_key);
-            let one_direction = uut.direction(one_key);
+            let zero_direction = uut.direction(&zero_key);
+            let one_direction = uut.direction(&one_key);
 
             assert_eq!(zero_direction, Direction::from(false));
             assert_eq!(one_direction, Direction::from(true));
@@ -400,7 +397,7 @@ mod tests {
                     child,
                 };
 
-                assert!(uut.path_matches(key));
+                assert!(uut.path_matches(key.view_bits()));
             }
 
             #[test]
@@ -419,7 +416,7 @@ mod tests {
                     child,
                 };
 
-                assert!(uut.path_matches(key));
+                assert!(uut.path_matches(key.view_bits()));
             }
 
             #[test]
@@ -438,7 +435,7 @@ mod tests {
                     child,
                 };
 
-                assert!(uut.path_matches(key));
+                assert!(uut.path_matches(key.view_bits()));
             }
 
             #[test]
@@ -457,7 +454,7 @@ mod tests {
                     child,
                 };
 
-                assert!(uut.path_matches(key));
+                assert!(uut.path_matches(key.view_bits()));
             }
         }
     }

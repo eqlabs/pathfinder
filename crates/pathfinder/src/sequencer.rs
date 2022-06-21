@@ -7,11 +7,10 @@ pub mod request;
 use self::request::{add_transaction::ContractDefinition, Call};
 use crate::{
     core::{
-        BlockId, CallSignatureElem, ClassHash, ConstructorParam, ContractAddress,
+        BlockId, CallSignatureElem, Chain, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, Fee, StarknetTransactionHash, StorageAddress, StorageValue,
         TransactionNonce, TransactionVersion,
     },
-    ethereum::Chain,
     rpc::types::BlockHashOrTag,
     sequencer::error::SequencerError,
 };
@@ -1867,7 +1866,7 @@ mod tests {
     }
 
     mod chain {
-        use crate::ethereum::Chain;
+        use crate::core::Chain;
         use crate::sequencer;
 
         #[derive(Copy, Clone, PartialEq, Eq)]
@@ -1954,14 +1953,14 @@ mod tests {
         async fn goerli() {
             let (_server_handle, sequencer) = setup_server(TargetChain::Goerli);
             let chain = sequencer.chain().await.unwrap();
-            assert_eq!(chain, crate::ethereum::Chain::Goerli);
+            assert_eq!(chain, crate::core::Chain::Goerli);
         }
 
         #[tokio::test]
         async fn mainnet() {
             let (_server_handle, sequencer) = setup_server(TargetChain::Mainnet);
             let chain = sequencer.chain().await.unwrap();
-            assert_eq!(chain, crate::ethereum::Chain::Mainnet);
+            assert_eq!(chain, crate::core::Chain::Mainnet);
         }
 
         #[tokio::test]

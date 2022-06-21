@@ -1,7 +1,7 @@
 use anyhow::{Context, Error, Result};
 use serde::Serialize;
 use sha3::Digest;
-use stark_hash::{stark_hash, StarkHash};
+use stark_hash::{HashChain, StarkHash};
 
 use crate::core::ClassHash;
 use crate::sequencer::request::contract::EntryPointType;
@@ -16,7 +16,7 @@ use crate::sequencer::request::contract::EntryPointType;
 ///
 /// 1. class definition is serialized with python's [`sort_keys=True` option][py-sortkeys], then
 ///    a truncated Keccak256 hash is calculated of the serialized json
-/// 2. a hash chain construction out of [`stark_hash()`] is used to process in order the contract
+/// 2. a [hash chain][`HashChain`] construction is used to process in order the contract
 ///    entry points, builtins, the truncated keccak hash and bytecodes
 /// 3. each of the hashchains is hash chained together to produce a final class hash
 ///
@@ -195,43 +195,6 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
     outer.update(bytecodes.finalize());
 
     Ok(ClassHash(outer.finalize()))
-}
-
-/// HashChain is the structure used over at cairo side to represent the hash construction needed
-/// for computing the class hash.
-///
-/// Empty hash chained value equals `H(0, 0)` where `H` is the [`stark_hash()`] function, and the
-/// second value is the number of values hashed together in this chain. For other values, the
-/// accumulator is on each update replaced with the `H(hash, value)` and the number of count
-/// incremented by one.
-struct HashChain {
-    hash: StarkHash,
-    count: usize,
-}
-
-impl Default for HashChain {
-    fn default() -> Self {
-        HashChain {
-            hash: StarkHash::ZERO,
-            count: 0,
-        }
-    }
-}
-
-impl HashChain {
-    fn update(&mut self, value: StarkHash) {
-        self.hash = stark_hash(self.hash, value);
-        self.count = self
-            .count
-            .checked_add(1)
-            .expect("could not have deserialized larger than usize Vecs");
-    }
-
-    fn finalize(self) -> StarkHash {
-        let count = StarkHash::from_be_slice(&self.count.to_be_bytes())
-            .expect("usize is smaller than 251-bits");
-        stark_hash(self.hash, count)
-    }
 }
 
 /// See:
@@ -447,7 +410,7 @@ mod json {
             .unwrap();
             let contract = crate::core::ContractAddress(contract);
 
-            let chain = crate::ethereum::Chain::Goerli;
+            let chain = crate::core::Chain::Goerli;
             let sequencer = crate::sequencer::Client::new(chain).unwrap();
             let contract_definition = sequencer
                 .full_contract(contract)
@@ -481,7 +444,7 @@ mod json {
                 )
                 .unwrap(),
             );
-            let sequencer = sequencer::Client::new(crate::ethereum::Chain::Goerli).unwrap();
+            let sequencer = sequencer::Client::new(crate::core::Chain::Goerli).unwrap();
 
             let contract_definition = sequencer.full_contract(address).await.unwrap();
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {

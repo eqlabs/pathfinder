@@ -5,12 +5,11 @@ use futures::Future;
 use tokio::sync::{mpsc, oneshot, RwLock};
 
 use crate::{
-    core::{EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber},
+    core::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber},
     ethereum::{
         log::{FetchError, StateUpdateLog},
         state_update::state_root::StateRootFetcher,
         transport::EthereumTransport,
-        Chain,
     },
     retry::Retry,
 };
