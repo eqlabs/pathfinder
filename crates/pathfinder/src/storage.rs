@@ -245,7 +245,6 @@ pub(crate) mod test_utils {
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str(&"4".repeat(i + 3)).unwrap(),
                     ),
-                    r#type: transaction::Type::InvokeFunction,
                 })
             }
             x if (INVOKE_TRANSACTIONS_PER_BLOCK
@@ -266,7 +265,6 @@ pub(crate) mod test_utils {
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str(&"9".repeat(i + 3)).unwrap(),
                     ),
-                    r#type: transaction::Type::Deploy,
                 })
             }
             _ => transaction::Transaction::Declare(DeclareTransaction {
@@ -282,7 +280,6 @@ pub(crate) mod test_utils {
                 transaction_hash: StarknetTransactionHash(
                     StarkHash::from_hex_str(&"e".repeat(i + 3)).unwrap(),
                 ),
-                r#type: transaction::Type::Deploy,
                 version: TransactionVersion(H256::zero()),
             }),
         });

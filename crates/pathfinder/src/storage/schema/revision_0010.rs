@@ -273,7 +273,7 @@ mod tests {
                     CallParam, ClassHash, ConstructorParam, ContractAddressSalt, EntryPoint, Fee,
                     TransactionNonce, TransactionSignatureElem, TransactionVersion,
                 },
-                sequencer::reply::transaction::{EntryPointType, Type},
+                sequencer::reply::transaction::EntryPointType,
             };
 
             use super::*;
@@ -326,6 +326,15 @@ mod tests {
                 pub transaction_hash: StarknetTransactionHash,
                 pub r#type: Type,
                 pub version: Option<TransactionVersion>,
+            }
+
+            /// Describes L2 transaction types.
+            #[derive(Copy, Clone, Debug, PartialEq)]
+            #[allow(dead_code)]
+            pub enum Type {
+                Deploy,
+                InvokeFunction,
+                Declare,
             }
 
             pub struct StarknetEventsTable {}
@@ -433,7 +442,7 @@ mod tests {
                 sender_address: None,
                 signature: None,
                 transaction_hash: transaction0_hash,
-                r#type: transaction::Type::Deploy,
+                r#type: revision7::Type::Deploy,
                 version: None,
             };
             let mut transaction1 = transaction0.clone();

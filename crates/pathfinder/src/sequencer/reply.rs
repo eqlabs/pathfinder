@@ -227,22 +227,16 @@ pub mod transaction {
         pub keys: Vec<EventKey>,
     }
 
-    /// Represents deserialized object containing L2 contract address and transaction type.
-    #[serde_as]
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
-    pub struct Source {
-        pub contract_address: ContractAddress,
-        pub r#type: Type,
-    }
-
     /// Represents deserialized L2 transaction data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(untagged)]
+    #[serde(tag = "type")]
     #[serde(deny_unknown_fields)]
     pub enum Transaction {
+        #[serde(rename = "DECLARE")]
         Declare(DeclareTransaction),
+        #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
+        #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeTransaction),
     }
 
@@ -271,7 +265,6 @@ pub mod transaction {
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: StarknetTransactionHash,
-        pub r#type: Type,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
     }
@@ -287,7 +280,6 @@ pub mod transaction {
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
         pub transaction_hash: StarknetTransactionHash,
-        pub r#type: Type,
     }
 
     /// Represents deserialized L2 invoke transaction data.
@@ -305,19 +297,6 @@ pub mod transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: StarknetTransactionHash,
-        pub r#type: Type,
-    }
-
-    /// Describes L2 transaction types.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
-    pub enum Type {
-        #[serde(rename = "DEPLOY")]
-        Deploy,
-        #[serde(rename = "INVOKE_FUNCTION")]
-        InvokeFunction,
-        #[serde(rename = "DECLARE")]
-        Declare,
     }
 
     /// Describes L2 transaction failure details.
