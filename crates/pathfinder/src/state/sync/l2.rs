@@ -188,13 +188,21 @@ async fn download_block(
 
     match result {
         Ok(block) => {
+            let block = Box::new(block);
             // Check if block hash is correct.
             let expected_block_hash = block.block_hash.unwrap();
-            if verify_block_hash(&block, chain, expected_block_hash)? == VerifyResult::Mismatch {
+            let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+                let block_number = block.block_number.unwrap();
+                let verify_result = verify_block_hash(&block, chain, expected_block_hash)
+                    .with_context(move || format!("Verify block {block_number}"))?;
+                Ok((block, verify_result))
+            });
+            let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
+            if verify_result == VerifyResult::Mismatch {
                 let block_number = block.block_number.unwrap();
                 tracing::warn!(?block_number, block_hash = ?expected_block_hash, "Block hash mismatch");
             }
-            Ok(DownloadBlock::Block(Box::new(block)))
+            Ok(DownloadBlock::Block(block))
         }
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound => {
             // This would occur if we queried past the head of the chain. We now need to check that
