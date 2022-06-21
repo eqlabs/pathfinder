@@ -987,13 +987,17 @@ impl RpcApi {
                 // block we have, which is exactly how the py/src/call.py handles it.
                 h.call(request, block_hash).map_err(Error::from).await
             }
-            (Some(_), _) | (None, _) => {
+            (Some(_), _) => {
                 // just forward it to the sequencer for now.
                 self.sequencer
                     .call(request.into(), block_hash)
                     .map_ok(|x| x.result)
                     .map_err(Error::from)
                     .await
+            }
+            (None, _) => {
+                // this is to remain consistent with estimateFee
+                Err(internal_server_error("Unsupported configuration"))
             }
         }
     }
