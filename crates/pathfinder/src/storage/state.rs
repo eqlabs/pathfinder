@@ -107,13 +107,11 @@ impl L1StateTable {
     /// i.e. it deletes all rows where `block number >= reorg_tail`.
     pub fn reorg(connection: &Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
         // Added to trace a primary key constraint failure bug.
-        let original_head: Option<u64> = connection
-            .query_row(
-                "SELECT MAX(starknet_block_number) FROM l1_state",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
+        let original_head: Option<u64> = connection.query_row(
+            "SELECT MAX(starknet_block_number) FROM l1_state",
+            [],
+            |row| row.get(0),
+        )?;
 
         let reorg_count = connection.execute(
             "DELETE FROM l1_state WHERE starknet_block_number >= ?",
@@ -121,13 +119,11 @@ impl L1StateTable {
         )? as u64;
 
         // Added to trace a primary key constraint failure bug.
-        let new_head: Option<u64> = connection
-            .query_row(
-                "SELECT MAX(starknet_block_number) FROM l1_state",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
+        let new_head: Option<u64> = connection.query_row(
+            "SELECT MAX(starknet_block_number) FROM l1_state",
+            [],
+            |row| row.get(0),
+        )?;
 
         // Sanity check the result of reorg.
         if let Some(new_head) = new_head {
@@ -159,7 +155,7 @@ impl L1StateTable {
             }
             (Some(orig), None) => {
                 anyhow::ensure!(
-                    orig == reorg_count,
+                    orig + 1 == reorg_count,
                     "Deletion count ({}) did not match head change ({} -> None)",
                     reorg_count,
                     orig
