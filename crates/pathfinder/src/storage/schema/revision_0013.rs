@@ -1,4 +1,3 @@
-use crate::sequencer::reply::transaction::Type as TransactionType;
 use crate::{core::ClassHash, state::CompressedContract};
 #[allow(unused)]
 use anyhow::Context;
@@ -150,6 +149,17 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     extract_compress.join().unwrap();
 
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum TransactionType {
+    #[serde(rename = "DEPLOY")]
+    Deploy,
+    #[serde(rename = "INVOKE_FUNCTION")]
+    InvokeFunction,
+    #[serde(rename = "DECLARE")]
+    Declare,
 }
 
 #[derive(serde::Deserialize)]

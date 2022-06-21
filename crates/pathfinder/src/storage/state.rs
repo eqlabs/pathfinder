@@ -1735,7 +1735,6 @@ mod tests {
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str("0xF").unwrap(),
                     ),
-                    r#type: crate::sequencer::reply::transaction::Type::InvokeFunction,
                 }),
                 transaction::Transaction::Invoke(transaction::InvokeTransaction {
                     calldata: vec![],
@@ -1748,7 +1747,6 @@ mod tests {
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str("0x1").unwrap(),
                     ),
-                    r#type: crate::sequencer::reply::transaction::Type::InvokeFunction,
                 }),
             ];
 

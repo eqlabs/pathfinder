@@ -394,7 +394,6 @@ mod tests {
             reply::transaction::{
                 execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
                 EntryPointType, Event, ExecutionResources, InvokeTransaction, Receipt, Transaction,
-                Type,
             },
             test_utils::*,
             Client,
@@ -552,7 +551,6 @@ mod tests {
             max_fee: Fee(H128::zero()),
             signature: vec![],
             transaction_hash: txn0_hash,
-            r#type: Type::Deploy,
         };
         let mut receipt0 = Receipt {
             actual_fee: None,

@@ -401,7 +401,7 @@ fn number_of_events_in_block(block: &Block) -> usize {
 mod tests {
     use crate::{
         core::{EntryPoint, Fee},
-        sequencer::reply::transaction::{EntryPointType, InvokeTransaction, Type},
+        sequencer::reply::transaction::{EntryPointType, InvokeTransaction},
     };
 
     use super::*;
@@ -452,7 +452,6 @@ mod tests {
                 TransactionSignatureElem(StarkHash::from_hex_str("0x3").unwrap()),
             ],
             transaction_hash: StarknetTransactionHash(StarkHash::from_hex_str("0x1").unwrap()),
-            r#type: Type::InvokeFunction,
         });
 
         // produced by the cairo-lang Python implementation:
