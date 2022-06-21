@@ -39,6 +39,7 @@ pub trait EthereumTransport {
     async fn chain(&self) -> anyhow::Result<Chain>;
     async fn logs(&self, filter: Filter) -> std::result::Result<Vec<Log>, LogsError>;
     async fn transaction(&self, id: TransactionId) -> web3::Result<Option<Transaction>>;
+    async fn gas_price(&self) -> web3::Result<U256>;
 }
 
 /// An implementation of [`EthereumTransport`] which uses [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
@@ -207,6 +208,10 @@ impl EthereumTransport for HttpTransport {
             log_and_always_retry,
         )
         .await
+    }
+
+    async fn gas_price(&self) -> web3::Result<U256> {
+        retry(|| self.0.eth().gas_price(), log_and_always_retry).await
     }
 }
 

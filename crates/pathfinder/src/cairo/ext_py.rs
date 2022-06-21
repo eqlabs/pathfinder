@@ -16,7 +16,7 @@
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
 use crate::core::CallResultValue;
-use crate::rpc::types::{request::Call, BlockHashOrTag};
+use crate::rpc::types::{reply::FeeEstimate, request::Call, BlockHashOrTag};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -43,12 +43,52 @@ impl Handle {
         at_block: BlockHashOrTag,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
         use tracing::field::Empty;
-        let (tx, rx) = oneshot::channel();
+        let (response, rx) = oneshot::channel();
 
         let continued_span = tracing::info_span!("ext_py_call", pid = Empty);
 
         self.command_tx
-            .send(((call, at_block, tx), continued_span))
+            .send((
+                Command::Call {
+                    call,
+                    at_block,
+                    response,
+                },
+                continued_span,
+            ))
+            .await
+            .map_err(|_| CallFailure::Shutdown)?;
+
+        match rx.await {
+            Ok(x) => x,
+            Err(_closed) => Err(CallFailure::Shutdown),
+        }
+    }
+
+    /// Fee estimation is a superset of call with the call result value discarded.
+    ///
+    /// Returns the fee as a three components.
+    pub async fn estimate_fee(
+        &self,
+        call: Call,
+        at_block: BlockHashOrTag,
+        gas_price: GasPriceSource,
+    ) -> Result<FeeEstimate, CallFailure> {
+        use tracing::field::Empty;
+        let (response, rx) = oneshot::channel();
+
+        let continued_span = tracing::info_span!("ext_py_est_fee", pid = Empty);
+
+        self.command_tx
+            .send((
+                Command::EstimateFee {
+                    call,
+                    at_block,
+                    gas_price,
+                    response,
+                },
+                continued_span,
+            ))
             .await
             .map_err(|_| CallFailure::Shutdown)?;
 
@@ -60,7 +100,7 @@ impl Handle {
 }
 
 /// Reasons for a call to fail.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CallFailure {
     /// The requested block could not be found.
     NoSuchBlock,
@@ -72,6 +112,31 @@ pub enum CallFailure {
     Internal(&'static str),
     /// Channel related issue or shutting down.
     Shutdown,
+}
+
+/// Where should the call code get the used `BlockInfo::gas_price`
+#[derive(Debug)]
+pub enum GasPriceSource {
+    /// Use gasPrice recorded on the `starknet_blocks::gas_price`.
+    ///
+    /// This is not implied by other arguments such as `at_block` because we might need to
+    /// manufacture a block hash for some future use cases.
+    PastBlock,
+    /// Use this latest value from `eth_gasPrice`.
+    ///
+    /// U256 is not used for serialization matters, [u8; 32] could be used as well. python side's
+    /// serialization limits this value to u128 but in general `eth_gasPrice` is U256.
+    Current(web3::types::H256),
+}
+
+impl GasPriceSource {
+    /// Convert to an option of H256, for serialization.
+    fn as_option(&self) -> Option<&web3::types::H256> {
+        match self {
+            GasPriceSource::PastBlock => None,
+            GasPriceSource::Current(price) => Some(price),
+        }
+    }
 }
 
 impl From<ErrorKind> for CallFailure {
@@ -90,12 +155,48 @@ impl From<ErrorKind> for CallFailure {
 /// to be.
 type SharedReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
 
-/// Alias for the type used to transfer commands over to executors.
-type Command = (
-    Call,
-    BlockHashOrTag,
-    oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
-);
+/// Command from outside of the module wrapped by [`Handle`] to be sent for execution in python.
+#[derive(Debug)]
+enum Command {
+    Call {
+        call: Call,
+        at_block: BlockHashOrTag,
+        response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
+    },
+    EstimateFee {
+        call: Call,
+        at_block: BlockHashOrTag,
+        /// Price input for the fee estimation, also communicated back in response
+        gas_price: GasPriceSource,
+        response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
+    },
+}
+
+impl Command {
+    fn is_closed(&self) -> bool {
+        use Command::*;
+        match self {
+            Call { response, .. } => response.is_closed(),
+            EstimateFee { response, .. } => response.is_closed(),
+        }
+    }
+
+    fn fail(self, err: CallFailure) -> Result<(), CallFailure> {
+        use Command::*;
+        match self {
+            Call { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
+            EstimateFee { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
+        }
+    }
+
+    async fn closed(&mut self) {
+        use Command::*;
+        match self {
+            Call { response, .. } => response.closed().await,
+            EstimateFee { response, .. } => response.closed().await,
+        }
+    }
+}
 
 /// Informational events from python process executors.
 #[derive(Debug)]
@@ -211,7 +312,7 @@ mod tests {
                                     .unwrap(),
                                 ),
                                 calldata: vec![crate::core::CallParam(
-                                    StarkHash::from_hex_str("84").unwrap(),
+                                    StarkHash::from_hex_str("0x84").unwrap(),
                                 )],
                                 entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
                             },
@@ -230,6 +331,153 @@ mod tests {
 
         shutdown_tx.send(()).unwrap();
 
+        jh.await.unwrap();
+    }
+
+    #[test_log::test(tokio::test)]
+    #[ignore] // these tests require that you've entered into python venv
+    async fn estimate_fee_for_example() {
+        // TODO: refactor the outer parts to a with_test_env or similar?
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+
+        let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
+
+        let mut conn = s.connection().unwrap();
+        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
+
+        let tx = conn.transaction().unwrap();
+
+        fill_example_state(&tx);
+
+        tx.commit().unwrap();
+
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let (handle, jh) = super::start(
+            PathBuf::from(db_file.path()),
+            std::num::NonZeroUsize::new(1).unwrap(),
+            async move {
+                let _ = shutdown_rx.await;
+            },
+        )
+        .await
+        .unwrap();
+
+        let call = super::Call {
+            contract_address: crate::core::ContractAddress(
+                StarkHash::from_hex_str(
+                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                )
+                .unwrap(),
+            ),
+            calldata: vec![crate::core::CallParam(
+                StarkHash::from_hex_str("0x84").unwrap(),
+            )],
+            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+        };
+
+        let at_block_fee = handle
+            .estimate_fee(
+                call.clone(),
+                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+                )),
+                super::GasPriceSource::PastBlock,
+            )
+            .await
+            .unwrap();
+
+        use web3::types::H256;
+
+        assert_eq!(
+            at_block_fee,
+            crate::rpc::types::reply::FeeEstimate {
+                consumed: H256::from_low_u64_be(0),
+                gas_price: H256::from_low_u64_be(1),
+                fee: H256::from_low_u64_be(69)
+            }
+        );
+
+        let current_fee = handle
+            .estimate_fee(
+                call,
+                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+                )),
+                super::GasPriceSource::Current(H256::from_low_u64_be(10)),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            current_fee,
+            crate::rpc::types::reply::FeeEstimate {
+                consumed: H256::from_low_u64_be(0),
+                gas_price: H256::from_low_u64_be(10),
+                fee: H256::from_low_u64_be(690)
+            }
+        );
+
+        shutdown_tx.send(()).unwrap();
+
+        jh.await.unwrap();
+    }
+
+    #[test_log::test(tokio::test)]
+    #[ignore]
+    async fn call_with_unknown_contract() {
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+
+        let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
+
+        let mut conn = s.connection().unwrap();
+        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
+
+        let tx = conn.transaction().unwrap();
+
+        fill_example_state(&tx);
+
+        tx.commit().unwrap();
+
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let (handle, jh) = super::start(
+            PathBuf::from(db_file.path()),
+            std::num::NonZeroUsize::new(1).unwrap(),
+            async move {
+                let _ = shutdown_rx.await;
+            },
+        )
+        .await
+        .unwrap();
+
+        let call = super::Call {
+            contract_address: crate::core::ContractAddress(
+                StarkHash::from_hex_str(
+                    // this is one bit off from other examples
+                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375",
+                )
+                .unwrap(),
+            ),
+            calldata: vec![crate::core::CallParam(
+                StarkHash::from_hex_str("0x84").unwrap(),
+            )],
+            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+        };
+
+        let result = handle
+            .call(
+                call,
+                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+                )),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(result, super::CallFailure::NoSuchContract);
+
+        let _ = shutdown_tx.send(());
         jh.await.unwrap();
     }
 
@@ -292,7 +540,7 @@ mod tests {
         .unwrap();
 
         tx.execute(
-            "insert into tree_global (hash, data, ref_count) values (?1, ?2, 1)",
+            "insert into tree_global (hash, data, ref_count) values (?, ?, 1)",
             rusqlite::params![
                 &hex::decode("0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd").unwrap()[..],
                 &hex::decode("002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374fb").unwrap()[..],
@@ -301,7 +549,7 @@ mod tests {
         .unwrap();
 
         tx.execute(
-            "insert into starknet_blocks (hash, number, timestamp, root) values (?1, 1, 1, ?)",
+            "insert into starknet_blocks (hash, number, timestamp, root, gas_price) values (?, 1, 1, ?, X'01')",
             rusqlite::params![
                 &StarkHash::from_be_slice(&b"some blockhash somewhere"[..])
                     .unwrap()

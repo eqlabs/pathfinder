@@ -289,6 +289,13 @@ serde_with::serde_conv!(
     |s: &str| bytes_from_hex_str::<{ H256::len_bytes() }>(s).map(|b| TransactionVersion(H256::from(b)))
 );
 
+serde_with::serde_conv!(
+    pub H256AsHexStr,
+    web3::types::H256,
+    |u: &H256| bytes_to_hex_str(u.as_bytes()),
+    |s: &str| bytes_from_hex_str::<32>(s).map(H256::from)
+);
+
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_biguint(b: BigUint) -> Result<StarkHash, OverflowError> {
     StarkHash::from_be_slice(&b.to_bytes_be())

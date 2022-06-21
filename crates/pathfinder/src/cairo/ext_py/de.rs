@@ -1,7 +1,7 @@
 //! The json deserializable types
 
 use super::{CallFailure, SubprocessError};
-use crate::core::CallResultValue;
+use crate::{core::CallResultValue, rpc::types::reply::FeeEstimate};
 
 /// The python loop currently responds with these four possibilities. An enum would be more
 /// appropriate.
@@ -23,14 +23,22 @@ pub(crate) struct ChildResponse<'a> {
     timings: Timings,
     /// The real output from the contract when `status` is [`Status::Ok`].
     #[serde(default)]
-    output: Vec<CallResultValue>,
+    output: Option<OutputValue>,
+}
+
+/// Deserializes either the call output value or the fee estimate.
+#[derive(serde::Deserialize, Debug)]
+#[serde(untagged)]
+pub(crate) enum OutputValue {
+    Call(Vec<CallResultValue>),
+    Fee(FeeEstimate),
 }
 
 impl<'a> ChildResponse<'a> {
     pub(super) fn refine(mut self) -> Result<RefinedChildResponse<'a>, SubprocessError> {
         match (&self.status, &mut self.kind, &mut self.exception) {
             (Status::Ok, None, None) => Ok(RefinedChildResponse {
-                status: RefinedStatus::Ok(self.output),
+                status: RefinedStatus::Ok(self.output.ok_or(SubprocessError::InvalidResponse)?),
                 timings: self.timings,
             }),
             (Status::Error, x @ Some(_), None) => Ok(RefinedChildResponse {
@@ -48,13 +56,9 @@ impl<'a> ChildResponse<'a> {
 }
 
 impl RefinedChildResponse<'_> {
-    pub fn into_messages(
+    pub(super) fn into_messages(
         self,
-    ) -> (
-        Option<Timings>,
-        Status,
-        Result<Vec<CallResultValue>, CallFailure>,
-    ) {
+    ) -> (Option<Timings>, Status, Result<OutputValue, CallFailure>) {
         match self {
             RefinedChildResponse {
                 timings,
@@ -106,7 +110,7 @@ pub enum Status {
 /// No plans aside from logging for now for the data.
 #[derive(serde::Deserialize, Debug, Default)]
 #[allow(unused)]
-pub struct Timings {
+pub(super) struct Timings {
     /// Time it took to parse, before opening the transaction.
     parsing: Option<f64>,
     /// Time it took to find the tree root, and execute.
@@ -114,14 +118,14 @@ pub struct Timings {
 }
 
 /// The format we'd prefer to process instead of [`ChildResponse`].
-pub struct RefinedChildResponse<'a> {
+pub(super) struct RefinedChildResponse<'a> {
     status: RefinedStatus<'a>,
     timings: Timings,
 }
 
 /// More sensible alternative to [`Status`].
-pub enum RefinedStatus<'a> {
-    Ok(Vec<CallResultValue>),
+pub(super) enum RefinedStatus<'a> {
+    Ok(OutputValue),
     Error(ErrorKind),
     Failed(std::borrow::Cow<'a, str>),
 }

@@ -1,8 +1,8 @@
 //! Launching and communication with the subprocess
 
 use super::{
-    de::{ChildResponse, RefinedChildResponse, Status, Timings},
-    ser::ChildCommand,
+    de::{ChildResponse, OutputValue, RefinedChildResponse, Status, Timings},
+    ser::{ChildCommand, Verb},
     CallFailure, Command, SharedReceiver, SubProcessEvent, SubprocessError, SubprocessExitReason,
 };
 use anyhow::Context;
@@ -75,7 +75,7 @@ pub(super) async fn launch_python(
             },
         };
 
-        if command.2.is_closed() {
+        if command.is_closed() {
             // quickly loadshed, as the caller has already left.
             continue;
         }
@@ -253,29 +253,45 @@ async fn spawn(
 /// - Err(None) if nothing was done
 /// - Err(Some(_)) if the process can no longer be reused
 async fn process(
-    command: Command,
+    mut command: Command,
     command_buffer: &mut Vec<u8>,
     stdin: &mut ChildStdin,
     stdout: &mut BufReader<ChildStdout>,
     buffer: &mut String,
 ) -> Result<(Option<Timings>, Status), Option<SubprocessExitReason>> {
-    let (call, at_block, mut response) = command;
     command_buffer.clear();
 
-    let cmd = ChildCommand {
-        contract_address: &call.contract_address,
-        calldata: &call.calldata,
-        entry_point_selector: &call.entry_point_selector,
-        at_block: &at_block,
+    let sent_over = match &command {
+        Command::Call { call, at_block, .. } => ChildCommand {
+            command: Verb::Call,
+            contract_address: &call.contract_address,
+            calldata: &call.calldata,
+            entry_point_selector: &call.entry_point_selector,
+            at_block,
+            // TODO: this might change in the future, if *later* gas price needs to be available
+            // sometimes
+            gas_price: None,
+        },
+        Command::EstimateFee {
+            call,
+            at_block,
+            gas_price,
+            ..
+        } => ChildCommand {
+            command: Verb::EstimateFee,
+            contract_address: &call.contract_address,
+            calldata: &call.calldata,
+            entry_point_selector: &call.entry_point_selector,
+            at_block,
+            gas_price: gas_price.as_option(),
+        },
     };
 
     let mut cursor = std::io::Cursor::new(command_buffer);
 
-    if let Err(e) = serde_json::to_writer(&mut cursor, &cmd) {
-        error!(command=?cmd, error=%e, "Failed to render command as json");
-        let _ = response.send(Err(CallFailure::Internal(
-            "Failed to render command as json",
-        )));
+    if let Err(e) = serde_json::to_writer(&mut cursor, &sent_over) {
+        error!(?command, error=%e, "Failed to render command as json");
+        let _ = command.fail(CallFailure::Internal("Failed to render command as json"));
         return Err(None);
     }
 
@@ -294,7 +310,7 @@ async fn process(
             // no need to await for child dying here, because the event would close the childs
             // stdout and thus break our read_line and thus return a SubprocessError::IO and
             // we'd break out.
-            _ = response.closed() => {
+            _ = command.closed() => {
                 // attempt to guard against a call that essentially freezes up the python for
                 // how many minutes. by keeping our eye on this, we'll give the caller a
                 // chance to set timeouts, which will drop the futures.
@@ -307,7 +323,7 @@ async fn process(
         }
     };
 
-    let (timings, status, sent_response) = match res {
+    let (timings, status, output) = match res {
         Ok(resp) => resp.into_messages(),
         Err(SubprocessError::InvalidJson(error)) => {
             // buffer still holds the response... might be good for debugging
@@ -329,7 +345,7 @@ async fn process(
         }
         Err(SubprocessError::IO) => {
             let error = CallFailure::Internal("Input/output");
-            let _ = response.send(Err(error));
+            let _ = command.fail(error);
 
             // TODO: consider if we'd just retry; put this back into the queue?
             return Err(Some(SubprocessExitReason::UnrecoverableIO));
@@ -340,7 +356,24 @@ async fn process(
     // let result = response.send(sent_response).map_err(|_| ());
     // trace!(?result, "Call result sent");
 
-    let _ = response.send(sent_response);
+    // TODO: this could be pushed to Command but ...
+    match (command, output) {
+        (Command::Call { response, .. }, Ok(OutputValue::Call(x))) => {
+            let _ = response.send(Ok(x));
+        }
+        (Command::EstimateFee { response, .. }, Ok(OutputValue::Fee(x))) => {
+            let _ = response.send(Ok(x));
+        }
+        (command @ Command::Call { .. }, Err(fail))
+        | (command @ Command::EstimateFee { .. }, Err(fail)) => {
+            let _ = command.fail(fail);
+        }
+        (command @ Command::Call { .. }, output @ Ok(OutputValue::Fee(_)))
+        | (command @ Command::EstimateFee { .. }, output @ Ok(OutputValue::Call(_))) => {
+            error!(?command, ?output, "python script mixed response to command");
+            let _ = command.fail(CallFailure::Internal("mixed response"));
+        }
+    }
 
     Ok((timings, status))
 }

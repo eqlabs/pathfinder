@@ -199,8 +199,8 @@ def populate_test_contract_with_132_on_3(con):
             bytes.fromhex(
                 "0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd"
             ),
-            left_pad(b"0", 16),
-            left_pad(b"0", 32),
+            left_pad(b"\x00", 16),
+            left_pad(b"\x00", 32),
         ],
     )
 
@@ -223,6 +223,9 @@ def compile_test_contract():
 
 
 def default_132_on_3_scenario(con, input_jsons):
+    assert isinstance(input_jsons, list) or isinstance(
+        input_jsons, tuple
+    ), f"input_jsons need to be a list or tuple, not a {type(input_jsons)}"
     output_catcher = io.StringIO()
 
     do_loop(con, input_jsons, output_catcher)
@@ -232,6 +235,10 @@ def default_132_on_3_scenario(con, input_jsons):
     print(output)
 
     def strip_timings(loaded_json):
+        """
+        Remove the timings because that's not really interesting for our tests here,
+        cannot be compared for equality.
+        """
         del loaded_json["timings"]
         return loaded_json
 
@@ -250,9 +257,9 @@ def test_success():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
-            f'{{ "at_block": "0x{(b"some blockhash somewhere").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
-            f'{{ "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": "0x{(b"some blockhash somewhere").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
         ],
     )
 
@@ -271,15 +278,17 @@ def test_positive_directly():
     contract_address = populate_test_contract_with_132_on_3(con)
 
     command = {
+        "command": "call",
         "at_block": 1,
         "contract_address": contract_address,
         "entry_point_selector": "get_value",
         "calldata": [132],
+        "gas_price": None,
     }
 
     con.execute("BEGIN")
 
-    output = loop_inner(con, command)
+    (verb, output) = loop_inner(con, command)
 
     assert output == [3]
 
@@ -296,7 +305,7 @@ def test_called_contract_not_found():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "at_block": 1, "contract_address": {contract_address + 1}, "entry_point_selector": "get_value", "calldata": [132] }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address + 1}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
         ],
     )
 
@@ -312,7 +321,7 @@ def test_nested_called_contract_not_found():
         con,
         [
             # call neighbouring contract, which doesn't exist in the global state tree
-            f'{{ "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value", "calldata": [{contract_address - 1}, 132, 4] }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null }}'
         ],
     )
 
@@ -334,7 +343,7 @@ def test_invalid_schema_version():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
         ],
     )
 
@@ -352,9 +361,9 @@ def test_no_such_block():
         con,
         (
             # there's only block 1
-            f'{{ "at_block": 99999999999, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
-            f'{{ "at_block": "0x{(b"no such block").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
-            f'{{ "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132] }}',
+            f'{{ "command": "call", "at_block": 99999999999, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": "0x{(b"no such block").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
         ),
     )
 
@@ -371,3 +380,62 @@ def test_check_cairolang_version():
     # run this here as well so that we get earlier than CI feedback
     # of another constant that needs to be upgraded
     assert check_cairolang_version()
+
+
+def test_fee_estimate_on_positive_directly():
+    # fee estimation is a new thing on top of a call, but returning only the estimated fee
+    con = inmemory_with_tables()
+    contract_address = populate_test_contract_with_132_on_3(con)
+
+    con.execute("BEGIN")
+
+    # f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
+    command = {
+        "command": "estimate_fee",
+        "at_block": "latest",
+        "contract_address": contract_address,
+        "entry_point_selector": "get_value",
+        "calldata": [132],
+        # gas_price is None for null => use block's (zero)
+        "gas_price": None,
+    }
+
+    (verb, output) = loop_inner(con, command)
+
+    assert output == {
+        "gas_consumed": 0,
+        "gas_price": 0,
+        "overall_fee": 0,
+    }
+
+
+def test_fee_estimate_on_positive():
+    # fee estimation is a new thing on top of a call, but returning only the estimated fee
+    con = inmemory_with_tables()
+    contract_address = populate_test_contract_with_132_on_3(con)
+
+    (first, second) = default_132_on_3_scenario(
+        con,
+        [
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": "0xa" }}',
+        ],
+    )
+
+    assert first == {
+        "status": "ok",
+        "output": {
+            "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
+            "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
+        },
+    }
+
+    assert second == {
+        "status": "ok",
+        "output": {
+            "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
+            "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (690).to_bytes(32, "big").hex(),
+        },
+    }

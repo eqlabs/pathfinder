@@ -150,6 +150,7 @@ mod tests {
         env::remove_var("PATHFINDER_HTTP_RPC_ADDRESS");
         env::remove_var("PATHFINDER_DATA_DIRECTORY");
         env::remove_var("PATHFINDER_SEQUENCER_URL");
+        env::remove_var("PATHFINDER_PYTHON_SUBPROCESSES");
     }
 
     #[test]

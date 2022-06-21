@@ -9,6 +9,7 @@ from starkware.storage.storage import Storage
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 12
 EXPECTED_CAIRO_VERSION = "0.9.0"
+SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
 
 
 def main():
@@ -24,7 +25,8 @@ def main():
     # make sure that regardless of the interesting platform we communicate sanely to pathfinder
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
-    # stderr should not be used
+    # stderr is only for logging, it's piped to tracing::trace one line at a time
+    sys.stderr.reconfigure(encoding="utf-8")
 
     if not check_cairolang_version():
         print(
@@ -59,14 +61,18 @@ def check_cairolang_version():
 def do_loop(connection, input_gen, output_file):
 
     required = {
-        # FIXME: this should be hash_or_latest
         "at_block": int_hash_or_latest,
-        "contract_address": hash_or_int,
+        "contract_address": int_param,
         "entry_point_selector": string_or_int,
-        "calldata": list_of_hash_or_int,
+        "calldata": list_of_int,
+        "command": required_command,
+        "gas_price": required_gas_price,
     }
 
-    optional = {"caller_address": hash_or_int, "signature": hash_or_int}
+    optional = {
+        "caller_address": int_param,
+        "signature": int_param,
+    }
 
     for line in input_gen:
         if line == "" or line.startswith("#"):
@@ -86,10 +92,7 @@ def do_loop(connection, input_gen, output_file):
 
             output = loop_inner(connection, command)
 
-            # we need to render the retdata as hex strings, so we can just deserialize it easily
-            out["output"] = list(
-                map(lambda x: "0x" + x.to_bytes(32, "big").hex(), output)
-            )
+            out["output"] = render(*output)
         except NoSuchBlock:
             out = {"status": "error", "kind": "NO_SUCH_BLOCK"}
         except NoSuchContract:
@@ -127,9 +130,14 @@ def loop_inner(connection, command):
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
 
-    (block_info, global_root) = resolve_block(connection, command["at_block"])
+    verb = command["command"]
 
-    return asyncio.run(
+    # the later parts will have access to gas_price through this block_info
+    (block_info, global_root) = resolve_block(
+        connection, command["at_block"], command.get("gas_price", None)
+    )
+
+    (result, carried_state) = asyncio.run(
         do_call(
             SqliteAdapter(connection),
             global_root,
@@ -141,6 +149,28 @@ def loop_inner(connection, command):
             block_info,
         )
     )
+
+    if verb == "call":
+        return (verb, result.call_info.retdata)
+    else:
+        assert verb == "estimate_fee", "command should had been call or estimate_fee"
+        fees = estimate_fee_after_call(result.call_info, carried_state)
+        return (verb, fees)
+
+
+def render(verb, vals):
+    def prefixed_hex(x):
+        return f"0x{x.to_bytes(32, 'big').hex()}"
+
+    if verb == "call":
+        return list(map(prefixed_hex, vals))
+    else:
+        assert verb == "estimate_fee"
+        return {
+            "gas_consumed": prefixed_hex(vals["gas_consumed"]),
+            "gas_price": prefixed_hex(vals["gas_price"]),
+            "overall_fee": prefixed_hex(vals["overall_fee"]),
+        }
 
 
 def parse_command(command, required, optional):
@@ -184,7 +214,7 @@ def int_hash_or_latest(s):
     return len_safe_hex(s)
 
 
-def hash_or_int(s):
+def int_param(s):
     if type(s) == int:
         return s
     if s.startswith("0x"):
@@ -212,7 +242,7 @@ def string_or_int(s):
 
     if type(s) == str:
         if s.startswith("0x"):
-            return hash_or_int(s)
+            return int_param(s)
         # not sure if this should be supported but strings get ran through the
         # truncated keccak
         return s
@@ -220,13 +250,28 @@ def string_or_int(s):
     raise TypeError(f"expected string or int, not {type(s)}")
 
 
-def list_of_hash_or_int(s):
+def list_of_int(s):
     assert type(s) == list, f"Expected list, got {type(s)}"
-    return list(map(hash_or_int, s))
+    return list(map(int_param, s))
+
+
+def required_command(s):
+    assert s in SUPPORTED_COMMANDS
+    return s
+
+
+def required_gas_price(s):
+    if s is None:
+        # this means, use the block gas price
+        return None
+    elif type(s) == str:
+        return int.from_bytes(len_safe_hex(s), "big")
+    else:
+        assert type(s) == int, "expected gas_price to be an int"
+        return s
 
 
 def check_schema(connection):
-    global first
     assert connection.in_transaction
     cursor = connection.execute("select user_version from pragma_user_version")
     assert cursor is not None, "there has to be an user_version defined in the database"
@@ -235,7 +280,13 @@ def check_schema(connection):
     return version == EXPECTED_SCHEMA_REVISION
 
 
-def resolve_block(connection, at_block):
+def resolve_block(connection, at_block, forced_gas_price):
+    """
+    forced_gas_price is the gas price we must use for this blockinfo, if None,
+    the one from starknet_blocks will be used. this allows the caller to select
+    where the gas_price information is coming from, and for example, select
+    different one for latest pointed out by hash or tag.
+    """
     from starkware.starknet.business_logic.state.state import BlockInfo
 
     if at_block == "latest":
@@ -267,6 +318,11 @@ def resolve_block(connection, at_block):
         raise NoSuchBlock(at_block)
 
     gas_price = int.from_bytes(gas_price, "big")
+
+    if forced_gas_price is not None:
+        # allow caller to override any; see rust side's GasPriceSource for more rationale
+        gas_price = forced_gas_price
+
     sequencer_address = int.from_bytes(sequencer_address, "big")
 
     return (
@@ -455,6 +511,10 @@ async def do_call(
         ffc, state_selector=state_selector
     )
 
+    # using carried state as child_state is only required for fee estimation
+    # but doesn't seem to matter for regular call.
+    carried_state = carried_state.create_child_state_for_querying()
+
     state = StarknetState(state=carried_state, general_config=general_config)
     max_fee = 0
 
@@ -462,8 +522,52 @@ async def do_call(
         contract_address, selector, calldata, caller_address, max_fee, signature
     )
 
-    # this is everything we need, at least so far for the "call".
-    return output.call_info.retdata
+    # return both of these as carried state is needed for the fee estimation afterwards
+    return (output, carried_state)
+
+
+def estimate_fee_after_call(call_info, carried_state):
+    from starkware.starknet.definitions.general_config import (
+        StarknetGeneralConfig,
+        N_STEPS_RESOURCE,
+    )
+    from starkware.cairo.lang.builtins.all_builtins import (
+        PEDERSEN_BUILTIN,
+        RANGE_CHECK_BUILTIN,
+        ECDSA_BUILTIN,
+        BITWISE_BUILTIN,
+        OUTPUT_BUILTIN,
+        EC_OP_BUILTIN,
+    )
+    from starkware.starknet.business_logic.transaction_fee import calculate_tx_fee
+    from starkware.starknet.business_logic.utils import get_invoke_tx_total_resources
+
+    general_config = StarknetGeneralConfig()
+
+    # given on 2022-06-07
+    general_config.cairo_resource_fee_weights.update(
+        {
+            N_STEPS_RESOURCE: 1.0,
+            PEDERSEN_BUILTIN: 8.0,
+            RANGE_CHECK_BUILTIN: 8.0,
+            ECDSA_BUILTIN: 512.0,
+            BITWISE_BUILTIN: 256.0,
+            OUTPUT_BUILTIN: 0.0,
+            EC_OP_BUILTIN: 0.0,
+        }
+    )
+
+    (l1_gas_used, _cairo_resources_used) = get_invoke_tx_total_resources(
+        carried_state, call_info
+    )
+
+    overall_fee = calculate_tx_fee(carried_state, call_info, general_config)
+
+    return {
+        "gas_consumed": l1_gas_used,
+        "gas_price": carried_state.block_info.gas_price,
+        "overall_fee": overall_fee,
+    }
 
 
 if __name__ == "__main__":
