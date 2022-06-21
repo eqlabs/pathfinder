@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::core::{ClassHash, StarknetBlockHash, StarknetBlockNumber};
+use crate::core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber};
 use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
 use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{Contract, StateDiff};
@@ -51,7 +51,7 @@ pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     sequencer: impl sequencer::ClientApi,
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash)>,
-    chain: crate::ethereum::Chain,
+    chain: Chain,
 ) -> anyhow::Result<()> {
     use crate::state::sync::head_poll_interval;
 
@@ -177,7 +177,7 @@ enum DownloadBlock {
 
 async fn download_block(
     block_number: StarknetBlockNumber,
-    chain: crate::ethereum::Chain,
+    chain: Chain,
     prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
@@ -237,7 +237,7 @@ async fn download_block(
 
 async fn reorg(
     head: (StarknetBlockNumber, StarknetBlockHash),
-    chain: crate::ethereum::Chain,
+    chain: Chain,
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash)>> {
@@ -740,7 +740,7 @@ mod tests {
 
         mod happy_path {
             use super::*;
-            use crate::ethereum::Chain;
+            use crate::core::Chain;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -909,7 +909,7 @@ mod tests {
 
         mod reorg {
             use super::*;
-            use crate::ethereum::Chain;
+            use crate::core::Chain;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]

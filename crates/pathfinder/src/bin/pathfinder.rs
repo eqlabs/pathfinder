@@ -2,11 +2,8 @@
 
 use anyhow::Context;
 use pathfinder_lib::{
-    cairo, config,
-    ethereum::{
-        self,
-        transport::{EthereumTransport, HttpTransport},
-    },
+    cairo, config, core,
+    ethereum::transport::{EthereumTransport, HttpTransport},
     rpc, sequencer, state,
     storage::Storage,
 };
@@ -39,8 +36,8 @@ async fn main() -> anyhow::Result<()> {
         .context("Determining Ethereum chain")?;
 
     let database_path = config.data_directory.join(match ethereum_chain {
-        ethereum::Chain::Mainnet => "mainnet.sqlite",
-        ethereum::Chain::Goerli => "goerli.sqlite",
+        core::Chain::Mainnet => "mainnet.sqlite",
+        core::Chain::Goerli => "goerli.sqlite",
     });
     let storage = Storage::migrate(database_path.clone()).unwrap();
     info!(location=?database_path, "Database migrated.");

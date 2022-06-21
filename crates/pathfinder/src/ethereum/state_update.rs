@@ -6,12 +6,11 @@ use retrieve::*;
 use stark_hash::StarkHash;
 
 use crate::{
-    core::{ClassHash, ContractAddress, StorageAddress, StorageValue},
+    core::{Chain, ClassHash, ContractAddress, StorageAddress, StorageValue},
     ethereum::{
         log::StateUpdateLog,
         state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
         transport::{EthereumTransport, LogsError},
-        Chain,
     },
 };
 
@@ -141,7 +140,7 @@ mod tests {
             block_number: StarknetBlockNumber(16407),
         };
 
-        let chain = crate::ethereum::Chain::Goerli;
+        let chain = crate::core::Chain::Goerli;
         let transport = HttpTransport::test_transport(chain);
         let update = StateUpdate::retrieve(&transport, update_log, chain)
             .await

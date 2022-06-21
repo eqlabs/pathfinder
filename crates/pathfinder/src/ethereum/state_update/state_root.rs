@@ -1,9 +1,6 @@
 use crate::{
-    core::EthereumBlockNumber,
-    ethereum::{
-        log::{LogFetcher, StateUpdateLog},
-        Chain,
-    },
+    core::{Chain, EthereumBlockNumber},
+    ethereum::log::{LogFetcher, StateUpdateLog},
 };
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
@@ -47,8 +44,8 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
-        core::StarknetBlockNumber,
-        ethereum::{transport::HttpTransport, Chain},
+        core::{Chain, StarknetBlockNumber},
+        ethereum::transport::HttpTransport,
     };
 
     use super::*;

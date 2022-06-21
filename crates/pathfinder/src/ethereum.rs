@@ -1,7 +1,6 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
-use stark_hash::StarkHash;
 
 use crate::core::{
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
@@ -12,40 +11,6 @@ pub mod contract;
 pub mod log;
 pub mod state_update;
 pub mod transport;
-
-/// Ethereum network chains running Starknet.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Chain {
-    /// The Ethereum mainnet chain.
-    Mainnet,
-    /// The Ethereum Goerli test network chain.
-    Goerli,
-}
-
-lazy_static::lazy_static! {
-    static ref MAINNET_CHAIN_ID: StarkHash = StarkHash::from(0x534e5f4d41494eu128);
-    static ref GOERLI_CHAIN_ID: StarkHash = StarkHash::from(0x534e5f474f45524c49u128);
-}
-
-impl Chain {
-    pub fn starknet_chain_id(&self) -> &'static StarkHash {
-        match self {
-            // SN_MAIN
-            Chain::Mainnet => &MAINNET_CHAIN_ID,
-            // SN_GOERLI
-            Chain::Goerli => &GOERLI_CHAIN_ID,
-        }
-    }
-}
-
-impl std::fmt::Display for Chain {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Chain::Mainnet => f.write_str("Mainnet"),
-            Chain::Goerli => f.write_str("Görli"),
-        }
-    }
-}
 
 /// List of semi-official Ethereum RPC errors taken from [EIP-1474] (which is stagnant).
 ///
@@ -170,10 +135,8 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     mod chain {
-        use super::*;
+        use crate::core::Chain;
         use crate::ethereum::transport::{EthereumTransport, HttpTransport};
 
         #[tokio::test]

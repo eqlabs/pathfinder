@@ -410,7 +410,7 @@ mod json {
             .unwrap();
             let contract = crate::core::ContractAddress(contract);
 
-            let chain = crate::ethereum::Chain::Goerli;
+            let chain = crate::core::Chain::Goerli;
             let sequencer = crate::sequencer::Client::new(chain).unwrap();
             let contract_definition = sequencer
                 .full_contract(contract)
@@ -444,7 +444,7 @@ mod json {
                 )
                 .unwrap(),
             );
-            let sequencer = sequencer::Client::new(crate::ethereum::Chain::Goerli).unwrap();
+            let sequencer = sequencer::Client::new(crate::core::Chain::Goerli).unwrap();
 
             let contract_definition = sequencer.full_contract(address).await.unwrap();
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {

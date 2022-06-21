@@ -3,9 +3,9 @@ use bitvec::prelude::BitView;
 use stark_hash::{stark_hash, HashChain, StarkHash};
 
 use crate::core::{
-    GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    Chain, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+    StarknetBlockTimestamp,
 };
-use crate::ethereum::Chain;
 use crate::sequencer::reply::{
     transaction::{Event, Receipt, Transaction},
     Block,
@@ -103,10 +103,7 @@ mod meta {
 
     use stark_hash::StarkHash;
 
-    use crate::{
-        core::{SequencerAddress, StarknetBlockNumber},
-        ethereum::Chain,
-    };
+    use crate::core::{Chain, SequencerAddress, StarknetBlockNumber};
 
     /// Metadata about Starknet chains we use for block hash calculation
     ///

@@ -2,13 +2,12 @@
 use crate::{
     cairo::ext_py,
     core::{
-        CallResultValue, CallSignatureElem, ClassHash, ConstructorParam, ContractAddress,
+        CallResultValue, CallSignatureElem, Chain, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, ContractClass, ContractCode, Fee, GasPrice, GlobalRoot,
         SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
         StarknetTransactionHash, StarknetTransactionIndex, StorageValue, TransactionNonce,
         TransactionVersion,
     },
-    ethereum::Chain,
     rpc::types::{
         reply::{
             Block, BlockStatus, ErrorCode, FeeEstimate, GetEventsResult, Syncing, Transaction,

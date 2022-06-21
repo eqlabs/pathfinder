@@ -1,6 +1,6 @@
 //! Wrapper for the parts of the [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
 use crate::config::EthereumConfig;
-use crate::ethereum::Chain;
+use crate::core::Chain;
 use crate::retry::Retry;
 
 use std::future::Future;
@@ -259,10 +259,8 @@ impl std::ops::Deref for HttpTransport {
 #[cfg(test)]
 mod tests {
     mod logs {
-        use crate::ethereum::{
-            transport::{EthereumTransport, HttpTransport, LogsError},
-            Chain,
-        };
+        use crate::core::Chain;
+        use crate::ethereum::transport::{EthereumTransport, HttpTransport, LogsError};
 
         use assert_matches::assert_matches;
         use web3::types::{BlockNumber, FilterBuilder, H256};

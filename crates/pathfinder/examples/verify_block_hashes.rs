@@ -1,7 +1,6 @@
 use anyhow::Context;
 use pathfinder_lib::{
-    core::{StarknetBlockHash, StarknetBlockNumber},
-    ethereum::Chain,
+    core::{Chain, StarknetBlockHash, StarknetBlockNumber},
     sequencer::reply::{Block, Status},
     state::block_hash::{verify_block_hash, VerifyResult},
     storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage},

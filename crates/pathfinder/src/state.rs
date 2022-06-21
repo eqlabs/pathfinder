@@ -420,7 +420,7 @@ mod tests {
         //     block_number: StarknetBlockNumber(0),
         // };
 
-        // let chain = crate::ethereum::Chain::Goerli;
+        // let chain = crate::core::Chain::Goerli;
         // let _sequencer = crate::sequencer::Client::new(chain).unwrap();
 
         // let storage = crate::storage::Storage::in_memory().unwrap();
@@ -463,7 +463,7 @@ mod tests {
     async fn go_sync() {
         let storage =
             crate::storage::Storage::migrate(std::path::PathBuf::from("testing.sqlite")).unwrap();
-        let chain = crate::ethereum::Chain::Goerli;
+        let chain = crate::core::Chain::Goerli;
         let transport = crate::ethereum::transport::HttpTransport::test_transport(chain);
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
         let state = std::sync::Arc::new(sync::State::default());
