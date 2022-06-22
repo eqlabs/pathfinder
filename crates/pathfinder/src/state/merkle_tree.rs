@@ -564,7 +564,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     where
         VisitorFn: FnMut(&Node),
     {
-        use bitvec::prelude::{bitvec, Msb0};
+        use bitvec::prelude::bitvec;
 
         #[allow(dead_code)]
         struct VisitedNode {
@@ -1514,7 +1514,7 @@ mod tests {
             let key = StarkHash::from_hex_str("1").unwrap();
             let value = StarkHash::from_hex_str("2").unwrap();
 
-            uut.set(key, value).unwrap();
+            uut.set(key.view_bits(), value).unwrap();
 
             let mut visited = vec![];
             let mut visitor_fn = |node: &Node| visited.push(node.clone());
@@ -1546,8 +1546,8 @@ mod tests {
             let key_right = StarkHash::from_hex_str("1").unwrap();
             let value_right = StarkHash::from_hex_str("3").unwrap();
 
-            uut.set(key_right, value_right).unwrap();
-            uut.set(key_left, value_left).unwrap();
+            uut.set(key_right.view_bits(), value_right).unwrap();
+            uut.set(key_left.view_bits(), value_left).unwrap();
 
             let mut visited = vec![];
             let mut visitor_fn = |node: &Node| visited.push(node.clone());
@@ -1588,9 +1588,9 @@ mod tests {
             let key_c = StarkHash::from_hex_str("13").unwrap();
             let value_c = StarkHash::from_hex_str("c").unwrap();
 
-            uut.set(key_c, value_c).unwrap();
-            uut.set(key_a, value_a).unwrap();
-            uut.set(key_b, value_b).unwrap();
+            uut.set(key_c.view_bits(), value_c).unwrap();
+            uut.set(key_a.view_bits(), value_a).unwrap();
+            uut.set(key_b.view_bits(), value_b).unwrap();
 
             let mut visited = vec![];
             let mut visitor_fn = |node: &Node| visited.push(node.clone());
