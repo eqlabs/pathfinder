@@ -20,7 +20,11 @@ fn main() {
     let size_before = std::fs::metadata(&path).expect("Path does not exist").len() as i64;
 
     let started_at = std::time::Instant::now();
-    let storage = pathfinder_lib::storage::Storage::migrate(path.clone()).unwrap();
+    let storage = pathfinder_lib::storage::Storage::migrate(
+        path.clone(),
+        pathfinder_lib::storage::JournalMode::WAL,
+    )
+    .unwrap();
     let migrated_at = std::time::Instant::now();
 
     let size_after_migration = std::fs::metadata(&path)

@@ -255,7 +255,11 @@ mod tests {
     async fn start_with_wrong_database_schema_fails() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
+        let s = crate::storage::Storage::migrate(
+            PathBuf::from(db_file.path()),
+            crate::storage::JournalMode::WAL,
+        )
+        .unwrap();
 
         {
             let conn = s.connection().unwrap();
@@ -285,7 +289,11 @@ mod tests {
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
+        let s = crate::storage::Storage::migrate(
+            PathBuf::from(db_file.path()),
+            crate::storage::JournalMode::WAL,
+        )
+        .unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -356,7 +364,11 @@ mod tests {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
+        let s = crate::storage::Storage::migrate(
+            PathBuf::from(db_file.path()),
+            crate::storage::JournalMode::WAL,
+        )
+        .unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -449,7 +461,11 @@ mod tests {
     async fn call_with_unknown_contract() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(PathBuf::from(db_file.path())).unwrap();
+        let s = crate::storage::Storage::migrate(
+            PathBuf::from(db_file.path()),
+            crate::storage::JournalMode::WAL,
+        )
+        .unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
