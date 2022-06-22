@@ -93,6 +93,20 @@ impl ConfigBuilder {
             }
             None => std::num::NonZeroUsize::new(2).unwrap(),
         };
+        let enable_sqlite_wal = match self.take(ConfigOption::EnableSQLiteWriteAheadLogging) {
+            Some(enable) => {
+                let enable = enable.to_lowercase();
+                match enable.as_str() {
+                    "true" => Ok(true),
+                    "false" => Ok(false),
+                    _ => Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Invalid value '{}' for enable SQLite WAL mode option, must be on|off|true|false|yes|no", enable)
+                    )),
+                }
+            }
+            None => Ok(false),
+        }?;
 
         // Parse the HTTP-RPC listening address and port.
         let http_rpc_addr = http_rpc_addr.parse::<SocketAddr>().map_err(|err| {
@@ -114,6 +128,7 @@ impl ConfigBuilder {
             data_directory,
             sequencer_url,
             python_subprocesses,
+            enable_sqlite_wal,
         })
     }
 
@@ -242,6 +257,7 @@ mod tests {
         fn get_valid_value(option: ConfigOption) -> String {
             match option {
                 ConfigOption::EthereumHttpUrl => "http://localhost",
+                ConfigOption::EnableSQLiteWriteAheadLogging => "true",
                 _ => "value",
             }
             .to_owned()
@@ -302,6 +318,13 @@ mod tests {
                 let expected = NonZeroUsize::new(2).unwrap();
                 let config = builder_with_all_required().try_build().unwrap();
                 assert_eq!(config.python_subprocesses, expected);
+            }
+
+            #[test]
+            fn enable_sqlite_wal() {
+                let expected = false;
+                let config = builder_with_all_required().try_build().unwrap();
+                assert_eq!(config.enable_sqlite_wal, expected);
             }
         }
     }

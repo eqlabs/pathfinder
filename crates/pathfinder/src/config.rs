@@ -25,6 +25,8 @@ pub enum ConfigOption {
     SequencerHttpUrl,
     /// Number of Python sub-processes to start.
     PythonSubprocesses,
+    /// Enable SQLite write-ahead logging.
+    EnableSQLiteWriteAheadLogging,
 }
 
 impl Display for ConfigOption {
@@ -36,6 +38,9 @@ impl Display for ConfigOption {
             ConfigOption::HttpRpcAddress => f.write_str("HTTP-RPC socket address"),
             ConfigOption::SequencerHttpUrl => f.write_str("Sequencer HTTP URL"),
             ConfigOption::PythonSubprocesses => f.write_str("Number of Python subprocesses"),
+            ConfigOption::EnableSQLiteWriteAheadLogging => {
+                f.write_str("Enable SQLite write-ahead logging")
+            }
         }
     }
 }
@@ -62,6 +67,8 @@ pub struct Configuration {
     pub sequencer_url: Option<Url>,
     /// The number of Python subprocesses to start.
     pub python_subprocesses: std::num::NonZeroUsize,
+    /// Enable SQLite write-ahead logging.
+    pub enable_sqlite_wal: bool,
 }
 
 impl Configuration {
