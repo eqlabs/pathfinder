@@ -508,8 +508,9 @@ async def do_call(
     from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
         PatriciaTree,
     )
+    from starkware.starknet.services.api.contract_class import EntryPointType
     from starkware.cairo.lang.vm.crypto import pedersen_hash_func
-    from starkware.starknet.testing.state import StarknetState
+    from starkware.starknet.testing.state import create_invoke_function
 
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
@@ -527,14 +528,30 @@ async def do_call(
     # but doesn't seem to matter for regular call.
     carried_state = carried_state.create_child_state_for_querying()
 
-    state = StarknetState(state=carried_state, general_config=general_config)
+    # what follows is an inlined state.call_raw
+    tx = create_invoke_function(
+        contract_address=contract_address,
+        selector=selector,
+        calldata=calldata,
+        caller_address=caller_address,
+        max_fee=max_fee,
+        # TODO: another arg, from rust side
+        version=0,
+        signature=signature,
+        entry_point_type=EntryPointType.EXTERNAL,
+        nonce=None,
+        chain_id=general_config.chain_id.value,
+        only_query=True,
+    )
 
-    output = await state.invoke_raw(
-        contract_address, selector, calldata, caller_address, max_fee, signature
+    call_info = await tx.execute(
+        state=carried_state,
+        general_config=general_config,
+        only_query=True,
     )
 
     # return both of these as carried state is needed for the fee estimation afterwards
-    return (output, carried_state)
+    return (call_info, carried_state)
 
 
 def estimate_fee_after_call(general_config, call_info, carried_state):
@@ -562,7 +579,6 @@ def create_general_config():
     from starkware.starknet.definitions.general_config import (
         StarknetGeneralConfig,
         StarknetChainId,
-        build_general_config,
         N_STEPS_RESOURCE,
         StarknetOsConfig,
     )
