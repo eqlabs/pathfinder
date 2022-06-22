@@ -91,6 +91,8 @@ pub enum ErrorKind {
     InvalidSchemaVersion,
     #[serde(rename = "INVALID_INPUT")]
     InvalidCommand,
+    #[serde(rename = "INVALID_ENTRY_POINT")]
+    InvalidEntryPoint,
 }
 
 #[derive(serde::Deserialize, PartialEq, Debug)]

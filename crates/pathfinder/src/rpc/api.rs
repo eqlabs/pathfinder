@@ -1216,6 +1216,9 @@ impl From<ext_py::CallFailure> for jsonrpsee::core::Error {
         match e {
             ext_py::CallFailure::NoSuchBlock => Error::from(ErrorCode::InvalidBlockHash),
             ext_py::CallFailure::NoSuchContract => Error::from(ErrorCode::ContractNotFound),
+            ext_py::CallFailure::InvalidEntryPoint => {
+                Error::from(ErrorCode::InvalidMessageSelector)
+            }
             ext_py::CallFailure::ExecutionFailed(e) => internal_server_error(e),
             // Intentionally hide the message under Internal
             ext_py::CallFailure::Internal(_) | ext_py::CallFailure::Shutdown => {

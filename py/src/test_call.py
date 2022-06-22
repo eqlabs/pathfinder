@@ -333,6 +333,24 @@ def test_nested_called_contract_not_found():
     }
 
 
+def test_invalid_entry_point():
+    con = inmemory_with_tables()
+    contract_address = populate_test_contract_with_132_on_3(con)
+
+    output = default_132_on_3_scenario(
+        con,
+        [
+            # call not found entry point with `call_increase_value` args
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value2", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null }}'
+        ],
+    )
+
+    assert output == {
+        "status": "error",
+        "kind": "INVALID_ENTRY_POINT",
+    }
+
+
 def test_invalid_schema_version():
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
