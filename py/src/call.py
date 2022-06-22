@@ -436,9 +436,6 @@ class SqliteAdapter(Storage):
             "select hash, root from contract_states where state_hash = ?", [suffix]
         )
 
-        # FIXME: this is really wonky, esp with the tuple returning query, the
-        # first if is None is probably never hit.
-
         only = next(cursor, [None, None])
 
         [h, root] = only
