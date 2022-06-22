@@ -19,6 +19,7 @@ pub(crate) struct ChildCommand<'a> {
     pub max_fee: &'a crate::core::Fee,
     #[serde_as(as = "crate::rpc::serde::TransactionVersionAsHexStr")]
     pub version: &'a crate::core::TransactionVersion,
+    pub chain: UsedChain,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -27,4 +28,22 @@ pub(crate) enum Verb {
     Call,
     #[serde(rename = "estimate_fee")]
     EstimateFee,
+}
+
+/// Private version of [`crate::core::Chain`] for serialization.
+#[derive(serde::Serialize, Debug, Clone, Copy)]
+pub(crate) enum UsedChain {
+    #[serde(rename = "MAINNET")]
+    Mainnet,
+    #[serde(rename = "GOERLI")]
+    Goerli,
+}
+
+impl From<crate::core::Chain> for UsedChain {
+    fn from(c: crate::core::Chain) -> Self {
+        match c {
+            crate::core::Chain::Mainnet => UsedChain::Mainnet,
+            crate::core::Chain::Goerli => UsedChain::Goerli,
+        }
+    }
 }

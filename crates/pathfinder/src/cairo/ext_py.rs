@@ -24,6 +24,7 @@ mod de;
 use de::{ErrorKind, Status, Timings};
 
 mod ser;
+use ser::UsedChain;
 mod sub_process;
 
 mod service;
@@ -33,6 +34,7 @@ pub use service::start;
 #[derive(Clone)]
 pub struct Handle {
     command_tx: mpsc::Sender<(Command, tracing::Span)>,
+    chain: UsedChain,
 }
 
 impl Handle {
@@ -52,6 +54,7 @@ impl Handle {
                 Command::Call {
                     call,
                     at_block,
+                    chain: self.chain,
                     response,
                 },
                 continued_span,
@@ -85,6 +88,7 @@ impl Handle {
                     call,
                     at_block,
                     gas_price,
+                    chain: self.chain,
                     response,
                 },
                 continued_span,
@@ -159,11 +163,15 @@ impl From<ErrorKind> for CallFailure {
 type SharedReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
 
 /// Command from outside of the module wrapped by [`Handle`] to be sent for execution in python.
+///
+/// The used chain is tagged along not to require knowledge it at the callers of [`Handle`] but to
+/// keep it per-request at the python level.
 #[derive(Debug)]
 enum Command {
     Call {
         call: Call,
         at_block: BlockHashOrTag,
+        chain: UsedChain,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
@@ -171,6 +179,7 @@ enum Command {
         at_block: BlockHashOrTag,
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
+        chain: UsedChain,
         response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
     },
 }
@@ -295,6 +304,7 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
+            crate::core::Chain::Goerli,
         )
         .await
         .unwrap();
@@ -366,6 +376,8 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
+            // chain doesn't matter here because we are not estimating any real transaction
+            crate::core::Chain::Goerli,
         )
         .await
         .unwrap();
@@ -458,6 +470,7 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
+            crate::core::Chain::Goerli,
         )
         .await
         .unwrap();

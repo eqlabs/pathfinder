@@ -25,6 +25,7 @@ pub async fn start(
     database_path: PathBuf,
     count: std::num::NonZeroUsize,
     stop_flag: impl std::future::Future<Output = ()> + Send + 'static,
+    chain: crate::core::Chain,
 ) -> anyhow::Result<(Handle, tokio::task::JoinHandle<()>)> {
     use futures::stream::StreamExt;
 
@@ -76,6 +77,7 @@ pub async fn start(
 
     let handle = Handle {
         command_tx: command_tx.clone(),
+        chain: chain.into(),
     };
 
     let jh = tokio::task::spawn(
