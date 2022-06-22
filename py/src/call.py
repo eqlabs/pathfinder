@@ -501,11 +501,7 @@ async def do_call(
     version,
 ):
     """
-    Loads all of the cairo-lang parts needed for the call. Dirties the internal
-    cairo-lang state which does not matter, because the state will be thrown
-    out.
-
-    Returns the retdata from the call, which is the only property needed by the RPC api.
+    The actual call execution with cairo-lang.
     """
     from starkware.starknet.business_logic.state.state import (
         SharedState,
@@ -536,6 +532,8 @@ async def do_call(
     carried_state = carried_state.create_child_state_for_querying()
 
     # what follows is an inlined state.call_raw
+    # FIXME: this needs to be restored in cairo-lang > 0.9.0 if there's an
+    # option to access the carried state
     tx = create_invoke_function(
         contract_address=contract_address,
         selector=selector,
