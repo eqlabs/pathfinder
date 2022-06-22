@@ -135,6 +135,8 @@ def loop_inner(connection, command):
         raise UnexpectedSchemaVersion
 
     verb = command["command"]
+    # TODO: parse chain_id and use it here
+    general_config = create_general_config()
 
     # the later parts will have access to gas_price through this block_info
     (block_info, global_root) = resolve_block(
@@ -144,6 +146,7 @@ def loop_inner(connection, command):
     (result, carried_state) = asyncio.run(
         do_call(
             SqliteAdapter(connection),
+            general_config,
             global_root,
             command["contract_address"],
             command["entry_point_selector"],
@@ -155,10 +158,10 @@ def loop_inner(connection, command):
     )
 
     if verb == "call":
-        return (verb, result.call_info.retdata)
+        return (verb, result.retdata)
     else:
         assert verb == "estimate_fee", "command should had been call or estimate_fee"
-        fees = estimate_fee_after_call(result.call_info, carried_state)
+        fees = estimate_fee_after_call(general_config, result, carried_state)
         return (verb, fees)
 
 
@@ -474,6 +477,7 @@ class SqliteAdapter(Storage):
 
 async def do_call(
     adapter,
+    general_config,
     root,
     contract_address,
     selector,
@@ -493,15 +497,12 @@ async def do_call(
         SharedState,
         StateSelector,
     )
-    from starkware.starknet.definitions.general_config import StarknetGeneralConfig
     from starkware.storage.storage import FactFetchingContext
     from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
         PatriciaTree,
     )
     from starkware.cairo.lang.vm.crypto import pedersen_hash_func
     from starkware.starknet.testing.state import StarknetState
-
-    general_config = StarknetGeneralConfig()
 
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
@@ -530,36 +531,9 @@ async def do_call(
     return (output, carried_state)
 
 
-def estimate_fee_after_call(call_info, carried_state):
-    from starkware.starknet.definitions.general_config import (
-        StarknetGeneralConfig,
-        N_STEPS_RESOURCE,
-    )
-    from starkware.cairo.lang.builtins.all_builtins import (
-        PEDERSEN_BUILTIN,
-        RANGE_CHECK_BUILTIN,
-        ECDSA_BUILTIN,
-        BITWISE_BUILTIN,
-        OUTPUT_BUILTIN,
-        EC_OP_BUILTIN,
-    )
+def estimate_fee_after_call(general_config, call_info, carried_state):
     from starkware.starknet.business_logic.transaction_fee import calculate_tx_fee
     from starkware.starknet.business_logic.utils import get_invoke_tx_total_resources
-
-    general_config = StarknetGeneralConfig()
-
-    # given on 2022-06-07
-    general_config.cairo_resource_fee_weights.update(
-        {
-            N_STEPS_RESOURCE: 1.0,
-            PEDERSEN_BUILTIN: 8.0,
-            RANGE_CHECK_BUILTIN: 8.0,
-            ECDSA_BUILTIN: 512.0,
-            BITWISE_BUILTIN: 256.0,
-            OUTPUT_BUILTIN: 0.0,
-            EC_OP_BUILTIN: 0.0,
-        }
-    )
 
     (l1_gas_used, _cairo_resources_used) = get_invoke_tx_total_resources(
         carried_state, call_info
@@ -572,6 +546,53 @@ def estimate_fee_after_call(call_info, carried_state):
         "gas_price": carried_state.block_info.gas_price,
         "overall_fee": overall_fee,
     }
+
+
+# FIXME: this needs to accept chainid which the ext_py needs to get from wherever
+def create_general_config():
+    """
+    Separate fn because it's tricky to get a new instance with actual configuration
+    """
+    from starkware.starknet.definitions.general_config import (
+        StarknetGeneralConfig,
+        StarknetChainId,
+        build_general_config,
+        N_STEPS_RESOURCE,
+        StarknetOsConfig,
+    )
+    from starkware.cairo.lang.builtins.all_builtins import (
+        PEDERSEN_BUILTIN,
+        RANGE_CHECK_BUILTIN,
+        ECDSA_BUILTIN,
+        BITWISE_BUILTIN,
+        OUTPUT_BUILTIN,
+        EC_OP_BUILTIN,
+    )
+
+    # given on 2022-06-07
+    weights = {
+        N_STEPS_RESOURCE: 1.0,
+        # these need to be suffixed because ... they are checked to have these suffixes, except for N_STEPS_RESOURCE
+        f"{PEDERSEN_BUILTIN}_builtin": 8.0,
+        f"{RANGE_CHECK_BUILTIN}_builtin": 8.0,
+        f"{ECDSA_BUILTIN}_builtin": 512.0,
+        f"{BITWISE_BUILTIN}_builtin": 256.0,
+        f"{OUTPUT_BUILTIN}_builtin": 0.0,
+        f"{EC_OP_BUILTIN}_builtin": 0.0,
+    }
+
+    general_config = StarknetGeneralConfig(
+        starknet_os_config=StarknetOsConfig(chain_id=StarknetChainId.MAINNET),
+        cairo_resource_fee_weights=weights,
+    )
+
+    assert general_config.starknet_os_config.chain_id == StarknetChainId.MAINNET
+    assert general_config.cairo_resource_fee_weights[f"{N_STEPS_RESOURCE}"] == 1.0
+    assert (
+        general_config.cairo_resource_fee_weights[f"{BITWISE_BUILTIN}_builtin"] == 256.0
+    )
+
+    return general_config
 
 
 if __name__ == "__main__":
