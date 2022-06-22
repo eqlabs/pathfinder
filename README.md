@@ -188,6 +188,10 @@ sequencer-url = "https://..."
 # to service the `starknet_call` JSON-RPC method and their number limits the maximal
 # number of call requests that can be processed in parallel. Defaults to 2.
 python-subprocesses = 2
+# Whether to enable SQLite write-ahead logging. Defaults to false but we reserve the
+# right to change this in the future. Will likely default to true soon, but if you
+# **want** a specific behavior you should always set this.
+enable-sqlite-wal = false
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
