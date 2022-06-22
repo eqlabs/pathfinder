@@ -617,7 +617,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                             visitor_fn(current_node);
                         }
                         Node::Unresolved(hash) => {
-                            // Zero means root, so nothing to resolve
+                            // Zero means empty tree, so nothing to resolve
                             if hash != &StarkHash::ZERO {
                                 visiting.push(VisitedNode {
                                     node: Rc::new(RefCell::new(
