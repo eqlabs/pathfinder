@@ -365,23 +365,9 @@ mod tests {
     use super::*;
     use crate::{
         core::{
-            Chain,
-            ClassHash,
-            ContractAddress,
-            EntryPoint,
-            EventData,
-            EventKey,
-            GasPrice,
-            GlobalRoot,
-            SequencerAddress,
-            StarknetBlockHash,
-            StarknetBlockNumber,
-            StarknetBlockTimestamp,
-            StarknetProtocolVersion,
-            StorageAddress,
-            // ClassHash, ContractAddress, EventData, EventKey, GasPrice, GlobalRoot,
-            // SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            // StarknetProtocolVersion, StorageAddress,
+            Chain, ClassHash, ContractAddress, EventData, EventKey, GasPrice, GlobalRoot,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StarknetProtocolVersion, StorageAddress,
         },
         rpc::run_server,
         sequencer::{
