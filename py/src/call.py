@@ -137,6 +137,11 @@ def loop_inner(connection, command):
     verb = command["command"]
     # TODO: parse chain_id and use it here
     general_config = create_general_config()
+    # TODO: parse from command as well
+    # this is needed for signature verification, which we also need to parse
+    max_fee = command.get("max_fee", 0)
+    # TODO: this is not being sent over yet from rust side
+    signature = command.get("signature", None)
 
     # the later parts will have access to gas_price through this block_info
     (block_info, global_root) = resolve_block(
@@ -152,7 +157,8 @@ def loop_inner(connection, command):
             command["entry_point_selector"],
             command["calldata"],
             command.get("caller_address", 0),
-            command.get("signature", None),
+            signature,
+            max_fee,
             block_info,
         )
     )
@@ -484,6 +490,7 @@ async def do_call(
     calldata,
     caller_address,
     signature,
+    max_fee,
     block_info,
 ):
     """
@@ -521,7 +528,6 @@ async def do_call(
     carried_state = carried_state.create_child_state_for_querying()
 
     state = StarknetState(state=carried_state, general_config=general_config)
-    max_fee = 0
 
     output = await state.invoke_raw(
         contract_address, selector, calldata, caller_address, max_fee, signature
