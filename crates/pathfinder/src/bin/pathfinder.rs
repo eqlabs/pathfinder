@@ -41,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
     });
     let storage = Storage::migrate(database_path.clone()).unwrap();
     info!(location=?database_path, "Database migrated.");
+    verify_database_chain(&storage, ethereum_chain).context("Verifying database")?;
 
     let sequencer = match config.sequencer_url {
         Some(url) => {
@@ -118,6 +119,40 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
+
+    Ok(())
+}
+
+/// Verifies that the database matches the expected chain; throws an error if it does not.
+fn verify_database_chain(storage: &Storage, expected: core::Chain) -> anyhow::Result<()> {
+    use pathfinder_lib::consts::{GOERLI_GENESIS_HASH, MAINNET_GENESIS_HASH};
+    use pathfinder_lib::core::StarknetBlockNumber;
+
+    let mut connection = storage.connection().context("Create database connection")?;
+    let transaction = connection
+        .transaction()
+        .context("Create database transaction")?;
+    let genesis = pathfinder_lib::storage::StarknetBlocksTable::get(
+        &transaction,
+        StarknetBlockNumber(0).into(),
+    )
+    .context("Read genesis block from database")?;
+
+    let db_chain = match genesis {
+        None => return Ok(()),
+        Some(genesis) if genesis.hash == *GOERLI_GENESIS_HASH => core::Chain::Goerli,
+        Some(genesis) if genesis.hash == *MAINNET_GENESIS_HASH => core::Chain::Mainnet,
+        Some(genesis) => {
+            anyhow::bail!("Unknown genesis block hash {}", genesis.hash.0)
+        }
+    };
+
+    anyhow::ensure!(
+        db_chain == expected,
+        "Database ({}) does not much the expected network ({})",
+        db_chain,
+        expected
+    );
 
     Ok(())
 }
