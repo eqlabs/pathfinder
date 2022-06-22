@@ -1213,14 +1213,14 @@ impl RpcApi {
 
 impl From<ext_py::CallFailure> for jsonrpsee::core::Error {
     fn from(e: ext_py::CallFailure) -> Self {
+        use ext_py::CallFailure::*;
         match e {
-            ext_py::CallFailure::NoSuchBlock => Error::from(ErrorCode::InvalidBlockHash),
-            ext_py::CallFailure::NoSuchContract => Error::from(ErrorCode::ContractNotFound),
-            ext_py::CallFailure::ExecutionFailed(e) => internal_server_error(e),
+            NoSuchBlock => Error::from(ErrorCode::InvalidBlockHash),
+            NoSuchContract => Error::from(ErrorCode::ContractNotFound),
+            InvalidEntryPoint => Error::from(ErrorCode::InvalidMessageSelector),
+            ExecutionFailed(e) => internal_server_error(e),
             // Intentionally hide the message under Internal
-            ext_py::CallFailure::Internal(_) | ext_py::CallFailure::Shutdown => {
-                static_internal_server_error()
-            }
+            Internal(_) | Shutdown => static_internal_server_error(),
         }
     }
 }

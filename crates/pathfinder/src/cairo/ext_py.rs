@@ -106,6 +106,8 @@ pub enum CallFailure {
     NoSuchBlock,
     /// The called top-level contract could not be found.
     NoSuchContract,
+    /// The called top-level entry point could not be found.
+    InvalidEntryPoint,
     /// `cairo-lang` failed the call, string has the exception name.
     ExecutionFailed(String),
     /// Internal, opaque-ish failure reason, none of them signal an issue with the call.
@@ -145,6 +147,7 @@ impl From<ErrorKind> for CallFailure {
         match e {
             NoSuchBlock => CallFailure::NoSuchBlock,
             NoSuchContract => CallFailure::NoSuchContract,
+            InvalidEntryPoint => CallFailure::InvalidEntryPoint,
             InvalidSchemaVersion => CallFailure::Internal("Wrong database version"),
             InvalidCommand => CallFailure::Internal("Invalid json sent"),
         }

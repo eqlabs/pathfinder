@@ -102,8 +102,12 @@ def do_loop(connection, input_gen, output_file):
         except InvalidInput:
             out = {"status": "error", "kind": "INVALID_INPUT"}
         except WebFriendlyException as e:
-            # this is hopefully something we can give to the user
-            out = {"status": "failed", "exception": str(e.code)}
+            if str(e.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
+                out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
+            else:
+                # this is hopefully something we can give to the user
+                print(f"failure: {json.dumps(e.message)}", flush=True, file=sys.stderr)
+                out = {"status": "failed", "exception": str(e.code)}
         except Exception as e:
             stringified = str(e)
             if len(stringified) > 200:
