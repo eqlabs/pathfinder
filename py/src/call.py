@@ -142,6 +142,8 @@ def loop_inner(connection, command):
     max_fee = command.get("max_fee", 0)
     # TODO: this is not being sent over yet from rust side
     signature = command.get("signature", None)
+    # TODO: another arg, from rust side
+    version = command.get("version", 0)
 
     # the later parts will have access to gas_price through this block_info
     (block_info, global_root) = resolve_block(
@@ -160,6 +162,7 @@ def loop_inner(connection, command):
             signature,
             max_fee,
             block_info,
+            version,
         )
     )
 
@@ -492,6 +495,7 @@ async def do_call(
     signature,
     max_fee,
     block_info,
+    version,
 ):
     """
     Loads all of the cairo-lang parts needed for the call. Dirties the internal
@@ -535,8 +539,7 @@ async def do_call(
         calldata=calldata,
         caller_address=caller_address,
         max_fee=max_fee,
-        # TODO: another arg, from rust side
-        version=0,
+        version=version,
         signature=signature,
         entry_point_type=EntryPointType.EXTERNAL,
         nonce=None,
