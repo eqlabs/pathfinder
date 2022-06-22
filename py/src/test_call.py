@@ -257,9 +257,9 @@ def test_success():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "call", "at_block": "0x{(b"some blockhash somewhere").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "call", "at_block": "0x{(b"some blockhash somewhere").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
         ],
     )
 
@@ -273,6 +273,7 @@ def test_positive_directly():
     """
     this is like test_success but does it directly with the do_call, instead of the json wrapping, which hides exceptions which come from upgrading.
     """
+    from starkware.starknet.definitions.general_config import StarknetChainId
 
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -284,6 +285,7 @@ def test_positive_directly():
         "entry_point_selector": "get_value",
         "calldata": [132],
         "gas_price": None,
+        "chain": StarknetChainId.TESTNET,
     }
 
     con.execute("BEGIN")
@@ -305,7 +307,7 @@ def test_called_contract_not_found():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address + 1}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address + 1}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}'
         ],
     )
 
@@ -321,7 +323,7 @@ def test_nested_called_contract_not_found():
         con,
         [
             # call neighbouring contract, which doesn't exist in the global state tree
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null, "chain": "GOERLI" }}'
         ],
     )
 
@@ -341,7 +343,7 @@ def test_invalid_entry_point():
         con,
         [
             # call not found entry point with `call_increase_value` args
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value2", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value2", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null, "chain": "GOERLI" }}'
         ],
     )
 
@@ -361,7 +363,7 @@ def test_invalid_schema_version():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}'
         ],
     )
 
@@ -379,9 +381,9 @@ def test_no_such_block():
         con,
         (
             # there's only block 1
-            f'{{ "command": "call", "at_block": 99999999999, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "call", "at_block": "0x{(b"no such block").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": 99999999999, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "call", "at_block": "0x{(b"no such block").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
         ),
     )
 
@@ -401,6 +403,8 @@ def test_check_cairolang_version():
 
 
 def test_fee_estimate_on_positive_directly():
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
     # fee estimation is a new thing on top of a call, but returning only the estimated fee
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -416,6 +420,7 @@ def test_fee_estimate_on_positive_directly():
         "calldata": [132],
         # gas_price is None for null => use block's (zero)
         "gas_price": None,
+        "chain": StarknetChainId.TESTNET,
     }
 
     (verb, output) = loop_inner(con, command)
@@ -435,8 +440,8 @@ def test_fee_estimate_on_positive():
     (first, second) = default_132_on_3_scenario(
         con,
         [
-            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": "0xa" }}',
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": "0xa", "chain": "GOERLI" }}',
         ],
     )
 

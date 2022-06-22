@@ -67,6 +67,7 @@ def do_loop(connection, input_gen, output_file):
         "calldata": list_of_int,
         "command": required_command,
         "gas_price": required_gas_price,
+        "chain": required_chain,
     }
 
     optional = {
@@ -137,8 +138,7 @@ def loop_inner(connection, command):
         raise UnexpectedSchemaVersion
 
     verb = command["command"]
-    # TODO: parse chain_id and use it here
-    general_config = create_general_config()
+    general_config = create_general_config(command["chain"])
 
     caller_address = command.get("caller_address", 0)
     signature = command.get("signature", None)
@@ -292,6 +292,16 @@ def required_gas_price(s):
     else:
         assert type(s) == int, "expected gas_price to be an int"
         return s
+
+
+def required_chain(s):
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
+    if s == "MAINNET":
+        return StarknetChainId.MAINNET
+    else:
+        assert s == "GOERLI"
+        return StarknetChainId.TESTNET
 
 
 def check_schema(connection):
@@ -581,14 +591,12 @@ def estimate_fee_after_call(general_config, call_info, carried_state):
     }
 
 
-# FIXME: this needs to accept chainid which the ext_py needs to get from wherever
-def create_general_config():
+def create_general_config(chain_id):
     """
     Separate fn because it's tricky to get a new instance with actual configuration
     """
     from starkware.starknet.definitions.general_config import (
         StarknetGeneralConfig,
-        StarknetChainId,
         N_STEPS_RESOURCE,
         StarknetOsConfig,
     )
@@ -614,11 +622,10 @@ def create_general_config():
     }
 
     general_config = StarknetGeneralConfig(
-        starknet_os_config=StarknetOsConfig(chain_id=StarknetChainId.MAINNET),
+        starknet_os_config=StarknetOsConfig(chain_id),
         cairo_resource_fee_weights=weights,
     )
 
-    assert general_config.starknet_os_config.chain_id == StarknetChainId.MAINNET
     assert general_config.cairo_resource_fee_weights[f"{N_STEPS_RESOURCE}"] == 1.0
     assert (
         general_config.cairo_resource_fee_weights[f"{BITWISE_BUILTIN}_builtin"] == 256.0
