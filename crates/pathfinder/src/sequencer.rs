@@ -147,24 +147,8 @@ impl Client {
 
     /// Returns the [network chain](Chain) this client is operating on.
     pub async fn chain(&self) -> anyhow::Result<Chain> {
-        use crate::core::{StarknetBlockHash, StarknetBlockNumber};
-        use stark_hash::StarkHash;
-
-        lazy_static::lazy_static!(
-            static ref GOERLI_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(
-                StarkHash::from_hex_str(
-                    "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
-                )
-                .unwrap(),
-            );
-
-            static ref MAINNET_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(
-                StarkHash::from_hex_str(
-                    "0x047C3637B57C2B079B93C61539950C17E868A28F46CDEF28F88521067F21E943",
-                )
-                .unwrap(),
-            );
-        );
+        use crate::consts::{GOERLI_GENESIS_HASH, MAINNET_GENESIS_HASH};
+        use crate::core::StarknetBlockNumber;
 
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
