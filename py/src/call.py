@@ -108,7 +108,6 @@ def do_loop(connection, input_gen, output_file):
                 out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
             else:
                 # this is hopefully something we can give to the user
-                print(f"failure: {json.dumps(e.message)}", flush=True, file=sys.stderr)
                 out = {"status": "failed", "exception": str(e.code)}
         except Exception as e:
             stringified = str(e)
