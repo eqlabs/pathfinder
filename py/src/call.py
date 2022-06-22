@@ -70,8 +70,10 @@ def do_loop(connection, input_gen, output_file):
     }
 
     optional = {
-        "caller_address": int_param,
-        "signature": int_param,
+        "caller_address": caller_address_maybe,
+        "signature": list_of_int,
+        "max_fee": int_param,
+        "version": int_param,
     }
 
     for line in input_gen:
@@ -137,12 +139,10 @@ def loop_inner(connection, command):
     verb = command["command"]
     # TODO: parse chain_id and use it here
     general_config = create_general_config()
-    # TODO: parse from command as well
-    # this is needed for signature verification, which we also need to parse
-    max_fee = command.get("max_fee", 0)
-    # TODO: this is not being sent over yet from rust side
+
+    caller_address = command.get("caller_address", 0)
     signature = command.get("signature", None)
-    # TODO: another arg, from rust side
+    max_fee = command.get("max_fee", 0)
     version = command.get("version", 0)
 
     # the later parts will have access to gas_price through this block_info
@@ -158,7 +158,7 @@ def loop_inner(connection, command):
             command["contract_address"],
             command["entry_point_selector"],
             command["calldata"],
-            command.get("caller_address", 0),
+            caller_address,
             signature,
             max_fee,
             block_info,
@@ -236,6 +236,13 @@ def int_param(s):
     if s.startswith("0x"):
         return int.from_bytes(len_safe_hex(s), "big")
     return int(s, 10)
+
+
+def caller_address_maybe(s):
+    if s == None:
+        # must return zero, None is not accepted
+        return 0
+    return int_param(s)
 
 
 def len_safe_hex(s):

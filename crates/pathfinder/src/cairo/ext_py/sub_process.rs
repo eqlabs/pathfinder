@@ -271,6 +271,10 @@ async fn process(
             // TODO: this might change in the future, if *later* gas price needs to be available
             // sometimes
             gas_price: None,
+            caller_address: call.caller_address.as_ref(),
+            signature: &call.signature,
+            max_fee: &call.max_fee,
+            version: &call.version,
         },
         Command::EstimateFee {
             call,
@@ -284,6 +288,10 @@ async fn process(
             entry_point_selector: &call.entry_point_selector,
             at_block,
             gas_price: gas_price.as_option(),
+            caller_address: call.caller_address.as_ref(),
+            signature: &call.signature,
+            max_fee: &call.max_fee,
+            version: &call.version,
         },
     };
 

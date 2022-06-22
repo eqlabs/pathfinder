@@ -13,7 +13,7 @@ use crate::{
             Block, BlockStatus, ErrorCode, FeeEstimate, GetEventsResult, Syncing, Transaction,
             TransactionReceipt,
         },
-        request::{BlockResponseScope, Call, EventFilter, OverflowingStorageAddress},
+        request::{BlockResponseScope, Call, ContractCall, EventFilter, OverflowingStorageAddress},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
@@ -1092,7 +1092,7 @@ impl RpcApi {
     /// interface to the sequencer.
     pub async fn add_invoke_transaction(
         &self,
-        call: Call,
+        call: ContractCall,
         signature: Vec<CallSignatureElem>,
         max_fee: Fee,
         version: TransactionVersion,

@@ -318,6 +318,10 @@ mod tests {
                                     StarkHash::from_hex_str("0x84").unwrap(),
                                 )],
                                 entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+                                caller_address: Default::default(),
+                                signature: Default::default(),
+                                max_fee: super::Call::DEFAULT_MAX_FEE,
+                                version: super::Call::DEFAULT_VERSION,
                             },
                             super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
@@ -377,6 +381,10 @@ mod tests {
                 StarkHash::from_hex_str("0x84").unwrap(),
             )],
             entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            caller_address: Default::default(),
+            signature: Default::default(),
+            max_fee: super::Call::DEFAULT_MAX_FEE,
+            version: super::Call::DEFAULT_VERSION,
         };
 
         let at_block_fee = handle
@@ -466,6 +474,10 @@ mod tests {
                 StarkHash::from_hex_str("0x84").unwrap(),
             )],
             entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            caller_address: Default::default(),
+            signature: Default::default(),
+            max_fee: super::Call::DEFAULT_MAX_FEE,
+            version: super::Call::DEFAULT_VERSION,
         };
 
         let result = handle
