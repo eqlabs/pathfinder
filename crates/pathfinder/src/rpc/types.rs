@@ -107,10 +107,6 @@ pub mod request {
         pub contract_address: ContractAddress,
         pub calldata: Vec<CallParam>,
         pub entry_point_selector: EntryPoint,
-        /// EstimateFee hurry: offer this up as well, not on spec, it might be relevant for
-        /// signatures
-        #[serde(default)]
-        pub caller_address: Option<ContractAddress>,
         /// EstimateFee hurry: it doesn't make any sense to use decimal numbers for one field
         #[serde(default)]
         #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]

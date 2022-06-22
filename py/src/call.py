@@ -71,7 +71,6 @@ def do_loop(connection, input_gen, output_file):
     }
 
     optional = {
-        "caller_address": caller_address_maybe,
         "signature": list_of_int,
         "max_fee": int_param,
         "version": int_param,
@@ -140,7 +139,6 @@ def loop_inner(connection, command):
     verb = command["command"]
     general_config = create_general_config(command["chain"])
 
-    caller_address = command.get("caller_address", 0)
     signature = command.get("signature", None)
     max_fee = command.get("max_fee", 0)
     version = command.get("version", 0)
@@ -158,7 +156,6 @@ def loop_inner(connection, command):
             command["contract_address"],
             command["entry_point_selector"],
             command["calldata"],
-            caller_address,
             signature,
             max_fee,
             block_info,
@@ -236,13 +233,6 @@ def int_param(s):
     if s.startswith("0x"):
         return int.from_bytes(len_safe_hex(s), "big")
     return int(s, 10)
-
-
-def caller_address_maybe(s):
-    if s == None:
-        # must return zero, None is not accepted
-        return 0
-    return int_param(s)
 
 
 def len_safe_hex(s):
@@ -508,7 +498,6 @@ async def do_call(
     contract_address,
     selector,
     calldata,
-    caller_address,
     signature,
     max_fee,
     block_info,
@@ -554,7 +543,7 @@ async def do_call(
         contract_address=contract_address,
         selector=selector,
         calldata=calldata,
-        caller_address=caller_address,
+        caller_address=0,
         max_fee=max_fee,
         version=version,
         signature=signature,

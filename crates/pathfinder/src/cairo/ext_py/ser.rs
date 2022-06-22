@@ -14,7 +14,6 @@ pub(crate) struct ChildCommand<'a> {
     pub at_block: &'a BlockHashOrTag,
     #[serde_as(as = "Option<&crate::rpc::serde::H256AsHexStr>")]
     pub gas_price: Option<&'a web3::types::H256>,
-    pub caller_address: Option<&'a crate::core::ContractAddress>,
     pub signature: &'a [crate::core::CallSignatureElem],
     pub max_fee: &'a crate::core::Fee,
     #[serde_as(as = "crate::rpc::serde::TransactionVersionAsHexStr")]
