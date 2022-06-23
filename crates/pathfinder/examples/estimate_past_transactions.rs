@@ -1,6 +1,5 @@
 use anyhow::Context;
 use stark_hash::StarkHash;
-// use web3::types::H256;
 
 fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt::init();
@@ -12,7 +11,7 @@ fn main() -> Result<(), anyhow::Error> {
             .unwrap_or(std::borrow::Cow::Borrowed("me"));
         eprintln!("USAGE: {me} DATABASE_FILE");
         eprintln!("this utility will go block by block, starting from the latest block");
-        eprintln!("estimating each transaction on the previous block and reporting any discrencies with fees");
+        eprintln!("estimating each transaction on the previous block and reporting any discrepancies with fees");
         std::process::exit(1);
     }
 
