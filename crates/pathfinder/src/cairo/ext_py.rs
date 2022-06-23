@@ -24,6 +24,7 @@ mod de;
 use de::{ErrorKind, Status, Timings};
 
 mod ser;
+use ser::UsedChain;
 mod sub_process;
 
 mod service;
@@ -33,6 +34,7 @@ pub use service::start;
 #[derive(Clone)]
 pub struct Handle {
     command_tx: mpsc::Sender<(Command, tracing::Span)>,
+    chain: UsedChain,
 }
 
 impl Handle {
@@ -52,6 +54,7 @@ impl Handle {
                 Command::Call {
                     call,
                     at_block,
+                    chain: self.chain,
                     response,
                 },
                 continued_span,
@@ -85,6 +88,7 @@ impl Handle {
                     call,
                     at_block,
                     gas_price,
+                    chain: self.chain,
                     response,
                 },
                 continued_span,
@@ -159,11 +163,15 @@ impl From<ErrorKind> for CallFailure {
 type SharedReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
 
 /// Command from outside of the module wrapped by [`Handle`] to be sent for execution in python.
+///
+/// The used chain is tagged along not to require knowledge of it at the callers of [`Handle`] but to
+/// keep it per-request at the python level.
 #[derive(Debug)]
 enum Command {
     Call {
         call: Call,
         at_block: BlockHashOrTag,
+        chain: UsedChain,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
@@ -171,6 +179,7 @@ enum Command {
         at_block: BlockHashOrTag,
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
+        chain: UsedChain,
         response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
     },
 }
@@ -295,6 +304,7 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
+            crate::core::Chain::Goerli,
         )
         .await
         .unwrap();
@@ -318,6 +328,9 @@ mod tests {
                                     StarkHash::from_hex_str("0x84").unwrap(),
                                 )],
                                 entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+                                signature: Default::default(),
+                                max_fee: super::Call::DEFAULT_MAX_FEE,
+                                version: super::Call::DEFAULT_VERSION,
                             },
                             super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
@@ -362,6 +375,8 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
+            // chain doesn't matter here because we are not estimating any real transaction
+            crate::core::Chain::Goerli,
         )
         .await
         .unwrap();
@@ -377,6 +392,9 @@ mod tests {
                 StarkHash::from_hex_str("0x84").unwrap(),
             )],
             entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            signature: Default::default(),
+            max_fee: super::Call::DEFAULT_MAX_FEE,
+            version: super::Call::DEFAULT_VERSION,
         };
 
         let at_block_fee = handle
@@ -397,7 +415,7 @@ mod tests {
             crate::rpc::types::reply::FeeEstimate {
                 consumed: H256::from_low_u64_be(0),
                 gas_price: H256::from_low_u64_be(1),
-                fee: H256::from_low_u64_be(69)
+                fee: H256::from_low_u64_be(4)
             }
         );
 
@@ -417,7 +435,7 @@ mod tests {
             crate::rpc::types::reply::FeeEstimate {
                 consumed: H256::from_low_u64_be(0),
                 gas_price: H256::from_low_u64_be(10),
-                fee: H256::from_low_u64_be(690)
+                fee: H256::from_low_u64_be(35)
             }
         );
 
@@ -450,6 +468,7 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
+            crate::core::Chain::Goerli,
         )
         .await
         .unwrap();
@@ -466,6 +485,9 @@ mod tests {
                 StarkHash::from_hex_str("0x84").unwrap(),
             )],
             entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            signature: Default::default(),
+            max_fee: super::Call::DEFAULT_MAX_FEE,
+            version: super::Call::DEFAULT_VERSION,
         };
 
         let result = handle

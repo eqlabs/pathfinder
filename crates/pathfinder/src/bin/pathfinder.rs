@@ -73,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
         storage.path().into(),
         config.python_subprocesses,
         futures::future::pending(),
+        ethereum_chain,
     )
     .await
     .context(

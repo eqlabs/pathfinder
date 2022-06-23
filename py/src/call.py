@@ -67,11 +67,13 @@ def do_loop(connection, input_gen, output_file):
         "calldata": list_of_int,
         "command": required_command,
         "gas_price": required_gas_price,
+        "chain": required_chain,
     }
 
     optional = {
-        "caller_address": int_param,
-        "signature": int_param,
+        "signature": list_of_int,
+        "max_fee": int_param,
+        "version": int_param,
     }
 
     for line in input_gen:
@@ -106,7 +108,6 @@ def do_loop(connection, input_gen, output_file):
                 out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
             else:
                 # this is hopefully something we can give to the user
-                print(f"failure: {json.dumps(e.message)}", flush=True, file=sys.stderr)
                 out = {"status": "failed", "exception": str(e.code)}
         except Exception as e:
             stringified = str(e)
@@ -135,6 +136,11 @@ def loop_inner(connection, command):
         raise UnexpectedSchemaVersion
 
     verb = command["command"]
+    general_config = create_general_config(command["chain"])
+
+    signature = command.get("signature", None)
+    max_fee = command.get("max_fee", 0)
+    version = command.get("version", 0)
 
     # the later parts will have access to gas_price through this block_info
     (block_info, global_root) = resolve_block(
@@ -144,21 +150,23 @@ def loop_inner(connection, command):
     (result, carried_state) = asyncio.run(
         do_call(
             SqliteAdapter(connection),
+            general_config,
             global_root,
             command["contract_address"],
             command["entry_point_selector"],
             command["calldata"],
-            command.get("caller_address", 0),
-            command.get("signature", None),
+            signature,
+            max_fee,
             block_info,
+            version,
         )
     )
 
     if verb == "call":
-        return (verb, result.call_info.retdata)
+        return (verb, result.retdata)
     else:
         assert verb == "estimate_fee", "command should had been call or estimate_fee"
-        fees = estimate_fee_after_call(result.call_info, carried_state)
+        fees = estimate_fee_after_call(general_config, result, carried_state)
         return (verb, fees)
 
 
@@ -273,6 +281,16 @@ def required_gas_price(s):
     else:
         assert type(s) == int, "expected gas_price to be an int"
         return s
+
+
+def required_chain(s):
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
+    if s == "MAINNET":
+        return StarknetChainId.MAINNET
+    else:
+        assert s == "GOERLI"
+        return StarknetChainId.TESTNET
 
 
 def check_schema(connection):
@@ -417,9 +435,6 @@ class SqliteAdapter(Storage):
             "select hash, root from contract_states where state_hash = ?", [suffix]
         )
 
-        # FIXME: this is really wonky, esp with the tuple returning query, the
-        # first if is None is probably never hit.
-
         only = next(cursor, [None, None])
 
         [h, root] = only
@@ -474,34 +489,30 @@ class SqliteAdapter(Storage):
 
 async def do_call(
     adapter,
+    general_config,
     root,
     contract_address,
     selector,
     calldata,
-    caller_address,
     signature,
+    max_fee,
     block_info,
+    version,
 ):
     """
-    Loads all of the cairo-lang parts needed for the call. Dirties the internal
-    cairo-lang state which does not matter, because the state will be thrown
-    out.
-
-    Returns the retdata from the call, which is the only property needed by the RPC api.
+    The actual call execution with cairo-lang.
     """
     from starkware.starknet.business_logic.state.state import (
         SharedState,
         StateSelector,
     )
-    from starkware.starknet.definitions.general_config import StarknetGeneralConfig
     from starkware.storage.storage import FactFetchingContext
     from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
         PatriciaTree,
     )
+    from starkware.starknet.services.api.contract_class import EntryPointType
     from starkware.cairo.lang.vm.crypto import pedersen_hash_func
-    from starkware.starknet.testing.state import StarknetState
-
-    general_config = StarknetGeneralConfig()
+    from starkware.starknet.testing.state import create_invoke_function
 
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
@@ -519,47 +530,36 @@ async def do_call(
     # but doesn't seem to matter for regular call.
     carried_state = carried_state.create_child_state_for_querying()
 
-    state = StarknetState(state=carried_state, general_config=general_config)
-    max_fee = 0
+    # what follows is an inlined state.call_raw
+    # FIXME: this needs to be restored in cairo-lang > 0.9.0 if there's an
+    # option to access the carried state
+    tx = create_invoke_function(
+        contract_address=contract_address,
+        selector=selector,
+        calldata=calldata,
+        caller_address=0,
+        max_fee=max_fee,
+        version=version,
+        signature=signature,
+        entry_point_type=EntryPointType.EXTERNAL,
+        nonce=None,
+        chain_id=general_config.chain_id.value,
+        only_query=True,
+    )
 
-    output = await state.invoke_raw(
-        contract_address, selector, calldata, caller_address, max_fee, signature
+    call_info = await tx.execute(
+        state=carried_state,
+        general_config=general_config,
+        only_query=True,
     )
 
     # return both of these as carried state is needed for the fee estimation afterwards
-    return (output, carried_state)
+    return (call_info, carried_state)
 
 
-def estimate_fee_after_call(call_info, carried_state):
-    from starkware.starknet.definitions.general_config import (
-        StarknetGeneralConfig,
-        N_STEPS_RESOURCE,
-    )
-    from starkware.cairo.lang.builtins.all_builtins import (
-        PEDERSEN_BUILTIN,
-        RANGE_CHECK_BUILTIN,
-        ECDSA_BUILTIN,
-        BITWISE_BUILTIN,
-        OUTPUT_BUILTIN,
-        EC_OP_BUILTIN,
-    )
+def estimate_fee_after_call(general_config, call_info, carried_state):
     from starkware.starknet.business_logic.transaction_fee import calculate_tx_fee
     from starkware.starknet.business_logic.utils import get_invoke_tx_total_resources
-
-    general_config = StarknetGeneralConfig()
-
-    # given on 2022-06-07
-    general_config.cairo_resource_fee_weights.update(
-        {
-            N_STEPS_RESOURCE: 1.0,
-            PEDERSEN_BUILTIN: 8.0,
-            RANGE_CHECK_BUILTIN: 8.0,
-            ECDSA_BUILTIN: 512.0,
-            BITWISE_BUILTIN: 256.0,
-            OUTPUT_BUILTIN: 0.0,
-            EC_OP_BUILTIN: 0.0,
-        }
-    )
 
     (l1_gas_used, _cairo_resources_used) = get_invoke_tx_total_resources(
         carried_state, call_info
@@ -572,6 +572,52 @@ def estimate_fee_after_call(call_info, carried_state):
         "gas_price": carried_state.block_info.gas_price,
         "overall_fee": overall_fee,
     }
+
+
+def create_general_config(chain_id):
+    """
+    Separate fn because it's tricky to get a new instance with actual configuration
+    """
+    from starkware.starknet.definitions.general_config import (
+        StarknetGeneralConfig,
+        N_STEPS_RESOURCE,
+        StarknetOsConfig,
+    )
+    from starkware.cairo.lang.builtins.all_builtins import (
+        PEDERSEN_BUILTIN,
+        RANGE_CHECK_BUILTIN,
+        ECDSA_BUILTIN,
+        BITWISE_BUILTIN,
+        OUTPUT_BUILTIN,
+        EC_OP_BUILTIN,
+    )
+
+    # given on 2022-06-07
+    weights = {
+        N_STEPS_RESOURCE: 1.0,
+        # these need to be suffixed because ... they are checked to have these suffixes, except for N_STEPS_RESOURCE
+        f"{PEDERSEN_BUILTIN}_builtin": 8.0,
+        f"{RANGE_CHECK_BUILTIN}_builtin": 8.0,
+        f"{ECDSA_BUILTIN}_builtin": 512.0,
+        f"{BITWISE_BUILTIN}_builtin": 256.0,
+        f"{OUTPUT_BUILTIN}_builtin": 0.0,
+        f"{EC_OP_BUILTIN}_builtin": 0.0,
+    }
+
+    # because of units ... scale these down
+    weights = dict(map(lambda t: (t[0], t[1] * 0.05), weights.items()))
+
+    general_config = StarknetGeneralConfig(
+        starknet_os_config=StarknetOsConfig(chain_id),
+        cairo_resource_fee_weights=weights,
+    )
+
+    assert general_config.cairo_resource_fee_weights[f"{N_STEPS_RESOURCE}"] == 0.05
+    assert (
+        general_config.cairo_resource_fee_weights[f"{BITWISE_BUILTIN}_builtin"] == 12.8
+    )
+
+    return general_config
 
 
 if __name__ == "__main__":

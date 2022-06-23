@@ -262,7 +262,12 @@ async fn process(
     command_buffer.clear();
 
     let sent_over = match &command {
-        Command::Call { call, at_block, .. } => ChildCommand {
+        Command::Call {
+            call,
+            at_block,
+            chain,
+            ..
+        } => ChildCommand {
             command: Verb::Call,
             contract_address: &call.contract_address,
             calldata: &call.calldata,
@@ -271,11 +276,16 @@ async fn process(
             // TODO: this might change in the future, if *later* gas price needs to be available
             // sometimes
             gas_price: None,
+            signature: &call.signature,
+            max_fee: &call.max_fee,
+            version: &call.version,
+            chain: *chain,
         },
         Command::EstimateFee {
             call,
             at_block,
             gas_price,
+            chain,
             ..
         } => ChildCommand {
             command: Verb::EstimateFee,
@@ -284,6 +294,10 @@ async fn process(
             entry_point_selector: &call.entry_point_selector,
             at_block,
             gas_price: gas_price.as_option(),
+            signature: &call.signature,
+            max_fee: &call.max_fee,
+            version: &call.version,
+            chain: *chain,
         },
     };
 

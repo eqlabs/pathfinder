@@ -60,6 +60,7 @@ async fn main() {
             // awaitable signal will work
             let _: Result<(), _> = stop_rx.await;
         },
+        pathfinder_lib::core::Chain::Goerli,
     )
     .await
     .unwrap();

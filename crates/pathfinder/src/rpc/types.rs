@@ -78,8 +78,14 @@ impl std::fmt::Display for BlockNumberOrTag {
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use crate::{
-        core::{CallParam, ContractAddress, EntryPoint, EventKey, StarknetBlockNumber},
-        rpc::serde::H256AsNoLeadingZerosHexStr,
+        core::{
+            CallParam, CallSignatureElem, ContractAddress, EntryPoint, EventKey, Fee,
+            StarknetBlockNumber, TransactionVersion,
+        },
+        rpc::serde::{
+            CallSignatureElemAsDecimalStr, FeeAsHexStr, H256AsNoLeadingZerosHexStr,
+            TransactionVersionAsHexStr,
+        },
     };
     use serde::{Deserialize, Serialize};
     use serde_with::{serde_as, skip_serializing_none};
@@ -94,9 +100,50 @@ pub mod request {
     pub struct OverflowingStorageAddress(#[serde_as(as = "H256AsNoLeadingZerosHexStr")] pub H256);
 
     /// Contains parameters passed to `starknet_call`.
+    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct Call {
+        pub contract_address: ContractAddress,
+        pub calldata: Vec<CallParam>,
+        pub entry_point_selector: EntryPoint,
+        /// EstimateFee hurry: it doesn't make any sense to use decimal numbers for one field
+        #[serde(default)]
+        #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
+        pub signature: Vec<CallSignatureElem>,
+        /// EstimateFee hurry: max fee is needed if there's a signature
+        #[serde_as(as = "FeeAsHexStr")]
+        #[serde(default = "call_default_max_fee")]
+        pub max_fee: Fee,
+        /// EstimateFee hurry: transaction version might be interesting, might not be around for
+        /// long
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        #[serde(default = "call_default_version")]
+        pub version: TransactionVersion,
+    }
+
+    const fn call_default_max_fee() -> Fee {
+        Call::DEFAULT_MAX_FEE
+    }
+
+    const fn call_default_version() -> TransactionVersion {
+        Call::DEFAULT_VERSION
+    }
+
+    impl Call {
+        pub const DEFAULT_MAX_FEE: Fee = Fee(web3::types::H128::zero());
+        pub const DEFAULT_VERSION: TransactionVersion =
+            TransactionVersion(web3::types::H256::zero());
+    }
+
+    /// This is what [`Call`] used to be, but is used in
+    /// [`crate::rpc::api::RpcApi::add_invoke_transaction`] for example.
+    ///
+    /// It might be that [`Call`] and arguments of `addInvokeTransaction` could be unified in the
+    /// future when the dust has settled on the implementation.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct ContractCall {
         pub contract_address: ContractAddress,
         pub calldata: Vec<CallParam>,
         pub entry_point_selector: EntryPoint,

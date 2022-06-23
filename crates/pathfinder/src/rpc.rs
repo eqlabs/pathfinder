@@ -13,7 +13,7 @@ use crate::{
         serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
         types::{
             request::OverflowingStorageAddress,
-            request::{BlockResponseScope, Call, EventFilter},
+            request::{BlockResponseScope, Call, ContractCall, EventFilter},
             BlockHashOrTag, BlockNumberOrTag,
         },
     },
@@ -292,7 +292,7 @@ pub async fn run_server(
             #[serde_with::serde_as]
             #[derive(Debug, Deserialize)]
             pub struct NamedArgs {
-                pub function_invocation: Call,
+                pub function_invocation: ContractCall,
                 #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
                 pub signature: Vec<CallSignatureElem>,
                 #[serde_as(as = "FeeAsHexStr")]
@@ -2146,6 +2146,9 @@ mod tests {
                     calldata: CALL_DATA.clone(),
                     contract_address: *VALID_CONTRACT_ADDR,
                     entry_point_selector: *VALID_ENTRY_POINT,
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
                 },
                 *INVOKE_CONTRACT_BLOCK_HASH
             );
@@ -2171,6 +2174,9 @@ mod tests {
                         calldata: CALL_DATA.clone(),
                         contract_address: *VALID_CONTRACT_ADDR,
                         entry_point_selector: *VALID_ENTRY_POINT,
+                        signature: Default::default(),
+                        max_fee: Call::DEFAULT_MAX_FEE,
+                        version: Call::DEFAULT_VERSION,
                     },
                     BlockHashOrTag::Tag(Tag::Latest)
                 );
@@ -2219,6 +2225,9 @@ mod tests {
                     calldata: CALL_DATA.clone(),
                     contract_address: *VALID_CONTRACT_ADDR,
                     entry_point_selector: *VALID_ENTRY_POINT,
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
                 },
                 BlockHashOrTag::Tag(Tag::Pending)
             );
@@ -2241,6 +2250,9 @@ mod tests {
                     calldata: CALL_DATA.clone(),
                     contract_address: *VALID_CONTRACT_ADDR,
                     entry_point_selector: *INVALID_ENTRY_POINT,
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
@@ -2267,6 +2279,9 @@ mod tests {
                     calldata: CALL_DATA.clone(),
                     contract_address: *INVALID_CONTRACT_ADDR,
                     entry_point_selector: *VALID_ENTRY_POINT,
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
@@ -2290,6 +2305,9 @@ mod tests {
                     calldata: vec![],
                     contract_address: *VALID_CONTRACT_ADDR,
                     entry_point_selector: *VALID_ENTRY_POINT,
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
                 },
                 BlockHashOrTag::Tag(Tag::Latest)
             );
@@ -2313,6 +2331,9 @@ mod tests {
                     calldata: CALL_DATA.clone(),
                     contract_address: *VALID_CONTRACT_ADDR,
                     entry_point_selector: *VALID_ENTRY_POINT,
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
                 },
                 *PRE_DEPLOY_CONTRACT_BLOCK_HASH
             );
@@ -2336,6 +2357,9 @@ mod tests {
                     calldata: CALL_DATA.clone(),
                     contract_address: *VALID_CONTRACT_ADDR,
                     entry_point_selector: *VALID_ENTRY_POINT,
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
                 },
                 *INVALID_BLOCK_HASH
             );
@@ -2895,7 +2919,7 @@ mod tests {
             use web3::types::H256;
 
             lazy_static::lazy_static! {
-                pub static ref CALL: Call = Call {
+                pub static ref CALL: ContractCall = ContractCall {
                     contract_address: ContractAddress(
                         StarkHash::from_hex_str(
                             "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",

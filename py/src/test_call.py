@@ -2,6 +2,7 @@ from call import do_loop, loop_inner, EXPECTED_SCHEMA_REVISION, check_cairolang_
 import sqlite3
 import io
 import json
+import pytest
 
 
 # this is from 64a7f6aed9757d3d8d6c28bd972df73272b0cb0a of cairo-lang
@@ -257,9 +258,9 @@ def test_success():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "call", "at_block": "0x{(b"some blockhash somewhere").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "call", "at_block": "0x{(b"some blockhash somewhere").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
         ],
     )
 
@@ -273,6 +274,7 @@ def test_positive_directly():
     """
     this is like test_success but does it directly with the do_call, instead of the json wrapping, which hides exceptions which come from upgrading.
     """
+    from starkware.starknet.definitions.general_config import StarknetChainId
 
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -284,6 +286,7 @@ def test_positive_directly():
         "entry_point_selector": "get_value",
         "calldata": [132],
         "gas_price": None,
+        "chain": StarknetChainId.TESTNET,
     }
 
     con.execute("BEGIN")
@@ -305,7 +308,7 @@ def test_called_contract_not_found():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address + 1}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address + 1}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}'
         ],
     )
 
@@ -321,7 +324,7 @@ def test_nested_called_contract_not_found():
         con,
         [
             # call neighbouring contract, which doesn't exist in the global state tree
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null, "chain": "GOERLI" }}'
         ],
     )
 
@@ -341,7 +344,7 @@ def test_invalid_entry_point():
         con,
         [
             # call not found entry point with `call_increase_value` args
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value2", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "call_increase_value2", "calldata": [{contract_address - 1}, 132, 4], "gas_price": null, "chain": "GOERLI" }}'
         ],
     )
 
@@ -361,7 +364,7 @@ def test_invalid_schema_version():
     output = default_132_on_3_scenario(
         con,
         [
-            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}'
+            f'{{ "command": "call", "at_block": 1, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}'
         ],
     )
 
@@ -379,9 +382,9 @@ def test_no_such_block():
         con,
         (
             # there's only block 1
-            f'{{ "command": "call", "at_block": 99999999999, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "call", "at_block": "0x{(b"no such block").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
+            f'{{ "command": "call", "at_block": 99999999999, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "call", "at_block": "0x{(b"no such block").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
         ),
     )
 
@@ -401,6 +404,8 @@ def test_check_cairolang_version():
 
 
 def test_fee_estimate_on_positive_directly():
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
     # fee estimation is a new thing on top of a call, but returning only the estimated fee
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -416,6 +421,7 @@ def test_fee_estimate_on_positive_directly():
         "calldata": [132],
         # gas_price is None for null => use block's (zero)
         "gas_price": None,
+        "chain": StarknetChainId.TESTNET,
     }
 
     (verb, output) = loop_inner(con, command)
@@ -435,8 +441,8 @@ def test_fee_estimate_on_positive():
     (first, second) = default_132_on_3_scenario(
         con,
         [
-            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null }}',
-            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": "0xa" }}',
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
+            f'{{ "command": "estimate_fee", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": "0xa", "chain": "GOERLI" }}',
         ],
     )
 
@@ -454,6 +460,64 @@ def test_fee_estimate_on_positive():
         "output": {
             "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (690).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (35).to_bytes(32, "big").hex(),
         },
     }
+
+
+@pytest.mark.skip(reason="this requires up to 2804 block synced database")
+def test_failing_mainnet_tx2():
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
+    con = sqlite3.connect("../../crates/pathfinder/mainnet.sqlite")
+    con.execute("BEGIN")
+
+    # this is running fee estimation on existing transaction from mainnet, on the block before
+    # txhash = 0xccb3808126726235eee5818e6298e5cc2c9db3731442d66ad63f7e3f7d396d
+    #
+    # easiest way to find this command is to add logging into the call.py::loop_inner:
+    #    print(f"{command}", file=sys.stderr, flush=True)
+    # then reproduce it in a test case like this, let automatic formatting do it's job.
+    command = {
+        "command": "estimate_fee",
+        "contract_address": 45915111574649954983606422480229741823594314537836586888051448850027079668,
+        "calldata": [
+            1,
+            2087021424722619777119509474943472645767659996348769578120564519014510906823,
+            232670485425082704932579856502088130646006032362877466777181098476241604910,
+            0,
+            3,
+            3,
+            1993141595574381281542654435135626980310393893133465032682864365884756205412,
+            8235300000000000,
+            0,
+            1,
+        ],
+        "entry_point_selector": 617075754465154585683856897856256838130216341506379215893724690153393808813,
+        "at_block": b"\x01G\xc4\xb0\xf7\x02\x07\x93\x84\xe2m\x9d4\xa1^wX\x88\x1e2\xb2\x19\xfch\xc0v\xb0\x9d\x0b\xe1?\x8c",
+        "gas_price": 21367239423,
+        "signature": [
+            0x10E400D046147777C2AC5645024E1EE81C86D90B52D76AB8A8125E5F49612F9,
+            0xADB92739205B4626FEFB533B38D0071EB018E6FF096C98C17A6826B536817B,
+        ],
+        "max_fee": 0x12C72866EFA9B,
+        "chain": StarknetChainId.MAINNET,
+    }
+
+    (verb, output) = loop_inner(con, command)
+
+    # this is wrong answer, but good enough for now
+    # assert output == {
+    #     "gas_consumed": 0,
+    #     "gas_price": 21367239423,
+    #     "overall_fee": 21858685929729,
+    # }
+
+    # this is less wrong, but still off
+    assert output == {
+        "gas_consumed": 8568,
+        "gas_price": 21367239423,
+        "overall_fee": 253394092317357,
+    }
+
+    assert output["overall_fee"] == 0xA9B3FBAC7457
