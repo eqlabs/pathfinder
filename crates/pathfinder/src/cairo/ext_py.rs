@@ -415,7 +415,7 @@ mod tests {
             crate::rpc::types::reply::FeeEstimate {
                 consumed: H256::from_low_u64_be(0),
                 gas_price: H256::from_low_u64_be(1),
-                fee: H256::from_low_u64_be(69)
+                fee: H256::from_low_u64_be(4)
             }
         );
 
@@ -435,7 +435,7 @@ mod tests {
             crate::rpc::types::reply::FeeEstimate {
                 consumed: H256::from_low_u64_be(0),
                 gas_price: H256::from_low_u64_be(10),
-                fee: H256::from_low_u64_be(690)
+                fee: H256::from_low_u64_be(35)
             }
         );
 

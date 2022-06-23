@@ -460,7 +460,7 @@ def test_fee_estimate_on_positive():
         "output": {
             "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (690).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (35).to_bytes(32, "big").hex(),
         },
     }
 

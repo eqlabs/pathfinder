@@ -604,14 +604,17 @@ def create_general_config(chain_id):
         f"{EC_OP_BUILTIN}_builtin": 0.0,
     }
 
+    # because of units ... scale these down
+    weights = dict(map(lambda t: (t[0], t[1] * 0.05), weights.items()))
+
     general_config = StarknetGeneralConfig(
         starknet_os_config=StarknetOsConfig(chain_id),
         cairo_resource_fee_weights=weights,
     )
 
-    assert general_config.cairo_resource_fee_weights[f"{N_STEPS_RESOURCE}"] == 1.0
+    assert general_config.cairo_resource_fee_weights[f"{N_STEPS_RESOURCE}"] == 0.05
     assert (
-        general_config.cairo_resource_fee_weights[f"{BITWISE_BUILTIN}_builtin"] == 256.0
+        general_config.cairo_resource_fee_weights[f"{BITWISE_BUILTIN}_builtin"] == 12.8
     )
 
     return general_config
