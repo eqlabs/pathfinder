@@ -86,6 +86,72 @@ rpc_call '{
     }
 }'
 
+# mainnet transaction 0xccb3808126726235eee5818e6298e5cc2c9db3731442d66ad63f7e3f7d396d
+rpc_call '{
+    "jsonrpc": "2.0",
+    "id": "1",
+    "method": "starknet_call",
+    "params": {
+        "request": {
+            "contract_address": "0x0019fcae2482de8fb3afaf8d4b219449bec93a5928f02f58eef645cc071767f4",
+            "calldata": [
+                "0x0000000000000000000000000000000000000000000000000000000000000001",
+                "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+                "0x0083afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+                "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "0x0000000000000000000000000000000000000000000000000000000000000003",
+                "0x0000000000000000000000000000000000000000000000000000000000000003",
+                "0x04681402a7ab16c41f7e5d091f32fe9b78de096e0bd5962ce5bd7aaa4a441f64",
+                "0x000000000000000000000000000000000000000000000000001d41f6331e6800",
+                "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "0x0000000000000000000000000000000000000000000000000000000000000001"
+            ],
+            "entry_point_selector": "0x015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+            "signature": [
+                "0x10E400D046147777C2AC5645024E1EE81C86D90B52D76AB8A8125E5F49612F9",
+                "0x0ADB92739205B4626FEFB533B38D0071EB018E6FF096C98C17A6826B536817B"
+            ],
+            "max_fee": "0x12C72866EFA9B",
+            "version": "0x0"
+        },
+        "block_hash": "0x0147c4b0f702079384e26d9d34a15e7758881e32b219fc68c076b09d0be13f8c"
+    }
+}'
+
+# mainnet transaction 0xccb3808126726235eee5818e6298e5cc2c9db3731442d66ad63f7e3f7d396d again
+# because this specifies a block hash to estimate on, this will use that blocks recorded historic gas price
+# try with "block_hash": "latest" for current "eth_gasPrice".
+rpc_call '{
+    "jsonrpc": "2.0",
+    "id": "1",
+    "method": "starknet_estimateFee",
+    "params": {
+        "request": {
+            "contract_address": "0x0019fcae2482de8fb3afaf8d4b219449bec93a5928f02f58eef645cc071767f4",
+            "calldata": [
+                "0x0000000000000000000000000000000000000000000000000000000000000001",
+                "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+                "0x0083afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+                "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "0x0000000000000000000000000000000000000000000000000000000000000003",
+                "0x0000000000000000000000000000000000000000000000000000000000000003",
+                "0x04681402a7ab16c41f7e5d091f32fe9b78de096e0bd5962ce5bd7aaa4a441f64",
+                "0x000000000000000000000000000000000000000000000000001d41f6331e6800",
+                "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "0x0000000000000000000000000000000000000000000000000000000000000001"
+            ],
+            "entry_point_selector": "0x015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+            "signature": [
+                "0x10E400D046147777C2AC5645024E1EE81C86D90B52D76AB8A8125E5F49612F9",
+                "0x0ADB92739205B4626FEFB533B38D0071EB018E6FF096C98C17A6826B536817B"
+            ],
+            "max_fee": "0x12C72866EFA9B",
+            "version": "0x0"
+        },
+        "block_hash": "0x0147c4b0f702079384e26d9d34a15e7758881e32b219fc68c076b09d0be13f8c"
+    }
+}'
+
 rpc_call '{"jsonrpc":"2.0","id":"36","method":"starknet_blockNumber"}'
 
 rpc_call '{
