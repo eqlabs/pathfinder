@@ -164,7 +164,7 @@ type SharedReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
 
 /// Command from outside of the module wrapped by [`Handle`] to be sent for execution in python.
 ///
-/// The used chain is tagged along not to require knowledge it at the callers of [`Handle`] but to
+/// The used chain is tagged along not to require knowledge of it at the callers of [`Handle`] but to
 /// keep it per-request at the python level.
 #[derive(Debug)]
 enum Command {
