@@ -18,6 +18,8 @@ struct FileConfig {
     data_directory: Option<String>,
     #[serde(rename = "sequencer-url")]
     sequencer_url: Option<String>,
+    #[serde(rename = "python-subprocesses")]
+    python_subprocesses: Option<String>,
 }
 
 impl FileConfig {
@@ -32,6 +34,7 @@ impl FileConfig {
         .with(ConfigOption::DataDirectory, self.data_directory)
         .with(ConfigOption::HttpRpcAddress, self.http_rpc)
         .with(ConfigOption::SequencerHttpUrl, self.sequencer_url)
+        .with(ConfigOption::PythonSubprocesses, self.python_subprocesses)
     }
 }
 
@@ -107,6 +110,14 @@ password = "{}""#,
         let toml = format!(r#"sequencer-url = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
+    }
+
+    #[test]
+    fn python_subprocesses() {
+        let value = "5".to_owned();
+        let toml = format!(r#"python-subprocesses = "{}""#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(cfg.take(ConfigOption::PythonSubprocesses), Some(value));
     }
 
     #[test]
