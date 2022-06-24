@@ -40,7 +40,8 @@ pub struct ContractCode {
 // Bytecode and entry point list of a class
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractClass {
-    pub program: Vec<ByteCodeWord>,
+    // A base64 encoding of the gzip-compressed JSON representation of program.
+    pub program: String,
     // A JSON representation of the entry points
     // We don't actually process this value, just serialize/deserialize
     // from an already validated JSON.
