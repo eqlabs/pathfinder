@@ -1,9 +1,10 @@
 use crate::{
     core::{ByteCodeWord, ClassHash, ContractAddress, ContractClass, ContractCode},
-    state::{class_hash::extract_entry_points_by_type, CompressedContract},
+    state::{class_hash::extract_program_and_entry_points_by_type, CompressedContract},
 };
 
 use anyhow::Context;
+use flate2::{write::GzEncoder, Compression};
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 use stark_hash::StarkHash;
 
@@ -120,40 +121,42 @@ impl ContractCodeTable {
     ) -> anyhow::Result<Option<ContractClass>> {
         let row = transaction
             .query_row(
-                "SELECT bytecode, definition
+                "SELECT definition
                 FROM contract_code
                 WHERE hash = :hash",
                 named_params! {
                     ":hash": &hash.0.to_be_bytes()
                 },
                 |row| {
-                    let bytecode: Vec<u8> = row.get("bytecode")?;
                     let definition: Vec<u8> = row.get("definition")?;
 
-                    Ok((bytecode, definition))
+                    Ok(definition)
                 },
             )
             .optional()?;
 
-        let (bytecode, definition) = match row {
+        let definition = match row {
             None => return Ok(None),
-            Some((bytecode, definition)) => (bytecode, definition),
+            Some(definition) => definition,
         };
-
-        let bytecode = zstd::decode_all(&*bytecode)
-            .context("Corruption: invalid compressed column (bytecode)")?;
-
-        let bytecode = serde_json::from_slice::<Vec<ByteCodeWord>>(&bytecode)
-            .context("Corruption: invalid uncompressed column (bytecode)")?;
 
         let definition = zstd::decode_all(&*definition)
             .context("Corruption: invalid compressed column (abi)")?;
 
-        let entry_points_by_type = extract_entry_points_by_type(&definition)
-            .context("Failed to extract entry points from contract definition")?;
+        let (program, entry_points_by_type) = extract_program_and_entry_points_by_type(&definition)
+            .context("Extract program and entry points from contract definition")?;
+
+        // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.
+        let mut gzip_encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        serde_json::to_writer(&mut gzip_encoder, &program).context("Compressing program JSON")?;
+        let program = gzip_encoder
+            .finish()
+            .context("Finishing program compression")?;
+
+        let program = base64::encode(program);
 
         Ok(Some(ContractClass {
-            program: bytecode,
+            program,
             entry_points_by_type,
         }))
     }

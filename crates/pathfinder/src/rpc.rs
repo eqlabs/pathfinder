@@ -1635,7 +1635,7 @@ mod tests {
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
-                let (_contract_address, class_hash, entry_points) =
+                let (_contract_address, class_hash, program, entry_points) =
                     setup_class_and_contract(&transaction).unwrap();
                 transaction.commit().unwrap();
 
@@ -1651,7 +1651,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(class.entry_points_by_type, entry_points);
-                assert_eq!(class.program.len(), 132);
+                assert_eq!(class.program, program);
             }
         }
 
@@ -1665,7 +1665,7 @@ mod tests {
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
-                let (_contract_address, class_hash, entry_points) =
+                let (_contract_address, class_hash, program, entry_points) =
                     setup_class_and_contract(&transaction).unwrap();
                 transaction.commit().unwrap();
 
@@ -1681,7 +1681,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(class.entry_points_by_type, entry_points);
-                assert_eq!(class.program.len(), 132);
+                assert_eq!(class.program, program);
             }
         }
     }
@@ -1716,7 +1716,7 @@ mod tests {
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
-                let (contract_address, expected_class_hash, _entry_points) =
+                let (contract_address, expected_class_hash, _program, _entry_points) =
                     setup_class_and_contract(&transaction).unwrap();
                 transaction.commit().unwrap();
 
@@ -1744,7 +1744,7 @@ mod tests {
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
-                let (contract_address, expected_class_hash, _entry_points) =
+                let (contract_address, expected_class_hash, _program, _entry_points) =
                     setup_class_and_contract(&transaction).unwrap();
                 transaction.commit().unwrap();
 
@@ -1815,7 +1815,7 @@ mod tests {
 
             let mut conn = storage.connection().unwrap();
             let transaction = conn.transaction().unwrap();
-            let (contract_address, _class_hash, entry_points) =
+            let (contract_address, _class_hash, program, entry_points) =
                 setup_class_and_contract(&transaction).unwrap();
             transaction.commit().unwrap();
 
@@ -1842,7 +1842,7 @@ mod tests {
 
             assert_eq!(rets[0], rets[1]);
             assert_eq!(rets[0].entry_points_by_type, entry_points);
-            assert_eq!(rets[0].program.len(), 132);
+            assert_eq!(rets[0].program, program);
         }
     }
 
@@ -1860,7 +1860,7 @@ mod tests {
 
             let mut conn = storage.connection().unwrap();
             let transaction = conn.transaction().unwrap();
-            let (contract_address, _class_hash, _entry_points) =
+            let (contract_address, _class_hash, _program, _entry_points) =
                 setup_class_and_contract(&transaction).unwrap();
             transaction.commit().unwrap();
 
@@ -1901,11 +1901,12 @@ mod tests {
         use super::*;
         use anyhow::Context;
         use bytes::Bytes;
+        use flate2::{write::GzEncoder, Compression};
         use pretty_assertions::assert_eq;
 
         pub fn setup_class_and_contract(
             transaction: &rusqlite::Transaction<'_>,
-        ) -> anyhow::Result<(ContractAddress, ClassHash, serde_json::Value)> {
+        ) -> anyhow::Result<(ContractAddress, ClassHash, String, serde_json::Value)> {
             let contract_definition = include_bytes!("../fixtures/contract_definition.json.zst");
             let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition))?;
             let contract_definition = Bytes::from(buffer);
@@ -1926,8 +1927,10 @@ mod tests {
 
             assert_eq!(hash.0, expected_hash);
 
-            let entry_points =
-                crate::state::class_hash::extract_entry_points_by_type(&*contract_definition)?;
+            let (program, entry_points) =
+                crate::state::class_hash::extract_program_and_entry_points_by_type(
+                    &*contract_definition,
+                )?;
 
             crate::storage::ContractCodeTable::insert(
                 transaction,
@@ -1940,7 +1943,13 @@ mod tests {
 
             crate::storage::ContractsTable::upsert(transaction, contract_address, hash)?;
 
-            Ok((contract_address, hash, entry_points))
+            let mut compressor = GzEncoder::new(Vec::new(), Compression::fast());
+            serde_json::to_writer(&mut compressor, &program)?;
+            let program = compressor.finish()?;
+
+            let program = base64::encode(program);
+
+            Ok((contract_address, hash, program, entry_points))
         }
     }
 

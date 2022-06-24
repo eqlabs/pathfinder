@@ -24,6 +24,7 @@ bytes = "1.1.0"
 clap = { version = "3.1.6", features = ["env"] }
 console-subscriber = { version = "0.1.3", optional = true }
 enum-iterator = "0.7.0"
+flate2 = "1.0.23"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 hex = "0.4.3"
 home = "0.5.3"
