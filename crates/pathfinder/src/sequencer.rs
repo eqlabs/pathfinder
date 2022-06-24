@@ -156,8 +156,7 @@ impl Client {
         let genesis_hash = self
             .block(StarknetBlockNumber::GENESIS.into())
             .await?
-            .block_hash
-            .unwrap();
+            .block_hash;
 
         match genesis_hash {
             goerli if goerli == *GOERLI_GENESIS_HASH => Ok(Chain::Goerli),
@@ -628,12 +627,12 @@ mod tests {
                 assert_eq!(version, env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"));
 
                 Ok::<_, Infallible>(warp::reply::json(&Block {
-                    block_hash: None,
-                    block_number: None,
+                    block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    block_number: StarknetBlockNumber::GENESIS,
                     gas_price: None,
                     parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
                     sequencer_address: None,
-                    state_root: None,
+                    state_root: crate::core::GlobalRoot(StarkHash::ZERO),
                     status: Status::NotReceived,
                     timestamp: StarknetBlockTimestamp(0),
                     transaction_receipts: vec![],

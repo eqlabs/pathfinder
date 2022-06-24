@@ -355,15 +355,15 @@ pub mod reply {
             scope: BlockResponseScope,
         ) -> Self {
             Self {
-                block_hash: block.block_hash,
+                block_hash: Some(block.block_hash),
                 parent_hash: block.parent_block_hash,
-                block_number: block.block_number,
+                block_number: Some(block.block_number),
                 status: block.status.into(),
                 sequencer: block
                     .sequencer_address
                     // Default value for cairo <0.8.0 is 0
                     .unwrap_or(SequencerAddress(StarkHash::ZERO)),
-                new_root: block.state_root,
+                new_root: Some(block.state_root),
                 // TODO where to get it from
                 old_root: GlobalRoot(StarkHash::ZERO),
                 accepted_time: block.timestamp,
