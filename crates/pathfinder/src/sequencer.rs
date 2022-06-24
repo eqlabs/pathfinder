@@ -61,6 +61,8 @@ pub trait ClientApi {
 
     async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError>;
 
+    async fn pending_state_update(&self) -> Result<reply::StateUpdate, SequencerError>;
+
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
 
     async fn add_invoke_transaction(
@@ -303,6 +305,17 @@ impl ClientApi for Client {
             .feeder_gateway()
             .get_state_update()
             .with_block(block)
+            .with_retry(Self::RETRY)
+            .get()
+            .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn pending_state_update(&self) -> Result<reply::StateUpdate, SequencerError> {
+        self.request()
+            .feeder_gateway()
+            .get_state_update()
+            .with_block(BlockId::Pending)
             .with_retry(Self::RETRY)
             .get()
             .await

@@ -749,6 +749,10 @@ mod tests {
             unimplemented!()
         }
 
+        async fn pending_state_update(&self) -> Result<reply::StateUpdate, SequencerError> {
+            unimplemented!()
+        }
+
         async fn eth_contract_addresses(
             &self,
         ) -> Result<reply::EthContractAddresses, SequencerError> {
