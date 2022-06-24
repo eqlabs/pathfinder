@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub mod block_hash;
-pub(crate) mod class_hash;
+pub mod class_hash;
 mod merkle_node;
 pub(crate) mod merkle_tree;
 pub(crate) mod state_tree;
