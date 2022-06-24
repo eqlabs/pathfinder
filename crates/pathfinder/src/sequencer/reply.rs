@@ -14,13 +14,16 @@ use serde_with::serde_as;
 #[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
-    pub block_hash: StarknetBlockHash,
-    pub block_number: StarknetBlockNumber,
+    #[serde(rename="block_hash")]
+    pub hash: StarknetBlockHash,
+    #[serde(rename="block_number")]
+    pub number: StarknetBlockNumber,
     /// Excluded in blocks prior to StarkNet 0.9
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
     pub gas_price: Option<GasPrice>,
-    pub parent_block_hash: StarknetBlockHash,
+    #[serde(rename="parent_block_hash")]
+    pub parent_hash: StarknetBlockHash,
     /// Excluded in blocks prior to StarkNet 0.8
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
@@ -37,7 +40,8 @@ pub struct Block {
 #[serde(deny_unknown_fields)]
 pub struct PendingBlock {
     pub gas_price: GasPrice,
-    pub parent_block_hash: StarknetBlockHash,
+    #[serde(rename="parent_block_hash")]
+    pub parent_hash: StarknetBlockHash,
     pub sequencer_address: SequencerAddress,
     pub status: Status,
     pub timestamp: StarknetBlockTimestamp,

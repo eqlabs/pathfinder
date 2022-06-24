@@ -85,7 +85,7 @@ pub async fn sync(
         let t_block = t_block.elapsed();
 
         if let Some(some_head) = head {
-            if some_head.1 != block.parent_block_hash {
+            if some_head.1 != block.parent_hash {
                 head = reorg(some_head, chain, &tx_event, &sequencer)
                     .await
                     .context("L2 reorg")?;
@@ -97,15 +97,15 @@ pub async fn sync(
         // Unwrap in both block and state update is safe as the block hash always exists (unless we query for pending).
         let t_update = std::time::Instant::now();
         let state_update = sequencer
-            .state_update(block.block_hash.into())
+            .state_update(block.hash.into())
             .await
             .with_context(|| format!("Fetch state diff for block {:?} from sequencer", next))?;
         let state_update_block_hash = state_update.block_hash.unwrap();
         // An extra sanity check for the state update API.
         anyhow::ensure!(
-            block.block_hash == state_update_block_hash,
+            block.hash == state_update_block_hash,
             "State update block hash mismatch, actual {:x}, expected {:x}",
-            block.block_hash.0,
+            block.hash.0,
             state_update_block_hash.0
         );
         let t_update = t_update.elapsed();
@@ -162,7 +162,7 @@ pub async fn sync(
             contract_updates,
         };
 
-        head = Some((next, block.block_hash));
+        head = Some((next, block.hash));
 
         let timings = Timings {
             block_download: t_block,
@@ -270,15 +270,13 @@ async fn download_block(
             let block = Box::new(block);
             // Check if block hash is correct.
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let verify_result = verify_block_hash(&block, chain, block.block_hash)
-                    .with_context(|| {
-                        format!("Verify block hash for block {}", block.block_number.0)
-                    })?;
+                let verify_result = verify_block_hash(&block, chain, block.hash)
+                    .with_context(|| format!("Verify block hash for block {}", block.number.0))?;
                 Ok((block, verify_result))
             });
             let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
             if verify_result == VerifyResult::Mismatch {
-                tracing::warn!(block_number=?block.block_number, block_hash = ?block.block_hash, "Block hash mismatch");
+                tracing::warn!(block_number=?block.number, block_hash = ?block.hash, "Block hash mismatch");
             }
             Ok(DownloadBlock::Block(block))
         }
@@ -291,11 +289,11 @@ async fn download_block(
                 .await
                 .context("Query sequencer for latest block")?;
 
-            if latest.block_number + 1 == block_number {
+            if latest.number + 1 == block_number {
                 match prev_block_hash {
                     // We are definitely still at the head and it's just that a new block
                     // has not been published yet
-                    Some(parent_block_hash) if parent_block_hash == latest.block_hash => {
+                    Some(parent_block_hash) if parent_block_hash == latest.hash => {
                         Ok(DownloadBlock::AtHead)
                     }
                     // Our head is not valid anymore so there must have been a reorg only at this height
@@ -345,7 +343,7 @@ async fn reorg(
             .await
             .with_context(|| format!("Download block {} from sequencer", previous_block_number.0))?
         {
-            DownloadBlock::Block(block) if block.block_hash == previous_hash => {
+            DownloadBlock::Block(block) if block.hash == previous_hash => {
                 break Some((previous_block_number, previous_hash));
             }
             _ => {}
@@ -625,10 +623,10 @@ mod tests {
             static ref STORAGE_VAL1: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 1 storage val 0").unwrap());
 
             static ref BLOCK0: reply::Block = reply::Block {
-                block_hash: *BLOCK0_HASH,
-                block_number: BLOCK0_NUMBER,
+                hash: *BLOCK0_HASH,
+                number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::ZERO),
-                parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                parent_hash: StarknetBlockHash(StarkHash::ZERO),
                 sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
                 state_root: *GLOBAL_ROOT0,
                 status: reply::Status::AcceptedOnL1,
@@ -637,10 +635,10 @@ mod tests {
                 transactions: vec![],
             };
             static ref BLOCK0_V2: reply::Block = reply::Block {
-                block_hash: *BLOCK0_HASH_V2,
-                block_number: BLOCK0_NUMBER,
+                hash: *BLOCK0_HASH_V2,
+                number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
-                parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                parent_hash: StarknetBlockHash(StarkHash::ZERO),
                 sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
                 state_root: *GLOBAL_ROOT0_V2,
                 status: reply::Status::AcceptedOnL2,
@@ -649,10 +647,10 @@ mod tests {
                 transactions: vec![],
             };
             static ref BLOCK1: reply::Block = reply::Block {
-                block_hash: *BLOCK1_HASH,
-                block_number: BLOCK1_NUMBER,
+                hash: *BLOCK1_HASH,
+                number: BLOCK1_NUMBER,
                 gas_price: Some(GasPrice::from(1)),
-                parent_block_hash: *BLOCK0_HASH,
+                parent_hash: *BLOCK0_HASH,
                 sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 1").unwrap())),
                 state_root: *GLOBAL_ROOT1,
                 status: reply::Status::AcceptedOnL1,
@@ -661,10 +659,10 @@ mod tests {
                 transactions: vec![],
             };
             static ref BLOCK2: reply::Block = reply::Block {
-                block_hash: *BLOCK2_HASH,
-                block_number: BLOCK2_NUMBER,
+                hash: *BLOCK2_HASH,
+                number: BLOCK2_NUMBER,
                 gas_price: Some(GasPrice::from(2)),
-                parent_block_hash: *BLOCK1_HASH,
+                parent_hash: *BLOCK1_HASH,
                 sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 2").unwrap())),
                 state_root: *GLOBAL_ROOT2,
                 status: reply::Status::AcceptedOnL1,
@@ -1184,10 +1182,10 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: *BLOCK1_HASH_V2,
-                    block_number: BLOCK1_NUMBER,
+                    hash: *BLOCK1_HASH_V2,
+                    number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    parent_block_hash: *BLOCK0_HASH_V2,
+                    parent_hash: *BLOCK0_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
@@ -1426,10 +1424,10 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: *BLOCK1_HASH_V2,
-                    block_number: BLOCK1_NUMBER,
+                    hash: *BLOCK1_HASH_V2,
+                    number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    parent_block_hash: *BLOCK0_HASH,
+                    parent_hash: *BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
@@ -1440,10 +1438,10 @@ mod tests {
                     transactions: vec![],
                 };
                 let block2_v2 = reply::Block {
-                    block_hash: *BLOCK2_HASH_V2,
-                    block_number: BLOCK2_NUMBER,
+                    hash: *BLOCK2_HASH_V2,
+                    number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
-                    parent_block_hash: *BLOCK1_HASH_V2,
+                    parent_hash: *BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
@@ -1454,10 +1452,10 @@ mod tests {
                     transactions: vec![],
                 };
                 let block3 = reply::Block {
-                    block_hash: *BLOCK3_HASH,
-                    block_number: BLOCK3_NUMBER,
+                    hash: *BLOCK3_HASH,
+                    number: BLOCK3_NUMBER,
                     gas_price: Some(GasPrice::from(3)),
-                    parent_block_hash: *BLOCK2_HASH,
+                    parent_hash: *BLOCK2_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer address 3").unwrap(),
                     )),
@@ -1699,10 +1697,10 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block2_v2 = reply::Block {
-                    block_hash: *BLOCK2_HASH_V2,
-                    block_number: BLOCK2_NUMBER,
+                    hash: *BLOCK2_HASH_V2,
+                    number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
-                    parent_block_hash: *BLOCK1_HASH,
+                    parent_hash: *BLOCK1_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
@@ -1886,10 +1884,10 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: *BLOCK1_HASH_V2,
-                    block_number: BLOCK1_NUMBER,
+                    hash: *BLOCK1_HASH_V2,
+                    number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
-                    parent_block_hash: *BLOCK0_HASH,
+                    parent_hash: *BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
@@ -1900,10 +1898,10 @@ mod tests {
                     transactions: vec![],
                 };
                 let block2 = reply::Block {
-                    block_hash: *BLOCK2_HASH,
-                    block_number: BLOCK2_NUMBER,
+                    hash: *BLOCK2_HASH,
+                    number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2").unwrap()),
-                    parent_block_hash: *BLOCK1_HASH_V2,
+                    parent_hash: *BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer address 2").unwrap(),
                     )),

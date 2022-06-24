@@ -355,9 +355,9 @@ pub mod reply {
             scope: BlockResponseScope,
         ) -> Self {
             Self {
-                block_hash: Some(block.block_hash),
-                parent_hash: block.parent_block_hash,
-                block_number: Some(block.block_number),
+                block_hash: Some(block.hash),
+                parent_hash: block.parent_hash,
+                block_number: Some(block.number),
                 status: block.status.into(),
                 sequencer: block
                     .sequencer_address

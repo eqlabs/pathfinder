@@ -181,8 +181,8 @@ where
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update(block, diff, timings)) => {
-                    let block_num = block.block_number.0;
-                    let block_hash = block.block_hash;
+                    let block_num = block.number.0;
+                    let block_hash = block.hash;
                     let storage_updates: usize = diff
                         .contract_updates
                         .iter()
@@ -334,7 +334,7 @@ async fn update_sync_status_latest(
     loop {
         match sequencer.block(BlockId::Latest).await {
             Ok(block) => {
-                let latest = { NumberedBlock::from((block.block_hash, block.block_number)) };
+                let latest = { NumberedBlock::from((block.hash, block.number)) };
                 // Update the sync status.
                 match &mut *state.status.write().await {
                     sync_status @ SyncStatus::False(_) => {
@@ -463,8 +463,8 @@ async fn l2_update(
         // but for now the unwraps are "safe" in that these should only ever be
         // None for pending queries to the sequencer, but we aren't using those here.
         let starknet_block = StarknetBlock {
-            number: block.block_number,
-            hash: block.block_hash,
+            number: block.number,
+            hash: block.hash,
             root: block.state_root,
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
@@ -840,10 +840,10 @@ mod tests {
             origin: ETH_ORIG.clone(),
         };
         pub static ref BLOCK0: reply::Block = reply::Block {
-            block_hash: StarknetBlockHash(*A),
-            block_number: StarknetBlockNumber(0),
+            hash: StarknetBlockHash(*A),
+            number: StarknetBlockNumber(0),
             gas_price: Some(GasPrice::ZERO),
-            parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+            parent_hash: StarknetBlockHash(StarkHash::ZERO),
             sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
             state_root: GlobalRoot(StarkHash::ZERO),
             status: reply::Status::AcceptedOnL1,
@@ -852,10 +852,10 @@ mod tests {
             transactions: vec![],
         };
         pub static ref BLOCK1: reply::Block = reply::Block {
-            block_hash: StarknetBlockHash(*B),
-            block_number: StarknetBlockNumber(1),
+            hash: StarknetBlockHash(*B),
+            number: StarknetBlockNumber(1),
             gas_price: Some(GasPrice::from(1)),
-            parent_block_hash: StarknetBlockHash(*A),
+            parent_hash: StarknetBlockHash(*A),
             sequencer_address: Some(SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap())),
             state_root: GlobalRoot(*B),
             status: reply::Status::AcceptedOnL2,

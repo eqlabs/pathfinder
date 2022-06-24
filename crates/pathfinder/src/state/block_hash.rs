@@ -37,7 +37,7 @@ pub fn verify_block_hash(
     expected_block_hash: StarknetBlockHash,
 ) -> Result<VerifyResult> {
     let meta_info = meta::for_chain(chain);
-    if !meta_info.can_verify(block.block_number) {
+    if !meta_info.can_verify(block.number) {
         return Ok(VerifyResult::NotVerifiable);
     }
 
@@ -48,13 +48,13 @@ pub fn verify_block_hash(
         .expect("too many transactions in block");
     let transaction_commitment = calculate_transaction_commitment(&block.transactions)?;
 
-    let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
+    let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.number) {
         let block_hash = compute_final_hash_pre_0_7(
-            block.block_number,
+            block.number,
             block.state_root,
             num_transactions,
             transaction_commitment,
-            block.parent_block_hash,
+            block.parent_hash,
             *chain.starknet_chain_id(),
         );
         block_hash == expected_block_hash
@@ -73,7 +73,7 @@ pub fn verify_block_hash(
         ];
         sequencer_addresses_to_try.iter().any(|address| {
             let block_hash = compute_final_hash(
-                block.block_number,
+                block.number,
                 block.state_root,
                 address,
                 block.timestamp,
@@ -81,7 +81,7 @@ pub fn verify_block_hash(
                 transaction_commitment,
                 num_events,
                 event_commitment,
-                block.parent_block_hash,
+                block.parent_hash,
             );
             block_hash == expected_block_hash
         })
@@ -509,7 +509,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Goerli, block.hash).unwrap(),
             VerifyResult::Match
         );
     }
@@ -524,7 +524,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Goerli, block.hash).unwrap(),
             VerifyResult::Match
         );
     }
@@ -540,7 +540,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash,).unwrap(),
+            verify_block_hash(&block, Chain::Goerli, block.hash,).unwrap(),
             VerifyResult::Match
         );
     }
@@ -555,7 +555,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Goerli, block.hash).unwrap(),
             VerifyResult::Match
         );
     }
