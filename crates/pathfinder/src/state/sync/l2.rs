@@ -19,6 +19,7 @@ pub struct Timings {
     pub block_download: Duration,
     pub state_diff_download: Duration,
     pub contract_deployment: Duration,
+    pub class_declaration: Duration,
 }
 
 /// Events and queries emitted by L2 sync process.
@@ -110,36 +111,14 @@ pub async fn sync(
         );
         let t_update = t_update.elapsed();
 
-        // Download and emit newly declared contract classes.
-        //
-        // We cannot remove the older way using `deploy_contracts` as this
-        // is required to handle older blocks which don't have declare transactions.
-        use crate::sequencer::reply::transaction::Type as TransactionType;
-        let declared_classes = block
-            .transactions
-            .iter()
-            .filter(|b| b.r#type == TransactionType::Declare)
-            .map(|b| {
-                b.class_hash
-                    .expect("Class hash is present for declare transaction")
-            })
-            .collect::<Vec<_>>();
-        for class_hash in declared_classes {
-            let class = download_and_compress_class(class_hash, &sequencer)
-                .await
-                .with_context(|| format!("Downloading class {}", class_hash.0))?;
+        // Download and emit newly declared classes.
+        let t_declare = std::time::Instant::now();
+        declare_classes(&block, &sequencer, &tx_event)
+            .await
+            .with_context(|| format!("Handling newly declared classes for block {:?}", next))?;
+        let t_declare = t_declare.elapsed();
 
-            tx_event
-                .send(Event::NewContract(class))
-                .await
-                .with_context(|| {
-                    format!(
-                        "Sending Event::NewContract for declared class {}",
-                        class_hash.0
-                    )
-                })?;
-        }
-
+        // Download and emit any newly deployed (but undeclared) classes.
         let t_deploy = std::time::Instant::now();
         deploy_contracts(&tx_event, &sequencer, &state_update.state_diff)
             .await
@@ -190,6 +169,7 @@ pub async fn sync(
             block_download: t_block,
             state_diff_download: t_update,
             contract_deployment: t_deploy,
+            class_declaration: t_declare,
         };
 
         tx_event
@@ -197,6 +177,76 @@ pub async fn sync(
             .await
             .context("Event channel closed")?;
     }
+}
+
+/// Download and emit newly declared contract classes.
+///
+/// We cannot remove the older way using `deploy_contracts` as this
+/// is required to handle older blocks which don't have declare transactions.
+async fn declare_classes(
+    block: &Block,
+    sequencer: &impl sequencer::ClientApi,
+    tx_event: &mpsc::Sender<Event>,
+) -> Result<(), anyhow::Error> {
+    use crate::sequencer::reply::transaction::Type as TransactionType;
+    let declared_classes = block
+        .transactions
+        .iter()
+        .filter(|b| b.r#type == TransactionType::Declare)
+        .map(|b| {
+            b.class_hash
+                .expect("Class hash is present for declare transaction")
+        })
+        // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    if declared_classes.is_empty() {
+        return Ok(());
+    }
+
+    // It is possible for these classes to already exist in our database, either
+    // due to a reorg or an earlier deploy of this class (which is possible!).
+    let (tx, rx) = oneshot::channel();
+    tx_event
+        .send(Event::QueryContractExistance(declared_classes.clone(), tx))
+        .await
+        .context("Querying for class existing")?;
+    let already_downloaded = rx.await.context("Oneshot channel closed")?;
+    anyhow::ensure!(
+        already_downloaded.len() == declared_classes.len(),
+        "Query for existance of classes in storage returned {} values instead of the expected {}",
+        already_downloaded.len(),
+        declared_classes.len()
+    );
+
+    let require_downloading = declared_classes
+        .into_iter()
+        .zip(already_downloaded.into_iter())
+        .filter_map(|(class, exists)| match exists {
+            false => Some(class),
+            true => None,
+        })
+        .collect::<Vec<_>>();
+
+    for class_hash in require_downloading {
+        let class = download_and_compress_class(class_hash, sequencer)
+            .await
+            .with_context(|| format!("Downloading class {}", class_hash.0))?;
+
+        tx_event
+            .send(Event::NewContract(class))
+            .await
+            .with_context(|| {
+                format!(
+                    "Sending Event::NewContract for declared class {}",
+                    class_hash.0
+                )
+            })?;
+    }
+
+    Ok(())
 }
 
 enum DownloadBlock {

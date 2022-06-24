@@ -282,6 +282,8 @@ where
                             })?;
                     let count = exists.iter().filter(|b| **b).count();
 
+                    // Fixme: This stat tracking is now incorrect, as these are shared by deploy and declare.
+                    //        Overall, quite nasty as is, so should get a proper refactor instead.
                     existed = (contracts.len(), count);
 
                     let _ = tx.send(exists);
@@ -1105,6 +1107,7 @@ mod tests {
             block_download: Duration::default(),
             state_diff_download: Duration::default(),
             contract_deployment: Duration::default(),
+            class_declaration: Duration::default(),
         };
 
         // A simple L2 sync task
