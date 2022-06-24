@@ -34,6 +34,13 @@ const VERSION_KEY: &str = "user_version";
 
 type PooledConnection = r2d2::PooledConnection<SqliteConnectionManager>;
 
+/// Specifies the [journal mode](https://sqlite.org/pragma.html#pragma_journal_mode)
+/// of the [Storage].
+pub enum JournalMode {
+    Rollback,
+    WAL,
+}
+
 /// Used to create [Connection's](Connection) to the pathfinder database.
 ///
 /// Intended usage:
@@ -57,11 +64,27 @@ impl Storage {
     /// and passed to the various components which require access to the database.
     ///
     /// May be cloned safely.
-    pub fn migrate(database_path: PathBuf) -> anyhow::Result<Self> {
+    pub fn migrate(database_path: PathBuf, journal_mode: JournalMode) -> anyhow::Result<Self> {
         let manager = SqliteConnectionManager::file(&database_path);
         let pool = Pool::builder().build(manager)?;
 
         let mut conn = pool.get()?;
+        match journal_mode {
+            JournalMode::Rollback => conn
+                .pragma_update(None, "journal_mode", "DELETE")
+                .context("Disabling WAL journal mode")?,
+            JournalMode::WAL => {
+                conn.pragma_update(None, "journal_mode", "WAL")
+                    .context("Enabling WAL journal mode")?;
+                // set journal size limit to 1 GB
+                conn.pragma_update(
+                    None,
+                    "journal_size_limit",
+                    (1024usize * 1024 * 1024).to_string(),
+                )
+                .context("Set journal size limit")?;
+            }
+        }
         migrate_database(&mut conn).context("Migrate database")?;
 
         let inner = Inner {
@@ -98,7 +121,7 @@ impl Storage {
 
         let database_path = PathBuf::from(unique_mem_db);
 
-        Self::migrate(database_path)
+        Self::migrate(database_path, JournalMode::Rollback)
     }
 
     pub fn path(&self) -> &Path {

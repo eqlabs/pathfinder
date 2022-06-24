@@ -13,6 +13,7 @@ const ETH_PASS_KEY: &str = "ethereum.password";
 const HTTP_RPC_ADDR_KEY: &str = "http-rpc";
 const SEQ_URL_KEY: &str = "sequencer-url";
 const PYTHON_SUBPROCESSES_KEY: &str = "python-subprocesses";
+const ENABLE_SQLITE_WAL: &str = "enable-sqlite-wal";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -44,6 +45,7 @@ where
     let http_rpc_addr = args.value_of(HTTP_RPC_ADDR_KEY).map(|s| s.to_owned());
     let sequencer_url = args.value_of(SEQ_URL_KEY).map(|s| s.to_owned());
     let python_subprocesses = args.value_of(PYTHON_SUBPROCESSES_KEY).map(|s| s.to_owned());
+    let enable_sqlite_wal = args.value_of(ENABLE_SQLITE_WAL).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
@@ -51,7 +53,11 @@ where
         .with(ConfigOption::HttpRpcAddress, http_rpc_addr)
         .with(ConfigOption::DataDirectory, data_directory)
         .with(ConfigOption::SequencerHttpUrl, sequencer_url)
-        .with(ConfigOption::PythonSubprocesses, python_subprocesses);
+        .with(ConfigOption::PythonSubprocesses, python_subprocesses)
+        .with(
+            ConfigOption::EnableSQLiteWriteAheadLogging,
+            enable_sqlite_wal,
+        );
 
     Ok((config_filepath, cfg))
 }
@@ -130,6 +136,14 @@ Examples:
                 .value_name("NUM")
                 .env("PATHFINDER_PYTHON_SUBPROCESSES")
         )
+        .arg(
+            Arg::new(ENABLE_SQLITE_WAL)
+                .long(ENABLE_SQLITE_WAL)
+               .help("Enable SQLite write-ahead logging")
+               .takes_value(true)
+               .value_name("ON/OFF")
+               .env("PATHFINDER_ENABLE_SQLITE_WAL")
+        )
 }
 
 #[cfg(test)]
@@ -151,6 +165,7 @@ mod tests {
         env::remove_var("PATHFINDER_DATA_DIRECTORY");
         env::remove_var("PATHFINDER_SEQUENCER_URL");
         env::remove_var("PATHFINDER_PYTHON_SUBPROCESSES");
+        env::remove_var("PATHFINDER_ENABLE_SQLITE_WAL");
     }
 
     #[test]
@@ -297,6 +312,33 @@ mod tests {
         env::set_var("PATHFINDER_PYTHON_SUBPROCESSES", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::PythonSubprocesses), Some(value));
+    }
+
+    #[test]
+    fn enable_sqlite_wal_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--enable-sqlite-wal", &value]).unwrap();
+        assert_eq!(
+            cfg.take(ConfigOption::EnableSQLiteWriteAheadLogging),
+            Some(value)
+        );
+    }
+
+    #[test]
+    fn enable_sqlite_wal_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_ENABLE_SQLITE_WAL", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(
+            cfg.take(ConfigOption::EnableSQLiteWriteAheadLogging),
+            Some(value)
+        );
     }
 
     #[test]

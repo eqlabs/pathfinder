@@ -3,7 +3,9 @@ use pathfinder_lib::{
     core::{Chain, StarknetBlockHash, StarknetBlockNumber},
     sequencer::reply::{Block, Status},
     state::block_hash::{verify_block_hash, VerifyResult},
-    storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage},
+    storage::{
+        JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
+    },
 };
 use stark_hash::StarkHash;
 
@@ -24,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let database_path = std::env::args().nth(2).unwrap();
-    let storage = Storage::migrate(database_path.into())?;
+    let storage = Storage::migrate(database_path.into(), JournalMode::WAL)?;
     let db = storage
         .connection()
         .context("Opening database connection")?;

@@ -461,8 +461,11 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[ignore = "this is manual testing only, but we should really use the binary for this"]
     async fn go_sync() {
-        let storage =
-            crate::storage::Storage::migrate(std::path::PathBuf::from("testing.sqlite")).unwrap();
+        let storage = crate::storage::Storage::migrate(
+            std::path::PathBuf::from("testing.sqlite"),
+            crate::storage::JournalMode::WAL,
+        )
+        .unwrap();
         let chain = crate::core::Chain::Goerli;
         let transport = crate::ethereum::transport::HttpTransport::test_transport(chain);
         let sequencer = crate::sequencer::Client::new(chain).unwrap();

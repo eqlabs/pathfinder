@@ -5,7 +5,7 @@ use pathfinder_lib::{
     cairo, config, core,
     ethereum::transport::{EthereumTransport, HttpTransport},
     rpc, sequencer, state,
-    storage::Storage,
+    storage::{JournalMode, Storage},
 };
 use std::sync::Arc;
 use tracing::info;
@@ -39,7 +39,11 @@ async fn main() -> anyhow::Result<()> {
         core::Chain::Mainnet => "mainnet.sqlite",
         core::Chain::Goerli => "goerli.sqlite",
     });
-    let storage = Storage::migrate(database_path.clone()).unwrap();
+    let journal_mode = match config.enable_sqlite_wal {
+        false => JournalMode::Rollback,
+        true => JournalMode::WAL,
+    };
+    let storage = Storage::migrate(database_path.clone(), journal_mode).unwrap();
     info!(location=?database_path, "Database migrated.");
     verify_database_chain(&storage, ethereum_chain).context("Verifying database")?;
 

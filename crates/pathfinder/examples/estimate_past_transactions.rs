@@ -20,6 +20,7 @@ fn main() -> Result<(), anyhow::Error> {
             .nth(1)
             .context("missing DATABASE_FILE argument")?
             .into(),
+        pathfinder_lib::storage::JournalMode::WAL,
     )?;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
