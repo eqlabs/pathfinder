@@ -700,7 +700,7 @@ mod tests {
             }
         }
 
-        async fn pending_block(&self) -> Result<reply::PendingBlock, SequencerError> {
+        async fn pending_block(&self) -> Result<reply::MaybePendingBlock, SequencerError> {
             unimplemented!()
         }
 
