@@ -70,19 +70,17 @@ struct Work {
     at_block: pathfinder_lib::rpc::types::BlockHashOrTag,
     gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource,
     actual_fee: web3::types::H256,
-    tx_hash: StarkHash,
-    block_number: u64,
+    span: tracing::Span,
 }
 
 #[derive(Debug)]
 struct ReadyResult {
     actual_fee: web3::types::H256,
-    tx_hash: StarkHash,
-    block_number: u64,
     result: Result<
         pathfinder_lib::rpc::types::reply::FeeEstimate,
         pathfinder_lib::cairo::ext_py::CallFailure,
     >,
+    span: tracing::Span,
 }
 
 fn feed_work(
@@ -166,6 +164,8 @@ fn feed_work(
 
         invokes += 1;
 
+        let span = tracing::info_span!("tx", %tx_hash, block_number);
+
         sender
             .blocking_send(Work {
                 call,
@@ -196,6 +196,7 @@ async fn estimate(
     ready_tx: tokio::sync::mpsc::Sender<ReadyResult>,
 ) {
     use futures::stream::StreamExt;
+    use tracing::Instrument;
 
     let mut waiting = futures::stream::FuturesUnordered::new();
     let mut rx_open = true;
@@ -204,16 +205,16 @@ async fn estimate(
         tokio::select! {
             next_work = rx.recv(), if rx_open => {
                 match next_work {
-                    Some(Work {call, at_block, gas_price, actual_fee, tx_hash, block_number}) => {
+                    Some(Work {call, at_block, gas_price, actual_fee, span}) => {
+                        let outer = span.clone();
                         let fut = handle.estimate_fee(call, at_block, gas_price);
                         waiting.push(async move {
                             ReadyResult {
                                 actual_fee,
-                                tx_hash,
-                                block_number,
-                                result: fut.await
+                                result: fut.await,
+                                span,
                             }
-                        });
+                        }.instrument(outer));
                     },
                     None => {
                         rx_open = false;
@@ -244,15 +245,15 @@ fn report_ready(mut rx: tokio::sync::mpsc::Receiver<ReadyResult>) {
 
     while let Some(ReadyResult {
         actual_fee,
-        tx_hash,
-        block_number,
         result,
+        span,
     }) = rx.blocking_recv()
     {
+        let _g = span.enter();
         match result {
             Ok(fees) if fees.fee == actual_fee => {
                 eq += 1;
-                tracing::info!(%tx_hash, eq, ne, fail, block_number, "ok");
+                tracing::info!(eq, ne, fail, "ok");
             }
             Ok(fees) => {
                 ne += 1;
@@ -272,11 +273,11 @@ fn report_ready(mut rx: tokio::sync::mpsc::Receiver<ReadyResult>) {
                     .checked_div(gas_price)
                     .expect("gas_price != 0 is not actually checked anywhere");
 
-                tracing::info!(%tx_hash, eq, ne, fail, block_number, "bad fee {diff} or {gas} gas");
+                tracing::info!(eq, ne, fail, "bad fee {diff} or {gas} gas");
             }
             Err(e) => {
                 fail += 1;
-                tracing::info!(%tx_hash, eq, ne, fail, block_number, err=?e, "fail");
+                tracing::info!(eq, ne, fail, err=?e, "fail");
             }
         }
     }
