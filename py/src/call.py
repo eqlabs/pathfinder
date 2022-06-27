@@ -1,3 +1,4 @@
+import os
 import sys
 import json
 import time
@@ -10,6 +11,8 @@ from starkware.storage.storage import Storage
 EXPECTED_SCHEMA_REVISION = 12
 EXPECTED_CAIRO_VERSION = "0.9.0"
 SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
+
+DUMP_COMMANDS = os.environ.get("PATHFINDER_DUMP_FAILING_COMMANDS", None) is not None
 
 
 def main():
@@ -84,6 +87,8 @@ def do_loop(connection, input_gen, output_file):
 
         started_at = time.time()
         parsed_at = None
+        # make the first this available for failed cases
+        command = line
 
         try:
             command = parse_command(json.loads(line), required, optional)
@@ -107,12 +112,14 @@ def do_loop(connection, input_gen, output_file):
             if str(e.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
                 out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
             else:
+                report_failed(command, e)
                 # this is hopefully something we can give to the user
                 out = {"status": "failed", "exception": str(e.code)}
         except Exception as e:
             stringified = str(e)
             if len(stringified) > 200:
                 stringified = stringified[:197] + "..."
+            report_failed(command, e)
             out = {"status": "failed", "exception": stringified}
         finally:
             connection.rollback()
@@ -129,6 +136,13 @@ def do_loop(connection, input_gen, output_file):
             out["timings"] = timings
 
             print(json.dumps(out), file=output_file, flush=True)
+
+
+def report_failed(command, e):
+    if DUMP_COMMANDS:
+        print(json.dumps(f"{command} => {e}"), file=sys.stderr, flush=True)
+    else:
+        print(json.dumps(str(e)), file=sys.stderr, flush=True)
 
 
 def loop_inner(connection, command):
