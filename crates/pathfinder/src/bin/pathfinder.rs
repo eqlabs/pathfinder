@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
         core::Chain::Mainnet => "mainnet.sqlite",
         core::Chain::Goerli => "goerli.sqlite",
     });
-    let journal_mode = match config.enable_sqlite_wal {
+    let journal_mode = match config.sqlite_wal {
         false => JournalMode::Rollback,
         true => JournalMode::WAL,
     };

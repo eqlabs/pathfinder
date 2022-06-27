@@ -93,7 +93,7 @@ impl ConfigBuilder {
             }
             None => std::num::NonZeroUsize::new(2).unwrap(),
         };
-        let enable_sqlite_wal = match self.take(ConfigOption::EnableSQLiteWriteAheadLogging) {
+        let sqlite_wal = match self.take(ConfigOption::EnableSQLiteWriteAheadLogging) {
             Some(enable) => {
                 let enable = enable.to_lowercase();
                 match enable.as_str() {
@@ -128,7 +128,7 @@ impl ConfigBuilder {
             data_directory,
             sequencer_url,
             python_subprocesses,
-            enable_sqlite_wal,
+            sqlite_wal,
         })
     }
 
@@ -321,10 +321,10 @@ mod tests {
             }
 
             #[test]
-            fn enable_sqlite_wal() {
+            fn sqlite_wal() {
                 let expected = false;
                 let config = builder_with_all_required().try_build().unwrap();
-                assert_eq!(config.enable_sqlite_wal, expected);
+                assert_eq!(config.sqlite_wal, expected);
             }
         }
     }

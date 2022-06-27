@@ -20,8 +20,8 @@ struct FileConfig {
     sequencer_url: Option<String>,
     #[serde(rename = "python-subprocesses")]
     python_subprocesses: Option<String>,
-    #[serde(rename = "enable-sqlite-wal")]
-    enable_sqlite_wal: Option<String>,
+    #[serde(rename = "sqlite-wal")]
+    sqlite_wal: Option<String>,
 }
 
 impl FileConfig {
@@ -37,10 +37,7 @@ impl FileConfig {
         .with(ConfigOption::HttpRpcAddress, self.http_rpc)
         .with(ConfigOption::SequencerHttpUrl, self.sequencer_url)
         .with(ConfigOption::PythonSubprocesses, self.python_subprocesses)
-        .with(
-            ConfigOption::EnableSQLiteWriteAheadLogging,
-            self.enable_sqlite_wal,
-        )
+        .with(ConfigOption::EnableSQLiteWriteAheadLogging, self.sqlite_wal)
     }
 }
 
@@ -127,9 +124,9 @@ password = "{}""#,
     }
 
     #[test]
-    fn enable_sqlite_wal() {
+    fn sqlite_wal() {
         let value = "true".to_owned();
-        let toml = format!(r#"enable-sqlite-wal = "{}""#, value);
+        let toml = format!(r#"sqlite-wal = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(
             cfg.take(ConfigOption::EnableSQLiteWriteAheadLogging),
