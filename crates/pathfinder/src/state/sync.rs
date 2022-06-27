@@ -625,7 +625,6 @@ mod tests {
             TransactionVersion,
         },
         ethereum,
-        rpc::types::BlockHashOrTag,
         sequencer::{
             self,
             error::SequencerError,
@@ -702,8 +701,12 @@ mod tests {
         async fn call(
             &self,
             _: request::Call,
-            _: BlockHashOrTag,
+            _: crate::core::BlockId,
         ) -> Result<reply::Call, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn pending_call(&self, _: request::Call) -> Result<reply::Call, SequencerError> {
             unimplemented!()
         }
 
@@ -723,7 +726,15 @@ mod tests {
             &self,
             _: ContractAddress,
             _: StorageAddress,
-            _: BlockHashOrTag,
+            _: crate::core::BlockId,
+        ) -> Result<StorageValue, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn pending_storage(
+            &self,
+            _: ContractAddress,
+            _: StorageAddress,
         ) -> Result<StorageValue, SequencerError> {
             unimplemented!()
         }

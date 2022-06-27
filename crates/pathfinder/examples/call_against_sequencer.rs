@@ -1,7 +1,7 @@
 use futures::future::TryFutureExt;
 use jsonrpsee::core::error::Error;
 use pathfinder_lib::{
-    rpc::types::{request::Call, BlockHashOrTag},
+    rpc::types::{request::Call, BlockHashOrTag, Tag},
     sequencer::ClientApi,
 };
 use tokio::io::AsyncBufReadExt;
@@ -80,10 +80,18 @@ async fn main() {
         let args = serde_json::from_str::<NamedArgs>(&buffer)
             .expect("Failed to parse json-rpc alike payload on a single line");
 
-        let seq = sequencer
-            .call(args.request.clone().into(), args.block_hash)
-            .map_ok(|x| x.result)
-            .map_err(Error::from);
+        let seq = match args.block_hash {
+            BlockHashOrTag::Hash(hash) => sequencer.call(args.request.clone().into(), hash.into()),
+            BlockHashOrTag::Tag(Tag::Latest) => sequencer.call(
+                args.request.clone().into(),
+                pathfinder_lib::core::BlockId::Latest,
+            ),
+            BlockHashOrTag::Tag(Tag::Pending) => {
+                sequencer.pending_call(args.request.clone().into())
+            }
+        }
+        .map_ok(|x| x.result)
+        .map_err(Error::from);
 
         let local = handle
             .call(args.request, args.block_hash)

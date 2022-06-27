@@ -182,12 +182,16 @@ impl<'a> Request<'a, stage::Params> {
         let (name, value) = match block {
             BlockId::Number(number) => ("blockNumber", Cow::from(number.0.to_string())),
             BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str()),
-            // These have to use "blockNumber", "blockHash" does not accept tags.
+            // This has to use "blockNumber", "blockHash" does not accept tags.
             BlockId::Latest => ("blockNumber", Cow::from("latest")),
-            BlockId::Pending => ("blockNumber", Cow::from("pending")),
         };
 
         self.add_param(name, &value)
+    }
+
+    pub fn with_pending_block(self) -> Self {
+        // This has to use "blockNumber", "blockHash" does not accept tags.
+        self.add_param("blockNumber", "pending")
     }
 
     pub fn with_contract_address(self, address: ContractAddress) -> Self {

@@ -203,7 +203,6 @@ pub enum BlockId {
     Number(StarknetBlockNumber),
     Hash(StarknetBlockHash),
     Latest,
-    Pending,
 }
 
 impl StarknetBlockNumber {
@@ -298,32 +297,6 @@ impl From<u64> for GasPrice {
     }
 }
 
-impl From<crate::rpc::types::BlockNumberOrTag> for BlockId {
-    fn from(block: crate::rpc::types::BlockNumberOrTag) -> Self {
-        use crate::rpc::types::BlockNumberOrTag::*;
-        use crate::rpc::types::Tag::*;
-
-        match block {
-            Number(number) => Self::Number(number),
-            Tag(Latest) => Self::Latest,
-            Tag(Pending) => Self::Pending,
-        }
-    }
-}
-
-impl From<crate::rpc::types::BlockHashOrTag> for BlockId {
-    fn from(block: crate::rpc::types::BlockHashOrTag) -> Self {
-        use crate::rpc::types::BlockHashOrTag::*;
-        use crate::rpc::types::Tag::*;
-
-        match block {
-            Hash(hash) => Self::Hash(hash),
-            Tag(Latest) => Self::Latest,
-            Tag(Pending) => Self::Pending,
-        }
-    }
-}
-
 impl From<StarknetBlockNumber> for BlockId {
     fn from(number: StarknetBlockNumber) -> Self {
         Self::Number(number)
@@ -369,3 +342,16 @@ impl std::fmt::Display for Chain {
         }
     }
 }
+
+macro_rules! impl_newtype_display {
+    ($type:ty) => {
+        impl std::fmt::Display for $type {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+    };
+}
+
+impl_newtype_display!(StarknetBlockNumber);
+impl_newtype_display!(StarknetBlockHash);

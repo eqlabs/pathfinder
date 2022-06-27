@@ -325,7 +325,6 @@ pub mod reply {
         pub status: BlockStatus,
         pub sequencer: SequencerAddress,
         pub new_root: Option<GlobalRoot>,
-        pub old_root: GlobalRoot,
         pub accepted_time: StarknetBlockTimestamp,
         #[serde_as(as = "GasPriceAsHexStr")]
         pub gas_price: GasPrice,
@@ -342,7 +341,6 @@ pub mod reply {
                 status: block.status,
                 sequencer: block.sequencer,
                 new_root: Some(block.root),
-                old_root: block.parent_root,
                 accepted_time: block.timestamp,
                 gas_price: block.gas_price,
                 transactions,
@@ -351,65 +349,119 @@ pub mod reply {
 
         /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
         pub fn from_sequencer_scoped(
-            block: sequencer::reply::Block,
+            block: sequencer::reply::MaybePendingBlock,
             scope: BlockResponseScope,
         ) -> Self {
-            Self {
-                block_hash: Some(block.hash),
-                parent_hash: block.parent_hash,
-                block_number: Some(block.number),
-                status: block.status.into(),
-                sequencer: block
-                    .sequencer_address
-                    // Default value for cairo <0.8.0 is 0
-                    .unwrap_or(SequencerAddress(StarkHash::ZERO)),
-                new_root: Some(block.state_root),
-                // TODO where to get it from
-                old_root: GlobalRoot(StarkHash::ZERO),
-                accepted_time: block.timestamp,
-                gas_price: block
-                    .gas_price
-                    // Default value for cairo <0.8.2 is 0
-                    .unwrap_or(GasPrice::ZERO),
+            use sequencer::reply::MaybePendingBlock;
 
-                transactions: match scope {
-                    BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
-                        block
-                            .transactions
-                            .into_iter()
-                            .map(|t| t.transaction_hash)
-                            .collect(),
-                    ),
-                    BlockResponseScope::FullTransactions => Transactions::Full(
-                        block.transactions.into_iter().map(|t| t.into()).collect(),
-                    ),
-                    BlockResponseScope::FullTransactionsAndReceipts => {
-                        Transactions::FullWithReceipts(
+            match block {
+                MaybePendingBlock::Block(block) => Self {
+                    block_hash: Some(block.hash),
+                    parent_hash: block.parent_hash,
+                    block_number: Some(block.number),
+                    status: block.status.into(),
+                    sequencer: block
+                        .sequencer_address
+                        // Default value for cairo <0.8.0 is 0
+                        .unwrap_or(SequencerAddress(StarkHash::ZERO)),
+                    new_root: Some(block.state_root),
+                    accepted_time: block.timestamp,
+                    gas_price: block
+                        .gas_price
+                        // Default value for cairo <0.8.2 is 0
+                        .unwrap_or(GasPrice::ZERO),
+                    transactions: match scope {
+                        BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
                             block
                                 .transactions
                                 .into_iter()
-                                .zip(block.transaction_receipts.into_iter())
-                                .map(|(t, r)| {
-                                    let t: Transaction = t.into();
-                                    let r = TransactionReceipt::with_status(r, block.status.into());
-
-                                    TransactionAndReceipt {
-                                        txn_hash: t.txn_hash,
-                                        contract_address: t.contract_address,
-                                        entry_point_selector: t.entry_point_selector,
-                                        calldata: t.calldata,
-                                        max_fee: t.max_fee,
-                                        actual_fee: r.actual_fee,
-                                        status: r.status,
-                                        status_data: r.status_data,
-                                        messages_sent: r.messages_sent,
-                                        l1_origin_message: r.l1_origin_message,
-                                        events: r.events,
-                                    }
-                                })
+                                .map(|t| t.transaction_hash)
                                 .collect(),
-                        )
-                    }
+                        ),
+                        BlockResponseScope::FullTransactions => Transactions::Full(
+                            block.transactions.into_iter().map(|t| t.into()).collect(),
+                        ),
+                        BlockResponseScope::FullTransactionsAndReceipts => {
+                            Transactions::FullWithReceipts(
+                                block
+                                    .transactions
+                                    .into_iter()
+                                    .zip(block.transaction_receipts.into_iter())
+                                    .map(|(t, r)| {
+                                        let t: Transaction = t.into();
+                                        let r =
+                                            TransactionReceipt::with_status(r, block.status.into());
+
+                                        TransactionAndReceipt {
+                                            txn_hash: t.txn_hash,
+                                            contract_address: t.contract_address,
+                                            entry_point_selector: t.entry_point_selector,
+                                            calldata: t.calldata,
+                                            max_fee: t.max_fee,
+                                            actual_fee: r.actual_fee,
+                                            status: r.status,
+                                            status_data: r.status_data,
+                                            messages_sent: r.messages_sent,
+                                            l1_origin_message: r.l1_origin_message,
+                                            events: r.events,
+                                        }
+                                    })
+                                    .collect(),
+                            )
+                        }
+                    },
+                },
+                MaybePendingBlock::Pending(pending) => Self {
+                    block_hash: None,
+                    parent_hash: pending.parent_hash,
+                    block_number: None,
+                    status: pending.status.into(),
+                    sequencer: pending.sequencer_address,
+                    new_root: None,
+                    accepted_time: pending.timestamp,
+                    gas_price: pending.gas_price,
+                    transactions: match scope {
+                        BlockResponseScope::TransactionHashes => Transactions::HashesOnly(
+                            pending
+                                .transactions
+                                .into_iter()
+                                .map(|t| t.transaction_hash)
+                                .collect(),
+                        ),
+                        BlockResponseScope::FullTransactions => Transactions::Full(
+                            pending.transactions.into_iter().map(|t| t.into()).collect(),
+                        ),
+                        BlockResponseScope::FullTransactionsAndReceipts => {
+                            Transactions::FullWithReceipts(
+                                pending
+                                    .transactions
+                                    .into_iter()
+                                    .zip(pending.transaction_receipts.into_iter())
+                                    .map(|(t, r)| {
+                                        let t: Transaction = t.into();
+                                        let r = TransactionReceipt::with_status(
+                                            r,
+                                            pending.status.into(),
+                                        );
+
+                                        TransactionAndReceipt {
+                                            txn_hash: t.txn_hash,
+                                            contract_address: t.contract_address,
+                                            entry_point_selector: t.entry_point_selector,
+                                            calldata: t.calldata,
+                                            max_fee: t.max_fee,
+                                            actual_fee: r.actual_fee,
+                                            status: r.status,
+                                            status_data: r.status_data,
+                                            messages_sent: r.messages_sent,
+                                            l1_origin_message: r.l1_origin_message,
+                                            events: r.events,
+                                        }
+                                    })
+                                    .collect(),
+                            )
+                        }
+                    },
                 },
             }
         }

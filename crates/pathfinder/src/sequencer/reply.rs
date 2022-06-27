@@ -37,8 +37,9 @@ pub struct Block {
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(serde::Serialize))]
-#[serde(deny_unknown_fields)]
+// #[serde(deny_unknown_fields)]
 pub struct PendingBlock {
+    #[serde_as(as = "GasPriceAsHexStr")]
     pub gas_price: GasPrice,
     #[serde(rename="parent_block_hash")]
     pub parent_hash: StarknetBlockHash,

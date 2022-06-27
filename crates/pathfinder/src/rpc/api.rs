@@ -52,7 +52,6 @@ pub struct RawBlock {
     pub hash: StarknetBlockHash,
     pub root: GlobalRoot,
     pub parent_hash: StarknetBlockHash,
-    pub parent_root: GlobalRoot,
     pub timestamp: StarknetBlockTimestamp,
     pub status: BlockStatus,
     pub sequencer: SequencerAddress,
@@ -101,7 +100,7 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block(block_hash.into())
+                    .pending_block()
                     .await
                     .map_err(internal_server_error)?;
 
@@ -218,7 +217,7 @@ impl RpcApi {
             BlockNumberOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block(block_number.into())
+                    .pending_block()
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
@@ -296,18 +295,15 @@ impl RpcApi {
             _ => BlockStatus::AcceptedOnL2,
         };
 
-        let (parent_hash, parent_root) = match block.number {
-            StarknetBlockNumber::GENESIS => (
-                StarknetBlockHash(StarkHash::ZERO),
-                GlobalRoot(StarkHash::ZERO),
-            ),
+        let parent_hash = match block.number {
+            StarknetBlockNumber::GENESIS => StarknetBlockHash(StarkHash::ZERO),
             other => {
                 let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
                     .context("Read parent block from database")
                     .map_err(internal_server_error)?
                     .context("Parent block missing")?;
 
-                (parent_block.hash, parent_block.root)
+                parent_block.hash
             }
         };
 
@@ -316,7 +312,6 @@ impl RpcApi {
             hash: block.hash,
             root: block.root,
             parent_hash,
-            parent_root,
             timestamp: block.timestamp,
             status: block_status,
             gas_price: block.gas_price,
@@ -376,7 +371,7 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Pending) => {
                 return Ok(self
                     .sequencer
-                    .storage(contract_address, key, block_hash)
+                    .pending_storage(contract_address, key)
                     .await?);
             }
         };
@@ -499,18 +494,21 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block(block_hash.into())
+                    .pending_block()
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
 
-                return block
-                    .transactions
-                    .into_iter()
-                    .nth(index)
-                    .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                        Ok(txn.into())
-                    });
+                use sequencer::reply::MaybePendingBlock;
+                return match block {
+                    MaybePendingBlock::Block(b) => b.transactions,
+                    MaybePendingBlock::Pending(p) => p.transactions,
+                }
+                .into_iter()
+                .nth(index)
+                .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
+                    Ok(txn.into())
+                });
             }
         };
 
@@ -572,18 +570,21 @@ impl RpcApi {
             BlockNumberOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block(block_number.into())
+                    .pending_block()
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
 
-                return block
-                    .transactions
-                    .into_iter()
-                    .nth(index)
-                    .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                        Ok(txn.into())
-                    });
+                use sequencer::reply::MaybePendingBlock;
+                return match block {
+                    MaybePendingBlock::Block(b) => b.transactions,
+                    MaybePendingBlock::Pending(p) => p.transactions,
+                }
+                .into_iter()
+                .nth(index)
+                .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
+                    Ok(txn.into())
+                });
             }
         };
 
@@ -848,17 +849,18 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block(block_hash.into())
+                    .pending_block()
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
 
-                let len: u64 =
-                    block.transactions.len().try_into().map_err(|e| {
-                        Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
-                    })?;
+                use sequencer::reply::MaybePendingBlock;
+                let length = match block {
+                    MaybePendingBlock::Block(block) => block.transactions.len(),
+                    MaybePendingBlock::Pending(pending) => pending.transactions.len(),
+                };
 
-                return Ok(len);
+                return Ok(length as u64);
             }
         };
 
@@ -913,17 +915,18 @@ impl RpcApi {
             BlockNumberOrTag::Tag(Tag::Pending) => {
                 let block = self
                     .sequencer
-                    .block(block_number.into())
+                    .pending_block()
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
 
-                let len: u64 =
-                    block.transactions.len().try_into().map_err(|e| {
-                        Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
-                    })?;
+                use sequencer::reply::MaybePendingBlock;
+                let length = match block {
+                    MaybePendingBlock::Block(block) => block.transactions.len(),
+                    MaybePendingBlock::Pending(pending) => pending.transactions.len(),
+                };
 
-                return Ok(len);
+                return Ok(length as u64);
             }
         };
 
@@ -981,10 +984,10 @@ impl RpcApi {
                 // block we have, which is exactly how the py/src/call.py handles it.
                 h.call(request, block_hash).map_err(Error::from).await
             }
-            (Some(_), _) => {
+            (Some(_), BlockHashOrTag::Tag(Tag::Pending)) => {
                 // just forward it to the sequencer for now.
                 self.sequencer
-                    .call(request.into(), block_hash)
+                    .pending_call(request.into())
                     .map_ok(|x| x.result)
                     .map_err(Error::from)
                     .await
