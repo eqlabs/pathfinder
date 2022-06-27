@@ -27,12 +27,15 @@ pub(super) async fn launch_python(
     status_updates: mpsc::Sender<SubProcessEvent>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> anyhow::Result<(u32, Option<std::process::ExitStatus>, SubprocessExitReason)> {
-    let (mut child, pid, mut stdin, mut stdout, mut buffer) = match spawn(database_path).await {
-        Ok(tuple) => tuple,
-        Err(e) => {
-            return Err(e.context("Failed to start python subprocess"));
-        }
-    };
+    let current_span = std::sync::Arc::new(std::sync::Mutex::new(tracing::Span::none()));
+
+    let (mut child, pid, mut stdin, mut stdout, mut buffer) =
+        match spawn(database_path, std::sync::Arc::clone(&current_span)).await {
+            Ok(tuple) => tuple,
+            Err(e) => {
+                return Err(e.context("Failed to start python subprocess"));
+            }
+        };
 
     if status_updates
         .send(SubProcessEvent::ProcessLaunched(pid))
@@ -84,6 +87,7 @@ pub(super) async fn launch_python(
 
         let (timings, status) = {
             let op = process(
+                &*current_span,
                 command,
                 &mut command_buffer,
                 &mut stdin,
@@ -112,6 +116,11 @@ pub(super) async fn launch_python(
             .send(SubProcessEvent::CommandHandled(pid, timings, status))
             .await;
 
+        {
+            let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
+            *g = tracing::Span::none();
+        }
+
         if send_res.is_err() {
             break SubprocessExitReason::ClosedChannel;
         }
@@ -125,6 +134,12 @@ pub(super) async fn launch_python(
     };
 
     trace!(?exit_reason, "Starting to exit");
+
+    // make sure to clear this, as there are plenty of break's in above code
+    {
+        let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
+        *g = tracing::Span::none();
+    }
 
     // important to close up the stdin not to deadlock
     drop(stdin);
@@ -164,6 +179,7 @@ const PYTHON_SCRIPT_SOURCE: &str = include_str!("../../../../../py/src/call.py")
 
 async fn spawn(
     database_path: PathBuf,
+    current_span: std::sync::Arc<std::sync::Mutex<tracing::Span>>,
 ) -> anyhow::Result<(Child, u32, ChildStdin, BufReader<ChildStdout>, String)> {
     let script_file = tempfile::NamedTempFile::new()
         .context("Failed to create temporary file for Python script")?;
@@ -201,7 +217,7 @@ async fn spawn(
     // spawn the stderr out, just forget it it will die down once the process has been torn down
     let _forget = tokio::task::spawn({
         let stderr = child.stderr.take().expect("stderr was piped");
-        let span = tracing::trace_span!("stderr");
+        let default_span = tracing::trace_span!("stderr");
         async move {
             let mut buffer = String::new();
             let mut reader = BufReader::new(stderr);
@@ -217,10 +233,44 @@ async fn spawn(
                     }
                 }
 
-                trace!("{:?}", buffer.trim());
+                // if we treat the thing as json, we can easily get multiline messages, which most
+                // are
+                let buffer = buffer.trim();
+                let displayed = if buffer.starts_with('"') {
+                    // ignore the error, we will substitute the buffer in it's place later on
+                    serde_json::from_str::<String>(buffer).ok()
+                } else {
+                    None
+                };
+
+                // if the python script would turn out to be very chatty, this would become an issue
+                let current_span = current_span.lock().unwrap_or_else(|e| e.into_inner());
+
+                // not sure if this makes sense, but use the outer span if there's no specific
+                // span at the moment, otherwise use the specific one.
+                //
+                // the hope is that for each stderr message there will be either hierarchy:
+                //
+                // +         span from ext_py::service
+                // |
+                // ---       span at `async fn spawn` time (has pid)
+                //   |
+                //   +----  `span` here, which has just stderr
+                //
+                // +         user code calling ext_py::Handle
+                // |           - pid gets populated at ext_py::sub_process
+                // +-+       `*g` here, which has just stderr
+                //
+                let used_span = if current_span.is_none() {
+                    &default_span
+                } else {
+                    &*current_span
+                };
+
+                let _g = used_span.enter();
+                error!("{}", displayed.as_deref().unwrap_or(buffer).trim());
             }
         }
-        .instrument(span)
     });
 
     // default buffer is fine for us ... but this is double buffering, for no good reason
@@ -253,12 +303,20 @@ async fn spawn(
 /// - Err(None) if nothing was done
 /// - Err(Some(_)) if the process can no longer be reused
 async fn process(
+    current_span: &std::sync::Mutex<tracing::Span>,
     mut command: Command,
     command_buffer: &mut Vec<u8>,
     stdin: &mut ChildStdin,
     stdout: &mut BufReader<ChildStdout>,
     buffer: &mut String,
 ) -> Result<(Option<Timings>, Status), Option<SubprocessExitReason>> {
+    {
+        let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
+        // this takes becomes child span of the current span, hopefully, and will get the pid as
+        // well.
+        *g = tracing::warn_span!("stderr");
+    }
+
     command_buffer.clear();
 
     let sent_over = match &command {
