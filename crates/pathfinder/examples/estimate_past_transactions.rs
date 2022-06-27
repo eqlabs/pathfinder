@@ -106,10 +106,14 @@ fn feed_work(
         )?;
 
     let mut work = prep.query([])?;
+
+    let mut last_block = None;
+    let mut previously_declared_deployed_in_the_same_block = std::collections::HashSet::new();
     let mut rows = 0usize;
     let mut invokes = 0usize;
     let mut declares = 0usize;
     let mut deploys = 0usize;
+    let mut same_tx_deploy_call = 0usize;
 
     while let Some(next) = work.next()? {
         rows += 1;
@@ -128,6 +132,14 @@ fn feed_work(
         let prev_block_number = next.get_ref_unwrap(5).as_i64().unwrap() as u64;
         let block_number = next.get_ref_unwrap(6).as_i64().unwrap() as u64;
 
+        match last_block {
+            Some(x) if x != block_number => previously_declared_deployed_in_the_same_block.clear(),
+            Some(_) => {}
+            None => {
+                last_block = Some(block_number);
+            }
+        }
+
         assert_eq!(block_number, prev_block_number + 1);
 
         let actual_fee = serde_json::from_slice::<SimpleReceipt>(&receipt)
@@ -141,13 +153,26 @@ fn feed_work(
         })?;
 
         let call = match tx {
-            SimpleTransaction::Invoke(tx) => tx.into(),
+            SimpleTransaction::Invoke(tx)
+                if !previously_declared_deployed_in_the_same_block
+                    .contains(&tx.contract_address.0) =>
+            {
+                tx.into()
+            }
+            SimpleTransaction::Invoke(SimpleInvoke {
+                contract_address, ..
+            }) => {
+                tracing::debug!(contract_address=%contract_address.0, "same block deployed contract found");
+                same_tx_deploy_call += 1;
+                continue;
+            }
             SimpleTransaction::Declare(_) => {
                 declares += 1;
                 continue;
             }
-            SimpleTransaction::Deploy(_) => {
+            SimpleTransaction::Deploy(SimpleDeploy { contract_address }) => {
                 deploys += 1;
+                previously_declared_deployed_in_the_same_block.insert(contract_address.0);
                 continue;
             }
         };
@@ -177,15 +202,21 @@ fn feed_work(
                     gas_price_at_block,
                 ),
                 actual_fee,
-                tx_hash,
-                block_number,
+                span,
             })
             .map_err(|_| anyhow::anyhow!("sending to processor failed"))?;
     }
 
     // drop work_sender to signal no more work is incoming
     drop(sender);
-    tracing::info!(rows, invokes, declares, deploys, "completed query");
+    tracing::info!(
+        rows,
+        invokes,
+        declares,
+        deploys,
+        same_tx_deploy_call,
+        "completed query"
+    );
     Ok(())
 }
 
@@ -300,7 +331,9 @@ enum SimpleTransaction {
 }
 
 #[derive(serde::Deserialize, Debug)]
-struct SimpleDeploy {}
+struct SimpleDeploy {
+    contract_address: pathfinder_lib::core::ContractAddress,
+}
 
 #[derive(serde::Deserialize, Debug)]
 struct SimpleDeclare {}
