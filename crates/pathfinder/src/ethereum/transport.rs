@@ -63,7 +63,6 @@ impl HttpTransport {
     ///
     /// This includes setting:
     /// - the [Url](reqwest::Url)
-    /// - the user-agent (if provided)
     /// - the password (if provided)
     pub fn from_config(config: EthereumConfig) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder();

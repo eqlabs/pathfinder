@@ -198,8 +198,6 @@ sqlite-wal = false
 url      = "https://goerli.infura.io/v3/..." #
 # The optional password for your Ethereum endpoint.
 password = "..."
-# The optional user-agent for your Ethereum endpoint.
-user-agent     = "..."
 ```
 
 ### Logging
