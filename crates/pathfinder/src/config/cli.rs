@@ -138,7 +138,7 @@ Examples:
                 .long(SQLITE_WAL)
                .help("Enable SQLite write-ahead logging")
                .takes_value(true)
-               .value_name("ON/OFF")
+               .value_name("TRUE/FALSE")
                .env("PATHFINDER_SQLITE_WAL")
         )
 }
