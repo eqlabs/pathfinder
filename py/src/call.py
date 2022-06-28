@@ -1,4 +1,3 @@
-import os
 import sys
 import json
 import time
@@ -11,8 +10,6 @@ from starkware.storage.storage import Storage
 EXPECTED_SCHEMA_REVISION = 12
 EXPECTED_CAIRO_VERSION = "0.9.0"
 SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
-
-DUMP_COMMANDS = os.environ.get("PATHFINDER_DUMP_FAILING_COMMANDS", None) is not None
 
 
 def main():
@@ -136,16 +133,23 @@ def do_loop(connection, input_gen, output_file):
             if parsed_at is not None and parsed_at < completed_at:
                 timings["execution"] = completed_at - parsed_at
 
-            out["timings"] = timings
+            # ERROR = 0
+            # WARN = 1
+            # INFO = 2
+            # DEBUG = 3
+            # TRACE = 4
+
+            payload = json.dumps(timings)
+            print(f"4{json.dumps(payload)}", file=sys.stderr, flush=True)
 
             print(json.dumps(out), file=output_file, flush=True)
 
 
 def report_failed(command, e):
-    if DUMP_COMMANDS:
-        print(json.dumps(f"{command} => {e}"), file=sys.stderr, flush=True)
-    else:
-        print(json.dumps(str(e)), file=sys.stderr, flush=True)
+    # use debug level for the command
+    print(f"3{json.dumps(command)}", file=sys.stderr)
+    # error level for the message
+    print(f"0{json.dumps(str(e))}", file=sys.stderr, flush=True)
 
 
 def loop_inner(connection, command):
