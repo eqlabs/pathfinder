@@ -8,7 +8,6 @@ use crate::{core::CallResultValue, rpc::types::reply::FeeEstimate};
 ///
 /// This is [`ChildResponse::refine`]'d into [`RefinedChildResponse`]
 #[derive(serde::Deserialize, Debug)]
-#[allow(unused)]
 pub(crate) struct ChildResponse<'a> {
     /// Describes the outcome with three alternatives (good, known error, unknown error)
     status: Status,
