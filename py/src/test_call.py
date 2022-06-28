@@ -291,7 +291,7 @@ def test_positive_directly():
 
     con.execute("BEGIN")
 
-    (verb, output) = loop_inner(con, command)
+    (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [3]
 
@@ -424,7 +424,7 @@ def test_fee_estimate_on_positive_directly():
         "chain": StarknetChainId.TESTNET,
     }
 
-    (verb, output) = loop_inner(con, command)
+    (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
         "gas_consumed": 0,
@@ -504,7 +504,9 @@ def test_failing_mainnet_tx2():
         "chain": StarknetChainId.MAINNET,
     }
 
-    (verb, output) = loop_inner(con, command)
+    (verb, output, _timings) = loop_inner(con, command)
+
+    print(_timings)
 
     # this is wrong answer, but good enough for now
     # assert output == {
