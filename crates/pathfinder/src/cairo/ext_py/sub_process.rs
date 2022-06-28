@@ -233,14 +233,41 @@ async fn spawn(
                     }
                 }
 
-                // if we treat the thing as json, we can easily get multiline messages, which most
-                // are
                 let buffer = buffer.trim();
-                let displayed = if buffer.starts_with('"') {
-                    // ignore the error, we will substitute the buffer in it's place later on
-                    serde_json::from_str::<String>(buffer).ok()
+
+                struct InvalidLevel;
+
+                // first one is the level selector, assuming this is code controlled by us
+                let mut chars = buffer.chars();
+                let level = match chars.next() {
+                    Some('0') => Ok(tracing::Level::ERROR),
+                    Some('1') => Ok(tracing::Level::WARN),
+                    Some('2') => Ok(tracing::Level::INFO),
+                    Some('3') => Ok(tracing::Level::DEBUG),
+                    Some('4') => Ok(tracing::Level::TRACE),
+                    Some(_) => Err(InvalidLevel),
+                    None => {
+                        // whitespace only line
+                        continue;
+                    }
+                };
+
+                let (level, displayed) = if let Ok(level) = level {
+                    let rem = chars.as_str();
+                    // if we treat the thing as json, we can easily get multiline messages, which most
+                    // are
+                    let displayed = if rem.starts_with('"') {
+                        serde_json::from_str::<String>(rem)
+                            .ok()
+                            .map(std::borrow::Cow::Owned)
+                    } else {
+                        None
+                    };
+
+                    (level, displayed.unwrap_or(std::borrow::Cow::Borrowed(rem)))
                 } else {
-                    None
+                    // this means that the line probably comes from beyond our code
+                    (tracing::Level::ERROR, std::borrow::Cow::Borrowed(buffer))
                 };
 
                 // if the python script would turn out to be very chatty, this would become an issue
@@ -268,7 +295,15 @@ async fn spawn(
                 };
 
                 let _g = used_span.enter();
-                error!("{}", displayed.as_deref().unwrap_or(buffer).trim());
+                // there is no dynamic alternative to tracing::event! ... perhaps this is the wrong
+                // way to go about this.
+                match level {
+                    tracing::Level::ERROR => tracing::error!("{}", &*displayed),
+                    tracing::Level::WARN => tracing::warn!("{}", &*displayed),
+                    tracing::Level::INFO => tracing::info!("{}", &*displayed),
+                    tracing::Level::DEBUG => tracing::debug!("{}", &*displayed),
+                    tracing::Level::TRACE => tracing::trace!("{}", &*displayed),
+                }
             }
         }
     });
