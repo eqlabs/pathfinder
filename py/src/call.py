@@ -416,17 +416,11 @@ class SqliteAdapter(Storage):
     def fetch_patricia_node(self, suffix):
         # tree_global is much smaller table than tree_contracts
         cursor = self.connection.execute(
-            "select data from tree_global where hash = ?", [suffix]
+            "select data from tree_global where hash = ?1 union select data from tree_contracts where hash = ?1",
+            [suffix],
         )
 
         [only] = next(cursor, [None])
-
-        if only is None:
-            # maybe UNION could be used here?
-            cursor = self.connection.execute(
-                "select data from tree_contracts where hash = ?", [suffix]
-            )
-            [only] = next(cursor, [None])
 
         return only
 
