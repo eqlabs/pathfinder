@@ -217,7 +217,7 @@ async fn spawn(
     // spawn the stderr out, just forget it it will die down once the process has been torn down
     let _forget = tokio::task::spawn({
         let stderr = child.stderr.take().expect("stderr was piped");
-        let default_span = tracing::trace_span!("stderr");
+        let default_span = tracing::info_span!("stderr");
         async move {
             let mut buffer = String::new();
             let mut reader = BufReader::new(stderr);
@@ -314,7 +314,7 @@ async fn process(
         let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
         // this takes becomes child span of the current span, hopefully, and will get the pid as
         // well.
-        *g = tracing::warn_span!("stderr");
+        *g = tracing::info_span!("stderr");
     }
 
     command_buffer.clear();
