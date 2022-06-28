@@ -324,18 +324,18 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> StarkHash {
         static ref HASH_OF_EMPTY_LIST: StarkHash = HashChain::default().finalize();
     );
 
-    let signature_hash = match &tx.signature {
-        None => *HASH_OF_EMPTY_LIST,
-        Some(signatures) => {
+    let signature_hash = match tx {
+        Transaction::Invoke(tx) => {
             let mut hash = HashChain::default();
-            for signature in signatures {
+            for signature in &tx.signature {
                 hash.update(signature.0);
             }
             hash.finalize()
         }
+        Transaction::Declare(_) | Transaction::Deploy(_) => *HASH_OF_EMPTY_LIST,
     };
 
-    stark_hash(tx.transaction_hash.0, signature_hash)
+    stark_hash(tx.hash().0, signature_hash)
 }
 
 /// Calculate event commitment hash value.
@@ -399,6 +399,11 @@ fn number_of_events_in_block(block: &Block) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        core::{EntryPoint, Fee},
+        sequencer::reply::transaction::{EntryPointType, InvokeTransaction, Type},
+    };
+
     use super::*;
 
     #[test]
@@ -434,28 +439,21 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        use crate::core::{StarknetTransactionHash, TransactionSignatureElem};
-        use crate::sequencer::reply::transaction::Type;
+        use crate::core::{ContractAddress, StarknetTransactionHash, TransactionSignatureElem};
 
-        let transaction = Transaction {
-            calldata: None,
-            class_hash: None,
-            constructor_calldata: None,
-            contract_address: None,
-            contract_address_salt: None,
-            entry_point_type: None,
-            entry_point_selector: None,
-            max_fee: None,
-            nonce: None,
-            sender_address: None,
-            version: None,
-            signature: Some(vec![
+        let transaction = Transaction::Invoke(InvokeTransaction {
+            calldata: vec![],
+            contract_address: ContractAddress::from_hex_str("0xdeadbeef").unwrap(),
+            entry_point_type: EntryPointType::External,
+            entry_point_selector: EntryPoint::from_hex_str("0xe").unwrap(),
+            max_fee: Fee(0u128.to_be_bytes().into()),
+            signature: vec![
                 TransactionSignatureElem(StarkHash::from_hex_str("0x2").unwrap()),
                 TransactionSignatureElem(StarkHash::from_hex_str("0x3").unwrap()),
-            ]),
+            ],
             transaction_hash: StarknetTransactionHash(StarkHash::from_hex_str("0x1").unwrap()),
             r#type: Type::InvokeFunction,
-        };
+        });
 
         // produced by the cairo-lang Python implementation:
         // `hex(calculate_single_tx_hash_with_signature(1, [2, 3], hash_function=pedersen_hash))`

@@ -385,9 +385,9 @@ mod tests {
     use super::{test_client::client, *};
     use crate::{
         core::{
-            Chain, ClassHash, ContractAddress, EventData, EventKey, GasPrice, GlobalRoot,
-            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetProtocolVersion, StorageAddress,
+            Chain, ClassHash, ContractAddress, EntryPoint, EventData, EventKey, GasPrice,
+            GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+            StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress,
         },
         rpc::run_server,
         sequencer::{
