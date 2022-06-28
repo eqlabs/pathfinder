@@ -76,6 +76,8 @@ def do_loop(connection, input_gen, output_file):
         "version": int_param,
     }
 
+    logger = Logger()
+
     for line in input_gen:
         if line == "" or line.startswith("#"):
             continue
@@ -113,14 +115,14 @@ def do_loop(connection, input_gen, output_file):
             if str(e.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
                 out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
             else:
-                report_failed(command, e)
+                report_failed(logger, command, e)
                 # this is hopefully something we can give to the user
                 out = {"status": "failed", "exception": str(e.code)}
         except Exception as e:
             stringified = str(e)
             if len(stringified) > 200:
                 stringified = stringified[:197] + "..."
-            report_failed(command, e)
+            report_failed(logger, command, e)
             out = {"status": "failed", "exception": stringified}
         finally:
             connection.rollback()
@@ -133,23 +135,13 @@ def do_loop(connection, input_gen, output_file):
             if parsed_at is not None and parsed_at < completed_at:
                 timings["execution"] = completed_at - parsed_at
 
-            # ERROR = 0
-            # WARN = 1
-            # INFO = 2
-            # DEBUG = 3
-            # TRACE = 4
-
-            payload = json.dumps(timings)
-            print(f"4{json.dumps(payload)}", file=sys.stderr, flush=True)
-
+            logger.trace(json.dumps(timings))
             print(json.dumps(out), file=output_file, flush=True)
 
 
-def report_failed(command, e):
-    # use debug level for the command
-    print(f"3{json.dumps(command)}", file=sys.stderr)
-    # error level for the message
-    print(f"0{json.dumps(str(e))}", file=sys.stderr, flush=True)
+def report_failed(logger, command, e):
+    logger.debug(f"{command}")
+    logger.error(str(e))
 
 
 def loop_inner(connection, command):
@@ -404,6 +396,33 @@ class UnexpectedSchemaVersion(Exception):
 class InvalidInput(Exception):
     def __init__(self, key):
         super().__init__(f"Invalid input for key: {key}")
+
+
+class Logger:
+    """
+    Simple logging abstraction
+
+    Over at rust side, there's a spawned task reading stderr line by line.
+    On each line there should be <level><json> on a single line.
+    """
+
+    def error(self, message):
+        self._log(0, message)
+
+    def warn(self, message):
+        self._log(1, message)
+
+    def info(self, message):
+        self._log(2, message)
+
+    def debug(self, message):
+        self._log(3, message)
+
+    def trace(self, message):
+        self._log(4, message)
+
+    def _log(self, level, message):
+        print(f"{level}{json.dumps(message)}", file=sys.stderr, flush=True)
 
 
 class SqliteAdapter(Storage):
