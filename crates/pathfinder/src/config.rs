@@ -68,7 +68,7 @@ pub struct Configuration {
     /// The number of Python subprocesses to start.
     pub python_subprocesses: std::num::NonZeroUsize,
     /// Enable SQLite write-ahead logging.
-    pub enable_sqlite_wal: bool,
+    pub sqlite_wal: bool,
 }
 
 impl Configuration {

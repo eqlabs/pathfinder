@@ -191,7 +191,7 @@ python-subprocesses = 2
 # Whether to enable SQLite write-ahead logging. Defaults to false but we reserve the
 # right to change this in the future. Will likely default to true soon, but if you
 # **want** a specific behavior you should always set this.
-enable-sqlite-wal = false
+sqlite-wal = false
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
