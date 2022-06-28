@@ -1,7 +1,7 @@
 //! Launching and communication with the subprocess
 
 use super::{
-    de::{ChildResponse, OutputValue, RefinedChildResponse, Status, Timings},
+    de::{ChildResponse, OutputValue, RefinedChildResponse, Status},
     ser::{ChildCommand, Verb},
     CallFailure, Command, SharedReceiver, SubProcessEvent, SubprocessError, SubprocessExitReason,
 };
@@ -85,7 +85,7 @@ pub(super) async fn launch_python(
 
         span.record("pid", &pid);
 
-        let (timings, status) = {
+        {
             let op = process(
                 &*current_span,
                 command,
@@ -101,7 +101,7 @@ pub(super) async fn launch_python(
             tokio::select! {
                 res = &mut op => {
                     match res {
-                        Ok(t) => t,
+                        Ok(_) => (),
                         Err(None) => continue,
                         Err(Some(e)) => break e,
                     }
@@ -110,19 +110,11 @@ pub(super) async fn launch_python(
                     break SubprocessExitReason::Shutdown;
                 },
             }
-        };
-
-        let send_res = status_updates
-            .send(SubProcessEvent::CommandHandled(pid, timings, status))
-            .await;
+        }
 
         {
             let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
             *g = tracing::Span::none();
-        }
-
-        if send_res.is_err() {
-            break SubprocessExitReason::ClosedChannel;
         }
 
         if !stdout.buffer().is_empty() {
@@ -344,7 +336,7 @@ async fn process(
     stdin: &mut ChildStdin,
     stdout: &mut BufReader<ChildStdout>,
     buffer: &mut String,
-) -> Result<(Option<Timings>, Status), Option<SubprocessExitReason>> {
+) -> Result<Status, Option<SubprocessExitReason>> {
     {
         let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
         // this takes becomes child span of the current span, hopefully, and will get the pid as
@@ -430,14 +422,13 @@ async fn process(
         }
     };
 
-    let (timings, status, output) = match res {
+    let (status, output) = match res {
         Ok(resp) => resp.into_messages(),
         Err(SubprocessError::InvalidJson(error)) => {
             // buffer still holds the response... might be good for debugging
             // this doesn't however mess up our line at once, so no worries.
             error!(%error, ?buffer, "Failed to parse json from subprocess");
             (
-                None,
                 Status::Failed,
                 Err(CallFailure::Internal("Invalid json received")),
             )
@@ -445,7 +436,6 @@ async fn process(
         Err(SubprocessError::InvalidResponse) => {
             error!(?buffer, "Failed to understand parsed json from subprocess");
             (
-                None,
                 Status::Failed,
                 Err(CallFailure::Internal("Invalid json received")),
             )
@@ -482,7 +472,7 @@ async fn process(
         }
     }
 
-    Ok((timings, status))
+    Ok(status)
 }
 
 /// Run a round of writing out the request, and reading a sane response type.

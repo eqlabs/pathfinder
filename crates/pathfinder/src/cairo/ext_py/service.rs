@@ -59,9 +59,6 @@ pub async fn start(
                 SubProcessEvent::ProcessLaunched(_pid) => {
                     // good, now we can launch the other processes requested later
                 },
-                SubProcessEvent::CommandHandled(..) => {
-                    unreachable!("First message must not be CommandHandled");
-                },
             }
         },
         Some(res) = &mut joinhandles.next() => {
@@ -115,9 +112,6 @@ pub async fn start(
                     Some(evt) = status_rx.recv() => {
                         match evt {
                             SubProcessEvent::ProcessLaunched(_) => {},
-                            SubProcessEvent::CommandHandled(pid, timings, status) => {
-                                trace!(%pid, ?status, ?timings, "Command handled");
-                            },
                         }
                     },
                     Some(res) = joinhandles.next() => {
