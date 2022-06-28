@@ -188,15 +188,13 @@ async fn declare_classes(
     sequencer: &impl sequencer::ClientApi,
     tx_event: &mpsc::Sender<Event>,
 ) -> Result<(), anyhow::Error> {
+    use crate::sequencer::reply::transaction::Transaction;
     let declared_classes = block
         .transactions
         .iter()
-        .filter_map(|t| match t {
-            sequencer::reply::transaction::Transaction::Declare(declare) => {
-                Some(declare.class_hash)
-            }
-            sequencer::reply::transaction::Transaction::Deploy(_)
-            | sequencer::reply::transaction::Transaction::Invoke(_) => None,
+        .filter_map(|tx| match tx {
+            Transaction::Declare(declare) => Some(declare.class_hash),
+            Transaction::Invoke(_) | Transaction::Deploy(_) => None,
         })
         // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
         .collect::<HashSet<_>>()
