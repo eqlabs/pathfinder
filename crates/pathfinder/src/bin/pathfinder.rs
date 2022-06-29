@@ -27,6 +27,8 @@ async fn main() -> anyhow::Result<()> {
         "🏁 Starting node."
     );
 
+    permission_check(&config.data_directory)?;
+
     let eth_transport =
         HttpTransport::from_config(config.ethereum).context("Creating Ethereum transport")?;
 
@@ -191,4 +193,13 @@ fn setup_tracing() {
         .with_target(false)
         .compact()
         .init();
+}
+
+fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
+    tempfile::tempfile_in(base)
+        .with_context(|| format!("Failed to create a file in {}. Make sure the directory is writable by the user running pathfinder.", base.display()))?;
+
+    // well, don't really know what else to check
+
+    Ok(())
 }
