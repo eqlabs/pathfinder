@@ -437,10 +437,6 @@ async fn process(
         }
     };
 
-    // This will demo that the span is correctly combined to the callers span, but unnecessary
-    // let result = response.send(sent_response).map_err(|_| ());
-    // trace!(?result, "Call result sent");
-
     // TODO: this could be pushed to Command but ...
     match (command, output) {
         (Command::Call { response, .. }, Ok(OutputValue::Call(x))) => {
