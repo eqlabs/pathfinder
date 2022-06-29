@@ -8,7 +8,6 @@ use crate::{core::CallResultValue, rpc::types::reply::FeeEstimate};
 ///
 /// This is [`ChildResponse::refine`]'d into [`RefinedChildResponse`]
 #[derive(serde::Deserialize, Debug)]
-#[allow(unused)]
 pub(crate) struct ChildResponse<'a> {
     /// Describes the outcome with three alternatives (good, known error, unknown error)
     status: Status,
@@ -18,9 +17,6 @@ pub(crate) struct ChildResponse<'a> {
     exception: Option<std::borrow::Cow<'a, str>>,
     /// Enumeration of "known errors", present when `status` is [`Status::Error`].
     kind: Option<ErrorKind>,
-    /// Timing information, possibly available.
-    #[serde(default)]
-    timings: Timings,
     /// The real output from the contract when `status` is [`Status::Ok`].
     #[serde(default)]
     output: Option<OutputValue>,
@@ -39,15 +35,12 @@ impl<'a> ChildResponse<'a> {
         match (&self.status, &mut self.kind, &mut self.exception) {
             (Status::Ok, None, None) => Ok(RefinedChildResponse {
                 status: RefinedStatus::Ok(self.output.ok_or(SubprocessError::InvalidResponse)?),
-                timings: self.timings,
             }),
             (Status::Error, x @ Some(_), None) => Ok(RefinedChildResponse {
                 status: RefinedStatus::Error(x.take().unwrap()),
-                timings: self.timings,
             }),
             (Status::Failed, None, s @ &mut Some(_)) => Ok(RefinedChildResponse {
                 status: RefinedStatus::Failed(s.take().unwrap()),
-                timings: self.timings,
             }),
             // these should not happen, so turn them into similar as serde_json errors
             _ => Err(SubprocessError::InvalidResponse),
@@ -56,23 +49,17 @@ impl<'a> ChildResponse<'a> {
 }
 
 impl RefinedChildResponse<'_> {
-    pub(super) fn into_messages(
-        self,
-    ) -> (Option<Timings>, Status, Result<OutputValue, CallFailure>) {
+    pub(super) fn into_messages(self) -> (Status, Result<OutputValue, CallFailure>) {
         match self {
             RefinedChildResponse {
-                timings,
                 status: RefinedStatus::Ok(x),
-            } => (Some(timings), Status::Ok, Ok(x)),
+            } => (Status::Ok, Ok(x)),
             RefinedChildResponse {
-                timings,
                 status: RefinedStatus::Error(e),
-            } => (Some(timings), Status::Error, Err(CallFailure::from(e))),
+            } => (Status::Error, Err(CallFailure::from(e))),
             RefinedChildResponse {
-                timings,
                 status: RefinedStatus::Failed(s),
             } => (
-                Some(timings),
                 Status::Failed,
                 Err(CallFailure::ExecutionFailed(s.to_string())),
             ),
@@ -108,21 +95,9 @@ pub enum Status {
     Failed,
 }
 
-/// Just something python internally recorded, so we'd know at least something.
-/// No plans aside from logging for now for the data.
-#[derive(serde::Deserialize, Debug, Default)]
-#[allow(unused)]
-pub(super) struct Timings {
-    /// Time it took to parse, before opening the transaction.
-    parsing: Option<f64>,
-    /// Time it took to find the tree root, and execute.
-    execution: Option<f64>,
-}
-
 /// The format we'd prefer to process instead of [`ChildResponse`].
 pub(super) struct RefinedChildResponse<'a> {
     status: RefinedStatus<'a>,
-    timings: Timings,
 }
 
 /// More sensible alternative to [`Status`].

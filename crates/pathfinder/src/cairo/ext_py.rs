@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 mod de;
-use de::{ErrorKind, Status, Timings};
+use de::ErrorKind;
 
 mod ser;
 use ser::UsedChain;
@@ -214,13 +214,11 @@ impl Command {
 #[derive(Debug)]
 enum SubProcessEvent {
     ProcessLaunched(u32),
-    CommandHandled(u32, Option<Timings>, Status),
 }
 
 /// The reason the [`sub_process::launch_python`] exited.
 #[derive(Debug)]
 enum SubprocessExitReason {
-    ClosedChannel,
     UnrecoverableIO,
     Shutdown,
     Death,

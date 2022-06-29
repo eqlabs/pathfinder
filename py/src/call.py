@@ -76,6 +76,8 @@ def do_loop(connection, input_gen, output_file):
         "version": int_param,
     }
 
+    logger = Logger()
+
     for line in input_gen:
         if line == "" or line.startswith("#"):
             continue
@@ -84,6 +86,9 @@ def do_loop(connection, input_gen, output_file):
 
         started_at = time.time()
         parsed_at = None
+        # make the first this available for failed cases
+        command = line
+        timings = {}
 
         try:
             command = parse_command(json.loads(line), required, optional)
@@ -92,9 +97,12 @@ def do_loop(connection, input_gen, output_file):
 
             connection.execute("BEGIN")
 
-            output = loop_inner(connection, command)
+            [verb, output, inner_timings] = loop_inner(connection, command)
 
-            out["output"] = render(*output)
+            # this is more backwards compatible dictionary union
+            timings = {**timings, **inner_timings}
+
+            out["output"] = render(verb, output)
         except NoSuchBlock:
             out = {"status": "error", "kind": "NO_SUCH_BLOCK"}
         except NoSuchContract:
@@ -107,18 +115,19 @@ def do_loop(connection, input_gen, output_file):
             if str(e.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
                 out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
             else:
+                report_failed(logger, command, e)
                 # this is hopefully something we can give to the user
                 out = {"status": "failed", "exception": str(e.code)}
         except Exception as e:
             stringified = str(e)
             if len(stringified) > 200:
                 stringified = stringified[:197] + "..."
+            report_failed(logger, command, e)
             out = {"status": "failed", "exception": stringified}
         finally:
             connection.rollback()
 
             completed_at = time.time()
-            timings = {}
 
             if parsed_at is not None and started_at < parsed_at:
                 timings["parsing"] = parsed_at - started_at
@@ -126,9 +135,13 @@ def do_loop(connection, input_gen, output_file):
             if parsed_at is not None and parsed_at < completed_at:
                 timings["execution"] = completed_at - parsed_at
 
-            out["timings"] = timings
-
+            logger.trace(json.dumps(timings))
             print(json.dumps(out), file=output_file, flush=True)
+
+
+def report_failed(logger, command, e):
+    logger.debug(f"{command}")
+    logger.error(str(e))
 
 
 def loop_inner(connection, command):
@@ -142,14 +155,22 @@ def loop_inner(connection, command):
     max_fee = command.get("max_fee", 0)
     version = command.get("version", 0)
 
+    timings = {}
+    started_at = time.time()
+
     # the later parts will have access to gas_price through this block_info
     (block_info, global_root) = resolve_block(
         connection, command["at_block"], command.get("gas_price", None)
     )
 
+    timings["resolve_block"] = time.time() - started_at
+    started_at = time.time()
+
+    adapter = SqliteAdapter(connection)
+
     (result, carried_state) = asyncio.run(
         do_call(
-            SqliteAdapter(connection),
+            adapter,
             general_config,
             global_root,
             command["contract_address"],
@@ -162,12 +183,16 @@ def loop_inner(connection, command):
         )
     )
 
+    timings["sql"] = {"timings": adapter.elapsed, "counts": adapter.counts}
+
+    timings["call"] = time.time() - started_at
+
     if verb == "call":
-        return (verb, result.retdata)
+        return (verb, result.retdata, timings)
     else:
         assert verb == "estimate_fee", "command should had been call or estimate_fee"
         fees = estimate_fee_after_call(general_config, result, carried_state)
-        return (verb, fees)
+        return (verb, fees, timings)
 
 
 def render(verb, vals):
@@ -373,6 +398,33 @@ class InvalidInput(Exception):
         super().__init__(f"Invalid input for key: {key}")
 
 
+class Logger:
+    """
+    Simple logging abstraction
+
+    Over at rust side, there's a spawned task reading stderr line by line.
+    On each line there should be <level><json> on a single line.
+    """
+
+    def error(self, message):
+        self._log(0, message)
+
+    def warn(self, message):
+        self._log(1, message)
+
+    def info(self, message):
+        self._log(2, message)
+
+    def debug(self, message):
+        self._log(3, message)
+
+    def trace(self, message):
+        self._log(4, message)
+
+    def _log(self, level, message):
+        print(f"{level}{json.dumps(message)}", file=sys.stderr, flush=True)
+
+
 class SqliteAdapter(Storage):
     """
     Reads from pathfinders' database to give cairo-lang call implementation the nodes as needed
@@ -382,6 +434,26 @@ class SqliteAdapter(Storage):
     def __init__(self, connection):
         assert connection.in_transaction, "first query should had started a transaction"
         self.connection = connection
+        self.elapsed = {
+            "total": 0,
+            "patricia_node": 0,
+            "contract_state": 0,
+            "contract_definition": 0,
+        }
+        self.counts = {
+            "total": 0,
+            "patricia_node": 0,
+            "contract_state": 0,
+            "contract_definition": 0,
+        }
+        # json cannot contain bytes, python doesn't have strip string
+        self.prefix_mapping = {
+            b"patricia_node": "patricia_node",
+            b"contract_state": "contract_state",
+            b"contract_definition_fact": "contract_definition",
+            # this is just a string op
+            b"starknet_storage_leaf": None,
+        }
 
     async def set_value(self, key, value):
         raise NotImplementedError("Readonly storage, this should never happen")
@@ -390,13 +462,30 @@ class SqliteAdapter(Storage):
         raise NotImplementedError("Readonly storage, this should never happen")
 
     async def get_value(self, key):
+        started_at = time.time()
+
+        # all keys have this structure
+        [prefix, suffix] = key.split(b":", maxsplit=1)
+
+        ret = self.get_value0(prefix, suffix)
+
+        elapsed = time.time() - started_at
+
+        self.elapsed["total"] += elapsed
+        self.counts["total"] += 1
+        # bytes are not permitted in json
+        prefix = self.prefix_mapping.get(prefix, None)
+        if prefix is not None:
+            self.elapsed[prefix] += elapsed
+            self.counts[prefix] += 1
+        return ret
+
+    def get_value0(self, prefix, suffix):
         """
         Get value invoked by some storage thing from cairo-lang. The caller
         will assert that the values returned are not None, which sometimes
         bubbles up, or gets wrapped in a StarkException.
         """
-        # all keys have this structure
-        [prefix, suffix] = key.split(b":", maxsplit=1)
 
         # cases handled in the order of appereance
         if prefix == b"patricia_node":

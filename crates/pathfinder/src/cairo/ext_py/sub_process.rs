@@ -1,7 +1,7 @@
 //! Launching and communication with the subprocess
 
 use super::{
-    de::{ChildResponse, OutputValue, RefinedChildResponse, Status, Timings},
+    de::{ChildResponse, OutputValue, RefinedChildResponse, Status},
     ser::{ChildCommand, Verb},
     CallFailure, Command, SharedReceiver, SubProcessEvent, SubprocessError, SubprocessExitReason,
 };
@@ -27,12 +27,15 @@ pub(super) async fn launch_python(
     status_updates: mpsc::Sender<SubProcessEvent>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> anyhow::Result<(u32, Option<std::process::ExitStatus>, SubprocessExitReason)> {
-    let (mut child, pid, mut stdin, mut stdout, mut buffer) = match spawn(database_path).await {
-        Ok(tuple) => tuple,
-        Err(e) => {
-            return Err(e.context("Failed to start python subprocess"));
-        }
-    };
+    let current_span = std::sync::Arc::new(std::sync::Mutex::new(tracing::Span::none()));
+
+    let (mut child, pid, mut stdin, mut stdout, mut buffer) =
+        match spawn(database_path, std::sync::Arc::clone(&current_span)).await {
+            Ok(tuple) => tuple,
+            Err(e) => {
+                return Err(e.context("Failed to start python subprocess"));
+            }
+        };
 
     if status_updates
         .send(SubProcessEvent::ProcessLaunched(pid))
@@ -82,8 +85,9 @@ pub(super) async fn launch_python(
 
         span.record("pid", &pid);
 
-        let (timings, status) = {
+        {
             let op = process(
+                &*current_span,
                 command,
                 &mut command_buffer,
                 &mut stdin,
@@ -97,7 +101,7 @@ pub(super) async fn launch_python(
             tokio::select! {
                 res = &mut op => {
                     match res {
-                        Ok(t) => t,
+                        Ok(_) => (),
                         Err(None) => continue,
                         Err(Some(e)) => break e,
                     }
@@ -106,14 +110,11 @@ pub(super) async fn launch_python(
                     break SubprocessExitReason::Shutdown;
                 },
             }
-        };
+        }
 
-        let send_res = status_updates
-            .send(SubProcessEvent::CommandHandled(pid, timings, status))
-            .await;
-
-        if send_res.is_err() {
-            break SubprocessExitReason::ClosedChannel;
+        {
+            let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
+            *g = tracing::Span::none();
         }
 
         if !stdout.buffer().is_empty() {
@@ -125,6 +126,12 @@ pub(super) async fn launch_python(
     };
 
     trace!(?exit_reason, "Starting to exit");
+
+    // make sure to clear this, as there are plenty of break's in above code
+    {
+        let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
+        *g = tracing::Span::none();
+    }
 
     // important to close up the stdin not to deadlock
     drop(stdin);
@@ -164,6 +171,7 @@ const PYTHON_SCRIPT_SOURCE: &str = include_str!("../../../../../py/src/call.py")
 
 async fn spawn(
     database_path: PathBuf,
+    current_span: std::sync::Arc<std::sync::Mutex<tracing::Span>>,
 ) -> anyhow::Result<(Child, u32, ChildStdin, BufReader<ChildStdout>, String)> {
     let script_file = tempfile::NamedTempFile::new()
         .context("Failed to create temporary file for Python script")?;
@@ -201,7 +209,10 @@ async fn spawn(
     // spawn the stderr out, just forget it it will die down once the process has been torn down
     let _forget = tokio::task::spawn({
         let stderr = child.stderr.take().expect("stderr was piped");
-        let span = tracing::trace_span!("stderr");
+
+        // this span is connected to the `spawn` callers span. it does have the pid, but compared
+        // to `current_span` it doesn't have any span describing the *current* request context.
+        let default_span = tracing::info_span!("stderr");
         async move {
             let mut buffer = String::new();
             let mut reader = BufReader::new(stderr);
@@ -217,10 +228,63 @@ async fn spawn(
                     }
                 }
 
-                trace!("{:?}", buffer.trim());
+                let buffer = buffer.trim();
+
+                struct InvalidLevel;
+
+                // first one is the level selector, assuming this is code controlled by us
+                let mut chars = buffer.chars();
+                let level = match chars.next() {
+                    Some('0') => Ok(tracing::Level::ERROR),
+                    Some('1') => Ok(tracing::Level::WARN),
+                    Some('2') => Ok(tracing::Level::INFO),
+                    Some('3') => Ok(tracing::Level::DEBUG),
+                    Some('4') => Ok(tracing::Level::TRACE),
+                    Some(_) => Err(InvalidLevel),
+                    None => {
+                        // whitespace only line
+                        continue;
+                    }
+                };
+
+                let (level, displayed) = if let Ok(level) = level {
+                    let rem = chars.as_str();
+                    // if we treat the thing as json, we can easily get multiline messages
+                    let displayed = if rem.starts_with('"') {
+                        serde_json::from_str::<String>(rem)
+                            .ok()
+                            .map(std::borrow::Cow::Owned)
+                    } else {
+                        None
+                    };
+
+                    (level, displayed.unwrap_or(std::borrow::Cow::Borrowed(rem)))
+                } else {
+                    // this means that the line probably comes from beyond our code
+                    (tracing::Level::ERROR, std::borrow::Cow::Borrowed(buffer))
+                };
+
+                // if the python script would turn out to be very chatty, this would become an issue
+                let current_span = current_span.lock().unwrap_or_else(|e| e.into_inner());
+
+                let used_span = if current_span.is_none() {
+                    &default_span
+                } else {
+                    &*current_span
+                };
+
+                let _g = used_span.enter();
+                // there is no dynamic alternative to tracing::event! ... perhaps this is the wrong
+                // way to go about this.
+                match level {
+                    tracing::Level::ERROR => tracing::error!("{}", &*displayed),
+                    tracing::Level::WARN => tracing::warn!("{}", &*displayed),
+                    tracing::Level::INFO => tracing::info!("{}", &*displayed),
+                    tracing::Level::DEBUG => tracing::debug!("{}", &*displayed),
+                    tracing::Level::TRACE => tracing::trace!("{}", &*displayed),
+                }
             }
         }
-        .instrument(span)
     });
 
     // default buffer is fine for us ... but this is double buffering, for no good reason
@@ -253,12 +317,21 @@ async fn spawn(
 /// - Err(None) if nothing was done
 /// - Err(Some(_)) if the process can no longer be reused
 async fn process(
+    current_span: &std::sync::Mutex<tracing::Span>,
     mut command: Command,
     command_buffer: &mut Vec<u8>,
     stdin: &mut ChildStdin,
     stdout: &mut BufReader<ChildStdout>,
     buffer: &mut String,
-) -> Result<(Option<Timings>, Status), Option<SubprocessExitReason>> {
+) -> Result<Status, Option<SubprocessExitReason>> {
+    {
+        let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
+        // this takes becomes child span of the current span, hopefully, and will get the pid as
+        // well. it will be used to bind stderr messages to the current request cycle (the
+        // `command`).
+        *g = tracing::info_span!("stderr");
+    }
+
     command_buffer.clear();
 
     let sent_over = match &command {
@@ -337,14 +410,13 @@ async fn process(
         }
     };
 
-    let (timings, status, output) = match res {
+    let (status, output) = match res {
         Ok(resp) => resp.into_messages(),
         Err(SubprocessError::InvalidJson(error)) => {
             // buffer still holds the response... might be good for debugging
             // this doesn't however mess up our line at once, so no worries.
             error!(%error, ?buffer, "Failed to parse json from subprocess");
             (
-                None,
                 Status::Failed,
                 Err(CallFailure::Internal("Invalid json received")),
             )
@@ -352,7 +424,6 @@ async fn process(
         Err(SubprocessError::InvalidResponse) => {
             error!(?buffer, "Failed to understand parsed json from subprocess");
             (
-                None,
                 Status::Failed,
                 Err(CallFailure::Internal("Invalid json received")),
             )
@@ -365,10 +436,6 @@ async fn process(
             return Err(Some(SubprocessExitReason::UnrecoverableIO));
         }
     };
-
-    // This will demo that the span is correctly combined to the callers span, but unnecessary
-    // let result = response.send(sent_response).map_err(|_| ());
-    // trace!(?result, "Call result sent");
 
     // TODO: this could be pushed to Command but ...
     match (command, output) {
@@ -389,7 +456,7 @@ async fn process(
         }
     }
 
-    Ok((timings, status))
+    Ok(status)
 }
 
 /// Run a round of writing out the request, and reading a sane response type.
