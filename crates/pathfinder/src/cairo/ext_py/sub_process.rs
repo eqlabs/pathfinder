@@ -209,6 +209,9 @@ async fn spawn(
     // spawn the stderr out, just forget it it will die down once the process has been torn down
     let _forget = tokio::task::spawn({
         let stderr = child.stderr.take().expect("stderr was piped");
+
+        // this span is connected to the `spawn` callers span. it does have the pid, but compared
+        // to `current_span` it doesn't have any span describing the *current* request context.
         let default_span = tracing::info_span!("stderr");
         async move {
             let mut buffer = String::new();
@@ -265,21 +268,6 @@ async fn spawn(
                 // if the python script would turn out to be very chatty, this would become an issue
                 let current_span = current_span.lock().unwrap_or_else(|e| e.into_inner());
 
-                // not sure if this makes sense, but use the outer span if there's no specific
-                // span at the moment, otherwise use the specific one.
-                //
-                // the hope is that for each stderr message there will be either hierarchy:
-                //
-                // +         span from ext_py::service
-                // |
-                // ---       span at `async fn spawn` time (has pid)
-                //   |
-                //   +----  `span` here, which has just stderr
-                //
-                // +         user code calling ext_py::Handle
-                // |           - pid gets populated at ext_py::sub_process
-                // +-+       `*g` here, which has just stderr
-                //
                 let used_span = if current_span.is_none() {
                     &default_span
                 } else {
@@ -340,7 +328,8 @@ async fn process(
     {
         let mut g = current_span.lock().unwrap_or_else(|e| e.into_inner());
         // this takes becomes child span of the current span, hopefully, and will get the pid as
-        // well.
+        // well. it will be used to bind stderr messages to the current request cycle (the
+        // `command`).
         *g = tracing::info_span!("stderr");
     }
 
