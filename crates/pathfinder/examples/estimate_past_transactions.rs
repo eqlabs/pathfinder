@@ -70,19 +70,17 @@ struct Work {
     at_block: pathfinder_lib::rpc::types::BlockHashOrTag,
     gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource,
     actual_fee: web3::types::H256,
-    tx_hash: StarkHash,
-    block_number: u64,
+    span: tracing::Span,
 }
 
 #[derive(Debug)]
 struct ReadyResult {
     actual_fee: web3::types::H256,
-    tx_hash: StarkHash,
-    block_number: u64,
     result: Result<
         pathfinder_lib::rpc::types::reply::FeeEstimate,
         pathfinder_lib::cairo::ext_py::CallFailure,
     >,
+    span: tracing::Span,
 }
 
 fn feed_work(
@@ -108,10 +106,14 @@ fn feed_work(
         )?;
 
     let mut work = prep.query([])?;
+
+    let mut last_block = None;
+    let mut previously_declared_deployed_in_the_same_block = std::collections::HashSet::new();
     let mut rows = 0usize;
     let mut invokes = 0usize;
     let mut declares = 0usize;
     let mut deploys = 0usize;
+    let mut same_tx_deploy_call = 0usize;
 
     while let Some(next) = work.next()? {
         rows += 1;
@@ -130,6 +132,14 @@ fn feed_work(
         let prev_block_number = next.get_ref_unwrap(5).as_i64().unwrap() as u64;
         let block_number = next.get_ref_unwrap(6).as_i64().unwrap() as u64;
 
+        match last_block {
+            Some(x) if x != block_number => previously_declared_deployed_in_the_same_block.clear(),
+            Some(_) => {}
+            None => {
+                last_block = Some(block_number);
+            }
+        }
+
         assert_eq!(block_number, prev_block_number + 1);
 
         let actual_fee = serde_json::from_slice::<SimpleReceipt>(&receipt)
@@ -143,13 +153,26 @@ fn feed_work(
         })?;
 
         let call = match tx {
-            SimpleTransaction::Invoke(tx) => tx.into(),
+            SimpleTransaction::Invoke(tx)
+                if !previously_declared_deployed_in_the_same_block
+                    .contains(&tx.contract_address.0) =>
+            {
+                tx.into()
+            }
+            SimpleTransaction::Invoke(SimpleInvoke {
+                contract_address, ..
+            }) => {
+                tracing::debug!(contract_address=%contract_address.0, "same block deployed contract found");
+                same_tx_deploy_call += 1;
+                continue;
+            }
             SimpleTransaction::Declare(_) => {
                 declares += 1;
                 continue;
             }
-            SimpleTransaction::Deploy(_) => {
+            SimpleTransaction::Deploy(SimpleDeploy { contract_address }) => {
                 deploys += 1;
+                previously_declared_deployed_in_the_same_block.insert(contract_address.0);
                 continue;
             }
         };
@@ -166,6 +189,8 @@ fn feed_work(
 
         invokes += 1;
 
+        let span = tracing::info_span!("tx", %tx_hash, block_number);
+
         sender
             .blocking_send(Work {
                 call,
@@ -177,15 +202,21 @@ fn feed_work(
                     gas_price_at_block,
                 ),
                 actual_fee,
-                tx_hash,
-                block_number,
+                span,
             })
             .map_err(|_| anyhow::anyhow!("sending to processor failed"))?;
     }
 
     // drop work_sender to signal no more work is incoming
     drop(sender);
-    tracing::info!(rows, invokes, declares, deploys, "completed query");
+    tracing::info!(
+        rows,
+        invokes,
+        declares,
+        deploys,
+        same_tx_deploy_call,
+        "completed query"
+    );
     Ok(())
 }
 
@@ -196,6 +227,7 @@ async fn estimate(
     ready_tx: tokio::sync::mpsc::Sender<ReadyResult>,
 ) {
     use futures::stream::StreamExt;
+    use tracing::Instrument;
 
     let mut waiting = futures::stream::FuturesUnordered::new();
     let mut rx_open = true;
@@ -204,16 +236,16 @@ async fn estimate(
         tokio::select! {
             next_work = rx.recv(), if rx_open => {
                 match next_work {
-                    Some(Work {call, at_block, gas_price, actual_fee, tx_hash, block_number}) => {
+                    Some(Work {call, at_block, gas_price, actual_fee, span}) => {
+                        let outer = span.clone();
                         let fut = handle.estimate_fee(call, at_block, gas_price);
                         waiting.push(async move {
                             ReadyResult {
                                 actual_fee,
-                                tx_hash,
-                                block_number,
-                                result: fut.await
+                                result: fut.await,
+                                span,
                             }
-                        });
+                        }.instrument(outer));
                     },
                     None => {
                         rx_open = false;
@@ -244,15 +276,15 @@ fn report_ready(mut rx: tokio::sync::mpsc::Receiver<ReadyResult>) {
 
     while let Some(ReadyResult {
         actual_fee,
-        tx_hash,
-        block_number,
         result,
+        span,
     }) = rx.blocking_recv()
     {
+        let _g = span.enter();
         match result {
             Ok(fees) if fees.fee == actual_fee => {
                 eq += 1;
-                tracing::info!(%tx_hash, eq, ne, fail, block_number, "ok");
+                tracing::info!(eq, ne, fail, "ok");
             }
             Ok(fees) => {
                 ne += 1;
@@ -272,11 +304,11 @@ fn report_ready(mut rx: tokio::sync::mpsc::Receiver<ReadyResult>) {
                     .checked_div(gas_price)
                     .expect("gas_price != 0 is not actually checked anywhere");
 
-                tracing::info!(%tx_hash, eq, ne, fail, block_number, "bad fee {diff} or {gas} gas");
+                tracing::info!(eq, ne, fail, "bad fee {diff} or {gas} gas");
             }
             Err(e) => {
                 fail += 1;
-                tracing::info!(%tx_hash, eq, ne, fail, block_number, err=?e, "fail");
+                tracing::info!(eq, ne, fail, err=?e, "fail");
             }
         }
     }
@@ -299,7 +331,9 @@ enum SimpleTransaction {
 }
 
 #[derive(serde::Deserialize, Debug)]
-struct SimpleDeploy {}
+struct SimpleDeploy {
+    contract_address: pathfinder_lib::core::ContractAddress,
+}
 
 #[derive(serde::Deserialize, Debug)]
 struct SimpleDeclare {}

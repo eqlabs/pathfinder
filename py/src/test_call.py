@@ -513,11 +513,11 @@ def test_failing_mainnet_tx2():
     #     "overall_fee": 21858685929729,
     # }
 
-    # this is less wrong, but still off
+    # this is correct
     assert output == {
         "gas_consumed": 8568,
         "gas_price": 21367239423,
-        "overall_fee": 253394092317357,
+        "overall_fee": 186590486623319,
     }
 
     assert output["overall_fee"] == 0xA9B3FBAC7457
