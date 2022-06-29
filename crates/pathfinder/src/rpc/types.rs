@@ -649,24 +649,7 @@ pub mod reply {
                 .transaction
                 .ok_or_else(|| anyhow::anyhow!("Transaction not found."))?;
 
-            Ok(match txn {
-                sequencer::reply::transaction::Transaction::Invoke(txn) => Self {
-                    txn_hash: txn.transaction_hash,
-                    contract_address: Some(txn.contract_address),
-                    entry_point_selector: Some(txn.entry_point_selector),
-                    calldata: Some(txn.calldata),
-                    max_fee: Some(txn.max_fee),
-                },
-                _ => Self {
-                    // TODO this is probably the best we can do until the RPC spec introduces
-                    // 3 variants for all the transaction types
-                    txn_hash: txn.hash(),
-                    contract_address: None,
-                    entry_point_selector: None,
-                    calldata: None,
-                    max_fee: None,
-                },
-            })
+            Ok(txn.into())
         }
     }
 
