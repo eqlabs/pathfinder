@@ -249,8 +249,7 @@ async fn spawn(
 
                 let (level, displayed) = if let Ok(level) = level {
                     let rem = chars.as_str();
-                    // if we treat the thing as json, we can easily get multiline messages, which most
-                    // are
+                    // if we treat the thing as json, we can easily get multiline messages
                     let displayed = if rem.starts_with('"') {
                         serde_json::from_str::<String>(rem)
                             .ok()
