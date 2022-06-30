@@ -234,7 +234,16 @@ where
 /// A helper function to log Web3 Eth API errors. Always yields __true__.
 fn log_and_always_retry(error: &Error) -> bool {
     match error {
-        Error::Unreachable | Error::InvalidResponse(_) | Error::Transport(_) => {
+        Error::Transport(s) => {
+            // this is quite sad but we only have the string to work with
+            // this happens at least on infura with bad urls, also alchemy
+            if s == "response status code is not success: 401 Unauthorized" {
+                return false;
+            }
+
+            debug!(reason=%error, "L1 request failed, retrying")
+        }
+        Error::Unreachable | Error::InvalidResponse(_) => {
             debug!(reason=%error, "L1 request failed, retrying")
         }
         Error::Decoder(_) | Error::Internal | Error::Io(_) | Error::Recovery(_) => {
