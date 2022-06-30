@@ -641,19 +641,34 @@ async def do_call(
 
 
 def estimate_fee_after_call(general_config, call_info, carried_state):
-    from starkware.starknet.business_logic.transaction_fee import calculate_tx_fee
+    import math
     from starkware.starknet.business_logic.utils import get_invoke_tx_total_resources
 
-    (l1_gas_used, _cairo_resources_used) = get_invoke_tx_total_resources(
+    # FIXME: this is now completly inlined calculate_tx_fee, fix with cairo-lang 0.9.1
+    # it has been adapted to variable names from 167b28bcd940fd25ea3816204fa882a0b0a49603
+    (l1_gas_usage, cairo_resource_usage) = get_invoke_tx_total_resources(
         carried_state, call_info
     )
 
-    overall_fee = calculate_tx_fee(carried_state, call_info, general_config)
+    cairo_resource_fee_weights = general_config.cairo_resource_fee_weights
+    cairo_resource_names = set(cairo_resource_usage.keys())
+    assert cairo_resource_names.issubset(
+        cairo_resource_fee_weights.keys()
+    ), "Cairo resource names must be contained in fee weights dict."
+
+    # Convert Cairo usage to L1 gas usage.
+    cairo_l1_gas_usage = max(
+        cairo_resource_fee_weights[key] * cairo_resource_usage.get(key, 0)
+        for key in cairo_resource_fee_weights
+    )
+
+    total_l1_gas_usage = cairo_l1_gas_usage + l1_gas_usage
+    overall_fee = math.ceil(total_l1_gas_usage * carried_state.block_info.gas_price)
 
     return {
-        "gas_consumed": l1_gas_used,
+        "gas_consumed": int(total_l1_gas_usage),
         "gas_price": carried_state.block_info.gas_price,
-        "overall_fee": overall_fee,
+        "overall_fee": int(overall_fee),
     }
 
 
