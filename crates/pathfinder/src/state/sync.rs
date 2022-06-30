@@ -48,7 +48,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     chain: Chain,
     sequencer: SequencerClient,
     state: Arc<State>,
-    l1_sync: L1Sync,
+    mut l1_sync: L1Sync,
     l2_sync: L2Sync,
 ) -> anyhow::Result<()>
 where
@@ -56,7 +56,7 @@ where
     SequencerClient: sequencer::ClientApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnOnce(mpsc::Sender<l1::Event>, Transport, Chain, Option<StateUpdateLog>) -> F1 + Copy,
+    L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, Option<StateUpdateLog>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
@@ -1066,17 +1066,22 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l1_restart() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
+    async fn l1_restart() -> Result<(), anyhow::Error> {
+        use anyhow::Context;
         let storage = Storage::in_memory().unwrap();
 
-        static CNT: AtomicUsize = AtomicUsize::new(0);
+        let (starts_tx, mut starts_rx) = tokio::sync::mpsc::channel(1);
 
-        // A simple L1 sync task
-        let l1 = move |_, _, _, _| async move {
-            CNT.fetch_add(1, Ordering::Relaxed);
-            Ok(())
+        let l1 = move |_, _, _, _| {
+            let starts_tx = starts_tx.clone();
+            async move {
+                // signal we've (re)started
+                starts_tx
+                    .send(())
+                    .await
+                    .expect("starts_rx should still be alive");
+                Ok(())
+            }
         };
 
         // UUT
@@ -1090,9 +1095,19 @@ mod tests {
             l2_noop,
         ));
 
-        tokio::time::sleep(Duration::from_millis(5)).await;
+        let timeout = std::time::Duration::from_secs(1);
 
-        assert!(CNT.load(Ordering::Relaxed) > 1);
+        tokio::time::timeout(timeout, starts_rx.recv())
+            .await
+            .context("l1 sync should had started")?
+            .context("l1 closure should not had been dropped yet")?;
+
+        tokio::time::timeout(timeout, starts_rx.recv())
+            .await
+            .context("l1 sync should had been re-started")?
+            .context("l1 closure should not had been dropped yet")?;
+
+        Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
