@@ -20,10 +20,7 @@ use crate::{
     sequencer::request::add_transaction::ContractDefinition,
 };
 use ::serde::Deserialize;
-use jsonrpsee::{
-    core::Error,
-    http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
-};
+use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle, RpcModule};
 
 use std::{net::SocketAddr, result::Result};
 
@@ -48,7 +45,7 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
     >
     where
         R: ::serde::Serialize + Send + Sync + 'static,
-        Fut: std::future::Future<Output = Result<R, Error>> + Send,
+        Fut: std::future::Future<Output = Result<R, jsonrpsee::core::Error>> + Send,
         Fun: (Fn(jsonrpsee::types::Params<'static>, std::sync::Arc<Context>) -> Fut)
             + Copy
             + Send
@@ -73,7 +70,7 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
 pub async fn run_server(
     addr: SocketAddr,
     api: RpcApi,
-) -> Result<(HttpServerHandle, SocketAddr), Error> {
+) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
     let server = HttpServerBuilder::default().build(addr).await?;
     let local_addr = server.local_addr()?;
     let mut module = RpcModuleWrapper(RpcModule::new(api));
@@ -357,7 +354,7 @@ pub async fn run_server(
     )?;
 
     let module = module.into_inner();
-    server.start(module).map(|handle| (handle, local_addr))
+    Ok(server.start(module).map(|handle| (handle, local_addr))?)
 }
 
 #[cfg(test)]
