@@ -41,6 +41,16 @@ impl ConfigBuilder {
         // Required parameters.
         let eth_url = self.take_required(ConfigOption::EthereumHttpUrl)?;
 
+        // this used to be the url in docker run example
+        if eth_url == "https://goerli.infura.io/v3/<project-id>" {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid Ethereum URL ({eth_url}): Cannot use the URL from examples!
+
+Hint: Register your own account or run your own Ethereum node and put the real URL as the configuration value.")
+            ));
+        }
+
         // Parse the Ethereum URL.
         let eth_url = eth_url.parse::<Url>().map_err(|err| {
             std::io::Error::new(

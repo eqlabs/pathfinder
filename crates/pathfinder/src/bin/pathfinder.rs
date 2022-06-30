@@ -30,10 +30,13 @@ async fn main() -> anyhow::Result<()> {
     let eth_transport =
         HttpTransport::from_config(config.ethereum).context("Creating Ethereum transport")?;
 
-    let ethereum_chain = eth_transport
-        .chain()
-        .await
-        .context("Determining Ethereum chain")?;
+    // have a special long form hint here because there should be a lot of questions coming up
+    // about this one.
+    let ethereum_chain = eth_transport.chain().await.context(
+        "Determine Ethereum chain.
+
+Hint: Make sure the provided ethereum.url and ethereum.password are good.",
+    )?;
 
     let database_path = config.data_directory.join(match ethereum_chain {
         core::Chain::Mainnet => "mainnet.sqlite",
