@@ -1,0 +1,8 @@
+# review automation, hopefully, so we don't have to toggle boxes on every one.
+
+# assign these always as reviewers
+* @eqlabs/starknet
+
+# notify on these specifically
+/crates/stark_curve @mikdk
+/crates/stark_hash @mikdk
