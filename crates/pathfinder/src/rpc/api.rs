@@ -191,22 +191,11 @@ impl RpcApi {
                     transactions_receipts
                         .into_iter()
                         .map(|(t, r)| {
-                            let t: Transaction = t.into();
-                            let r = TransactionReceipt::with_block_status(r, block_status);
+                            let receipt =
+                                TransactionReceipt::with_block_status(r, block_status, &t);
+                            let txn: Transaction = t.into();
 
-                            reply::TransactionAndReceipt {
-                                txn_hash: t.txn_hash,
-                                contract_address: t.contract_address,
-                                entry_point_selector: t.entry_point_selector,
-                                calldata: t.calldata,
-                                max_fee: t.max_fee,
-                                actual_fee: r.actual_fee,
-                                status: r.status,
-                                status_data: r.status_data,
-                                messages_sent: r.messages_sent,
-                                l1_origin_message: r.l1_origin_message,
-                                events: r.events,
-                            }
+                            reply::TransactionAndReceipt { txn, receipt }
                         })
                         .collect(),
                 )
@@ -666,7 +655,18 @@ impl RpcApi {
 
                     let block_status = Self::get_block_status(&db_tx, block.number)?;
 
-                    Ok(TransactionReceipt::with_block_status(receipt, block_status))
+                    // We require the transaction so that we can return the right RPC type for the receipt.
+                    match StarknetTransactionsTable::get_transaction(&db_tx, transaction_hash)
+                        .context("Reading transaction from database")
+                        .map_err(internal_server_error)?
+                    {
+                        Some(transaction) => Ok(TransactionReceipt::with_block_status(
+                            receipt,
+                            block_status,
+                            &transaction,
+                        )),
+                        None => Err(ErrorCode::InvalidTransactionHash.into()),
+                    }
                 }
                 None => Err(ErrorCode::InvalidTransactionHash.into()),
             }
