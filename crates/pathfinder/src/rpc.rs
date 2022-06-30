@@ -71,7 +71,28 @@ pub async fn run_server(
     addr: SocketAddr,
     api: RpcApi,
 ) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
-    let server = HttpServerBuilder::default().build(addr).await?;
+    let server = HttpServerBuilder::default()
+        .build(addr)
+        .await
+        .map_err(|e| match e {
+            jsonrpsee::core::Error::Transport(_) => {
+                use std::error::Error;
+
+                if let Some(inner) = e.source().and_then(|inner| inner.downcast_ref::<std::io::Error>()) {
+                    if let std::io::ErrorKind::AddrInUse = inner.kind() {
+                        return anyhow::Error::new(e)
+                        .context(format!("RPC address is already in use: {addr}.
+
+Hint: This usually means you are already running another instance of pathfinder.
+Hint: If this happens when upgrading, make sure to shut down the first one first.
+Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses."))
+                    }
+                }
+
+                anyhow::Error::new(e)
+            }
+            _ => anyhow::Error::new(e),
+        })?;
     let local_addr = server.local_addr()?;
     let mut module = RpcModuleWrapper(RpcModule::new(api));
     module.register_async_method("starknet_getBlockByHash", |params, context| async move {
