@@ -419,7 +419,7 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 0,
+        "gas_consumed": 3,
         "gas_price": 0,
         "overall_fee": 0,
     }
@@ -441,7 +441,7 @@ def test_fee_estimate_on_positive():
     assert first == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (3).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
             "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
         },
@@ -450,7 +450,7 @@ def test_fee_estimate_on_positive():
     assert second == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (3).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
             "overall_fee": "0x" + (35).to_bytes(32, "big").hex(),
         },
@@ -509,7 +509,7 @@ def test_failing_mainnet_tx2():
 
     # this is correct
     assert output == {
-        "gas_consumed": 8568,
+        "gas_consumed": 8732,
         "gas_price": 21367239423,
         "overall_fee": 186590486623319,
     }

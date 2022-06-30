@@ -423,7 +423,7 @@ mod tests {
         assert_eq!(
             at_block_fee,
             crate::rpc::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(0),
+                consumed: H256::from_low_u64_be(3),
                 gas_price: H256::from_low_u64_be(1),
                 fee: H256::from_low_u64_be(4)
             }
@@ -443,7 +443,7 @@ mod tests {
         assert_eq!(
             current_fee,
             crate::rpc::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(0),
+                consumed: H256::from_low_u64_be(3),
                 gas_price: H256::from_low_u64_be(10),
                 fee: H256::from_low_u64_be(35)
             }
