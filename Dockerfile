@@ -22,17 +22,15 @@ WORKDIR /usr/src/pathfinder
 
 # Build only the dependencies first. This utilizes
 # container layer caching for Rust builds
-RUN mkdir crates
-RUN cargo new --lib --vcs none crates/stark_curve
-RUN cargo new --lib --vcs none crates/stark_hash
-# Correct: --lib. We'll handle the binary later.
-RUN cargo new --lib --vcs none crates/pathfinder
-RUN cargo new --lib --vcs none crates/load-test
-COPY Cargo.toml Cargo.toml
-COPY Cargo.lock Cargo.lock
+RUN mkdir crates \
+    && cargo new --lib --vcs none crates/stark_curve \
+    && cargo new --lib --vcs none crates/stark_hash \
+    && cargo new --lib --vcs none crates/pathfinder \
+    && cargo new --lib --vcs none crates/load-test
 
-COPY crates/pathfinder/Cargo.toml crates/pathfinder/Cargo.toml
-COPY crates/pathfinder/build.rs crates/pathfinder/build.rs
+COPY Cargo.toml Cargo.lock .
+
+COPY crates/pathfinder/Cargo.toml crates/pathfinder/build.rs crates/pathfinder/
 COPY crates/stark_curve/Cargo.toml crates/stark_curve/Cargo.toml
 COPY crates/stark_hash/Cargo.toml crates/stark_hash/Cargo.toml
 COPY crates/stark_hash/benches crates/stark_hash/benches
@@ -45,10 +43,7 @@ COPY . .
 COPY ./.git /usr/src/pathfinder/.git
 
 # Mark these for re-compilation
-RUN touch crates/pathfinder/src/lib.rs
-RUN touch crates/pathfinder/src/build.rs
-RUN touch crates/stark_curve/src/lib.rs
-RUN touch crates/stark_hash/src/lib.rs
+RUN touch crates/pathfinder/src/lib.rs crates/pathfinder/src/build.rs crates/stark_curve/src/lib.rs crates/stark_hash/src/lib.rs
 
 RUN CARGO_INCREMENTAL=0 cargo build --release -p pathfinder --bin pathfinder
 
@@ -65,10 +60,10 @@ RUN python3 -m pip --disable-pip-version-check install -r py/requirements-dev.tx
 
 # This reduces the size of the python libs by about 50%
 ENV PY_PATH=/usr/local/lib/python3.8/
-RUN find ${PY_PATH} -type d -a -name test -exec rm -rf '{}' +
-RUN find ${PY_PATH} -type d -a -name tests  -exec rm -rf '{}' +
-RUN find ${PY_PATH} -type f -a -name '*.pyc' -exec rm -rf '{}' +
-RUN find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
+RUN find ${PY_PATH} -type d -a -name test -exec rm -rf '{}' + \
+    && find ${PY_PATH} -type d -a -name tests  -exec rm -rf '{}' + \
+    && find ${PY_PATH} -type f -a -name '*.pyc' -exec rm -rf '{}' + \
+    && find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
 
 #######################
 # Final Stage: Runner #
