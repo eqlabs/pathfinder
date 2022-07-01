@@ -5,21 +5,20 @@ use std::path::Path;
 
 use stark_curve::*;
 
-fn generate_consts(path: &Path, bits: u32) -> std::fmt::Result {
-    let buf = &mut String::with_capacity(10 * 1024 * 1024);
+fn generate_consts(bits: u32) -> Result<String, std::fmt::Error> {
+    let mut buf = String::with_capacity(10 * 1024 * 1024);
 
     write!(buf, "pub const CURVE_CONSTS_BITS: usize = {};\n\n", bits)?;
 
-    push_points(buf, "P1", &PEDERSEN_P1, 248, bits)?;
+    push_points(&mut buf, "P1", &PEDERSEN_P1, 248, bits)?;
     buf.push_str("\n\n\n");
-    push_points(buf, "P2", &PEDERSEN_P2, 4, bits)?;
+    push_points(&mut buf, "P2", &PEDERSEN_P2, 4, bits)?;
     buf.push_str("\n\n\n");
-    push_points(buf, "P3", &PEDERSEN_P3, 248, bits)?;
+    push_points(&mut buf, "P3", &PEDERSEN_P3, 248, bits)?;
     buf.push_str("\n\n\n");
-    push_points(buf, "P4", &PEDERSEN_P4, 4, bits)?;
+    push_points(&mut buf, "P4", &PEDERSEN_P4, 4, bits)?;
 
-    fs::write(path, buf).expect("Unable to write file");
-    Ok(())
+    Ok(buf)
 }
 
 fn push_points(
@@ -96,5 +95,7 @@ fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("curve_consts.rs");
     let bits = 4;
-    generate_consts(&dest_path, bits).expect("should had been able to format the curve constants");
+    let consts = generate_consts(bits).expect("should had been able to format the curve constants");
+    fs::write(dest_path, consts)
+        .expect("should had been able to write to $OUT_DIR/curve_consts.rs");
 }
