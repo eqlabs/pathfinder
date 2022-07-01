@@ -35,6 +35,9 @@ COPY crates/stark_curve/Cargo.toml crates/stark_curve/Cargo.toml
 COPY crates/stark_hash/Cargo.toml crates/stark_hash/Cargo.toml
 COPY crates/stark_hash/benches crates/stark_hash/benches
 
+# refresh indices, do it with cli git for much better ram usage
+RUN CARGO_NET_GIT_FETCH_WITH_CLI=true cargo search --limit 0
+
 # DEPENDENCY_LAYER=1 should disable any vergen interaction, because the .git directory is not yet available
 RUN CARGO_INCREMENTAL=0 DEPENDENCY_LAYER=1 cargo build --release -p pathfinder
 
