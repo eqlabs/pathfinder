@@ -29,29 +29,10 @@ impl From<StarknetBlockNumber> for L1TableBlockId {
     }
 }
 
-/// An aid to investigate a bug where an L1 reorg followed by an insert
-/// in rare cases results in a primary key violation.
-///
-/// This struct helps audit L1 reorgs when this occurs.
-#[derive(Debug)]
-#[allow(dead_code)]
-struct L1BugAudit {
-    head_pre_reorg: u64,
-    head_post_reorg: u64,
-    reorg_count: u64,
-}
-
-lazy_static::lazy_static!(
-    /// Tracks the latest L1 reorg in an attempt to make sense of a primary key related reorg bug.
-    ///
-    /// Stores the latest reorg's (pre-reorg head, post-reorg head, rows deleted)
-    static ref L1_LATEST_REORG: std::sync::Mutex<Option<L1BugAudit>> = std::sync::Mutex::new(None);
-);
-
 impl L1StateTable {
-    /// Inserts a new [update](StateUpdateLog), fails if it already exists.
+    /// Inserts a new [update](StateUpdateLog), replaces if it already exists.
     pub fn insert(connection: &Connection, update: &StateUpdateLog) -> anyhow::Result<()> {
-        let result = connection.execute(
+        connection.execute(
             r"INSERT INTO l1_state (
                         starknet_block_number,
                         starknet_global_root,
@@ -78,96 +59,18 @@ impl L1StateTable {
                 ":ethereum_transaction_index": update.origin.transaction.index.0,
                 ":ethereum_log_index": update.origin.log_index.0,
             },
-        );
+        )?;
 
-        match result {
-            Ok(_) => Ok(()),
-            Err(err) => {
-                // Log L1 reorg bug audit information.
-                match err {
-                    rusqlite::Error::SqliteFailure(code, _)
-                        if code.code == rusqlite::ErrorCode::ConstraintViolation =>
-                    {
-                        let latest = L1_LATEST_REORG.lock().unwrap_or_else(|e| e.into_inner());
-                        // Attempt to query for conflicting entry.
-                        let existing = Self::get(connection, update.block_number.into())
-                            .context("Read L1 block for PK constraint audit")?;
-
-                        tracing::error!(reorg=?latest, ?existing, ?update, "Additional L1 reorg bug information");
-                    }
-                    _ => {}
-                }
-
-                Err(err.into())
-            }
-        }
+        Ok(())
     }
 
     /// Deletes all rows from __head down-to reorg_tail__
     /// i.e. it deletes all rows where `block number >= reorg_tail`.
     pub fn reorg(connection: &Connection, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
-        // Added to trace a primary key constraint failure bug.
-        let original_head: Option<u64> = connection.query_row(
-            "SELECT MAX(starknet_block_number) FROM l1_state",
-            [],
-            |row| row.get(0),
-        )?;
-
-        let reorg_count = connection.execute(
+        connection.execute(
             "DELETE FROM l1_state WHERE starknet_block_number >= ?",
             params![reorg_tail.0],
-        )? as u64;
-
-        // Added to trace a primary key constraint failure bug.
-        let new_head: Option<u64> = connection.query_row(
-            "SELECT MAX(starknet_block_number) FROM l1_state",
-            [],
-            |row| row.get(0),
         )?;
-
-        // Sanity check the result of reorg.
-        if let Some(new_head) = new_head {
-            anyhow::ensure!(
-                reorg_tail.0 - 1 == new_head,
-                "New L1 head ({}) did not match expectations of reorg tail ({})",
-                new_head,
-                reorg_tail.0
-            );
-        }
-        match (original_head, new_head) {
-            (Some(orig), Some(new_head)) => {
-                anyhow::ensure!(
-                    orig - new_head == reorg_count,
-                    "Deletion count ({}) did not match head change ({} -> {})",
-                    reorg_count,
-                    orig,
-                    new_head
-                );
-
-                let mut latest = L1_LATEST_REORG.lock().unwrap_or_else(|e| e.into_inner());
-
-                let new_info = L1BugAudit {
-                    head_pre_reorg: orig,
-                    head_post_reorg: new_head,
-                    reorg_count,
-                };
-                *latest = Some(new_info);
-            }
-            (Some(orig), None) => {
-                anyhow::ensure!(
-                    orig + 1 == reorg_count,
-                    "Deletion count ({}) did not match head change ({} -> None)",
-                    reorg_count,
-                    orig
-                )
-            }
-            (None, None) => anyhow::bail!("Reorg attempted on an empty database"),
-            (None, Some(new_head)) => anyhow::bail!(
-                "Reorg attempted on an empty database and somehow ended with a new head ({})",
-                new_head
-            ),
-        }
-
         Ok(())
     }
 
