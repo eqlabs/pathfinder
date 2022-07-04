@@ -15,7 +15,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v1
       - run: |
-          cargo test --no-run --workspace
+          cargo test --no-run --workspace --frozen
           timeout 5m cargo test -p pathfinder -- --skip ethereum::
 
           # Run Ethereum tests using Infura endpoint
@@ -32,7 +32,8 @@ jobs:
             PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.ALCHEMY_MAINNET_PASSWORD }} \
             timeout 3m cargo test -p pathfinder -- ethereum::
 
-          timeout 3m cargo test -p stark_hash --benches
+          timeout 3m cargo test -p stark_hash --all-targets
+          timeout 1m cargo test -p stark_curve --all-targets
   clippy:
     runs-on: ubuntu-latest
     steps:
