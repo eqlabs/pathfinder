@@ -28,7 +28,7 @@ use rusqlite::Connection;
 /// Indicates database is non-existant.
 const DB_VERSION_EMPTY: u32 = 0;
 /// Current database version.
-const DB_VERSION_CURRENT: u32 = 12;
+const DB_VERSION_CURRENT: u32 = 13;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -161,6 +161,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
             9 => schema::revision_0010::migrate(&transaction).context("migrating from 9")?,
             10 => schema::revision_0011::migrate(&transaction).context("migrating from 10")?,
             11 => schema::revision_0012::migrate(&transaction).context("migrating from 11")?,
+            12 => schema::revision_0013::migrate(&transaction).context("migrating from 12")?,
             _ => unreachable!("Database version constraint was already checked!"),
         };
         transaction

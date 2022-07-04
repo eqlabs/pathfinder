@@ -38,7 +38,7 @@ pub fn compute_class_hash(contract_definition_dump: &[u8]) -> Result<ClassHash> 
 
 /// Sibling functionality to only [`compute_class_hash`], returning also the ABI, and bytecode
 /// parts as json bytes.
-pub(crate) fn extract_abi_code_hash(
+pub fn extract_abi_code_hash(
     contract_definition_dump: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>, ClassHash)> {
     let contract_definition =
