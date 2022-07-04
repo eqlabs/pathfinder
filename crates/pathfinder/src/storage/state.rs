@@ -857,11 +857,13 @@ impl StarknetEventsTable {
                   block_number,
                   starknet_blocks.hash as block_hash,
                   transaction_hash,
+                  starknet_transactions.idx as transaction_idx,
                   from_address,
                   data,
                   starknet_events.keys as keys
                FROM starknet_events
-               INNER JOIN starknet_blocks ON starknet_blocks.number = starknet_events.block_number "#
+               INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
+               INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#
                 .to_string();
         let mut where_statement_parts: Vec<&'static str> = Vec::new();
         let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
@@ -924,12 +926,12 @@ impl StarknetEventsTable {
 
         let query = if where_statement_parts.is_empty() {
             format!(
-                "{} ORDER BY block_number, transaction_hash, idx LIMIT :limit OFFSET :offset",
+                "{} ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
                 base_query
             )
         } else {
             format!(
-                "{} WHERE {} ORDER BY block_number, transaction_hash, idx LIMIT :limit OFFSET :offset",
+                "{} WHERE {} ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
                 base_query,
                 where_statement_parts.join(" AND "),
             )
