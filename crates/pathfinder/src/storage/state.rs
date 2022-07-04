@@ -1785,12 +1785,12 @@ mod tests {
             use crate::sequencer::reply::transaction::Event;
 
             // All events we are storing, arbitrarily use from_address to distinguish them.
-            let expected_events = (0..5)
+            let expected_events = (0u8..5)
                 .map(|idx| Event {
                     data: Vec::new(),
                     keys: Vec::new(),
                     from_address: ContractAddress(
-                        StarkHash::from_hex_str(&format!("0x{}", idx)).unwrap(),
+                        StarkHash::from_be_slice(&idx.to_be_bytes()).unwrap(),
                     ),
                 })
                 .collect::<Vec<_>>();
