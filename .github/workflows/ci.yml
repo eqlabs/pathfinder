@@ -32,7 +32,8 @@ jobs:
             PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.ALCHEMY_MAINNET_PASSWORD }} \
             timeout 3m cargo test -p pathfinder -- ethereum::
 
-          timeout 3m cargo test -p stark_hash --benches
+          timeout 3m cargo test -p stark_hash --all-targets
+          timeout 1m cargo test -p stark_curve --all-targets
   clippy:
     runs-on: ubuntu-latest
     steps:
