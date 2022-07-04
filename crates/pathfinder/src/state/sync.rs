@@ -796,7 +796,7 @@ mod tests {
         _: Option<ethereum::log::StateUpdateLog>,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
-        let () = std::future::pending().await;
+        std::future::pending::<()>().await;
         Ok(())
     }
 
@@ -807,7 +807,7 @@ mod tests {
         _: Chain,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
-        let () = std::future::pending().await;
+        std::future::pending::<()>().await;
         Ok(())
     }
 

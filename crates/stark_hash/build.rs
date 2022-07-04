@@ -1,29 +1,33 @@
 use std::env;
+use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 
 use stark_curve::*;
 
-fn generate_consts(path: &Path, bits: u32) {
-    let buf = &mut String::with_capacity(10 * 1024 * 1024);
+fn generate_consts(bits: u32) -> Result<String, std::fmt::Error> {
+    let mut buf = String::with_capacity(10 * 1024 * 1024);
 
-    buf.push_str(&format!(
-        "pub const CURVE_CONSTS_BITS: usize = {};\n\n",
-        bits
-    ));
+    write!(buf, "pub const CURVE_CONSTS_BITS: usize = {};\n\n", bits)?;
 
-    push_points(buf, "P1", &PEDERSEN_P1, 248, bits);
+    push_points(&mut buf, "P1", &PEDERSEN_P1, 248, bits)?;
     buf.push_str("\n\n\n");
-    push_points(buf, "P2", &PEDERSEN_P2, 4, bits);
+    push_points(&mut buf, "P2", &PEDERSEN_P2, 4, bits)?;
     buf.push_str("\n\n\n");
-    push_points(buf, "P3", &PEDERSEN_P3, 248, bits);
+    push_points(&mut buf, "P3", &PEDERSEN_P3, 248, bits)?;
     buf.push_str("\n\n\n");
-    push_points(buf, "P4", &PEDERSEN_P4, 4, bits);
+    push_points(&mut buf, "P4", &PEDERSEN_P4, 4, bits)?;
 
-    fs::write(path, buf).expect("Unable to write file");
+    Ok(buf)
 }
 
-fn push_points(buf: &mut String, name: &str, base: &ProjectivePoint, max_bits: u32, bits: u32) {
+fn push_points(
+    buf: &mut String,
+    name: &str,
+    base: &ProjectivePoint,
+    max_bits: u32,
+    bits: u32,
+) -> std::fmt::Result {
     let base = AffinePoint::from(base);
 
     let full_chunks = max_bits / bits;
@@ -32,10 +36,11 @@ fn push_points(buf: &mut String, name: &str, base: &ProjectivePoint, max_bits: u
     let table_size_leftover = (1 << leftover_bits) - 1;
     let len = full_chunks * table_size_full + table_size_leftover;
 
-    buf.push_str(&format!(
-        "pub const CURVE_CONSTS_{}: [AffinePoint; {}] = [\n",
+    writeln!(
+        buf,
+        "pub const CURVE_CONSTS_{}: [AffinePoint; {}] = [",
         name, len
-    ));
+    )?;
 
     let mut bits_left = max_bits;
     let mut outer_point = base;
@@ -51,7 +56,7 @@ fn push_points(buf: &mut String, name: &str, base: &ProjectivePoint, max_bits: u
             if bits_left < max_bits || j > 1 {
                 buf.push_str(",\n");
             }
-            push_point(buf, &inner_point);
+            push_point(buf, &inner_point)?;
             inner_point.add(&outer_point);
         }
 
@@ -63,30 +68,34 @@ fn push_points(buf: &mut String, name: &str, base: &ProjectivePoint, max_bits: u
     }
 
     buf.push_str("\n];");
+    Ok(())
 }
 
-fn push_point(buf: &mut String, p: &AffinePoint) {
+fn push_point(buf: &mut String, p: &AffinePoint) -> std::fmt::Result {
     let x = p.x.inner();
     let y = p.y.inner();
     buf.push_str("    AffinePoint::new(");
     buf.push_str("\n        [");
-    buf.push_str(&format!("\n            {},", x[0]));
-    buf.push_str(&format!("\n            {},", x[1]));
-    buf.push_str(&format!("\n            {},", x[2]));
-    buf.push_str(&format!("\n            {},", x[3]));
+    write!(buf, "\n            {},", x[0])?;
+    write!(buf, "\n            {},", x[1])?;
+    write!(buf, "\n            {},", x[2])?;
+    write!(buf, "\n            {},", x[3])?;
     buf.push_str("\n        ],");
     buf.push_str("\n        [");
-    buf.push_str(&format!("\n            {},", y[0]));
-    buf.push_str(&format!("\n            {},", y[1]));
-    buf.push_str(&format!("\n            {},", y[2]));
-    buf.push_str(&format!("\n            {},", y[3]));
+    write!(buf, "\n            {},", y[0])?;
+    write!(buf, "\n            {},", y[1])?;
+    write!(buf, "\n            {},", y[2])?;
+    write!(buf, "\n            {},", y[3])?;
     buf.push_str("\n        ]");
     buf.push_str("\n    )");
+    Ok(())
 }
 
 fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("curve_consts.rs");
     let bits = 4;
-    generate_consts(&dest_path, bits);
+    let consts = generate_consts(bits).expect("should had been able to format the curve constants");
+    fs::write(dest_path, consts)
+        .expect("should had been able to write to $OUT_DIR/curve_consts.rs");
 }
