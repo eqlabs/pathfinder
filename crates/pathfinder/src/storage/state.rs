@@ -760,11 +760,13 @@ impl StarknetEventsTable {
                   block_number,
                   starknet_blocks.hash as block_hash,
                   transaction_hash,
+                  starknet_transactions.idx as transaction_idx,
                   from_address,
                   data,
                   starknet_events.keys as keys
                FROM starknet_events
-               INNER JOIN starknet_blocks ON starknet_blocks.number = starknet_events.block_number "#
+               INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
+               INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#
                 .to_string();
         let mut where_statement_parts: Vec<&'static str> = Vec::new();
         let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
@@ -827,12 +829,12 @@ impl StarknetEventsTable {
 
         let query = if where_statement_parts.is_empty() {
             format!(
-                "{} ORDER BY block_number, transaction_hash, idx LIMIT :limit OFFSET :offset",
+                "{} ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
                 base_query
             )
         } else {
             format!(
-                "{} WHERE {} ORDER BY block_number, transaction_hash, idx LIMIT :limit OFFSET :offset",
+                "{} WHERE {} ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
                 base_query,
                 where_statement_parts.join(" AND "),
             )
@@ -1674,6 +1676,151 @@ mod tests {
                     is_last_page: true
                 }
             );
+        }
+
+        #[test]
+        fn events_are_ordered() {
+            // This is a regression test where events were incorrectly ordered by transaction hash
+            // instead of transaction index.
+            //
+            // Events should be ordered by block number, transaction index, event index.
+            use crate::core::StarknetTransactionHash;
+            use crate::sequencer::reply::transaction::Event;
+
+            // All events we are storing, arbitrarily use from_address to distinguish them.
+            let expected_events = (0u8..5)
+                .map(|idx| Event {
+                    data: Vec::new(),
+                    keys: Vec::new(),
+                    from_address: ContractAddress(
+                        StarkHash::from_be_slice(&idx.to_be_bytes()).unwrap(),
+                    ),
+                })
+                .collect::<Vec<_>>();
+
+            let block = StarknetBlock {
+                number: StarknetBlockNumber(0),
+                hash: StarknetBlockHash::from_hex_str("0x1234").unwrap(),
+                root: GlobalRoot(StarkHash::from_hex_str("0x1234").unwrap()),
+                timestamp: StarknetBlockTimestamp(0),
+                gas_price: GasPrice(0),
+                sequencer_address: SequencerAddress(StarkHash::from_hex_str("0x1234").unwrap()),
+            };
+
+            // Note: hashes are reverse ordered to trigger the sorting bug.
+            let transactions = vec![
+                transaction::Transaction {
+                    calldata: None,
+                    class_hash: None,
+                    constructor_calldata: None,
+                    // Only required because event insert rejects if this is None
+                    contract_address: Some(ContractAddress(StarkHash::ZERO)),
+                    contract_address_salt: None,
+                    entry_point_type: None,
+                    entry_point_selector: None,
+                    max_fee: None,
+                    nonce: None,
+                    sender_address: None,
+                    signature: None,
+                    transaction_hash: StarknetTransactionHash(
+                        StarkHash::from_hex_str("0xF").unwrap(),
+                    ),
+                    r#type: crate::sequencer::reply::transaction::Type::InvokeFunction,
+                    version: None,
+                },
+                transaction::Transaction {
+                    calldata: None,
+                    class_hash: None,
+                    constructor_calldata: None,
+                    // Only required because event insert rejects if this is None
+                    contract_address: Some(ContractAddress(StarkHash::ZERO)),
+                    contract_address_salt: None,
+                    entry_point_type: None,
+                    entry_point_selector: None,
+                    max_fee: None,
+                    nonce: None,
+                    sender_address: None,
+                    signature: None,
+                    transaction_hash: StarknetTransactionHash(
+                        StarkHash::from_hex_str("0x1").unwrap(),
+                    ),
+                    r#type: crate::sequencer::reply::transaction::Type::InvokeFunction,
+                    version: None,
+                },
+            ];
+
+            let receipts = vec![
+                transaction::Receipt {
+                    actual_fee: None,
+                    events: expected_events[..3].to_vec(),
+                    execution_resources: transaction::ExecutionResources {
+                        builtin_instance_counter:
+                            transaction::execution_resources::BuiltinInstanceCounter::Empty(
+                                transaction::execution_resources::EmptyBuiltinInstanceCounter {},
+                            ),
+                        n_steps: 0,
+                        n_memory_holes: 0,
+                    },
+                    l1_to_l2_consumed_message: None,
+                    l2_to_l1_messages: Vec::new(),
+                    transaction_hash: transactions[0].transaction_hash,
+                    transaction_index: crate::core::StarknetTransactionIndex(0),
+                },
+                transaction::Receipt {
+                    actual_fee: None,
+                    events: expected_events[3..].to_vec(),
+                    execution_resources: transaction::ExecutionResources {
+                        builtin_instance_counter:
+                            transaction::execution_resources::BuiltinInstanceCounter::Empty(
+                                transaction::execution_resources::EmptyBuiltinInstanceCounter {},
+                            ),
+                        n_steps: 0,
+                        n_memory_holes: 0,
+                    },
+                    l1_to_l2_consumed_message: None,
+                    l2_to_l1_messages: Vec::new(),
+                    transaction_hash: transactions[1].transaction_hash,
+                    transaction_index: crate::core::StarknetTransactionIndex(1),
+                },
+            ];
+
+            let storage = Storage::in_memory().unwrap();
+            let connection = storage.connection().unwrap();
+            StarknetBlocksTable::insert(&connection, &block).unwrap();
+            StarknetTransactionsTable::upsert(
+                &connection,
+                block.hash,
+                block.number,
+                &vec![
+                    (transactions[0].clone(), receipts[0].clone()),
+                    (transactions[1].clone(), receipts[1].clone()),
+                ],
+            )
+            .unwrap();
+
+            let addresses = StarknetEventsTable::get_events(
+                &connection,
+                &StarknetEventFilter {
+                    from_block: None,
+                    to_block: None,
+                    contract_address: None,
+                    keys: vec![],
+                    page_size: 1024,
+                    page_number: 0,
+                },
+            )
+            .unwrap()
+            .events
+            .iter()
+            .map(|e| e.from_address)
+            .collect::<Vec<_>>();
+
+            let expected = expected_events
+                .iter()
+                .map(|e| e.from_address)
+                .collect::<Vec<_>>();
+
+            assert_eq!(addresses, expected);
         }
 
         #[test]

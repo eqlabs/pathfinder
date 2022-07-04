@@ -1,4 +1,3 @@
-use crate::storage::state::StarknetEventsTable;
 use anyhow::Context;
 use rusqlite::{named_params, Transaction};
 
@@ -306,8 +305,8 @@ pub(crate) fn migrate_with(
                     |row| row.get(0)
                 ).context("Query block number based on block hash")?;
 
-                let serialized_data = StarknetEventsTable::event_data_to_bytes(&event.data);
-                let serialized_keys = StarknetEventsTable::event_keys_to_base64_strings(&event.keys);
+                let serialized_data = event_data_to_bytes(&event.data);
+                let serialized_keys = event_keys_to_base64_strings(&event.keys);
 
                 transaction.execute(r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
                                                            VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
@@ -329,6 +328,22 @@ pub(crate) fn migrate_with(
     Ok(())
 }
 
+/// Copy of `StarknetEventsTable::event_data_to_bytes` at the time of this migration.
+fn event_data_to_bytes(data: &[crate::core::EventData]) -> Vec<u8> {
+    data.iter()
+        .flat_map(|e| (*e.0.as_be_bytes()).into_iter())
+        .collect()
+}
+
+/// Copy of `StarknetEventsTable::event_keys_to_base64_strings` at the time of this migration.
+fn event_keys_to_base64_strings(keys: &[crate::core::EventKey]) -> String {
+    // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
+    let keys: Vec<String> = keys
+        .iter()
+        .map(|key| base64::encode(key.0.as_be_bytes()))
+        .collect();
+    keys.join(" ")
+}
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
