@@ -15,7 +15,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v1
       - run: |
-          cargo test --no-run --workspace
+          cargo test --no-run --workspace --frozen
           timeout 5m cargo test -p pathfinder -- --skip ethereum::
 
           # Run Ethereum tests using Infura endpoint
