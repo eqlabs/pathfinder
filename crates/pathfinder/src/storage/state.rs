@@ -1849,7 +1849,7 @@ mod tests {
             let receipts = vec![
                 transaction::Receipt {
                     actual_fee: None,
-                    events: expected_events[..3].iter().cloned().collect(),
+                    events: expected_events[..3].to_vec(),
                     execution_resources: transaction::ExecutionResources {
                         builtin_instance_counter:
                             transaction::execution_resources::BuiltinInstanceCounter::Empty(
@@ -1865,7 +1865,7 @@ mod tests {
                 },
                 transaction::Receipt {
                     actual_fee: None,
-                    events: expected_events[3..].iter().cloned().collect(),
+                    events: expected_events[3..].to_vec(),
                     execution_resources: transaction::ExecutionResources {
                         builtin_instance_counter:
                             transaction::execution_resources::BuiltinInstanceCounter::Empty(
