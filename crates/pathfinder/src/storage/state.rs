@@ -31,9 +31,9 @@ impl From<StarknetBlockNumber> for L1TableBlockId {
 
 impl L1StateTable {
     /// Inserts a new [update](StateUpdateLog), replaces if it already exists.
-    pub fn insert(connection: &Connection, update: &StateUpdateLog) -> anyhow::Result<()> {
+    pub fn upsert(connection: &Connection, update: &StateUpdateLog) -> anyhow::Result<()> {
         connection.execute(
-            r"INSERT INTO l1_state (
+            r"INSERT OR REPLACE INTO l1_state (
                         starknet_block_number,
                         starknet_global_root,
                         ethereum_block_hash,
@@ -1075,7 +1075,7 @@ mod tests {
 
                 let updates = create_updates();
                 for update in &updates {
-                    L1StateTable::insert(&connection, update).unwrap();
+                    L1StateTable::upsert(&connection, update).unwrap();
                 }
 
                 let non_existent = updates.last().unwrap().block_number + 1;
@@ -1092,7 +1092,7 @@ mod tests {
 
                 let updates = create_updates();
                 for update in &updates {
-                    L1StateTable::insert(&connection, update).unwrap();
+                    L1StateTable::upsert(&connection, update).unwrap();
                 }
 
                 for (idx, update) in updates.iter().enumerate() {
@@ -1128,7 +1128,7 @@ mod tests {
 
                     let updates = create_updates();
                     for update in &updates {
-                        L1StateTable::insert(&connection, update).unwrap();
+                        L1StateTable::upsert(&connection, update).unwrap();
                     }
 
                     assert_eq!(
@@ -1151,7 +1151,7 @@ mod tests {
 
                 let updates = create_updates();
                 for update in &updates {
-                    L1StateTable::insert(&connection, update).unwrap();
+                    L1StateTable::upsert(&connection, update).unwrap();
                 }
 
                 let non_existent = updates.last().unwrap().block_number + 1;
@@ -1168,7 +1168,7 @@ mod tests {
 
                 let updates = create_updates();
                 for update in &updates {
-                    L1StateTable::insert(&connection, update).unwrap();
+                    L1StateTable::upsert(&connection, update).unwrap();
                 }
 
                 for (idx, update) in updates.iter().enumerate() {
@@ -1202,7 +1202,7 @@ mod tests {
 
                     let updates = create_updates();
                     for update in &updates {
-                        L1StateTable::insert(&connection, update).unwrap();
+                        L1StateTable::upsert(&connection, update).unwrap();
                     }
 
                     assert_eq!(
@@ -1223,7 +1223,7 @@ mod tests {
 
                 let updates = create_updates();
                 for update in &updates {
-                    L1StateTable::insert(&connection, update).unwrap();
+                    L1StateTable::upsert(&connection, update).unwrap();
                 }
 
                 L1StateTable::reorg(&connection, StarknetBlockNumber::GENESIS).unwrap();
@@ -1241,7 +1241,7 @@ mod tests {
 
                 let updates = create_updates();
                 for update in &updates {
-                    L1StateTable::insert(&connection, update).unwrap();
+                    L1StateTable::upsert(&connection, update).unwrap();
                 }
 
                 let reorg_tail = updates[1].block_number;
