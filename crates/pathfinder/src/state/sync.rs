@@ -382,7 +382,7 @@ async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> a
             .context("Create database transaction")?;
 
         for update in updates {
-            L1StateTable::insert(&transaction, update).context("Insert update")?;
+            L1StateTable::upsert(&transaction, update).context("Insert update")?;
         }
 
         // Track combined L1 and L2 state.
@@ -989,7 +989,7 @@ mod tests {
                 .unwrap();
             updates
                 .into_iter()
-                .for_each(|update| L1StateTable::insert(&connection, &update).unwrap());
+                .for_each(|update| L1StateTable::upsert(&connection, &update).unwrap());
 
             // UUT
             let _jh = tokio::spawn(state::sync(
@@ -1033,7 +1033,7 @@ mod tests {
         let connection = storage.connection().unwrap();
 
         // This is what we're asking for
-        L1StateTable::insert(&connection, &*STATE_UPDATE_LOG0).unwrap();
+        L1StateTable::upsert(&connection, &*STATE_UPDATE_LOG0).unwrap();
 
         // A simple L1 sync task which does the request and checks he result
         let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
@@ -1150,7 +1150,7 @@ mod tests {
             let connection = storage.connection().unwrap();
 
             if let Some(some_update_log) = update_log {
-                L1StateTable::insert(&connection, &some_update_log).unwrap();
+                L1StateTable::upsert(&connection, &some_update_log).unwrap();
             }
 
             // UUT
