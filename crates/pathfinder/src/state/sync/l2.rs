@@ -263,11 +263,12 @@ async fn download_block(
 ) -> anyhow::Result<DownloadBlock> {
     use crate::core::BlockId;
     use sequencer::error::StarknetErrorCode::BlockNotFound;
+    use sequencer::reply::MaybePendingBlock;
 
     let result = sequencer.block(block_number.into()).await;
 
     match result {
-        Ok(block) => {
+        Ok(MaybePendingBlock::Block(block)) => {
             let block = Box::new(block);
             // Check if block hash is correct.
             let expected_block_hash = block.block_hash.unwrap();
@@ -284,6 +285,7 @@ async fn download_block(
             }
             Ok(DownloadBlock::Block(block))
         }
+        Ok(MaybePendingBlock::Pending(_)) => anyhow::bail!("Sequencer returned `pending` block"),
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound => {
             // This would occur if we queried past the head of the chain. We now need to check that
             // a reorg hasn't put us too far in the future. This does run into race conditions with
@@ -291,9 +293,11 @@ async fn download_block(
             let latest = sequencer
                 .block(BlockId::Latest)
                 .await
-                .context("Query sequencer for latest block")?;
+                .context("Query sequencer for latest block")?
+                .as_block()
+                .context("Latest block is `pending`")?;
 
-            if latest.block_number.unwrap() + 1 == block_number {
+            if latest.block_number + 1 == block_number {
                 match prev_block_hash {
                     // We are definitely still at the head and it's just that a new block
                     // has not been published yet

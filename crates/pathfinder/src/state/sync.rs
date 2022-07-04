@@ -15,7 +15,10 @@ use crate::{
         transport::EthereumTransport,
     },
     rpc::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
-    sequencer::{self, reply::Block},
+    sequencer::{
+        self,
+        reply::{Block, MaybePendingBlock},
+    },
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
@@ -334,7 +337,7 @@ async fn update_sync_status_latest(
 
     loop {
         match sequencer.block(BlockId::Latest).await {
-            Ok(block) => {
+            Ok(MaybePendingBlock::Block(block)) => {
                 let latest = {
                     let latest_hash = block.block_hash.unwrap();
                     let latest_num = block.block_number.unwrap();
@@ -365,6 +368,9 @@ async fn update_sync_status_latest(
                         }
                     }
                 }
+            }
+            Ok(MaybePendingBlock::Pending(_)) => {
+                tracing::error!("Latest block returned 'pending'");
             }
             Err(e) => {
                 tracing::error!(error=%e, "Failed to fetch latest block");
@@ -693,9 +699,14 @@ mod tests {
 
     #[async_trait::async_trait]
     impl sequencer::ClientApi for FakeSequencer {
-        async fn block(&self, block: crate::core::BlockId) -> Result<reply::Block, SequencerError> {
+        async fn block(
+            &self,
+            block: crate::core::BlockId,
+        ) -> Result<reply::MaybePendingBlock, SequencerError> {
             match block {
-                crate::core::BlockId::Number(_) => Ok(BLOCK0.clone()),
+                crate::core::BlockId::Number(_) => {
+                    Ok(reply::MaybePendingBlock::Block(BLOCK0.clone()))
+                }
                 _ => unimplemented!(),
             }
         }

@@ -20,7 +20,7 @@ use std::{fmt::Debug, result::Result, time::Duration};
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 pub trait ClientApi {
-    async fn block(&self, block: BlockId) -> Result<reply::Block, SequencerError>;
+    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError>;
 
     async fn call(
         &self,
@@ -154,8 +154,9 @@ impl Client {
         let genesis_hash = self
             .block(StarknetBlockNumber::GENESIS.into())
             .await?
-            .block_hash
-            .unwrap();
+            .as_block()
+            .expect("Genesis block should not be pending")
+            .block_hash;
 
         match genesis_hash {
             goerli if goerli == *GOERLI_GENESIS_HASH => Ok(Chain::Goerli),
@@ -168,7 +169,7 @@ impl Client {
 #[async_trait::async_trait]
 impl ClientApi for Client {
     #[tracing::instrument(skip(self))]
-    async fn block(&self, block: BlockId) -> Result<reply::Block, SequencerError> {
+    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.request()
             .feeder_gateway()
             .get_block()

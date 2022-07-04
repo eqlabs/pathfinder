@@ -24,12 +24,42 @@ pub struct Block {
     pub parent_block_hash: StarknetBlockHash,
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
-    #[serde(default)]
-    pub state_root: Option<GlobalRoot>,
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(serde::Serialize))]
+pub struct PendingBlock {
+    #[serde_as(as = "GasPriceAsHexStr")]
+    pub gas_price: GasPrice,
+    #[serde(rename = "parent_block_hash")]
+    pub parent_hash: StarknetBlockHash,
+    pub sequencer_address: SequencerAddress,
     pub status: Status,
     pub timestamp: StarknetBlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum MaybePendingBlock {
+    Block(Block),
+    Pending(PendingBlock),
+}
+
+impl MaybePendingBlock {
+    pub fn as_block(self) -> Option<Block> {
+        match self {
+            MaybePendingBlock::Block(block) => Some(block),
+            MaybePendingBlock::Pending(_) => None,
+        }
+    }
+
+    pub fn transactions(&self) -> &[transaction::Transaction] {
+        match self {
+            MaybePendingBlock::Block(b) => &b.transactions,
+            MaybePendingBlock::Pending(p) => &p.transactions,
+        }
+    }
 }
 
 /// Block and transaction status values.
