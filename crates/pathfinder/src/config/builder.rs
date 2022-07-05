@@ -111,7 +111,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                     "false" => Ok(false),
                     _ => Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        format!("Invalid value '{}' for enable SQLite WAL mode option, must be on|off|true|false|yes|no", enable)
+                        format!("Invalid value '{}' for enable SQLite WAL mode option, must be true|false", enable)
                     )),
                 }
             }
