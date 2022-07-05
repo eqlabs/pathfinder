@@ -36,15 +36,10 @@ pub fn verify_block_hash(
     chain: Chain,
     expected_block_hash: StarknetBlockHash,
 ) -> Result<VerifyResult> {
-    anyhow::ensure!(block.block_number.is_some());
-    let block_number = block.block_number.unwrap();
-
     let meta_info = meta::for_chain(chain);
-    if !meta_info.can_verify(block_number) {
+    if !meta_info.can_verify(block.block_number) {
         return Ok(VerifyResult::NotVerifiable);
     }
-    anyhow::ensure!(block.state_root.is_some());
-    let state_root = block.state_root.unwrap();
 
     let num_transactions: u64 = block
         .transactions
@@ -53,10 +48,10 @@ pub fn verify_block_hash(
         .expect("too many transactions in block");
     let transaction_commitment = calculate_transaction_commitment(&block.transactions)?;
 
-    let verified = if meta_info.uses_pre_0_7_hash_algorithm(block_number) {
+    let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
         let block_hash = compute_final_hash_pre_0_7(
-            block_number,
-            state_root,
+            block.block_number,
+            block.state_root,
             num_transactions,
             transaction_commitment,
             block.parent_block_hash,
@@ -78,8 +73,8 @@ pub fn verify_block_hash(
         ];
         sequencer_addresses_to_try.iter().any(|address| {
             let block_hash = compute_final_hash(
-                block_number,
-                state_root,
+                block.block_number,
+                block.state_root,
                 address,
                 block.timestamp,
                 num_transactions,
@@ -513,9 +508,8 @@ mod tests {
         let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/90000.json");
         let block: Block = serde_json::from_slice(json).unwrap();
 
-        let expected_block_hash = block.block_hash.unwrap();
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, expected_block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
             VerifyResult::Match
         );
     }
@@ -529,9 +523,8 @@ mod tests {
         let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/231579.json");
         let block: Block = serde_json::from_slice(json).unwrap();
 
-        let expected_block_hash = block.block_hash.unwrap();
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, expected_block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
             VerifyResult::Match
         );
     }
@@ -546,9 +539,8 @@ mod tests {
         let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/156000.json");
         let block: Block = serde_json::from_slice(json).unwrap();
 
-        let expected_block_hash = block.block_hash.unwrap();
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, expected_block_hash,).unwrap(),
+            verify_block_hash(&block, Chain::Goerli, block.block_hash,).unwrap(),
             VerifyResult::Match
         );
     }
@@ -562,9 +554,8 @@ mod tests {
         let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/genesis.json");
         let block: Block = serde_json::from_slice(json).unwrap();
 
-        let expected_block_hash = block.block_hash.unwrap();
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, expected_block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
             VerifyResult::Match
         );
     }

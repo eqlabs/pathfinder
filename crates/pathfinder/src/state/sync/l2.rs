@@ -95,7 +95,7 @@ pub async fn sync(
         }
 
         // Unwrap in both block and state update is safe as the block hash always exists (unless we query for pending).
-        let block_hash = block.block_hash.unwrap();
+        let block_hash = block.block_hash;
         let t_update = std::time::Instant::now();
         let state_update = sequencer
             .state_update(block_hash.into())
@@ -271,16 +271,16 @@ async fn download_block(
         Ok(MaybePendingBlock::Block(block)) => {
             let block = Box::new(block);
             // Check if block hash is correct.
-            let expected_block_hash = block.block_hash.unwrap();
+            let expected_block_hash = block.block_hash;
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let block_number = block.block_number.unwrap();
+                let block_number = block.block_number;
                 let verify_result = verify_block_hash(&block, chain, expected_block_hash)
                     .with_context(move || format!("Verify block {}", block_number.0))?;
                 Ok((block, verify_result))
             });
             let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
             if verify_result == VerifyResult::Mismatch {
-                let block_number = block.block_number.unwrap();
+                let block_number = block.block_number;
                 tracing::warn!(?block_number, block_hash = ?expected_block_hash, "Block hash mismatch");
             }
             Ok(DownloadBlock::Block(block))
@@ -301,7 +301,7 @@ async fn download_block(
                 match prev_block_hash {
                     // We are definitely still at the head and it's just that a new block
                     // has not been published yet
-                    Some(parent_block_hash) if parent_block_hash == latest.block_hash.unwrap() => {
+                    Some(parent_block_hash) if parent_block_hash == latest.block_hash => {
                         Ok(DownloadBlock::AtHead)
                     }
                     // Our head is not valid anymore so there must have been a reorg only at this height
@@ -351,8 +351,7 @@ async fn reorg(
             .await
             .with_context(|| format!("Download block {} from sequencer", previous_block_number.0))?
         {
-            // Unwrap is safe bacause this is not a `pending` block
-            DownloadBlock::Block(block) if block.block_hash.unwrap() == previous_hash => {
+            DownloadBlock::Block(block) if block.block_hash == previous_hash => {
                 break Some((previous_block_number, previous_hash));
             }
             _ => {}
@@ -632,48 +631,48 @@ mod tests {
             static ref STORAGE_VAL1: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 1 storage val 0").unwrap());
 
             static ref BLOCK0: reply::Block = reply::Block {
-                block_hash: Some(*BLOCK0_HASH),
-                block_number: Some(BLOCK0_NUMBER),
+                block_hash: *BLOCK0_HASH,
+                block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::ZERO),
                 parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
                 sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
-                state_root: Some(*GLOBAL_ROOT0),
+                state_root: *GLOBAL_ROOT0,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp(0),
                 transaction_receipts: vec![],
                 transactions: vec![],
             };
             static ref BLOCK0_V2: reply::Block = reply::Block {
-                block_hash: Some(*BLOCK0_HASH_V2),
-                block_number: Some(BLOCK0_NUMBER),
+                block_hash: *BLOCK0_HASH_V2,
+                block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
                 parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
                 sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
-                state_root: Some(*GLOBAL_ROOT0_V2),
+                state_root: *GLOBAL_ROOT0_V2,
                 status: reply::Status::AcceptedOnL2,
                 timestamp: StarknetBlockTimestamp(10),
                 transaction_receipts: vec![],
                 transactions: vec![],
             };
             static ref BLOCK1: reply::Block = reply::Block {
-                block_hash: Some(*BLOCK1_HASH),
-                block_number: Some(BLOCK1_NUMBER),
+                block_hash: *BLOCK1_HASH,
+                block_number: BLOCK1_NUMBER,
                 gas_price: Some(GasPrice::from(1)),
                 parent_block_hash: *BLOCK0_HASH,
                 sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 1").unwrap())),
-                state_root: Some(*GLOBAL_ROOT1),
+                state_root: *GLOBAL_ROOT1,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp(1),
                 transaction_receipts: vec![],
                 transactions: vec![],
             };
             static ref BLOCK2: reply::Block = reply::Block {
-                block_hash: Some(*BLOCK2_HASH),
-                block_number: Some(BLOCK2_NUMBER),
+                block_hash: *BLOCK2_HASH,
+                block_number: BLOCK2_NUMBER,
                 gas_price: Some(GasPrice::from(2)),
                 parent_block_hash: *BLOCK1_HASH,
                 sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 2").unwrap())),
-                state_root: Some(*GLOBAL_ROOT2),
+                state_root: *GLOBAL_ROOT2,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp(2),
                 transaction_receipts: vec![],
@@ -826,7 +825,7 @@ mod tests {
             mock: &mut MockClientApi,
             seq: &mut mockall::Sequence,
             block: BlockId,
-            returned_result: Result<reply::Block, SequencerError>,
+            returned_result: Result<reply::MaybePendingBlock, SequencerError>,
         ) {
             use mockall::predicate::eq;
 
@@ -891,7 +890,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0.clone()),
+                    Ok(BLOCK0.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -910,7 +909,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(BLOCK1.clone()),
+                    Ok(BLOCK1.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -931,7 +930,12 @@ mod tests {
                     BLOCK2_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(BLOCK1.clone().into()),
+                );
 
                 // Let's run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -984,7 +988,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(BLOCK1.clone()),
+                    Ok(BLOCK1.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1006,7 +1010,12 @@ mod tests {
                     BLOCK2_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK1.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(BLOCK1.clone().into()),
+                );
 
                 // Let's run the UUT
                 let _jh = tokio::spawn(sync(
@@ -1068,7 +1077,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0.clone()),
+                    Ok(BLOCK0.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1093,7 +1102,12 @@ mod tests {
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at genesis
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK0_V2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(BLOCK0_V2.clone().into()),
+                );
 
                 // Finally the L2 sync task is downloading the new genesis block
                 // from the fork with respective state update and contracts
@@ -1101,7 +1115,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0_V2.clone()),
+                    Ok(BLOCK0_V2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1125,7 +1139,12 @@ mod tests {
                 );
 
                 // Indicate that we are still staying at the head - the latest block matches our head
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK0_V2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(BLOCK0_V2.clone().into()),
+                );
 
                 // Let's run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -1191,14 +1210,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: Some(*BLOCK1_HASH_V2),
-                    block_number: Some(BLOCK1_NUMBER),
+                    block_hash: *BLOCK1_HASH_V2,
+                    block_number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     parent_block_hash: *BLOCK0_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_root: Some(*GLOBAL_ROOT1_V2),
+                    state_root: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(4),
                     transaction_receipts: vec![],
@@ -1210,7 +1229,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0.clone()),
+                    Ok(BLOCK0.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1229,7 +1248,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(BLOCK1.clone()),
+                    Ok(BLOCK1.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1248,7 +1267,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK2_NUMBER.into(),
-                    Ok(BLOCK2.clone()),
+                    Ok(BLOCK2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1267,19 +1286,24 @@ mod tests {
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at genesis by setting the latest on the new genesis block
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(BLOCK0_V2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(BLOCK0_V2.clone().into()),
+                );
                 // Then the L2 sync task goes back block by block to find the last block where the block hash matches the DB
                 expect_block(
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(block1_v2.clone()),
+                    Ok(block1_v2.clone().into()),
                 );
                 expect_block(
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0_V2.clone()),
+                    Ok(BLOCK0_V2.clone().into()),
                 );
 
                 // Once the L2 sync task has found where reorg occured,
@@ -1289,7 +1313,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0_V2.clone()),
+                    Ok(BLOCK0_V2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1308,7 +1332,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(block1_v2.clone()),
+                    Ok(block1_v2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1325,7 +1349,12 @@ mod tests {
                     BLOCK2_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block1_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(block1_v2.clone().into()),
+                );
 
                 // Run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -1433,42 +1462,42 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: Some(*BLOCK1_HASH_V2),
-                    block_number: Some(BLOCK1_NUMBER),
+                    block_hash: *BLOCK1_HASH_V2,
+                    block_number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     parent_block_hash: *BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_root: Some(*GLOBAL_ROOT1_V2),
+                    state_root: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
                 };
                 let block2_v2 = reply::Block {
-                    block_hash: Some(*BLOCK2_HASH_V2),
-                    block_number: Some(BLOCK2_NUMBER),
+                    block_hash: *BLOCK2_HASH_V2,
+                    block_number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
                     parent_block_hash: *BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
-                    state_root: Some(*GLOBAL_ROOT2_V2),
+                    state_root: *GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
                 };
                 let block3 = reply::Block {
-                    block_hash: Some(*BLOCK3_HASH),
-                    block_number: Some(BLOCK3_NUMBER),
+                    block_hash: *BLOCK3_HASH,
+                    block_number: BLOCK3_NUMBER,
                     gas_price: Some(GasPrice::from(3)),
                     parent_block_hash: *BLOCK2_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer address 3").unwrap(),
                     )),
-                    state_root: Some(*GLOBAL_ROOT3),
+                    state_root: *GLOBAL_ROOT3,
                     status: reply::Status::AcceptedOnL1,
                     timestamp: StarknetBlockTimestamp(3),
                     transaction_receipts: vec![],
@@ -1480,7 +1509,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0.clone()),
+                    Ok(BLOCK0.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1499,7 +1528,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(BLOCK1.clone()),
+                    Ok(BLOCK1.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1518,7 +1547,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK2_NUMBER.into(),
-                    Ok(BLOCK2.clone()),
+                    Ok(BLOCK2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1531,7 +1560,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK3_NUMBER.into(),
-                    Ok(block3.clone()),
+                    Ok(block3.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1549,26 +1578,31 @@ mod tests {
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at block #1
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block1_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(block1_v2.clone().into()),
+                );
 
                 // L2 sync task goes back block by block to find where the block hash matches the DB
                 expect_block(
                     &mut mock,
                     &mut seq,
                     BLOCK2_NUMBER.into(),
-                    Ok(block2_v2.clone()),
+                    Ok(block2_v2.clone().into()),
                 );
                 expect_block(
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(block1_v2.clone()),
+                    Ok(block1_v2.clone().into()),
                 );
                 expect_block(
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0.clone()),
+                    Ok(BLOCK0.clone().into()),
                 );
 
                 // Finally the L2 sync task is downloading the new blocks once it knows where to start again
@@ -1577,7 +1611,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(block1_v2.clone()),
+                    Ok(block1_v2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1590,7 +1624,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK2_NUMBER.into(),
-                    Ok(block2_v2.clone()),
+                    Ok(block2_v2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1606,7 +1640,12 @@ mod tests {
                     BLOCK3_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block2_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(block2_v2.clone().into()),
+                );
 
                 // Run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -1706,14 +1745,14 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block2_v2 = reply::Block {
-                    block_hash: Some(*BLOCK2_HASH_V2),
-                    block_number: Some(BLOCK2_NUMBER),
+                    block_hash: *BLOCK2_HASH_V2,
+                    block_number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
                     parent_block_hash: *BLOCK1_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
-                    state_root: Some(*GLOBAL_ROOT2_V2),
+                    state_root: *GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(5),
                     transaction_receipts: vec![],
@@ -1725,7 +1764,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0.clone()),
+                    Ok(BLOCK0.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1744,7 +1783,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(BLOCK1.clone()),
+                    Ok(BLOCK1.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1763,7 +1802,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK2_NUMBER.into(),
-                    Ok(BLOCK2.clone()),
+                    Ok(BLOCK2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1781,14 +1820,19 @@ mod tests {
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at block #2
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block2_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(block2_v2.clone().into()),
+                );
 
                 // L2 sync task goes back block by block to find where the block hash matches the DB
                 expect_block(
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(BLOCK1.clone()),
+                    Ok(BLOCK1.clone().into()),
                 );
 
                 // Finally the L2 sync task is downloading the new blocks once it knows where to start again
@@ -1797,7 +1841,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK2_NUMBER.into(),
-                    Ok(block2_v2.clone()),
+                    Ok(block2_v2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1813,7 +1857,12 @@ mod tests {
                     BLOCK3_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block2_v2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(block2_v2.clone().into()),
+                );
 
                 // Run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -1893,28 +1942,28 @@ mod tests {
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
-                    block_hash: Some(*BLOCK1_HASH_V2),
-                    block_number: Some(BLOCK1_NUMBER),
+                    block_hash: *BLOCK1_HASH_V2,
+                    block_number: BLOCK1_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     parent_block_hash: *BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_root: Some(*GLOBAL_ROOT1_V2),
+                    state_root: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
                 };
                 let block2 = reply::Block {
-                    block_hash: Some(*BLOCK2_HASH),
-                    block_number: Some(BLOCK2_NUMBER),
+                    block_hash: *BLOCK2_HASH,
+                    block_number: BLOCK2_NUMBER,
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2").unwrap()),
                     parent_block_hash: *BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
                         StarkHash::from_be_slice(b"sequencer address 2").unwrap(),
                     )),
-                    state_root: Some(*GLOBAL_ROOT2),
+                    state_root: *GLOBAL_ROOT2,
                     status: reply::Status::AcceptedOnL1,
                     timestamp: StarknetBlockTimestamp(5),
                     transaction_receipts: vec![],
@@ -1926,7 +1975,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0.clone()),
+                    Ok(BLOCK0.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1945,7 +1994,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(BLOCK1.clone()),
+                    Ok(BLOCK1.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1964,7 +2013,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK2_NUMBER.into(),
-                    Ok(block2.clone()),
+                    Ok(block2.clone().into()),
                 );
 
                 // L2 sync task goes back block by block to find where the block hash matches the DB
@@ -1973,7 +2022,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0.clone()),
+                    Ok(BLOCK0.clone().into()),
                 );
 
                 // Finally the L2 sync task is downloading the new blocks once it knows where to start again
@@ -1982,7 +2031,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK1_NUMBER.into(),
-                    Ok(block1_v2.clone()),
+                    Ok(block1_v2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -1995,7 +2044,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK2_NUMBER.into(),
-                    Ok(block2.clone()),
+                    Ok(block2.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,
@@ -2011,7 +2060,12 @@ mod tests {
                     BLOCK3_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(&mut mock, &mut seq, BlockId::Latest, Ok(block2.clone()));
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BlockId::Latest,
+                    Ok(block2.clone().into()),
+                );
 
                 // Run the UUT
                 let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
@@ -2090,7 +2144,7 @@ mod tests {
                     &mut mock,
                     &mut seq,
                     BLOCK0_NUMBER.into(),
-                    Ok(BLOCK0.clone()),
+                    Ok(BLOCK0.clone().into()),
                 );
                 expect_state_update(
                     &mut mock,

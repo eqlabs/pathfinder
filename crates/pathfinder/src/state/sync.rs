@@ -184,9 +184,8 @@ where
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update(block, diff, timings)) => {
-                    // unwrap is safe as only pending query blocks are None.
-                    let block_num = block.block_number.unwrap().0;
-                    let block_hash = block.block_hash.unwrap();
+                    let block_number = block.block_number.0;
+                    let block_hash = block.block_hash;
                     let storage_updates: usize = diff
                         .contract_updates
                         .iter()
@@ -195,7 +194,7 @@ where
                     let update_t = std::time::Instant::now();
                     l2_update(&mut db_conn, *block, diff)
                         .await
-                        .with_context(|| format!("Update L2 state to {}", block_num))?;
+                        .with_context(|| format!("Update L2 state to {}", block_number))?;
                     let block_time = last_block_start.elapsed();
                     let update_t = update_t.elapsed();
                     last_block_start = std::time::Instant::now();
@@ -207,9 +206,10 @@ where
                     match &mut *state.status.write().await {
                         SyncStatus::False(_) => {}
                         SyncStatus::Status(status) => {
-                            status.current = NumberedBlock::from((block_hash, StarknetBlockNumber(block_num)));
+                            let block_number = StarknetBlockNumber(block_number);
+                            status.current = NumberedBlock::from((block_hash, block_number));
 
-                            if status.highest.number.0 <= block_num {
+                            if status.highest.number <= block_number {
                                 status.highest = status.current;
                             }
                         }
@@ -223,11 +223,11 @@ where
                     match tracing::level_filters::LevelFilter::current().into_level() {
                         None => {}
                         Some(level) if level <= tracing::Level::INFO => {
-                            tracing::info!("Updated StarkNet state with block {}", block_num)
+                            tracing::info!("Updated StarkNet state with block {}", block_number)
                         }
                         Some(_) => {
                             tracing::debug!("Updated StarkNet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
-                                block_num,
+                                block_number,
                                 block_time.as_secs_f32(),
                                 block_time_avg.as_secs_f32(),
                                 existed.0,
@@ -339,8 +339,8 @@ async fn update_sync_status_latest(
         match sequencer.block(BlockId::Latest).await {
             Ok(MaybePendingBlock::Block(block)) => {
                 let latest = {
-                    let latest_hash = block.block_hash.unwrap();
-                    let latest_num = block.block_number.unwrap();
+                    let latest_hash = block.block_hash;
+                    let latest_num = block.block_number;
                     NumberedBlock::from((latest_hash, latest_num))
                 };
                 // Update the sync status.
@@ -468,15 +468,15 @@ async fn l2_update(
             update_starknet_state(&transaction, state_diff).context("Updating Starknet state")?;
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
-        anyhow::ensure!(new_root == block.state_root.unwrap(), "State root mismatch");
+        anyhow::ensure!(new_root == block.state_root, "State root mismatch");
 
         // Update L2 database. These types shouldn't be options at this level,
         // but for now the unwraps are "safe" in that these should only ever be
         // None for pending queries to the sequencer, but we aren't using those here.
         let starknet_block = StarknetBlock {
-            number: block.block_number.unwrap(),
-            hash: block.block_hash.unwrap(),
-            root: block.state_root.unwrap(),
+            number: block.block_number,
+            hash: block.block_hash,
+            root: block.state_root,
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
             gas_price: block.gas_price.unwrap_or(GasPrice::ZERO),
@@ -848,24 +848,24 @@ mod tests {
             origin: ETH_ORIG.clone(),
         };
         pub static ref BLOCK0: reply::Block = reply::Block {
-            block_hash: Some(StarknetBlockHash(*A)),
-            block_number: Some(StarknetBlockNumber(0)),
+            block_hash: StarknetBlockHash(*A),
+            block_number: StarknetBlockNumber(0),
             gas_price: Some(GasPrice::ZERO),
             parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
             sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
-            state_root: Some(GlobalRoot(StarkHash::ZERO)),
+            state_root: GlobalRoot(StarkHash::ZERO),
             status: reply::Status::AcceptedOnL1,
             timestamp: crate::core::StarknetBlockTimestamp(0),
             transaction_receipts: vec![],
             transactions: vec![],
         };
         pub static ref BLOCK1: reply::Block = reply::Block {
-            block_hash: Some(StarknetBlockHash(*B)),
-            block_number: Some(StarknetBlockNumber(1)),
+            block_hash: StarknetBlockHash(*B),
+            block_number: StarknetBlockNumber(1),
             gas_price: Some(GasPrice::from(1)),
             parent_block_hash: StarknetBlockHash(*A),
             sequencer_address: Some(SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap())),
-            state_root: Some(GlobalRoot(*B)),
+            state_root: GlobalRoot(*B),
             status: reply::Status::AcceptedOnL2,
             timestamp: crate::core::StarknetBlockTimestamp(1),
             transaction_receipts: vec![],

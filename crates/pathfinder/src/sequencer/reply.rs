@@ -14,16 +14,23 @@ use serde_with::serde_as;
 #[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
-    #[serde(default)]
-    pub block_hash: Option<StarknetBlockHash>,
-    #[serde(default)]
-    pub block_number: Option<StarknetBlockNumber>,
+    pub block_hash: StarknetBlockHash,
+    pub block_number: StarknetBlockNumber,
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
+    /// Excluded in blocks prior to StarkNet 0.9
     pub gas_price: Option<GasPrice>,
     pub parent_block_hash: StarknetBlockHash,
     #[serde(default)]
+    /// Excluded in blocks prior to StarkNet 0.8
     pub sequencer_address: Option<SequencerAddress>,
+    pub state_root: GlobalRoot,
+    pub status: Status,
+    pub timestamp: StarknetBlockTimestamp,
+    pub transaction_receipts: Vec<transaction::Receipt>,
+    pub transactions: Vec<transaction::Transaction>,
+}
+
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(serde::Serialize))]
@@ -46,6 +53,13 @@ pub enum MaybePendingBlock {
     Pending(PendingBlock),
 }
 
+#[cfg(test)]
+impl From<Block> for MaybePendingBlock {
+    fn from(block: Block) -> Self {
+        MaybePendingBlock::Block(block)
+    }
+}
+
 impl MaybePendingBlock {
     pub fn as_block(self) -> Option<Block> {
         match self {
@@ -58,6 +72,20 @@ impl MaybePendingBlock {
         match self {
             MaybePendingBlock::Block(b) => &b.transactions,
             MaybePendingBlock::Pending(p) => &p.transactions,
+        }
+    }
+
+    pub fn receipts(&self) -> &[transaction::Receipt] {
+        match self {
+            MaybePendingBlock::Block(b) => &b.transaction_receipts,
+            MaybePendingBlock::Pending(p) => &p.transaction_receipts,
+        }
+    }
+
+    pub fn status(&self) -> Status {
+        match self {
+            MaybePendingBlock::Block(b) => b.status,
+            MaybePendingBlock::Pending(p) => p.status,
         }
     }
 }
@@ -499,7 +527,7 @@ mod tests {
     /// already using a newer version.
     mod backward_compatibility {
 
-        use super::super::{Block, StateUpdate, Transaction};
+        use super::super::{StateUpdate, Transaction};
 
         macro_rules! fixture {
             ($file_name:literal) => {
@@ -509,9 +537,13 @@ mod tests {
 
         #[test]
         fn block() {
-            serde_json::from_str::<Block>(fixture!("0.8.2/block/genesis.json")).unwrap();
-            serde_json::from_str::<Block>(fixture!("0.8.2/block/1716.json")).unwrap();
-            serde_json::from_str::<Block>(fixture!("0.8.2/block/pending.json")).unwrap();
+            use super::super::MaybePendingBlock;
+
+            serde_json::from_str::<MaybePendingBlock>(fixture!("0.8.2/block/genesis.json"))
+                .unwrap();
+            serde_json::from_str::<MaybePendingBlock>(fixture!("0.8.2/block/1716.json")).unwrap();
+            serde_json::from_str::<MaybePendingBlock>(fixture!("0.8.2/block/pending.json"))
+                .unwrap();
         }
 
         #[test]
