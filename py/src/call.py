@@ -140,8 +140,10 @@ def do_loop(connection, input_gen, output_file):
 
 
 def report_failed(logger, command, e):
-    logger.debug(f"{command}")
-    logger.error(str(e))
+    logger.trace(f"{command}")
+    # we cannot log errors at higher than info, which is the default level, to
+    # allow opting in to these and not forcing them on everyone
+    logger.debug(str(e))
 
 
 def loop_inner(connection, command):
