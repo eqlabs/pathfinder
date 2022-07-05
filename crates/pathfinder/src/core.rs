@@ -376,6 +376,10 @@ impl std::fmt::Display for Chain {
 /// `WrapperType(StarkHash(hash))`.
 ///
 /// Display impl produces just `hash`.
+///
+/// Naming: this is called starkhash instead of anything more generic, like newtype, to discourage
+/// from using with for example `primitive_types::H256`, which has always lossy display
+/// implementation.
 macro_rules! thin_starkhash_debug_display {
     ($target:ty) => {
         thin_starkhash_debug!($target);
@@ -393,6 +397,12 @@ macro_rules! thin_starkhash_debug_display {
     };
 }
 
+/// Adds a thin Debug implementation. Called by [`thin_starkhash_debug_display`].
+///
+/// The implementation uses Display of the wrapped value to produce smallest possible string, but
+/// still wraps it in a default Debug derive style `TypeName(hash)`.
+///
+/// Naming: see [`thin_starkhash_debug_display`].
 macro_rules! thin_starkhash_debug {
     ($target:ty) => {
         impl std::fmt::Debug for $target {
@@ -409,6 +419,7 @@ macro_rules! thin_starkhash_debug {
 }
 
 // these types are used in sequencer tests, which require special fixed width representation
+// FIXME: it'd be better if these had normal varlen display and lenient parsing.
 thin_starkhash_debug!(ContractAddress, StarknetTransactionHash, ClassHash,);
 
 thin_starkhash_debug_display!(
