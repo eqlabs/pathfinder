@@ -505,8 +505,8 @@ impl RpcApi {
                     .map_err(internal_server_error)?;
 
                 return block
-                    .transactions
-                    .into_iter()
+                    .transactions()
+                    .iter()
                     .nth(index)
                     .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
                         Ok(txn.into())
@@ -578,11 +578,11 @@ impl RpcApi {
                     .map_err(internal_server_error)?;
 
                 return block
-                    .transactions
-                    .into_iter()
+                    .transactions()
+                    .iter()
                     .nth(index)
                     .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                        Ok(txn.into())
+                        Ok(txn.clone().into())
                     });
             }
         };
@@ -854,7 +854,7 @@ impl RpcApi {
                     .map_err(internal_server_error)?;
 
                 let len: u64 =
-                    block.transactions.len().try_into().map_err(|e| {
+                    block.transactions().len().try_into().map_err(|e| {
                         Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
                     })?;
 
@@ -919,7 +919,7 @@ impl RpcApi {
                     .map_err(internal_server_error)?;
 
                 let len: u64 =
-                    block.transactions.len().try_into().map_err(|e| {
+                    block.transactions().len().try_into().map_err(|e| {
                         Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
                     })?;
 

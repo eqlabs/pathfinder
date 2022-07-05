@@ -46,12 +46,12 @@ fn main() -> anyhow::Result<()> {
             transactions_and_receipts.into_iter().unzip();
 
         let block = Block {
-            block_hash: Some(block.hash),
-            block_number: Some(block.number),
+            block_hash: block.hash,
+            block_number: block.number,
             gas_price: Some(block.gas_price),
             parent_block_hash,
             sequencer_address: Some(block.sequencer_address),
-            state_root: Some(block.root),
+            state_root: block.root,
             status: Status::AcceptedOnL1,
             timestamp: block.timestamp,
             transaction_receipts: receipts,
