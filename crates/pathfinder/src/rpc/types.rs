@@ -359,21 +359,21 @@ pub mod reply {
                 BlockResponseScope::TransactionHashes => {
                     let hashes = block
                         .transactions()
-                        .into_iter()
+                        .iter()
                         .map(|t| t.transaction_hash)
                         .collect();
 
                     Transactions::HashesOnly(hashes)
                 }
                 BlockResponseScope::FullTransactions => {
-                    let transactions = block.transactions().into_iter().map(|t| t.into()).collect();
+                    let transactions = block.transactions().iter().map(|t| t.into()).collect();
                     Transactions::Full(transactions)
                 }
                 BlockResponseScope::FullTransactionsAndReceipts => {
                     let with_receipts = block
                         .transactions()
-                        .into_iter()
-                        .zip(block.receipts().into_iter())
+                        .iter()
+                        .zip(block.receipts().iter())
                         .map(|(t, r)| {
                             let t: Transaction = t.into();
                             let r =

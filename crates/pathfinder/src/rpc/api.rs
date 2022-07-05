@@ -506,10 +506,10 @@ impl RpcApi {
 
                 return block
                     .transactions()
-                    .into_iter()
+                    .iter()
                     .nth(index)
                     .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                        Ok(txn.clone().into())
+                        Ok(txn.into())
                     });
             }
         };
@@ -579,7 +579,7 @@ impl RpcApi {
 
                 return block
                     .transactions()
-                    .into_iter()
+                    .iter()
                     .nth(index)
                     .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
                         Ok(txn.clone().into())
