@@ -7,27 +7,27 @@ use stark_hash::StarkHash;
 use web3::types::{H128, H160, H256};
 
 /// The address of a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddress(pub StarkHash);
 
 /// The salt of a StarkNet contract address.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddressSalt(pub StarkHash);
 
 /// The hash of a StarkNet contract. This is a hash over a class'
 /// deployment properties e.g. code and ABI.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct ClassHash(pub StarkHash);
 
 /// A StarkNet contract's state hash. This is the value stored
 /// in the global state tree.
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractStateHash(pub StarkHash);
 
 /// A commitment root of a StarkNet contract. This is the entry-point
 /// for a contract's state at a specific point in time via the contract
 /// state tree.
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContractRoot(pub StarkHash);
 
 /// A Starknet contract's bytecode and ABI.
@@ -50,7 +50,7 @@ pub struct ContractClass {
 }
 
 /// Entry point of a StarkNet `call`.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EntryPoint(pub StarkHash);
 
 impl EntryPoint {
@@ -69,48 +69,48 @@ impl EntryPoint {
 ///
 /// This is a StarkHash because we use it directly for computing the
 /// class hashes.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ByteCodeOffset(pub StarkHash);
 
 /// A single parameter passed to a StarkNet `call`.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CallParam(pub StarkHash);
 
 /// A single parameter passed to a StarkNet contract constructor.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ConstructorParam(pub StarkHash);
 
 /// A single result value of a StarkNet `call`.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CallResultValue(pub StarkHash);
 
 /// A single element of a signature used to secure a StarkNet `call`.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CallSignatureElem(pub StarkHash);
 
 /// A word from a StarkNet contract bytecode.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ByteCodeWord(pub StarkHash);
 
 /// The address of a storage element for a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct StorageAddress(pub StarkHash);
 
 /// The value of a storage element for a StarkNet contract.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct StorageValue(pub StarkHash);
 
 /// A commitment root of the global StarkNet state. This is the entry-point
 /// for the global state at a specific point in time via the global state tree.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct GlobalRoot(pub StarkHash);
 
 /// A StarkNet block hash.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetBlockHash(pub StarkHash);
 
 /// A StarkNet block number.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockNumber(pub u64);
 
 /// The timestamp of a Starknet block.
@@ -118,7 +118,7 @@ pub struct StarknetBlockNumber(pub u64);
 pub struct StarknetBlockTimestamp(pub u64);
 
 /// A StarkNet transaction hash.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetTransactionHash(pub StarkHash);
 
 /// A StarkNet transaction index.
@@ -126,31 +126,31 @@ pub struct StarknetTransactionHash(pub StarkHash);
 pub struct StarknetTransactionIndex(pub u64);
 
 /// A single element of a signature used to secure a StarkNet transaction.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TransactionSignatureElem(pub StarkHash);
 
 /// A nonce that is added to an L1 to L2 message in a StarkNet transaction.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct L1ToL2MessageNonce(pub StarkHash);
 
 /// A single element of the payload of an L1 to L2 message in a StarkNet transaction.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct L1ToL2MessagePayloadElem(pub StarkHash);
 
 /// A single element of the payload of an L2 to L1 message in a StarkNet transaction.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct L2ToL1MessagePayloadElem(pub StarkHash);
 
 /// StarkNet transaction event data.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EventData(pub StarkHash);
 
 /// StarkNet transaction event key.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct EventKey(pub StarkHash);
 
 /// StarkNet sequencer address.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct SequencerAddress(pub StarkHash);
 
 /// StarkNet protocol version.
@@ -166,7 +166,7 @@ pub struct Fee(pub H128);
 pub struct GasPrice(pub u128);
 
 // Starknet transaction nonce.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TransactionNonce(pub StarkHash);
 
 /// StarkNet transaction version.
@@ -369,3 +369,81 @@ impl std::fmt::Display for Chain {
         }
     }
 }
+
+/// Adds a thin Debug and Disply implementations.
+///
+/// Debug impl produces `WrapperType(hash)` instead of automatic derives generated
+/// `WrapperType(StarkHash(hash))`.
+///
+/// Display impl produces just `hash`.
+///
+/// Naming: this is called starkhash instead of anything more generic, like newtype, to discourage
+/// from using with for example `primitive_types::H256`, which has always lossy display
+/// implementation.
+macro_rules! thin_starkhash_debug_display {
+    ($target:ty) => {
+        thin_starkhash_debug!($target);
+
+        impl std::fmt::Display for $target {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+    };
+
+    ($head:ty, $($tail:ty),+ $(,)?) => {
+        thin_starkhash_debug_display!($head);
+        thin_starkhash_debug_display!($($tail),+);
+    };
+}
+
+/// Adds a thin Debug implementation. Called by [`thin_starkhash_debug_display`].
+///
+/// The implementation uses Display of the wrapped value to produce smallest possible string, but
+/// still wraps it in a default Debug derive style `TypeName(hash)`.
+///
+/// Naming: see [`thin_starkhash_debug_display`].
+macro_rules! thin_starkhash_debug {
+    ($target:ty) => {
+        impl std::fmt::Debug for $target {
+            fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(fmt, "{}({})", stringify!($target), self.0)
+            }
+        }
+    };
+
+    ($head:ty, $($tail:ty),+ $(,)?) => {
+        thin_starkhash_debug!($head);
+        thin_starkhash_debug!($($tail),+);
+    };
+}
+
+// these types are used in sequencer tests, which require special fixed width representation
+// FIXME: it'd be better if these had normal varlen display and lenient parsing.
+thin_starkhash_debug!(ContractAddress, StarknetTransactionHash, ClassHash,);
+
+thin_starkhash_debug_display!(
+    ContractAddressSalt,
+    ContractStateHash,
+    ContractRoot,
+    EntryPoint,
+    ByteCodeOffset,
+    CallParam,
+    ConstructorParam,
+    CallResultValue,
+    CallSignatureElem,
+    ByteCodeWord,
+    StorageAddress,
+    StorageValue,
+    GlobalRoot,
+    StarknetBlockHash,
+    StarknetBlockNumber,
+    TransactionSignatureElem,
+    L1ToL2MessageNonce,
+    L1ToL2MessagePayloadElem,
+    L2ToL1MessagePayloadElem,
+    EventData,
+    EventKey,
+    SequencerAddress,
+    TransactionNonce,
+);
