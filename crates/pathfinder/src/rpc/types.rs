@@ -332,7 +332,7 @@ pub mod reply {
                             let receipt = TransactionReceipt::with_block_status(
                                 r.clone(),
                                 block.status().into(),
-                                &t,
+                                t,
                             );
                             let txn: Transaction = t.into();
 
