@@ -796,13 +796,12 @@ pub mod reply {
 
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[skip_serializing_none]
     pub struct InvokeTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
 
         pub messages_sent: Vec<transaction_receipt::MessageToL1>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
         pub events: Vec<transaction_receipt::Event>,
     }
@@ -810,13 +809,16 @@ pub mod reply {
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[skip_serializing_none]
     pub struct CommonTransactionReceiptProperties {
         pub txn_hash: StarknetTransactionHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub actual_fee: Fee,
         pub status: TransactionStatus,
-        #[serde(default, rename = "statusData")]
+        #[serde(
+            default,
+            rename = "statusData",
+            skip_serializing_if = "Option::is_none"
+        )]
         pub status_data: Option<String>,
     }
 
