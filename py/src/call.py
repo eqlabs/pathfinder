@@ -74,6 +74,8 @@ def do_loop(connection, input_gen, output_file):
         "signature": list_of_int,
         "max_fee": int_param,
         "version": int_param,
+        "pending_updates": maybe_pending_updates,
+        "pending_deployed": maybe_pending_deployed,
     }
 
     logger = Logger()
@@ -159,6 +161,8 @@ def loop_inner(connection, command):
 
     timings = {}
     started_at = time.time()
+    pending_updates = command.get("pending_updates", {})
+    pending_deployed = command.get("pending_deployed", {})
 
     # the later parts will have access to gas_price through this block_info
     (block_info, global_root) = resolve_block(
@@ -182,6 +186,8 @@ def loop_inner(connection, command):
             max_fee,
             block_info,
             version,
+            pending_updates,
+            pending_deployed,
         )
     )
 
@@ -318,6 +324,55 @@ def required_chain(s):
     else:
         assert s == "GOERLI"
         return StarknetChainId.TESTNET
+
+
+def maybe_pending_updates(s):
+    if s is None:
+        # returning {} here doesn't matter, since this function will not be called
+        # in case there is no key. so we still need to read with default from the
+        # command.
+        return None
+
+    # currently just using the format from sequencers get_state_update
+    return dict(
+        map(
+            lambda x: (
+                # contract address needs to be an int
+                int_param(x[0]),
+                # many changes
+                list(
+                    map(
+                        lambda y: {
+                            "key": int_param(y["key"]),
+                            "value": int_param(y["value"]),
+                        },
+                        x[1],
+                    )
+                ),
+            ),
+            s.items(),
+        )
+    )
+
+
+def maybe_pending_deployed(deployed_contracts):
+    if deployed_contracts is None:
+        # see `maybe_pending_updates` for rationale
+        return None
+
+    # this accepts the form used in the sequencer state update
+    # which is "prop": [ { "address": "0x...", "contract_hash": "0x..." }, ... ]
+    # internally we use just address => hash
+
+    return dict(
+        map(
+            lambda x: (
+                int_param(x["address"]),
+                len_safe_hex(x["contract_hash"]),
+            ),
+            deployed_contracts,
+        )
+    )
 
 
 def check_schema(connection):
@@ -594,6 +649,8 @@ async def do_call(
     max_fee,
     block_info,
     version,
+    pending_updates,
+    pending_deployed,
 ):
     """
     The actual call execution with cairo-lang.
@@ -606,21 +663,56 @@ async def do_call(
     from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
         PatriciaTree,
     )
+    from starkware.starkware_utils.commitment_tree.patricia_tree.nodes import (
+        EmptyNodeFact,
+    )
     from starkware.starknet.services.api.contract_class import EntryPointType
     from starkware.cairo.lang.vm.crypto import pedersen_hash_func
     from starkware.starknet.testing.state import create_invoke_function
+    from starkware.starknet.storage.starknet_storage import StorageLeaf
+    from starkware.starknet.business_logic.state.objects import (
+        ContractState,
+        ContractCarriedState,
+    )
 
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
 
     # the root tree has to always be height=251
-    shared_state = SharedState(PatriciaTree(root=root, height=251), block_info)
+    shared_state = SharedState(PatriciaTree(root, 251), block_info)
+
+    # we firstly want to load the target contract
+    contract_addresses = {contract_address}
+    # union all those contracts which have pending updates for
+    contract_addresses = contract_addresses | pending_updates.keys()
+    # exclude pending deploys, which should cause an issue reading them
+    contract_addresses = contract_addresses ^ pending_deployed.keys()
+
     state_selector = StateSelector(
-        contract_addresses={contract_address}, class_hashes=set()
+        contract_addresses=contract_addresses,
+        # we keep setting this to empty because we assume that the pending downloader
+        # has already stored all declared classes locally
+        class_hashes=set()
     )
     carried_state = await shared_state.get_filled_carried_state(
         ffc, state_selector=state_selector
     )
+
+    for addr, contract_hash in pending_deployed.items():
+        # using ContractState.empty will write zero to database, which we fail as intended
+        # this is essentially how to create an empty ContractState
+        # this shouldn't be an async method
+        cs = await ContractState.create(
+            contract_hash, PatriciaTree(EmptyNodeFact.EMPTY_NODE_HASH, 251)
+        )
+        ccs = ContractCarriedState.from_state(cs)
+        assert addr not in carried_state.contract_states
+        carried_state.contract_states[addr] = ccs
+
+    for addr, changes in pending_updates.items():
+        ccs = carried_state.contract_states[addr]
+        for change in changes:
+            ccs.storage_updates[change["key"]] = StorageLeaf(change["value"])
 
     # using carried state as child_state is only required for fee estimation
     # but doesn't seem to matter for regular call.

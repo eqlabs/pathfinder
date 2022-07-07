@@ -1,14 +1,18 @@
 from call import (
-    do_loop,
-    loop_inner,
-    EXPECTED_SCHEMA_REVISION,
     check_cairolang_version,
+    do_loop,
+    EXPECTED_SCHEMA_REVISION,
+    int_param,
+    loop_inner,
+    maybe_pending_updates,
+    maybe_pending_deployed,
     resolve_block,
 )
 import sqlite3
 import io
 import json
 import pytest
+import copy
 
 
 # this is from 64a7f6aed9757d3d8d6c28bd972df73272b0cb0a of cairo-lang
@@ -544,3 +548,121 @@ def test_failing_mainnet_tx2():
     }
 
     assert output["overall_fee"] == 0xA9B3FBAC7457
+
+
+@pytest.mark.skip(reason="this requires an early goerli database")
+def test_positive_streamed_on_early_goerli_block_without_deployed():
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
+    con = sqlite3.connect("../../goerli.sqlite")
+    con.execute("BEGIN")
+
+    # this is copypasted from the get_state_update
+    pending_updates = {
+        "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451": [
+            {"key": "0x5", "value": "0x0"}
+        ],
+        # this is the one we care about, it was written at block 5 to 0x64
+        "0x543e54f26ae33686f57da2ceebed98b340c3a78e9390931bd84fb711d5caabc": [
+            {"key": "0x5", "value": "0x22b"}
+        ],
+        # leave this out since it was deployed, which we should list as well, but not yet
+        # "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d": [
+        #     {"key": "0x5", "value": "0x65"},
+        #     {
+        #         "key": "0x2199e6fee3564246f851c45e8268c79fe073caff90420878b3fb11458d77139",
+        #         "value": "0x563e7b33aef472392dfb1a491f739295bad7105e669a6183c6f1a76124bafd1",
+        #     },
+        # ],
+        "0x2fb7ff5b1b474e8e691f5bebad9aa7aa3009f6ef22ccc2816f96cdfe217604d": [
+            {"key": "0x5", "value": "0x64"}
+        ],
+    }
+
+    pending_updates = maybe_pending_updates(pending_updates)
+
+    without_updates = {
+        "command": "call",
+        "at_block": 6,
+        "contract_address": int_param(
+            "0x543e54f26ae33686f57da2ceebed98b340c3a78e9390931bd84fb711d5caabc"
+        ),
+        "entry_point_selector": "get_value",
+        "calldata": [5],
+        "gas_price": None,
+        "chain": StarknetChainId.MAINNET,
+    }
+
+    with_updates = copy.deepcopy(without_updates)
+    with_updates["pending_updates"] = pending_updates
+
+    (verb, output, _timings) = loop_inner(con, without_updates)
+    assert output == [0x64]
+
+    (verb, output, _timings) = loop_inner(con, with_updates)
+    assert output == [0x22B]
+
+
+@pytest.mark.skip(reason="this requires an early goerli database")
+def test_positive_streamed_on_early_goerli_block_with_deployed():
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
+    con = sqlite3.connect("../../goerli.sqlite")
+    con.execute("BEGIN")
+
+    # this is copypasted from the get_state_update
+    pending_updates = {
+        "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451": [
+            {"key": "0x5", "value": "0x0"}
+        ],
+        # this is the one we care about, it was written at block 5 to 0x64
+        "0x543e54f26ae33686f57da2ceebed98b340c3a78e9390931bd84fb711d5caabc": [
+            {"key": "0x5", "value": "0x22b"}
+        ],
+        "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d": [
+            {"key": "0x5", "value": "0x65"},
+            {
+                "key": "0x2199e6fee3564246f851c45e8268c79fe073caff90420878b3fb11458d77139",
+                "value": "0x563e7b33aef472392dfb1a491f739295bad7105e669a6183c6f1a76124bafd1",
+            },
+        ],
+        "0x2fb7ff5b1b474e8e691f5bebad9aa7aa3009f6ef22ccc2816f96cdfe217604d": [
+            {"key": "0x5", "value": "0x64"}
+        ],
+    }
+
+    pending_updates = maybe_pending_updates(pending_updates)
+
+    # this matches sequencer state update
+    pending_deployed = [
+        # FIXME: this is also a test.cairo, which has had many transactions
+        {
+            "address": "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d",
+            "contract_hash": "0x010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8",
+        }
+    ]
+
+    # pending deployed contracts need to be included because otherwise the contract => class mapping could not be resolved.
+    pending_deployed = maybe_pending_deployed(pending_deployed)
+
+    without_updates = {
+        "command": "call",
+        "at_block": 6,
+        "contract_address": int_param(
+            "0x543e54f26ae33686f57da2ceebed98b340c3a78e9390931bd84fb711d5caabc"
+        ),
+        "entry_point_selector": "get_value",
+        "calldata": [5],
+        "gas_price": None,
+        "chain": StarknetChainId.MAINNET,
+    }
+
+    with_updates = copy.deepcopy(without_updates)
+    with_updates["pending_updates"] = pending_updates
+    with_updates["pending_deployed"] = pending_deployed
+
+    (verb, output, _timings) = loop_inner(con, without_updates)
+    assert output == [0x64]
+
+    (verb, output, _timings) = loop_inner(con, with_updates)
+    assert output == [0x22B]
