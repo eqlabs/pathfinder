@@ -557,6 +557,81 @@ impl<T: NodeStorage> MerkleTree<T> {
 
         Ok(())
     }
+
+    /// Traverse this tree using an iterative Depth First Search.
+    #[allow(dead_code)]
+    pub fn dfs<VisitorFn>(&self, visitor_fn: &mut VisitorFn)
+    where
+        VisitorFn: FnMut(&Node),
+    {
+        use bitvec::prelude::bitvec;
+
+        #[allow(dead_code)]
+        struct VisitedNode {
+            node: Rc<RefCell<Node>>,
+            path: BitVec<Msb0, u8>,
+        }
+
+        let mut visiting = vec![VisitedNode {
+            node: self.root.clone(),
+            path: bitvec![Msb0, u8;],
+        }];
+
+        loop {
+            match visiting.pop() {
+                None => break,
+                Some(VisitedNode { node, path }) => {
+                    let current_node = &*node.borrow();
+                    match current_node {
+                        Node::Binary(b) => {
+                            visitor_fn(current_node);
+                            visiting.push(VisitedNode {
+                                node: b.right.clone(),
+                                path: {
+                                    let mut path_right = path.clone();
+                                    path_right.push(Direction::Right.into());
+                                    path_right
+                                },
+                            });
+                            visiting.push(VisitedNode {
+                                node: b.left.clone(),
+                                path: {
+                                    let mut path_left = path.clone();
+                                    path_left.push(Direction::Left.into());
+                                    path_left
+                                },
+                            });
+                        }
+                        Node::Edge(e) => {
+                            visitor_fn(current_node);
+                            visiting.push(VisitedNode {
+                                node: e.child.clone(),
+                                path: {
+                                    let mut extended_path = path.clone();
+                                    extended_path.extend_from_bitslice(&e.path);
+                                    extended_path
+                                },
+                            });
+                        }
+                        Node::Leaf(_) => {
+                            visitor_fn(current_node);
+                        }
+                        Node::Unresolved(hash) => {
+                            // Zero means empty tree, so nothing to resolve
+                            if hash != &StarkHash::ZERO {
+                                visiting.push(VisitedNode {
+                                    node: Rc::new(RefCell::new(
+                                        self.resolve(*hash, path.len()).unwrap(),
+                                    )),
+                                    path,
+                                });
+                            }
+                        }
+                    };
+                }
+            }
+        }
+    }
 }
 
 impl NodeStorage for () {
@@ -1407,6 +1482,168 @@ mod tests {
             .unwrap();
 
             assert_eq!(root, expected);
+        }
+    }
+
+    mod dfs {
+        use super::{BinaryNode, EdgeNode, MerkleTree, Node};
+        use bitvec::{bitvec, prelude::Msb0};
+        use stark_hash::StarkHash;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        #[test]
+        fn empty_tree() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let uut = MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
+
+            let mut visited = vec![];
+            let mut visitor_fn = |node: &Node| visited.push(node.clone());
+            uut.dfs(&mut visitor_fn);
+            assert!(visited.is_empty());
+        }
+
+        #[test]
+        fn one_leaf() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut =
+                MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
+
+            let key = StarkHash::from_hex_str("1").unwrap();
+            let value = StarkHash::from_hex_str("2").unwrap();
+
+            uut.set(key.view_bits(), value).unwrap();
+
+            let mut visited = vec![];
+            let mut visitor_fn = |node: &Node| visited.push(node.clone());
+            uut.dfs(&mut visitor_fn);
+
+            assert_eq!(
+                visited,
+                vec![
+                    Node::Edge(EdgeNode {
+                        hash: None,
+                        height: 0,
+                        path: key.view_bits().into(),
+                        child: Rc::new(RefCell::new(Node::Leaf(value)))
+                    }),
+                    Node::Leaf(value)
+                ]
+            );
+        }
+
+        #[test]
+        fn two_leaves() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut =
+                MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
+
+            let key_left = StarkHash::from_hex_str("0").unwrap();
+            let value_left = StarkHash::from_hex_str("2").unwrap();
+            let key_right = StarkHash::from_hex_str("1").unwrap();
+            let value_right = StarkHash::from_hex_str("3").unwrap();
+
+            uut.set(key_right.view_bits(), value_right).unwrap();
+            uut.set(key_left.view_bits(), value_left).unwrap();
+
+            let mut visited = vec![];
+            let mut visitor_fn = |node: &Node| visited.push(node.clone());
+            uut.dfs(&mut visitor_fn);
+
+            let expected_3 = Node::Leaf(value_right);
+            let expected_2 = Node::Leaf(value_left);
+            let expected_1 = Node::Binary(BinaryNode {
+                hash: None,
+                height: 250,
+                left: Rc::new(RefCell::new(expected_2.clone())),
+                right: Rc::new(RefCell::new(expected_3.clone())),
+            });
+            let expected_0 = Node::Edge(EdgeNode {
+                hash: None,
+                height: 0,
+                path: bitvec![Msb0, u8; 0; 250],
+                child: Rc::new(RefCell::new(expected_1.clone())),
+            });
+
+            pretty_assertions::assert_eq!(
+                visited,
+                vec![expected_0, expected_1, expected_2, expected_3]
+            );
+        }
+
+        #[test]
+        fn three_leaves() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut =
+                MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
+
+            let key_a = StarkHash::from_hex_str("10").unwrap();
+            let value_a = StarkHash::from_hex_str("a").unwrap();
+            let key_b = StarkHash::from_hex_str("11").unwrap();
+            let value_b = StarkHash::from_hex_str("b").unwrap();
+            let key_c = StarkHash::from_hex_str("13").unwrap();
+            let value_c = StarkHash::from_hex_str("c").unwrap();
+
+            uut.set(key_c.view_bits(), value_c).unwrap();
+            uut.set(key_a.view_bits(), value_a).unwrap();
+            uut.set(key_b.view_bits(), value_b).unwrap();
+
+            let mut visited = vec![];
+            let mut visitor_fn = |node: &Node| visited.push(node.clone());
+            uut.dfs(&mut visitor_fn);
+
+            // 0
+            // |
+            // 1
+            // |\
+            // 2 5
+            // |\ \
+            // 3 4 6
+            // a b c
+
+            let expected_6 = Node::Leaf(value_c);
+            let expected_5 = Node::Edge(EdgeNode {
+                hash: None,
+                height: 250,
+                path: bitvec![Msb0, u8; 1; 1],
+                child: Rc::new(RefCell::new(expected_6.clone())),
+            });
+            let expected_4 = Node::Leaf(value_b);
+            let expected_3 = Node::Leaf(value_a);
+            let expected_2 = Node::Binary(BinaryNode {
+                hash: None,
+                height: 250,
+                left: Rc::new(RefCell::new(expected_3.clone())),
+                right: Rc::new(RefCell::new(expected_4.clone())),
+            });
+            let expected_1 = Node::Binary(BinaryNode {
+                hash: None,
+                height: 249,
+                left: Rc::new(RefCell::new(expected_2.clone())),
+                right: Rc::new(RefCell::new(expected_5.clone())),
+            });
+            let expected_0 = Node::Edge(EdgeNode {
+                hash: None,
+                height: 0,
+                path: {
+                    let mut p = bitvec![Msb0, u8; 0; 249];
+                    *p.get_mut(246).unwrap() = true;
+                    p
+                },
+                child: Rc::new(RefCell::new(expected_1.clone())),
+            });
+
+            pretty_assertions::assert_eq!(
+                visited,
+                vec![
+                    expected_0, expected_1, expected_2, expected_3, expected_4, expected_5,
+                    expected_6
+                ]
+            );
         }
     }
 }
