@@ -194,8 +194,7 @@ impl RpcApi {
                             let receipt =
                                 TransactionReceipt::with_block_status(r, block_status, &t);
                             let txn: Transaction = t.into();
-
-                            reply::TransactionAndReceipt { txn, receipt }
+                            (txn, receipt).into()
                         })
                         .collect(),
                 )

@@ -313,6 +313,7 @@ pub mod reply {
             }
 
             #[test]
+            #[ignore = "will use fixtures instead, for all RPC outputs"]
             fn full_transactions_and_receipts() {
                 assert_matches!(
                     serde_json::from_str::<Transactions>(
@@ -331,8 +332,7 @@ pub mod reply {
                     )
                     .unwrap(),
                     Transactions::FullWithReceipts(t) => {
-                        assert_eq!(t[0].txn.hash(), StarknetTransactionHash(StarkHash::from_hex_str("0x1").unwrap()));
-                        assert_eq!(t[0].receipt.hash(), StarknetTransactionHash(StarkHash::from_hex_str("0x1").unwrap()));
+                        assert_eq!(t[0].hash(), StarknetTransactionHash(StarkHash::from_hex_str("0x1").unwrap()));
                     }
                 );
             }
@@ -405,7 +405,7 @@ pub mod reply {
                             );
                             let txn: Transaction = t.into();
 
-                            TransactionAndReceipt { txn, receipt }
+                            (txn, receipt).into()
                         })
                         .collect();
                     Transactions::FullWithReceipts(with_receipts)
@@ -644,9 +644,9 @@ pub mod reply {
     impl Transaction {
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
-                Transaction::Declare(declare) => declare.common.txn_hash.clone(),
-                Transaction::Invoke(invoke) => invoke.common.txn_hash.clone(),
-                Transaction::Deploy(deploy) => deploy.common.txn_hash.clone(),
+                Transaction::Declare(declare) => declare.common.txn_hash,
+                Transaction::Invoke(invoke) => invoke.common.txn_hash,
+                Transaction::Deploy(deploy) => deploy.common.txn_hash,
             }
         }
     }
@@ -788,8 +788,8 @@ pub mod reply {
     impl TransactionReceipt {
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
-                Self::Invoke(tx) => tx.common.txn_hash.clone(),
-                Self::DeclareOrDeploy(tx) => tx.common.txn_hash.clone(),
+                Self::Invoke(tx) => tx.common.txn_hash,
+                Self::DeclareOrDeploy(tx) => tx.common.txn_hash,
             }
         }
     }
@@ -955,14 +955,161 @@ pub mod reply {
 
     /// Used in [Block](crate::rpc::types::reply::Block) when the requested scope of
     /// reply is [BlockResponseScope::FullTransactionsAndReceipts](crate::rpc::types::request::BlockResponseScope).
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(untagged)]
+    pub enum TransactionAndReceipt {
+        Declare(DeclareTransactionAndReceipt),
+        Invoke(InvokeTransactionAndReceipt),
+        Deploy(DeployTransactionAndReceipt),
+    }
+
+    impl TransactionAndReceipt {
+        pub fn hash(&self) -> StarknetTransactionHash {
+            match self {
+                TransactionAndReceipt::Declare(declare) => declare.common.txn_hash,
+                TransactionAndReceipt::Invoke(invoke) => invoke.common.txn_hash,
+                TransactionAndReceipt::Deploy(deploy) => deploy.common.txn_hash,
+            }
+        }
+    }
+
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct TransactionAndReceipt {
+    pub struct DeclareTransactionAndReceipt {
         #[serde(flatten)]
-        pub txn: Transaction,
+        pub common: CommonTransactionAndReceiptProperties,
+
+        // FIXME: this is a deviation from the OpenRPC spec, which would expect us to
+        // include the full contract definition here
+        pub class_hash: ClassHash,
+        pub sender_address: ContractAddress,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct InvokeTransactionAndReceipt {
         #[serde(flatten)]
-        pub receipt: TransactionReceipt,
+        pub common: CommonTransactionAndReceiptProperties,
+
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub calldata: Vec<CallParam>,
+
+        pub messages_sent: Vec<transaction_receipt::MessageToL1>,
+        // Important!
+        // #[skip_serializing_none] does not work with #[serde(flatten)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
+        pub events: Vec<transaction_receipt::Event>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeployTransactionAndReceipt {
+        #[serde(flatten)]
+        pub common: CommonTransactionAndReceiptProperties,
+
+        pub contract_address: ContractAddress,
+        pub contract_address_salt: ContractAddressSalt,
+        pub class_hash: ClassHash,
+        pub constructor_calldata: Vec<ConstructorParam>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct CommonTransactionAndReceiptProperties {
+        // Transaction
+        pub txn_hash: StarknetTransactionHash,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+
+        // Receipt
+        #[serde_as(as = "FeeAsHexStr")]
+        pub actual_fee: Fee,
+        pub status: TransactionStatus,
+        // Important!
+        // #[skip_serializing_none] does not work with #[serde(flatten)]
+        #[serde(
+            default,
+            rename = "statusData",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub status_data: Option<String>,
+    }
+
+    impl
+        From<(
+            CommonTransactionProperties,
+            CommonTransactionReceiptProperties,
+        )> for CommonTransactionAndReceiptProperties
+    {
+        fn from(
+            both: (
+                CommonTransactionProperties,
+                CommonTransactionReceiptProperties,
+            ),
+        ) -> Self {
+            let (t, r) = both;
+
+            assert_eq!(t.txn_hash, r.txn_hash);
+
+            Self {
+                txn_hash: t.txn_hash,
+                max_fee: t.max_fee,
+                version: t.version,
+                signature: t.signature,
+                nonce: t.nonce,
+                actual_fee: r.actual_fee,
+                status: r.status,
+                status_data: r.status_data,
+            }
+        }
+    }
+
+    impl From<(Transaction, TransactionReceipt)> for TransactionAndReceipt {
+        fn from(both: (Transaction, TransactionReceipt)) -> Self {
+            let (t, r) = both;
+
+            match (t, r) {
+                (Transaction::Declare(t), TransactionReceipt::DeclareOrDeploy(r)) => {
+                    TransactionAndReceipt::Declare(DeclareTransactionAndReceipt {
+                        common: (t.common, r.common).into(),
+                        class_hash: t.class_hash,
+                        sender_address: t.sender_address,
+                    })
+                }
+                (Transaction::Deploy(t), TransactionReceipt::DeclareOrDeploy(r)) => {
+                    TransactionAndReceipt::Deploy(DeployTransactionAndReceipt {
+                        common: (t.common, r.common).into(),
+                        contract_address: t.contract_address,
+                        contract_address_salt: t.contract_address_salt,
+                        class_hash: t.class_hash,
+                        constructor_calldata: t.constructor_calldata,
+                    })
+                }
+                (Transaction::Invoke(t), TransactionReceipt::Invoke(r)) => {
+                    TransactionAndReceipt::Invoke(InvokeTransactionAndReceipt {
+                        common: (t.common, r.common).into(),
+                        contract_address: t.contract_address,
+                        entry_point_selector: t.entry_point_selector,
+                        calldata: t.calldata,
+                        messages_sent: r.messages_sent,
+                        l1_origin_message: r.l1_origin_message,
+                        events: r.events,
+                    })
+                }
+                _ => panic!("Different transaction and receipt types cannot be mixed."),
+            }
+        }
     }
 
     /// Represents transaction status.

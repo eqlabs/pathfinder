@@ -105,10 +105,9 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             pub requested_scope: Option<BlockResponseScope>,
         }
         let params = params.parse::<NamedArgs>()?;
-        let block = context
+        context
             .get_block_by_hash(params.block_hash, params.requested_scope)
-            .await;
-        block
+            .await
     })?;
     module.register_async_method("starknet_getBlockByNumber", |params, context| async move {
         #[derive(Debug, Deserialize)]
