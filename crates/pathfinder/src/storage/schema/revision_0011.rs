@@ -69,7 +69,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
 
         let parsing_started = std::time::Instant::now();
         let receipt: LightReceipt =
-            serde_json::de::from_slice(&receipt).context("Deserializing transaction receipt")?;
+            serde_json::from_slice(&receipt).context("Deserializing transaction receipt")?;
         parsing_time += parsing_started.elapsed();
 
         receipt.events.into_iter().enumerate().try_for_each(

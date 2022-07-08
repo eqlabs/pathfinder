@@ -221,11 +221,11 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
             let transactions =
                 zstd::decode_all(transactions).context("Decompressing transactions")?;
             let transactions =
-                serde_json::de::from_slice::<Vec<transaction::Transaction>>(&transactions)
+                serde_json::from_slice::<Vec<transaction::Transaction>>(&transactions)
                     .context("Deserializing transactions")?;
 
             let receipts = zstd::decode_all(receipts).context("Decompressing transactions")?;
-            let receipts = serde_json::de::from_slice::<Vec<transaction::Receipt>>(&receipts)
+            let receipts = serde_json::from_slice::<Vec<transaction::Receipt>>(&receipts)
                 .context("Deserializing transaction receipts")?;
 
             anyhow::ensure!(

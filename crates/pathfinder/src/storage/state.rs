@@ -502,8 +502,8 @@ impl StarknetTransactionsTable {
                 .as_blob_or_null()?
                 .context("Receipt data missing")?;
             let receipt = zstd::decode_all(receipt).context("Decompressing transaction receipt")?;
-            let receipt = serde_json::de::from_slice(&receipt)
-                .context("Deserializing transaction receipt")?;
+            let receipt =
+                serde_json::from_slice(&receipt).context("Deserializing transaction receipt")?;
 
             let transaction = row
                 .get_ref_unwrap("tx")
@@ -511,7 +511,7 @@ impl StarknetTransactionsTable {
                 .context("Transaction data missing")?;
             let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
             let transaction =
-                serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
+                serde_json::from_slice(&transaction).context("Deserializing transaction")?;
 
             data.push((transaction, receipt));
         }
@@ -561,7 +561,7 @@ impl StarknetTransactionsTable {
 
         let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction =
-            serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
+            serde_json::from_slice(&transaction).context("Deserializing transaction")?;
 
         Ok(Some(transaction))
     }
@@ -588,7 +588,7 @@ impl StarknetTransactionsTable {
             None => return Ok(None),
         };
         let receipt = zstd::decode_all(receipt).context("Decompressing transaction")?;
-        let receipt = serde_json::de::from_slice(&receipt).context("Deserializing transaction")?;
+        let receipt = serde_json::from_slice(&receipt).context("Deserializing transaction")?;
 
         let block_hash = row.get_ref_unwrap("block_hash").as_blob()?;
         let block_hash =
@@ -622,7 +622,7 @@ impl StarknetTransactionsTable {
 
         let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction =
-            serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
+            serde_json::from_slice(&transaction).context("Deserializing transaction")?;
 
         Ok(Some(transaction))
     }
