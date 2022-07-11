@@ -604,8 +604,6 @@ pub mod reply {
         #[serde(flatten)]
         pub common: CommonTransactionProperties,
 
-        // FIXME: this is a deviation from the OpenRPC spec, which would expect us to
-        // include the full contract definition here
         pub class_hash: ClassHash,
         pub sender_address: ContractAddress,
     }
@@ -907,8 +905,6 @@ pub mod reply {
         #[serde(flatten)]
         pub common: CommonTransactionAndReceiptProperties,
 
-        // FIXME: this is a deviation from the OpenRPC spec, which would expect us to
-        // include the full contract definition here
         pub class_hash: ClassHash,
         pub sender_address: ContractAddress,
     }
