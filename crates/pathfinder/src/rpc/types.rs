@@ -199,11 +199,10 @@ pub mod reply {
     use super::request::BlockResponseScope;
     use crate::{
         core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
-            TransactionVersion,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, EntryPoint, EventData,
+            EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
+            TransactionSignatureElem, TransactionVersion,
         },
         rpc::{
             api::RawBlock,
@@ -627,7 +626,6 @@ pub mod reply {
         pub txn_hash: StarknetTransactionHash,
 
         pub contract_address: ContractAddress,
-        pub contract_address_salt: ContractAddressSalt,
         pub class_hash: ClassHash,
         pub constructor_calldata: Vec<ConstructorParam>,
     }
@@ -686,7 +684,6 @@ pub mod reply {
                     Self::Deploy(DeployTransaction {
                         txn_hash: txn.transaction_hash,
                         contract_address: txn.contract_address,
-                        contract_address_salt: txn.contract_address_salt,
                         class_hash: txn.class_hash,
                         constructor_calldata: txn.constructor_calldata.clone(),
                     })
@@ -952,7 +949,6 @@ pub mod reply {
         pub status_data: Option<String>,
 
         pub contract_address: ContractAddress,
-        pub contract_address_salt: ContractAddressSalt,
         pub class_hash: ClassHash,
         pub constructor_calldata: Vec<ConstructorParam>,
     }
@@ -1038,7 +1034,6 @@ pub mod reply {
                         status: r.common.status,
                         status_data: r.common.status_data,
                         contract_address: t.contract_address,
-                        contract_address_salt: t.contract_address_salt,
                         class_hash: t.class_hash,
                         constructor_calldata: t.constructor_calldata,
                     }))
