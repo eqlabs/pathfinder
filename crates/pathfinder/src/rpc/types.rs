@@ -309,10 +309,10 @@ pub mod reply {
         }
 
         /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
-        pub fn from_sequencer_scoped(
+        pub fn try_from_sequencer_scoped(
             block: sequencer::reply::MaybePendingBlock,
             scope: BlockResponseScope,
-        ) -> Self {
+        ) -> Result<Self, TransactionAndReceiptMismatchError> {
             let transactions = match scope {
                 BlockResponseScope::TransactionHashes => {
                     let hashes = block.transactions().iter().map(|t| t.hash()).collect();
@@ -324,7 +324,7 @@ pub mod reply {
                     Transactions::Full(transactions)
                 }
                 BlockResponseScope::FullTransactionsAndReceipts => {
-                    let with_receipts = block
+                    block
                         .transactions()
                         .iter()
                         .zip(block.receipts().iter())
@@ -335,17 +335,17 @@ pub mod reply {
                                 t,
                             );
                             let txn: Transaction = t.into();
-
-                            (txn, receipt).into()
+                            let result: Result<TransactionAndReceipt, TransactionAndReceiptMismatchError>  = (txn, receipt).try_into();
+                            result
                         })
-                        .collect();
-                    Transactions::FullWithReceipts(with_receipts)
+                        .collect::<Result<Vec<TransactionAndReceipt>, TransactionAndReceiptMismatchError>>()
+                        .map(Transactions::FullWithReceipts)?
                 }
             };
 
             use sequencer::reply::MaybePendingBlock;
             match block {
-                MaybePendingBlock::Block(block) => Self {
+                MaybePendingBlock::Block(block) => Ok(Self {
                     block_hash: Some(block.block_hash),
                     parent_hash: block.parent_block_hash,
                     block_number: Some(block.block_number),
@@ -362,8 +362,8 @@ pub mod reply {
                         // Default value for cairo <0.8.2 is 0
                         .unwrap_or(GasPrice::ZERO),
                     transactions,
-                },
-                MaybePendingBlock::Pending(pending) => Self {
+                }),
+                MaybePendingBlock::Pending(pending) => Ok(Self {
                     block_hash: None,
                     parent_hash: pending.parent_hash,
                     block_number: None,
@@ -374,7 +374,7 @@ pub mod reply {
                     accepted_time: pending.timestamp,
                     gas_price: pending.gas_price,
                     transactions,
-                },
+                }),
             }
         }
     }
@@ -1008,29 +1008,35 @@ pub mod reply {
         }
     }
 
-    impl From<(Transaction, TransactionReceipt)> for TransactionAndReceipt {
-        fn from(both: (Transaction, TransactionReceipt)) -> Self {
+    #[derive(Debug, thiserror::Error)]
+    #[error("transaction type does not match transaction receipt type")]
+    pub struct TransactionAndReceiptMismatchError;
+
+    impl TryFrom<(Transaction, TransactionReceipt)> for TransactionAndReceipt {
+        type Error = TransactionAndReceiptMismatchError;
+
+        fn try_from(both: (Transaction, TransactionReceipt)) -> Result<Self, Self::Error> {
             let (t, r) = both;
 
             match (t, r) {
-                (Transaction::Declare(t), TransactionReceipt::DeclareOrDeploy(r)) => {
+                (Transaction::Declare(t), TransactionReceipt::DeclareOrDeploy(r)) => Ok(
                     TransactionAndReceipt::Declare(DeclareTransactionAndReceipt {
                         common: (t.common, r.common).into(),
                         class_hash: t.class_hash,
                         sender_address: t.sender_address,
-                    })
-                }
+                    }),
+                ),
                 (Transaction::Deploy(t), TransactionReceipt::DeclareOrDeploy(r)) => {
-                    TransactionAndReceipt::Deploy(DeployTransactionAndReceipt {
+                    Ok(TransactionAndReceipt::Deploy(DeployTransactionAndReceipt {
                         common: (t.common, r.common).into(),
                         contract_address: t.contract_address,
                         contract_address_salt: t.contract_address_salt,
                         class_hash: t.class_hash,
                         constructor_calldata: t.constructor_calldata,
-                    })
+                    }))
                 }
                 (Transaction::Invoke(t), TransactionReceipt::Invoke(r)) => {
-                    TransactionAndReceipt::Invoke(InvokeTransactionAndReceipt {
+                    Ok(TransactionAndReceipt::Invoke(InvokeTransactionAndReceipt {
                         common: (t.common, r.common).into(),
                         contract_address: t.contract_address,
                         entry_point_selector: t.entry_point_selector,
@@ -1038,9 +1044,9 @@ pub mod reply {
                         messages_sent: r.messages_sent,
                         l1_origin_message: r.l1_origin_message,
                         events: r.events,
-                    })
+                    }))
                 }
-                _ => panic!("Different transaction and receipt types cannot be mixed."),
+                _ => Err(TransactionAndReceiptMismatchError),
             }
         }
     }
