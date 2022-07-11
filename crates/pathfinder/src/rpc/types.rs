@@ -577,7 +577,7 @@ pub mod reply {
             match self {
                 Transaction::Declare(declare) => declare.common.txn_hash,
                 Transaction::Invoke(invoke) => invoke.common.txn_hash,
-                Transaction::Deploy(deploy) => deploy.common.txn_hash,
+                Transaction::Deploy(deploy) => deploy.txn_hash,
             }
         }
     }
@@ -626,8 +626,7 @@ pub mod reply {
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeployTransaction {
-        #[serde(flatten)]
-        pub common: CommonTransactionProperties,
+        pub txn_hash: StarknetTransactionHash,
 
         pub contract_address: ContractAddress,
         pub contract_address_salt: ContractAddressSalt,
@@ -687,13 +686,7 @@ pub mod reply {
                 }
                 sequencer::reply::transaction::Transaction::Deploy(txn) => {
                     Self::Deploy(DeployTransaction {
-                        common: CommonTransactionProperties {
-                            txn_hash: txn.transaction_hash,
-                            max_fee: Fee(Default::default()),
-                            version: TransactionVersion(Default::default()),
-                            signature: Default::default(),
-                            nonce: TransactionNonce(Default::default()),
-                        },
+                        txn_hash: txn.transaction_hash,
                         contract_address: txn.contract_address,
                         contract_address_salt: txn.contract_address_salt,
                         class_hash: txn.class_hash,
@@ -902,7 +895,7 @@ pub mod reply {
             match self {
                 TransactionAndReceipt::Declare(declare) => declare.common.txn_hash,
                 TransactionAndReceipt::Invoke(invoke) => invoke.common.txn_hash,
-                TransactionAndReceipt::Deploy(deploy) => deploy.common.txn_hash,
+                TransactionAndReceipt::Deploy(deploy) => deploy.txn_hash,
             }
         }
     }
@@ -943,8 +936,24 @@ pub mod reply {
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeployTransactionAndReceipt {
-        #[serde(flatten)]
-        pub common: CommonTransactionAndReceiptProperties,
+        // We cannot use [CommonTransactionAndReceiptProperties] here because
+        // DeployTransaction doesn't have all common properties.
+        // Transaction
+        pub txn_hash: StarknetTransactionHash,
+
+        // Receipt
+        // FIXME: update this once we know the deploy receipt type
+        #[serde_as(as = "FeeAsHexStr")]
+        pub actual_fee: Fee,
+        pub status: TransactionStatus,
+        // Important!
+        // #[skip_serializing_none] does not work with #[serde(flatten)]
+        #[serde(
+            default,
+            rename = "statusData",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub status_data: Option<String>,
 
         pub contract_address: ContractAddress,
         pub contract_address_salt: ContractAddressSalt,
@@ -1028,7 +1037,10 @@ pub mod reply {
                 ),
                 (Transaction::Deploy(t), TransactionReceipt::DeclareOrDeploy(r)) => {
                     Ok(TransactionAndReceipt::Deploy(DeployTransactionAndReceipt {
-                        common: (t.common, r.common).into(),
+                        txn_hash: t.txn_hash,
+                        actual_fee: r.common.actual_fee,
+                        status: r.common.status,
+                        status_data: r.common.status_data,
                         contract_address: t.contract_address,
                         contract_address_salt: t.contract_address_salt,
                         class_hash: t.class_hash,
