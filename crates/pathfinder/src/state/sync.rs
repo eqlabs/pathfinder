@@ -44,7 +44,30 @@ impl Default for State {
     }
 }
 
+pub struct PendingData {
+    inner: RwLock<Option<(Box<PendingBlock>, Box<sequencer::reply::StateUpdate>)>>,
+}
+
+impl PendingData {
+    pub async fn set(
+        &self,
+        value: Option<(Box<PendingBlock>, Box<sequencer::reply::StateUpdate>)>,
+    ) {
+        let mut inner = self.inner.write().await;
+        *inner = value;
+    }
+}
+
+impl Default for PendingData {
+    fn default() -> Self {
+        Self {
+            inner: RwLock::new(None),
+        }
+    }
+}
+
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
+#[allow(clippy::too_many_arguments)]
 pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
     transport: Transport,
@@ -53,7 +76,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     state: Arc<State>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
-    pending_data: Arc<RwLock<Option<(Box<PendingBlock>, Box<sequencer::reply::StateUpdate>)>>>,
+    pending_data: Arc<PendingData>,
     pending_poll_interval: Option<std::time::Duration>,
 ) -> anyhow::Result<()>
 where
@@ -198,10 +221,7 @@ where
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update(block, diff, timings)) => {
-                    {
-                        let mut pending_data = pending_data.write().await;
-                        *pending_data = None;
-                    }
+                    pending_data.set(None).await;
 
                     let block_number = block.block_number.0;
                     let block_hash = block.block_hash;
@@ -261,10 +281,7 @@ where
                     }
                 }
                 Some(l2::Event::Reorg(reorg_tail)) => {
-                    {
-                        let mut pending_data = pending_data.write().await;
-                        *pending_data = None;
-                    }
+                    pending_data.set(None).await;
 
                     l2_reorg(&mut db_conn, reorg_tail)
                         .await
@@ -337,11 +354,7 @@ where
                     }
 
                     // TODO: apply state_update and verify state_update.new_root
-
-                    {
-                        let mut pending_data = pending_data.write().await;
-                        *pending_data = Some((block, state_update));
-                    }
+                    pending_data.set(Some((block, state_update))).await;
 
                     tracing::info!("Updated pending block");
                 }
@@ -701,7 +714,7 @@ mod tests {
             reply,
             request::{self, add_transaction::ContractDefinition},
         },
-        state,
+        state::{self, sync::PendingData},
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
     use futures::stream::{StreamExt, TryStreamExt};
@@ -1010,7 +1023,7 @@ mod tests {
                 sync_state.clone(),
                 l1,
                 l2_noop,
-                Arc::new(tokio::sync::RwLock::new(None)),
+                Arc::new(PendingData::default()),
                 None,
             ));
 
@@ -1080,7 +1093,7 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1,
                 l2_noop,
-                Arc::new(tokio::sync::RwLock::new(None)),
+                Arc::new(PendingData::default()),
                 None,
             ));
 
@@ -1146,7 +1159,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
-            Arc::new(tokio::sync::RwLock::new(None)),
+            Arc::new(PendingData::default()),
             None,
         ));
 
@@ -1181,7 +1194,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
-            Arc::new(tokio::sync::RwLock::new(None)),
+            Arc::new(PendingData::default()),
             None,
         ));
 
@@ -1255,7 +1268,7 @@ mod tests {
                 sync_state.clone(),
                 l1_noop,
                 l2,
-                Arc::new(tokio::sync::RwLock::new(None)),
+                Arc::new(PendingData::default()),
                 None,
             ));
 
@@ -1320,7 +1333,7 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1_noop,
                 l2,
-                Arc::new(tokio::sync::RwLock::new(None)),
+                Arc::new(PendingData::default()),
                 None,
             ));
 
@@ -1380,7 +1393,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
-            Arc::new(tokio::sync::RwLock::new(None)),
+            Arc::new(PendingData::default()),
             None,
         ));
 
@@ -1426,7 +1439,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
-            Arc::new(tokio::sync::RwLock::new(None)),
+            Arc::new(PendingData::default()),
             None,
         ));
     }
@@ -1473,7 +1486,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
-            Arc::new(tokio::sync::RwLock::new(None)),
+            Arc::new(PendingData::default()),
             None,
         ));
     }
@@ -1501,7 +1514,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
-            Arc::new(tokio::sync::RwLock::new(None)),
+            Arc::new(PendingData::default()),
             None,
         ));
 

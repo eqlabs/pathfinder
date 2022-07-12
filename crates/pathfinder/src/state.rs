@@ -17,7 +17,7 @@ pub(crate) mod state_tree;
 mod sync;
 
 pub use class_hash::compute_class_hash;
-pub use sync::{l1, l2, sync, State as SyncState};
+pub use sync::{l1, l2, sync, PendingData, State as SyncState};
 
 #[derive(Clone, PartialEq)]
 pub struct CompressedContract {
@@ -462,7 +462,6 @@ mod tests {
     #[ignore = "this is manual testing only, but we should really use the binary for this"]
     async fn go_sync() {
         use std::sync::Arc;
-        use tokio::sync::RwLock;
 
         let storage = crate::storage::Storage::migrate(
             std::path::PathBuf::from("testing.sqlite"),
@@ -482,7 +481,7 @@ mod tests {
             state,
             sync::l1::sync,
             sync::l2::sync,
-            Arc::new(RwLock::new(None)),
+            Arc::new(sync::PendingData::default()),
             None,
         )
         .await

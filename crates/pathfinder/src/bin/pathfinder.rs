@@ -8,7 +8,6 @@ use pathfinder_lib::{
     storage::{JournalMode, Storage},
 };
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tracing::info;
 
 #[tokio::main]
@@ -73,7 +72,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         None => sequencer::Client::new(ethereum_chain).unwrap(),
     };
     let sync_state = Arc::new(state::SyncState::default());
-    let pending_state = Arc::new(RwLock::new(None));
+    let pending_state = Arc::new(state::PendingData::default());
     let pending_interval = match config.poll_pending {
         true => Some(std::time::Duration::from_secs(5)),
         false => None,
