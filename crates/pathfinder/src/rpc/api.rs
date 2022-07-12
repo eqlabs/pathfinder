@@ -1055,7 +1055,7 @@ impl RpcApi {
 
         let jh = tokio::task::spawn_blocking(move || {
             let _g = span.enter();
-            let connection = storage
+            let mut connection = storage
                 .connection()
                 .context("Opening database connection")
                 .map_err(internal_server_error)?;
@@ -1064,7 +1064,11 @@ impl RpcApi {
             // We don't add context here, because [StarknetEventsTable::get_events] adds its
             // own context to the errors. This way we get meaningful error information
             // for errors related to query parameters.
-            let page = StarknetEventsTable::get_events(&connection, &filter).map_err(|e| {
+            let tx = connection
+                .transaction()
+                .context("Opening database transaction")
+                .map_err(internal_server_error)?;
+            let page = StarknetEventsTable::get_events(&tx, &filter).map_err(|e| {
                 if let Some(e) = e.downcast_ref::<EventFilterError>() {
                     Error::from(*e)
                 } else {

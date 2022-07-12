@@ -27,19 +27,24 @@ fn main() -> anyhow::Result<()> {
 
     let database_path = std::env::args().nth(2).unwrap();
     let storage = Storage::migrate(database_path.into(), JournalMode::WAL)?;
-    let db = storage
+    let mut db = storage
         .connection()
         .context("Opening database connection")?;
 
     let mut parent_block_hash = StarknetBlockHash(StarkHash::ZERO);
 
-    let latest_block_number = StarknetBlocksTable::get_latest_number(&db)?.unwrap();
+    let latest_block_number = {
+        let tx = db.transaction().unwrap();
+        StarknetBlocksTable::get_latest_number(&tx)?.unwrap()
+    };
 
     for block_number in 0..latest_block_number.0 {
+        let tx = db.transaction().unwrap();
         let block_id = StarknetBlocksBlockId::Number(StarknetBlockNumber(block_number));
-        let block = StarknetBlocksTable::get(&db, block_id)?.unwrap();
+        let block = StarknetBlocksTable::get(&tx, block_id)?.unwrap();
         let transactions_and_receipts =
-            StarknetTransactionsTable::get_transaction_data_for_block(&db, block_id)?;
+            StarknetTransactionsTable::get_transaction_data_for_block(&tx, block_id)?;
+        drop(tx);
 
         let block_hash = block.hash;
         let (transactions, receipts): (Vec<_>, Vec<_>) =

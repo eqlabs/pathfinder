@@ -77,9 +77,10 @@ where
     let (tx_l2, mut rx_l2) = mpsc::channel(1);
 
     let (l1_head, l2_head) = tokio::task::block_in_place(|| -> anyhow::Result<_> {
-        let l1_head = L1StateTable::get(&db_conn, L1TableBlockId::Latest)
+        let tx = db_conn.transaction()?;
+        let l1_head = L1StateTable::get(&tx, L1TableBlockId::Latest)
             .context("Query L1 head from database")?;
-        let l2_head = StarknetBlocksTable::get(&db_conn, StarknetBlocksBlockId::Latest)
+        let l2_head = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
             .context("Query L2 head from database")?
             .map(|block| (block.number, block.hash));
         Ok((l1_head, l2_head))
@@ -153,8 +154,11 @@ where
                 }
                 Some(l1::Event::QueryUpdate(block, tx)) => {
                     let update =
-                        tokio::task::block_in_place(|| L1StateTable::get(&db_conn, block.into()))
-                            .with_context(|| format!("Query L1 state table for block {:?}", block))?;
+                        tokio::task::block_in_place(|| {
+                            let tx = db_conn.transaction()?;
+                            L1StateTable::get(&tx, block.into())
+                        })
+                        .with_context(|| format!("Query L1 state table for block {:?}", block))?;
 
                     let _ = tx.send(update);
 
@@ -171,7 +175,8 @@ where
                         }
                     }
                     let l1_head = tokio::task::block_in_place(|| {
-                        L1StateTable::get(&db_conn, L1TableBlockId::Latest)
+                        let tx = db_conn.transaction()?;
+                        L1StateTable::get(&tx, L1TableBlockId::Latest)
                     })
                     .context("Query L1 head from database")?;
 
@@ -269,7 +274,8 @@ where
                 }
                 Some(l2::Event::QueryHash(block, tx)) => {
                     let hash = tokio::task::block_in_place(|| {
-                        StarknetBlocksTable::get(&db_conn, block.into())
+                        let tx = db_conn.transaction()?;
+                        StarknetBlocksTable::get(&tx, block.into())
                     })
                     .with_context(|| format!("Query L2 block hash for block {:?}", block))?
                     .map(|block| block.hash);
@@ -279,10 +285,13 @@ where
                 }
                 Some(l2::Event::QueryContractExistance(contracts, tx)) => {
                     let exists =
-                        tokio::task::block_in_place(|| ContractCodeTable::exists(&db_conn, &contracts))
-                            .with_context(|| {
-                                format!("Query storage for existance of contracts {:?}", contracts)
-                            })?;
+                        tokio::task::block_in_place(|| {
+                            let tx = db_conn.transaction()?;
+                            ContractCodeTable::exists(&tx, &contracts)
+                        })
+                        .with_context(|| {
+                            format!("Query storage for existance of contracts {:?}", contracts)
+                        })?;
                     let count = exists.iter().filter(|b| **b).count();
 
                     // Fixme: This stat tracking is now incorrect, as these are shared by deploy and declare.
@@ -305,7 +314,8 @@ where
                     }
 
                     let l2_head = tokio::task::block_in_place(|| {
-                        StarknetBlocksTable::get(&db_conn, StarknetBlocksBlockId::Latest)
+                        let tx = db_conn.transaction()?;
+                        StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
                     })
                     .context("Query L2 head from database")?
                     .map(|block| (block.number, block.hash));
@@ -929,13 +939,16 @@ mod tests {
         .into_iter()
         .map(|blocks| async {
             let storage = Storage::in_memory().unwrap();
-            let connection = storage.connection().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
 
-            if let Some(some_blocks) = blocks {
-                some_blocks
-                    .iter()
-                    .for_each(|block| StarknetBlocksTable::insert(&connection, block).unwrap());
-            }
+            blocks
+                .iter()
+                .flatten()
+                .for_each(|block| StarknetBlocksTable::insert(&tx, block).unwrap());
+
+            tx.commit().unwrap();
+            drop(blocks);
 
             // UUT
             let _jh = tokio::spawn(state::sync(
@@ -951,7 +964,8 @@ mod tests {
             // TODO Find a better way to figure out that the DB update has already been performed
             tokio::time::sleep(Duration::from_millis(300)).await;
 
-            RefsTable::get_l1_l2_head(&connection)
+            let tx = connection.transaction().unwrap();
+            RefsTable::get_l1_l2_head(&tx)
         })
         .collect::<futures::stream::FuturesOrdered<_>>()
         .try_collect::<Vec<_>>()
@@ -985,7 +999,8 @@ mod tests {
         .into_iter()
         .map(|(updates, reorg_on_block)| async move {
             let storage = Storage::in_memory().unwrap();
-            let connection = storage.connection().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
 
             // A simple L1 sync task
             let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
@@ -996,11 +1011,12 @@ mod tests {
                 Ok(())
             };
 
-            RefsTable::set_l1_l2_head(&connection, Some(StarknetBlockNumber(reorg_on_block)))
-                .unwrap();
+            RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(reorg_on_block))).unwrap();
             updates
                 .into_iter()
-                .for_each(|update| L1StateTable::upsert(&connection, &update).unwrap());
+                .for_each(|update| L1StateTable::upsert(&tx, &update).unwrap());
+
+            tx.commit().unwrap();
 
             // UUT
             let _jh = tokio::spawn(state::sync(
@@ -1016,11 +1032,12 @@ mod tests {
             // TODO Find a better way to figure out that the DB update has already been performed
             tokio::time::sleep(Duration::from_millis(10)).await;
 
-            let latest_block_number =
-                L1StateTable::get(&connection, storage::L1TableBlockId::Latest)
-                    .unwrap()
-                    .map(|s| s.block_number);
-            let head = RefsTable::get_l1_l2_head(&connection).unwrap();
+            let tx = connection.transaction().unwrap();
+
+            let latest_block_number = L1StateTable::get(&tx, storage::L1TableBlockId::Latest)
+                .unwrap()
+                .map(|s| s.block_number);
+            let head = RefsTable::get_l1_l2_head(&tx).unwrap();
             (head, latest_block_number)
         })
         .collect::<futures::stream::FuturesOrdered<_>>()
@@ -1041,10 +1058,13 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_query_update() {
         let storage = Storage::in_memory().unwrap();
-        let connection = storage.connection().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
 
         // This is what we're asking for
-        L1StateTable::upsert(&connection, &*STATE_UPDATE_LOG0).unwrap();
+        L1StateTable::upsert(&tx, &*STATE_UPDATE_LOG0).unwrap();
+
+        tx.commit().unwrap();
 
         // A simple L1 sync task which does the request and checks he result
         let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
@@ -1158,11 +1178,14 @@ mod tests {
         .into_iter()
         .map(|update_log| async {
             let storage = Storage::in_memory().unwrap();
-            let connection = storage.connection().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
 
             if let Some(some_update_log) = update_log {
-                L1StateTable::upsert(&connection, &some_update_log).unwrap();
+                L1StateTable::upsert(&tx, &some_update_log).unwrap();
             }
+
+            tx.commit().unwrap();
 
             // UUT
             let _jh = tokio::spawn(state::sync(
@@ -1178,7 +1201,8 @@ mod tests {
             // TODO Find a better way to figure out that the DB update has already been performed
             tokio::time::sleep(Duration::from_millis(100)).await;
 
-            RefsTable::get_l1_l2_head(&connection)
+            let tx = connection.transaction().unwrap();
+            RefsTable::get_l1_l2_head(&tx)
         })
         .collect::<futures::stream::FuturesOrdered<_>>()
         .try_collect::<Vec<_>>()
@@ -1207,7 +1231,8 @@ mod tests {
         .into_iter()
         .map(|(updates, reorg_on_block)| async move {
             let storage = Storage::in_memory().unwrap();
-            let connection = storage.connection().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
 
             // A simple L2 sync task
             let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
@@ -1218,11 +1243,12 @@ mod tests {
                 Ok(())
             };
 
-            RefsTable::set_l1_l2_head(&connection, Some(StarknetBlockNumber(reorg_on_block)))
-                .unwrap();
+            RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(reorg_on_block))).unwrap();
             updates
                 .into_iter()
-                .for_each(|block| StarknetBlocksTable::insert(&connection, &block).unwrap());
+                .for_each(|block| StarknetBlocksTable::insert(&tx, &block).unwrap());
+
+            tx.commit().unwrap();
 
             // UUT
             let _jh = tokio::spawn(state::sync(
@@ -1238,11 +1264,12 @@ mod tests {
             // TODO Find a better way to figure out that the DB update has already been performed
             tokio::time::sleep(Duration::from_millis(100)).await;
 
+            let tx = connection.transaction().unwrap();
             let latest_block_number =
-                StarknetBlocksTable::get(&connection, storage::StarknetBlocksBlockId::Latest)
+                StarknetBlocksTable::get(&tx, storage::StarknetBlocksBlockId::Latest)
                     .unwrap()
                     .map(|s| s.number);
-            let head = RefsTable::get_l1_l2_head(&connection).unwrap();
+            let head = RefsTable::get_l1_l2_head(&tx).unwrap();
             (head, latest_block_number)
         })
         .collect::<futures::stream::FuturesOrdered<_>>()
@@ -1304,10 +1331,11 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_query_hash() {
         let storage = Storage::in_memory().unwrap();
-        let connection = storage.connection().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
 
         // This is what we're asking for
-        StarknetBlocksTable::insert(&connection, &STORAGE_BLOCK0).unwrap();
+        StarknetBlocksTable::insert(&tx, &STORAGE_BLOCK0).unwrap();
 
         // A simple L2 sync task which does the request and checks he result
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {

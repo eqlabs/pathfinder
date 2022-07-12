@@ -1,31 +1,30 @@
 use crate::storage::StarknetEmittedEvent;
-use rusqlite::Connection;
+use rusqlite::Transaction;
 
 pub const NUM_BLOCKS: usize = 4;
 pub const TXNS_PER_BLOCK: usize = 10;
 pub const NUM_TXNS: usize = NUM_BLOCKS * TXNS_PER_BLOCK;
 
-pub fn setup_events(connection: &Connection) -> Vec<StarknetEmittedEvent> {
+pub fn setup_events(tx: &Transaction<'_>) -> Vec<StarknetEmittedEvent> {
     let blocks = crate::storage::test_utils::create_blocks::<NUM_BLOCKS>();
     let transactions_and_receipts =
         crate::storage::test_utils::create_transactions_and_receipts::<NUM_TXNS>();
 
     for (i, block) in blocks.iter().enumerate() {
-        connection
-            .execute(
-                r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp)
-                                               VALUES (:number, :hash, :root, :timestamp)",
-                rusqlite::named_params! {
-                    ":number": block.number.0,
-                    ":hash": block.hash.0.as_be_bytes(),
-                    ":root": block.root.0.as_be_bytes(),
-                    ":timestamp": block.timestamp.0,
-                },
-            )
-            .unwrap();
+        tx.execute(
+            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp)
+                                   VALUES (:number, :hash, :root, :timestamp)",
+            rusqlite::named_params! {
+                ":number": block.number.0,
+                ":hash": block.hash.0.as_be_bytes(),
+                ":root": block.root.0.as_be_bytes(),
+                ":timestamp": block.timestamp.0,
+            },
+        )
+        .unwrap();
 
         crate::storage::StarknetTransactionsTable::upsert(
-            connection,
+            tx,
             block.hash,
             block.number,
             &transactions_and_receipts[i * TXNS_PER_BLOCK..(i + 1) * TXNS_PER_BLOCK],
