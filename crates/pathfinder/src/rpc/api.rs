@@ -132,7 +132,8 @@ impl RpcApi {
             let block = Self::get_raw_block_by_hash(&transaction, block_id)?;
             let scope = requested_scope.unwrap_or_default();
 
-            let transactions = Self::get_block_transactions(&transaction, block.number, scope)?;
+            let transactions =
+                Self::get_block_transactions(&transaction, block.number, block.status, scope)?;
 
             Ok(Block::from_raw(block, transactions))
         })
@@ -163,14 +164,13 @@ impl RpcApi {
     fn get_block_transactions(
         db_tx: &rusqlite::Transaction<'_>,
         block_number: StarknetBlockNumber,
+        block_status: BlockStatus,
         scope: BlockResponseScope,
     ) -> RpcResult<super::types::reply::Transactions> {
         let transactions_receipts =
             StarknetTransactionsTable::get_transaction_data_for_block(db_tx, block_number.into())
                 .context("Reading transactions from database")
                 .map_err(internal_server_error)?;
-
-        let block_status = Self::get_block_status(db_tx, block_number)?;
 
         use super::types::reply;
         let transactions = match scope {
@@ -258,7 +258,8 @@ impl RpcApi {
             let block = Self::get_raw_block_by_number(&transaction, block_id)?;
             let scope = requested_scope.unwrap_or_default();
 
-            let transactions = Self::get_block_transactions(&transaction, block.number, scope)?;
+            let transactions =
+                Self::get_block_transactions(&transaction, block.number, block.status, scope)?;
 
             Ok(Block::from_raw(block, transactions))
         })
