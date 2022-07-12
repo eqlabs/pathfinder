@@ -192,7 +192,7 @@ impl RpcApi {
                         .into_iter()
                         .map(|(t, r)| {
                             let t: Transaction = t.into();
-                            let r = TransactionReceipt::with_status(r, block_status);
+                            let r = TransactionReceipt::with_block_status(r, block_status);
 
                             reply::TransactionAndReceipt {
                                 txn_hash: t.txn_hash,
@@ -665,7 +665,7 @@ impl RpcApi {
 
                     let block_status = Self::get_block_status(&db_tx, block.number)?;
 
-                    Ok(TransactionReceipt::with_status(receipt, block_status))
+                    Ok(TransactionReceipt::with_block_status(receipt, block_status))
                 }
                 None => Err(ErrorCode::InvalidTransactionHash.into()),
             }

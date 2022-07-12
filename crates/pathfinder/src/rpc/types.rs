@@ -384,8 +384,10 @@ pub mod reply {
                         .zip(block.receipts().iter())
                         .map(|(t, r)| {
                             let t: Transaction = t.into();
-                            let r =
-                                TransactionReceipt::with_status(r.clone(), block.status().into());
+                            let r = TransactionReceipt::with_block_status(
+                                r.clone(),
+                                block.status().into(),
+                            );
 
                             TransactionAndReceipt {
                                 txn_hash: t.txn_hash,
@@ -698,7 +700,7 @@ pub mod reply {
     }
 
     impl TransactionReceipt {
-        pub fn with_status(
+        pub fn with_block_status(
             receipt: sequencer::reply::transaction::Receipt,
             status: BlockStatus,
         ) -> Self {
