@@ -1541,6 +1541,21 @@ mod tests {
             )]);
             client.state_update(BlockId::Pending).await.unwrap();
         }
+
+        #[tokio::test]
+        async fn by_number_with_declared_contracts_in_0_9_1() {
+            let (_jh, client) = setup([(
+                "/feeder_gateway/get_state_update?blockNumber=193137",
+                response!("integration/state_update/193137.json"),
+            )]);
+
+            let parsed = client
+                .state_update(StarknetBlockNumber(193137).into())
+                .await
+                .expect("should had parsed with the optional declared contracts");
+
+            assert_ne!(parsed.state_diff.declared_contracts, &[]);
+        }
     }
 
     #[tokio::test]
