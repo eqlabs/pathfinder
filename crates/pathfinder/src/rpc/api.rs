@@ -143,7 +143,7 @@ impl RpcApi {
     }
 
     /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
-    pub fn get_block_transactions(
+    fn get_block_transactions(
         db_tx: &rusqlite::Transaction<'_>,
         block_number: StarknetBlockNumber,
         scope: BlockResponseScope,
