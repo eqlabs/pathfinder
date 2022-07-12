@@ -11,11 +11,11 @@ use crate::{
         StarknetTransactionHash, StarknetTransactionIndex, TransactionVersion,
     },
     rpc::{
-        api::RpcApi,
+        api::{BlockResponseScope, RpcApi},
         serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
         types::{
             request::OverflowingStorageAddress,
-            request::{BlockResponseScope, Call, ContractCall, EventFilter},
+            request::{Call, ContractCall, EventFilter},
             BlockHashOrTag, BlockNumberOrTag,
         },
     },
@@ -97,30 +97,58 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         })?;
     let local_addr = server.local_addr()?;
     let mut module = RpcModuleWrapper(RpcModule::new(api));
-    module.register_async_method("starknet_getBlockByHash", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub block_hash: BlockHashOrTag,
-            #[serde(default)]
-            pub requested_scope: Option<BlockResponseScope>,
-        }
-        let params = params.parse::<NamedArgs>()?;
-        context
-            .get_block_by_hash(params.block_hash, params.requested_scope)
-            .await
-    })?;
-    module.register_async_method("starknet_getBlockByNumber", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub block_number: BlockNumberOrTag,
-            #[serde(default)]
-            pub requested_scope: Option<BlockResponseScope>,
-        }
-        let params = params.parse::<NamedArgs>()?;
-        context
-            .get_block_by_number(params.block_number, params.requested_scope)
-            .await
-    })?;
+    module.register_async_method(
+        "starknet_getBlockWithTxHashesByHash",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub block_hash: BlockHashOrTag,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .get_block_by_hash(params.block_hash, BlockResponseScope::TransactionHashes)
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_getBlockWithTxsByHash",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub block_hash: BlockHashOrTag,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .get_block_by_hash(params.block_hash, BlockResponseScope::FullTransactions)
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_getBlockWithTxHashesByNumber",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub block_number: BlockNumberOrTag,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .get_block_by_number(params.block_number, BlockResponseScope::TransactionHashes)
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_getBlockWithTxsByNumber",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            pub struct NamedArgs {
+                pub block_number: BlockNumberOrTag,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .get_block_by_number(params.block_number, BlockResponseScope::FullTransactions)
+                .await
+        },
+    )?;
     // module.register_async_method(
     //     "starknet_getStateUpdateByHash",
     //     |params, context| async move {
@@ -629,7 +657,6 @@ mod tests {
         use crate::core::{StarknetBlockHash, StarknetBlockNumber};
         use crate::rpc::types::{
             reply::{Block, Transactions},
-            request::BlockResponseScope,
             BlockHashOrTag, Tag,
         };
         use pretty_assertions::assert_eq;
@@ -645,7 +672,7 @@ mod tests {
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
             let params = rpc_params!(genesis_hash);
             let block = client(addr)
-                .request::<Block>("starknet_getBlockByHash", params)
+                .request::<Block>("starknet_getBlockWithTxHashesByHash", params)
                 .await
                 .unwrap();
             assert_eq!(block.block_hash, Some(genesis_hash));
@@ -672,12 +699,9 @@ mod tests {
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
-                    let params = rpc_params!(
-                        BlockHashOrTag::Tag(Tag::Latest),
-                        BlockResponseScope::FullTransactions
-                    );
+                    let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
                     let block = client(addr)
-                        .request::<Block>("starknet_getBlockByHash", params)
+                        .request::<Block>("starknet_getBlockWithTxsByHash", params)
                         .await
                         .unwrap();
                     assert_eq!(block.block_hash, Some(latest_hash));
@@ -685,28 +709,6 @@ mod tests {
                     assert_matches!(
                         block.transactions,
                         Transactions::Full(t) => assert_eq!(t.len(), 3)
-                    );
-                }
-
-                #[tokio::test]
-                async fn only_mandatory() {
-                    let storage = setup_storage();
-                    let sequencer = Client::new(Chain::Goerli).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                    let latest_hash =
-                        StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
-                    let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
-                    let block = client(addr)
-                        .request::<Block>("starknet_getBlockByHash", params)
-                        .await
-                        .unwrap();
-                    assert_eq!(block.block_hash, Some(latest_hash));
-                    assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
-                    assert_matches!(
-                        block.transactions,
-                        Transactions::HashesOnly(t) => assert_eq!(t.len(), 3)
                     );
                 }
             }
@@ -725,41 +727,16 @@ mod tests {
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
-                    let params = by_name([
-                        ("block_hash", json!("latest")),
-                        ("requested_scope", json!("FULL_TXN_AND_RECEIPTS")),
-                    ]);
-                    let block = client(addr)
-                        .request::<Block>("starknet_getBlockByHash", params)
-                        .await
-                        .unwrap();
-                    assert_eq!(block.block_hash, Some(latest_hash));
-                    assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
-                    assert_matches!(
-                        block.transactions,
-                        Transactions::FullWithReceipts(t) => assert_eq!(t.len(), 3)
-                    );
-                }
-
-                #[tokio::test]
-                async fn only_mandatory() {
-                    let storage = setup_storage();
-                    let sequencer = Client::new(Chain::Goerli).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                    let latest_hash =
-                        StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = by_name([("block_hash", json!("latest"))]);
                     let block = client(addr)
-                        .request::<Block>("starknet_getBlockByHash", params)
+                        .request::<Block>("starknet_getBlockWithTxsByHash", params)
                         .await
                         .unwrap();
                     assert_eq!(block.block_hash, Some(latest_hash));
                     assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
                     assert_matches!(
                         block.transactions,
-                        Transactions::HashesOnly(t) => assert_eq!(t.len(), 3)
+                        Transactions::Full(t) => assert_eq!(t.len(), 3)
                     );
                 }
             }
@@ -772,12 +749,9 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(
-                BlockHashOrTag::Tag(Tag::Pending),
-                BlockResponseScope::FullTransactions
-            );
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
             let block = client(addr)
-                .request::<Block>("starknet_getBlockByHash", params)
+                .request::<Block>("starknet_getBlockWithTxsByHash", params)
                 .await
                 .unwrap();
             assert_matches!(
@@ -795,7 +769,7 @@ mod tests {
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO));
             let error = client(addr)
-                .request::<Block>("starknet_getBlockByHash", params)
+                .request::<Block>("starknet_getBlockWithTxsByHash", params)
                 .await
                 .unwrap_err();
             assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidBlockHash, error);
@@ -806,7 +780,6 @@ mod tests {
         use super::*;
         use crate::rpc::types::{
             reply::{Block, Transactions},
-            request::BlockResponseScope,
             BlockNumberOrTag, Tag,
         };
         use pretty_assertions::assert_eq;
@@ -820,7 +793,7 @@ mod tests {
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockNumber(0));
             let block = client(addr)
-                .request::<Block>("starknet_getBlockByNumber", params)
+                .request::<Block>("starknet_getBlockWithTxHashesByNumber", params)
                 .await
                 .unwrap();
             assert_eq!(block.block_number, Some(StarknetBlockNumber(0)));
@@ -844,37 +817,15 @@ mod tests {
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                    let params = rpc_params!(
-                        BlockNumberOrTag::Tag(Tag::Latest),
-                        BlockResponseScope::FullTransactions
-                    );
+                    let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
                     let block = client(addr)
-                        .request::<Block>("starknet_getBlockByNumber", params)
+                        .request::<Block>("starknet_getBlockWithTxsByNumber", params)
                         .await
                         .unwrap();
                     assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
                     assert_matches!(
                         block.transactions,
                         Transactions::Full(t) => assert_eq!(t.len(), 3)
-                    );
-                }
-
-                #[tokio::test]
-                async fn only_mandatory() {
-                    let storage = setup_storage();
-                    let sequencer = Client::new(Chain::Goerli).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                    let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
-                    let block = client(addr)
-                        .request::<Block>("starknet_getBlockByNumber", params)
-                        .await
-                        .unwrap();
-                    assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
-                    assert_matches!(
-                        block.transactions,
-                        Transactions::HashesOnly(t) => assert_eq!(t.len(), 3)
                     );
                 }
             }
@@ -891,37 +842,9 @@ mod tests {
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                    let params = by_name([
-                        ("block_number", json!("latest")),
-                        ("requested_scope", json!("FULL_TXN_AND_RECEIPTS")),
-                    ]);
-                    let block = client(addr)
-                        .request::<Block>("starknet_getBlockByNumber", params)
-                        .await
-                        .unwrap();
-                    assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
-                    assert_eq!(
-                        block.block_hash,
-                        Some(StarknetBlockHash(
-                            StarkHash::from_be_slice(b"latest").unwrap()
-                        ))
-                    );
-                    assert_matches!(
-                        block.transactions,
-                        Transactions::FullWithReceipts(t) => assert_eq!(t.len(), 3)
-                    );
-                }
-
-                #[tokio::test]
-                async fn only_mandatory() {
-                    let storage = setup_storage();
-                    let sequencer = Client::new(Chain::Goerli).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = by_name([("block_number", json!("latest"))]);
                     let block = client(addr)
-                        .request::<Block>("starknet_getBlockByNumber", params)
+                        .request::<Block>("starknet_getBlockWithTxsByNumber", params)
                         .await
                         .unwrap();
                     assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
@@ -933,7 +856,7 @@ mod tests {
                     );
                     assert_matches!(
                         block.transactions,
-                        Transactions::HashesOnly(t) => assert_eq!(t.len(), 3)
+                        Transactions::Full(t) => assert_eq!(t.len(), 3)
                     );
                 }
             }
@@ -946,12 +869,9 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(
-                BlockHashOrTag::Tag(Tag::Pending),
-                BlockResponseScope::FullTransactions
-            );
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
             let block = client(addr)
-                .request::<Block>("starknet_getBlockByNumber", params)
+                .request::<Block>("starknet_getBlockWithTxsByNumber", params)
                 .await
                 .unwrap();
             assert_matches!(
@@ -969,7 +889,7 @@ mod tests {
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockNumber(123));
             let error = client(addr)
-                .request::<Block>("starknet_getBlockByNumber", params)
+                .request::<Block>("starknet_getBlockWithTxsByNumber", params)
                 .await
                 .unwrap_err();
             assert_eq!(

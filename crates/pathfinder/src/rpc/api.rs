@@ -11,9 +11,9 @@ use crate::{
     rpc::types::{
         reply::{
             Block, BlockStatus, ErrorCode, FeeEstimate, GetEventsResult, Syncing, Transaction,
-            TransactionAndReceipt, TransactionAndReceiptMismatchError, TransactionReceipt,
+            TransactionReceipt,
         },
-        request::{BlockResponseScope, Call, ContractCall, EventFilter, OverflowingStorageAddress},
+        request::{Call, ContractCall, EventFilter, OverflowingStorageAddress},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
@@ -59,6 +59,19 @@ pub struct RawBlock {
     pub gas_price: GasPrice,
 }
 
+/// Determines the type of response to block related queries.
+#[derive(Copy, Clone, Debug)]
+pub enum BlockResponseScope {
+    TransactionHashes,
+    FullTransactions,
+}
+
+impl Default for BlockResponseScope {
+    fn default() -> Self {
+        BlockResponseScope::TransactionHashes
+    }
+}
+
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
 impl RpcApi {
     pub fn new(
@@ -95,7 +108,7 @@ impl RpcApi {
     pub async fn get_block_by_hash(
         &self,
         block_hash: BlockHashOrTag,
-        requested_scope: Option<BlockResponseScope>,
+        scope: BlockResponseScope,
     ) -> RpcResult<Block> {
         let block_id = match block_hash {
             BlockHashOrTag::Tag(Tag::Pending) => {
@@ -105,10 +118,7 @@ impl RpcApi {
                     .await
                     .map_err(internal_server_error)?;
 
-                let scope = requested_scope.unwrap_or_default();
-
-                let block = Block::try_from_sequencer_scoped(block, scope)
-                    .map_err(internal_server_error)?;
+                let block = Block::from_sequencer_scoped(block, scope);
                 return Ok(block);
             }
             BlockHashOrTag::Hash(hash) => hash.into(),
@@ -132,10 +142,8 @@ impl RpcApi {
 
             // Need to get the block status. This also tests that the block hash is valid.
             let block = Self::get_raw_block_by_hash(&transaction, block_id)?;
-            let scope = requested_scope.unwrap_or_default();
 
-            let transactions =
-                Self::get_block_transactions(&transaction, block.number, block.status, scope)?;
+            let transactions = Self::get_block_transactions(&transaction, block.number, scope)?;
 
             Ok(Block::from_raw(block, transactions))
         })
@@ -166,7 +174,6 @@ impl RpcApi {
     fn get_block_transactions(
         db_tx: &rusqlite::Transaction<'_>,
         block_number: StarknetBlockNumber,
-        block_status: BlockStatus,
         scope: BlockResponseScope,
     ) -> RpcResult<super::types::reply::Transactions> {
         let transactions_receipts =
@@ -188,18 +195,6 @@ impl RpcApi {
                     .map(|(t, _)| t.into())
                     .collect(),
             )),
-            BlockResponseScope::FullTransactionsAndReceipts => transactions_receipts
-                .into_iter()
-                .map(|(t, r)| {
-                    let receipt = TransactionReceipt::with_block_status(r, block_status, &t);
-                    let txn: Transaction = t.into();
-                    let result: Result<TransactionAndReceipt, TransactionAndReceiptMismatchError> =
-                        (txn, receipt).try_into();
-                    result
-                })
-                .collect::<Result<Vec<TransactionAndReceipt>, TransactionAndReceiptMismatchError>>()
-                .map_err(internal_server_error)
-                .map(reply::Transactions::FullWithReceipts),
         }
     }
 
@@ -207,7 +202,7 @@ impl RpcApi {
     pub async fn get_block_by_number(
         &self,
         block_number: BlockNumberOrTag,
-        requested_scope: Option<BlockResponseScope>,
+        scope: BlockResponseScope,
     ) -> RpcResult<Block> {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => number.into(),
@@ -220,10 +215,7 @@ impl RpcApi {
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
 
-                let scope = requested_scope.unwrap_or_default();
-
-                let block = Block::try_from_sequencer_scoped(block, scope)
-                    .map_err(internal_server_error)?;
+                let block = Block::from_sequencer_scoped(block, scope);
                 return Ok(block);
             }
         };
@@ -245,10 +237,8 @@ impl RpcApi {
 
             // Need to get the block status. This also tests that the block hash is valid.
             let block = Self::get_raw_block_by_number(&transaction, block_id)?;
-            let scope = requested_scope.unwrap_or_default();
 
-            let transactions =
-                Self::get_block_transactions(&transaction, block.number, block.status, scope)?;
+            let transactions = Self::get_block_transactions(&transaction, block.number, scope)?;
 
             Ok(Block::from_raw(block, transactions))
         })
