@@ -129,6 +129,24 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             )
         })?;
 
+        let poll_pending = match self.take(ConfigOption::PollPending) {
+            Some(enable) => {
+                let enable = enable.to_lowercase();
+                match enable.as_str() {
+                    "true" => Ok(true),
+                    "false" => Ok(false),
+                    _ => Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!(
+                            "Invalid value '{}' for enable poll pending option, must be true|false",
+                            enable
+                        ),
+                    )),
+                }
+            }
+            None => Ok(false),
+        }?;
+
         Ok(Configuration {
             ethereum: EthereumConfig {
                 url: eth_url,
@@ -139,6 +157,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             sequencer_url,
             python_subprocesses,
             sqlite_wal,
+            poll_pending,
         })
     }
 

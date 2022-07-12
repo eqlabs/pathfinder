@@ -41,6 +41,12 @@ async fn main() -> anyhow::Result<()> {
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     )?;
 
+    // Pending is only supported on mainnet.
+    anyhow::ensure!(
+        !(config.poll_pending && ethereum_chain != core::Chain::Mainnet),
+        "Poll pending option may only be enabled on Mainnet"
+    );
+
     let database_path = config.data_directory.join(match ethereum_chain {
         core::Chain::Mainnet => "mainnet.sqlite",
         core::Chain::Goerli => "goerli.sqlite",
@@ -68,6 +74,10 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     };
     let sync_state = Arc::new(state::SyncState::default());
     let pending_state = Arc::new(RwLock::new(None));
+    let pending_interval = match config.poll_pending {
+        true => Some(std::time::Duration::from_secs(5)),
+        false => None,
+    };
 
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
@@ -78,7 +88,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         state::l1::sync,
         state::l2::sync,
         pending_state,
-        None,
+        pending_interval,
     ));
 
     // TODO: the error could be recovered, but currently it's required for startup. There should

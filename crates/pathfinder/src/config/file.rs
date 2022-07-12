@@ -22,6 +22,8 @@ struct FileConfig {
     python_subprocesses: Option<String>,
     #[serde(rename = "sqlite-wal")]
     sqlite_wal: Option<String>,
+    #[serde(rename = "poll-pending")]
+    poll_pending: Option<String>,
 }
 
 impl FileConfig {
@@ -38,6 +40,7 @@ impl FileConfig {
         .with(ConfigOption::SequencerHttpUrl, self.sequencer_url)
         .with(ConfigOption::PythonSubprocesses, self.python_subprocesses)
         .with(ConfigOption::EnableSQLiteWriteAheadLogging, self.sqlite_wal)
+        .with(ConfigOption::PollPending, self.poll_pending)
     }
 }
 
@@ -132,6 +135,14 @@ password = "{}""#,
             cfg.take(ConfigOption::EnableSQLiteWriteAheadLogging),
             Some(value)
         );
+    }
+
+    #[test]
+    fn poll_pending() {
+        let value = "true".to_owned();
+        let toml = format!(r#"poll-pending = "{}""#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(cfg.take(ConfigOption::PollPending), Some(value));
     }
 
     #[test]
