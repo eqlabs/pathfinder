@@ -2588,15 +2588,16 @@ mod tests {
 
         fn setup() -> (Storage, Vec<EmittedEvent>) {
             let storage = Storage::in_memory().unwrap();
-            let connection = storage.connection().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
 
             let blocks = crate::storage::test_utils::create_blocks::<NUM_BLOCKS>();
             let transactions_and_receipts = create_transactions_and_receipts();
 
             for (i, block) in blocks.iter().enumerate() {
-                StarknetBlocksTable::insert(&connection, block).unwrap();
+                StarknetBlocksTable::insert(&tx, block).unwrap();
                 StarknetTransactionsTable::upsert(
-                    &connection,
+                    &tx,
                     block.hash,
                     block.number,
                     &transactions_and_receipts
@@ -2622,6 +2623,8 @@ mod tests {
                     }
                 })
                 .collect();
+
+            tx.commit().unwrap();
 
             (storage, events)
         }

@@ -6,10 +6,10 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber};
 use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
+use crate::sequencer;
 use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{Contract, StateDiff};
 use crate::sequencer::reply::Block;
-use crate::sequencer::{self};
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
