@@ -710,6 +710,7 @@ mod tests {
     }
 
     mod block {
+
         use super::*;
         use pretty_assertions::assert_eq;
 
@@ -771,6 +772,45 @@ mod tests {
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
             );
+        }
+
+        #[tokio::test]
+        async fn with_starknet_version_added_in_0_9_1() {
+            use crate::sequencer::reply::MaybePendingBlock;
+            let (_jh, client) = setup([
+                (
+                    "/feeder_gateway/get_block?blockNumber=192844",
+                    response!("integration/block/192844.json"),
+                ),
+                (
+                    "/feeder_gateway/get_block?blockNumber=pending",
+                    response!("integration/block/pending.json"),
+                ),
+            ]);
+
+            let expected_version = "0.9.1";
+
+            let block = client
+                .block(StarknetBlockNumber(192844).into())
+                .await
+                .unwrap();
+            assert_eq!(
+                block
+                    .as_block()
+                    .expect("should not had been a pending block")
+                    .starknet_version
+                    .as_deref(),
+                Some(expected_version)
+            );
+
+            let block = client.block(BlockId::Pending).await.unwrap();
+
+            match block {
+                MaybePendingBlock::Pending(p) => {
+                    assert_eq!(p.starknet_version.as_deref(), Some(expected_version))
+                }
+                MaybePendingBlock::Block(_) => panic!("should not had been a ready block"),
+            }
         }
     }
 
