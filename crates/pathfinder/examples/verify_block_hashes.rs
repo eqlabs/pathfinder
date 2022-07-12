@@ -61,6 +61,7 @@ fn main() -> anyhow::Result<()> {
             timestamp: block.timestamp,
             transaction_receipts: receipts,
             transactions,
+            starknet_version: None,
         };
         parent_block_hash = block_hash;
 

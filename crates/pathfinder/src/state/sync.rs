@@ -494,8 +494,12 @@ async fn l2_update(
                 .sequencer_address
                 .unwrap_or(SequencerAddress(StarkHash::ZERO)),
         };
-        StarknetBlocksTable::insert(&transaction, &starknet_block)
-            .context("Insert block into database")?;
+        StarknetBlocksTable::insert(
+            &transaction,
+            &starknet_block,
+            block.starknet_version.as_deref(),
+        )
+        .context("Insert block into database")?;
 
         // Insert the transactions.
         anyhow::ensure!(
@@ -868,6 +872,7 @@ mod tests {
             timestamp: crate::core::StarknetBlockTimestamp(0),
             transaction_receipts: vec![],
             transactions: vec![],
+            starknet_version: None,
         };
         pub static ref BLOCK1: reply::Block = reply::Block {
             block_hash: StarknetBlockHash(*B),
@@ -880,6 +885,7 @@ mod tests {
             timestamp: crate::core::StarknetBlockTimestamp(1),
             transaction_receipts: vec![],
             transactions: vec![],
+            starknet_version: None,
         };
         pub static ref STORAGE_BLOCK0: storage::StarknetBlock = storage::StarknetBlock {
             number: StarknetBlockNumber(0),
@@ -945,7 +951,7 @@ mod tests {
             blocks
                 .iter()
                 .flatten()
-                .for_each(|block| StarknetBlocksTable::insert(&tx, block).unwrap());
+                .for_each(|block| StarknetBlocksTable::insert(&tx, block, None).unwrap());
 
             tx.commit().unwrap();
             drop(blocks);
@@ -1246,7 +1252,7 @@ mod tests {
             RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(reorg_on_block))).unwrap();
             updates
                 .into_iter()
-                .for_each(|block| StarknetBlocksTable::insert(&tx, &block).unwrap());
+                .for_each(|block| StarknetBlocksTable::insert(&tx, &block, None).unwrap());
 
             tx.commit().unwrap();
 
@@ -1335,7 +1341,7 @@ mod tests {
         let tx = connection.transaction().unwrap();
 
         // This is what we're asking for
-        StarknetBlocksTable::insert(&tx, &STORAGE_BLOCK0).unwrap();
+        StarknetBlocksTable::insert(&tx, &STORAGE_BLOCK0, None).unwrap();
 
         // A simple L2 sync task which does the request and checks he result
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {

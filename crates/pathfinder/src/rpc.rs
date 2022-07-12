@@ -549,9 +549,9 @@ mod tests {
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[2u8]).unwrap()),
         };
-        StarknetBlocksTable::insert(&db_txn, &block0).unwrap();
-        StarknetBlocksTable::insert(&db_txn, &block1).unwrap();
-        StarknetBlocksTable::insert(&db_txn, &block2).unwrap();
+        StarknetBlocksTable::insert(&db_txn, &block0, None).unwrap();
+        StarknetBlocksTable::insert(&db_txn, &block1, None).unwrap();
+        StarknetBlocksTable::insert(&db_txn, &block2, None).unwrap();
 
         let txn0_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
         let txn0 = Transaction {
@@ -2595,7 +2595,7 @@ mod tests {
             let transactions_and_receipts = create_transactions_and_receipts();
 
             for (i, block) in blocks.iter().enumerate() {
-                StarknetBlocksTable::insert(&tx, block).unwrap();
+                StarknetBlocksTable::insert(&tx, block, None).unwrap();
                 StarknetTransactionsTable::upsert(
                     &tx,
                     block.hash,

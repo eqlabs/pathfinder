@@ -626,6 +626,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp(0),
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    starknet_version: None,
                 }))
             },
         );

@@ -29,6 +29,9 @@ pub struct Block {
     pub timestamp: StarknetBlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
+    /// Version metadata introduced in 0.9.1, older blocks will not have it.
+    #[serde(default)]
+    pub starknet_version: Option<String>,
 }
 
 #[serde_as]
@@ -44,6 +47,9 @@ pub struct PendingBlock {
     pub timestamp: StarknetBlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
+    /// Version metadata introduced in 0.9.1, older blocks will not have it.
+    #[serde(default)]
+    pub starknet_version: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
