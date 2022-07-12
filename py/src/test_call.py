@@ -419,7 +419,7 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 3,
+        "gas_consumed": 0x0A07,
         "gas_price": 0,
         "overall_fee": 0,
     }
@@ -441,7 +441,7 @@ def test_fee_estimate_on_positive():
     assert first == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (3).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (0x0A07).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
             "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
         },
@@ -450,9 +450,9 @@ def test_fee_estimate_on_positive():
     assert second == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (3).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (0x0A07).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (35).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (0x644A).to_bytes(32, "big").hex(),
         },
     }
 

@@ -8,7 +8,7 @@ from starkware.storage.storage import Storage
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 14
-EXPECTED_CAIRO_VERSION = "0.9.0"
+EXPECTED_CAIRO_VERSION = "0.9.1"
 SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
 
 
