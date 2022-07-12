@@ -8,6 +8,7 @@ use pathfinder_lib::{
     storage::{JournalMode, Storage},
 };
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::info;
 
 #[tokio::main]
@@ -66,6 +67,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         None => sequencer::Client::new(ethereum_chain).unwrap(),
     };
     let sync_state = Arc::new(state::SyncState::default());
+    let pending_state = Arc::new(RwLock::new(None));
 
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
@@ -75,6 +77,8 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         sync_state.clone(),
         state::l1::sync,
         state::l2::sync,
+        pending_state,
+        None,
     ));
 
     // TODO: the error could be recovered, but currently it's required for startup. There should

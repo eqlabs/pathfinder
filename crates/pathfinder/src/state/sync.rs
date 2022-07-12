@@ -17,7 +17,7 @@ use crate::{
     rpc::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer::{
         self,
-        reply::{Block, MaybePendingBlock},
+        reply::{Block, MaybePendingBlock, PendingBlock},
     },
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
@@ -53,6 +53,8 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     state: Arc<State>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
+    pending_data: Arc<RwLock<Option<(Box<PendingBlock>, Box<sequencer::reply::StateUpdate>)>>>,
+    pending_poll_interval: Option<std::time::Duration>,
 ) -> anyhow::Result<()>
 where
     Transport: EthereumTransport + Clone,
@@ -65,6 +67,7 @@ where
             SequencerClient,
             Option<(StarknetBlockNumber, StarknetBlockHash)>,
             Chain,
+            Option<std::time::Duration>,
         ) -> F2
         + Copy,
 {
@@ -102,7 +105,13 @@ where
 
     // Start L1 and L2 sync processes.
     let mut l1_handle = tokio::spawn(l1_sync(tx_l1, transport.clone(), chain, l1_head));
-    let mut l2_handle = tokio::spawn(l2_sync(tx_l2, sequencer.clone(), l2_head, chain));
+    let mut l2_handle = tokio::spawn(l2_sync(
+        tx_l2,
+        sequencer.clone(),
+        l2_head,
+        chain,
+        pending_poll_interval,
+    ));
 
     let mut existed = (0, 0);
 
@@ -189,6 +198,11 @@ where
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update(block, diff, timings)) => {
+                    {
+                        let mut pending_data = pending_data.write().await;
+                        *pending_data = None;
+                    }
+
                     let block_number = block.block_number.0;
                     let block_hash = block.block_hash;
                     let storage_updates: usize = diff
@@ -247,6 +261,11 @@ where
                     }
                 }
                 Some(l2::Event::Reorg(reorg_tail)) => {
+                    {
+                        let mut pending_data = pending_data.write().await;
+                        *pending_data = None;
+                    }
+
                     l2_reorg(&mut db_conn, reorg_tail)
                         .await
                         .with_context(|| format!("Reorg L2 state to {:?}", reorg_tail))?;
@@ -302,6 +321,30 @@ where
 
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
+                Some(l2::Event::Pending(block, state_update)) => {
+                    let latest_root = tokio::task::block_in_place(||
+                        StarknetBlocksTable::get(&db_conn, StarknetBlocksBlockId::Latest)
+                    )
+                    .context("Query latest state root for pending update")?
+                    .map(|block| block.root)
+                    .unwrap_or(GlobalRoot(StarkHash::ZERO));
+
+                    if state_update.old_root != latest_root {
+                        tracing::error!(latest=%latest_root, pending=%state_update.old_root,
+                            "Pending old state root does not match latest state root"
+                        );
+                        continue;
+                    }
+
+                    // TODO: apply state_update and verify state_update.new_root
+
+                    {
+                        let mut pending_data = pending_data.write().await;
+                        *pending_data = Some((block, state_update));
+                    }
+
+                    tracing::info!("Updated pending block");
+                }
                 None => {
                     // L2 sync process failed; restart it.
                     match l2_handle.await.context("Join L2 sync process handle")? {
@@ -323,7 +366,7 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    l2_handle = tokio::spawn(l2_sync(new_tx, sequencer.clone(), l2_head, chain));
+                    l2_handle = tokio::spawn(l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval));
                     tracing::info!("L2 sync process restarted.");
                 }
             }
@@ -464,6 +507,7 @@ async fn l1_reorg(
     })
 }
 
+/// Returns the new [GlobalRoot] after the update.
 async fn l2_update(
     connection: &mut Connection,
     block: Block,
@@ -830,6 +874,7 @@ mod tests {
         _: impl sequencer::ClientApi,
         _: Option<(StarknetBlockNumber, StarknetBlockHash)>,
         _: Chain,
+        _: Option<std::time::Duration>,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -965,6 +1010,8 @@ mod tests {
                 sync_state.clone(),
                 l1,
                 l2_noop,
+                Arc::new(tokio::sync::RwLock::new(None)),
+                None,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1033,6 +1080,8 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1,
                 l2_noop,
+                Arc::new(tokio::sync::RwLock::new(None)),
+                None,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1097,6 +1146,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
+            Arc::new(tokio::sync::RwLock::new(None)),
+            None,
         ));
 
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1130,6 +1181,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
+            Arc::new(tokio::sync::RwLock::new(None)),
+            None,
         ));
 
         let timeout = std::time::Duration::from_secs(1);
@@ -1163,7 +1216,7 @@ mod tests {
         };
 
         // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 Box::new(block()),
                 state_update(),
@@ -1202,6 +1255,8 @@ mod tests {
                 sync_state.clone(),
                 l1_noop,
                 l2,
+                Arc::new(tokio::sync::RwLock::new(None)),
+                None,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1241,7 +1296,7 @@ mod tests {
             let tx = connection.transaction().unwrap();
 
             // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
                 tx.send(l2::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
                     .await
                     .unwrap();
@@ -1265,6 +1320,8 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1_noop,
                 l2,
+                Arc::new(tokio::sync::RwLock::new(None)),
+                None,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1299,7 +1356,7 @@ mod tests {
         let connection = storage.connection().unwrap();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewContract(state::CompressedContract {
                 abi: zstd_magic.clone(),
@@ -1323,6 +1380,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            Arc::new(tokio::sync::RwLock::new(None)),
+            None,
         ));
 
         // TODO Find a better way to figure out that the DB update has already been performed
@@ -1344,7 +1403,7 @@ mod tests {
         StarknetBlocksTable::insert(&tx, &STORAGE_BLOCK0, None).unwrap();
 
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel::<Option<StarknetBlockHash>>();
 
             tx.send(l2::Event::QueryHash(StarknetBlockNumber(0), tx1))
@@ -1367,6 +1426,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            Arc::new(tokio::sync::RwLock::new(None)),
+            None,
         ));
     }
 
@@ -1389,7 +1450,7 @@ mod tests {
         .unwrap();
 
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel::<Vec<bool>>();
 
             tx.send(l2::Event::QueryContractExistance(vec![ClassHash(*A)], tx1))
@@ -1412,6 +1473,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            Arc::new(tokio::sync::RwLock::new(None)),
+            None,
         ));
     }
 
@@ -1424,7 +1487,7 @@ mod tests {
         static CNT: AtomicUsize = AtomicUsize::new(0);
 
         // A simple L2 sync task
-        let l2 = move |_, _, _, _| async move {
+        let l2 = move |_, _, _, _, _| async move {
             CNT.fetch_add(1, Ordering::Relaxed);
             Ok(())
         };
@@ -1438,6 +1501,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            Arc::new(tokio::sync::RwLock::new(None)),
+            None,
         ));
 
         tokio::time::sleep(Duration::from_millis(5)).await;

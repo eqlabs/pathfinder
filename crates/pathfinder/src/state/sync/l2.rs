@@ -4,7 +4,6 @@ use std::time::Duration;
 use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber};
 use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
 use crate::sequencer;
 use crate::sequencer::error::SequencerError;
@@ -13,6 +12,10 @@ use crate::sequencer::reply::Block;
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
+use crate::{
+    core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber},
+    sequencer::reply::PendingBlock,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Timings {
@@ -46,6 +49,64 @@ pub enum Event {
     /// The receiver should return true (if the contract exists) or false (if it does not exist)
     /// for each contract using the [oneshot::channel].
     QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
+    /// A new L2 pending update was polled.
+    Pending(Box<PendingBlock>, Box<sequencer::reply::StateUpdate>),
+}
+
+/// Poll's the Sequencer's pending block and emits [Event::Pending]
+/// until the pending block is no longer connected to our current head.
+///
+/// This disconnect is detected whenever
+/// - `pending.block_hash != head`, or
+/// - `pending` is a fully formed block and not [PendingBlock]
+async fn poll_pending(
+    tx_event: &mpsc::Sender<Event>,
+    sequencer: &impl sequencer::ClientApi,
+    head: StarknetBlockHash,
+    poll_interval: Duration,
+) -> anyhow::Result<()> {
+    use crate::core::BlockId;
+
+    loop {
+        use sequencer::reply::MaybePendingBlock;
+
+        let block = match sequencer
+            .block(BlockId::Pending)
+            .await
+            .context("Download block")?
+        {
+            MaybePendingBlock::Block(block) => {
+                tracing::debug!(hash=%block.block_hash, "Found full block, exiting pending mode.");
+                return Ok(());
+            }
+            MaybePendingBlock::Pending(pending) if pending.parent_hash != head => {
+                tracing::debug!(
+                    pending=%pending.parent_hash, head=%head,
+                    "Pending block's parent hash does not match head, exiting pending mode"
+                );
+                return Ok(());
+            }
+            MaybePendingBlock::Pending(pending) => pending,
+        };
+
+        // Download the pending state diff.
+        let state_update = sequencer
+            .state_update(BlockId::Pending)
+            .await
+            .context("Download state update")?;
+        if state_update.block_hash.is_some() {
+            tracing::debug!("Found full state update, exiting pending mode.");
+            return Ok(());
+        }
+
+        // Emit new pending data.
+        tx_event
+            .send(Event::Pending(Box::new(block), Box::new(state_update)))
+            .await
+            .context("Event channel closed")?;
+
+        tokio::time::sleep(poll_interval).await;
+    }
 }
 
 pub async fn sync(
@@ -53,6 +114,7 @@ pub async fn sync(
     sequencer: impl sequencer::ClientApi,
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash)>,
     chain: Chain,
+    pending_poll_interval: Option<Duration>,
 ) -> anyhow::Result<()> {
     use crate::state::sync::head_poll_interval;
 
@@ -62,15 +124,27 @@ pub async fn sync(
             Some((number, hash)) => (number + 1, Some(hash)),
             None => (StarknetBlockNumber::GENESIS, None),
         };
-
         let t_block = std::time::Instant::now();
+
         let block = loop {
             match download_block(next, chain, head_hash, &sequencer).await? {
                 DownloadBlock::Block(block) => break block,
                 DownloadBlock::AtHead => {
-                    let poll_interval = head_poll_interval(chain);
-                    tracing::info!(poll_interval=?poll_interval, "At head of chain");
-                    tokio::time::sleep(poll_interval).await;
+                    // Poll pending if it is enabled, otherwise just wait to poll head again.
+                    match pending_poll_interval {
+                        Some(interval) => {
+                            let head_hash = head_hash
+                                .expect("Head hash should exist when entering pending mode");
+                            poll_pending(&tx_event, &sequencer, head_hash, interval)
+                                .await
+                                .context("Polling pending block")?;
+                        }
+                        None => {
+                            let poll_interval = head_poll_interval(chain);
+                            tracing::info!(poll_interval=?poll_interval, "At head of chain");
+                            tokio::time::sleep(poll_interval).await;
+                        }
+                    }
                 }
                 DownloadBlock::Reorg => {
                     let some_head = head.unwrap();
@@ -949,7 +1023,7 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1034,6 +1108,7 @@ mod tests {
                     mock,
                     Some((BLOCK0_NUMBER, *BLOCK0_HASH)),
                     Chain::Goerli,
+                    None,
                 ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
@@ -1158,7 +1233,7 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1369,7 +1444,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1663,7 +1738,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1881,7 +1956,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -2086,7 +2161,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -2172,7 +2247,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 // Wrap this in a timeout so we don't wait forever in case of test failure.
                 // Right now closing the channel causes an error.
