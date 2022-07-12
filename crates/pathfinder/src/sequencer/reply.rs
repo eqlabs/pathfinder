@@ -390,6 +390,15 @@ pub mod state_update {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<Contract>,
+
+        /// Optional field of declared contracts.
+        ///
+        /// Since 0.9.1.
+        ///
+        /// FIXME: drop the default after 0.9.1 is on mainnet.
+        /// FIXME: these are not yet used in any way
+        #[serde(default)]
+        pub declared_contracts: Vec<ClassHash>,
     }
 
     /// L2 storage diff.
