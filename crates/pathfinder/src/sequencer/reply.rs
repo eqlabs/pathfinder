@@ -16,13 +16,13 @@ use serde_with::serde_as;
 pub struct Block {
     pub block_hash: StarknetBlockHash,
     pub block_number: StarknetBlockNumber,
+    /// Excluded in blocks prior to StarkNet 0.9
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
-    /// Excluded in blocks prior to StarkNet 0.9
     pub gas_price: Option<GasPrice>,
     pub parent_block_hash: StarknetBlockHash,
-    #[serde(default)]
     /// Excluded in blocks prior to StarkNet 0.8
+    #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
     pub state_root: GlobalRoot,
     pub status: Status,
