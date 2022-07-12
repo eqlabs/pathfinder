@@ -200,13 +200,13 @@ pub mod reply {
     use crate::{
         core::{
             CallParam, ClassHash, ConstructorParam, ContractAddress, EntryPoint, EventData,
-            EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
+            EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+            StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
             TransactionSignatureElem, TransactionVersion,
         },
         rpc::{
             api::RawBlock,
-            serde::{FeeAsHexStr, GasPriceAsHexStr, TransactionVersionAsHexStr},
+            serde::{FeeAsHexStr, TransactionVersionAsHexStr},
         },
         sequencer,
     };
@@ -273,17 +273,13 @@ pub mod reply {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct Block {
+        pub status: BlockStatus,
         pub block_hash: Option<StarknetBlockHash>,
         pub parent_hash: StarknetBlockHash,
         pub block_number: Option<StarknetBlockNumber>,
-        pub status: BlockStatus,
-        pub sequencer: SequencerAddress,
         pub new_root: Option<GlobalRoot>,
-        // FIXME: remove this field
-        pub old_root: GlobalRoot,
-        pub accepted_time: StarknetBlockTimestamp,
-        #[serde_as(as = "GasPriceAsHexStr")]
-        pub gas_price: GasPrice,
+        pub timestamp: StarknetBlockTimestamp,
+        pub sequencer_address: SequencerAddress,
         pub transactions: Transactions,
     }
 
@@ -291,15 +287,13 @@ pub mod reply {
         /// Constructs [Block] from [RawBlock]
         pub fn from_raw(block: RawBlock, transactions: Transactions) -> Self {
             Self {
+                status: block.status,
                 block_hash: Some(block.hash),
                 parent_hash: block.parent_hash,
                 block_number: Some(block.number),
-                status: block.status,
-                sequencer: block.sequencer,
                 new_root: Some(block.root),
-                old_root: block.parent_root,
-                accepted_time: block.timestamp,
-                gas_price: block.gas_price,
+                timestamp: block.timestamp,
+                sequencer_address: block.sequencer,
                 transactions,
             }
         }
@@ -342,33 +336,26 @@ pub mod reply {
             use sequencer::reply::MaybePendingBlock;
             match block {
                 MaybePendingBlock::Block(block) => Ok(Self {
+                    status: block.status.into(),
                     block_hash: Some(block.block_hash),
                     parent_hash: block.parent_block_hash,
                     block_number: Some(block.block_number),
-                    status: block.status.into(),
-                    sequencer: block
+                    new_root: Some(block.state_root),
+                    timestamp: block.timestamp,
+                    sequencer_address: block
                         .sequencer_address
                         // Default value for cairo <0.8.0 is 0
                         .unwrap_or(SequencerAddress(StarkHash::ZERO)),
-                    new_root: Some(block.state_root),
-                    old_root: GlobalRoot(StarkHash::ZERO),
-                    accepted_time: block.timestamp,
-                    gas_price: block
-                        .gas_price
-                        // Default value for cairo <0.8.2 is 0
-                        .unwrap_or(GasPrice::ZERO),
                     transactions,
                 }),
                 MaybePendingBlock::Pending(pending) => Ok(Self {
+                    status: pending.status.into(),
                     block_hash: None,
                     parent_hash: pending.parent_hash,
                     block_number: None,
-                    status: pending.status.into(),
-                    sequencer: pending.sequencer_address,
                     new_root: None,
-                    old_root: GlobalRoot(StarkHash::ZERO),
-                    accepted_time: pending.timestamp,
-                    gas_price: pending.gas_price,
+                    timestamp: pending.timestamp,
+                    sequencer_address: pending.sequencer_address,
                     transactions,
                 }),
             }
