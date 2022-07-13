@@ -7,7 +7,7 @@
 //!
 //! Running the load test:
 //! ```
-//! cargo run --release --bin load-test -- -H http://127.0.0.1:9545 --report-file /tmp/report.html -u 30 -r 5 -t 60 --no-gzip
+//! cargo run --release -p load-test -- -H http://127.0.0.1:9545 --report-file /tmp/report.html -u 30 -r 5 -t 60 --no-gzip
 //! ```
 use goose::prelude::*;
 use rand::{Rng, SeedableRng};
@@ -282,8 +282,8 @@ async fn get_block_by_number(
 ) -> MethodResult<Block> {
     post_jsonrpc_request(
         user,
-        "starknet_getBlockByNumber",
-        json!({ "block_number": block_number }),
+        "starknet_getBlockWithTxHashes",
+        json!({ "block_id": { "block_number": block_number } }),
     )
     .await
 }
@@ -294,8 +294,8 @@ async fn get_block_by_hash(
 ) -> MethodResult<Block> {
     post_jsonrpc_request(
         user,
-        "starknet_getBlockByHash",
-        json!({ "block_hash": block_hash }),
+        "starknet_getBlockWithTxHashes",
+        json!({ "block_id": { "block_hash": block_hash } }),
     )
     .await
 }
