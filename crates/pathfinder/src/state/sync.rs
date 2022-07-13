@@ -355,8 +355,10 @@ where
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
-                    let latest_root = tokio::task::block_in_place(||
-                        StarknetBlocksTable::get(&db_conn, StarknetBlocksBlockId::Latest)
+                    let latest_root = tokio::task::block_in_place(|| {
+                            let tx = db_conn.transaction()?;
+                            StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+                        }
                     )
                     .context("Query latest state root for pending update")?
                     .map(|block| block.root)

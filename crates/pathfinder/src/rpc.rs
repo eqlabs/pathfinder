@@ -425,7 +425,7 @@ mod tests {
     }
 
     // Local test helper
-    fn setup_storage() -> Storage {
+    async fn setup_storage() -> (Storage, PendingData) {
         use crate::{
             core::StorageValue,
             ethereum::state_update::{ContractUpdate, StorageUpdate},
@@ -433,195 +433,219 @@ mod tests {
         };
         use web3::types::H128;
 
-        let storage = Storage::in_memory().unwrap();
-        let mut connection = storage.connection().unwrap();
-        let db_txn = connection.transaction().unwrap();
+        let db_task = tokio::task::spawn_blocking(|| {
+            let storage = Storage::in_memory().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let db_txn = connection.transaction().unwrap();
 
-        let contract0_addr = ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap());
-        let contract1_addr = ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap());
+            let contract0_addr = ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap());
+            let contract1_addr = ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap());
 
-        let class0_hash = ClassHash(StarkHash::from_be_slice(b"class 0 hash").unwrap());
-        let class1_hash = ClassHash(StarkHash::from_be_slice(b"class 1 hash").unwrap());
+            let class0_hash = ClassHash(StarkHash::from_be_slice(b"class 0 hash").unwrap());
+            let class1_hash = ClassHash(StarkHash::from_be_slice(b"class 1 hash").unwrap());
 
-        let contract0_update = ContractUpdate {
-            address: contract0_addr,
-            storage_updates: vec![],
-        };
+            let contract0_update = ContractUpdate {
+                address: contract0_addr,
+                storage_updates: vec![],
+            };
 
-        let storage_addr = StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap());
-        let contract1_update0 = ContractUpdate {
-            address: contract1_addr,
-            storage_updates: vec![StorageUpdate {
-                address: storage_addr,
-                value: StorageValue(StarkHash::from_be_slice(b"storage value 0").unwrap()),
-            }],
-        };
-        let mut contract1_update1 = contract1_update0.clone();
-        contract1_update1.storage_updates.get_mut(0).unwrap().value =
-            StorageValue(StarkHash::from_be_slice(b"storage value 1").unwrap());
-        let mut contract1_update2 = contract1_update0.clone();
-        contract1_update2.storage_updates.get_mut(0).unwrap().value =
-            StorageValue(StarkHash::from_be_slice(b"storage value 2").unwrap());
+            let storage_addr = StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap());
+            let contract1_update0 = ContractUpdate {
+                address: contract1_addr,
+                storage_updates: vec![StorageUpdate {
+                    address: storage_addr,
+                    value: StorageValue(StarkHash::from_be_slice(b"storage value 0").unwrap()),
+                }],
+            };
+            let mut contract1_update1 = contract1_update0.clone();
+            contract1_update1.storage_updates.get_mut(0).unwrap().value =
+                StorageValue(StarkHash::from_be_slice(b"storage value 1").unwrap());
+            let mut contract1_update2 = contract1_update0.clone();
+            contract1_update2.storage_updates.get_mut(0).unwrap().value =
+                StorageValue(StarkHash::from_be_slice(b"storage value 2").unwrap());
 
-        // We need to set the magic bytes for zstd compression to simulate a compressed
-        // contract definition, as this is asserted for internally
-        let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-        let contract0_code = CompressedContract {
-            abi: zstd_magic.clone(),
-            bytecode: zstd_magic.clone(),
-            definition: zstd_magic,
-            hash: class0_hash,
-        };
-        let mut contract1_code = contract0_code.clone();
-        contract1_code.hash = class1_hash;
+            // We need to set the magic bytes for zstd compression to simulate a compressed
+            // contract definition, as this is asserted for internally
+            let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+            let contract0_code = CompressedContract {
+                abi: zstd_magic.clone(),
+                bytecode: zstd_magic.clone(),
+                definition: zstd_magic,
+                hash: class0_hash,
+            };
+            let mut contract1_code = contract0_code.clone();
+            contract1_code.hash = class1_hash;
 
-        ContractCodeTable::insert_compressed(&db_txn, &contract0_code).unwrap();
-        ContractCodeTable::insert_compressed(&db_txn, &contract1_code).unwrap();
+            ContractCodeTable::insert_compressed(&db_txn, &contract0_code).unwrap();
+            ContractCodeTable::insert_compressed(&db_txn, &contract1_code).unwrap();
 
-        ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
-        ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
+            ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
+            ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
-        let contract_state_hash =
-            update_contract_state(&contract0_update, &global_tree, &db_txn).unwrap();
-        global_tree
-            .set(contract0_addr, contract_state_hash)
-            .unwrap();
-        let global_root0 = global_tree.apply().unwrap();
+            let mut global_tree =
+                GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
+            let contract_state_hash =
+                update_contract_state(&contract0_update, &global_tree, &db_txn).unwrap();
+            global_tree
+                .set(contract0_addr, contract_state_hash)
+                .unwrap();
+            let global_root0 = global_tree.apply().unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
-        let contract_state_hash =
-            update_contract_state(&contract1_update0, &global_tree, &db_txn).unwrap();
-        global_tree
-            .set(contract1_addr, contract_state_hash)
-            .unwrap();
-        let contract_state_hash =
-            update_contract_state(&contract1_update1, &global_tree, &db_txn).unwrap();
-        global_tree
-            .set(contract1_addr, contract_state_hash)
-            .unwrap();
-        let global_root1 = global_tree.apply().unwrap();
+            let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
+            let contract_state_hash =
+                update_contract_state(&contract1_update0, &global_tree, &db_txn).unwrap();
+            global_tree
+                .set(contract1_addr, contract_state_hash)
+                .unwrap();
+            let contract_state_hash =
+                update_contract_state(&contract1_update1, &global_tree, &db_txn).unwrap();
+            global_tree
+                .set(contract1_addr, contract_state_hash)
+                .unwrap();
+            let global_root1 = global_tree.apply().unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
-        let contract_state_hash =
-            update_contract_state(&contract1_update2, &global_tree, &db_txn).unwrap();
-        global_tree
-            .set(contract1_addr, contract_state_hash)
-            .unwrap();
-        let global_root2 = global_tree.apply().unwrap();
+            let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
+            let contract_state_hash =
+                update_contract_state(&contract1_update2, &global_tree, &db_txn).unwrap();
+            global_tree
+                .set(contract1_addr, contract_state_hash)
+                .unwrap();
+            let global_root2 = global_tree.apply().unwrap();
 
-        let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
-        let block0 = StarknetBlock {
-            number: StarknetBlockNumber(0),
-            hash: genesis_hash,
-            root: global_root0,
-            timestamp: StarknetBlockTimestamp(0),
-            gas_price: GasPrice::ZERO,
-            sequencer_address: SequencerAddress(StarkHash::ZERO),
-        };
-        let block1_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1").unwrap());
-        let block1 = StarknetBlock {
-            number: StarknetBlockNumber(1),
-            hash: block1_hash,
-            root: global_root1,
-            timestamp: StarknetBlockTimestamp(1),
-            gas_price: GasPrice::from(1),
-            sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[1u8]).unwrap()),
-        };
-        let latest_hash = StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
-        let block2 = StarknetBlock {
-            number: StarknetBlockNumber(2),
-            hash: latest_hash,
-            root: global_root2,
-            timestamp: StarknetBlockTimestamp(2),
-            gas_price: GasPrice::from(2),
-            sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[2u8]).unwrap()),
-        };
-        StarknetBlocksTable::insert(&db_txn, &block0, None).unwrap();
-        StarknetBlocksTable::insert(&db_txn, &block1, None).unwrap();
-        StarknetBlocksTable::insert(&db_txn, &block2, None).unwrap();
+            let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
+            let block0 = StarknetBlock {
+                number: StarknetBlockNumber(0),
+                hash: genesis_hash,
+                root: global_root0,
+                timestamp: StarknetBlockTimestamp(0),
+                gas_price: GasPrice::ZERO,
+                sequencer_address: SequencerAddress(StarkHash::ZERO),
+            };
+            let block1_hash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1").unwrap());
+            let block1 = StarknetBlock {
+                number: StarknetBlockNumber(1),
+                hash: block1_hash,
+                root: global_root1,
+                timestamp: StarknetBlockTimestamp(1),
+                gas_price: GasPrice::from(1),
+                sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[1u8]).unwrap()),
+            };
+            let latest_hash = StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
+            let block2 = StarknetBlock {
+                number: StarknetBlockNumber(2),
+                hash: latest_hash,
+                root: global_root2,
+                timestamp: StarknetBlockTimestamp(2),
+                gas_price: GasPrice::from(2),
+                sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[2u8]).unwrap()),
+            };
+            StarknetBlocksTable::insert(&db_txn, &block0, None).unwrap();
+            StarknetBlocksTable::insert(&db_txn, &block1, None).unwrap();
+            StarknetBlocksTable::insert(&db_txn, &block2, None).unwrap();
 
-        let txn0_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
-        let txn0 = Transaction {
-            calldata: None,
-            class_hash: None,
-            constructor_calldata: None,
-            contract_address: Some(contract0_addr),
-            contract_address_salt: None,
-            entry_point_type: None,
-            entry_point_selector: None,
-            max_fee: Some(Fee(H128::zero())),
-            nonce: None,
-            sender_address: None,
-            signature: None,
-            transaction_hash: txn0_hash,
-            r#type: Type::Deploy,
-            version: None,
-        };
-        let mut receipt0 = Receipt {
-            actual_fee: None,
-            events: vec![],
-            execution_resources: ExecutionResources {
-                builtin_instance_counter: BuiltinInstanceCounter::Empty(
-                    EmptyBuiltinInstanceCounter {},
+            let txn0_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
+            let txn0 = Transaction {
+                calldata: None,
+                class_hash: None,
+                constructor_calldata: None,
+                contract_address: Some(contract0_addr),
+                contract_address_salt: None,
+                entry_point_type: None,
+                entry_point_selector: None,
+                max_fee: Some(Fee(H128::zero())),
+                nonce: None,
+                sender_address: None,
+                signature: None,
+                transaction_hash: txn0_hash,
+                r#type: Type::Deploy,
+                version: None,
+            };
+            let mut receipt0 = Receipt {
+                actual_fee: None,
+                events: vec![],
+                execution_resources: ExecutionResources {
+                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                        EmptyBuiltinInstanceCounter {},
+                    ),
+                    n_memory_holes: 0,
+                    n_steps: 0,
+                },
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: vec![],
+                transaction_hash: txn0_hash,
+                transaction_index: StarknetTransactionIndex(0),
+            };
+            let txn1_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 1").unwrap());
+            let txn2_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 2").unwrap());
+            let txn3_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 3").unwrap());
+            let txn4_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 4 ").unwrap());
+            let txn5_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 5").unwrap());
+            let mut txn1 = txn0.clone();
+            let mut txn2 = txn0.clone();
+            let mut txn3 = txn0.clone();
+            let mut txn4 = txn0.clone();
+            txn1.transaction_hash = txn1_hash;
+            txn1.contract_address = Some(contract1_addr);
+            txn2.transaction_hash = txn2_hash;
+            txn2.contract_address = Some(contract1_addr);
+            txn3.transaction_hash = txn3_hash;
+            txn3.contract_address = Some(contract1_addr);
+            txn4.transaction_hash = txn4_hash;
+
+            txn4.contract_address = Some(ContractAddress(StarkHash::ZERO));
+            let mut txn5 = txn4.clone();
+            txn5.transaction_hash = txn5_hash;
+            let mut receipt1 = receipt0.clone();
+            let mut receipt2 = receipt0.clone();
+            let mut receipt3 = receipt0.clone();
+            let mut receipt4 = receipt0.clone();
+            let mut receipt5 = receipt0.clone();
+            receipt0.events = vec![Event {
+                data: vec![EventData(
+                    StarkHash::from_be_slice(b"event 0 data").unwrap(),
+                )],
+                from_address: ContractAddress(
+                    StarkHash::from_be_slice(b"event 0 from addr").unwrap(),
                 ),
-                n_memory_holes: 0,
-                n_steps: 0,
-            },
-            l1_to_l2_consumed_message: None,
-            l2_to_l1_messages: vec![],
-            transaction_hash: txn0_hash,
-            transaction_index: StarknetTransactionIndex(0),
-        };
-        let txn1_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 1").unwrap());
-        let txn2_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 2").unwrap());
-        let txn3_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 3").unwrap());
-        let txn4_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 4 ").unwrap());
-        let txn5_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 5").unwrap());
-        let mut txn1 = txn0.clone();
-        let mut txn2 = txn0.clone();
-        let mut txn3 = txn0.clone();
-        let mut txn4 = txn0.clone();
-        txn1.transaction_hash = txn1_hash;
-        txn1.contract_address = Some(contract1_addr);
-        txn2.transaction_hash = txn2_hash;
-        txn2.contract_address = Some(contract1_addr);
-        txn3.transaction_hash = txn3_hash;
-        txn3.contract_address = Some(contract1_addr);
-        txn4.transaction_hash = txn4_hash;
-
-        txn4.contract_address = Some(ContractAddress(StarkHash::ZERO));
-        let mut txn5 = txn4.clone();
-        txn5.transaction_hash = txn5_hash;
-        let mut receipt1 = receipt0.clone();
-        let mut receipt2 = receipt0.clone();
-        let mut receipt3 = receipt0.clone();
-        let mut receipt4 = receipt0.clone();
-        let mut receipt5 = receipt0.clone();
-        receipt0.events = vec![Event {
-            data: vec![EventData(
-                StarkHash::from_be_slice(b"event 0 data").unwrap(),
-            )],
-            from_address: ContractAddress(StarkHash::from_be_slice(b"event 0 from addr").unwrap()),
-            keys: vec![EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())],
-        }];
-        receipt1.transaction_hash = txn1_hash;
-        receipt2.transaction_hash = txn2_hash;
-        receipt3.transaction_hash = txn3_hash;
-        receipt4.transaction_hash = txn4_hash;
-        receipt5.transaction_hash = txn5_hash;
-        let transaction_data0 = [(txn0, receipt0)];
-        let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
-        let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5)];
-        StarknetTransactionsTable::upsert(&db_txn, block0.hash, block0.number, &transaction_data0)
+                keys: vec![EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())],
+            }];
+            receipt1.transaction_hash = txn1_hash;
+            receipt2.transaction_hash = txn2_hash;
+            receipt3.transaction_hash = txn3_hash;
+            receipt4.transaction_hash = txn4_hash;
+            receipt5.transaction_hash = txn5_hash;
+            let transaction_data0 = [(txn0, receipt0)];
+            let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
+            let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5)];
+            StarknetTransactionsTable::upsert(
+                &db_txn,
+                block0.hash,
+                block0.number,
+                &transaction_data0,
+            )
             .unwrap();
-        StarknetTransactionsTable::upsert(&db_txn, block1.hash, block1.number, &transaction_data1)
+            StarknetTransactionsTable::upsert(
+                &db_txn,
+                block1.hash,
+                block1.number,
+                &transaction_data1,
+            )
             .unwrap();
-        StarknetTransactionsTable::upsert(&db_txn, block2.hash, block2.number, &transaction_data2)
+            StarknetTransactionsTable::upsert(
+                &db_txn,
+                block2.hash,
+                block2.number,
+                &transaction_data2,
+            )
             .unwrap();
 
-        db_txn.commit().unwrap();
-        storage
+            db_txn.commit().unwrap();
+
+            storage
+        });
+
+        let storage = db_task.await.expect("Database setup should succeed");
+        (storage, PendingData::default())
     }
 
     mod get_block_by_hash {
@@ -637,7 +661,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -671,7 +695,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let storage = setup_storage();
+                    let (storage, _) = setup_storage().await;
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -702,7 +726,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let storage = setup_storage();
+                    let (storage, _) = setup_storage().await;
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -736,7 +760,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let storage = setup_storage();
+                    let (storage, _) = setup_storage().await;
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -767,7 +791,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let storage = setup_storage();
+                    let (storage, _) = setup_storage().await;
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -855,7 +879,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -887,7 +911,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let storage = setup_storage();
+                    let (storage, _) = setup_storage().await;
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -915,7 +939,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let storage = setup_storage();
+                    let (storage, _) = setup_storage().await;
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -946,7 +970,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let storage = setup_storage();
+                    let (storage, _) = setup_storage().await;
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -980,7 +1004,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let storage = setup_storage();
+                    let (storage, _) = setup_storage().await;
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -1143,7 +1167,7 @@ mod tests {
         async fn key_is_field_modulus() {
             use std::str::FromStr;
 
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1176,7 +1200,7 @@ mod tests {
         async fn key_is_less_than_modulus_but_252_bits() {
             use std::str::FromStr;
 
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1207,7 +1231,7 @@ mod tests {
 
         #[tokio::test]
         async fn non_existent_contract_address() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1232,7 +1256,7 @@ mod tests {
 
         #[tokio::test]
         async fn pre_deploy_block_hash() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1259,7 +1283,7 @@ mod tests {
 
         #[tokio::test]
         async fn non_existent_block_hash() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1286,7 +1310,7 @@ mod tests {
 
         #[tokio::test]
         async fn deployment_block() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1320,7 +1344,7 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1348,7 +1372,7 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1417,7 +1441,7 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
@@ -1439,7 +1463,7 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
@@ -1462,7 +1486,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1492,7 +1516,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1521,7 +1545,7 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1545,7 +1569,7 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1590,7 +1614,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1611,7 +1635,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_transaction_index() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1642,7 +1666,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1670,7 +1694,7 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1694,7 +1718,7 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1739,7 +1763,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1763,7 +1787,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_transaction_index() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1797,7 +1821,7 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1823,7 +1847,7 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1850,7 +1874,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2290,7 +2314,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2317,7 +2341,7 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2338,7 +2362,7 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2360,7 +2384,7 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2407,7 +2431,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2432,7 +2456,7 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2453,7 +2477,7 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2826,7 +2850,7 @@ mod tests {
 
     #[tokio::test]
     async fn block_number() {
-        let storage = setup_storage();
+        let (storage, _) = setup_storage().await;
         let sequencer = Client::new(Chain::Goerli).unwrap();
         let sync_state = Arc::new(SyncState::default());
         let api = RpcApi::new(
@@ -2927,7 +2951,7 @@ mod tests {
 
         #[tokio::test]
         async fn not_syncing() {
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2955,7 +2979,7 @@ mod tests {
                 highest: NumberedBlock::from(("abbacf", 3)),
             });
 
-            let storage = setup_storage();
+            let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             *sync_state.status.write().await = expected.clone();
@@ -3534,7 +3558,7 @@ mod tests {
 
             #[tokio::test]
             async fn invoke_transaction() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3572,7 +3596,7 @@ mod tests {
 
             #[tokio::test]
             async fn declare_transaction() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::integration().unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3614,7 +3638,7 @@ mod tests {
 
             #[tokio::test]
             async fn deploy_transaction() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3675,7 +3699,7 @@ mod tests {
 
             #[tokio::test]
             async fn invoke_transaction() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3736,7 +3760,7 @@ mod tests {
 
             #[tokio::test]
             async fn declare_transaction() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::integration().unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3779,7 +3803,7 @@ mod tests {
 
             #[tokio::test]
             async fn deploy_transaction() {
-                let storage = setup_storage();
+                let (storage, _) = setup_storage().await;
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
