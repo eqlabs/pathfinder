@@ -206,10 +206,7 @@ pub mod reply {
         },
         rpc::{
             api::RawBlock,
-            serde::{
-                FeeAsHexStr, GasPriceAsHexStr, TransactionSignatureElemAsDecimalStr,
-                TransactionVersionAsHexStr,
-            },
+            serde::{FeeAsHexStr, GasPriceAsHexStr, TransactionVersionAsHexStr},
         },
         sequencer,
     };
@@ -590,8 +587,6 @@ pub mod reply {
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
-        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
-        #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
     }
