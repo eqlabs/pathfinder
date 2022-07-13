@@ -86,7 +86,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         sync_state.clone(),
         state::l1::sync,
         state::l2::sync,
-        pending_state,
+        pending_state.clone(),
         pending_interval,
     ));
 
@@ -105,9 +105,15 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     let shared = rpc::api::Cached::new(Arc::new(eth_transport));
 
-    let api = rpc::api::RpcApi::new(storage, sequencer, ethereum_chain, sync_state)
-        .with_call_handling(call_handle)
-        .with_eth_gas_price(shared);
+    let api = rpc::api::RpcApi::new(
+        storage,
+        sequencer,
+        ethereum_chain,
+        sync_state,
+        pending_state,
+    )
+    .with_call_handling(call_handle)
+    .with_eth_gas_price(shared);
 
     let (rpc_handle, local_addr) = rpc::run_server(config.http_rpc_addr, api)
         .await

@@ -59,6 +59,12 @@ pub enum MaybePendingBlock {
     Pending(PendingBlock),
 }
 
+impl From<PendingBlock> for MaybePendingBlock {
+    fn from(pending: PendingBlock) -> Self {
+        MaybePendingBlock::Pending(pending)
+    }
+}
+
 #[cfg(test)]
 impl From<Block> for MaybePendingBlock {
     fn from(block: Block) -> Self {

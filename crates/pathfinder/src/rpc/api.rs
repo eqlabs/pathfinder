@@ -17,7 +17,7 @@ use crate::{
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
-    state::SyncState,
+    state::{PendingData, SyncState},
     storage::{
         ContractsTable, EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
         StarknetEventsTable, StarknetTransactionsTable, Storage,
@@ -44,6 +44,7 @@ pub struct RpcApi {
     call_handle: Option<ext_py::Handle>,
     shared_gas_price: Option<Cached>,
     sync_state: Arc<SyncState>,
+    pending_data: Arc<PendingData>,
 }
 
 #[derive(Debug)]
@@ -66,6 +67,7 @@ impl RpcApi {
         sequencer: sequencer::Client,
         chain: Chain,
         sync_state: Arc<SyncState>,
+        pending_data: Arc<PendingData>,
     ) -> Self {
         Self {
             storage,
@@ -74,6 +76,7 @@ impl RpcApi {
             call_handle: None,
             shared_gas_price: None,
             sync_state,
+            pending_data,
         }
     }
 
@@ -98,17 +101,13 @@ impl RpcApi {
         requested_scope: Option<BlockResponseScope>,
     ) -> RpcResult<Block> {
         let block_id = match block_hash {
-            BlockHashOrTag::Tag(Tag::Pending) => {
-                let block = self
-                    .sequencer
-                    .block(block_hash.into())
-                    .await
-                    .map_err(internal_server_error)?;
-
-                let scope = requested_scope.unwrap_or_default();
-
-                return Ok(Block::from_sequencer_scoped(block, scope));
-            }
+            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+                Some(block) => {
+                    let scope = requested_scope.unwrap_or_default();
+                    return Ok(Block::from_sequencer_scoped(block.into(), scope));
+                }
+                None => todo!("Return no pending data error"),
+            },
             BlockHashOrTag::Hash(hash) => hash.into(),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
         };
@@ -225,18 +224,13 @@ impl RpcApi {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => number.into(),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => {
-                let block = self
-                    .sequencer
-                    .block(block_number.into())
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
-
-                let scope = requested_scope.unwrap_or_default();
-
-                return Ok(Block::from_sequencer_scoped(block, scope));
-            }
+            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+                Some(block) => {
+                    let scope = requested_scope.unwrap_or_default();
+                    return Ok(Block::from_sequencer_scoped(block.into(), scope));
+                }
+                None => todo!("Return no pending data error"),
+            },
         };
 
         let storage = self.storage.clone();
@@ -378,10 +372,32 @@ impl RpcApi {
             BlockHashOrTag::Hash(hash) => hash.into(),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
             BlockHashOrTag::Tag(Tag::Pending) => {
-                return Ok(self
-                    .sequencer
-                    .storage(contract_address, key, block_hash)
-                    .await?);
+                // Pending storage will either be part of the pending state update,
+                // or it will come from latest if it isn't part of the pending diff.
+                match self.pending_data.state_update().await {
+                    Some(update) => {
+                        let pending_value = update
+                            .state_diff
+                            .storage_diffs
+                            .get(&contract_address)
+                            .map(|storage| {
+                                storage.iter().find_map(|update| {
+                                    if update.key == key {
+                                        Some(update.value)
+                                    } else {
+                                        None
+                                    }
+                                })
+                            })
+                            .flatten();
+
+                        match pending_value {
+                            Some(value) => return Ok(value),
+                            None => StarknetBlocksBlockId::Latest,
+                        }
+                    }
+                    None => todo!("Return no pending data error"),
+                }
             }
         };
 
@@ -500,22 +516,18 @@ impl RpcApi {
         let block_id = match block_hash {
             BlockHashOrTag::Hash(hash) => StarknetBlocksBlockId::Hash(hash),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockHashOrTag::Tag(Tag::Pending) => {
-                let block = self
-                    .sequencer
-                    .block(block_hash.into())
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
-
-                return block
-                    .transactions()
-                    .iter()
-                    .nth(index)
-                    .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                        Ok(txn.into())
-                    });
-            }
+            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+                Some(block) => {
+                    return block
+                        .transactions
+                        .iter()
+                        .nth(index)
+                        .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
+                            Ok(txn.into())
+                        })
+                }
+                None => todo!("Return no pending data error"),
+            },
         };
 
         let storage = self.storage.clone();
@@ -573,22 +585,18 @@ impl RpcApi {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => StarknetBlocksBlockId::Number(number),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => {
-                let block = self
-                    .sequencer
-                    .block(block_number.into())
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
-
-                return block
-                    .transactions()
-                    .iter()
-                    .nth(index)
-                    .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                        Ok(txn.clone().into())
-                    });
-            }
+            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+                Some(block) => {
+                    return block
+                        .transactions
+                        .iter()
+                        .nth(index)
+                        .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
+                            Ok(txn.into())
+                        })
+                }
+                None => todo!("Return no pending data error"),
+            },
         };
 
         let storage = self.storage.clone();
@@ -842,21 +850,15 @@ impl RpcApi {
         let block_id = match block_hash {
             BlockHashOrTag::Hash(hash) => hash.into(),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockHashOrTag::Tag(Tag::Pending) => {
-                let block = self
-                    .sequencer
-                    .block(block_hash.into())
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
-
-                let len: u64 =
-                    block.transactions().len().try_into().map_err(|e| {
+            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+                Some(block) => {
+                    let count = block.transactions.len().try_into().map_err(|e| {
                         Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
                     })?;
-
-                return Ok(len);
-            }
+                    return Ok(count);
+                }
+                None => todo!("Return no pending data error"),
+            },
         };
 
         let storage = self.storage.clone();
@@ -907,21 +909,15 @@ impl RpcApi {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => number.into(),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => {
-                let block = self
-                    .sequencer
-                    .block(block_number.into())
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
-
-                let len: u64 =
-                    block.transactions().len().try_into().map_err(|e| {
+            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+                Some(block) => {
+                    let count = block.transactions.len().try_into().map_err(|e| {
                         Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
                     })?;
-
-                return Ok(len);
-            }
+                    return Ok(count);
+                }
+                None => todo!("Return no pending data error"),
+            },
         };
 
         let storage = self.storage.clone();
@@ -979,6 +975,7 @@ impl RpcApi {
                 h.call(request, block_hash).map_err(Error::from).await
             }
             (Some(_), _) => {
+                // FIXME: should use local pending once call/python support has landed
                 // just forward it to the sequencer for now.
                 self.sequencer
                     .call(request.into(), block_hash)
@@ -1047,6 +1044,8 @@ impl RpcApi {
 
     /// Returns events matching the specified filter
     pub async fn get_events(&self, request: EventFilter) -> RpcResult<GetEventsResult> {
+        // FIXME: support pending, and latest. This will require updating EventFilter.
+        // Don't forget to check that pending block number actually follows from latest.
         let storage = self.storage.clone();
         let span = tracing::Span::current();
 

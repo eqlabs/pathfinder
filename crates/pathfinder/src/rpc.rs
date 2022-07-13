@@ -398,7 +398,7 @@ mod tests {
             test_utils::*,
             Client,
         },
-        state::{state_tree::GlobalStateTree, SyncState},
+        state::{state_tree::GlobalStateTree, PendingData, SyncState},
         storage::{
             ContractCodeTable, ContractsTable, StarknetBlock, StarknetBlocksTable,
             StarknetTransactionsTable, Storage,
@@ -640,7 +640,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
             let params = rpc_params!(genesis_hash);
@@ -668,7 +674,13 @@ mod tests {
                     let storage = setup_storage();
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                    let api = RpcApi::new(
+                        storage,
+                        sequencer,
+                        Chain::Goerli,
+                        sync_state,
+                        Arc::new(PendingData::default()),
+                    );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
@@ -693,7 +705,13 @@ mod tests {
                     let storage = setup_storage();
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                    let api = RpcApi::new(
+                        storage,
+                        sequencer,
+                        Chain::Goerli,
+                        sync_state,
+                        Arc::new(PendingData::default()),
+                    );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
@@ -721,7 +739,13 @@ mod tests {
                     let storage = setup_storage();
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                    let api = RpcApi::new(
+                        storage,
+                        sequencer,
+                        Chain::Goerli,
+                        sync_state,
+                        Arc::new(PendingData::default()),
+                    );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
@@ -746,7 +770,13 @@ mod tests {
                     let storage = setup_storage();
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                    let api = RpcApi::new(
+                        storage,
+                        sequencer,
+                        Chain::Goerli,
+                        sync_state,
+                        Arc::new(PendingData::default()),
+                    );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
@@ -770,7 +800,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 BlockHashOrTag::Tag(Tag::Pending),
@@ -791,7 +827,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO));
             let error = client(addr)
@@ -816,7 +858,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockNumber(0));
             let block = client(addr)
@@ -842,7 +890,13 @@ mod tests {
                     let storage = setup_storage();
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                    let api = RpcApi::new(
+                        storage,
+                        sequencer,
+                        Chain::Goerli,
+                        sync_state,
+                        Arc::new(PendingData::default()),
+                    );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = rpc_params!(
                         BlockNumberOrTag::Tag(Tag::Latest),
@@ -864,7 +918,13 @@ mod tests {
                     let storage = setup_storage();
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                    let api = RpcApi::new(
+                        storage,
+                        sequencer,
+                        Chain::Goerli,
+                        sync_state,
+                        Arc::new(PendingData::default()),
+                    );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
                     let block = client(addr)
@@ -889,7 +949,13 @@ mod tests {
                     let storage = setup_storage();
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                    let api = RpcApi::new(
+                        storage,
+                        sequencer,
+                        Chain::Goerli,
+                        sync_state,
+                        Arc::new(PendingData::default()),
+                    );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = by_name([
                         ("block_number", json!("latest")),
@@ -917,7 +983,13 @@ mod tests {
                     let storage = setup_storage();
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                    let api = RpcApi::new(
+                        storage,
+                        sequencer,
+                        Chain::Goerli,
+                        sync_state,
+                        Arc::new(PendingData::default()),
+                    );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = by_name([("block_number", json!("latest"))]);
                     let block = client(addr)
@@ -944,7 +1016,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 BlockHashOrTag::Tag(Tag::Pending),
@@ -965,7 +1043,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockNumber(123));
             let error = client(addr)
@@ -989,7 +1073,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(*GENESIS_BLOCK_HASH);
             client(addr)
@@ -1004,7 +1094,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
             client(addr)
@@ -1019,7 +1115,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
             client(addr)
@@ -1044,7 +1146,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap()),
@@ -1071,7 +1179,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap()),
@@ -1096,7 +1210,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"nonexistent").unwrap()),
@@ -1115,7 +1235,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
@@ -1136,7 +1262,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
@@ -1157,7 +1289,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
@@ -1185,7 +1323,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(
                     ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
@@ -1207,7 +1351,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([
                     (
@@ -1236,7 +1386,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 *VALID_CONTRACT_ADDR,
@@ -1265,7 +1421,13 @@ mod tests {
                 let hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(hash);
                 let transaction = client(addr)
@@ -1281,7 +1443,13 @@ mod tests {
                 let hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("transaction_hash", json!(hash))]);
                 let transaction = client(addr)
@@ -1297,7 +1465,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(*INVALID_TX_HASH);
             let error = client(addr)
@@ -1321,7 +1495,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
             let params = rpc_params!(genesis_hash, 0);
@@ -1344,7 +1524,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest), 0);
                 let txn = client(addr)
@@ -1362,7 +1548,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("block_hash", json!("latest")), ("index", json!(0))]);
                 let txn = client(addr)
@@ -1381,7 +1573,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending), 0);
             client(addr)
@@ -1395,7 +1593,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO), 0);
             let error = client(addr)
@@ -1410,7 +1614,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
             let params = rpc_params!(genesis_hash, 123);
@@ -1435,7 +1645,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(0, 0);
             let txn = client(addr)
@@ -1457,7 +1673,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest), 0);
                 let txn = client(addr)
@@ -1475,7 +1697,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("block_number", json!("latest")), ("index", json!(0))]);
                 let txn = client(addr)
@@ -1494,7 +1722,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending), 0);
             client(addr)
@@ -1508,7 +1742,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(123, 0);
             let error = client(addr)
@@ -1526,7 +1766,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(0, 123);
             let error = client(addr)
@@ -1554,7 +1800,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let params = rpc_params!(txn_hash);
@@ -1574,7 +1826,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let params = by_name([("transaction_hash", json!(txn_hash))]);
@@ -1595,7 +1853,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"not found").unwrap());
             let params = rpc_params!(txn_hash);
@@ -1625,7 +1889,13 @@ mod tests {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(*INVALID_CLASS_HASH);
                 let error = client(addr)
@@ -1647,7 +1917,13 @@ mod tests {
 
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = rpc_params!(class_hash);
@@ -1677,7 +1953,13 @@ mod tests {
 
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([("class_hash", json!(class_hash))]);
@@ -1706,7 +1988,13 @@ mod tests {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(*INVALID_CONTRACT_ADDR);
                 let error = client(addr)
@@ -1728,7 +2016,13 @@ mod tests {
 
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(contract_address);
                 let class_hash = client(addr)
@@ -1756,7 +2050,13 @@ mod tests {
 
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([("contract_address", json!(contract_address))]);
@@ -1781,7 +2081,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
             let error = client(addr)
@@ -1796,7 +2102,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
             let not_found = client(addr)
@@ -1827,7 +2139,13 @@ mod tests {
 
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
             let client = client(addr);
@@ -1872,7 +2190,13 @@ mod tests {
 
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
             let client = client(addr);
@@ -1969,7 +2293,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockHash(
                 StarkHash::from_be_slice(b"genesis").unwrap()
@@ -1990,7 +2320,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
                 let count = client(addr)
@@ -2005,7 +2341,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("block_hash", json!("latest"))]);
                 let count = client(addr)
@@ -2021,7 +2363,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
             client(addr)
@@ -2035,7 +2383,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO));
             let error = client(addr)
@@ -2056,7 +2410,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(0);
             let count = client(addr)
@@ -2075,7 +2435,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
                 let count = client(addr)
@@ -2090,7 +2456,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("block_number", json!("latest"))]);
                 let count = client(addr)
@@ -2106,7 +2478,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending));
             client(addr)
@@ -2120,7 +2498,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(123);
             let error = client(addr)
@@ -2154,7 +2538,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -2182,7 +2572,13 @@ mod tests {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(
                     Call {
@@ -2207,7 +2603,13 @@ mod tests {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([
                     (
@@ -2233,7 +2635,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -2258,7 +2666,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -2287,7 +2701,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -2313,7 +2733,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -2339,7 +2765,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -2365,7 +2797,13 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -2391,7 +2829,13 @@ mod tests {
         let storage = setup_storage();
         let sequencer = Client::new(Chain::Goerli).unwrap();
         let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+        let api = RpcApi::new(
+            storage,
+            sequencer,
+            Chain::Goerli,
+            sync_state,
+            Arc::new(PendingData::default()),
+        );
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
         let number = client(addr)
             .request::<u64>("starknet_blockNumber", rpc_params!())
@@ -2411,7 +2855,13 @@ mod tests {
                     let storage = Storage::in_memory().unwrap();
                     let sequencer = Client::new(*set_chain).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, *set_chain, sync_state);
+                    let api = RpcApi::new(
+                        storage,
+                        sequencer,
+                        *set_chain,
+                        sync_state,
+                        Arc::new(PendingData::default()),
+                    );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = rpc_params!();
                     client(addr)
@@ -2435,7 +2885,13 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
         let sequencer = Client::new(Chain::Goerli).unwrap();
         let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+        let api = RpcApi::new(
+            storage,
+            sequencer,
+            Chain::Goerli,
+            sync_state,
+            Arc::new(PendingData::default()),
+        );
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
         client(addr)
             .request::<()>("starknet_pendingTransactions", rpc_params!())
@@ -2449,7 +2905,13 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
         let sequencer = Client::new(Chain::Goerli).unwrap();
         let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+        let api = RpcApi::new(
+            storage,
+            sequencer,
+            Chain::Goerli,
+            sync_state,
+            Arc::new(PendingData::default()),
+        );
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
         client(addr)
             .request::<StarknetProtocolVersion>("starknet_protocolVersion", rpc_params!())
@@ -2468,7 +2930,13 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let syncing = client(addr)
                 .request::<Syncing>("starknet_syncing", rpc_params!())
@@ -2491,7 +2959,13 @@ mod tests {
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             *sync_state.status.write().await = expected.clone();
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(
+                storage,
+                sequencer,
+                Chain::Goerli,
+                sync_state,
+                Arc::new(PendingData::default()),
+            );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let syncing = client(addr)
                 .request::<Syncing>("starknet_syncing", rpc_params!())
@@ -2627,7 +3101,13 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = rpc_params!(EventFilter {
@@ -2658,7 +3138,13 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let expected_event = &events[1];
@@ -2691,7 +3177,13 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 const BLOCK_NUMBER: usize = 2;
@@ -2725,7 +3217,13 @@ mod tests {
                 let (storage, _events) = setup();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = rpc_params!(EventFilter {
@@ -2749,7 +3247,13 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let expected_events = &events[27..32];
@@ -2853,7 +3357,13 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params =
@@ -2878,7 +3388,13 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let expected_event = &events[1];
@@ -3021,7 +3537,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = rpc_params!(
@@ -3053,7 +3575,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::integration().unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let contract_class = CONTRACT_DEFINITION.clone();
@@ -3089,7 +3617,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let contract_definition = CONTRACT_DEFINITION.clone();
@@ -3144,7 +3678,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([
@@ -3199,7 +3739,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::integration().unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([
@@ -3236,7 +3782,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+                let api = RpcApi::new(
+                    storage,
+                    sequencer,
+                    Chain::Goerli,
+                    sync_state,
+                    Arc::new(PendingData::default()),
+                );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([

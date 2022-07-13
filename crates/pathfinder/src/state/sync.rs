@@ -56,6 +56,22 @@ impl PendingData {
         let mut inner = self.inner.write().await;
         *inner = value;
     }
+
+    pub async fn block(&self) -> Option<PendingBlock> {
+        self.inner
+            .read()
+            .await
+            .as_ref()
+            .map(|inner| (*inner.0).clone())
+    }
+
+    pub async fn state_update(&self) -> Option<sequencer::reply::StateUpdate> {
+        self.inner
+            .read()
+            .await
+            .as_ref()
+            .map(|inner| (*inner.1).clone())
+    }
 }
 
 impl Default for PendingData {
