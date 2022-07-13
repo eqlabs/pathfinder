@@ -1052,4 +1052,94 @@ pub mod reply {
         #[serde(rename = "overall_fee")]
         pub fee: web3::types::H256,
     }
+
+    #[cfg(test)]
+    mod tests {
+        macro_rules! fixture {
+            ($file_name:literal) => {
+                include_str!(concat!("../../fixtures/rpc/0.21.0/", $file_name))
+                    .replace(&[' ', '\n'], "")
+            };
+        }
+
+        /// The aim of these tests is to check if serialization works correctly
+        /// **without resorting to deserialization to prepare the test data**,
+        /// which in itself could contain an "opposite phase" bug that cancels out.
+        ///
+        /// Deserialization is tested btw, because the fixture and the data is already available.
+        mod serde {
+            use super::super::*;
+            use pretty_assertions::assert_eq;
+
+            #[test]
+            fn block() {
+                impl Block {
+                    pub fn test_data() -> Self {
+                        let common = CommonTransactionProperties {
+                            txn_hash: StarknetTransactionHash::from_hex_str("0x4").unwrap(),
+                            max_fee: crate::core::Fee(web3::types::H128::from_low_u64_be(0x5)),
+                            version: crate::core::TransactionVersion(
+                                web3::types::H256::from_low_u64_be(0x6),
+                            ),
+                            signature: vec![TransactionSignatureElem::from_hex_str("0x7").unwrap()],
+                            nonce: TransactionNonce::from_hex_str("0x8").unwrap(),
+                        };
+                        Self {
+                            status: BlockStatus::AcceptedOnL1,
+                            block_hash: Some(StarknetBlockHash::from_hex_str("0x0").unwrap()),
+                            parent_hash: StarknetBlockHash::from_hex_str("0x1").unwrap(),
+                            block_number: Some(StarknetBlockNumber(0)),
+                            new_root: Some(GlobalRoot::from_hex_str("0x2").unwrap()),
+                            timestamp: StarknetBlockTimestamp(1),
+                            sequencer_address: SequencerAddress::from_hex_str("0x3").unwrap(),
+                            transactions: Transactions::Full(vec![
+                                Transaction::Declare(DeclareTransaction {
+                                    common: common.clone(),
+                                    class_hash: ClassHash::from_hex_str("0x9").unwrap(),
+                                    sender_address: ContractAddress::from_hex_str("0xa").unwrap(),
+                                }),
+                                Transaction::Invoke(InvokeTransaction {
+                                    common,
+                                    contract_address: ContractAddress::from_hex_str("0xb").unwrap(),
+                                    entry_point_selector: EntryPoint::from_hex_str("0xc").unwrap(),
+                                    calldata: vec![CallParam::from_hex_str("0xd").unwrap()],
+                                }),
+                                Transaction::Deploy(DeployTransaction {
+                                    txn_hash: StarknetTransactionHash::from_hex_str("0xe").unwrap(),
+                                    contract_address: ContractAddress::from_hex_str("0xf").unwrap(),
+                                    class_hash: ClassHash::from_hex_str("0x10").unwrap(),
+                                    constructor_calldata: vec![ConstructorParam::from_hex_str(
+                                        "0x11",
+                                    )
+                                    .unwrap()],
+                                }),
+                            ]),
+                        }
+                    }
+                }
+
+                let data = vec![
+                    Block::test_data(),
+                    Block {
+                        block_hash: None,
+                        block_number: None,
+                        new_root: None,
+                        transactions: Transactions::HashesOnly(vec![
+                            StarknetTransactionHash::from_hex_str("0x4").unwrap(),
+                        ]),
+                        ..Block::test_data()
+                    },
+                ];
+
+                assert_eq!(
+                    serde_json::to_string(&data).unwrap(),
+                    fixture!("block.json")
+                );
+                assert_eq!(
+                    serde_json::from_str::<Vec<Block>>(&fixture!("block.json")).unwrap(),
+                    data
+                );
+            }
+        }
+    }
 }
