@@ -11,28 +11,14 @@ function rpc_call() {
      printf "\n\n"
 }
 
-rpc_call '{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["pending"]}'
-rpc_call '{"jsonrpc":"2.0","id":"1","method":"starknet_getBlockByNumber","params":["pending"]}'
+rpc_call '{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxs","params":["pending"]}'
+rpc_call '{"jsonrpc":"2.0","id":"2","method":"starknet_getBlockWithTxHashes","params":["pending"]}'
 
-rpc_call '{"jsonrpc":"2.0","id":"2","method":"starknet_getBlockByHash","params":["pending","TXN_HASH"]}'
-rpc_call '{"jsonrpc":"2.0","id":"3","method":"starknet_getBlockByNumber","params":["pending","TXN_HASH"]}'
+rpc_call '{"jsonrpc":"2.0","id":"4","method":"starknet_getBlockWithTxs","params":["latest"]}'
+rpc_call '{"jsonrpc":"2.0","id":"6","method":"starknet_getBlockWithTxHashes","params":["latest"]}'
 
-rpc_call '{"jsonrpc":"2.0","id":"4","method":"starknet_getBlockByHash","params":["latest"]}'
-rpc_call '{"jsonrpc":"2.0","id":"5","method":"starknet_getBlockByNumber","params":["latest"]}'
-
-rpc_call '{"jsonrpc":"2.0","id":"6","method":"starknet_getBlockByHash","params":["latest","TXN_HASH"]}'
-rpc_call '{"jsonrpc":"2.0","id":"7","method":"starknet_getBlockByNumber","params":["latest","TXN_HASH"]}'
-
-rpc_call '{"jsonrpc":"2.0","id":"8","method":"starknet_getBlockByHash","params":["latest","FULL_TXNS"]}'
-rpc_call '{"jsonrpc":"2.0","id":"9","method":"starknet_getBlockByNumber","params":["latest","FULL_TXNS"]}'
-
-rpc_call '{"jsonrpc":"2.0","id":"10","method":"starknet_getBlockByHash","params":["latest","FULL_TXN_AND_RECEIPTS"]}'
-rpc_call '{"jsonrpc":"2.0","id":"11","method":"starknet_getBlockByNumber","params":["latest","FULL_TXN_AND_RECEIPTS"]}'
-
-# At the moment causes HTTP 504
-# rpc_call '{"jsonrpc":"2.0","id":"12","method":"starknet_getBlockByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}'
-
-rpc_call '{"jsonrpc":"2.0","id":"13","method":"starknet_getBlockByNumber","params":[41000]}'
+rpc_call '{"jsonrpc":"2.0","id":"12","method":"starknet_getBlockWithTxs","params":[{"block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"}]}'
+rpc_call '{"jsonrpc":"2.0","id":"13","method":"starknet_getBlockWithTxs","params":[{"block_number": 41000}]}'
 
 # TODO not implemented yet
 # rpc_call '[{"jsonrpc":"2.0","id":"14","method":"starknet_getStateUpdateByHash","params":["latest"]},
