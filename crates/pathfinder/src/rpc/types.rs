@@ -10,14 +10,14 @@ pub enum Tag {
     ///
     /// Represented as the JSON string `"latest"` when passed as an RPC method argument,
     /// for example:
-    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["latest"]}`
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["latest"]}`
     #[serde(rename = "latest")]
     Latest,
     /// Currently constructed block
     ///
     /// Represented as the JSON string `"pending"` when passed as an RPC method argument,
     /// for example:
-    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["pending"]}`
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["pending"]}`
     #[serde(rename = "pending")]
     Pending,
 }
@@ -40,7 +40,7 @@ pub enum BlockHashOrTag {
     ///
     /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64 characters
     /// when passed as an RPC method argument, for example:
-    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
     Hash(StarknetBlockHash),
     /// Special [Tag](crate::rpc::types::Tag) describing a block
     Tag(Tag),
