@@ -16,19 +16,22 @@ use serde_with::serde_as;
 pub struct Block {
     pub block_hash: StarknetBlockHash,
     pub block_number: StarknetBlockNumber,
+    /// Excluded in blocks prior to StarkNet 0.9
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
-    /// Excluded in blocks prior to StarkNet 0.9
     pub gas_price: Option<GasPrice>,
     pub parent_block_hash: StarknetBlockHash,
-    #[serde(default)]
     /// Excluded in blocks prior to StarkNet 0.8
+    #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
     pub state_root: GlobalRoot,
     pub status: Status,
     pub timestamp: StarknetBlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
+    /// Version metadata introduced in 0.9.1, older blocks will not have it.
+    #[serde(default)]
+    pub starknet_version: Option<String>,
 }
 
 #[serde_as]
@@ -44,6 +47,9 @@ pub struct PendingBlock {
     pub timestamp: StarknetBlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
+    /// Version metadata introduced in 0.9.1, older blocks will not have it.
+    #[serde(default)]
+    pub starknet_version: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -384,6 +390,15 @@ pub mod state_update {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<Contract>,
+
+        /// Optional field of declared contracts.
+        ///
+        /// Since 0.9.1.
+        ///
+        /// FIXME: drop the default after 0.9.1 is on mainnet.
+        /// FIXME: these are not yet used in any way
+        #[serde(default)]
+        pub declared_contracts: Vec<ClassHash>,
     }
 
     /// L2 storage diff.

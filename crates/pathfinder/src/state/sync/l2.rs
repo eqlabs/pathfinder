@@ -641,6 +641,7 @@ mod tests {
                 timestamp: StarknetBlockTimestamp(0),
                 transaction_receipts: vec![],
                 transactions: vec![],
+                starknet_version: None,
             };
             static ref BLOCK0_V2: reply::Block = reply::Block {
                 block_hash: *BLOCK0_HASH_V2,
@@ -653,6 +654,7 @@ mod tests {
                 timestamp: StarknetBlockTimestamp(10),
                 transaction_receipts: vec![],
                 transactions: vec![],
+                starknet_version: Some("0.9.1".into()),
             };
             static ref BLOCK1: reply::Block = reply::Block {
                 block_hash: *BLOCK1_HASH,
@@ -665,6 +667,7 @@ mod tests {
                 timestamp: StarknetBlockTimestamp(1),
                 transaction_receipts: vec![],
                 transactions: vec![],
+                starknet_version: Some("0.9.1".into()),
             };
             static ref BLOCK2: reply::Block = reply::Block {
                 block_hash: *BLOCK2_HASH,
@@ -677,6 +680,7 @@ mod tests {
                 timestamp: StarknetBlockTimestamp(2),
                 transaction_receipts: vec![],
                 transactions: vec![],
+                starknet_version: Some("0.9.2".into()),
             };
 
             static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
@@ -695,6 +699,7 @@ mod tests {
                             value: *STORAGE_VAL0,
                         }],
                     )]),
+                    declared_contracts: Vec::new(),
                 },
             };
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
@@ -707,6 +712,7 @@ mod tests {
                         contract_hash: *CONTRACT0_HASH_V2,
                     }],
                     storage_diffs: HashMap::new(),
+                    declared_contracts: Vec::new(),
                 },
             };
             static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
@@ -734,6 +740,7 @@ mod tests {
                             }],
                         ),
                     ]),
+                    declared_contracts: Vec::new(),
                 },
             };
             static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
@@ -743,6 +750,7 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
+                    declared_contracts: Vec::new(),
                 },
             };
             static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
@@ -752,6 +760,7 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
+                    declared_contracts: Vec::new(),
                 },
             };
             static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
@@ -761,6 +770,7 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
+                    declared_contracts: Vec::new(),
                 },
             };
             static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
@@ -770,6 +780,7 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
+                    declared_contracts: Vec::new(),
                 },
             };
 
@@ -1222,6 +1233,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    starknet_version: None,
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1474,6 +1486,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    starknet_version: None,
                 };
                 let block2_v2 = reply::Block {
                     block_hash: *BLOCK2_HASH_V2,
@@ -1488,6 +1501,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    starknet_version: None,
                 };
                 let block3 = reply::Block {
                     block_hash: *BLOCK3_HASH,
@@ -1502,6 +1516,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp(3),
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    starknet_version: None,
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1757,6 +1772,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    starknet_version: None,
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1954,6 +1970,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    starknet_version: None,
                 };
                 let block2 = reply::Block {
                     block_hash: *BLOCK2_HASH,
@@ -1968,6 +1985,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    starknet_version: None,
                 };
 
                 // Fetch the genesis block with respective state update and contracts

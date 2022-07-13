@@ -626,6 +626,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp(0),
                     transaction_receipts: vec![],
                     transactions: vec![],
+                    starknet_version: None,
                 }))
             },
         );
@@ -709,6 +710,7 @@ mod tests {
     }
 
     mod block {
+
         use super::*;
         use pretty_assertions::assert_eq;
 
@@ -770,6 +772,45 @@ mod tests {
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
             );
+        }
+
+        #[tokio::test]
+        async fn with_starknet_version_added_in_0_9_1() {
+            use crate::sequencer::reply::MaybePendingBlock;
+            let (_jh, client) = setup([
+                (
+                    "/feeder_gateway/get_block?blockNumber=192844",
+                    response!("integration/block/192844.json"),
+                ),
+                (
+                    "/feeder_gateway/get_block?blockNumber=pending",
+                    response!("integration/block/pending.json"),
+                ),
+            ]);
+
+            let expected_version = "0.9.1";
+
+            let block = client
+                .block(StarknetBlockNumber(192844).into())
+                .await
+                .unwrap();
+            assert_eq!(
+                block
+                    .as_block()
+                    .expect("should not had been a pending block")
+                    .starknet_version
+                    .as_deref(),
+                Some(expected_version)
+            );
+
+            let block = client.block(BlockId::Pending).await.unwrap();
+
+            match block {
+                MaybePendingBlock::Pending(p) => {
+                    assert_eq!(p.starknet_version.as_deref(), Some(expected_version))
+                }
+                MaybePendingBlock::Block(_) => panic!("should not had been a ready block"),
+            }
         }
     }
 
@@ -1499,6 +1540,21 @@ mod tests {
                 response!("0.9.0/state_update/pending.json"),
             )]);
             client.state_update(BlockId::Pending).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn by_number_with_declared_contracts_in_0_9_1() {
+            let (_jh, client) = setup([(
+                "/feeder_gateway/get_state_update?blockNumber=193137",
+                response!("integration/state_update/193137.json"),
+            )]);
+
+            let parsed = client
+                .state_update(StarknetBlockNumber(193137).into())
+                .await
+                .expect("should had parsed with the optional declared contracts");
+
+            assert_ne!(parsed.state_diff.declared_contracts, &[]);
         }
     }
 

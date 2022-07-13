@@ -239,10 +239,22 @@ impl RefsTable {
 pub struct StarknetBlocksTable {}
 impl StarknetBlocksTable {
     /// Insert a new [StarknetBlock]. Fails if the block number is not unique.
-    pub fn insert(tx: &Transaction<'_>, block: &StarknetBlock) -> anyhow::Result<()> {
+    ///
+    /// Version is the [`crate::sequencer::reply::Block::starknet_version`].
+    pub fn insert(
+        tx: &Transaction<'_>,
+        block: &StarknetBlock,
+        version: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let version_id = if let Some(version) = version {
+            Some(StarknetVersionsTable::intern(tx, version)?)
+        } else {
+            None
+        };
+
         tx.execute(
-            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address)
-                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address)",
+            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id)
+                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id)",
             named_params! {
                 ":number": block.number.0,
                 ":hash": block.hash.0.as_be_bytes(),
@@ -250,6 +262,7 @@ impl StarknetBlocksTable {
                 ":timestamp": block.timestamp.0,
                 ":gas_price": &block.gas_price.to_be_bytes(),
                 ":sequencer_address": block.sequencer_address.0.as_be_bytes(),
+                ":version_id": version_id,
             },
         )?;
 
@@ -896,6 +909,9 @@ impl StarknetEventsTable {
 }
 
 /// Describes a Starknet block.
+///
+/// While the sequencer version on each block (when present) is stored since starknet 0.9.1, it is
+/// not yet read.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StarknetBlock {
     pub number: StarknetBlockNumber,
@@ -904,6 +920,53 @@ pub struct StarknetBlock {
     pub timestamp: StarknetBlockTimestamp,
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
+}
+
+/// StarknetVersionsTable tracks `starknet_versions` table, which just interns the version
+/// metadata on each block.
+///
+/// It was decided to go with interned approach, as we couldn't be sure that a semantic version
+/// string format is followed. Semantic version strings may have been cheaper to just store
+/// in-line.
+///
+/// Introduced in [`super::schema::revision_0014::migrate`].
+struct StarknetVersionsTable;
+
+impl StarknetVersionsTable {
+    /// Interns, or makes sure there's a unique row for each version.
+    ///
+    /// These are not deleted automatically nor is a need expected due to multiple blocks being
+    /// generated with a single starknet version.
+    fn intern(transaction: &Transaction<'_>, version: &str) -> anyhow::Result<i64> {
+        let id: Option<i64> = transaction
+            .query_row(
+                "SELECT id FROM starknet_versions WHERE version = ?",
+                &[version],
+                |r| Ok(r.get_unwrap(0)),
+            )
+            .optional()
+            .context("Querying for an existing starknet_version")?;
+
+        let id = if let Some(id) = id {
+            id
+        } else {
+            // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
+            // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
+            // read back with last_insert_rowid
+            let rows = transaction
+                .execute(
+                    "INSERT INTO starknet_versions(version) VALUES (?)",
+                    &[version],
+                )
+                .context("Inserting unique starknet_version")?;
+
+            anyhow::ensure!(rows == 1, "Unexpected number of rows inserted: {rows}");
+
+            transaction.last_insert_rowid()
+        };
+
+        Ok(id)
+    }
 }
 
 /// Stores the contract state hash along with its preimage. This is useful to
@@ -1275,7 +1338,7 @@ mod tests {
 
             let blocks = create_blocks();
             for block in &blocks {
-                StarknetBlocksTable::insert(&tx, block).unwrap();
+                StarknetBlocksTable::insert(&tx, block, None).unwrap();
             }
 
             f(&tx, blocks)
@@ -1496,6 +1559,47 @@ mod tests {
                 })
             }
         }
+
+        mod interned_version {
+            use super::super::Storage;
+            use super::StarknetBlocksTable;
+
+            #[test]
+            fn duplicate_versions_interned() {
+                let storage = Storage::in_memory().unwrap();
+                let mut connection = storage.connection().unwrap();
+                let tx = connection.transaction().unwrap();
+
+                let blocks = super::create_blocks();
+                let versions = ["0.9.1", "0.9.1"]
+                    .into_iter()
+                    .chain(std::iter::repeat("0.9.2"));
+
+                let mut inserted = 0;
+
+                for (block, version) in blocks.iter().zip(versions) {
+                    StarknetBlocksTable::insert(&tx, block, Some(version)).unwrap();
+                    inserted += 1;
+                }
+
+                let rows = tx.prepare("select version_id, count(1) from starknet_blocks group by version_id order by version_id")
+                    .unwrap()
+                    .query([])
+                    .unwrap()
+                    .mapped(|r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, i64>(1)?)))
+                    .collect::<Result<Vec<(Option<i64>, i64)>, _>>()
+                    .unwrap();
+
+                // there should be two of 0.9.1
+                assert_eq!(rows.first(), Some(&(Some(1), 2)));
+
+                // there should be a few for 0.9.2 (initially the create_rows returned 3 => 1)
+                assert_eq!(rows.last(), Some(&(Some(2), inserted - 2)));
+
+                // we should not have any nulls
+                assert_eq!(rows.len(), 2, "nulls were not expected in {rows:?}");
+            }
+        }
     }
 
     mod starknet_events {
@@ -1563,7 +1667,7 @@ mod tests {
             let transactions_and_receipts = create_transactions_and_receipts();
 
             for (i, block) in blocks.iter().enumerate() {
-                StarknetBlocksTable::insert(tx, block).unwrap();
+                StarknetBlocksTable::insert(tx, block, None).unwrap();
                 StarknetTransactionsTable::upsert(
                     tx,
                     block.hash,
@@ -1732,7 +1836,7 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            StarknetBlocksTable::insert(&tx, &block).unwrap();
+            StarknetBlocksTable::insert(&tx, &block, None).unwrap();
             StarknetTransactionsTable::upsert(
                 &tx,
                 block.hash,

@@ -11,6 +11,7 @@ pub(crate) mod revision_0010;
 pub(crate) mod revision_0011;
 pub(crate) mod revision_0012;
 pub(crate) mod revision_0013;
+pub(crate) mod revision_0014;
 
 #[cfg(test)]
 pub(crate) mod fixtures;
