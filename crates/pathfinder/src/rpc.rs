@@ -391,9 +391,12 @@ mod tests {
         },
         rpc::run_server,
         sequencer::{
-            reply::transaction::{
-                execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                Event, ExecutionResources, Receipt, Transaction, Type,
+            reply::{
+                transaction::{
+                    execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+                    Event, ExecutionResources, Receipt, Transaction, Type,
+                },
+                PendingBlock,
             },
             test_utils::*,
             Client,
@@ -424,7 +427,8 @@ mod tests {
         static ref LOCALHOST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
     }
 
-    // Local test helper
+    /// Creates a [Storage] populated with some blocks and transactions for testing. In addition
+    /// returns [PendingData] which is connected to the latest block in storage.
     async fn setup_storage() -> (Storage, PendingData) {
         use crate::{
             core::StorageValue,
@@ -470,7 +474,7 @@ mod tests {
             let contract0_code = CompressedContract {
                 abi: zstd_magic.clone(),
                 bytecode: zstd_magic.clone(),
-                definition: zstd_magic,
+                definition: zstd_magic.clone(),
                 hash: class0_hash,
             };
             let mut contract1_code = contract0_code.clone();
@@ -641,11 +645,134 @@ mod tests {
 
             db_txn.commit().unwrap();
 
-            storage
+            // Create pending data which is linked to the latest full block in storage.
+            use crate::sequencer::reply as seq_reply;
+            let deployed_contracts = vec![
+                seq_reply::state_update::Contract {
+                    address: ContractAddress(
+                        StarkHash::from_be_slice(b"pending contract 0 address").unwrap(),
+                    ),
+                    contract_hash: ClassHash(
+                        StarkHash::from_be_slice(b"pending contract 0 hash").unwrap(),
+                    ),
+                },
+                seq_reply::state_update::Contract {
+                    address: ContractAddress(
+                        StarkHash::from_be_slice(b"pending contract 1 address").unwrap(),
+                    ),
+                    contract_hash: ClassHash(
+                        StarkHash::from_be_slice(b"pending contract 1 hash").unwrap(),
+                    ),
+                },
+            ];
+            let storage_diffs = [
+                (
+                    deployed_contracts[1].address,
+                    vec![
+                        seq_reply::state_update::StorageDiff {
+                            key: StorageAddress(
+                                StarkHash::from_be_slice(b"pending storage key 0").unwrap(),
+                            ),
+                            value: StorageValue(
+                                StarkHash::from_be_slice(b"pending storage value 0").unwrap(),
+                            ),
+                        },
+                        seq_reply::state_update::StorageDiff {
+                            key: StorageAddress(
+                                StarkHash::from_be_slice(b"pending storage key 1").unwrap(),
+                            ),
+                            value: StorageValue(
+                                StarkHash::from_be_slice(b"pending storage value 1").unwrap(),
+                            ),
+                        },
+                    ],
+                ),
+                (
+                    contract0_addr,
+                    vec![
+                        seq_reply::state_update::StorageDiff {
+                            key: StorageAddress(
+                                StarkHash::from_be_slice(b"pending storage key 2").unwrap(),
+                            ),
+                            value: StorageValue(
+                                StarkHash::from_be_slice(b"pending storage value 2").unwrap(),
+                            ),
+                        },
+                        seq_reply::state_update::StorageDiff {
+                            key: StorageAddress(
+                                StarkHash::from_be_slice(b"pending storage key 3").unwrap(),
+                            ),
+                            value: StorageValue(
+                                StarkHash::from_be_slice(b"pending storage value 3").unwrap(),
+                            ),
+                        },
+                    ],
+                ),
+            ]
+            .into_iter()
+            .collect();
+            let pending_state_diff = seq_reply::state_update::StateDiff {
+                storage_diffs,
+                deployed_contracts,
+                declared_contracts: Vec::new(),
+            };
+
+            let state_update =
+                crate::ethereum::state_update::StateUpdate::from(pending_state_diff.clone());
+
+            // Use a roll-back transaction to calculate pending state root.
+            // This must not be committed as we don't want to inject the diff
+            // into storage, but do require database IO to determine the root.
+            //
+            // Load from latest block in storage's root.
+            let tmp_tx = connection.transaction().unwrap();
+            let mut global_tree = GlobalStateTree::load(&tmp_tx, block2.root).unwrap();
+            for deployed in state_update.deployed_contracts {
+                let mut contract = contract0_code.clone();
+                contract.hash = deployed.hash;
+                ContractCodeTable::insert_compressed(&tmp_tx, &contract).unwrap();
+                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.hash).unwrap();
+            }
+            for update in state_update.contract_updates {
+                let state_hash = update_contract_state(&update, &global_tree, &tmp_tx).unwrap();
+                global_tree.set(update.address, state_hash).unwrap();
+            }
+            let pending_root = global_tree.apply().unwrap();
+            tmp_tx.rollback().unwrap();
+
+            let pending_block = PendingBlock {
+                gas_price: block2.gas_price,
+                parent_hash: block2.hash,
+                sequencer_address: block2.sequencer_address,
+                status: seq_reply::Status::Pending,
+                timestamp: crate::core::StarknetBlockTimestamp(block2.timestamp.0 + 1),
+                transaction_receipts: transaction_data2.iter().map(|tx| tx.1.clone()).collect(),
+                transactions: transaction_data2.iter().map(|tx| tx.0.clone()).collect(),
+                starknet_version: None,
+            };
+            let pending_state_diff = seq_reply::StateUpdate {
+                // Must be `None` for pending
+                block_hash: None,
+                new_root: pending_root,
+                old_root: block2.root,
+                state_diff: pending_state_diff,
+            };
+
+            (storage, pending_block, pending_state_diff)
         });
 
-        let storage = db_task.await.expect("Database setup should succeed");
-        (storage, PendingData::default())
+        let (storage, pending_block, pending_state_diff) =
+            db_task.await.expect("Database setup should succeed");
+
+        let pending_data = PendingData::default();
+        pending_data
+            .set(Some((
+                Box::new(pending_block),
+                Box::new(pending_state_diff),
+            )))
+            .await;
+
+        (storage, pending_data)
     }
 
     mod get_block_by_hash {
@@ -661,7 +788,8 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -669,7 +797,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
@@ -695,7 +823,8 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let (storage, _) = setup_storage().await;
+                    let (storage, pending) = setup_storage().await;
+                    let pending = Arc::new(pending);
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -703,7 +832,7 @@ mod tests {
                         sequencer,
                         Chain::Goerli,
                         sync_state,
-                        Arc::new(PendingData::default()),
+                        pending.clone(),
                     );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
@@ -726,7 +855,8 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let (storage, _) = setup_storage().await;
+                    let (storage, pending) = setup_storage().await;
+                    let pending = Arc::new(pending);
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -734,7 +864,7 @@ mod tests {
                         sequencer,
                         Chain::Goerli,
                         sync_state,
-                        Arc::new(PendingData::default()),
+                        pending.clone(),
                     );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
@@ -760,7 +890,8 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let (storage, _) = setup_storage().await;
+                    let (storage, pending) = setup_storage().await;
+                    let pending = Arc::new(pending);
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -768,7 +899,7 @@ mod tests {
                         sequencer,
                         Chain::Goerli,
                         sync_state,
-                        Arc::new(PendingData::default()),
+                        pending.clone(),
                     );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
@@ -791,7 +922,8 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let (storage, _) = setup_storage().await;
+                    let (storage, pending) = setup_storage().await;
+                    let pending = Arc::new(pending);
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -799,7 +931,7 @@ mod tests {
                         sequencer,
                         Chain::Goerli,
                         sync_state,
-                        Arc::new(PendingData::default()),
+                        pending.clone(),
                     );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let latest_hash =
@@ -821,7 +953,8 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -829,26 +962,25 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
+            let scope = BlockResponseScope::FullTransactions;
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(
-                BlockHashOrTag::Tag(Tag::Pending),
-                BlockResponseScope::FullTransactions
-            );
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending), scope.clone());
             let block = client(addr)
                 .request::<Block>("starknet_getBlockByHash", params)
                 .await
                 .unwrap();
-            assert_matches!(
-                block.transactions,
-                Transactions::Full(_) => ()
-            );
+
+            let expected = pending.block().await.unwrap();
+            let expected = Block::from_sequencer_scoped(expected.into(), scope);
+            assert_eq!(block, expected);
         }
 
         #[tokio::test]
         async fn invalid_block_hash() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -856,7 +988,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO));
@@ -879,7 +1011,8 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -887,7 +1020,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockNumber(0));
@@ -911,7 +1044,8 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let (storage, _) = setup_storage().await;
+                    let (storage, pending) = setup_storage().await;
+                    let pending = Arc::new(pending);
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -919,7 +1053,7 @@ mod tests {
                         sequencer,
                         Chain::Goerli,
                         sync_state,
-                        Arc::new(PendingData::default()),
+                        pending.clone(),
                     );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = rpc_params!(
@@ -939,7 +1073,8 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let (storage, _) = setup_storage().await;
+                    let (storage, pending) = setup_storage().await;
+                    let pending = Arc::new(pending);
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -947,7 +1082,7 @@ mod tests {
                         sequencer,
                         Chain::Goerli,
                         sync_state,
-                        Arc::new(PendingData::default()),
+                        pending.clone(),
                     );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
@@ -970,7 +1105,8 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let (storage, _) = setup_storage().await;
+                    let (storage, pending) = setup_storage().await;
+                    let pending = Arc::new(pending);
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -978,7 +1114,7 @@ mod tests {
                         sequencer,
                         Chain::Goerli,
                         sync_state,
-                        Arc::new(PendingData::default()),
+                        pending.clone(),
                     );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = by_name([
@@ -1004,7 +1140,8 @@ mod tests {
 
                 #[tokio::test]
                 async fn only_mandatory() {
-                    let (storage, _) = setup_storage().await;
+                    let (storage, pending) = setup_storage().await;
+                    let pending = Arc::new(pending);
                     let sequencer = Client::new(Chain::Goerli).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(
@@ -1012,7 +1149,7 @@ mod tests {
                         sequencer,
                         Chain::Goerli,
                         sync_state,
-                        Arc::new(PendingData::default()),
+                        pending.clone(),
                     );
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = by_name([("block_number", json!("latest"))]);
@@ -1037,7 +1174,8 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1045,26 +1183,25 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
+            let scope = BlockResponseScope::FullTransactions;
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(
-                BlockHashOrTag::Tag(Tag::Pending),
-                BlockResponseScope::FullTransactions
-            );
+            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending), scope.clone());
             let block = client(addr)
                 .request::<Block>("starknet_getBlockByNumber", params)
                 .await
                 .unwrap();
-            assert_matches!(
-                block.transactions,
-                Transactions::Full(_) => ()
-            );
+
+            let expected = pending.block().await.unwrap();
+            let expected = Block::from_sequencer_scoped(expected.into(), scope);
+            assert_eq!(block, expected);
         }
 
         #[tokio::test]
         async fn invalid_number() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1072,7 +1209,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockNumber(123));
@@ -1094,7 +1231,8 @@ mod tests {
         #[tokio::test]
         #[should_panic]
         async fn genesis() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1102,7 +1240,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(*GENESIS_BLOCK_HASH);
@@ -1115,7 +1253,8 @@ mod tests {
         #[tokio::test]
         #[should_panic]
         async fn latest() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1123,7 +1262,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
@@ -1134,9 +1273,9 @@ mod tests {
         }
 
         #[tokio::test]
-        #[should_panic]
         async fn pending() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1144,14 +1283,14 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
-            client(addr)
+            let result = client(addr)
                 .request::<StateUpdate>("starknet_getStateUpdateByHash", params)
-                .await
-                .unwrap();
+                .await;
+            assert_matches!(result, Err(_));
         }
     }
 
@@ -1167,7 +1306,8 @@ mod tests {
         async fn key_is_field_modulus() {
             use std::str::FromStr;
 
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1175,7 +1315,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -1200,7 +1340,8 @@ mod tests {
         async fn key_is_less_than_modulus_but_252_bits() {
             use std::str::FromStr;
 
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1208,7 +1349,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -1231,7 +1372,8 @@ mod tests {
 
         #[tokio::test]
         async fn non_existent_contract_address() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1239,7 +1381,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -1256,7 +1398,8 @@ mod tests {
 
         #[tokio::test]
         async fn pre_deploy_block_hash() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1264,7 +1407,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -1283,7 +1426,8 @@ mod tests {
 
         #[tokio::test]
         async fn non_existent_block_hash() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1291,7 +1435,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -1310,7 +1454,8 @@ mod tests {
 
         #[tokio::test]
         async fn deployment_block() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1318,7 +1463,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -1344,7 +1489,8 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1352,7 +1498,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(
@@ -1372,7 +1518,8 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1380,7 +1527,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([
@@ -1407,7 +1554,8 @@ mod tests {
 
         #[tokio::test]
         async fn pending_block() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1415,18 +1563,44 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
+
+            // Grab some pending data to test against.
+            let pending_diff = pending.state_update().await.unwrap();
+            let pending_diff = pending_diff.state_diff.storage_diffs.iter().next().unwrap();
+            let pending_storage = pending_diff.1.first().cloned().unwrap();
+            let pending_key = pending_storage.key;
+            let pending_val = pending_storage.value;
+            let pending_contract = pending_diff.0.to_owned();
+
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                *VALID_CONTRACT_ADDR,
-                *VALID_KEY,
+                pending_contract,
+                pending_key,
                 BlockHashOrTag::Tag(Tag::Pending)
             );
-            client(addr)
+            let value = client(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
+            assert_eq!(value, pending_val);
+
+            // Test that persistent storage is used if key is not in storage. Data taken from `setup_storage`.
+            let existing_key = StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap());
+            let existing_val = StorageValue(StarkHash::from_be_slice(b"storage value 2").unwrap());
+            let existing_contract =
+                ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap());
+            let params = rpc_params!(
+                existing_contract,
+                existing_key,
+                BlockHashOrTag::Tag(Tag::Pending)
+            );
+            let value = client(addr)
+                .request::<StorageValue>("starknet_getStorageAt", params)
+                .await
+                .unwrap();
+            assert_eq!(value, existing_val);
         }
     }
 
@@ -1441,7 +1615,8 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
@@ -1450,7 +1625,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(hash);
@@ -1463,7 +1638,8 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
@@ -1472,7 +1648,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("transaction_hash", json!(hash))]);
@@ -1486,7 +1662,8 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1494,7 +1671,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(*INVALID_TX_HASH);
@@ -1516,7 +1693,8 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1524,7 +1702,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
@@ -1545,7 +1723,8 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1553,7 +1732,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest), 0);
@@ -1569,7 +1748,8 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1577,7 +1757,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("block_hash", json!("latest")), ("index", json!(0))]);
@@ -1594,7 +1774,8 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1602,19 +1783,23 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending), 0);
-            client(addr)
+            let transaction = client(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockHashAndIndex", params)
                 .await
                 .unwrap();
+            let expected = pending.block().await.unwrap().transactions[0].clone();
+            let expected = Transaction::try_from(expected).unwrap();
+            assert_eq!(transaction, expected);
         }
 
         #[tokio::test]
         async fn invalid_block() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1622,7 +1807,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO), 0);
@@ -1635,7 +1820,8 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_transaction_index() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1643,7 +1829,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
@@ -1666,7 +1852,8 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1674,7 +1861,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(0, 0);
@@ -1694,7 +1881,8 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1702,7 +1890,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest), 0);
@@ -1718,7 +1906,8 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1726,7 +1915,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("block_number", json!("latest")), ("index", json!(0))]);
@@ -1743,7 +1932,8 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1751,19 +1941,23 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending), 0);
-            client(addr)
+            let transaction = client(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockNumberAndIndex", params)
                 .await
                 .unwrap();
+            let expected = pending.block().await.unwrap().transactions[0].clone();
+            let expected = Transaction::try_from(expected).unwrap();
+            assert_eq!(transaction, expected);
         }
 
         #[tokio::test]
         async fn invalid_block() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1771,7 +1965,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(123, 0);
@@ -1787,7 +1981,8 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_transaction_index() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1795,7 +1990,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(0, 123);
@@ -1821,7 +2016,8 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1829,7 +2025,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
@@ -1847,7 +2043,8 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1855,7 +2052,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap());
@@ -1874,7 +2071,8 @@ mod tests {
 
         #[tokio::test]
         async fn invalid() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -1882,7 +2080,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let txn_hash = StarknetTransactionHash(StarkHash::from_be_slice(b"not found").unwrap());
@@ -1910,7 +2108,8 @@ mod tests {
 
             #[tokio::test]
             async fn returns_invalid_contract_class_hash_for_nonexistent_class() {
-                let storage = Storage::in_memory().unwrap();
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -1918,7 +2117,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(*INVALID_CLASS_HASH);
@@ -1931,7 +2130,8 @@ mod tests {
 
             #[tokio::test]
             async fn returns_program_and_entry_points_for_known_class() {
-                let storage = Storage::in_memory().unwrap();
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
@@ -1946,7 +2146,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -1967,7 +2167,8 @@ mod tests {
 
             #[tokio::test]
             async fn returns_program_and_entry_points_for_known_class() {
-                let storage = Storage::in_memory().unwrap();
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
@@ -1982,7 +2183,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -2009,7 +2210,8 @@ mod tests {
 
             #[tokio::test]
             async fn returns_contract_not_found_for_nonexistent_contract() {
-                let storage = Storage::in_memory().unwrap();
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2017,7 +2219,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(*INVALID_CONTRACT_ADDR);
@@ -2030,7 +2232,8 @@ mod tests {
 
             #[tokio::test]
             async fn returns_class_hash_for_existing_contract() {
-                let storage = Storage::in_memory().unwrap();
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
@@ -2045,7 +2248,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(contract_address);
@@ -2064,7 +2267,8 @@ mod tests {
 
             #[tokio::test]
             async fn returns_class_hash_for_existing_contract() {
-                let storage = Storage::in_memory().unwrap();
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
@@ -2079,7 +2283,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -2102,7 +2306,8 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_contract_address() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2110,7 +2315,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(*INVALID_CONTRACT_ADDR);
@@ -2123,7 +2328,8 @@ mod tests {
 
         #[tokio::test]
         async fn returns_not_found_if_we_dont_know_about_the_contract() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2131,7 +2337,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -2153,7 +2359,8 @@ mod tests {
             use crate::core::ContractClass;
             use futures::stream::TryStreamExt;
 
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
 
             let mut conn = storage.connection().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -2168,7 +2375,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -2204,7 +2411,8 @@ mod tests {
             use crate::core::ContractCode;
             use futures::stream::TryStreamExt;
 
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
 
             let mut conn = storage.connection().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -2219,7 +2427,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -2314,7 +2522,8 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2322,7 +2531,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockHash(
@@ -2341,7 +2550,8 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2349,7 +2559,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
@@ -2362,7 +2572,8 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2370,7 +2581,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("block_hash", json!("latest"))]);
@@ -2384,7 +2595,8 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2392,19 +2604,22 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
-            client(addr)
+            let count = client(addr)
                 .request::<u64>("starknet_getBlockTransactionCountByHash", params)
                 .await
                 .unwrap();
+            let expected = pending.block().await.unwrap().transactions.len();
+            assert_eq!(count, expected as u64);
         }
 
         #[tokio::test]
         async fn invalid() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2412,7 +2627,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO));
@@ -2431,7 +2646,8 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2439,7 +2655,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(0);
@@ -2456,7 +2672,8 @@ mod tests {
 
             #[tokio::test]
             async fn positional_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2464,7 +2681,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
@@ -2477,7 +2694,8 @@ mod tests {
 
             #[tokio::test]
             async fn named_args() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2485,7 +2703,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("block_number", json!("latest"))]);
@@ -2499,7 +2717,8 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2507,19 +2726,22 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending));
-            client(addr)
+            let count = client(addr)
                 .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
                 .await
                 .unwrap();
+            let expected = pending.block().await.unwrap().transactions.len();
+            assert_eq!(count, expected as u64);
         }
 
         #[tokio::test]
         async fn invalid() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2527,7 +2749,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(123);
@@ -2559,7 +2781,8 @@ mod tests {
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
         async fn latest_invoked_block() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2567,7 +2790,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -2593,7 +2816,8 @@ mod tests {
             #[ignore = "no longer works without setting up ext_py"]
             #[tokio::test]
             async fn positional_args() {
-                let storage = Storage::in_memory().unwrap();
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2601,7 +2825,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(
@@ -2624,7 +2848,8 @@ mod tests {
             #[ignore = "no longer works without setting up ext_py"]
             #[tokio::test]
             async fn named_args() {
-                let storage = Storage::in_memory().unwrap();
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -2632,7 +2857,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([
@@ -2656,7 +2881,8 @@ mod tests {
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
         async fn pending_block() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2664,7 +2890,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -2687,7 +2913,8 @@ mod tests {
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
         async fn invalid_entry_point() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2695,7 +2922,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -2722,7 +2949,8 @@ mod tests {
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
         async fn invalid_contract_address() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2730,7 +2958,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -2754,7 +2982,8 @@ mod tests {
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
         async fn invalid_call_data() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2762,7 +2991,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -2786,7 +3015,8 @@ mod tests {
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
         async fn uninitialized_contract() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2794,7 +3024,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -2818,7 +3048,8 @@ mod tests {
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
         async fn invalid_block_hash() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2826,7 +3057,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
@@ -2850,7 +3081,8 @@ mod tests {
 
     #[tokio::test]
     async fn block_number() {
-        let (storage, _) = setup_storage().await;
+        let (storage, pending) = setup_storage().await;
+        let pending = Arc::new(pending);
         let sequencer = Client::new(Chain::Goerli).unwrap();
         let sync_state = Arc::new(SyncState::default());
         let api = RpcApi::new(
@@ -2858,7 +3090,7 @@ mod tests {
             sequencer,
             Chain::Goerli,
             sync_state,
-            Arc::new(PendingData::default()),
+            pending.clone(),
         );
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
         let number = client(addr)
@@ -2876,16 +3108,12 @@ mod tests {
             [Chain::Goerli, Chain::Mainnet]
                 .iter()
                 .map(|set_chain| async {
-                    let storage = Storage::in_memory().unwrap();
+                    let (storage, pending) = setup_storage().await;
+                    let pending = Arc::new(pending);
                     let sequencer = Client::new(*set_chain).unwrap();
                     let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(
-                        storage,
-                        sequencer,
-                        *set_chain,
-                        sync_state,
-                        Arc::new(PendingData::default()),
-                    );
+                    let api =
+                        RpcApi::new(storage, sequencer, *set_chain, sync_state, pending.clone());
                     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                     let params = rpc_params!();
                     client(addr)
@@ -2906,7 +3134,8 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn pending_transactions() {
-        let storage = Storage::in_memory().unwrap();
+        let (storage, pending) = setup_storage().await;
+        let pending = Arc::new(pending);
         let sequencer = Client::new(Chain::Goerli).unwrap();
         let sync_state = Arc::new(SyncState::default());
         let api = RpcApi::new(
@@ -2914,7 +3143,7 @@ mod tests {
             sequencer,
             Chain::Goerli,
             sync_state,
-            Arc::new(PendingData::default()),
+            pending.clone(),
         );
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
         client(addr)
@@ -2926,7 +3155,8 @@ mod tests {
     #[tokio::test]
     #[should_panic]
     async fn protocol_version() {
-        let storage = Storage::in_memory().unwrap();
+        let (storage, pending) = setup_storage().await;
+        let pending = Arc::new(pending);
         let sequencer = Client::new(Chain::Goerli).unwrap();
         let sync_state = Arc::new(SyncState::default());
         let api = RpcApi::new(
@@ -2934,7 +3164,7 @@ mod tests {
             sequencer,
             Chain::Goerli,
             sync_state,
-            Arc::new(PendingData::default()),
+            pending.clone(),
         );
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
         client(addr)
@@ -2951,7 +3181,8 @@ mod tests {
 
         #[tokio::test]
         async fn not_syncing() {
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(
@@ -2959,7 +3190,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let syncing = client(addr)
@@ -2979,7 +3210,8 @@ mod tests {
                 highest: NumberedBlock::from(("abbacf", 3)),
             });
 
-            let (storage, _) = setup_storage().await;
+            let (storage, pending) = setup_storage().await;
+            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             *sync_state.status.write().await = expected.clone();
@@ -2988,7 +3220,7 @@ mod tests {
                 sequencer,
                 Chain::Goerli,
                 sync_state,
-                Arc::new(PendingData::default()),
+                pending.clone(),
             );
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let syncing = client(addr)
@@ -3558,7 +3790,8 @@ mod tests {
 
             #[tokio::test]
             async fn invoke_transaction() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3566,7 +3799,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -3596,7 +3829,8 @@ mod tests {
 
             #[tokio::test]
             async fn declare_transaction() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::integration().unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3604,7 +3838,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -3638,7 +3872,8 @@ mod tests {
 
             #[tokio::test]
             async fn deploy_transaction() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3646,7 +3881,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -3699,7 +3934,8 @@ mod tests {
 
             #[tokio::test]
             async fn invoke_transaction() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3707,7 +3943,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -3760,7 +3996,8 @@ mod tests {
 
             #[tokio::test]
             async fn declare_transaction() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::integration().unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3768,7 +4005,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -3803,7 +4040,8 @@ mod tests {
 
             #[tokio::test]
             async fn deploy_transaction() {
-                let (storage, _) = setup_storage().await;
+                let (storage, pending) = setup_storage().await;
+                let pending = Arc::new(pending);
                 let sequencer = Client::new(Chain::Goerli).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(
@@ -3811,7 +4049,7 @@ mod tests {
                     sequencer,
                     Chain::Goerli,
                     sync_state,
-                    Arc::new(PendingData::default()),
+                    pending.clone(),
                 );
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
