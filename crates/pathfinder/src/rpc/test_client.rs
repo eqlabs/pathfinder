@@ -4,8 +4,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
-use jsonrpsee::core::client::{ClientT, IdKind, RequestIdManager};
+use jsonrpsee::core::client::{IdKind, RequestIdManager};
 use jsonrpsee::core::{Error, TEN_MB_SIZE_BYTES};
 use jsonrpsee::types::error::CallError;
 use jsonrpsee::types::{ErrorResponse, ParamsSer, RequestSer, Response};
@@ -94,18 +93,13 @@ pub struct TestClient {
     id_manager: Arc<RequestIdManager>,
 }
 
-#[async_trait]
-impl ClientT for TestClient {
-    async fn notification<'a>(&self, _: &'a str, _: Option<ParamsSer<'a>>) -> Result<(), Error> {
-        unimplemented!()
-    }
-
+impl TestClient {
     /// Perform a request towards the server.
     ///
     /// The difference from [`jsonrpsee::http_client::HttpClient::request`] is that
     /// this method reports the core reason for response `R` serde error,
     /// while the former just ignores it.
-    async fn request<'a, R>(
+    pub async fn request<'a, R>(
         &self,
         method: &'a str,
         params: Option<ParamsSer<'a>>,
@@ -187,15 +181,5 @@ impl ClientT for TestClient {
         } else {
             Err(Error::InvalidRequestId)
         }
-    }
-
-    async fn batch_request<'a, R>(
-        &self,
-        _: Vec<(&'a str, Option<ParamsSer<'a>>)>,
-    ) -> Result<Vec<R>, Error>
-    where
-        R: DeserializeOwned + Default + Clone,
-    {
-        unimplemented!()
     }
 }

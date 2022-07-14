@@ -405,7 +405,7 @@ mod tests {
         },
     };
     use assert_matches::assert_matches;
-    use jsonrpsee::{core::client::ClientT as Client, rpc_params, types::ParamsSer};
+    use jsonrpsee::{rpc_params, types::ParamsSer};
     use pretty_assertions::assert_eq;
     use serde_json::json;
     use stark_hash::StarkHash;
