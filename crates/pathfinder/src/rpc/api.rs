@@ -380,7 +380,7 @@ impl RpcApi {
                             .state_diff
                             .storage_diffs
                             .get(&contract_address)
-                            .map(|storage| {
+                            .and_then(|storage| {
                                 storage.iter().find_map(|update| {
                                     if update.key == key {
                                         Some(update.value)
@@ -388,8 +388,7 @@ impl RpcApi {
                                         None
                                     }
                                 })
-                            })
-                            .flatten();
+                            });
 
                         match pending_value {
                             Some(value) => return Ok(value),
@@ -520,8 +519,7 @@ impl RpcApi {
                 Some(block) => {
                     return block
                         .transactions
-                        .iter()
-                        .nth(index)
+                        .get(index)
                         .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
                             Ok(txn.into())
                         })
@@ -589,8 +587,7 @@ impl RpcApi {
                 Some(block) => {
                     return block
                         .transactions
-                        .iter()
-                        .nth(index)
+                        .get(index)
                         .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
                             Ok(txn.into())
                         })

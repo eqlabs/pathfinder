@@ -474,7 +474,7 @@ mod tests {
             let contract0_code = CompressedContract {
                 abi: zstd_magic.clone(),
                 bytecode: zstd_magic.clone(),
-                definition: zstd_magic.clone(),
+                definition: zstd_magic,
                 hash: class0_hash,
             };
             let mut contract1_code = contract0_code.clone();
