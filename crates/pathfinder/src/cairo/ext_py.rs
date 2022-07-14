@@ -251,145 +251,25 @@ mod tests {
     #[test_log::test(tokio::test)]
     #[ignore]
     async fn start_with_wrong_database_schema_fails() {
-        let db_file = tempfile::NamedTempFile::new().unwrap();
-
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
-
-        {
-            let conn = s.connection().unwrap();
+        with_example_state(|path, storage| async move {
+            let conn = storage.connection().unwrap();
             conn.execute("pragma user_version = 0", []).unwrap();
-        }
 
-        let (_work_tx, work_rx) = tokio::sync::mpsc::channel(1);
-        let work_rx = tokio::sync::Mutex::new(work_rx);
-        let (status_tx, _status_rx) = tokio::sync::mpsc::channel(1);
-        let (_shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
+            let (_work_tx, work_rx) = tokio::sync::mpsc::channel(1);
+            let work_rx = tokio::sync::Mutex::new(work_rx);
+            let (status_tx, _status_rx) = tokio::sync::mpsc::channel(1);
+            let (_shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
 
-        let err = launch_python(
-            db_file.path().into(),
-            work_rx.into(),
-            status_tx,
-            shutdown_rx,
-        )
-        .await;
-
-        println!("{:?}", err.unwrap_err());
+            let err = launch_python(path, work_rx.into(), status_tx, shutdown_rx).await;
+            println!("{:?}", err.unwrap_err());
+        })
+        .await
     }
 
     #[test_log::test(tokio::test)]
     #[ignore] // these tests require that you've entered into python venv
     async fn call_like_in_python_ten_times() {
         use futures::stream::StreamExt;
-
-        let db_file = tempfile::NamedTempFile::new().unwrap();
-
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
-
-        let mut conn = s.connection().unwrap();
-        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
-
-        let tx = conn.transaction().unwrap();
-
-        fill_example_state(&tx);
-
-        tx.commit().unwrap();
-
-        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-
-        let (handle, jh) = super::start(
-            PathBuf::from(db_file.path()),
-            std::num::NonZeroUsize::new(2).unwrap(),
-            async move {
-                let _ = shutdown_rx.await;
-            },
-            crate::core::Chain::Goerli,
-        )
-        .await
-        .unwrap();
-
-        let count = 10;
-
-        let mut jhs = (0..count)
-            .map(move |_| {
-                tokio::task::spawn({
-                    let handle = handle.clone();
-                    async move {
-                        handle.call(
-                            super::Call {
-                                contract_address: crate::core::ContractAddress(
-                                    StarkHash::from_hex_str(
-                                        "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
-                                    )
-                                    .unwrap(),
-                                ),
-                                calldata: vec![crate::core::CallParam(
-                                    StarkHash::from_hex_str("0x84").unwrap(),
-                                )],
-                                entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
-                                signature: Default::default(),
-                                max_fee: super::Call::DEFAULT_MAX_FEE,
-                                version: super::Call::DEFAULT_VERSION,
-                            },
-                            super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
-                                StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                            ))
-                        ).await.unwrap();
-                    }
-                })
-            })
-            .collect::<futures::stream::FuturesUnordered<_>>();
-
-        for _ in 0..count {
-            jhs.next().await.unwrap().unwrap();
-        }
-
-        shutdown_tx.send(()).unwrap();
-
-        jh.await.unwrap();
-    }
-
-    #[test_log::test(tokio::test)]
-    #[ignore] // these tests require that you've entered into python venv
-    async fn estimate_fee_for_example() {
-        // TODO: refactor the outer parts to a with_test_env or similar?
-        let db_file = tempfile::NamedTempFile::new().unwrap();
-
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
-
-        let mut conn = s.connection().unwrap();
-        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
-
-        let tx = conn.transaction().unwrap();
-
-        fill_example_state(&tx);
-
-        tx.commit().unwrap();
-
-        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-
-        let (handle, jh) = super::start(
-            PathBuf::from(db_file.path()),
-            std::num::NonZeroUsize::new(1).unwrap(),
-            async move {
-                let _ = shutdown_rx.await;
-            },
-            // chain doesn't matter here because we are not estimating any real transaction
-            crate::core::Chain::Goerli,
-        )
-        .await
-        .unwrap();
 
         let call = super::Call {
             contract_address: crate::core::ContractAddress(
@@ -407,86 +287,100 @@ mod tests {
             version: super::Call::DEFAULT_VERSION,
         };
 
-        let at_block_fee = handle
-            .estimate_fee(
-                call.clone(),
-                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
-                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )),
-                super::GasPriceSource::PastBlock,
-            )
-            .await
-            .unwrap();
+        let at_block = super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+            StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+        ));
 
+        with_example_state(|path, _storage| {
+            with_ext_py_workers(path, 2, |handle| async move {
+                let count = 10;
+
+                let mut jhs = (0..count)
+                    .map(move |_| {
+                        tokio::task::spawn({
+                            let handle = handle.clone();
+                            let call = call.clone();
+                            async move {
+                                handle.call(call, at_block).await.unwrap();
+                            }
+                        })
+                    })
+                    .collect::<futures::stream::FuturesUnordered<_>>();
+
+                for _ in 0..count {
+                    jhs.next().await.unwrap().unwrap();
+                }
+            })
+        })
+        .await;
+    }
+
+    #[test_log::test(tokio::test)]
+    #[ignore] // these tests require that you've entered into python venv
+    async fn estimate_fee_for_example() {
         use web3::types::H256;
 
-        assert_eq!(
-            at_block_fee,
-            crate::rpc::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(3),
-                gas_price: H256::from_low_u64_be(1),
-                fee: H256::from_low_u64_be(4)
-            }
-        );
+        let call = super::Call {
+            contract_address: crate::core::ContractAddress(
+                StarkHash::from_hex_str(
+                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                )
+                .unwrap(),
+            ),
+            calldata: vec![crate::core::CallParam(
+                StarkHash::from_hex_str("0x84").unwrap(),
+            )],
+            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            signature: Default::default(),
+            max_fee: super::Call::DEFAULT_MAX_FEE,
+            version: super::Call::DEFAULT_VERSION,
+        };
 
-        let current_fee = handle
-            .estimate_fee(
-                call,
-                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
-                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )),
-                super::GasPriceSource::Current(H256::from_low_u64_be(10)),
-            )
-            .await
-            .unwrap();
+        let at_block = super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+            StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+        ));
 
-        assert_eq!(
-            current_fee,
-            crate::rpc::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(3),
-                gas_price: H256::from_low_u64_be(10),
-                fee: H256::from_low_u64_be(35)
-            }
-        );
+        with_example_state(|path, _storage| {
+            with_ext_py(path, |handle| async move {
+                let at_block_fee = handle
+                    .estimate_fee(call.clone(), at_block, super::GasPriceSource::PastBlock)
+                    .await
+                    .unwrap();
 
-        shutdown_tx.send(()).unwrap();
+                assert_eq!(
+                    at_block_fee,
+                    crate::rpc::types::reply::FeeEstimate {
+                        consumed: H256::from_low_u64_be(3),
+                        gas_price: H256::from_low_u64_be(1),
+                        fee: H256::from_low_u64_be(4)
+                    }
+                );
 
-        jh.await.unwrap();
+                let current_fee = handle
+                    .estimate_fee(
+                        call,
+                        at_block,
+                        super::GasPriceSource::Current(H256::from_low_u64_be(10)),
+                    )
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    current_fee,
+                    crate::rpc::types::reply::FeeEstimate {
+                        consumed: H256::from_low_u64_be(3),
+                        gas_price: H256::from_low_u64_be(10),
+                        fee: H256::from_low_u64_be(35)
+                    }
+                );
+            })
+        })
+        .await;
     }
 
     #[test_log::test(tokio::test)]
     #[ignore]
     async fn call_with_unknown_contract() {
-        let db_file = tempfile::NamedTempFile::new().unwrap();
-
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
-
-        let mut conn = s.connection().unwrap();
-        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
-
-        let tx = conn.transaction().unwrap();
-
-        fill_example_state(&tx);
-
-        tx.commit().unwrap();
-
-        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-
-        let (handle, jh) = super::start(
-            PathBuf::from(db_file.path()),
-            std::num::NonZeroUsize::new(1).unwrap(),
-            async move {
-                let _ = shutdown_rx.await;
-            },
-            crate::core::Chain::Goerli,
-        )
-        .await
-        .unwrap();
-
         let call = super::Call {
             contract_address: crate::core::ContractAddress(
                 StarkHash::from_hex_str(
@@ -503,21 +397,83 @@ mod tests {
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
         };
+        let at_block = super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+            StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+        ));
 
-        let result = handle
-            .call(
-                call,
-                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
-                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )),
-            )
-            .await
-            .unwrap_err();
+        with_example_state(|path, _storage| {
+            with_ext_py(path, |handle| async move {
+                let result = handle.call(call, at_block).await.unwrap_err();
 
-        assert_eq!(result, super::CallFailure::NoSuchContract);
+                assert_eq!(result, super::CallFailure::NoSuchContract);
+            })
+        })
+        .await
+    }
+
+    async fn with_example_state<F, Fut, R>(f: F) -> R
+    where
+        F: FnOnce(std::path::PathBuf, crate::storage::Storage) -> Fut,
+        Fut: std::future::Future<Output = R>,
+    {
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+
+        let s = crate::storage::Storage::migrate(
+            PathBuf::from(db_file.path()),
+            crate::storage::JournalMode::WAL,
+        )
+        .unwrap();
+
+        let mut conn = s.connection().unwrap();
+        // FIXME: not probably needed anymore
+        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
+
+        let tx = conn.transaction().unwrap();
+
+        fill_example_state(&tx);
+
+        tx.commit().unwrap();
+
+        // couldn't figure out why this value could not be borrowed into, because the returned
+        // future will be polled into completion inside this scope.
+        f(db_file.path().into(), s).await
+    }
+
+    fn with_ext_py<F, Fut, R>(
+        path: std::path::PathBuf,
+        f: F,
+    ) -> impl std::future::Future<Output = R>
+    where
+        F: FnOnce(super::Handle) -> Fut,
+        Fut: std::future::Future<Output = R>,
+    {
+        with_ext_py_workers(path, 1, f)
+    }
+
+    async fn with_ext_py_workers<F, Fut, R>(path: std::path::PathBuf, processes: usize, f: F) -> R
+    where
+        F: FnOnce(super::Handle) -> Fut,
+        Fut: std::future::Future<Output = R>,
+    {
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let (handle, jh) = super::start(
+            path,
+            std::num::NonZeroUsize::new(processes).unwrap(),
+            async move {
+                let _ = shutdown_rx.await;
+            },
+            crate::core::Chain::Goerli,
+        )
+        .await
+        .unwrap();
+
+        let ret = f(handle).await;
 
         let _ = shutdown_tx.send(());
         jh.await.unwrap();
+
+        ret
     }
 
     fn fill_example_state(tx: &rusqlite::Transaction<'_>) {
