@@ -1,6 +1,8 @@
 //! StarkNet node JSON-RPC related modules.
 pub mod api;
 pub mod serde;
+#[cfg(test)]
+pub mod test_client;
 pub mod types;
 
 use crate::{
@@ -380,7 +382,7 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{test_client::client, *};
     use crate::{
         core::{
             Chain, ClassHash, ContractAddress, EventData, EventKey, GasPrice, GlobalRoot,
@@ -403,12 +405,7 @@ mod tests {
         },
     };
     use assert_matches::assert_matches;
-    use jsonrpsee::{
-        core::client::ClientT as Client,
-        http_client::{HttpClient, HttpClientBuilder},
-        rpc_params,
-        types::ParamsSer,
-    };
+    use jsonrpsee::{core::client::ClientT as Client, rpc_params, types::ParamsSer};
     use pretty_assertions::assert_eq;
     use serde_json::json;
     use stark_hash::StarkHash;
@@ -416,20 +413,11 @@ mod tests {
         collections::BTreeMap,
         net::{Ipv4Addr, SocketAddrV4},
         sync::Arc,
-        time::Duration,
     };
 
     /// Helper function: produces named rpc method args map.
     fn by_name<const N: usize>(params: [(&'_ str, serde_json::Value); N]) -> Option<ParamsSer<'_>> {
         Some(BTreeMap::from(params).into())
-    }
-
-    /// Helper rpc client
-    fn client(addr: SocketAddr) -> HttpClient {
-        HttpClientBuilder::default()
-            .request_timeout(Duration::from_secs(120))
-            .build(format!("http://{}", addr))
-            .expect("Failed to create HTTP-RPC client")
     }
 
     lazy_static::lazy_static! {
