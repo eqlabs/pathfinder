@@ -1,13 +1,12 @@
 ///! A drop-in replacement for `jsonrpsee::http_client::HttpClient` meant only for testing the RPC API,
 ///! which is supposed to provide better error reporting, especially wrt serde errors.
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
-use jsonrpsee::core::client::{IdKind, RequestIdManager};
 use jsonrpsee::core::{Error, TEN_MB_SIZE_BYTES};
 use jsonrpsee::types::error::CallError;
-use jsonrpsee::types::{ErrorResponse, ParamsSer, RequestSer, Response};
+use jsonrpsee::types::{ErrorResponse, Id, ParamsSer, RequestSer, Response};
 use serde::de::DeserializeOwned;
 
 /// Convenience function to save on boilerplate in the tests
@@ -23,8 +22,6 @@ pub fn client(addr: SocketAddr) -> TestClient {
 pub struct TestClientBuilder {
     max_request_body_size: u32,
     request_timeout: Duration,
-    max_concurrent_requests: usize,
-    id_kind: IdKind,
 }
 
 #[allow(dead_code)]
@@ -35,21 +32,9 @@ impl TestClientBuilder {
         self
     }
 
-    /// Set request timeout (default is 60 seconds).
+    /// Set request timeout (default is 120 seconds).
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;
-        self
-    }
-
-    /// Set max concurrent requests.
-    pub fn max_concurrent_requests(mut self, max: usize) -> Self {
-        self.max_concurrent_requests = max;
-        self
-    }
-
-    /// Configure the data type of the request object ID (default is number).
-    pub fn id_format(mut self, id_kind: IdKind) -> Self {
-        self.id_kind = id_kind;
         self
     }
 
@@ -63,10 +48,7 @@ impl TestClientBuilder {
         Ok(TestClient {
             transport,
             target: reqwest::Url::parse(&format!("http://{target}")).unwrap(),
-            id_manager: Arc::new(RequestIdManager::new(
-                self.max_concurrent_requests,
-                self.id_kind,
-            )),
+            current_id: AtomicU64::new(0),
         })
     }
 }
@@ -76,21 +58,19 @@ impl Default for TestClientBuilder {
         Self {
             max_request_body_size: TEN_MB_SIZE_BYTES,
             request_timeout: Duration::from_secs(120),
-            max_concurrent_requests: 256,
-            id_kind: IdKind::Number,
         }
     }
 }
 
 /// JSON-RPC HTTP Client that provides functionality to perform method calls.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TestClient {
     /// HTTP transport client.
     transport: reqwest::Client,
     /// Url to which requests will be sent.
     target: reqwest::Url,
-    /// Request ID manager.
-    id_manager: Arc<RequestIdManager>,
+    /// Tracks consecutive expected request IDs.
+    current_id: AtomicU64,
 }
 
 impl TestClient {
@@ -107,8 +87,10 @@ impl TestClient {
     where
         R: DeserializeOwned,
     {
-        let guard = self.id_manager.next_request_id()?;
-        let id = guard.inner();
+        let id = Id::Number(
+            self.current_id
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        );
         let request = RequestSer::new(&id, method, params);
         let request = serde_json::to_vec(&request).map_err(Error::ParseError)?;
 
