@@ -45,6 +45,45 @@ pub struct StateUpdate {
     pub contract_updates: Vec<ContractUpdate>,
 }
 
+impl From<crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
+    fn from(diff: crate::sequencer::reply::state_update::StateDiff) -> Self {
+        let deployed_contracts = diff
+            .deployed_contracts
+            .into_iter()
+            .map(|contract| DeployedContract {
+                address: contract.address,
+                hash: contract.contract_hash,
+                call_data: vec![], // todo!("This is missing from sequencer API..."),
+            })
+            .collect::<Vec<_>>();
+
+        let contract_updates = diff
+            .storage_diffs
+            .into_iter()
+            .map(|contract_update| {
+                let storage_updates = contract_update
+                    .1
+                    .into_iter()
+                    .map(|diff| StorageUpdate {
+                        address: diff.key,
+                        value: diff.value,
+                    })
+                    .collect();
+
+                ContractUpdate {
+                    address: contract_update.0,
+                    storage_updates,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        StateUpdate {
+            deployed_contracts,
+            contract_updates,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum RetrieveStateUpdateError {
     #[error("not found: State transition fact")]

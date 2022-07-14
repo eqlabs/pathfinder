@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
+use crate::ethereum::state_update::StateUpdate;
 use crate::sequencer;
 use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{Contract, StateDiff};
@@ -200,42 +200,7 @@ pub async fn sync(
         let t_deploy = t_deploy.elapsed();
 
         // Map from sequencer type to the actual type... we should declutter these types.
-        let deployed_contracts = state_update
-            .state_diff
-            .deployed_contracts
-            .into_iter()
-            .map(|contract| DeployedContract {
-                address: contract.address,
-                hash: contract.contract_hash,
-                call_data: vec![], // todo!("This is missing from sequencer API..."),
-            })
-            .collect::<Vec<_>>();
-
-        let contract_updates = state_update
-            .state_diff
-            .storage_diffs
-            .into_iter()
-            .map(|contract_update| {
-                let storage_updates = contract_update
-                    .1
-                    .into_iter()
-                    .map(|diff| StorageUpdate {
-                        address: diff.key,
-                        value: diff.value,
-                    })
-                    .collect();
-
-                ContractUpdate {
-                    address: contract_update.0,
-                    storage_updates,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let update = StateUpdate {
-            deployed_contracts,
-            contract_updates,
-        };
+        let update = StateUpdate::from(state_update.state_diff);
 
         head = Some((next, block_hash));
 
