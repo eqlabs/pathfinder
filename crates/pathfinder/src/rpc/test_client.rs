@@ -4,12 +4,12 @@ use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
-use jsonrpsee::core::{Error, TEN_MB_SIZE_BYTES};
+use jsonrpsee::core::Error;
 use jsonrpsee::types::error::CallError;
 use jsonrpsee::types::{ErrorResponse, Id, ParamsSer, RequestSer, Response};
 use serde::de::DeserializeOwned;
 
-/// Convenience function to save on boilerplate in the tests
+/// Create an RPC [`TestClient`] with a timeout of 120 seconds.
 pub fn client(addr: SocketAddr) -> TestClient {
     TestClientBuilder::default()
         .request_timeout(Duration::from_secs(120))
@@ -20,18 +20,11 @@ pub fn client(addr: SocketAddr) -> TestClient {
 /// Test Http Client Builder.
 #[derive(Debug)]
 pub struct TestClientBuilder {
-    max_request_body_size: u32,
     request_timeout: Duration,
 }
 
 #[allow(dead_code)]
 impl TestClientBuilder {
-    /// Sets the maximum size of a request body in bytes (default is 10 MiB).
-    pub fn max_request_body_size(mut self, size: u32) -> Self {
-        self.max_request_body_size = size;
-        self
-    }
-
     /// Set request timeout (default is 120 seconds).
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;
@@ -56,7 +49,6 @@ impl TestClientBuilder {
 impl Default for TestClientBuilder {
     fn default() -> Self {
         Self {
-            max_request_body_size: TEN_MB_SIZE_BYTES,
             request_timeout: Duration::from_secs(120),
         }
     }
