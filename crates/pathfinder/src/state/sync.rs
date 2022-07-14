@@ -28,7 +28,7 @@ use crate::{
 };
 
 use anyhow::Context;
-use rusqlite::{Connection, Transaction};
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::StarkHash;
 use tokio::sync::{mpsc, RwLock};
 
@@ -394,7 +394,7 @@ async fn update_sync_status_latest(
 async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
-            .transaction()
+            .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
         for update in updates {
@@ -442,7 +442,7 @@ async fn l1_reorg(
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
-            .transaction()
+            .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
         L1StateTable::reorg(&transaction, reorg_tail).context("Delete L1 state from database")?;
@@ -471,7 +471,7 @@ async fn l2_update(
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
-            .transaction()
+            .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
         let new_root =
@@ -546,7 +546,7 @@ async fn l2_reorg(
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
-            .transaction()
+            .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
         // TODO: clean up state tree's as well...
