@@ -132,7 +132,8 @@ impl RpcApi {
             let block = Self::get_raw_block_by_hash(&transaction, block_id)?;
             let scope = requested_scope.unwrap_or_default();
 
-            let transactions = Self::get_block_transactions(&transaction, block.number, scope)?;
+            let transactions =
+                Self::get_block_transactions(&transaction, block.number, block.status, scope)?;
 
             Ok(Block::from_raw(block, transactions))
         })
@@ -142,17 +143,11 @@ impl RpcApi {
         .and_then(|x| x)
     }
 
-    /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
-    pub fn get_block_transactions(
+    /// Determines block status based on the current L1-L2 stored in the DB.
+    fn get_block_status(
         db_tx: &rusqlite::Transaction<'_>,
         block_number: StarknetBlockNumber,
-        scope: BlockResponseScope,
-    ) -> RpcResult<super::types::reply::Transactions> {
-        let transactions_receipts =
-            StarknetTransactionsTable::get_transaction_data_for_block(db_tx, block_number.into())
-                .context("Reading transactions from database")
-                .map_err(internal_server_error)?;
-
+    ) -> RpcResult<BlockStatus> {
         // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
         let l1_l2_head = RefsTable::get_l1_l2_head(db_tx)
             .context("Read latest L1 head from database")
@@ -161,6 +156,21 @@ impl RpcApi {
             Some(number) if number >= block_number => BlockStatus::AcceptedOnL1,
             _ => BlockStatus::AcceptedOnL2,
         };
+
+        Ok(block_status)
+    }
+
+    /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
+    fn get_block_transactions(
+        db_tx: &rusqlite::Transaction<'_>,
+        block_number: StarknetBlockNumber,
+        block_status: BlockStatus,
+        scope: BlockResponseScope,
+    ) -> RpcResult<super::types::reply::Transactions> {
+        let transactions_receipts =
+            StarknetTransactionsTable::get_transaction_data_for_block(db_tx, block_number.into())
+                .context("Reading transactions from database")
+                .map_err(internal_server_error)?;
 
         use super::types::reply;
         let transactions = match scope {
@@ -182,7 +192,7 @@ impl RpcApi {
                         .into_iter()
                         .map(|(t, r)| {
                             let t: Transaction = t.into();
-                            let r = TransactionReceipt::with_status(r, block_status);
+                            let r = TransactionReceipt::with_block_status(r, block_status);
 
                             reply::TransactionAndReceipt {
                                 txn_hash: t.txn_hash,
@@ -248,7 +258,8 @@ impl RpcApi {
             let block = Self::get_raw_block_by_number(&transaction, block_id)?;
             let scope = requested_scope.unwrap_or_default();
 
-            let transactions = Self::get_block_transactions(&transaction, block.number, scope)?;
+            let transactions =
+                Self::get_block_transactions(&transaction, block.number, block.status, scope)?;
 
             Ok(Block::from_raw(block, transactions))
         })
@@ -287,14 +298,7 @@ impl RpcApi {
             .map_err(internal_server_error)?
             .ok_or_else(|| Error::from(error_code_for_latest))?;
 
-        // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
-        let l1_l2_head = RefsTable::get_l1_l2_head(transaction)
-            .context("Read latest L1 head from database")
-            .map_err(internal_server_error)?;
-        let block_status = match l1_l2_head {
-            Some(number) if number >= block.number => BlockStatus::AcceptedOnL1,
-            _ => BlockStatus::AcceptedOnL2,
-        };
+        let block_status = Self::get_block_status(transaction, block.number)?;
 
         let (parent_hash, parent_root) = match block.number {
             StarknetBlockNumber::GENESIS => (
@@ -660,16 +664,9 @@ impl RpcApi {
                         .context("Block missing from database")
                         .map_err(internal_server_error)?;
 
-                    // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
-                    let l1_l2_head = RefsTable::get_l1_l2_head(&db_tx)
-                        .context("Read latest L1 head from database")
-                        .map_err(internal_server_error)?;
-                    let block_status = match l1_l2_head {
-                        Some(number) if number >= block.number => BlockStatus::AcceptedOnL1,
-                        _ => BlockStatus::AcceptedOnL2,
-                    };
+                    let block_status = Self::get_block_status(&db_tx, block.number)?;
 
-                    Ok(TransactionReceipt::with_status(receipt, block_status))
+                    Ok(TransactionReceipt::with_block_status(receipt, block_status))
                 }
                 None => Err(ErrorCode::InvalidTransactionHash.into()),
             }
