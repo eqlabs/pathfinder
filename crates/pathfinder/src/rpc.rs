@@ -1135,7 +1135,6 @@ mod tests {
         use crate::rpc::types::{reply::StateUpdate, BlockHashOrTag, Tag};
 
         #[tokio::test]
-        #[should_panic]
         async fn genesis() {
             let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
@@ -1146,11 +1145,10 @@ mod tests {
             client(addr)
                 .request::<StateUpdate>("starknet_getStateUpdateByHash", params)
                 .await
-                .unwrap();
+                .unwrap_err();
         }
 
         #[tokio::test]
-        #[should_panic]
         async fn latest() {
             let (storage, _) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
@@ -1161,7 +1159,7 @@ mod tests {
             client(addr)
                 .request::<StateUpdate>("starknet_getStateUpdateByHash", params)
                 .await
-                .unwrap();
+                .unwrap_err();
         }
 
         #[tokio::test]
@@ -2626,7 +2624,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic]
     async fn pending_transactions() {
         let (storage, _) = setup_storage().await;
         let sequencer = Client::new(Chain::Goerli).unwrap();
@@ -2636,11 +2633,10 @@ mod tests {
         client(addr)
             .request::<()>("starknet_pendingTransactions", rpc_params!())
             .await
-            .unwrap();
+            .unwrap_err();
     }
 
     #[tokio::test]
-    #[should_panic]
     async fn protocol_version() {
         let (storage, _) = setup_storage().await;
         let sequencer = Client::new(Chain::Goerli).unwrap();
@@ -2650,7 +2646,7 @@ mod tests {
         client(addr)
             .request::<StarknetProtocolVersion>("starknet_protocolVersion", rpc_params!())
             .await
-            .unwrap();
+            .unwrap_err();
     }
 
     mod syncing {
