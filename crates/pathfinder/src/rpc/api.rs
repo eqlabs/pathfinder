@@ -44,7 +44,7 @@ pub struct RpcApi {
     call_handle: Option<ext_py::Handle>,
     shared_gas_price: Option<Cached>,
     sync_state: Arc<SyncState>,
-    pending_data: Arc<PendingData>,
+    pending_data: Option<Arc<PendingData>>,
 }
 
 #[derive(Debug)]
@@ -67,7 +67,6 @@ impl RpcApi {
         sequencer: sequencer::Client,
         chain: Chain,
         sync_state: Arc<SyncState>,
-        pending_data: Arc<PendingData>,
     ) -> Self {
         Self {
             storage,
@@ -76,7 +75,7 @@ impl RpcApi {
             call_handle: None,
             shared_gas_price: None,
             sync_state,
-            pending_data,
+            pending_data: None,
         }
     }
 
@@ -94,6 +93,20 @@ impl RpcApi {
         }
     }
 
+    pub fn with_pending_data(self, pending_data: Arc<PendingData>) -> Self {
+        Self {
+            pending_data: Some(pending_data),
+            ..self
+        }
+    }
+
+    async fn pending_data(&self) -> anyhow::Result<Arc<PendingData>> {
+        self.pending_data
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Pending data not supported in this configuration"))
+    }
+
     /// Get block information given the block hash.
     pub async fn get_block_by_hash(
         &self,
@@ -101,7 +114,7 @@ impl RpcApi {
         requested_scope: Option<BlockResponseScope>,
     ) -> RpcResult<Block> {
         let block_id = match block_hash {
-            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
                 Some(block) => {
                     let scope = requested_scope.unwrap_or_default();
                     return Ok(Block::from_sequencer_scoped(block.into(), scope));
@@ -224,7 +237,7 @@ impl RpcApi {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => number.into(),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
                 Some(block) => {
                     let scope = requested_scope.unwrap_or_default();
                     return Ok(Block::from_sequencer_scoped(block.into(), scope));
@@ -374,7 +387,7 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Pending) => {
                 // Pending storage will either be part of the pending state update,
                 // or it will come from latest if it isn't part of the pending diff.
-                match self.pending_data.state_update().await {
+                match self.pending_data().await?.state_update().await {
                     Some(update) => {
                         let pending_value = update
                             .state_diff
@@ -515,7 +528,7 @@ impl RpcApi {
         let block_id = match block_hash {
             BlockHashOrTag::Hash(hash) => StarknetBlocksBlockId::Hash(hash),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
                 Some(block) => {
                     return block
                         .transactions
@@ -583,7 +596,7 @@ impl RpcApi {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => StarknetBlocksBlockId::Number(number),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
                 Some(block) => {
                     return block
                         .transactions
@@ -847,7 +860,7 @@ impl RpcApi {
         let block_id = match block_hash {
             BlockHashOrTag::Hash(hash) => hash.into(),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
                 Some(block) => {
                     let count = block.transactions.len().try_into().map_err(|e| {
                         Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
@@ -906,7 +919,7 @@ impl RpcApi {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => number.into(),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data.block().await {
+            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
                 Some(block) => {
                     let count = block.transactions.len().try_into().map_err(|e| {
                         Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
