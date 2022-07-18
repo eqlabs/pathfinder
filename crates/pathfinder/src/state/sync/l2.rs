@@ -53,62 +53,6 @@ pub enum Event {
     Pending(Box<PendingBlock>, Box<sequencer::reply::StateUpdate>),
 }
 
-/// Poll's the Sequencer's pending block and emits [Event::Pending]
-/// until the pending block is no longer connected to our current head.
-///
-/// This disconnect is detected whenever
-/// - `pending.block_hash != head`, or
-/// - `pending` is a fully formed block and not [PendingBlock]
-async fn poll_pending(
-    tx_event: &mpsc::Sender<Event>,
-    sequencer: &impl sequencer::ClientApi,
-    head: StarknetBlockHash,
-    poll_interval: Duration,
-) -> anyhow::Result<()> {
-    use crate::core::BlockId;
-
-    loop {
-        use sequencer::reply::MaybePendingBlock;
-
-        let block = match sequencer
-            .block(BlockId::Pending)
-            .await
-            .context("Download block")?
-        {
-            MaybePendingBlock::Block(block) => {
-                tracing::debug!(hash=%block.block_hash, "Found full block, exiting pending mode.");
-                return Ok(());
-            }
-            MaybePendingBlock::Pending(pending) if pending.parent_hash != head => {
-                tracing::debug!(
-                    pending=%pending.parent_hash, head=%head,
-                    "Pending block's parent hash does not match head, exiting pending mode"
-                );
-                return Ok(());
-            }
-            MaybePendingBlock::Pending(pending) => pending,
-        };
-
-        // Download the pending state diff.
-        let state_update = sequencer
-            .state_update(BlockId::Pending)
-            .await
-            .context("Download state update")?;
-        if state_update.block_hash.is_some() {
-            tracing::debug!("Found full state update, exiting pending mode.");
-            return Ok(());
-        }
-
-        // Emit new pending data.
-        tx_event
-            .send(Event::Pending(Box::new(block), Box::new(state_update)))
-            .await
-            .context("Event channel closed")?;
-
-        tokio::time::sleep(poll_interval).await;
-    }
-}
-
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     sequencer: impl sequencer::ClientApi,
@@ -135,9 +79,11 @@ pub async fn sync(
                         Some(interval) => {
                             let head_hash = head_hash
                                 .expect("Head hash should exist when entering pending mode");
-                            poll_pending(&tx_event, &sequencer, head_hash, interval)
-                                .await
-                                .context("Polling pending block")?;
+                            crate::state::sync::pending::poll_pending(
+                                &tx_event, &sequencer, head_hash, interval,
+                            )
+                            .await
+                            .context("Polling pending block")?;
                         }
                         None => {
                             let poll_interval = head_poll_interval(chain);
