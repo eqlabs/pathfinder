@@ -115,8 +115,12 @@ impl RpcApi {
         let block_id = match block_hash {
             BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data()?.block().await {
                 Some(block) => {
+                    use std::ops::Deref;
                     let scope = requested_scope.unwrap_or_default();
-                    return Ok(Block::from_sequencer_scoped(block.into(), scope));
+                    return Ok(Block::from_sequencer_scoped(
+                        block.deref().clone().into(),
+                        scope,
+                    ));
                 }
                 // Default to latest if pending data is not available.
                 None => StarknetBlocksBlockId::Latest,
@@ -239,8 +243,12 @@ impl RpcApi {
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
             BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data()?.block().await {
                 Some(block) => {
+                    use std::ops::Deref;
                     let scope = requested_scope.unwrap_or_default();
-                    return Ok(Block::from_sequencer_scoped(block.into(), scope));
+                    return Ok(Block::from_sequencer_scoped(
+                        block.deref().clone().into(),
+                        scope,
+                    ));
                 }
                 // Default to latest if pending data is not available.
                 None => StarknetBlocksBlockId::Latest,

@@ -766,7 +766,10 @@ mod tests {
 
         let pending_data = PendingData::default();
         pending_data
-            .set(Some((pending_block, pending_state_diff)))
+            .set(Some((
+                Arc::new(pending_block),
+                Arc::new(pending_state_diff),
+            )))
             .await;
 
         (storage, pending_data)
@@ -915,6 +918,8 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
+            use std::ops::Deref;
+
             let (storage, pending) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
@@ -928,7 +933,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let expected = pending.block().await.unwrap();
+            let expected = pending.block().await.unwrap().deref().clone();
             let expected = Block::from_sequencer_scoped(expected.into(), scope);
             assert_eq!(block, expected);
         }
@@ -1088,6 +1093,8 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
+            use std::ops::Deref;
+
             let (storage, pending) = setup_storage().await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
@@ -1101,7 +1108,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let expected = pending.block().await.unwrap();
+            let expected = pending.block().await.unwrap().deref().clone();
             let expected = Block::from_sequencer_scoped(expected.into(), scope);
             assert_eq!(block, expected);
         }

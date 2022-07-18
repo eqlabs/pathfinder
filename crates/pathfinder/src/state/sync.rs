@@ -47,16 +47,19 @@ impl Default for State {
 
 #[derive(Default, Clone)]
 pub struct PendingData {
-    inner: Arc<RwLock<Option<(PendingBlock, sequencer::reply::StateUpdate)>>>,
+    inner: Arc<RwLock<Option<(Arc<PendingBlock>, Arc<sequencer::reply::StateUpdate>)>>>,
 }
 
 impl PendingData {
-    pub async fn set(&self, value: Option<(PendingBlock, sequencer::reply::StateUpdate)>) {
+    pub async fn set(
+        &self,
+        value: Option<(Arc<PendingBlock>, Arc<sequencer::reply::StateUpdate>)>,
+    ) {
         let mut inner = self.inner.write().await;
         *inner = value;
     }
 
-    pub async fn block(&self) -> Option<PendingBlock> {
+    pub async fn block(&self) -> Option<Arc<PendingBlock>> {
         self.inner
             .read()
             .await
@@ -64,7 +67,7 @@ impl PendingData {
             .map(|inner| inner.0.clone())
     }
 
-    pub async fn state_update(&self) -> Option<sequencer::reply::StateUpdate> {
+    pub async fn state_update(&self) -> Option<Arc<sequencer::reply::StateUpdate>> {
         self.inner
             .read()
             .await
@@ -348,7 +351,7 @@ where
                 }
                 Some(l2::Event::Pending(pending)) => {
                     // TODO: apply state_update and verify state_update.new_root
-                    pending_data.set(Some((pending.0, pending.1))).await;
+                    pending_data.set(Some((Arc::new(pending.0), Arc::new(pending.1)))).await;
 
                     tracing::info!("Updated pending block");
                 }
