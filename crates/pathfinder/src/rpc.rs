@@ -916,7 +916,6 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let (storage, pending) = setup_storage().await;
-            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
@@ -1090,7 +1089,6 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let (storage, pending) = setup_storage().await;
-            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
@@ -1379,7 +1377,6 @@ mod tests {
         #[tokio::test]
         async fn pending_block() {
             let (storage, pending) = setup_storage().await;
-            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
@@ -1552,7 +1549,6 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let (storage, pending) = setup_storage().await;
-            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
@@ -1670,7 +1666,6 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let (storage, pending) = setup_storage().await;
-            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
@@ -2202,7 +2197,6 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let (storage, pending) = setup_storage().await;
-            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
@@ -2291,7 +2285,6 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let (storage, pending) = setup_storage().await;
-            let pending = Arc::new(pending);
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)

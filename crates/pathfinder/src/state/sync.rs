@@ -45,7 +45,7 @@ impl Default for State {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct PendingData {
     inner: Arc<RwLock<Option<(PendingBlock, sequencer::reply::StateUpdate)>>>,
 }
@@ -83,7 +83,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     state: Arc<State>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
-    pending_data: Arc<PendingData>,
+    pending_data: PendingData,
     pending_poll_interval: Option<std::time::Duration>,
 ) -> anyhow::Result<()>
 where
@@ -1017,7 +1017,7 @@ mod tests {
                 sync_state.clone(),
                 l1,
                 l2_noop,
-                Arc::new(PendingData::default()),
+                PendingData::default(),
                 None,
             ));
 
@@ -1087,7 +1087,7 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1,
                 l2_noop,
-                Arc::new(PendingData::default()),
+                PendingData::default(),
                 None,
             ));
 
@@ -1153,7 +1153,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
-            Arc::new(PendingData::default()),
+            PendingData::default(),
             None,
         ));
 
@@ -1188,7 +1188,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
-            Arc::new(PendingData::default()),
+            PendingData::default(),
             None,
         ));
 
@@ -1262,7 +1262,7 @@ mod tests {
                 sync_state.clone(),
                 l1_noop,
                 l2,
-                Arc::new(PendingData::default()),
+                PendingData::default(),
                 None,
             ));
 
@@ -1327,7 +1327,7 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1_noop,
                 l2,
-                Arc::new(PendingData::default()),
+                PendingData::default(),
                 None,
             ));
 
@@ -1387,7 +1387,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
-            Arc::new(PendingData::default()),
+            PendingData::default(),
             None,
         ));
 
@@ -1434,7 +1434,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
-            Arc::new(PendingData::default()),
+            PendingData::default(),
             None,
         ));
     }
@@ -1481,7 +1481,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
-            Arc::new(PendingData::default()),
+            PendingData::default(),
             None,
         ));
     }
@@ -1509,7 +1509,7 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
-            Arc::new(PendingData::default()),
+            PendingData::default(),
             None,
         ));
 

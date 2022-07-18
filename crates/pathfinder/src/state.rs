@@ -481,7 +481,7 @@ mod tests {
             state,
             sync::l1::sync,
             sync::l2::sync,
-            Arc::new(sync::PendingData::default()),
+            sync::PendingData::default(),
             None,
         )
         .await

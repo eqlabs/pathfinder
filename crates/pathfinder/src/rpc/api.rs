@@ -44,7 +44,7 @@ pub struct RpcApi {
     call_handle: Option<ext_py::Handle>,
     shared_gas_price: Option<Cached>,
     sync_state: Arc<SyncState>,
-    pending_data: Option<Arc<PendingData>>,
+    pending_data: Option<PendingData>,
 }
 
 #[derive(Debug)]
@@ -93,17 +93,16 @@ impl RpcApi {
         }
     }
 
-    pub fn with_pending_data(self, pending_data: Arc<PendingData>) -> Self {
+    pub fn with_pending_data(self, pending_data: PendingData) -> Self {
         Self {
             pending_data: Some(pending_data),
             ..self
         }
     }
 
-    fn pending_data(&self) -> anyhow::Result<Arc<PendingData>> {
+    fn pending_data(&self) -> anyhow::Result<&PendingData> {
         self.pending_data
             .as_ref()
-            .cloned()
             .ok_or_else(|| anyhow::anyhow!("Pending data not supported in this configuration"))
     }
 
@@ -692,7 +691,7 @@ impl RpcApi {
             })
             .flatten();
         if let Some(pending_receipt) = pending_receipt {
-            return Ok(TransactionReceipt::with_status(
+            return Ok(TransactionReceipt::with_block_status(
                 pending_receipt,
                 BlockStatus::Pending,
             ));
