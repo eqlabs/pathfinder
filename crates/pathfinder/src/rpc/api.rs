@@ -497,21 +497,22 @@ impl RpcApi {
         transaction_hash: StarknetTransactionHash,
     ) -> RpcResult<Transaction> {
         // First check pending data as it is in-mem check and should be fast.
-        let pending_tx = self
-            .pending_data()?
-            .block()
-            .await
-            .map(|block| {
-                block
-                    .transactions
-                    .iter()
-                    .find(|tx| tx.transaction_hash == transaction_hash)
-                    .cloned()
-            })
-            .flatten();
+        if let Ok(pending) = self.pending_data() {
+            let pending_tx = pending
+                .block()
+                .await
+                .map(|block| {
+                    block
+                        .transactions
+                        .iter()
+                        .find(|tx| tx.transaction_hash == transaction_hash)
+                        .cloned()
+                })
+                .flatten();
 
-        if let Some(pending_tx) = pending_tx {
-            return Ok(pending_tx.into());
+            if let Some(pending_tx) = pending_tx {
+                return Ok(pending_tx.into());
+            }
         }
 
         let storage = self.storage.clone();
@@ -686,23 +687,25 @@ impl RpcApi {
         transaction_hash: StarknetTransactionHash,
     ) -> RpcResult<TransactionReceipt> {
         // First check pending data as it is in-mem check and should be fast.
-        let pending_receipt = self
-            .pending_data()?
-            .block()
-            .await
-            .map(|block| {
-                block
-                    .transaction_receipts
-                    .iter()
-                    .find(|tx| tx.transaction_hash == transaction_hash)
-                    .cloned()
-            })
-            .flatten();
-        if let Some(pending_receipt) = pending_receipt {
-            return Ok(TransactionReceipt::with_block_status(
-                pending_receipt,
-                BlockStatus::Pending,
-            ));
+        // First check pending data as it is in-mem check and should be fast.
+        if let Ok(pending) = self.pending_data() {
+            let pending_receipt = pending
+                .block()
+                .await
+                .map(|block| {
+                    block
+                        .transaction_receipts
+                        .iter()
+                        .find(|tx| tx.transaction_hash == transaction_hash)
+                        .cloned()
+                })
+                .flatten();
+            if let Some(pending_receipt) = pending_receipt {
+                return Ok(TransactionReceipt::with_block_status(
+                    pending_receipt,
+                    BlockStatus::Pending,
+                ));
+            }
         }
 
         let storage = self.storage.clone();
