@@ -765,12 +765,7 @@ mod tests {
             db_task.await.expect("Database setup should succeed");
 
         let pending_data = PendingData::default();
-        pending_data
-            .set(Some((
-                Arc::new(pending_block),
-                Arc::new(pending_state_diff),
-            )))
-            .await;
+        pending_data.set(pending_block, pending_state_diff).await;
 
         (storage, pending_data)
     }

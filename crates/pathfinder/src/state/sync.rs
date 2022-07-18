@@ -51,12 +51,36 @@ pub struct PendingData {
 }
 
 impl PendingData {
-    pub async fn set(
-        &self,
-        value: Option<(Arc<PendingBlock>, Arc<sequencer::reply::StateUpdate>)>,
-    ) {
+    pub async fn set(&self, block: PendingBlock, state_update: sequencer::reply::StateUpdate) {
+        // This re-uses the inner memory allocations if possible.
         let mut inner = self.inner.write().await;
-        *inner = value;
+        match inner.as_mut() {
+            Some((inner_block, inner_state_update)) => {
+                match Arc::get_mut(inner_block) {
+                    Some(existing) => {
+                        *existing = block;
+                    }
+                    None => {
+                        *inner_block = Arc::new(block);
+                    }
+                }
+                match Arc::get_mut(inner_state_update) {
+                    Some(existing) => {
+                        *existing = state_update;
+                    }
+                    None => {
+                        *inner_state_update = Arc::new(state_update);
+                    }
+                }
+            }
+            None => {
+                *inner = Some((Arc::new(block), Arc::new(state_update)));
+            }
+        }
+    }
+
+    pub async fn clear(&self) {
+        *self.inner.write().await = None;
     }
 
     pub async fn block(&self) -> Option<Arc<PendingBlock>> {
@@ -232,7 +256,7 @@ where
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update(block, diff, timings)) => {
-                    pending_data.set(None).await;
+                    pending_data.clear().await;
 
                     let block_number = block.block_number.0;
                     let block_hash = block.block_hash;
@@ -292,7 +316,7 @@ where
                     }
                 }
                 Some(l2::Event::Reorg(reorg_tail)) => {
-                    pending_data.set(None).await;
+                    pending_data.clear().await;
 
                     l2_reorg(&mut db_conn, reorg_tail)
                         .await
@@ -351,7 +375,7 @@ where
                 }
                 Some(l2::Event::Pending(pending)) => {
                     // TODO: apply state_update and verify state_update.new_root
-                    pending_data.set(Some((Arc::new(pending.0), Arc::new(pending.1)))).await;
+                    pending_data.set(pending.0, pending.1).await;
 
                     tracing::info!("Updated pending block");
                 }
