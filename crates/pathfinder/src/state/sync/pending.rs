@@ -14,6 +14,8 @@ pub async fn poll_pending(
     use crate::core::BlockId;
     use anyhow::Context;
 
+    use std::sync::Arc;
+
     loop {
         use crate::sequencer::reply::MaybePendingBlock;
 
@@ -53,7 +55,7 @@ pub async fn poll_pending(
         // Emit new pending data.
         use crate::state::l2::Event::Pending;
         tx_event
-            .send(Pending(Box::new((block, state_update))))
+            .send(Pending(Arc::new(block), Arc::new(state_update)))
             .await
             .context("Event channel closed")?;
 
@@ -285,6 +287,6 @@ mod tests {
             .unwrap();
 
         use crate::state::l2::Event::Pending;
-        assert_matches!(result, Pending(pending) if pending.0 == *PENDING_BLOCK && pending.1 == *PENDING_DIFF);
+        assert_matches!(result, Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_DIFF);
     }
 }

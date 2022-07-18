@@ -51,32 +51,12 @@ pub struct PendingData {
 }
 
 impl PendingData {
-    pub async fn set(&self, block: PendingBlock, state_update: sequencer::reply::StateUpdate) {
-        // This re-uses the inner memory allocations if possible.
-        let mut inner = self.inner.write().await;
-        match inner.as_mut() {
-            Some((inner_block, inner_state_update)) => {
-                match Arc::get_mut(inner_block) {
-                    Some(existing) => {
-                        *existing = block;
-                    }
-                    None => {
-                        *inner_block = Arc::new(block);
-                    }
-                }
-                match Arc::get_mut(inner_state_update) {
-                    Some(existing) => {
-                        *existing = state_update;
-                    }
-                    None => {
-                        *inner_state_update = Arc::new(state_update);
-                    }
-                }
-            }
-            None => {
-                *inner = Some((Arc::new(block), Arc::new(state_update)));
-            }
-        }
+    pub async fn set(
+        &self,
+        block: Arc<PendingBlock>,
+        state_update: Arc<sequencer::reply::StateUpdate>,
+    ) {
+        *self.inner.write().await = Some((block, state_update));
     }
 
     pub async fn clear(&self) {
@@ -373,9 +353,9 @@ where
 
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
-                Some(l2::Event::Pending(pending)) => {
+                Some(l2::Event::Pending(block, diff)) => {
                     // TODO: apply state_update and verify state_update.new_root
-                    pending_data.set(pending.0, pending.1).await;
+                    pending_data.set(block, diff).await;
 
                     tracing::info!("Updated pending block");
                 }

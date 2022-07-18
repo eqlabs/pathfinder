@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use std::time::Duration;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
@@ -49,7 +49,7 @@ pub enum Event {
     /// for each contract using the [oneshot::channel].
     QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
     /// A new L2 pending update was polled.
-    Pending(Box<(PendingBlock, sequencer::reply::StateUpdate)>),
+    Pending(Arc<PendingBlock>, Arc<sequencer::reply::StateUpdate>),
 }
 
 pub async fn sync(
