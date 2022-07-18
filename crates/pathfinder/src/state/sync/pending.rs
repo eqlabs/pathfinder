@@ -2,7 +2,7 @@
 /// until the pending block is no longer connected to our current head.
 ///
 /// This disconnect is detected whenever
-/// - `pending.block_hash != head`, or
+/// - `pending.parent_hash != head`, or
 /// - `pending` is a fully formed block and not [PendingBlock], or
 /// - the state update parent root does not match head.
 pub async fn poll_pending(
@@ -20,7 +20,7 @@ pub async fn poll_pending(
         let block = match sequencer
             .block(BlockId::Pending)
             .await
-            .context("Download block")?
+            .context("Download pending block")?
         {
             MaybePendingBlock::Block(block) => {
                 tracing::debug!(hash=%block.block_hash, "Found full block, exiting pending mode.");
@@ -40,7 +40,7 @@ pub async fn poll_pending(
         let state_update = sequencer
             .state_update(BlockId::Pending)
             .await
-            .context("Download state update")?;
+            .context("Download pending state update")?;
         if state_update.block_hash.is_some() {
             tracing::debug!("Found full state update, exiting pending mode.");
             return Ok(());
@@ -53,7 +53,7 @@ pub async fn poll_pending(
         // Emit new pending data.
         use crate::state::l2::Event::Pending;
         tx_event
-            .send(Pending(Box::new(block), Box::new(state_update)))
+            .send(Pending(Box::new((block, state_update))))
             .await
             .context("Event channel closed")?;
 
@@ -285,6 +285,6 @@ mod tests {
             .unwrap();
 
         use crate::state::l2::Event::Pending;
-        assert_matches!(result, Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_DIFF);
+        assert_matches!(result, Pending(pending) if pending.0 == *PENDING_BLOCK && pending.1 == *PENDING_DIFF);
     }
 }

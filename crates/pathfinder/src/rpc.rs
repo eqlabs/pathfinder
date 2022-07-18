@@ -766,10 +766,7 @@ mod tests {
 
         let pending_data = PendingData::default();
         pending_data
-            .set(Some((
-                Box::new(pending_block),
-                Box::new(pending_state_diff),
-            )))
+            .set(Some((pending_block, pending_state_diff)))
             .await;
 
         (storage, pending_data)

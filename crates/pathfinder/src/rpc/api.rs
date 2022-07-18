@@ -100,7 +100,7 @@ impl RpcApi {
         }
     }
 
-    async fn pending_data(&self) -> anyhow::Result<Arc<PendingData>> {
+    fn pending_data(&self) -> anyhow::Result<Arc<PendingData>> {
         self.pending_data
             .as_ref()
             .cloned()
@@ -114,7 +114,7 @@ impl RpcApi {
         requested_scope: Option<BlockResponseScope>,
     ) -> RpcResult<Block> {
         let block_id = match block_hash {
-            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
+            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data()?.block().await {
                 Some(block) => {
                     let scope = requested_scope.unwrap_or_default();
                     return Ok(Block::from_sequencer_scoped(block.into(), scope));
@@ -237,7 +237,7 @@ impl RpcApi {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => number.into(),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
+            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data()?.block().await {
                 Some(block) => {
                     let scope = requested_scope.unwrap_or_default();
                     return Ok(Block::from_sequencer_scoped(block.into(), scope));
@@ -387,7 +387,7 @@ impl RpcApi {
             BlockHashOrTag::Tag(Tag::Pending) => {
                 // Pending storage will either be part of the pending state update,
                 // or it will come from latest if it isn't part of the pending diff.
-                match self.pending_data().await?.state_update().await {
+                match self.pending_data()?.state_update().await {
                     Some(update) => {
                         let pending_value = update
                             .state_diff
@@ -528,7 +528,7 @@ impl RpcApi {
         let block_id = match block_hash {
             BlockHashOrTag::Hash(hash) => StarknetBlocksBlockId::Hash(hash),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
+            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data()?.block().await {
                 Some(block) => {
                     return block
                         .transactions
@@ -596,7 +596,7 @@ impl RpcApi {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => StarknetBlocksBlockId::Number(number),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
+            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data()?.block().await {
                 Some(block) => {
                     return block
                         .transactions
@@ -860,7 +860,7 @@ impl RpcApi {
         let block_id = match block_hash {
             BlockHashOrTag::Hash(hash) => hash.into(),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
+            BlockHashOrTag::Tag(Tag::Pending) => match self.pending_data()?.block().await {
                 Some(block) => {
                     let count = block.transactions.len().try_into().map_err(|e| {
                         Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
@@ -919,7 +919,7 @@ impl RpcApi {
         let block_id = match block_number {
             BlockNumberOrTag::Number(number) => number.into(),
             BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data().await?.block().await {
+            BlockNumberOrTag::Tag(Tag::Pending) => match self.pending_data()?.block().await {
                 Some(block) => {
                     let count = block.transactions.len().try_into().map_err(|e| {
                         Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))

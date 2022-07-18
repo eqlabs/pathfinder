@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     )?;
 
-    // Pending is only supported on mainnet.
+    // Pending is only for use on mainnet as it is meant as a work-around for slow block times.
     anyhow::ensure!(
         !(config.poll_pending && ethereum_chain != core::Chain::Mainnet),
         "Poll pending option may only be enabled on Mainnet"

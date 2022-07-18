@@ -49,7 +49,7 @@ pub enum Event {
     /// for each contract using the [oneshot::channel].
     QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
     /// A new L2 pending update was polled.
-    Pending(Box<PendingBlock>, Box<sequencer::reply::StateUpdate>),
+    Pending(Box<(PendingBlock, sequencer::reply::StateUpdate)>),
 }
 
 pub async fn sync(

@@ -45,15 +45,13 @@ impl Default for State {
     }
 }
 
+#[derive(Default)]
 pub struct PendingData {
-    inner: RwLock<Option<(Box<PendingBlock>, Box<sequencer::reply::StateUpdate>)>>,
+    inner: Arc<RwLock<Option<(PendingBlock, sequencer::reply::StateUpdate)>>>,
 }
 
 impl PendingData {
-    pub async fn set(
-        &self,
-        value: Option<(Box<PendingBlock>, Box<sequencer::reply::StateUpdate>)>,
-    ) {
+    pub async fn set(&self, value: Option<(PendingBlock, sequencer::reply::StateUpdate)>) {
         let mut inner = self.inner.write().await;
         *inner = value;
     }
@@ -63,7 +61,7 @@ impl PendingData {
             .read()
             .await
             .as_ref()
-            .map(|inner| (*inner.0).clone())
+            .map(|inner| inner.0.clone())
     }
 
     pub async fn state_update(&self) -> Option<sequencer::reply::StateUpdate> {
@@ -71,15 +69,7 @@ impl PendingData {
             .read()
             .await
             .as_ref()
-            .map(|inner| (*inner.1).clone())
-    }
-}
-
-impl Default for PendingData {
-    fn default() -> Self {
-        Self {
-            inner: RwLock::new(None),
-        }
+            .map(|inner| inner.1.clone())
     }
 }
 
@@ -356,25 +346,9 @@ where
 
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
-                Some(l2::Event::Pending(block, state_update)) => {
-                    let latest_root = tokio::task::block_in_place(|| {
-                            let tx = db_conn.transaction()?;
-                            StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
-                        }
-                    )
-                    .context("Query latest state root for pending update")?
-                    .map(|block| block.root)
-                    .unwrap_or(GlobalRoot(StarkHash::ZERO));
-
-                    if state_update.old_root != latest_root {
-                        tracing::error!(latest=%latest_root, pending=%state_update.old_root,
-                            "Pending old state root does not match latest state root"
-                        );
-                        continue;
-                    }
-
+                Some(l2::Event::Pending(pending)) => {
                     // TODO: apply state_update and verify state_update.new_root
-                    pending_data.set(Some((block, state_update))).await;
+                    pending_data.set(Some((pending.0, pending.1))).await;
 
                     tracing::info!("Updated pending block");
                 }
