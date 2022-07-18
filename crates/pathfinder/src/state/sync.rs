@@ -105,7 +105,7 @@ where
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
-            Option<(StarknetBlockNumber, StarknetBlockHash)>,
+            Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
             Chain,
             Option<std::time::Duration>,
         ) -> F2
@@ -125,15 +125,16 @@ where
             .context("Query L1 head from database")?;
         let l2_head = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
             .context("Query L2 head from database")?
-            .map(|block| (block.number, block.hash));
+            .map(|block| (block.number, block.hash, block.root));
         Ok((l1_head, l2_head))
     })?;
 
     // Start update sync-status process.
-    let (starting_block_num, starting_block_hash) = l2_head.unwrap_or((
+    let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
         // Seems a better choice for an invalid block number than 0
         StarknetBlockNumber(u64::MAX),
         StarknetBlockHash(StarkHash::ZERO),
+        GlobalRoot(StarkHash::ZERO),
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
         Arc::clone(&state),
@@ -325,16 +326,16 @@ where
 
                     tracing::trace!("Inserted new contract {}", contract.hash.0.to_hex_str());
                 }
-                Some(l2::Event::QueryHash(block, tx)) => {
-                    let hash = tokio::task::block_in_place(|| {
+                Some(l2::Event::QueryBlock(number, tx)) => {
+                    let block = tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction()?;
-                        StarknetBlocksTable::get(&tx, block.into())
+                        StarknetBlocksTable::get(&tx, number.into())
                     })
-                    .with_context(|| format!("Query L2 block hash for block {:?}", block))?
-                    .map(|block| block.hash);
-                    let _ = tx.send(hash);
+                    .with_context(|| format!("Query L2 block hash for block {number}"))?
+                    .map(|block| (block.hash, block.root));
+                    let _ = tx.send(block);
 
-                    tracing::trace!("Query hash for L2 block {}", block.0);
+                    tracing::trace!(%number, "Query hash for L2 block");
                 }
                 Some(l2::Event::QueryContractExistance(contracts, tx)) => {
                     let exists =
@@ -393,7 +394,7 @@ where
                         StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
                     })
                     .context("Query L2 head from database")?
-                    .map(|block| (block.number, block.hash));
+                    .map(|block| (block.number, block.hash, block.root));
 
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
@@ -904,7 +905,7 @@ mod tests {
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
         _: impl sequencer::ClientApi,
-        _: Option<(StarknetBlockNumber, StarknetBlockHash)>,
+        _: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
         _: Chain,
         _: Option<std::time::Duration>,
     ) -> anyhow::Result<()> {
@@ -1436,14 +1437,15 @@ mod tests {
 
         // A simple L2 sync task which does the request and checks he result
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
-            let (tx1, rx1) = tokio::sync::oneshot::channel::<Option<StarknetBlockHash>>();
+            let (tx1, rx1) = tokio::sync::oneshot::channel();
 
-            tx.send(l2::Event::QueryHash(StarknetBlockNumber(0), tx1))
+            tx.send(l2::Event::QueryBlock(StarknetBlockNumber(0), tx1))
                 .await
                 .unwrap();
 
             // Check the result straight away ¯\_(ツ)_/¯
-            assert_eq!(rx1.await.unwrap().unwrap(), StarknetBlockHash(*A));
+            let result = rx1.await.unwrap().unwrap();
+            assert_eq!(result, (STORAGE_BLOCK0.hash, STORAGE_BLOCK0.root));
 
             tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())

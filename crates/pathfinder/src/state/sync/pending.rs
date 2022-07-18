@@ -3,11 +3,12 @@
 ///
 /// This disconnect is detected whenever
 /// - `pending.block_hash != head`, or
-/// - `pending` is a fully formed block and not [PendingBlock]
+/// - `pending` is a fully formed block and not [PendingBlock], or
+/// - the state update parent root does not match head.
 pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
     sequencer: &impl crate::sequencer::ClientApi,
-    head: crate::core::StarknetBlockHash,
+    head: (crate::core::StarknetBlockHash, crate::core::GlobalRoot),
     poll_interval: std::time::Duration,
 ) -> anyhow::Result<()> {
     use crate::core::BlockId;
@@ -25,9 +26,9 @@ pub async fn poll_pending(
                 tracing::debug!(hash=%block.block_hash, "Found full block, exiting pending mode.");
                 return Ok(());
             }
-            MaybePendingBlock::Pending(pending) if pending.parent_hash != head => {
+            MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
                 tracing::debug!(
-                    pending=%pending.parent_hash, head=%head,
+                    pending=%pending.parent_hash, head=%head.0,
                     "Pending block's parent hash does not match head, exiting pending mode"
                 );
                 return Ok(());
@@ -42,6 +43,10 @@ pub async fn poll_pending(
             .context("Download state update")?;
         if state_update.block_hash.is_some() {
             tracing::debug!("Found full state update, exiting pending mode.");
+            return Ok(());
+        }
+        if state_update.old_root != head.1 {
+            tracing::debug!(pending=%state_update.old_root, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
             return Ok(());
         }
 
@@ -131,7 +136,13 @@ mod tests {
             .returning(move |_| Ok(PENDING_DIFF.clone()));
 
         let jh = tokio::spawn(async move {
-            poll_pending(tx, &sequencer, *PARENT_HASH, std::time::Duration::ZERO).await
+            poll_pending(
+                tx,
+                &sequencer,
+                (*PARENT_HASH, *PARENT_ROOT),
+                std::time::Duration::ZERO,
+            )
+            .await
         });
 
         let result = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
@@ -160,7 +171,13 @@ mod tests {
             .returning(move |_| Ok(full_diff.clone()));
 
         let jh = tokio::spawn(async move {
-            poll_pending(tx, &sequencer, *PARENT_HASH, std::time::Duration::ZERO).await
+            poll_pending(
+                tx,
+                &sequencer,
+                (*PARENT_HASH, *PARENT_ROOT),
+                std::time::Duration::ZERO,
+            )
+            .await
         });
 
         let result = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
@@ -187,7 +204,13 @@ mod tests {
             .returning(move |_| Ok(PENDING_DIFF.clone()));
 
         let jh = tokio::spawn(async move {
-            poll_pending(tx, &sequencer, *PARENT_HASH, std::time::Duration::ZERO).await
+            poll_pending(
+                tx,
+                &sequencer,
+                (*PARENT_HASH, *PARENT_ROOT),
+                std::time::Duration::ZERO,
+            )
+            .await
         });
 
         let result = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
@@ -216,7 +239,13 @@ mod tests {
             .returning(move |_| Ok(disconnected_diff.clone()));
 
         let jh = tokio::spawn(async move {
-            poll_pending(tx, &sequencer, *PARENT_HASH, std::time::Duration::ZERO).await
+            poll_pending(
+                tx,
+                &sequencer,
+                (*PARENT_HASH, *PARENT_ROOT),
+                std::time::Duration::ZERO,
+            )
+            .await
         });
 
         let result = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
@@ -241,7 +270,13 @@ mod tests {
             .returning(move |_| Ok(PENDING_DIFF.clone()));
 
         let _jh = tokio::spawn(async move {
-            poll_pending(tx, &sequencer, *PARENT_HASH, std::time::Duration::ZERO).await
+            poll_pending(
+                tx,
+                &sequencer,
+                (*PARENT_HASH, *PARENT_ROOT),
+                std::time::Duration::ZERO,
+            )
+            .await
         });
 
         let result = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
