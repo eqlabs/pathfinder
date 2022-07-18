@@ -119,7 +119,8 @@ impl RpcApi {
                     let scope = requested_scope.unwrap_or_default();
                     return Ok(Block::from_sequencer_scoped(block.into(), scope));
                 }
-                None => todo!("Return no pending data error"),
+                // Default to latest if pending data is not available.
+                None => StarknetBlocksBlockId::Latest,
             },
             BlockHashOrTag::Hash(hash) => hash.into(),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
@@ -242,7 +243,8 @@ impl RpcApi {
                     let scope = requested_scope.unwrap_or_default();
                     return Ok(Block::from_sequencer_scoped(block.into(), scope));
                 }
-                None => todo!("Return no pending data error"),
+                // Default to latest if pending data is not available.
+                None => StarknetBlocksBlockId::Latest,
             },
         };
 
@@ -408,7 +410,8 @@ impl RpcApi {
                             None => StarknetBlocksBlockId::Latest,
                         }
                     }
-                    None => todo!("Return no pending data error"),
+                    // Default to latest if pending data is not available.
+                    None => StarknetBlocksBlockId::Latest,
                 }
             }
         };
@@ -555,7 +558,8 @@ impl RpcApi {
                             Ok(txn.into())
                         })
                 }
-                None => todo!("Return no pending data error"),
+                // Default to latest if pending data is not available.
+                None => StarknetBlocksBlockId::Latest,
             },
         };
 
@@ -623,7 +627,8 @@ impl RpcApi {
                             Ok(txn.into())
                         })
                 }
-                None => todo!("Return no pending data error"),
+                // Default to latest if pending data is not available.
+                None => StarknetBlocksBlockId::Latest,
             },
         };
 
@@ -905,7 +910,8 @@ impl RpcApi {
                     })?;
                     return Ok(count);
                 }
-                None => todo!("Return no pending data error"),
+                // Default to latest if pending data is not available.
+                None => StarknetBlocksBlockId::Latest,
             },
         };
 
@@ -964,7 +970,8 @@ impl RpcApi {
                     })?;
                     return Ok(count);
                 }
-                None => todo!("Return no pending data error"),
+                // Default to latest if pending data is not available.
+                None => StarknetBlocksBlockId::Latest,
             },
         };
 
