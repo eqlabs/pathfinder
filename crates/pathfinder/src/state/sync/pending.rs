@@ -5,7 +5,7 @@
 /// - `pending.block_hash != head`, or
 /// - `pending` is a fully formed block and not [PendingBlock]
 pub async fn poll_pending(
-    tx_event: &tokio::sync::mpsc::Sender<super::l2::Event>,
+    tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
     sequencer: &impl crate::sequencer::ClientApi,
     head: crate::core::StarknetBlockHash,
     poll_interval: std::time::Duration,

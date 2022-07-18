@@ -80,7 +80,10 @@ pub async fn sync(
                             let head_hash = head_hash
                                 .expect("Head hash should exist when entering pending mode");
                             crate::state::sync::pending::poll_pending(
-                                &tx_event, &sequencer, head_hash, interval,
+                                tx_event.clone(),
+                                &sequencer,
+                                head_hash,
+                                interval,
                             )
                             .await
                             .context("Polling pending block")?;
