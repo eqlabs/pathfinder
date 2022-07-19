@@ -357,8 +357,9 @@ where
                     // Update state tree to determine new state root, but rollback the changes as we do
                     // not want to persist them.
                     let new_root = tokio::task::block_in_place(|| {
-
-                        let tx = db_conn.transaction()?;
+                        let tx = db_conn
+                            .transaction_with_behavior(TransactionBehavior::Immediate)
+                            .context("Create database transaction")?;
                         let state_diff = (&diff.state_diff).into();
                         let new_root = update_starknet_state(&tx, state_diff).context("Updating Starknet state")?;
                         tx.rollback()?;
@@ -373,9 +374,9 @@ where
                         false => {
                             pending_data.clear().await;
                             tracing::error!(
-                                head=%diff.old_root, 
-                                pending=%diff.new_root, 
-                                calculated=%new_root, 
+                                head=%diff.old_root,
+                                pending=%diff.new_root,
+                                calculated=%new_root,
                                 "Pending state root mismatch"
                             );
                         }
