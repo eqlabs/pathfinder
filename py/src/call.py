@@ -688,11 +688,16 @@ async def do_call(
     # exclude pending deploys, which should cause an issue reading them
     contract_addresses = contract_addresses ^ pending_deployed.keys()
 
+    class_hashes = set()
+
+    if contract_address in pending_deployed:
+        class_hashes.add(pending_deployed[contract_address])
+
     state_selector = StateSelector(
-        contract_addresses=contract_addresses,
+        contract_addresses,
         # we keep setting this to empty because we assume that the pending downloader
         # has already stored all declared classes locally
-        class_hashes=set()
+        class_hashes,
     )
     carried_state = await shared_state.get_filled_carried_state(
         ffc, state_selector=state_selector
