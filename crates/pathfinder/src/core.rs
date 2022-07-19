@@ -452,3 +452,46 @@ thin_starkhash_debug_display!(
     SequencerAddress,
     TransactionNonce,
 );
+
+#[cfg(test)]
+mod tests {
+    mod block_id_serde {
+        use super::super::BlockId;
+
+        #[derive(serde::Deserialize)]
+        struct Foo {
+            bar: BlockId,
+        }
+
+        #[test]
+        fn latest() {
+            let result = serde_json::from_str::<Foo>(r#"{"bar": "latest"}"#).unwrap();
+            assert_eq!(result.bar, BlockId::Latest);
+        }
+
+        #[test]
+        fn pending() {
+            let result = serde_json::from_str::<Foo>(r#"{"bar": "pending"}"#).unwrap();
+            assert_eq!(result.bar, BlockId::Pending);
+        }
+
+        #[test]
+        fn number() {
+            use crate::core::StarknetBlockNumber;
+            let result =
+                serde_json::from_str::<Foo>(r#"{"bar": { "block_number": 123456 }}"#).unwrap();
+            assert_eq!(result.bar, BlockId::Number(StarknetBlockNumber(123456)));
+        }
+
+        #[test]
+        fn hash() {
+            use crate::core::StarknetBlockHash;
+            let result =
+                serde_json::from_str::<Foo>(r#"{"bar": { "block_hash": "0xdeadbeef" }}"#).unwrap();
+            assert_eq!(
+                result.bar,
+                BlockId::Hash(StarknetBlockHash::from_hex_str("0xdeadbeef").unwrap())
+            );
+        }
+    }
+}
