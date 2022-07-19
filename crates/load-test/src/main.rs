@@ -18,7 +18,7 @@ use stark_hash::StarkHash;
 use pathfinder_lib::{
     core::{
         ContractAddress, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
-        StarknetTransactionIndex,
+        StarknetTransactionIndex, StorageAddress, StorageValue,
     },
     rpc::types::{
         reply::{
@@ -236,6 +236,40 @@ async fn task_get_events(user: &mut GooseUser) -> TransactionResult {
     Ok(())
 }
 
+async fn task_get_storage_at(user: &mut GooseUser) -> TransactionResult {
+    // Taken from:
+    // https://alpha-mainnet.starknet.io/feeder_gateway/get_state_update?blockNumber=1700
+    //
+    // "block_hash": "0x58cfbc4ebe276882a28badaa9fe0fb545cba57314817e5f229c2c9cf1f7cc87"
+    //
+    // "storage_diffs": {"0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056":
+    // [{"key": "0x79deb98f1f7fc9a64df7073f93ce645a5f6a7588c34773ba76fdc879a2346e1",
+    // "value": "0x44054cde571399c485119e55cf0b9fc7dcc151fb3486f70020d3ee4d7b20f8d"}]
+    get_storage_at(
+        user,
+        ContractAddress(
+            StarkHash::from_hex_str(
+                "0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056",
+            )
+            .unwrap(),
+        ),
+        StorageAddress(
+            StarkHash::from_hex_str(
+                "0x79deb98f1f7fc9a64df7073f93ce645a5f6a7588c34773ba76fdc879a2346e1",
+            )
+            .unwrap(),
+        ),
+        BlockHashOrTag::Hash(StarknetBlockHash(
+            StarkHash::from_hex_str(
+                "0x58cfbc4ebe276882a28badaa9fe0fb545cba57314817e5f229c2c9cf1f7cc87",
+            )
+            .unwrap(),
+        )),
+    )
+    .await?;
+    Ok(())
+}
+
 //
 // Requests
 //
@@ -356,6 +390,20 @@ async fn get_events(user: &mut GooseUser, filter: EventFilter) -> MethodResult<G
     post_jsonrpc_request(user, "starknet_getEvents", json!({ "filter": filter })).await
 }
 
+async fn get_storage_at(
+    user: &mut GooseUser,
+    contract_address: ContractAddress,
+    key: StorageAddress,
+    block_hash: BlockHashOrTag,
+) -> MethodResult<StorageValue> {
+    post_jsonrpc_request(
+        user,
+        "starknet_getStorageAt",
+        json!({ "contract_address": contract_address, "key": key, "block_hash": block_hash }),
+    )
+    .await
+}
+
 async fn call(
     user: &mut GooseUser,
     contract_address: ContractAddress,
@@ -445,6 +493,9 @@ async fn main() -> Result<(), GooseError> {
         )
         .register_scenario(
             scenario!("get_events").register_transaction(transaction!(task_get_events)),
+        )
+        .register_scenario(
+            scenario!("get_storage_at").register_transaction(transaction!(task_get_storage_at)),
         )
         // primitive operations that don't use the database
         .register_scenario(scenario!("syncing").register_transaction(transaction!(task_syncing)))
