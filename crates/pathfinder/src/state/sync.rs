@@ -360,6 +360,7 @@ where
                     tracing::info!("Updated pending block");
                 }
                 None => {
+                    pending_data.clear().await;
                     // L2 sync process failed; restart it.
                     match l2_handle.await.context("Join L2 sync process handle")? {
                         Ok(()) => {
