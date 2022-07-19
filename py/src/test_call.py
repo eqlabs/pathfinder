@@ -635,7 +635,6 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
 
     # this matches sequencer state update
     pending_deployed = [
-        # FIXME: this is also a test.cairo, which has had many transactions
         {
             "address": "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d",
             "contract_hash": "0x010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8",
@@ -666,3 +665,25 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
 
     (verb, output, _timings) = loop_inner(con, with_updates)
     assert output == [0x22B]
+
+    on_newly_deployed = {
+        "command": "call",
+        "at_block": 6,
+        "contract_address": int_param(
+            "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d"
+        ),
+        "entry_point_selector": "get_value",
+        "calldata": [5],
+        "gas_price": None,
+        "chain": StarknetChainId.MAINNET,
+        "pending_updates": pending_updates,
+        "pending_deployed": pending_deployed,
+    }
+
+    (verb, output, _timings) = loop_inner(con, on_newly_deployed)
+    assert output == [0x65]
+
+    del on_newly_deployed["pending_updates"][on_newly_deployed["contract_address"]]
+
+    (verb, output, _timings) = loop_inner(con, on_newly_deployed)
+    assert output == [0]
