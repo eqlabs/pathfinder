@@ -198,11 +198,16 @@ pub struct EthereumTransactionIndex(pub u64);
 pub struct EthereumLogIndex(pub u64);
 
 /// A way of identifying a specific block.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum BlockId {
+    #[serde(rename = "block_number")]
     Number(StarknetBlockNumber),
+    #[serde(rename = "block_hash")]
     Hash(StarknetBlockHash),
+    #[serde(rename = "latest")]
     Latest,
+    #[serde(rename = "pending")]
     Pending,
 }
 
@@ -447,3 +452,40 @@ thin_starkhash_debug_display!(
     SequencerAddress,
     TransactionNonce,
 );
+
+#[cfg(test)]
+mod tests {
+    mod block_id_serde {
+        use super::super::BlockId;
+
+        #[test]
+        fn latest() {
+            let result = serde_json::from_str::<BlockId>(r#""latest""#).unwrap();
+            assert_eq!(result, BlockId::Latest);
+        }
+
+        #[test]
+        fn pending() {
+            let result = serde_json::from_str::<BlockId>(r#""pending""#).unwrap();
+            assert_eq!(result, BlockId::Pending);
+        }
+
+        #[test]
+        fn number() {
+            use crate::core::StarknetBlockNumber;
+            let result = serde_json::from_str::<BlockId>(r#"{"block_number": 123456}"#).unwrap();
+            assert_eq!(result, BlockId::Number(StarknetBlockNumber(123456)));
+        }
+
+        #[test]
+        fn hash() {
+            use crate::core::StarknetBlockHash;
+            let result =
+                serde_json::from_str::<BlockId>(r#"{"block_hash": "0xdeadbeef"}"#).unwrap();
+            assert_eq!(
+                result,
+                BlockId::Hash(StarknetBlockHash::from_hex_str("0xdeadbeef").unwrap())
+            );
+        }
+    }
+}
