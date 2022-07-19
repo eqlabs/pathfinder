@@ -198,11 +198,16 @@ pub struct EthereumTransactionIndex(pub u64);
 pub struct EthereumLogIndex(pub u64);
 
 /// A way of identifying a specific block.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum BlockId {
+    #[serde(rename = "block_number")]
     Number(StarknetBlockNumber),
+    #[serde(rename = "block_hash")]
     Hash(StarknetBlockHash),
+    #[serde(rename = "latest")]
     Latest,
+    #[serde(rename = "pending")]
     Pending,
 }
 
