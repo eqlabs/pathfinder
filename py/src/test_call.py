@@ -490,6 +490,88 @@ def test_starknet_version_is_resolved():
     assert info.starknet_version == "0.9.1"
 
 
+def test_call_on_pending_updated():
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
+    con = inmemory_with_tables()
+    contract_address = populate_test_contract_with_132_on_3(con)
+    con.execute("BEGIN")
+    contract_address = "0x" + contract_address.to_bytes(32, "big").hex()
+
+    pending_updates = maybe_pending_updates(
+        {
+            contract_address: [
+                {"key": "0x84", "value": "0x99"},
+            ]
+        }
+    )
+
+    command = {
+        "command": "call",
+        "at_block": "latest",
+        "contract_address": int_param(contract_address),
+        "entry_point_selector": "get_value",
+        "calldata": [132],
+        "chain": StarknetChainId.MAINNET,
+        "pending_updates": pending_updates,
+    }
+
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == [0x99]
+
+    del command["pending_updates"]
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == [3]
+
+
+def test_call_on_pending_deployed():
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
+    con = inmemory_with_tables()
+    _ = populate_test_contract_with_132_on_3(con)
+    con.execute("BEGIN")
+    contract_address = (
+        "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d"
+    )
+    contract_hash = "0x050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+
+    pending_updates = maybe_pending_updates(
+        {
+            contract_address: [
+                {"key": "0x5", "value": "0x65"},
+            ]
+        }
+    )
+
+    pending_deployed = maybe_pending_deployed(
+        [
+            {
+                "address": contract_address,
+                "contract_hash": contract_hash,
+            }
+        ]
+    )
+
+    command = {
+        "command": "call",
+        "at_block": "latest",
+        "contract_address": int_param(contract_address),
+        "entry_point_selector": "get_value",
+        "calldata": [5],
+        "gas_price": None,
+        "chain": StarknetChainId.MAINNET,
+        "pending_updates": pending_updates,
+        "pending_deployed": pending_deployed,
+    }
+
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == [0x65]
+
+    del command["pending_updates"]
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == [0]
+
+
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
 def test_failing_mainnet_tx2():
     from starkware.starknet.definitions.general_config import StarknetChainId
