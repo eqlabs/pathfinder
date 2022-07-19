@@ -1408,6 +1408,7 @@ mod tests {
     mod dfs {
         use super::{BinaryNode, EdgeNode, MerkleTree, Node, Visit};
         use crate::starkhash;
+        use bitvec::slice::BitSlice;
         use bitvec::{bitvec, prelude::Msb0};
         use stark_hash::StarkHash;
         use std::cell::RefCell;
@@ -1421,8 +1422,8 @@ mod tests {
             let uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &Node, _: &_| {
-                visited.push(node.clone());
+            let mut visitor_fn = |node: &Node, path: &BitSlice<Msb0, u8>| {
+                visited.push((node.clone(), path.to_bitvec()));
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
             uut.dfs(&mut visitor_fn).unwrap();
@@ -1441,8 +1442,8 @@ mod tests {
             uut.set(key.view_bits(), value).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &Node, _: &_| {
-                visited.push(node.clone());
+            let mut visitor_fn = |node: &Node, path: &BitSlice<Msb0, u8>| {
+                visited.push((node.clone(), path.to_bitvec()));
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
             uut.dfs(&mut visitor_fn).unwrap();
@@ -1450,14 +1451,17 @@ mod tests {
             assert_eq!(
                 visited,
                 vec![
-                    Node::Edge(EdgeNode {
-                        hash: None,
-                        height: 0,
-                        path: key.view_bits().into(),
-                        child: Rc::new(RefCell::new(Node::Leaf(value)))
-                    }),
-                    Node::Leaf(value)
-                ]
+                    (
+                        Node::Edge(EdgeNode {
+                            hash: None,
+                            height: 0,
+                            path: key.view_bits().into(),
+                            child: Rc::new(RefCell::new(Node::Leaf(value)))
+                        }),
+                        bitvec![Msb0, u8;]
+                    ),
+                    (Node::Leaf(value), key.view_bits().into())
+                ],
             );
         }
 
@@ -1476,26 +1480,32 @@ mod tests {
             uut.set(key_left.view_bits(), value_left).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &Node, _: &_| {
-                visited.push(node.clone());
+            let mut visitor_fn = |node: &Node, path: &BitSlice<Msb0, u8>| {
+                visited.push((node.clone(), path.to_bitvec()));
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
             uut.dfs(&mut visitor_fn).unwrap();
 
-            let expected_3 = Node::Leaf(value_right);
-            let expected_2 = Node::Leaf(value_left);
-            let expected_1 = Node::Binary(BinaryNode {
-                hash: None,
-                height: 250,
-                left: Rc::new(RefCell::new(expected_2.clone())),
-                right: Rc::new(RefCell::new(expected_3.clone())),
-            });
-            let expected_0 = Node::Edge(EdgeNode {
-                hash: None,
-                height: 0,
-                path: bitvec![Msb0, u8; 0; 250],
-                child: Rc::new(RefCell::new(expected_1.clone())),
-            });
+            let expected_3 = (Node::Leaf(value_right), key_right.view_bits().into());
+            let expected_2 = (Node::Leaf(value_left), key_left.view_bits().into());
+            let expected_1 = (
+                Node::Binary(BinaryNode {
+                    hash: None,
+                    height: 250,
+                    left: Rc::new(RefCell::new(expected_2.0.clone())),
+                    right: Rc::new(RefCell::new(expected_3.0.clone())),
+                }),
+                bitvec![Msb0, u8; 0; 250],
+            );
+            let expected_0 = (
+                Node::Edge(EdgeNode {
+                    hash: None,
+                    height: 0,
+                    path: bitvec![Msb0, u8; 0; 250],
+                    child: Rc::new(RefCell::new(expected_1.0.clone())),
+                }),
+                bitvec![Msb0, u8;],
+            );
 
             pretty_assertions::assert_eq!(
                 visited,
@@ -1521,8 +1531,8 @@ mod tests {
             uut.set(key_b.view_bits(), value_b).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &Node, _: &_| {
-                visited.push(node.clone());
+            let mut visitor_fn = |node: &Node, path: &BitSlice<Msb0, u8>| {
+                visited.push((node.clone(), path.to_bitvec()));
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
             uut.dfs(&mut visitor_fn).unwrap();
@@ -1536,37 +1546,56 @@ mod tests {
             // 3 4 6
             // a b c
 
-            let expected_6 = Node::Leaf(value_c);
-            let expected_5 = Node::Edge(EdgeNode {
-                hash: None,
-                height: 250,
-                path: bitvec![Msb0, u8; 1; 1],
-                child: Rc::new(RefCell::new(expected_6.clone())),
-            });
-            let expected_4 = Node::Leaf(value_b);
-            let expected_3 = Node::Leaf(value_a);
-            let expected_2 = Node::Binary(BinaryNode {
-                hash: None,
-                height: 250,
-                left: Rc::new(RefCell::new(expected_3.clone())),
-                right: Rc::new(RefCell::new(expected_4.clone())),
-            });
-            let expected_1 = Node::Binary(BinaryNode {
-                hash: None,
-                height: 249,
-                left: Rc::new(RefCell::new(expected_2.clone())),
-                right: Rc::new(RefCell::new(expected_5.clone())),
-            });
-            let expected_0 = Node::Edge(EdgeNode {
-                hash: None,
-                height: 0,
-                path: {
-                    let mut p = bitvec![Msb0, u8; 0; 249];
-                    *p.get_mut(246).unwrap() = true;
-                    p
-                },
-                child: Rc::new(RefCell::new(expected_1.clone())),
-            });
+            let path_to_0 = bitvec![Msb0, u8;];
+            let path_to_1 = {
+                let mut p = bitvec![Msb0, u8; 0; 249];
+                *p.get_mut(246).unwrap() = true;
+                p
+            };
+            let mut path_to_2 = path_to_1.clone();
+            path_to_2.push(false);
+            let mut path_to_5 = path_to_1.clone();
+            path_to_5.push(true);
+
+            let expected_6 = (Node::Leaf(value_c), key_c.view_bits().into());
+            let expected_5 = (
+                Node::Edge(EdgeNode {
+                    hash: None,
+                    height: 250,
+                    path: bitvec![Msb0, u8; 1; 1],
+                    child: Rc::new(RefCell::new(expected_6.0.clone())),
+                }),
+                path_to_5,
+            );
+            let expected_4 = (Node::Leaf(value_b), key_b.view_bits().into());
+            let expected_3 = (Node::Leaf(value_a), key_a.view_bits().into());
+            let expected_2 = (
+                Node::Binary(BinaryNode {
+                    hash: None,
+                    height: 250,
+                    left: Rc::new(RefCell::new(expected_3.0.clone())),
+                    right: Rc::new(RefCell::new(expected_4.0.clone())),
+                }),
+                path_to_2,
+            );
+            let expected_1 = (
+                Node::Binary(BinaryNode {
+                    hash: None,
+                    height: 249,
+                    left: Rc::new(RefCell::new(expected_2.0.clone())),
+                    right: Rc::new(RefCell::new(expected_5.0.clone())),
+                }),
+                path_to_1.clone(),
+            );
+            let expected_0 = (
+                Node::Edge(EdgeNode {
+                    hash: None,
+                    height: 0,
+                    path: path_to_1,
+                    child: Rc::new(RefCell::new(expected_1.0.clone())),
+                }),
+                path_to_0,
+            );
 
             pretty_assertions::assert_eq!(
                 visited,
