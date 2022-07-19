@@ -354,10 +354,32 @@ where
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
                 Some(l2::Event::Pending(block, diff)) => {
-                    // TODO: apply state_update and verify state_update.new_root
-                    pending_data.set(block, diff).await;
+                    // Update state tree to determine new state root, but rollback the changes as we do
+                    // not want to persist them.
+                    let new_root = tokio::task::block_in_place(|| {
 
-                    tracing::info!("Updated pending block");
+                        let tx = db_conn.transaction()?;
+                        let state_diff = (&diff.state_diff).into();
+                        let new_root = update_starknet_state(&tx, state_diff).context("Updating Starknet state")?;
+                        tx.rollback()?;
+                        anyhow::Result::<GlobalRoot>::Ok(new_root)
+                    }).context("Calculate pending state root")?;
+
+                    match new_root == diff.new_root {
+                        true => {
+                            pending_data.set(block, diff).await;
+                            tracing::info!("Updated pending block");
+                        }
+                        false => {
+                            pending_data.clear().await;
+                            tracing::error!(
+                                head=%diff.old_root, 
+                                pending=%diff.new_root, 
+                                calculated=%new_root, 
+                                "Pending state root mismatch"
+                            );
+                        }
+                    }
                 }
                 None => {
                     pending_data.clear().await;

@@ -718,7 +718,7 @@ mod tests {
             };
 
             let state_update =
-                crate::ethereum::state_update::StateUpdate::from(pending_state_diff.clone());
+                crate::ethereum::state_update::StateUpdate::from(&pending_state_diff);
 
             // Use a roll-back transaction to calculate pending state root.
             // This must not be committed as we don't want to inject the diff

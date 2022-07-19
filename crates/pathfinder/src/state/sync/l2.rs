@@ -148,7 +148,7 @@ pub async fn sync(
         let t_deploy = t_deploy.elapsed();
 
         // Map from sequencer type to the actual type... we should declutter these types.
-        let update = StateUpdate::from(state_update.state_diff);
+        let update = StateUpdate::from(&state_update.state_diff);
 
         head = Some((next, block_hash, state_update.new_root));
 

@@ -45,11 +45,11 @@ pub struct StateUpdate {
     pub contract_updates: Vec<ContractUpdate>,
 }
 
-impl From<crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
-    fn from(diff: crate::sequencer::reply::state_update::StateDiff) -> Self {
+impl From<&crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
+    fn from(diff: &crate::sequencer::reply::state_update::StateDiff) -> Self {
         let deployed_contracts = diff
             .deployed_contracts
-            .into_iter()
+            .iter()
             .map(|contract| DeployedContract {
                 address: contract.address,
                 hash: contract.contract_hash,
@@ -60,7 +60,7 @@ impl From<crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
 
         let contract_updates = diff
             .storage_diffs
-            .into_iter()
+            .iter()
             .map(|contract_update| {
                 let storage_updates = contract_update
                     .1
@@ -72,7 +72,7 @@ impl From<crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
                     .collect();
 
                 ContractUpdate {
-                    address: contract_update.0,
+                    address: *contract_update.0,
                     storage_updates,
                 }
             })
