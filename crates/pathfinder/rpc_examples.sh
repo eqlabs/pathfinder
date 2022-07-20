@@ -30,12 +30,10 @@ rpc_call '[{"jsonrpc":"2.0","id":"16","method":"starknet_getStorageAt","params":
 
 rpc_call '{"jsonrpc":"2.0","id":"19","method":"starknet_getTransactionByHash","params":["0x74ec6667e6057becd3faff77d9ab14aecf5dde46edb7c599ee771f70f9e80ba"]}'
 
-rpc_call '[{"jsonrpc":"2.0","id":"20","method":"starknet_getTransactionByBlockHashAndIndex","params":["latest", 0]},
-{"jsonrpc":"2.0","id":"21","method":"starknet_getTransactionByBlockNumberAndIndex","params":["latest", 0]},
-{"jsonrpc":"2.0","id":"22","method":"starknet_getTransactionByBlockHashAndIndex","params":["pending", 0]},
-{"jsonrpc":"2.0","id":"23","method":"starknet_getTransactionByBlockNumberAndIndex","params":["pending", 0]},
-{"jsonrpc":"2.0","id":"24","method":"starknet_getTransactionByBlockHashAndIndex","params":["0x3871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27", 4]},
-{"jsonrpc":"2.0","id":"25","method":"starknet_getTransactionByBlockNumberAndIndex","params":[21348, 4]}]'
+rpc_call '[{"jsonrpc":"2.0","id":"20","method":"starknet_getTransactionByBlockIdAndIndex","params":["latest", 0]},
+{"jsonrpc":"2.0","id":"22","method":"starknet_getTransactionByBlockIdAndIndex","params":["pending", 0]},
+{"jsonrpc":"2.0","id":"24","method":"starknet_getTransactionByBlockIdAndIndex","params":[{"block_hash": "0x3871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"}, 4]},
+{"jsonrpc":"2.0","id":"25","method":"starknet_getTransactionByBlockNumberAndIndex","params":[{"block_number": 21348}, 4]}]'
 
 rpc_call '{"jsonrpc":"2.0","id":"26","method":"starknet_getTransactionReceipt","params":["0x74ec6667e6057becd3faff77d9ab14aecf5dde46edb7c599ee771f70f9e80ba"]}'
 

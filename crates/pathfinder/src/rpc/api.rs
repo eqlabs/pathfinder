@@ -393,9 +393,9 @@ impl RpcApi {
     }
 
     /// Get the details of a transaction by a given block hash and index.
-    pub async fn get_transaction_by_block_hash_and_index(
+    pub async fn get_transaction_by_block_id_and_index(
         &self,
-        block_hash: BlockHashOrTag,
+        block_id: BlockId,
         index: StarknetTransactionIndex,
     ) -> RpcResult<Transaction> {
         let index: usize = index
@@ -403,13 +403,14 @@ impl RpcApi {
             .try_into()
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
 
-        let block_id = match block_hash {
-            BlockHashOrTag::Hash(hash) => StarknetBlocksBlockId::Hash(hash),
-            BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockHashOrTag::Tag(Tag::Pending) => {
+        let block_id = match block_id {
+            BlockId::Hash(hash) => hash.into(),
+            BlockId::Number(number) => number.into(),
+            BlockId::Latest => StarknetBlocksBlockId::Latest,
+            BlockId::Pending => {
                 let block = self
                     .sequencer
-                    .block(block_hash.into())
+                    .block(BlockId::Pending)
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
@@ -447,79 +448,6 @@ impl RpcApi {
                 None => {
                     // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
                     // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
-                    //
-                    // get_root is cheaper than querying the full block.
-                    match StarknetBlocksTable::get_root(&db_tx, block_id)
-                        .context("Reading block from database")?
-                    {
-                        Some(_) => Err(ErrorCode::InvalidTransactionIndex.into()),
-                        None => Err(ErrorCode::InvalidBlockId.into()),
-                    }
-                }
-            }
-        });
-
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
-    }
-
-    /// Get the details of a transaction by a given block number and index.
-    pub async fn get_transaction_by_block_number_and_index(
-        &self,
-        block_number: BlockNumberOrTag,
-        index: StarknetTransactionIndex,
-    ) -> RpcResult<Transaction> {
-        let index: usize = index
-            .0
-            .try_into()
-            .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
-
-        let block_id = match block_number {
-            BlockNumberOrTag::Number(number) => StarknetBlocksBlockId::Number(number),
-            BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => {
-                let block = self
-                    .sequencer
-                    .block(block_number.into())
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
-
-                return block
-                    .transactions()
-                    .iter()
-                    .nth(index)
-                    .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                        Ok(txn.clone().into())
-                    });
-            }
-        };
-
-        let storage = self.storage.clone();
-        let span = tracing::Span::current();
-
-        let jh = tokio::task::spawn_blocking(move || {
-            let _g = span.enter();
-            let mut db = storage
-                .connection()
-                .context("Opening database connection")
-                .map_err(internal_server_error)?;
-
-            let db_tx = db
-                .transaction()
-                .context("Creating database transaction")
-                .map_err(internal_server_error)?;
-
-            // Get the transaction from storage.
-            match StarknetTransactionsTable::get_transaction_at_block(&db_tx, block_id, index)
-                .context("Reading transaction from database")?
-            {
-                Some(transaction) => Ok(transaction.into()),
-                None => {
-                    // We now need to check whether it was the block number or transaction index which were invalid. We do this by checking if the block exists
-                    // at all. If no, then the block number is invalid. If yes, then the index is invalid.
                     //
                     // get_root is cheaper than querying the full block.
                     match StarknetBlocksTable::get_root(&db_tx, block_id)

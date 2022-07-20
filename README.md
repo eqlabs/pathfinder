@@ -297,8 +297,7 @@ starknet_getBlockWithTxHashes
 starknet_getStorageAt
 # Transaction information
 starknet_getTransactionByHash
-starknet_getTransactionByBlockHashAndIndex
-starknet_getTransactionByBlockNumberAndIndex
+starknet_getTransactionByBlockIdAndIndex
 starknet_getTransactionReceipt
 # Block transaction counts
 starknet_getBlockTransactionCountByHash

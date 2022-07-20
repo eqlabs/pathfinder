@@ -319,8 +319,8 @@ async fn get_transaction_by_block_hash_and_index(
 ) -> MethodResult<StarknetTransaction> {
     post_jsonrpc_request(
         user,
-        "starknet_getTransactionByBlockHashAndIndex",
-        json!({ "block_hash": block_hash, "index": index }),
+        "starknet_getTransactionByBlockIdAndIndex",
+        json!({ "block_id": {"block_hash": block_hash}, "index": index }),
     )
     .await
 }
@@ -332,8 +332,8 @@ async fn get_transaction_by_block_number_and_index(
 ) -> MethodResult<StarknetTransaction> {
     post_jsonrpc_request(
         user,
-        "starknet_getTransactionByBlockNumberAndIndex",
-        json!({ "block_number": block_number, "index": index }),
+        "starknet_getTransactionByBlockIdAndIndex",
+        json!({ "block_id": {"block_number": block_number}, "index": index }),
     )
     .await
 }
