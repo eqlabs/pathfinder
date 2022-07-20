@@ -642,6 +642,7 @@ mod tests {
         ];
 
         let transaction_receipts = vec![
+            // FIXME: declare transactions don't have events, so this is invalid test data!
             Receipt {
                 actual_fee: None,
                 events: vec![
@@ -1537,6 +1538,13 @@ mod tests {
                     .unwrap();
                 // Only asserting the hash because translating from Sequencer receipt to RPC receipt is pita.
                 assert_eq!(receipt.hash(), expected.transaction_hash);
+                assert_matches!(
+                    receipt,
+                    // FIXME: this should test an invoke instead
+                    TransactionReceipt::PendingDeclareOrDeploy(declare) => {
+                        assert_eq!(declare.common.actual_fee, Fee(Default::default()));
+                    }
+                );
             }
         }
 

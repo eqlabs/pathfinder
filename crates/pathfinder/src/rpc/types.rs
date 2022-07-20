@@ -642,6 +642,9 @@ pub mod reply {
         // We can't differentiate between declare and deploy in an untagged enum: they
         // have the same properties in the JSON.
         DeclareOrDeploy(DeclareOrDeployTransactionReceipt),
+        // Pending receipts don't have status, status_data, block_hash, block_number fields
+        PendingInvoke(PendingInvokeTransactionReceipt),
+        PendingDeclareOrDeploy(PendingDeclareOrDeployTransactionReceipt),
     }
 
     impl TransactionReceipt {
@@ -649,6 +652,8 @@ pub mod reply {
             match self {
                 Self::Invoke(tx) => tx.common.transaction_hash,
                 Self::DeclareOrDeploy(tx) => tx.common.transaction_hash,
+                Self::PendingInvoke(tx) => tx.common.transaction_hash,
+                Self::PendingDeclareOrDeploy(tx) => tx.common.transaction_hash,
             }
         }
     }
@@ -675,6 +680,8 @@ pub mod reply {
         pub status: TransactionStatus,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub status_data: Option<String>,
+        pub block_hash: StarknetBlockHash,
+        pub block_number: StarknetBlockNumber,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -684,10 +691,82 @@ pub mod reply {
         pub common: CommonTransactionReceiptProperties,
     }
 
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct PendingInvokeTransactionReceipt {
+        #[serde(flatten)]
+        pub common: CommonPendingTransactionReceiptProperties,
+
+        pub messages_sent: Vec<transaction_receipt::MessageToL1>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
+        pub events: Vec<transaction_receipt::Event>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct CommonPendingTransactionReceiptProperties {
+        pub transaction_hash: StarknetTransactionHash,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub actual_fee: Fee,
+    }
+
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct PendingDeclareOrDeployTransactionReceipt {
+        #[serde(flatten)]
+        pub common: CommonPendingTransactionReceiptProperties,
+    }
+
     impl TransactionReceipt {
-        pub fn with_block_status(
+        pub fn pending_from(
+            receipt: sequencer::reply::transaction::Receipt,
+            transaction: &sequencer::reply::transaction::Transaction,
+        ) -> Self {
+            match transaction {
+                sequencer::reply::transaction::Transaction::Declare(_)
+                | sequencer::reply::transaction::Transaction::Deploy(_) => {
+                    Self::PendingDeclareOrDeploy(PendingDeclareOrDeployTransactionReceipt {
+                        common: CommonPendingTransactionReceiptProperties {
+                            transaction_hash: receipt.transaction_hash,
+                            actual_fee: receipt
+                                .actual_fee
+                                .unwrap_or_else(|| Fee(Default::default())),
+                        },
+                    })
+                }
+                sequencer::reply::transaction::Transaction::Invoke(_) => {
+                    Self::PendingInvoke(PendingInvokeTransactionReceipt {
+                        common: CommonPendingTransactionReceiptProperties {
+                            transaction_hash: receipt.transaction_hash,
+                            actual_fee: receipt
+                                .actual_fee
+                                .unwrap_or_else(|| Fee(Default::default())),
+                        },
+                        messages_sent: receipt
+                            .l2_to_l1_messages
+                            .into_iter()
+                            .map(transaction_receipt::MessageToL1::from)
+                            .collect(),
+                        l1_origin_message: receipt
+                            .l1_to_l2_consumed_message
+                            .map(transaction_receipt::MessageToL2::from),
+                        events: receipt
+                            .events
+                            .into_iter()
+                            .map(transaction_receipt::Event::from)
+                            .collect(),
+                    })
+                }
+            }
+        }
+
+        pub fn with_block_data(
             receipt: sequencer::reply::transaction::Receipt,
             status: BlockStatus,
+            block_hash: StarknetBlockHash,
+            block_number: StarknetBlockNumber,
             transaction: &sequencer::reply::transaction::Transaction,
         ) -> Self {
             match transaction {
@@ -702,6 +781,8 @@ pub mod reply {
                             status: status.into(),
                             // TODO: at the moment not available in sequencer replies
                             status_data: None,
+                            block_hash,
+                            block_number,
                         },
                     })
                 }
@@ -715,6 +796,8 @@ pub mod reply {
                             status: status.into(),
                             // TODO: at the moment not available in sequencer replies
                             status_data: None,
+                            block_hash,
+                            block_number,
                         },
                         messages_sent: receipt
                             .l2_to_l1_messages
@@ -1146,6 +1229,17 @@ pub mod reply {
                             actual_fee: Fee(web3::types::H128::from_low_u64_be(0x1)),
                             status: TransactionStatus::AcceptedOnL1,
                             status_data: Some("blah".to_string()),
+                            block_hash: StarknetBlockHash::from_hex_str("0xaaa").unwrap(),
+                            block_number: StarknetBlockNumber(3),
+                        }
+                    }
+                }
+
+                impl CommonPendingTransactionReceiptProperties {
+                    pub fn test_data() -> Self {
+                        Self {
+                            transaction_hash: StarknetTransactionHash::from_hex_str("0x1").unwrap(),
+                            actual_fee: Fee(web3::types::H128::from_low_u64_be(0x2)),
                         }
                     }
                 }
@@ -1181,6 +1275,37 @@ pub mod reply {
                     }
                 }
 
+                impl PendingInvokeTransactionReceipt {
+                    pub fn test_data() -> Self {
+                        Self {
+                            common: CommonPendingTransactionReceiptProperties::test_data(),
+                            messages_sent: vec![transaction_receipt::MessageToL1 {
+                                to_address: crate::core::EthereumAddress(
+                                    web3::types::H160::from_low_u64_be(0x5),
+                                ),
+                                payload: vec![crate::core::L2ToL1MessagePayloadElem::from_hex_str(
+                                    "0x6",
+                                )
+                                .unwrap()],
+                            }],
+                            l1_origin_message: Some(transaction_receipt::MessageToL2 {
+                                from_address: crate::core::EthereumAddress(
+                                    web3::types::H160::from_low_u64_be(0x77),
+                                ),
+                                payload: vec![crate::core::L1ToL2MessagePayloadElem::from_hex_str(
+                                    "0x7",
+                                )
+                                .unwrap()],
+                            }),
+                            events: vec![transaction_receipt::Event {
+                                from_address: ContractAddress::from_hex_str("0xa6").unwrap(),
+                                keys: vec![EventKey::from_hex_str("0xa7").unwrap()],
+                                data: vec![EventData::from_hex_str("0xa8").unwrap()],
+                            }],
+                        }
+                    }
+                }
+
                 let data = vec![
                     // All fields populated
                     TransactionReceipt::Invoke(InvokeTransactionReceipt::test_data()),
@@ -1198,6 +1323,12 @@ pub mod reply {
                     TransactionReceipt::DeclareOrDeploy(DeclareOrDeployTransactionReceipt {
                         common: CommonTransactionReceiptProperties::test_data(),
                     }),
+                    TransactionReceipt::PendingInvoke(PendingInvokeTransactionReceipt::test_data()),
+                    TransactionReceipt::PendingDeclareOrDeploy(
+                        PendingDeclareOrDeployTransactionReceipt {
+                            common: CommonPendingTransactionReceiptProperties::test_data(),
+                        },
+                    ),
                 ];
 
                 assert_eq!(
