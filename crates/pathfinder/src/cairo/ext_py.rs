@@ -628,8 +628,6 @@ mod tests {
         let res = handle
             .call(
                 call,
-                // FIXME: pending should not be available, because we should always use latest for
-                // those cases
                 crate::rpc::types::Tag::Latest.try_into().unwrap(),
                 Some(update),
             )

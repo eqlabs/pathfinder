@@ -160,7 +160,7 @@ impl<'a> serde::Serialize for DeployedContractElement<'a> {
     }
 }
 
-/// The tag pending should never be used With `ext_py`.
+/// Custom "when" without the Pending tag, which has no meaning crossing process boundaries.
 #[derive(Debug)]
 pub enum BlockHashNumberOrLatest {
     Hash(crate::core::StarknetBlockHash),
