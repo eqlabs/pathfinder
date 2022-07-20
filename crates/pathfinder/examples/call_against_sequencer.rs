@@ -86,7 +86,7 @@ async fn main() {
             .map_err(Error::from);
 
         let local = handle
-            .call(args.request, args.block_hash, None)
+            .call(args.request, args.block_hash.try_into().unwrap(), None)
             .map_err(Error::from);
 
         let (local, seq) = tokio::join!(local, seq);

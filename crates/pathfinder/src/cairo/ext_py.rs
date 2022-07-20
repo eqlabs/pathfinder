@@ -6,7 +6,7 @@
 //! should not cause issues in WAL mode.
 //!
 //! Use of the call functionality happens through [`Handle::call`], which hands out futures in
-//! exchange for [`Call`] and [`BlockHashOrTag`], former selects the contract and method to call,
+//! exchange for [`Call`] and "when" in chain, former selects the contract and method to call,
 //! latter selectes "when" to call it on the history. None of the block or tags are resolved over
 //! at rust side, because transactions cannot carry over between processes.
 //!
@@ -16,7 +16,7 @@
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
 use crate::core::CallResultValue;
-use crate::rpc::types::{reply::FeeEstimate, request::Call, BlockHashOrTag};
+use crate::rpc::types::{reply::FeeEstimate, request::Call};
 use crate::sequencer::reply::StateUpdate;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -45,7 +45,7 @@ impl Handle {
     pub async fn call(
         &self,
         call: Call,
-        at_block: BlockHashOrTag,
+        at_block: BlockHashNumberOrLatest,
         diffs: Option<Arc<StateUpdate>>,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
         use tracing::field::Empty;
@@ -57,7 +57,7 @@ impl Handle {
             .send((
                 Command::Call {
                     call,
-                    at_block: at_block.try_into().unwrap(),
+                    at_block,
                     chain: self.chain,
                     diffs,
                     response,
@@ -79,7 +79,7 @@ impl Handle {
     pub async fn estimate_fee(
         &self,
         call: Call,
-        at_block: BlockHashOrTag,
+        at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
         diffs: Option<Arc<StateUpdate>>,
     ) -> Result<FeeEstimate, CallFailure> {
@@ -92,7 +92,7 @@ impl Handle {
             .send((
                 Command::EstimateFee {
                     call,
-                    at_block: at_block.try_into().unwrap(),
+                    at_block,
                     gas_price,
                     chain: self.chain,
                     diffs,
@@ -594,7 +594,7 @@ mod tests {
         let res = handle
             .call(
                 call.clone(),
-                crate::rpc::types::BlockHashOrTag::Tag(crate::rpc::types::Tag::Latest),
+                crate::rpc::types::Tag::Latest.try_into().unwrap(),
                 None,
             )
             .await
@@ -630,7 +630,7 @@ mod tests {
                 call,
                 // FIXME: pending should not be available, because we should always use latest for
                 // those cases
-                crate::rpc::types::BlockHashOrTag::Tag(crate::rpc::types::Tag::Latest),
+                crate::rpc::types::Tag::Latest.try_into().unwrap(),
                 Some(update),
             )
             .await

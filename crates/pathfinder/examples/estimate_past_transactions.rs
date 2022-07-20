@@ -67,7 +67,7 @@ fn main() -> Result<(), anyhow::Error> {
 #[derive(Debug)]
 struct Work {
     call: pathfinder_lib::rpc::types::request::Call,
-    at_block: pathfinder_lib::rpc::types::BlockHashOrTag,
+    at_block: pathfinder_lib::core::StarknetBlockHash,
     gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource,
     actual_fee: web3::types::H256,
     span: tracing::Span,
@@ -194,9 +194,7 @@ fn feed_work(
         sender
             .blocking_send(Work {
                 call,
-                at_block: pathfinder_lib::rpc::types::BlockHashOrTag::Hash(
-                    pathfinder_lib::core::StarknetBlockHash(target_hash),
-                ),
+                at_block: pathfinder_lib::core::StarknetBlockHash(target_hash),
                 // use the b.gas_price to get as close as possible
                 gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource::Current(
                     gas_price_at_block,
@@ -238,7 +236,7 @@ async fn estimate(
                 match next_work {
                     Some(Work {call, at_block, gas_price, actual_fee, span}) => {
                         let outer = span.clone();
-                        let fut = handle.estimate_fee(call, at_block, gas_price, None);
+                        let fut = handle.estimate_fee(call, at_block.into(), gas_price, None);
                         waiting.push(async move {
                             ReadyResult {
                                 actual_fee,

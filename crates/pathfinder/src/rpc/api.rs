@@ -771,7 +771,15 @@ impl RpcApi {
             (Some(h), &BlockHashOrTag::Hash(_) | &BlockHashOrTag::Tag(Tag::Latest)) => {
                 // we don't yet handle pending at all, and latest has been decided to be whatever
                 // block we have, which is exactly how the py/src/call.py handles it.
-                h.call(request, block_hash, None).map_err(Error::from).await
+                h.call(
+                    request,
+                    block_hash
+                        .try_into()
+                        .expect("should had converted since matched Hash or Latest"),
+                    None,
+                )
+                .map_err(Error::from)
+                .await
             }
             (Some(_), _) => {
                 // just forward it to the sequencer for now.
@@ -976,10 +984,10 @@ impl RpcApi {
             self.shared_gas_price.as_ref(),
             &block_hash,
         ) {
-            (Some(h), _, &BlockHashOrTag::Hash(_)) => {
+            (Some(h), _, &BlockHashOrTag::Hash(hash)) => {
                 // discussed during estimateFee work: when using block_hash use the gasPrice from
                 // the starknet_blocks::gas_price column, otherwise (tags) get the latest eth_gasPrice.
-                h.estimate_fee(request, block_hash, GasPriceSource::PastBlock, None)
+                h.estimate_fee(request, hash.into(), GasPriceSource::PastBlock, None)
                     .await
                     .map_err(Error::from)
             }
@@ -994,7 +1002,7 @@ impl RpcApi {
 
                 h.estimate_fee(
                     request,
-                    block_hash,
+                    ext_py::BlockHashNumberOrLatest::Latest,
                     GasPriceSource::Current(gas_price),
                     None,
                 )
