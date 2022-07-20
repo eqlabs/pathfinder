@@ -572,6 +572,67 @@ def test_call_on_pending_deployed():
     assert output == [0]
 
 
+def test_call_on_pending_deployed_through_existing():
+    from starkware.starknet.definitions.general_config import StarknetChainId
+
+    con = inmemory_with_tables()
+    orig_contract_address = populate_test_contract_with_132_on_3(con)
+    con.execute("BEGIN")
+    contract_address = (
+        "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d"
+    )
+    contract_hash = "0x050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+
+    pending_updates = maybe_pending_updates(
+        {
+            contract_address: [
+                {"key": "0x5", "value": "0x65"},
+            ]
+        }
+    )
+
+    pending_deployed = maybe_pending_deployed(
+        [
+            {
+                "address": contract_address,
+                "contract_hash": contract_hash,
+            }
+        ]
+    )
+
+    command = {
+        "command": "call",
+        "at_block": "latest",
+        "contract_address": orig_contract_address,
+        "entry_point_selector": "call_increase_value",
+        "calldata": [
+            # target contract
+            int_param(contract_address),
+            # address
+            5,
+            # increment by
+            4,
+        ],
+        "gas_price": None,
+        "chain": StarknetChainId.MAINNET,
+        "pending_updates": pending_updates,
+        "pending_deployed": pending_deployed,
+    }
+
+    # the call_increase_value doesn't return anything, which is a bit unfortunate.
+    # the reason why this works is probably because the contract is already
+    # loaded due to called contract sharing the contract.
+    #
+    # FIXME: add a test case for calling from existing to a new deployed contract.
+    # It'll probably be easy to just modify the existing test.cairo thing we
+    # already have, add a method or a return value to call_increase_value.
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == []
+
+
+# Rest of the test cases require a mainnet or goerli database in some path.
+
+
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
 def test_failing_mainnet_tx2():
     from starkware.starknet.definitions.general_config import StarknetChainId
