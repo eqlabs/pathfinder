@@ -1,4 +1,10 @@
-from call import do_loop, loop_inner, EXPECTED_SCHEMA_REVISION, check_cairolang_version
+from call import (
+    do_loop,
+    loop_inner,
+    EXPECTED_SCHEMA_REVISION,
+    check_cairolang_version,
+    resolve_block,
+)
 import sqlite3
 import io
 import json
@@ -88,13 +94,19 @@ def inmemory_with_tables():
             ethereum_log_index        INTEGER NOT NULL
         );
 
+        CREATE TABLE starknet_versions (
+            id      INTEGER NOT NULL PRIMARY KEY,
+            version TEXT NOT NULL UNIQUE
+        );
+
         CREATE TABLE starknet_blocks (
             number               INTEGER PRIMARY KEY,
             hash                 BLOB    NOT NULL,
             root                 BLOB    NOT NULL,
             timestamp            INTEGER NOT NULL,
             gas_price            BLOB    NOT NULL,
-            sequencer_address    BLOB    NOT NULL
+            sequencer_address    BLOB    NOT NULL,
+            version_id           INTEGER REFERENCES starknet_versions(id)
         );
         """
     )
@@ -419,7 +431,7 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 3,
+        "gas_consumed": 1343,
         "gas_price": 0,
         "overall_fee": 0,
     }
@@ -441,7 +453,7 @@ def test_fee_estimate_on_positive():
     assert first == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (3).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (0x053F).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
             "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
         },
@@ -450,11 +462,28 @@ def test_fee_estimate_on_positive():
     assert second == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (3).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (0x053F).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (35).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (0x3478).to_bytes(32, "big").hex(),
         },
     }
+
+
+def test_starknet_version_is_resolved():
+    # using the existing setup, but just updating the one block to have a bogus version
+    con = inmemory_with_tables()
+    _ = populate_test_contract_with_132_on_3(con)
+
+    con.execute("BEGIN")
+    cursor = con.execute(
+        "INSERT INTO starknet_versions (version) VALUES (?)", ["0.9.1"]
+    )
+    version_id = cursor.lastrowid
+
+    con.execute("UPDATE starknet_blocks SET version_id = ?", [version_id])
+    (info, _root) = resolve_block(con, "latest", None)
+
+    assert info.starknet_version == "0.9.1"
 
 
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
