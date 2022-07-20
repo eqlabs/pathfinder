@@ -369,7 +369,7 @@ where
                     match new_root == diff.new_root {
                         true => {
                             pending_data.set(block, diff).await;
-                            tracing::info!("Updated pending block");
+                            tracing::debug!("Updated pending data");
                         }
                         false => {
                             pending_data.clear().await;

@@ -76,6 +76,7 @@ pub async fn sync(
                     // Poll pending if it is enabled, otherwise just wait to poll head again.
                     match pending_poll_interval {
                         Some(interval) => {
+                            tracing::trace!("Entering pending mode");
                             let head = head_meta
                                 .expect("Head hash should exist when entering pending mode");
                             crate::state::sync::pending::poll_pending(

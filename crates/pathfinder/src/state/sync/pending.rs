@@ -30,11 +30,11 @@ pub async fn poll_pending(
                 continue;
             }
             MaybePendingBlock::Block(block) => {
-                tracing::debug!(hash=%block.block_hash, "Found full block, exiting pending mode.");
+                tracing::trace!(hash=%block.block_hash, "Found full block, exiting pending mode.");
                 return Ok(());
             }
             MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
-                tracing::debug!(
+                tracing::trace!(
                     pending=%pending.parent_hash, head=%head.0,
                     "Pending block's parent hash does not match head, exiting pending mode"
                 );
@@ -49,11 +49,11 @@ pub async fn poll_pending(
             .await
             .context("Download pending state update")?;
         if state_update.block_hash.is_some() {
-            tracing::debug!("Found full state update, exiting pending mode.");
+            tracing::trace!("Found full state update, exiting pending mode.");
             return Ok(());
         }
         if state_update.old_root != head.1 {
-            tracing::debug!(pending=%state_update.old_root, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
+            tracing::trace!(pending=%state_update.old_root, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
             return Ok(());
         }
 
