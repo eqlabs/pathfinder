@@ -14,7 +14,7 @@
 # Note that we're explicitly using the Debian bullseye image to make sure we're
 # compatible with the Python container we'll be copying the pathfinder
 # executable to.
-FROM rust:1.62-bullseye AS rust-builder
+FROM rust:1.62.1-bullseye AS rust-builder
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev && rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +28,7 @@ RUN mkdir crates \
     && cargo new --lib --vcs none crates/pathfinder \
     && cargo new --lib --vcs none crates/load-test
 
-COPY Cargo.toml Cargo.lock .
+COPY Cargo.toml Cargo.lock ./
 
 COPY crates/pathfinder/Cargo.toml crates/pathfinder/build.rs crates/pathfinder/
 COPY crates/stark_curve/Cargo.toml crates/stark_curve/Cargo.toml
