@@ -555,16 +555,15 @@ pub mod reply {
 
     /// L2 transaction as returned by the RPC API.
     ///
-    /// Ideally this would be an internally tagged enum (where the "type" property
-    /// contains the type of the transaction), but the OpenRPC specification
-    /// doesn't have that. We're falling back to an untagged serde enum
-    /// here and hope that the set of property names make each type unique...
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(untagged)]
+    #[serde(tag = "type")]
     pub enum Transaction {
+        #[serde(rename = "DECLARE")]
         Declare(DeclareTransaction),
+        #[serde(rename = "INVOKE")]
         Invoke(InvokeTransaction),
+        #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
     }
 
