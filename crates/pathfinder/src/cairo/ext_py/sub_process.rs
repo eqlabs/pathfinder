@@ -339,6 +339,7 @@ async fn process(
             call,
             at_block,
             chain,
+            diffs: maybe_diffs,
             ..
         } => ChildCommand {
             command: Verb::Call,
@@ -353,14 +354,15 @@ async fn process(
             max_fee: &call.max_fee,
             version: &call.version,
             chain: *chain,
-            pending_updates: None.into(),
-            pending_deployed: None.into(),
+            pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
+            pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
         },
         Command::EstimateFee {
             call,
             at_block,
             gas_price,
             chain,
+            diffs: maybe_diffs,
             ..
         } => ChildCommand {
             command: Verb::EstimateFee,
@@ -373,8 +375,8 @@ async fn process(
             max_fee: &call.max_fee,
             version: &call.version,
             chain: *chain,
-            pending_updates: None.into(),
-            pending_deployed: None.into(),
+            pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
+            pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
         },
     };
 

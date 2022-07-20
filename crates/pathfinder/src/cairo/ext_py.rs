@@ -17,6 +17,7 @@
 
 use crate::core::CallResultValue;
 use crate::rpc::types::{reply::FeeEstimate, request::Call, BlockHashOrTag};
+use crate::sequencer::reply::StateUpdate;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -43,6 +44,7 @@ impl Handle {
         &self,
         call: Call,
         at_block: BlockHashOrTag,
+        diffs: Option<Arc<StateUpdate>>,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -55,6 +57,7 @@ impl Handle {
                     call,
                     at_block,
                     chain: self.chain,
+                    diffs,
                     response,
                 },
                 continued_span,
@@ -76,6 +79,7 @@ impl Handle {
         call: Call,
         at_block: BlockHashOrTag,
         gas_price: GasPriceSource,
+        diffs: Option<Arc<StateUpdate>>,
     ) -> Result<FeeEstimate, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -89,6 +93,7 @@ impl Handle {
                     at_block,
                     gas_price,
                     chain: self.chain,
+                    diffs,
                     response,
                 },
                 continued_span,
@@ -172,6 +177,7 @@ enum Command {
         call: Call,
         at_block: BlockHashOrTag,
         chain: UsedChain,
+        diffs: Option<Arc<StateUpdate>>,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
@@ -180,6 +186,7 @@ enum Command {
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
         chain: UsedChain,
+        diffs: Option<Arc<StateUpdate>>,
         response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
     },
 }
@@ -243,6 +250,7 @@ impl From<std::io::Error> for SubprocessError {
 
 #[cfg(test)]
 mod tests {
+
     use super::sub_process::launch_python;
     use stark_hash::StarkHash;
     use std::path::PathBuf;
@@ -340,7 +348,8 @@ mod tests {
                             },
                             super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                            ))
+                            )),
+                            None
                         ).await.unwrap();
                     }
                 })
@@ -414,6 +423,7 @@ mod tests {
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                 )),
                 super::GasPriceSource::PastBlock,
+                None,
             )
             .await
             .unwrap();
@@ -436,6 +446,7 @@ mod tests {
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                 )),
                 super::GasPriceSource::Current(H256::from_low_u64_be(10)),
+                None,
             )
             .await
             .unwrap();
@@ -510,6 +521,7 @@ mod tests {
                 super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                 )),
+                None,
             )
             .await
             .unwrap_err();
@@ -517,6 +529,112 @@ mod tests {
         assert_eq!(result, super::CallFailure::NoSuchContract);
 
         let _ = shutdown_tx.send(());
+        jh.await.unwrap();
+    }
+
+    #[test_log::test(tokio::test)]
+    #[ignore]
+    async fn call_with_pending_updates() {
+        use crate::sequencer::reply::StateUpdate;
+
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+
+        let s = crate::storage::Storage::migrate(
+            PathBuf::from(db_file.path()),
+            crate::storage::JournalMode::WAL,
+        )
+        .unwrap();
+
+        let mut conn = s.connection().unwrap();
+        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
+
+        let tx = conn.transaction().unwrap();
+
+        fill_example_state(&tx);
+
+        tx.commit().unwrap();
+
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let (handle, jh) = super::start(
+            PathBuf::from(db_file.path()),
+            std::num::NonZeroUsize::new(1).unwrap(),
+            async move {
+                let _ = shutdown_rx.await;
+            },
+            // chain doesn't matter here because we are not estimating any real transaction
+            crate::core::Chain::Goerli,
+        )
+        .await
+        .unwrap();
+
+        let target_contract = crate::core::ContractAddress(
+            StarkHash::from_hex_str(
+                "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+            )
+            .unwrap(),
+        );
+
+        let storage_address = StarkHash::from_hex_str("0x84").unwrap();
+
+        let call = super::Call {
+            contract_address: target_contract,
+            calldata: vec![crate::core::CallParam(storage_address)],
+            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            signature: Default::default(),
+            max_fee: super::Call::DEFAULT_MAX_FEE,
+            version: super::Call::DEFAULT_VERSION,
+        };
+
+        let res = handle
+            .call(
+                call.clone(),
+                super::BlockHashOrTag::Tag(crate::rpc::types::Tag::Latest),
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res, &[crate::core::CallResultValue(StarkHash::from(3u64))]);
+
+        let update = std::sync::Arc::new(StateUpdate {
+            block_hash: None,
+            old_root: crate::core::GlobalRoot(StarkHash::ZERO),
+            new_root: crate::core::GlobalRoot(StarkHash::ZERO),
+            state_diff: crate::sequencer::reply::state_update::StateDiff {
+                storage_diffs: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert(
+                        target_contract,
+                        vec![crate::sequencer::reply::state_update::StorageDiff {
+                            key: crate::core::StorageAddress(storage_address),
+                            value: crate::core::StorageValue(
+                                StarkHash::from_hex_str("0x4").unwrap(),
+                            ),
+                        }],
+                    );
+                    map
+                },
+                deployed_contracts: vec![],
+                declared_contracts: vec![],
+            },
+        });
+
+        let res = handle
+            .call(
+                call,
+                // FIXME: pending should not be available, because we should always use latest for
+                // those cases
+                super::BlockHashOrTag::Tag(crate::rpc::types::Tag::Latest),
+                Some(update),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res, &[crate::core::CallResultValue(StarkHash::from(4u64))]);
+
+        shutdown_tx.send(()).unwrap();
+
         jh.await.unwrap();
     }
 
