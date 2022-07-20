@@ -342,11 +342,11 @@ def resolve_block(connection, at_block, forced_gas_price):
         # it has been decided that the latest is whatever pathfinder knows to be latest synced block
         # regardless of it being the highest known (not yet synced)
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address from starknet_blocks order by number desc limit 1"
+            "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
         )
     elif type(at_block) == int:
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address from starknet_blocks where number = ?",
+            "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
             [at_block],
         )
     else:
@@ -356,12 +356,21 @@ def resolve_block(connection, at_block, forced_gas_price):
             at_block = b"\x00" * (32 - len(at_block)) + at_block
 
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address from starknet_blocks where hash = ?",
+            "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where hash = ?",
             [at_block],
         )
 
     try:
-        [(block_number, block_time, global_root, gas_price, sequencer_address)] = cursor
+        [
+            (
+                block_number,
+                block_time,
+                global_root,
+                gas_price,
+                sequencer_address,
+                starknet_version,
+            )
+        ] = cursor
     except ValueError:
         # zero rows, or wrong number of columns (unlikely)
         raise NoSuchBlock(at_block)
@@ -375,7 +384,9 @@ def resolve_block(connection, at_block, forced_gas_price):
     sequencer_address = int.from_bytes(sequencer_address, "big")
 
     return (
-        BlockInfo(block_number, block_time, gas_price, sequencer_address),
+        BlockInfo(
+            block_number, block_time, gas_price, sequencer_address, starknet_version
+        ),
         global_root,
     )
 

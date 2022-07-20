@@ -88,13 +88,19 @@ def inmemory_with_tables():
             ethereum_log_index        INTEGER NOT NULL
         );
 
+        CREATE TABLE starknet_versions (
+            id      INTEGER NOT NULL PRIMARY KEY,
+            version TEXT NOT NULL UNIQUE
+        );
+
         CREATE TABLE starknet_blocks (
             number               INTEGER PRIMARY KEY,
             hash                 BLOB    NOT NULL,
             root                 BLOB    NOT NULL,
             timestamp            INTEGER NOT NULL,
             gas_price            BLOB    NOT NULL,
-            sequencer_address    BLOB    NOT NULL
+            sequencer_address    BLOB    NOT NULL,
+            version_id           INTEGER REFERENCES starknet_versions(id)
         );
         """
     )
