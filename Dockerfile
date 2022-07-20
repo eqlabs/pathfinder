@@ -28,7 +28,7 @@ RUN mkdir crates \
     && cargo new --lib --vcs none crates/pathfinder \
     && cargo new --lib --vcs none crates/load-test
 
-COPY Cargo.toml Cargo.lock .
+COPY Cargo.toml Cargo.lock ./
 
 COPY crates/pathfinder/Cargo.toml crates/pathfinder/build.rs crates/pathfinder/
 COPY crates/stark_curve/Cargo.toml crates/stark_curve/Cargo.toml
