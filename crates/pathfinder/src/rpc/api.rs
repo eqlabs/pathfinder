@@ -498,17 +498,13 @@ impl RpcApi {
     ) -> RpcResult<Transaction> {
         // First check pending data as it is in-mem check and should be fast.
         if let Ok(pending) = self.pending_data() {
-            let pending_tx = pending
-                .block()
-                .await
-                .map(|block| {
-                    block
-                        .transactions
-                        .iter()
-                        .find(|tx| tx.transaction_hash == transaction_hash)
-                        .cloned()
-                })
-                .flatten();
+            let pending_tx = pending.block().await.and_then(|block| {
+                block
+                    .transactions
+                    .iter()
+                    .find(|tx| tx.transaction_hash == transaction_hash)
+                    .cloned()
+            });
 
             if let Some(pending_tx) = pending_tx {
                 return Ok(pending_tx.into());
@@ -689,17 +685,13 @@ impl RpcApi {
         // First check pending data as it is in-mem check and should be fast.
         // First check pending data as it is in-mem check and should be fast.
         if let Ok(pending) = self.pending_data() {
-            let pending_receipt = pending
-                .block()
-                .await
-                .map(|block| {
-                    block
-                        .transaction_receipts
-                        .iter()
-                        .find(|tx| tx.transaction_hash == transaction_hash)
-                        .cloned()
-                })
-                .flatten();
+            let pending_receipt = pending.block().await.and_then(|block| {
+                block
+                    .transaction_receipts
+                    .iter()
+                    .find(|tx| tx.transaction_hash == transaction_hash)
+                    .cloned()
+            });
             if let Some(pending_receipt) = pending_receipt {
                 return Ok(TransactionReceipt::with_block_status(
                     pending_receipt,

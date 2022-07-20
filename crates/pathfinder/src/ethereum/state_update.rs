@@ -64,7 +64,7 @@ impl From<&crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
             .map(|contract_update| {
                 let storage_updates = contract_update
                     .1
-                    .into_iter()
+                    .iter()
                     .map(|diff| StorageUpdate {
                         address: diff.key,
                         value: diff.value,

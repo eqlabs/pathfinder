@@ -45,9 +45,13 @@ impl Default for State {
     }
 }
 
+struct PendingInner {
+    pub block: Arc<PendingBlock>,
+    pub state_update: Arc<sequencer::reply::StateUpdate>,
+}
 #[derive(Default, Clone)]
 pub struct PendingData {
-    inner: Arc<RwLock<Option<(Arc<PendingBlock>, Arc<sequencer::reply::StateUpdate>)>>>,
+    inner: Arc<RwLock<Option<PendingInner>>>,
 }
 
 impl PendingData {
@@ -56,7 +60,10 @@ impl PendingData {
         block: Arc<PendingBlock>,
         state_update: Arc<sequencer::reply::StateUpdate>,
     ) {
-        *self.inner.write().await = Some((block, state_update));
+        *self.inner.write().await = Some(PendingInner {
+            block,
+            state_update,
+        });
     }
 
     pub async fn clear(&self) {
@@ -68,7 +75,7 @@ impl PendingData {
             .read()
             .await
             .as_ref()
-            .map(|inner| inner.0.clone())
+            .map(|inner| inner.block.clone())
     }
 
     pub async fn state_update(&self) -> Option<Arc<sequencer::reply::StateUpdate>> {
@@ -76,7 +83,7 @@ impl PendingData {
             .read()
             .await
             .as_ref()
-            .map(|inner| inner.1.clone())
+            .map(|inner| inner.state_update.clone())
     }
 }
 
