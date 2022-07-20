@@ -14,6 +14,7 @@ const HTTP_RPC_ADDR_KEY: &str = "http-rpc";
 const SEQ_URL_KEY: &str = "sequencer-url";
 const PYTHON_SUBPROCESSES_KEY: &str = "python-subprocesses";
 const SQLITE_WAL: &str = "sqlite-wal";
+const METRICS_ADDR_KEY: &str = "metrics";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -46,6 +47,7 @@ where
     let sequencer_url = args.value_of(SEQ_URL_KEY).map(|s| s.to_owned());
     let python_subprocesses = args.value_of(PYTHON_SUBPROCESSES_KEY).map(|s| s.to_owned());
     let sqlite_wal = args.value_of(SQLITE_WAL).map(|s| s.to_owned());
+    let metrics_addr = args.value_of(METRICS_ADDR_KEY).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
@@ -54,7 +56,8 @@ where
         .with(ConfigOption::DataDirectory, data_directory)
         .with(ConfigOption::SequencerHttpUrl, sequencer_url)
         .with(ConfigOption::PythonSubprocesses, python_subprocesses)
-        .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal);
+        .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal)
+        .with(ConfigOption::MetricsAddress, metrics_addr);
 
     Ok((config_filepath, cfg))
 }
@@ -107,6 +110,14 @@ Examples:
                 .takes_value(true)
                 .value_name("IP:PORT")
                 .env("PATHFINDER_HTTP_RPC_ADDRESS")
+        )
+        .arg(
+            Arg::new(METRICS_ADDR_KEY)
+                .long(METRICS_ADDR_KEY)
+                .help("Metrics socket address")
+                .takes_value(true)
+                .value_name("IP:PORT")
+                .env("PATHFINDER_METRICS_ADDRESS")
         )
         .arg(
             Arg::new(DATA_DIR_KEY)
@@ -246,6 +257,27 @@ mod tests {
         env::set_var("PATHFINDER_HTTP_RPC_ADDRESS", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
+    }
+
+    #[test]
+    fn metrics_address_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--metrics", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::MetricsAddress), Some(value));
+    }
+
+    #[test]
+    fn metrics_address_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_METRICS_ADDRESS", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::MetricsAddress), Some(value));
     }
 
     #[test]
