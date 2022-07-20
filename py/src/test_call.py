@@ -1,4 +1,10 @@
-from call import do_loop, loop_inner, EXPECTED_SCHEMA_REVISION, check_cairolang_version
+from call import (
+    do_loop,
+    loop_inner,
+    EXPECTED_SCHEMA_REVISION,
+    check_cairolang_version,
+    resolve_block,
+)
 import sqlite3
 import io
 import json
@@ -461,6 +467,23 @@ def test_fee_estimate_on_positive():
             "overall_fee": "0x" + (0x3478).to_bytes(32, "big").hex(),
         },
     }
+
+
+def test_starknet_version_is_resolved():
+    # using the existing setup, but just updating the one block to have a bogus version
+    con = inmemory_with_tables()
+    _ = populate_test_contract_with_132_on_3(con)
+
+    con.execute("BEGIN")
+    cursor = con.execute(
+        "INSERT INTO starknet_versions (version) VALUES (?)", ["0.9.1"]
+    )
+    version_id = cursor.lastrowid
+
+    con.execute("UPDATE starknet_blocks SET version_id = ?", [version_id])
+    (info, _root) = resolve_block(con, "latest", None)
+
+    assert info.starknet_version == "0.9.1"
 
 
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
