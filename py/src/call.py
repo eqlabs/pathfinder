@@ -690,8 +690,14 @@ async def do_call(
 
     class_hashes = set()
 
+    # include called contract's class hash to be loaded, it doesn't seem to be always
+    # automatically loaded, see test `test_call_on_pending_deployed`.
     if contract_address in pending_deployed:
         class_hashes.add(pending_deployed[contract_address])
+
+    # FIXME: it's unknown if this is really required, but we might end up loading up a lot of classes for nothing
+    for class_hash in pending_deployed.values():
+        class_hashes.add(class_hash)
 
     state_selector = StateSelector(
         contract_addresses,
