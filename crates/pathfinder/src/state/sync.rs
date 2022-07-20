@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::{
     core::{
-        Chain, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        Chain, ClassHash, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber,
     },
     ethereum::{
@@ -354,9 +354,27 @@ where
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
                 Some(l2::Event::Pending(block, diff)) => {
-                    // Update state tree to determine new state root, but rollback the changes as we do
-                    // not want to persist them.
+                    let deployed_classes = diff.state_diff.deployed_contracts.iter().map(|x| x.contract_hash);
+                    let declared_classes = diff.state_diff.declared_contracts.iter().cloned();
+                    let declared_classes_block = block
+                        .transactions
+                        .iter()
+                        .filter(|b| b.r#type == crate::sequencer::reply::transaction::Type::Declare)
+                        .map(|b| {
+                            b.class_hash
+                                .expect("Class hash is present for declare transaction")
+                        });
+                    let classes = deployed_classes
+                        .chain(declared_classes)
+                        .chain(declared_classes_block);
+                    download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, classes)
+                        .await
+                        .context("Downloading missing classes for pending block")?;
+
+                    // Collect all potentially new classes.
                     let new_root = tokio::task::block_in_place(|| {
+                        // Update state tree to determine new state root, but rollback the changes as we do
+                        // not want to persist them.
                         let tx = db_conn
                             .transaction_with_behavior(TransactionBehavior::Immediate)
                             .context("Create database transaction")?;
@@ -699,6 +717,103 @@ fn deploy_contract(
         .context("Insert constract state hash into contracts state table")?;
     ContractsTable::upsert(transaction, contract.address, contract.hash)
         .context("Inserting class hash into contracts table")
+}
+
+/// Downloads and inserts class definitions for any classes in the
+/// list which are not already present in the database.
+async fn download_verify_and_insert_missing_classes<
+    SequencerClient: sequencer::ClientApi,
+    ClassIter: Iterator<Item = ClassHash>,
+>(
+    sequencer: SequencerClient,
+    connection: &mut Connection,
+    classes: ClassIter,
+) -> anyhow::Result<()> {
+    use crate::state::class_hash::extract_abi_code_hash;
+
+    // Make list unique.
+    let classes = classes
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter() // TODO: remove this allocation by using Iter in exists.
+        .collect::<Vec<_>>();
+
+    // Check database to see which are missing.
+    let exists = tokio::task::block_in_place(|| {
+        let transaction = connection.transaction()?;
+        ContractCodeTable::exists(&transaction, &classes)
+    })
+    .with_context(|| format!("Query storage for existance of classes {:?}", classes))?;
+    anyhow::ensure!(
+        exists.len() == classes.len(),
+        "Length mismatch when querying for class existance. Expected {} but got {}.",
+        classes.len(),
+        exists.len()
+    );
+    let missing = classes
+        .into_iter()
+        .zip(exists.into_iter())
+        .filter_map(|(class, exist)| (!exist).then(|| class));
+
+    // For each missing, download, verify and insert definition.
+    for class_hash in missing {
+        let definition = sequencer
+            .class_by_hash(class_hash)
+            .await
+            .with_context(|| format!("Downloading class {}", class_hash.0))?;
+
+        // Parse the contract definition for ABI, code and calculate the class hash. This can
+        // be expensive, so perform in a blocking task.
+        let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+            let (abi, bytecode, hash) = extract_abi_code_hash(&definition)?;
+            Ok((definition, abi, bytecode, hash))
+        });
+        let (definition, abi, bytecode, hash) = extract
+            .await
+            .context("Parse class definition and compute hash")??;
+
+        // Sanity check.
+        anyhow::ensure!(
+            class_hash == hash,
+            "Class hash mismatch, {} instead of {}",
+            hash.0,
+            class_hash.0
+        );
+
+        let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+            let mut compressor =
+                zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+
+            let abi = compressor.compress(&abi).context("Compress ABI")?;
+            let bytecode = compressor
+                .compress(&bytecode)
+                .context("Compress bytecode")?;
+            let definition = compressor
+                .compress(&*definition)
+                .context("Compress definition")?;
+
+            Ok((abi, bytecode, definition))
+        });
+        let (abi, bytecode, definition) = compress.await.context("Compress class")??;
+        let compressed = crate::state::CompressedContract {
+            abi,
+            bytecode,
+            definition,
+            hash,
+        };
+
+        tokio::task::block_in_place(|| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            ContractCodeTable::insert_compressed(&transaction, &compressed)?;
+            transaction.commit()?;
+            anyhow::Result::<()>::Ok(())
+        })
+        .with_context(|| format!("Insert class definition with hash: {:?}", compressed.hash))?;
+
+        tracing::trace!("Inserted new class {}", compressed.hash.0.to_hex_str());
+    }
+
+    Ok(())
 }
 
 /// Interval at which poll for new data when at the head of chain.
