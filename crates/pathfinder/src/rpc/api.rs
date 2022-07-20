@@ -259,7 +259,7 @@ impl RpcApi {
         &self,
         contract_address: ContractAddress,
         key: OverflowingStorageAddress,
-        block_hash: BlockHashOrTag,
+        block_id: BlockId,
     ) -> RpcResult<StorageValue> {
         use crate::{
             core::StorageAddress,
@@ -279,13 +279,14 @@ impl RpcApi {
             return Err(Error::from(ErrorCode::InvalidStorageKey));
         }
 
-        let block_id = match block_hash {
-            BlockHashOrTag::Hash(hash) => hash.into(),
-            BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockHashOrTag::Tag(Tag::Pending) => {
+        let block_id = match block_id {
+            BlockId::Hash(hash) => hash.into(),
+            BlockId::Number(number) => number.into(),
+            BlockId::Latest => StarknetBlocksBlockId::Latest,
+            BlockId::Pending => {
                 return Ok(self
                     .sequencer
-                    .storage(contract_address, key, block_hash)
+                    .storage(contract_address, key, BlockHashOrTag::Tag(Tag::Pending))
                     .await?);
             }
         };

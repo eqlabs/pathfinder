@@ -142,11 +142,11 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             pub contract_address: ContractAddress,
             // Accept overflowing type here to report INVALID_STORAGE_KEY properly
             pub key: OverflowingStorageAddress,
-            pub block_hash: BlockHashOrTag,
+            pub block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
         context
-            .get_storage_at(params.contract_address, params.key, params.block_hash)
+            .get_storage_at(params.contract_address, params.key, params.block_id)
             .await
     })?;
     module.register_async_method(
@@ -817,7 +817,7 @@ mod tests {
                     "0x0800000000000011000000000000000000000000000000000000000000000001"
                 )
                 .unwrap(),
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockId::Latest
             );
             let error = client(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
@@ -844,7 +844,7 @@ mod tests {
                     "0x0800000000000000000000000000000000000000000000000000000000000000"
                 )
                 .unwrap(),
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockId::Latest
             );
             let error = client(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
@@ -866,7 +866,7 @@ mod tests {
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"nonexistent").unwrap()),
                 StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockId::Latest
             );
             let error = client(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
@@ -885,7 +885,7 @@ mod tests {
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
                 StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
-                BlockHashOrTag::Hash(StarknetBlockHash(
+                BlockId::Hash(StarknetBlockHash(
                     StarkHash::from_be_slice(b"genesis").unwrap()
                 ))
             );
@@ -906,7 +906,7 @@ mod tests {
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
                 StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
-                BlockHashOrTag::Hash(StarknetBlockHash(
+                BlockId::Hash(StarknetBlockHash(
                     StarkHash::from_be_slice(b"nonexistent").unwrap()
                 ))
             );
@@ -927,7 +927,7 @@ mod tests {
             let params = rpc_params!(
                 ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
                 StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
-                BlockHashOrTag::Hash(StarknetBlockHash(
+                BlockId::Hash(StarknetBlockHash(
                     StarkHash::from_be_slice(b"block 1").unwrap()
                 ))
             );
@@ -955,7 +955,7 @@ mod tests {
                 let params = rpc_params!(
                     ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap()),
                     StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap()),
-                    BlockHashOrTag::Tag(Tag::Latest)
+                    BlockId::Latest
                 );
                 let value = client(addr)
                     .request::<StorageValue>("starknet_getStorageAt", params)
@@ -983,7 +983,7 @@ mod tests {
                         "key",
                         json! {StarkHash::from_be_slice(b"storage addr 0").unwrap()},
                     ),
-                    ("block_hash", json! {"latest"}),
+                    ("block_id", json! {"latest"}),
                 ]);
                 let value = client(addr)
                     .request::<StorageValue>("starknet_getStorageAt", params)
