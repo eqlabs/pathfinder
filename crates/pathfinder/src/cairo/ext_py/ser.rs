@@ -2,6 +2,8 @@
 
 use crate::core::{CallParam, ContractAddress, EntryPoint};
 use crate::rpc::types::BlockHashOrTag;
+use crate::sequencer::reply::state_update::{Contract, StorageDiff};
+use std::collections::HashMap;
 
 /// The command we send to the python loop.
 #[serde_with::serde_as]
@@ -19,6 +21,8 @@ pub(crate) struct ChildCommand<'a> {
     #[serde_as(as = "crate::rpc::serde::TransactionVersionAsHexStr")]
     pub version: &'a crate::core::TransactionVersion,
     pub chain: UsedChain,
+    pub pending_updates: ContractUpdatesWrapper<'a>,
+    pub pending_deployed: DeployedContractsWrapper<'a>,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -44,5 +48,172 @@ impl From<crate::core::Chain> for UsedChain {
             crate::core::Chain::Mainnet => UsedChain::Mainnet,
             crate::core::Chain::Goerli => UsedChain::Goerli,
         }
+    }
+}
+
+/// Custom type for setting the serialization in stone, or at least same as python code.
+#[derive(Debug)]
+pub struct ContractUpdatesWrapper<'a>(&'a HashMap<ContractAddress, Vec<StorageDiff>>);
+
+impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for ContractUpdatesWrapper<'a> {
+    fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
+        lazy_static::lazy_static! {
+            static ref EMPTY_MAP: HashMap<
+                ContractAddress,
+                Vec<StorageDiff>,
+            > = HashMap::new();
+        }
+
+        if let Some(u) = u {
+            ContractUpdatesWrapper(&u.state_diff.storage_diffs)
+        } else {
+            ContractUpdatesWrapper(&EMPTY_MAP)
+        }
+    }
+}
+
+impl<'a> serde::Serialize for ContractUpdatesWrapper<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (address, diffs) in self.0 {
+            map.serialize_entry(address, &DiffsWrapper(diffs))?;
+        }
+        map.end()
+    }
+}
+
+struct DiffsWrapper<'a>(&'a [StorageDiff]);
+
+impl<'a> serde::Serialize for DiffsWrapper<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+        for one in self.0 {
+            seq.serialize_element(&DiffElement(one))?;
+        }
+        seq.end()
+    }
+}
+
+struct DiffElement<'a>(&'a StorageDiff);
+
+impl<'a> serde::Serialize for DiffElement<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("key", &self.0.key.0)?;
+        map.serialize_entry("value", &self.0.value.0)?;
+        map.end()
+    }
+}
+
+/// Custom type for setting the serialization in stone, or at least same as python code.
+#[derive(Debug)]
+pub struct DeployedContractsWrapper<'a>(&'a [Contract]);
+
+impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for DeployedContractsWrapper<'a> {
+    fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
+        if let Some(u) = u {
+            DeployedContractsWrapper(&u.state_diff.deployed_contracts)
+        } else {
+            DeployedContractsWrapper(&[])
+        }
+    }
+}
+
+impl<'a> serde::Serialize for DeployedContractsWrapper<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+        for contract in self.0 {
+            seq.serialize_element(&DeployedContractElement(contract))?;
+        }
+        seq.end()
+    }
+}
+
+struct DeployedContractElement<'a>(&'a crate::sequencer::reply::state_update::Contract);
+
+impl<'a> serde::Serialize for DeployedContractElement<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("address", &self.0.address)?;
+        map.serialize_entry("contract_hash", &self.0.contract_hash)?;
+        map.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use stark_hash::StarkHash;
+
+    #[test]
+    fn serialize_updates() {
+        use super::ContractUpdatesWrapper;
+        use crate::core::{ContractAddress, StorageAddress, StorageValue};
+        use crate::sequencer::reply::state_update::StorageDiff;
+        use std::collections::HashMap;
+
+        let expected = r#"{"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0x0"}]}"#;
+        let map = {
+            let mut map = HashMap::new();
+            map.insert(
+                ContractAddress(
+                    StarkHash::from_hex_str(
+                        "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451",
+                    )
+                    .unwrap(),
+                ),
+                vec![StorageDiff {
+                    key: StorageAddress(StarkHash::from_hex_str("0x5").unwrap()),
+                    value: StorageValue(StarkHash::from_hex_str("0x0").unwrap()),
+                }],
+            );
+            map
+        };
+        let s = serde_json::to_string(&ContractUpdatesWrapper(&map)).unwrap();
+        assert_eq!(expected, s);
+    }
+
+    #[test]
+    fn serialize_deployed_contracts() {
+        use super::DeployedContractsWrapper;
+        use crate::core::{ClassHash, ContractAddress};
+        use crate::sequencer::reply::state_update::Contract;
+
+        let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
+        let contracts = vec![Contract {
+            address: ContractAddress(
+                StarkHash::from_hex_str(
+                    "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451",
+                )
+                .unwrap(),
+            ),
+            contract_hash: ClassHash(
+                StarkHash::from_hex_str(
+                    "0x010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8",
+                )
+                .unwrap(),
+            ),
+        }];
+        let s = serde_json::to_string(&DeployedContractsWrapper(&contracts)).unwrap();
+        assert_eq!(expected, s);
     }
 }

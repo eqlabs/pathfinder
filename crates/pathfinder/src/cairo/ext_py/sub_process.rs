@@ -353,6 +353,8 @@ async fn process(
             max_fee: &call.max_fee,
             version: &call.version,
             chain: *chain,
+            pending_updates: None.into(),
+            pending_deployed: None.into(),
         },
         Command::EstimateFee {
             call,
@@ -371,6 +373,8 @@ async fn process(
             max_fee: &call.max_fee,
             version: &call.version,
             chain: *chain,
+            pending_updates: None.into(),
+            pending_deployed: None.into(),
         },
     };
 
