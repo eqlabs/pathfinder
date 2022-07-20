@@ -26,6 +26,8 @@ use de::ErrorKind;
 
 mod ser;
 use ser::UsedChain;
+pub use ser::{BlockHashNumberOrLatest, Pending};
+
 mod sub_process;
 
 mod service;
@@ -55,7 +57,7 @@ impl Handle {
             .send((
                 Command::Call {
                     call,
-                    at_block,
+                    at_block: at_block.try_into().unwrap(),
                     chain: self.chain,
                     diffs,
                     response,
@@ -90,7 +92,7 @@ impl Handle {
             .send((
                 Command::EstimateFee {
                     call,
-                    at_block,
+                    at_block: at_block.try_into().unwrap(),
                     gas_price,
                     chain: self.chain,
                     diffs,
@@ -175,14 +177,14 @@ type SharedReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
 enum Command {
     Call {
         call: Call,
-        at_block: BlockHashOrTag,
+        at_block: BlockHashNumberOrLatest,
         chain: UsedChain,
         diffs: Option<Arc<StateUpdate>>,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
         call: Call,
-        at_block: BlockHashOrTag,
+        at_block: BlockHashNumberOrLatest,
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
         chain: UsedChain,
@@ -346,9 +348,9 @@ mod tests {
                                 max_fee: super::Call::DEFAULT_MAX_FEE,
                                 version: super::Call::DEFAULT_VERSION,
                             },
-                            super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                            crate::core::StarknetBlockHash(
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                            )),
+                            ).into(),
                             None
                         ).await.unwrap();
                     }
@@ -419,9 +421,10 @@ mod tests {
         let at_block_fee = handle
             .estimate_fee(
                 call.clone(),
-                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                crate::core::StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )),
+                )
+                .into(),
                 super::GasPriceSource::PastBlock,
                 None,
             )
@@ -442,9 +445,10 @@ mod tests {
         let current_fee = handle
             .estimate_fee(
                 call,
-                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                crate::core::StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )),
+                )
+                .into(),
                 super::GasPriceSource::Current(H256::from_low_u64_be(10)),
                 None,
             )
@@ -518,9 +522,10 @@ mod tests {
         let result = handle
             .call(
                 call,
-                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                crate::core::StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )),
+                )
+                .into(),
                 None,
             )
             .await
@@ -589,7 +594,7 @@ mod tests {
         let res = handle
             .call(
                 call.clone(),
-                super::BlockHashOrTag::Tag(crate::rpc::types::Tag::Latest),
+                crate::rpc::types::BlockHashOrTag::Tag(crate::rpc::types::Tag::Latest),
                 None,
             )
             .await
@@ -625,7 +630,7 @@ mod tests {
                 call,
                 // FIXME: pending should not be available, because we should always use latest for
                 // those cases
-                super::BlockHashOrTag::Tag(crate::rpc::types::Tag::Latest),
+                crate::rpc::types::BlockHashOrTag::Tag(crate::rpc::types::Tag::Latest),
                 Some(update),
             )
             .await

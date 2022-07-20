@@ -13,7 +13,7 @@ pub(crate) struct ChildCommand<'a> {
     pub contract_address: &'a ContractAddress,
     pub calldata: &'a [CallParam],
     pub entry_point_selector: &'a EntryPoint,
-    pub at_block: &'a BlockHashOrTag,
+    pub at_block: &'a BlockHashNumberOrLatest,
     #[serde_as(as = "Option<&crate::rpc::serde::H256AsHexStr>")]
     pub gas_price: Option<&'a web3::types::H256>,
     pub signature: &'a [crate::core::CallSignatureElem],
@@ -160,6 +160,93 @@ impl<'a> serde::Serialize for DeployedContractElement<'a> {
     }
 }
 
+/// The tag pending should never be used With `ext_py`.
+#[derive(Debug)]
+pub enum BlockHashNumberOrLatest {
+    Hash(crate::core::StarknetBlockHash),
+    Number(crate::core::StarknetBlockNumber),
+    Latest,
+}
+
+impl serde::Serialize for BlockHashNumberOrLatest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use BlockHashNumberOrLatest::*;
+        match self {
+            Hash(h) => h.serialize(serializer),
+            Number(n) => n.serialize(serializer),
+            // I failed to get this working with the derive(serde::Serialize)
+            Latest => "latest".serialize(serializer),
+        }
+    }
+}
+
+impl From<crate::core::StarknetBlockHash> for BlockHashNumberOrLatest {
+    fn from(h: crate::core::StarknetBlockHash) -> Self {
+        BlockHashNumberOrLatest::Hash(h)
+    }
+}
+
+impl From<crate::core::StarknetBlockNumber> for BlockHashNumberOrLatest {
+    fn from(n: crate::core::StarknetBlockNumber) -> Self {
+        BlockHashNumberOrLatest::Number(n)
+    }
+}
+
+/// The type representing [`crate::rpc::types::Tag::Pending`] value, which cannot be accepted as
+/// [`BlockHashNumberOrLatest`].
+#[derive(Debug)]
+pub struct Pending;
+
+impl TryFrom<crate::rpc::types::Tag> for BlockHashNumberOrLatest {
+    type Error = Pending;
+
+    fn try_from(value: crate::rpc::types::Tag) -> Result<Self, Self::Error> {
+        use crate::rpc::types::Tag;
+        match value {
+            Tag::Latest => Ok(BlockHashNumberOrLatest::Latest),
+            Tag::Pending => Err(Pending),
+        }
+    }
+}
+
+impl TryFrom<crate::rpc::types::BlockHashOrTag> for BlockHashNumberOrLatest {
+    type Error = Pending;
+
+    fn try_from(value: crate::rpc::types::BlockHashOrTag) -> Result<Self, Self::Error> {
+        match value {
+            BlockHashOrTag::Hash(h) => Ok(h.into()),
+            BlockHashOrTag::Tag(x) => x.try_into(),
+        }
+    }
+}
+
+impl TryFrom<crate::rpc::types::BlockNumberOrTag> for BlockHashNumberOrLatest {
+    type Error = Pending;
+
+    fn try_from(value: crate::rpc::types::BlockNumberOrTag) -> Result<Self, Self::Error> {
+        match value {
+            crate::rpc::types::BlockNumberOrTag::Number(n) => Ok(n.into()),
+            crate::rpc::types::BlockNumberOrTag::Tag(x) => x.try_into(),
+        }
+    }
+}
+
+impl TryFrom<crate::core::BlockId> for BlockHashNumberOrLatest {
+    type Error = Pending;
+
+    fn try_from(value: crate::core::BlockId) -> Result<Self, Self::Error> {
+        match value {
+            crate::core::BlockId::Number(n) => Ok(n.into()),
+            crate::core::BlockId::Hash(h) => Ok(h.into()),
+            crate::core::BlockId::Latest => Ok(BlockHashNumberOrLatest::Latest),
+            crate::core::BlockId::Pending => Err(Pending),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use stark_hash::StarkHash;
@@ -215,5 +302,21 @@ mod tests {
         }];
         let s = serde_json::to_string(&DeployedContractsWrapper(&contracts)).unwrap();
         assert_eq!(expected, s);
+    }
+
+    #[test]
+    fn serialize_block_hash_num_latest() {
+        use super::BlockHashNumberOrLatest;
+        use crate::core::{StarknetBlockHash, StarknetBlockNumber};
+
+        let data = &[
+            (StarknetBlockHash(StarkHash::ZERO).into(), "\"0x0\""),
+            (StarknetBlockNumber(0).into(), "0"),
+            (BlockHashNumberOrLatest::Latest, "\"latest\""),
+        ];
+
+        for (input, output) in data {
+            assert_eq!(output, &serde_json::to_string(input).unwrap())
+        }
     }
 }
