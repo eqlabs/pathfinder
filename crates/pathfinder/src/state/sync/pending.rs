@@ -24,6 +24,11 @@ pub async fn poll_pending(
             .await
             .context("Download pending block")?
         {
+            MaybePendingBlock::Block(block) if block.block_hash == head.0 => {
+                tracing::trace!(hash=%block.block_hash, "Found current head from pending mode");
+                tokio::time::sleep(poll_interval).await;
+                continue;
+            }
             MaybePendingBlock::Block(block) => {
                 tracing::debug!(hash=%block.block_hash, "Found full block, exiting pending mode.");
                 return Ok(());
