@@ -795,6 +795,15 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
     (verb, output, _timings) = loop_inner(con, with_updates)
     assert output == [0x22B]
 
+    # "tail case"
+    #
+    # I was initially confused why does this case seem to work without pushing
+    # all pending_deployed's contract_hashes to be loaded at the StateSelector,
+    # because such was required in the minimal standalone case but not here.
+    # the reason must be that other pending_updates had prompted fetching of
+    # the required (and shared) contract_hash so this didn't seem to require
+    # it.
+
     on_newly_deployed = {
         "command": "call",
         "at_block": 6,
