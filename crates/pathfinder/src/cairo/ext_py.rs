@@ -259,7 +259,7 @@ mod tests {
     use tokio::sync::oneshot;
 
     #[test_log::test(tokio::test)]
-    #[ignore]
+    #[ignore = "needs python venv"]
     async fn start_with_wrong_database_schema_fails() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    #[ignore] // these tests require that you've entered into python venv
+    #[ignore = "needs python venv"]
     async fn call_like_in_python_ten_times() {
         use futures::stream::StreamExt;
 
@@ -368,7 +368,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    #[ignore] // these tests require that you've entered into python venv
+    #[ignore = "needs python venv"]
     async fn estimate_fee_for_example() {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    #[ignore]
+    #[ignore = "needs python venv"]
     async fn call_with_unknown_contract() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -538,7 +538,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    #[ignore]
+    #[ignore = "needs python venv"]
     async fn call_with_pending_updates() {
         use crate::sequencer::reply::StateUpdate;
 
