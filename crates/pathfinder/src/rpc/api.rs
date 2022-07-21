@@ -177,7 +177,7 @@ impl RpcApi {
             BlockResponseScope::TransactionHashes => reply::Transactions::HashesOnly(
                 transactions_receipts
                     .into_iter()
-                    .map(|(t, _)| t.transaction_hash)
+                    .map(|(t, _)| t.hash())
                     .collect(),
             ),
             BlockResponseScope::FullTransactions => reply::Transactions::Full(
@@ -1058,13 +1058,13 @@ impl RpcApi {
                 .map_err(internal_server_error)?;
 
             let filter = request.into();
-            // We don't add context here, because [StarknetEventsTable::get_events] adds its
-            // own context to the errors. This way we get meaningful error information
-            // for errors related to query parameters.
             let tx = connection
                 .transaction()
                 .context("Opening database transaction")
                 .map_err(internal_server_error)?;
+            // We don't add context here, because [StarknetEventsTable::get_events] adds its
+            // own context to the errors. This way we get meaningful error information
+            // for errors related to query parameters.
             let page = StarknetEventsTable::get_events(&tx, &filter).map_err(|e| {
                 if let Some(e) = e.downcast_ref::<EventFilterError>() {
                     Error::from(*e)

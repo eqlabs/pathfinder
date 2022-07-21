@@ -450,7 +450,7 @@ impl StarknetTransactionsTable {
 
             tx.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
         named_params![
-                    ":hash": transaction.transaction_hash.0.as_be_bytes(),
+                    ":hash": transaction.hash().0.as_be_bytes(),
                     ":idx": i,
                     ":block_hash": block_hash.0.as_be_bytes(),
                     ":tx": &tx_data,
@@ -502,8 +502,8 @@ impl StarknetTransactionsTable {
                 .as_blob_or_null()?
                 .context("Receipt data missing")?;
             let receipt = zstd::decode_all(receipt).context("Decompressing transaction receipt")?;
-            let receipt = serde_json::de::from_slice(&receipt)
-                .context("Deserializing transaction receipt")?;
+            let receipt =
+                serde_json::from_slice(&receipt).context("Deserializing transaction receipt")?;
 
             let transaction = row
                 .get_ref_unwrap("tx")
@@ -511,7 +511,7 @@ impl StarknetTransactionsTable {
                 .context("Transaction data missing")?;
             let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
             let transaction =
-                serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
+                serde_json::from_slice(&transaction).context("Deserializing transaction")?;
 
             data.push((transaction, receipt));
         }
@@ -561,7 +561,7 @@ impl StarknetTransactionsTable {
 
         let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction =
-            serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
+            serde_json::from_slice(&transaction).context("Deserializing transaction")?;
 
         Ok(Some(transaction))
     }
@@ -588,7 +588,7 @@ impl StarknetTransactionsTable {
             None => return Ok(None),
         };
         let receipt = zstd::decode_all(receipt).context("Decompressing transaction")?;
-        let receipt = serde_json::de::from_slice(&receipt).context("Deserializing transaction")?;
+        let receipt = serde_json::from_slice(&receipt).context("Deserializing transaction")?;
 
         let block_hash = row.get_ref_unwrap("block_hash").as_blob()?;
         let block_hash =
@@ -622,7 +622,7 @@ impl StarknetTransactionsTable {
 
         let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction =
-            serde_json::de::from_slice(&transaction).context("Deserializing transaction")?;
+            serde_json::from_slice(&transaction).context("Deserializing transaction")?;
 
         Ok(Some(transaction))
     }
@@ -729,27 +729,43 @@ impl StarknetEventsTable {
         transaction: &transaction::Transaction,
         events: &[transaction::Event],
     ) -> anyhow::Result<()> {
-        if transaction.contract_address.is_none() && !events.is_empty() {
-            anyhow::bail!("Declare transactions cannot emit events");
+        match transaction {
+            transaction::Transaction::Declare(_) => {
+                anyhow::ensure!(
+                    events.is_empty(),
+                    "Declare transactions cannot emit events: block {}, transaction {}",
+                    block_number,
+                    transaction.hash().0
+                );
+                Ok(())
+            }
+            transaction::Transaction::Deploy(transaction::DeployTransaction {
+                transaction_hash,
+                ..
+            })
+            | transaction::Transaction::Invoke(transaction::InvokeTransaction {
+                transaction_hash,
+                ..
+            }) => {
+                for (idx, event) in events.iter().enumerate() {
+                    tx
+                        .execute(
+                            r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
+                                                   VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
+                            named_params![
+                                ":block_number": block_number.0,
+                                ":idx": idx,
+                                ":transaction_hash": &transaction_hash.0.as_be_bytes()[..],
+                                ":from_address": &event.from_address.0.as_be_bytes()[..],
+                                ":keys": Self::event_keys_to_base64_strings(&event.keys),
+                                ":data": Self::event_data_to_bytes(&event.data),
+                            ],
+                        )
+                        .context("Insert events into events table")?;
+                }
+                Ok(())
+            }
         }
-
-        for (idx, event) in events.iter().enumerate() {
-            tx
-                .execute(
-                    r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
-                                           VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
-                    named_params![
-                        ":block_number": block_number.0,
-                        ":idx": idx,
-                        ":transaction_hash": &transaction.transaction_hash.0.as_be_bytes()[..],
-                        ":from_address": &event.from_address.0.as_be_bytes()[..],
-                        ":keys": Self::event_keys_to_base64_strings(&event.keys),
-                        ":data": Self::event_data_to_bytes(&event.data),
-                    ],
-                )
-                .context("Insert events into events table")?;
-        }
-        Ok(())
     }
 
     pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
@@ -1323,14 +1339,15 @@ mod tests {
 
     mod starknet_blocks {
         use super::*;
+        use crate::storage::test_utils;
 
-        fn create_blocks() -> [StarknetBlock; 3] {
-            crate::storage::test_utils::create_blocks::<3>()
+        fn create_blocks() -> [StarknetBlock; test_utils::NUM_BLOCKS] {
+            test_utils::create_blocks()
         }
 
         fn with_default_blocks<F>(f: F)
         where
-            F: FnOnce(&Transaction<'_>, [StarknetBlock; 3]),
+            F: FnOnce(&Transaction<'_>, [StarknetBlock; test_utils::NUM_BLOCKS]),
         {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
@@ -1603,10 +1620,13 @@ mod tests {
     }
 
     mod starknet_events {
+        use web3::types::H128;
+
         use super::*;
 
-        use crate::core::EventData;
+        use crate::core::{EntryPoint, EventData, Fee};
         use crate::sequencer::reply::transaction;
+        use crate::storage::test_utils;
 
         #[test]
         fn event_data_serialization() {
@@ -1646,64 +1666,11 @@ mod tests {
             );
         }
 
-        const NUM_BLOCKS: usize = 4;
-
-        fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
-            crate::storage::test_utils::create_blocks::<NUM_BLOCKS>()
-        }
-
-        const TRANSACTIONS_PER_BLOCK: usize = 10;
-        const EVENTS_PER_BLOCK: usize = TRANSACTIONS_PER_BLOCK;
-        const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
-        const NUM_EVENTS: usize = NUM_BLOCKS * EVENTS_PER_BLOCK;
-
-        fn create_transactions_and_receipts(
-        ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
-            crate::storage::test_utils::create_transactions_and_receipts::<NUM_TRANSACTIONS>()
-        }
-
-        fn setup(tx: &Transaction<'_>) -> Vec<StarknetEmittedEvent> {
-            let blocks = create_blocks();
-            let transactions_and_receipts = create_transactions_and_receipts();
-
-            for (i, block) in blocks.iter().enumerate() {
-                StarknetBlocksTable::insert(tx, block, None).unwrap();
-                StarknetTransactionsTable::upsert(
-                    tx,
-                    block.hash,
-                    block.number,
-                    &transactions_and_receipts
-                        [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK],
-                )
-                .unwrap();
-            }
-
-            transactions_and_receipts
-                .iter()
-                .enumerate()
-                .map(|(i, (txn, receipt))| {
-                    let event = &receipt.events[0];
-                    let block = &blocks[i / TRANSACTIONS_PER_BLOCK];
-
-                    StarknetEmittedEvent {
-                        data: event.data.clone(),
-                        from_address: event.from_address,
-                        keys: event.keys.clone(),
-                        block_hash: block.hash,
-                        block_number: block.number,
-                        transaction_hash: txn.transaction_hash,
-                    }
-                })
-                .collect()
-        }
-
         #[test]
         fn get_events_with_fully_specified_filter() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let emitted_events = setup(&tx);
 
             let expected_event = &emitted_events[1];
             let filter = StarknetEventFilter {
@@ -1712,7 +1679,7 @@ mod tests {
                 contract_address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
                 keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
@@ -1757,44 +1724,30 @@ mod tests {
 
             // Note: hashes are reverse ordered to trigger the sorting bug.
             let transactions = vec![
-                transaction::Transaction {
-                    calldata: None,
-                    class_hash: None,
-                    constructor_calldata: None,
+                transaction::Transaction::Invoke(transaction::InvokeTransaction {
+                    calldata: vec![],
                     // Only required because event insert rejects if this is None
-                    contract_address: Some(ContractAddress(StarkHash::ZERO)),
-                    contract_address_salt: None,
-                    entry_point_type: None,
-                    entry_point_selector: None,
-                    max_fee: None,
-                    nonce: None,
-                    sender_address: None,
-                    signature: None,
+                    contract_address: ContractAddress(StarkHash::ZERO),
+                    entry_point_type: transaction::EntryPointType::External,
+                    entry_point_selector: EntryPoint(StarkHash::ZERO),
+                    max_fee: Fee(H128::zero()),
+                    signature: vec![],
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str("0xF").unwrap(),
                     ),
-                    r#type: crate::sequencer::reply::transaction::Type::InvokeFunction,
-                    version: None,
-                },
-                transaction::Transaction {
-                    calldata: None,
-                    class_hash: None,
-                    constructor_calldata: None,
+                }),
+                transaction::Transaction::Invoke(transaction::InvokeTransaction {
+                    calldata: vec![],
                     // Only required because event insert rejects if this is None
-                    contract_address: Some(ContractAddress(StarkHash::ZERO)),
-                    contract_address_salt: None,
-                    entry_point_type: None,
-                    entry_point_selector: None,
-                    max_fee: None,
-                    nonce: None,
-                    sender_address: None,
-                    signature: None,
+                    contract_address: ContractAddress(StarkHash::ZERO),
+                    entry_point_type: transaction::EntryPointType::External,
+                    entry_point_selector: EntryPoint(StarkHash::ZERO),
+                    max_fee: Fee(H128::zero()),
+                    signature: vec![],
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str("0x1").unwrap(),
                     ),
-                    r#type: crate::sequencer::reply::transaction::Type::InvokeFunction,
-                    version: None,
-                },
+                }),
             ];
 
             let receipts = vec![
@@ -1811,7 +1764,7 @@ mod tests {
                     },
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
-                    transaction_hash: transactions[0].transaction_hash,
+                    transaction_hash: transactions[0].hash(),
                     transaction_index: crate::core::StarknetTransactionIndex(0),
                 },
                 transaction::Receipt {
@@ -1827,7 +1780,7 @@ mod tests {
                     },
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
-                    transaction_hash: transactions[1].transaction_hash,
+                    transaction_hash: transactions[1].hash(),
                     transaction_index: crate::core::StarknetTransactionIndex(1),
                 },
             ];
@@ -1875,11 +1828,9 @@ mod tests {
 
         #[test]
         fn get_events_by_block() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let emitted_events = setup(&tx);
 
             const BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
@@ -1887,12 +1838,12 @@ mod tests {
                 to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
-            let expected_events = &emitted_events
-                [EVENTS_PER_BLOCK * BLOCK_NUMBER..EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
+            let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
+                ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
                 events,
@@ -1905,11 +1856,9 @@ mod tests {
 
         #[test]
         fn get_events_up_to_block() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let emitted_events = setup(&tx);
 
             const UNTIL_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
@@ -1917,12 +1866,12 @@ mod tests {
                 to_block: Some(StarknetBlockNumber(UNTIL_BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
             let expected_events =
-                &emitted_events[..TRANSACTIONS_PER_BLOCK * (UNTIL_BLOCK_NUMBER + 1)];
+                &emitted_events[..test_utils::EVENTS_PER_BLOCK * (UNTIL_BLOCK_NUMBER + 1)];
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
                 events,
@@ -1935,11 +1884,9 @@ mod tests {
 
         #[test]
         fn get_events_from_block_onwards() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let emitted_events = setup(&tx);
 
             const FROM_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
@@ -1947,11 +1894,12 @@ mod tests {
                 to_block: None,
                 contract_address: None,
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
-            let expected_events = &emitted_events[TRANSACTIONS_PER_BLOCK * FROM_BLOCK_NUMBER..];
+            let expected_events =
+                &emitted_events[test_utils::EVENTS_PER_BLOCK * FROM_BLOCK_NUMBER..];
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
                 events,
@@ -1964,11 +1912,9 @@ mod tests {
 
         #[test]
         fn get_events_from_contract() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let emitted_events = setup(&tx);
 
             let expected_event = &emitted_events[33];
 
@@ -1977,7 +1923,7 @@ mod tests {
                 to_block: None,
                 contract_address: Some(expected_event.from_address),
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
@@ -1993,11 +1939,9 @@ mod tests {
 
         #[test]
         fn get_events_by_key() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let emitted_events = setup(&tx);
 
             let expected_event = &emitted_events[27];
             let filter = StarknetEventFilter {
@@ -2005,7 +1949,7 @@ mod tests {
                 to_block: None,
                 contract_address: None,
                 keys: vec![expected_event.keys[0]],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
@@ -2021,18 +1965,16 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let emitted_events = setup(&tx);
 
             let filter = StarknetEventFilter {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
                 keys: vec![],
-                page_size: NUM_EVENTS,
+                page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
 
@@ -2048,11 +1990,9 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter_and_paging() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let emitted_events = setup(&tx);
 
             let filter = StarknetEventFilter {
                 from_block: None,
@@ -2108,11 +2048,9 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter_and_nonexistent_page() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, _) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let _emitted_events = setup(&tx);
 
             const PAGE_SIZE: usize = 10;
             let filter = StarknetEventFilter {
@@ -2122,7 +2060,7 @@ mod tests {
                 keys: vec![],
                 page_size: PAGE_SIZE,
                 // one page _after_ the last one
-                page_number: NUM_BLOCKS * EVENTS_PER_BLOCK / PAGE_SIZE,
+                page_number: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK / PAGE_SIZE,
             };
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
@@ -2136,11 +2074,9 @@ mod tests {
 
         #[test]
         fn get_events_with_invalid_page_size() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, _) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let _emitted_events = setup(&tx);
 
             let filter = StarknetEventFilter {
                 from_block: None,
@@ -2172,11 +2108,9 @@ mod tests {
 
         #[test]
         fn get_events_by_key_with_paging() {
-            let storage = Storage::in_memory().unwrap();
+            let (storage, emitted_events) = test_utils::setup_test_storage();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-
-            let emitted_events = setup(&tx);
 
             let expected_events = &emitted_events[27..32];
             let keys_for_expected_events: Vec<_> =

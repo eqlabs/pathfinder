@@ -289,68 +289,76 @@ pub mod transaction {
         pub keys: Vec<EventKey>,
     }
 
-    /// Represents deserialized object containing L2 contract address and transaction type.
-    #[serde_as]
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    /// Represents deserialized L2 transaction data.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(tag = "type")]
     #[serde(deny_unknown_fields)]
-    pub struct Source {
-        pub contract_address: ContractAddress,
-        pub r#type: Type,
+    pub enum Transaction {
+        #[serde(rename = "DECLARE")]
+        Declare(DeclareTransaction),
+        #[serde(rename = "DEPLOY")]
+        Deploy(DeployTransaction),
+        #[serde(rename = "INVOKE_FUNCTION")]
+        Invoke(InvokeTransaction),
     }
 
-    /// Represents deserialized L2 transaction data.
-    ///
-    /// TODO refactor into a 3-variant enum (Declare, Deploy, Invoke)
+    impl Transaction {
+        /// Returns hash of the transaction
+        pub fn hash(&self) -> StarknetTransactionHash {
+            match self {
+                Transaction::Declare(t) => t.transaction_hash,
+                Transaction::Deploy(t) => t.transaction_hash,
+                Transaction::Invoke(t) => t.transaction_hash,
+            }
+        }
+    }
+
+    /// Represents deserialized L2 declare transaction data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
-    pub struct Transaction {
-        #[serde_as(as = "Option<Vec<CallParamAsDecimalStr>>")]
+    pub struct DeclareTransaction {
+        pub class_hash: ClassHash,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        pub nonce: TransactionNonce,
+        pub sender_address: ContractAddress,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         #[serde(default)]
-        pub calldata: Option<Vec<CallParam>>,
-        /// None for Invoke, Some() for Deploy and Declare
-        #[serde(default)]
-        pub class_hash: Option<ClassHash>,
-        #[serde_as(as = "Option<Vec<ConstructorParamAsDecimalStr>>")]
-        #[serde(default)]
-        pub constructor_calldata: Option<Vec<ConstructorParam>>,
-        /// None for Declare
-        #[serde(default)]
-        pub contract_address: Option<ContractAddress>,
-        #[serde(default)]
-        pub contract_address_salt: Option<ContractAddressSalt>,
-        #[serde(default)]
-        pub entry_point_type: Option<EntryPointType>,
-        #[serde(default)]
-        pub entry_point_selector: Option<EntryPoint>,
-        #[serde_as(as = "Option<FeeAsHexStr>")]
-        #[serde(default)]
-        pub max_fee: Option<Fee>,
-        #[serde(default)]
-        pub nonce: Option<TransactionNonce>,
-        /// Some() for Declare
-        #[serde(default)]
-        pub sender_address: Option<ContractAddress>,
-        #[serde_as(as = "Option<Vec<TransactionSignatureElemAsDecimalStr>>")]
-        #[serde(default)]
-        pub signature: Option<Vec<TransactionSignatureElem>>,
+        pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: StarknetTransactionHash,
-        pub r#type: Type,
-        #[serde_as(as = "Option<TransactionVersionAsHexStr>")]
-        #[serde(default)]
-        pub version: Option<TransactionVersion>,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
     }
 
-    /// Describes L2 transaction types.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    /// Represents deserialized L2 deploy transaction data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
-    pub enum Type {
-        #[serde(rename = "DEPLOY")]
-        Deploy,
-        #[serde(rename = "INVOKE_FUNCTION")]
-        InvokeFunction,
-        #[serde(rename = "DECLARE")]
-        Declare,
+    pub struct DeployTransaction {
+        pub contract_address: ContractAddress,
+        pub contract_address_salt: ContractAddressSalt,
+        pub class_hash: ClassHash,
+        #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
+        pub constructor_calldata: Vec<ConstructorParam>,
+        pub transaction_hash: StarknetTransactionHash,
+    }
+
+    /// Represents deserialized L2 invoke transaction data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    pub struct InvokeTransaction {
+        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
+        pub calldata: Vec<CallParam>,
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub entry_point_type: EntryPointType,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        pub signature: Vec<TransactionSignatureElem>,
+        pub transaction_hash: StarknetTransactionHash,
     }
 
     /// Describes L2 transaction failure details.

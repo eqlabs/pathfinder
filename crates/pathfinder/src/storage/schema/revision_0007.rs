@@ -291,10 +291,10 @@ pub(crate) fn migrate_with(
 
         let tx = zstd::decode_all(tx).context("Decompress transaction")?;
         let tx: transaction::Transaction =
-            serde_json::de::from_slice(&tx).context("Deserializing transaction")?;
+            serde_json::from_slice(&tx).context("Deserializing transaction")?;
         let receipt = zstd::decode_all(receipt).context("Decompress receipt")?;
         let receipt: transaction::Receipt =
-            serde_json::de::from_slice(&receipt).context("Deserializing transaction receipt")?;
+            serde_json::from_slice(&receipt).context("Deserializing transaction receipt")?;
 
         receipt.events.into_iter().enumerate().try_for_each(
             |(idx, event)| -> anyhow::Result<_> {

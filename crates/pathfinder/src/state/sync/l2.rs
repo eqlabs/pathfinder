@@ -188,14 +188,13 @@ async fn declare_classes(
     sequencer: &impl sequencer::ClientApi,
     tx_event: &mpsc::Sender<Event>,
 ) -> Result<(), anyhow::Error> {
-    use crate::sequencer::reply::transaction::Type as TransactionType;
+    use crate::sequencer::reply::transaction::Transaction;
     let declared_classes = block
         .transactions
         .iter()
-        .filter(|b| b.r#type == TransactionType::Declare)
-        .map(|b| {
-            b.class_hash
-                .expect("Class hash is present for declare transaction")
+        .filter_map(|tx| match tx {
+            Transaction::Declare(declare) => Some(declare.class_hash),
+            Transaction::Invoke(_) | Transaction::Deploy(_) => None,
         })
         // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
         .collect::<HashSet<_>>()
@@ -275,7 +274,7 @@ async fn download_block(
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
                 let verify_result = verify_block_hash(&block, chain, expected_block_hash)
-                    .with_context(move || format!("Verify block {}", block_number.0))?;
+                    .with_context(move || format!("Verify block {block_number}"))?;
                 Ok((block, verify_result))
             });
             let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
