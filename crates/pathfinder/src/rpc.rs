@@ -1283,7 +1283,7 @@ mod tests {
 
             #[tokio::test]
             async fn returns_program_and_entry_points_for_known_class() {
-                let storage = Storage::in_memory().unwrap();
+                let storage = setup_storage();
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
@@ -1313,7 +1313,7 @@ mod tests {
 
             #[tokio::test]
             async fn returns_program_and_entry_points_for_known_class() {
-                let storage = Storage::in_memory().unwrap();
+                let storage = setup_storage();
 
                 let mut conn = storage.connection().unwrap();
                 let transaction = conn.transaction().unwrap();
@@ -1463,8 +1463,7 @@ mod tests {
             use crate::core::ContractClass;
             use futures::stream::TryStreamExt;
 
-            let storage = Storage::in_memory().unwrap();
-
+            let storage = setup_storage();
             let mut conn = storage.connection().unwrap();
             let transaction = conn.transaction().unwrap();
             let (contract_address, _class_hash, program, entry_points) =
@@ -1508,8 +1507,7 @@ mod tests {
             use crate::core::ContractCode;
             use futures::stream::TryStreamExt;
 
-            let storage = Storage::in_memory().unwrap();
-
+            let storage = setup_storage();
             let mut conn = storage.connection().unwrap();
             let transaction = conn.transaction().unwrap();
             let (contract_address, _class_hash, _program, _entry_points) =
@@ -1550,6 +1548,13 @@ mod tests {
     }
 
     mod contract_setup {
+        use crate::{
+            core::StorageValue,
+            ethereum::state_update::{ContractUpdate, StorageUpdate},
+            state::update_contract_state,
+            storage::StarknetBlocksBlockId,
+        };
+
         use super::*;
         use anyhow::Context;
         use bytes::Bytes;
@@ -1600,6 +1605,39 @@ mod tests {
             let program = compressor.finish()?;
 
             let program = base64::encode(program);
+
+            // insert a new block whose state includes the contract
+            let storage_addr = StorageAddress(StarkHash::from_be_slice(b"storage addr").unwrap());
+            let contract_update = ContractUpdate {
+                address: contract_address,
+                storage_updates: vec![StorageUpdate {
+                    address: storage_addr,
+                    value: StorageValue(StarkHash::from_be_slice(b"storage_value").unwrap()),
+                }],
+            };
+            let block2 = StarknetBlocksTable::get(
+                transaction,
+                StarknetBlocksBlockId::Number(StarknetBlockNumber(2)),
+            )
+            .unwrap()
+            .unwrap();
+            let mut global_tree = GlobalStateTree::load(transaction, block2.root).unwrap();
+            let contract_state_hash =
+                update_contract_state(&contract_update, &global_tree, transaction).unwrap();
+            global_tree
+                .set(contract_address, contract_state_hash)
+                .unwrap();
+
+            let block3 = StarknetBlock {
+                number: StarknetBlockNumber(3),
+                hash: StarknetBlockHash(StarkHash::from_be_slice(b"block 3 hash").unwrap()),
+                root: global_tree.apply().unwrap(),
+                timestamp: StarknetBlockTimestamp(3),
+                gas_price: GasPrice::from(3),
+                sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[3u8]).unwrap()),
+            };
+
+            StarknetBlocksTable::insert(transaction, &block3, None).unwrap();
 
             Ok((contract_address, hash, program, entry_points))
         }
