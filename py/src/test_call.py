@@ -13,6 +13,7 @@ import io
 import json
 import pytest
 import copy
+from starkware.starknet.definitions.general_config import StarknetChainId
 
 
 # this is from 64a7f6aed9757d3d8d6c28bd972df73272b0cb0a of cairo-lang
@@ -282,7 +283,6 @@ def test_positive_directly():
     """
     this is like test_success but does it directly with the do_call, instead of the json wrapping, which hides exceptions which come from upgrading.
     """
-    from starkware.starknet.definitions.general_config import StarknetChainId
 
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -412,8 +412,6 @@ def test_check_cairolang_version():
 
 
 def test_fee_estimate_on_positive_directly():
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
     # fee estimation is a new thing on top of a call, but returning only the estimated fee
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -491,8 +489,6 @@ def test_starknet_version_is_resolved():
 
 
 def test_call_on_pending_updated():
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
     con.execute("BEGIN")
@@ -525,8 +521,6 @@ def test_call_on_pending_updated():
 
 
 def test_call_on_pending_deployed():
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
     con = inmemory_with_tables()
     _ = populate_test_contract_with_132_on_3(con)
     con.execute("BEGIN")
@@ -573,8 +567,6 @@ def test_call_on_pending_deployed():
 
 
 def test_call_on_pending_deployed_through_existing():
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
     con = inmemory_with_tables()
     orig_contract_address = populate_test_contract_with_132_on_3(con)
     con.execute("BEGIN")
@@ -635,8 +627,6 @@ def test_call_on_pending_deployed_through_existing():
 
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
 def test_failing_mainnet_tx2():
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
     con = sqlite3.connect("../../crates/pathfinder/mainnet.sqlite")
     con.execute("BEGIN")
 
@@ -695,8 +685,6 @@ def test_failing_mainnet_tx2():
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_without_deployed():
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
     con = sqlite3.connect("../../goerli.sqlite")
     con.execute("BEGIN")
 
@@ -748,8 +736,6 @@ def test_positive_streamed_on_early_goerli_block_without_deployed():
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_with_deployed():
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
     con = sqlite3.connect("../../goerli.sqlite")
     con.execute("BEGIN")
 
