@@ -328,10 +328,7 @@ def required_chain(s):
 
 def maybe_pending_updates(s):
     if s is None:
-        # returning {} here doesn't matter, since this function will not be called
-        # in case there is no key. so we still need to read with default from the
-        # command.
-        return None
+        return {}
 
     # currently just using the format from sequencers get_state_update
     return dict(
@@ -357,8 +354,7 @@ def maybe_pending_updates(s):
 
 def maybe_pending_deployed(deployed_contracts):
     if deployed_contracts is None:
-        # see `maybe_pending_updates` for rationale
-        return None
+        return {}
 
     # this accepts the form used in the sequencer state update
     # which is "prop": [ { "address": "0x...", "contract_hash": "0x..." }, ... ]
