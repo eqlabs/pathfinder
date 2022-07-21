@@ -721,7 +721,7 @@ def test_positive_streamed_on_early_goerli_block_without_deployed():
         "entry_point_selector": "get_value",
         "calldata": [5],
         "gas_price": None,
-        "chain": StarknetChainId.MAINNET,
+        "chain": StarknetChainId.TESTNET,
     }
 
     with_updates = copy.deepcopy(without_updates)
@@ -782,7 +782,7 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
         "entry_point_selector": "get_value",
         "calldata": [5],
         "gas_price": None,
-        "chain": StarknetChainId.MAINNET,
+        "chain": StarknetChainId.TESTNET,
     }
 
     with_updates = copy.deepcopy(without_updates)
