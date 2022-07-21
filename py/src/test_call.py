@@ -666,18 +666,11 @@ def test_failing_mainnet_tx2():
 
     print(_timings)
 
-    # this is wrong answer, but good enough for now
-    # assert output == {
-    #     "gas_consumed": 0,
-    #     "gas_price": 21367239423,
-    #     "overall_fee": 21858685929729,
-    # }
-
-    # this is correct
+    # this is correct in 0.9.1
     assert output == {
-        "gas_consumed": 8732,
+        "gas_consumed": 10083,
         "gas_price": 21367239423,
-        "overall_fee": 186590486623319,
+        "overall_fee": 215446943464081,
     }
 
     assert output["overall_fee"] == 0xA9B3FBAC7457
