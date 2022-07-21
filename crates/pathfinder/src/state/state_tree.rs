@@ -3,13 +3,14 @@
 //!
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 
+use bitvec::{order::Msb0, slice::BitSlice};
 use rusqlite::Transaction;
 
 use crate::{
     core::{
         ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
     },
-    state::merkle_tree::MerkleTree,
+    state::{merkle_node::Node, merkle_tree::MerkleTree},
     storage::merkle_tree::RcNodeStorage,
 };
 
@@ -41,6 +42,14 @@ impl<'a> ContractsStateTree<'a> {
     pub fn apply(self) -> anyhow::Result<ContractRoot> {
         let root = self.tree.commit()?;
         Ok(ContractRoot(root))
+    }
+
+    /// Traverse this tree using an iterative Depth First Search.
+    pub fn dfs<VisitorFn>(&self, visitor_fn: &mut VisitorFn)
+    where
+        VisitorFn: FnMut(&Node, &BitSlice<Msb0, u8>),
+    {
+        self.tree.dfs(visitor_fn)
     }
 }
 
@@ -75,5 +84,13 @@ impl<'a> GlobalStateTree<'a> {
     pub fn apply(self) -> anyhow::Result<GlobalRoot> {
         let root = self.tree.commit()?;
         Ok(GlobalRoot(root))
+    }
+
+    /// Traverse this tree using an iterative Depth First Search.
+    pub fn dfs<VisitorFn>(&self, visitor_fn: &mut VisitorFn)
+    where
+        VisitorFn: FnMut(&Node, &BitSlice<Msb0, u8>),
+    {
+        self.tree.dfs(visitor_fn)
     }
 }
