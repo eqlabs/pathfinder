@@ -567,7 +567,6 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
-            // chain doesn't matter here because we are not estimating any real transaction
             crate::core::Chain::Goerli,
         )
         .await
