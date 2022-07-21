@@ -53,22 +53,12 @@ impl From<crate::core::Chain> for UsedChain {
 
 /// Custom type for setting the serialization in stone, or at least same as python code.
 #[derive(Debug)]
-pub struct ContractUpdatesWrapper<'a>(&'a HashMap<ContractAddress, Vec<StorageDiff>>);
+pub struct ContractUpdatesWrapper<'a>(Option<&'a HashMap<ContractAddress, Vec<StorageDiff>>>);
 
 impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for ContractUpdatesWrapper<'a> {
     fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
-        lazy_static::lazy_static! {
-            static ref EMPTY_MAP: HashMap<
-                ContractAddress,
-                Vec<StorageDiff>,
-            > = HashMap::new();
-        }
-
-        if let Some(u) = u {
-            ContractUpdatesWrapper(&u.state_diff.storage_diffs)
-        } else {
-            ContractUpdatesWrapper(&EMPTY_MAP)
-        }
+        let map = u.map(|x| &x.state_diff.storage_diffs);
+        ContractUpdatesWrapper(map)
     }
 }
 
@@ -78,11 +68,16 @@ impl<'a> serde::Serialize for ContractUpdatesWrapper<'a> {
         S: serde::Serializer,
     {
         use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(self.0.len()))?;
-        for (address, diffs) in self.0 {
-            map.serialize_entry(address, &DiffsWrapper(diffs))?;
+
+        if let Some(diff) = self.0 {
+            let mut map = serializer.serialize_map(Some(diff.len()))?;
+            for (address, diffs) in diff {
+                map.serialize_entry(address, &DiffsWrapper(diffs))?;
+            }
+            map.end()
+        } else {
+            serializer.serialize_none()
         }
-        map.end()
     }
 }
 
@@ -119,15 +114,12 @@ impl<'a> serde::Serialize for DiffElement<'a> {
 
 /// Custom type for setting the serialization in stone, or at least same as python code.
 #[derive(Debug)]
-pub struct DeployedContractsWrapper<'a>(&'a [Contract]);
+pub struct DeployedContractsWrapper<'a>(Option<&'a [Contract]>);
 
 impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for DeployedContractsWrapper<'a> {
     fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
-        if let Some(u) = u {
-            DeployedContractsWrapper(&u.state_diff.deployed_contracts)
-        } else {
-            DeployedContractsWrapper(&[])
-        }
+        let cs = u.map(|u| u.state_diff.deployed_contracts.as_slice());
+        DeployedContractsWrapper(cs)
     }
 }
 
@@ -137,11 +129,15 @@ impl<'a> serde::Serialize for DeployedContractsWrapper<'a> {
         S: serde::Serializer,
     {
         use serde::ser::SerializeSeq;
-        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-        for contract in self.0 {
-            seq.serialize_element(&DeployedContractElement(contract))?;
+        if let Some(cs) = self.0 {
+            let mut seq = serializer.serialize_seq(Some(cs.len()))?;
+            for contract in cs {
+                seq.serialize_element(&DeployedContractElement(contract))?;
+            }
+            seq.end()
+        } else {
+            serializer.serialize_none()
         }
-        seq.end()
     }
 }
 
@@ -252,7 +248,7 @@ mod tests {
     use stark_hash::StarkHash;
 
     #[test]
-    fn serialize_updates() {
+    fn serialize_some_updates() {
         use super::ContractUpdatesWrapper;
         use crate::core::{ContractAddress, StorageAddress, StorageValue};
         use crate::sequencer::reply::state_update::StorageDiff;
@@ -275,12 +271,22 @@ mod tests {
             );
             map
         };
-        let s = serde_json::to_string(&ContractUpdatesWrapper(&map)).unwrap();
+        let s = serde_json::to_string(&ContractUpdatesWrapper(Some(&map))).unwrap();
         assert_eq!(expected, s);
     }
 
     #[test]
-    fn serialize_deployed_contracts() {
+    fn serialize_none_updates() {
+        use super::ContractUpdatesWrapper;
+
+        // this could be an empty object just as well
+        let expected = "null";
+        let s = serde_json::to_string(&ContractUpdatesWrapper(None)).unwrap();
+        assert_eq!(expected, s);
+    }
+
+    #[test]
+    fn serialize_some_deployed_contracts() {
         use super::DeployedContractsWrapper;
         use crate::core::{ClassHash, ContractAddress};
         use crate::sequencer::reply::state_update::Contract;
@@ -300,7 +306,22 @@ mod tests {
                 .unwrap(),
             ),
         }];
-        let s = serde_json::to_string(&DeployedContractsWrapper(&contracts)).unwrap();
+        let s = serde_json::to_string(&DeployedContractsWrapper(Some(&contracts))).unwrap();
+        assert_eq!(expected, s);
+
+        // this again could be null or []; it doesn't really have any meaning over at python side,
+        // nor is it coupled to the updated contracts value in any way
+        let s = serde_json::to_string(&DeployedContractsWrapper(Some(&[]))).unwrap();
+        assert_eq!("[]", s);
+    }
+
+    #[test]
+    fn serialize_none_deployed_contracts() {
+        use super::DeployedContractsWrapper;
+
+        // in python's view, this is an optional, whichever [] or null would work
+        let expected = r#"null"#;
+        let s = serde_json::to_string(&DeployedContractsWrapper(None)).unwrap();
         assert_eq!(expected, s);
     }
 
