@@ -699,15 +699,9 @@ async def do_call(
     for class_hash in pending_deployed.values():
         class_hashes.add(class_hash)
 
-    state_selector = StateSelector(
-        contract_addresses,
-        # we keep setting this to empty because we assume that the pending downloader
-        # has already stored all declared classes locally
-        class_hashes,
-    )
-    carried_state = await shared_state.get_filled_carried_state(
-        ffc, state_selector=state_selector
-    )
+    state_selector = StateSelector(contract_addresses, class_hashes)
+
+    carried_state = await shared_state.get_filled_carried_state(ffc, state_selector)
 
     for addr, contract_hash in pending_deployed.items():
         # using ContractState.empty will write zero to database, which we fail as intended
