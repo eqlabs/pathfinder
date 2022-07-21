@@ -17,7 +17,7 @@ use crate::{
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
-    state::SyncState,
+    state::{state_tree::GlobalStateTree, SyncState},
     storage::{
         ContractsTable, EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
         StarknetEventsTable, StarknetTransactionsTable, Storage,
@@ -262,8 +262,7 @@ impl RpcApi {
         block_id: BlockId,
     ) -> RpcResult<StorageValue> {
         use crate::{
-            core::StorageAddress,
-            state::state_tree::{ContractsStateTree, GlobalStateTree},
+            core::StorageAddress, state::state_tree::ContractsStateTree,
             storage::ContractsStateTable,
         };
         use stark_hash::OverflowError;
@@ -531,8 +530,10 @@ impl RpcApi {
         use crate::storage::ContractCodeTable;
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -572,8 +573,10 @@ impl RpcApi {
         use crate::storage::ContractCodeTable;
 
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -600,13 +603,27 @@ impl RpcApi {
     }
 
     /// Get the class hash of a specific contract.
+    ///
+    /// FIXME: add support for pending
     pub async fn get_class_hash_at(
         &self,
+        block_id: BlockId,
         contract_address: ContractAddress,
     ) -> RpcResult<ClassHash> {
+        let block_id = match block_id {
+            BlockId::Hash(hash) => hash.into(),
+            BlockId::Number(number) => number.into(),
+            BlockId::Latest => StarknetBlocksBlockId::Latest,
+            BlockId::Pending => {
+                return Err(ErrorCode::InvalidBlockId.into());
+            }
+        };
+
         let storage = self.storage.clone();
+        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")
@@ -621,7 +638,16 @@ impl RpcApi {
                 .map_err(internal_server_error)?;
 
             match class_hash {
-                Some(hash) => Ok(hash),
+                Some(class_hash) => {
+                    // check if contract existed at block
+                    match Self::contract_exists_at_block_id(&tx, contract_address, block_id)
+                        .context("Checking contract existence at block")
+                        .map_err(internal_server_error)?
+                    {
+                        false => Err(ErrorCode::ContractNotFound.into()),
+                        true => Ok(class_hash),
+                    }
+                }
                 None => Err(ErrorCode::ContractNotFound.into()),
             }
         });
@@ -632,13 +658,42 @@ impl RpcApi {
             .and_then(|x| x)
     }
 
+    fn contract_exists_at_block_id(
+        tx: &rusqlite::Transaction<'_>,
+        contract_address: ContractAddress,
+        block_id: StarknetBlocksBlockId,
+    ) -> anyhow::Result<bool> {
+        let global_root = match StarknetBlocksTable::get_root(tx, block_id)? {
+            Some(root) => root,
+            None => return Ok(false),
+        };
+        let global_state_tree =
+            GlobalStateTree::load(tx, global_root).context("Global state tree")?;
+        let contract_state_hash = global_state_tree
+            .get(contract_address)
+            .context("Contract ")?;
+        Ok(contract_state_hash.0 != StarkHash::ZERO)
+    }
+
     /// Get the class of a specific contract.
     /// `contract_address` is the address of the contract to read from.
+    ///
+    /// FIXME: add support for pending
     pub async fn get_class_at(
         &self,
+        block_id: BlockId,
         contract_address: ContractAddress,
     ) -> RpcResult<ContractClass> {
         use crate::storage::ContractCodeTable;
+
+        let block_id = match block_id {
+            BlockId::Hash(hash) => hash.into(),
+            BlockId::Number(number) => number.into(),
+            BlockId::Latest => StarknetBlocksBlockId::Latest,
+            BlockId::Pending => {
+                return Err(ErrorCode::InvalidBlockId.into());
+            }
+        };
 
         let storage = self.storage.clone();
         let span = tracing::Span::current();
@@ -659,7 +714,15 @@ impl RpcApi {
                 .map_err(internal_server_error)?;
 
             let class_hash = match class_hash {
-                Some(hash) => hash,
+                Some(class_hash) => {
+                    match Self::contract_exists_at_block_id(&tx, contract_address, block_id)
+                        .context("Checking contract existence at block")
+                        .map_err(internal_server_error)?
+                    {
+                        false => return Err(ErrorCode::ContractNotFound.into()),
+                        true => class_hash,
+                    }
+                }
                 None => return Err(ErrorCode::ContractNotFound.into()),
             };
 
