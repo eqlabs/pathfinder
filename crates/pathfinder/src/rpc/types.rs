@@ -503,7 +503,7 @@ pub mod reply {
         #[serde(deny_unknown_fields)]
         pub struct StateDiff {
             storage_diffs: Vec<StorageDiff>,
-            delared_contracts: Vec<DeclaredContract>,
+            declared_contracts: Vec<DeclaredContract>,
             deployed_contracts: Vec<DeployedContract>,
             nonces: Vec<Nonce>,
         }
@@ -522,9 +522,19 @@ pub mod reply {
                                 .collect(),
                         })
                         .collect(),
-                    // FIXME NOW!
-                    delared_contracts: vec![],  // x.deployed_contracts,
-                    deployed_contracts: vec![], // x.declared_contracts,
+                    declared_contracts: x
+                        .declared_contracts
+                        .into_iter()
+                        .map(|class_hash| DeclaredContract { class_hash })
+                        .collect(),
+                    deployed_contracts: x
+                        .deployed_contracts
+                        .into_iter()
+                        .map(|deployed_contract| DeployedContract {
+                            address: deployed_contract.address,
+                            class_hash: deployed_contract.contract_hash,
+                        })
+                        .collect(),
                     // FIXME once the sequencer API provides the nonces
                     nonces: vec![],
                 }
@@ -553,7 +563,7 @@ pub mod reply {
                         })
                         .collect(),
                     // FIXME
-                    delared_contracts: vec![],
+                    declared_contracts: vec![],
                     deployed_contracts: x
                         .deployed_contracts
                         .into_iter()
