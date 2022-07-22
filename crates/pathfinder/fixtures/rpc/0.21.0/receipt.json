@@ -1,0 +1,53 @@
+[
+    {
+        "txn_hash": "0x0",
+        "actual_fee": "0x1",
+        "status": "ACCEPTED_ON_L1",
+        "statusData": "blah",
+        "messages_sent": [
+            {
+                "to_address": "0x2",
+                "payload": [
+                    "0x3"
+                ]
+            }
+        ],
+        "l1_origin_message": {
+            "from_address": "0x4",
+            "payload": [
+                "0x5"
+            ]
+        },
+        "events": [
+            {
+                "from_address": "0x6",
+                "keys": [
+                    "0x7"
+                ],
+                "data": [
+                    "0x8"
+                ]
+            }
+        ]
+    },
+    {
+        "txn_hash": "0x0",
+        "actual_fee": "0x1",
+        "status": "ACCEPTED_ON_L1",
+        "messages_sent": [
+            {
+                "to_address": "0x2",
+                "payload": [
+                    "0x3"
+                ]
+            }
+        ],
+        "events": []
+    },
+    {
+        "txn_hash": "0x0",
+        "actual_fee": "0x1",
+        "status": "ACCEPTED_ON_L1",
+        "statusData": "blah"
+    }
+]

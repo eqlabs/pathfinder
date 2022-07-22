@@ -753,8 +753,8 @@ pub mod reply {
         #[serde(deny_unknown_fields)]
         pub struct MessageToL1 {
             #[serde_as(as = "EthereumAddressAsHexStr")]
-            to_address: EthereumAddress,
-            payload: Vec<L2ToL1MessagePayloadElem>,
+            pub to_address: EthereumAddress,
+            pub payload: Vec<L2ToL1MessagePayloadElem>,
         }
 
         impl From<L2ToL1Message> for MessageToL1 {
@@ -773,8 +773,8 @@ pub mod reply {
         #[serde(deny_unknown_fields)]
         pub struct MessageToL2 {
             #[serde_as(as = "EthereumAddressAsHexStr")]
-            from_address: EthereumAddress,
-            payload: Vec<L1ToL2MessagePayloadElem>,
+            pub from_address: EthereumAddress,
+            pub payload: Vec<L1ToL2MessagePayloadElem>,
         }
 
         impl From<L1ToL2Message> for MessageToL2 {
@@ -1051,5 +1051,173 @@ pub mod reply {
         #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
         #[serde(rename = "overall_fee")]
         pub fee: web3::types::H256,
+    }
+
+    #[cfg(test)]
+    mod tests {
+        macro_rules! fixture {
+            ($file_name:literal) => {
+                include_str!(concat!("../../fixtures/rpc/0.21.0/", $file_name))
+                    .replace(&[' ', '\n'], "")
+            };
+        }
+
+        /// The aim of these tests is to check if serialization works correctly
+        /// **without resorting to deserialization to prepare the test data**,
+        /// which in itself could contain an "opposite phase" bug that cancels out.
+        ///
+        /// Deserialization is tested btw, because the fixture and the data is already available.
+        ///
+        /// These tests were added due to recurring regressions stemming from, among others:
+        /// - `serde(flatten)` and it's side-effects (for example when used in conjunction with `skip_serializing_none`),
+        /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
+        mod serde {
+            use super::super::*;
+            use pretty_assertions::assert_eq;
+
+            #[test]
+            fn block_and_transaction() {
+                impl Block {
+                    pub fn test_data() -> Self {
+                        let common = CommonTransactionProperties {
+                            txn_hash: StarknetTransactionHash::from_hex_str("0x4").unwrap(),
+                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x5)),
+                            version: TransactionVersion(web3::types::H256::from_low_u64_be(0x6)),
+                            signature: vec![TransactionSignatureElem::from_hex_str("0x7").unwrap()],
+                            nonce: TransactionNonce::from_hex_str("0x8").unwrap(),
+                        };
+                        Self {
+                            status: BlockStatus::AcceptedOnL1,
+                            block_hash: Some(StarknetBlockHash::from_hex_str("0x0").unwrap()),
+                            parent_hash: StarknetBlockHash::from_hex_str("0x1").unwrap(),
+                            block_number: Some(StarknetBlockNumber(0)),
+                            new_root: Some(GlobalRoot::from_hex_str("0x2").unwrap()),
+                            timestamp: StarknetBlockTimestamp(1),
+                            sequencer_address: SequencerAddress::from_hex_str("0x3").unwrap(),
+                            transactions: Transactions::Full(vec![
+                                Transaction::Declare(DeclareTransaction {
+                                    common: common.clone(),
+                                    class_hash: ClassHash::from_hex_str("0x9").unwrap(),
+                                    sender_address: ContractAddress::from_hex_str("0xa").unwrap(),
+                                }),
+                                Transaction::Invoke(InvokeTransaction {
+                                    common,
+                                    contract_address: ContractAddress::from_hex_str("0xb").unwrap(),
+                                    entry_point_selector: EntryPoint::from_hex_str("0xc").unwrap(),
+                                    calldata: vec![CallParam::from_hex_str("0xd").unwrap()],
+                                }),
+                                Transaction::Deploy(DeployTransaction {
+                                    txn_hash: StarknetTransactionHash::from_hex_str("0xe").unwrap(),
+                                    contract_address: ContractAddress::from_hex_str("0xf").unwrap(),
+                                    class_hash: ClassHash::from_hex_str("0x10").unwrap(),
+                                    constructor_calldata: vec![ConstructorParam::from_hex_str(
+                                        "0x11",
+                                    )
+                                    .unwrap()],
+                                }),
+                            ]),
+                        }
+                    }
+                }
+
+                let data = vec![
+                    // All fields populated
+                    Block::test_data(),
+                    // All optional are None
+                    Block {
+                        block_hash: None,
+                        block_number: None,
+                        new_root: None,
+                        transactions: Transactions::HashesOnly(vec![
+                            StarknetTransactionHash::from_hex_str("0x4").unwrap(),
+                        ]),
+                        ..Block::test_data()
+                    },
+                ];
+
+                assert_eq!(
+                    serde_json::to_string(&data).unwrap(),
+                    fixture!("block.json")
+                );
+                assert_eq!(
+                    serde_json::from_str::<Vec<Block>>(&fixture!("block.json")).unwrap(),
+                    data
+                );
+            }
+
+            #[test]
+            fn receipt() {
+                impl CommonTransactionReceiptProperties {
+                    pub fn test_data() -> Self {
+                        Self {
+                            txn_hash: StarknetTransactionHash::from_hex_str("0x0").unwrap(),
+                            actual_fee: Fee(web3::types::H128::from_low_u64_be(0x1)),
+                            status: TransactionStatus::AcceptedOnL1,
+                            status_data: Some("blah".to_string()),
+                        }
+                    }
+                }
+
+                impl InvokeTransactionReceipt {
+                    pub fn test_data() -> Self {
+                        Self {
+                            common: CommonTransactionReceiptProperties::test_data(),
+                            messages_sent: vec![transaction_receipt::MessageToL1 {
+                                to_address: crate::core::EthereumAddress(
+                                    web3::types::H160::from_low_u64_be(0x2),
+                                ),
+                                payload: vec![crate::core::L2ToL1MessagePayloadElem::from_hex_str(
+                                    "0x3",
+                                )
+                                .unwrap()],
+                            }],
+                            l1_origin_message: Some(transaction_receipt::MessageToL2 {
+                                from_address: crate::core::EthereumAddress(
+                                    web3::types::H160::from_low_u64_be(0x4),
+                                ),
+                                payload: vec![crate::core::L1ToL2MessagePayloadElem::from_hex_str(
+                                    "0x5",
+                                )
+                                .unwrap()],
+                            }),
+                            events: vec![transaction_receipt::Event {
+                                from_address: ContractAddress::from_hex_str("0x6").unwrap(),
+                                keys: vec![EventKey::from_hex_str("0x7").unwrap()],
+                                data: vec![EventData::from_hex_str("0x8").unwrap()],
+                            }],
+                        }
+                    }
+                }
+
+                let data = vec![
+                    // All fields populated
+                    TransactionReceipt::Invoke(InvokeTransactionReceipt::test_data()),
+                    // All optional are None
+                    TransactionReceipt::Invoke(InvokeTransactionReceipt {
+                        common: CommonTransactionReceiptProperties {
+                            status_data: None,
+                            ..CommonTransactionReceiptProperties::test_data()
+                        },
+                        l1_origin_message: None,
+                        events: vec![],
+                        ..InvokeTransactionReceipt::test_data()
+                    }),
+                    // Somewhat redundant, but want to exhaust the variants
+                    TransactionReceipt::DeclareOrDeploy(DeclareOrDeployTransactionReceipt {
+                        common: CommonTransactionReceiptProperties::test_data(),
+                    }),
+                ];
+
+                assert_eq!(
+                    serde_json::to_string(&data).unwrap(),
+                    fixture!("receipt.json")
+                );
+                assert_eq!(
+                    serde_json::from_str::<Vec<TransactionReceipt>>(&fixture!("receipt.json"))
+                        .unwrap(),
+                    data
+                );
+            }
+        }
     }
 }

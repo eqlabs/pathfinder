@@ -411,9 +411,11 @@ impl ClientApi for Client {
 pub mod test_utils {
     use crate::{
         core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, EntryPoint, StarknetBlockHash,
-            StarknetBlockNumber, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
-            StorageValue,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, EntryPoint, EventData,
+            EventKey, GlobalRoot, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
+            StarknetTransactionIndex, StorageAddress, StorageValue, TransactionNonce,
+            TransactionSignatureElem,
         },
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
     };
@@ -434,10 +436,18 @@ pub mod test_utils {
     impl_from_hex_str!(ConstructorParam);
     impl_from_hex_str!(ContractAddress);
     impl_from_hex_str!(EntryPoint);
+    impl_from_hex_str!(EventData);
+    impl_from_hex_str!(EventKey);
+    impl_from_hex_str!(GlobalRoot);
+    impl_from_hex_str!(L1ToL2MessagePayloadElem);
+    impl_from_hex_str!(L2ToL1MessagePayloadElem);
+    impl_from_hex_str!(SequencerAddress);
     impl_from_hex_str!(StarknetBlockHash);
     impl_from_hex_str!(StarknetTransactionHash);
     impl_from_hex_str!(StorageAddress);
     impl_from_hex_str!(StorageValue);
+    impl_from_hex_str!(TransactionSignatureElem);
+    impl_from_hex_str!(TransactionNonce);
 
     lazy_static::lazy_static! {
         pub static ref GENESIS_BLOCK_NUMBER: BlockNumberOrTag = BlockNumberOrTag::Number(StarknetBlockNumber(0u64));
