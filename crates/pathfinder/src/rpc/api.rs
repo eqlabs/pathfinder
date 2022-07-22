@@ -66,12 +66,6 @@ pub enum BlockResponseScope {
     FullTransactions,
 }
 
-impl Default for BlockResponseScope {
-    fn default() -> Self {
-        BlockResponseScope::TransactionHashes
-    }
-}
-
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
 impl RpcApi {
     pub fn new(
