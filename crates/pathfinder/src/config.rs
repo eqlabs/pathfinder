@@ -27,6 +27,8 @@ pub enum ConfigOption {
     PythonSubprocesses,
     /// Enable SQLite write-ahead logging.
     EnableSQLiteWriteAheadLogging,
+    /// Enable pending polling.
+    PollPending,
 }
 
 impl Display for ConfigOption {
@@ -41,6 +43,7 @@ impl Display for ConfigOption {
             ConfigOption::EnableSQLiteWriteAheadLogging => {
                 f.write_str("Enable SQLite write-ahead logging")
             }
+            ConfigOption::PollPending => f.write_str("Enable pending block polling"),
         }
     }
 }
@@ -69,6 +72,8 @@ pub struct Configuration {
     pub python_subprocesses: std::num::NonZeroUsize,
     /// Enable SQLite write-ahead logging.
     pub sqlite_wal: bool,
+    /// Enable pending polling.
+    pub poll_pending: bool,
 }
 
 impl Configuration {

@@ -14,6 +14,7 @@ const HTTP_RPC_ADDR_KEY: &str = "http-rpc";
 const SEQ_URL_KEY: &str = "sequencer-url";
 const PYTHON_SUBPROCESSES_KEY: &str = "python-subprocesses";
 const SQLITE_WAL: &str = "sqlite-wal";
+const POLL_PENDING: &str = "poll-pending";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -46,6 +47,7 @@ where
     let sequencer_url = args.value_of(SEQ_URL_KEY).map(|s| s.to_owned());
     let python_subprocesses = args.value_of(PYTHON_SUBPROCESSES_KEY).map(|s| s.to_owned());
     let sqlite_wal = args.value_of(SQLITE_WAL).map(|s| s.to_owned());
+    let poll_pending = args.value_of(POLL_PENDING).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
@@ -54,7 +56,8 @@ where
         .with(ConfigOption::DataDirectory, data_directory)
         .with(ConfigOption::SequencerHttpUrl, sequencer_url)
         .with(ConfigOption::PythonSubprocesses, python_subprocesses)
-        .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal);
+        .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal)
+        .with(ConfigOption::PollPending, poll_pending);
 
     Ok((config_filepath, cfg))
 }
@@ -136,10 +139,18 @@ Examples:
         .arg(
             Arg::new(SQLITE_WAL)
                 .long(SQLITE_WAL)
-               .help("Enable SQLite write-ahead logging")
-               .takes_value(true)
-               .value_name("TRUE/FALSE")
-               .env("PATHFINDER_SQLITE_WAL")
+                .help("Enable SQLite write-ahead logging")
+                .takes_value(true)
+                .value_name("TRUE/FALSE")
+                .env("PATHFINDER_SQLITE_WAL")
+        )
+        .arg(
+            Arg::new(POLL_PENDING)
+                .long(POLL_PENDING)
+                .help("Enable polling pending block")
+                .takes_value(true)
+                .value_name("TRUE/FALSE")
+                .env("PATHFINDER_POLL_PENDING")
         )
 }
 
@@ -163,6 +174,7 @@ mod tests {
         env::remove_var("PATHFINDER_SEQUENCER_URL");
         env::remove_var("PATHFINDER_PYTHON_SUBPROCESSES");
         env::remove_var("PATHFINDER_SQLITE_WAL");
+        env::remove_var("PATHFINDER_POLL_PENDING");
     }
 
     #[test]
@@ -336,6 +348,27 @@ mod tests {
             cfg.take(ConfigOption::EnableSQLiteWriteAheadLogging),
             Some(value)
         );
+    }
+
+    #[test]
+    fn poll_pending_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--poll-pending", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::PollPending), Some(value));
+    }
+
+    #[test]
+    fn poll_pending_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_POLL_PENDING", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::PollPending), Some(value));
     }
 
     #[test]
