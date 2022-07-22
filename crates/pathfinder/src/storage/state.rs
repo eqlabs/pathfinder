@@ -12,6 +12,7 @@ use crate::{
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
     },
     ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
+    rpc::types::reply::StateUpdate,
     sequencer::reply::transaction,
 };
 
@@ -1159,6 +1160,61 @@ impl ContractsStateTable {
         let root = ContractRoot(root);
 
         Ok(Some(root))
+    }
+}
+
+/// Stores all known [Starknet state updates][crate::rpc::types::reply::StateUpdate].
+pub struct StarknetStateUpdatesTable {}
+impl StarknetStateUpdatesTable {
+    /// Inserts a StarkNet state update accociated with a particular block into the [StarknetStateUpdatesTable].
+    ///
+    /// Overwrites existing data if the block hash already exists.
+    pub fn upsert(
+        tx: &Transaction<'_>,
+        block_hash: StarknetBlockHash,
+        state_update: &StateUpdate,
+    ) -> anyhow::Result<()> {
+        let serialized =
+            serde_json::to_vec(&state_update).context("Serialize Starknet state update")?;
+
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+        let compressed = compressor
+            .compress(&serialized)
+            .context("Compress Starknet state update")?;
+
+        tx.execute(r"INSERT OR REPLACE INTO starknet_state_updates (block_hash, data) VALUES (:block_hash, :data)",
+        named_params![
+            ":block_hash": block_hash.0.as_be_bytes(),
+            ":data": &compressed,
+        ]).context("Insert state update data into state updates table")?;
+
+        Ok(())
+    }
+
+    /// Gets a StarkNet state update for block.
+    pub fn get(
+        tx: &Transaction<'_>,
+        block_hash: StarknetBlockHash,
+    ) -> anyhow::Result<Option<transaction::Transaction>> {
+        let mut stmt = tx
+            .prepare("SELECT data FROM starknet_state_updates WHERE block_hash = ?1")
+            .context("Preparing statement")?;
+
+        let mut rows = stmt
+            .query(params![block_hash.0.as_be_bytes()])
+            .context("Executing query")?;
+
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let state_update = row.get_ref_unwrap(0).as_blob()?;
+        let state_update = zstd::decode_all(state_update).context("Decompressing state update")?;
+        let state_update =
+            serde_json::from_slice(&state_update).context("Deserializing state update")?;
+
+        Ok(Some(state_update))
     }
 }
 

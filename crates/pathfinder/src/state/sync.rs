@@ -618,7 +618,6 @@ async fn l2_update(
             block.starknet_version.as_deref(),
         )
         .context("Insert block into database")?;
-
         // Insert the transactions.
         anyhow::ensure!(
             block.transactions.len() == block.transaction_receipts.len(),
