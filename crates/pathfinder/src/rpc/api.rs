@@ -11,7 +11,7 @@ use crate::{
     rpc::types::{
         reply::{
             Block, BlockStatus, ErrorCode, FeeEstimate, GetEventsResult, Syncing, Transaction,
-            TransactionReceipt,
+            TransactionAndReceipt, TransactionAndReceiptMismatchError, TransactionReceipt,
         },
         request::{BlockResponseScope, Call, ContractCall, EventFilter, OverflowingStorageAddress},
         BlockHashOrTag, BlockNumberOrTag, Tag,
@@ -107,7 +107,9 @@ impl RpcApi {
 
                 let scope = requested_scope.unwrap_or_default();
 
-                return Ok(Block::from_sequencer_scoped(block, scope));
+                let block = Block::try_from_sequencer_scoped(block, scope)
+                    .map_err(internal_server_error)?;
+                return Ok(block);
             }
             BlockHashOrTag::Hash(hash) => hash.into(),
             BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
@@ -173,47 +175,32 @@ impl RpcApi {
                 .map_err(internal_server_error)?;
 
         use super::types::reply;
-        let transactions = match scope {
-            BlockResponseScope::TransactionHashes => reply::Transactions::HashesOnly(
+        match scope {
+            BlockResponseScope::TransactionHashes => Ok(reply::Transactions::HashesOnly(
                 transactions_receipts
                     .into_iter()
                     .map(|(t, _)| t.hash())
                     .collect(),
-            ),
-            BlockResponseScope::FullTransactions => reply::Transactions::Full(
+            )),
+            BlockResponseScope::FullTransactions => Ok(reply::Transactions::Full(
                 transactions_receipts
                     .into_iter()
                     .map(|(t, _)| t.into())
                     .collect(),
-            ),
-            BlockResponseScope::FullTransactionsAndReceipts => {
-                reply::Transactions::FullWithReceipts(
-                    transactions_receipts
-                        .into_iter()
-                        .map(|(t, r)| {
-                            let t: Transaction = t.into();
-                            let r = TransactionReceipt::with_block_status(r, block_status);
-
-                            reply::TransactionAndReceipt {
-                                txn_hash: t.txn_hash,
-                                contract_address: t.contract_address,
-                                entry_point_selector: t.entry_point_selector,
-                                calldata: t.calldata,
-                                max_fee: t.max_fee,
-                                actual_fee: r.actual_fee,
-                                status: r.status,
-                                status_data: r.status_data,
-                                messages_sent: r.messages_sent,
-                                l1_origin_message: r.l1_origin_message,
-                                events: r.events,
-                            }
-                        })
-                        .collect(),
-                )
-            }
-        };
-
-        Ok(transactions)
+            )),
+            BlockResponseScope::FullTransactionsAndReceipts => transactions_receipts
+                .into_iter()
+                .map(|(t, r)| {
+                    let receipt = TransactionReceipt::with_block_status(r, block_status, &t);
+                    let txn: Transaction = t.into();
+                    let result: Result<TransactionAndReceipt, TransactionAndReceiptMismatchError> =
+                        (txn, receipt).try_into();
+                    result
+                })
+                .collect::<Result<Vec<TransactionAndReceipt>, TransactionAndReceiptMismatchError>>()
+                .map_err(internal_server_error)
+                .map(reply::Transactions::FullWithReceipts),
+        }
     }
 
     /// Get block information given the block number (its height).
@@ -235,7 +222,9 @@ impl RpcApi {
 
                 let scope = requested_scope.unwrap_or_default();
 
-                return Ok(Block::from_sequencer_scoped(block, scope));
+                let block = Block::try_from_sequencer_scoped(block, scope)
+                    .map_err(internal_server_error)?;
+                return Ok(block);
             }
         };
 
@@ -666,7 +655,18 @@ impl RpcApi {
 
                     let block_status = Self::get_block_status(&db_tx, block.number)?;
 
-                    Ok(TransactionReceipt::with_block_status(receipt, block_status))
+                    // We require the transaction so that we can return the right RPC type for the receipt.
+                    match StarknetTransactionsTable::get_transaction(&db_tx, transaction_hash)
+                        .context("Reading transaction from database")
+                        .map_err(internal_server_error)?
+                    {
+                        Some(transaction) => Ok(TransactionReceipt::with_block_status(
+                            receipt,
+                            block_status,
+                            &transaction,
+                        )),
+                        None => Err(ErrorCode::InvalidTransactionHash.into()),
+                    }
                 }
                 None => Err(ErrorCode::InvalidTransactionHash.into()),
             }

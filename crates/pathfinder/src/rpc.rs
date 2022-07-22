@@ -1272,7 +1272,7 @@ mod tests {
                     .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
-                assert_eq!(transaction.txn_hash, hash);
+                assert_eq!(transaction.hash(), hash);
             }
 
             #[tokio::test]
@@ -1288,7 +1288,7 @@ mod tests {
                     .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
-                assert_eq!(transaction.txn_hash, hash);
+                assert_eq!(transaction.hash(), hash);
             }
         }
 
@@ -1330,7 +1330,7 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                txn.txn_hash,
+                txn.hash(),
                 StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap())
             )
         }
@@ -1352,7 +1352,7 @@ mod tests {
                     .await
                     .unwrap();
                 assert_eq!(
-                    txn.txn_hash,
+                    txn.hash(),
                     StarknetTransactionHash(StarkHash::from_be_slice(b"txn 3").unwrap())
                 );
             }
@@ -1370,7 +1370,7 @@ mod tests {
                     .await
                     .unwrap();
                 assert_eq!(
-                    txn.txn_hash,
+                    txn.hash(),
                     StarknetTransactionHash(StarkHash::from_be_slice(b"txn 3").unwrap())
                 );
             }
@@ -1443,7 +1443,7 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                txn.txn_hash,
+                txn.hash(),
                 StarknetTransactionHash(StarkHash::from_be_slice(b"txn 0").unwrap())
             );
         }
@@ -1465,7 +1465,7 @@ mod tests {
                     .await
                     .unwrap();
                 assert_eq!(
-                    txn.txn_hash,
+                    txn.hash(),
                     StarknetTransactionHash(StarkHash::from_be_slice(b"txn 3").unwrap())
                 );
             }
@@ -1483,7 +1483,7 @@ mod tests {
                     .await
                     .unwrap();
                 assert_eq!(
-                    txn.txn_hash,
+                    txn.hash(),
                     StarknetTransactionHash(StarkHash::from_be_slice(b"txn 3").unwrap())
                 );
             }
@@ -1562,10 +1562,13 @@ mod tests {
                     .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                     .await
                     .unwrap();
-                assert_eq!(receipt.txn_hash, txn_hash);
-                assert_eq!(
-                    receipt.events[0].keys[0],
-                    EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())
+                assert_eq!(receipt.hash(), txn_hash);
+                assert_matches!(
+                    receipt,
+                    TransactionReceipt::Invoke(invoke) => assert_eq!(
+                        invoke.events[0].keys[0],
+                        EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())
+                    )
                 );
             }
 
@@ -1582,10 +1585,13 @@ mod tests {
                     .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                     .await
                     .unwrap();
-                assert_eq!(receipt.txn_hash, txn_hash);
-                assert_eq!(
-                    receipt.events[0].keys[0],
-                    EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())
+                assert_eq!(receipt.hash(), txn_hash);
+                assert_matches!(
+                    receipt,
+                    TransactionReceipt::Invoke(invoke) => assert_eq!(
+                        invoke.events[0].keys[0],
+                        EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())
+                    )
                 );
             }
         }

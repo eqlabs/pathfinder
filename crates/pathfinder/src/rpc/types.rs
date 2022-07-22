@@ -199,13 +199,14 @@ pub mod reply {
     use super::request::BlockResponseScope;
     use crate::{
         core::{
-            CallParam, ClassHash, ContractAddress, EntryPoint, EventData, EventKey, Fee, GasPrice,
-            GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetTransactionHash,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, EntryPoint, EventData,
+            EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
+            TransactionSignatureElem, TransactionVersion,
         },
         rpc::{
             api::RawBlock,
-            serde::{FeeAsHexStr, GasPriceAsHexStr},
+            serde::{FeeAsHexStr, GasPriceAsHexStr, TransactionVersionAsHexStr},
         },
         sequencer,
     };
@@ -254,10 +255,7 @@ pub mod reply {
     #[serde(deny_unknown_fields)]
     #[serde(untagged)]
     pub enum Transactions {
-        HashesOnly(Vec<StarknetTransactionHash>),
-        // 1. The following two variants can come in any order as long
-        // as they both internally do `#[serde(deny_unknown_fields)]`.
-        // 2. Otherwise the larger variant, `FullWithReceipts` needs
+        // The larger variant, `FullWithReceipts` needs
         // to come __before__ `Full`  as it contains a structure
         // which has the same fields as `Full` plus some additional fields.
         // Which means that `serde` would always wrongly deserialize
@@ -265,59 +263,7 @@ pub mod reply {
         // (ie. smaller variant first, bigger next).
         FullWithReceipts(Vec<TransactionAndReceipt>),
         Full(Vec<Transaction>),
-    }
-
-    #[cfg(test)]
-    mod transactions {
-        /// This enum is not deserialized in production however
-        /// we rely on deserialization into the correct variant
-        /// in some RPC tests.
-        mod deserialize {
-            use super::super::Transactions;
-            use assert_matches::assert_matches;
-
-            #[test]
-            fn hashes_only() {
-                assert_matches!(
-                    serde_json::from_str::<Transactions>(r#"["0x01"]"#).unwrap(),
-                    Transactions::HashesOnly(_)
-                );
-            }
-
-            #[test]
-            fn full_transactions_only() {
-                assert_matches!(
-                    serde_json::from_str::<Transactions>(
-                        r#"[{"txn_hash":"0x01","contract_address":"0x02"}]"#
-                    )
-                    .unwrap(),
-                    Transactions::Full(_)
-                );
-            }
-
-            #[test]
-            fn full_transactions_and_receipts() {
-                assert_matches!(
-                    serde_json::from_str::<Transactions>(
-                        r#"[{"txn_hash":"0x01","contract_address":"0x02","status":"RECEIVED","status_data":"","messages_sent":[],"events":[]}]"#
-                    )
-                    .unwrap(),
-                    Transactions::FullWithReceipts(_)
-                );
-            }
-
-            #[test]
-            fn unknown_fields_are_denied() {
-                serde_json::from_str::<Transactions>(
-                    r#"[{"txn_hash":"0x01","contract_address":"0x02","denied":0}]"#,
-                )
-                .unwrap_err();
-                serde_json::from_str::<Transactions>(
-                    r#"[{"txn_hash":"0x01","contract_address":"0x02","status":"RECEIVED","status_data":"","messages_sent":[],"events":[],"denied":0}]"#,
-                )
-                .unwrap_err();
-            }
-        }
+        HashesOnly(Vec<StarknetTransactionHash>),
     }
 
     /// L2 Block as returned by the RPC API.
@@ -359,10 +305,10 @@ pub mod reply {
         }
 
         /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
-        pub fn from_sequencer_scoped(
+        pub fn try_from_sequencer_scoped(
             block: sequencer::reply::MaybePendingBlock,
             scope: BlockResponseScope,
-        ) -> Self {
+        ) -> Result<Self, TransactionAndReceiptMismatchError> {
             let transactions = match scope {
                 BlockResponseScope::TransactionHashes => {
                     let hashes = block.transactions().iter().map(|t| t.hash()).collect();
@@ -374,39 +320,28 @@ pub mod reply {
                     Transactions::Full(transactions)
                 }
                 BlockResponseScope::FullTransactionsAndReceipts => {
-                    let with_receipts = block
+                    block
                         .transactions()
                         .iter()
                         .zip(block.receipts().iter())
                         .map(|(t, r)| {
-                            let t: Transaction = t.into();
-                            let r = TransactionReceipt::with_block_status(
+                            let receipt = TransactionReceipt::with_block_status(
                                 r.clone(),
                                 block.status().into(),
+                                t,
                             );
-
-                            TransactionAndReceipt {
-                                txn_hash: t.txn_hash,
-                                contract_address: t.contract_address,
-                                entry_point_selector: t.entry_point_selector,
-                                calldata: t.calldata,
-                                max_fee: t.max_fee,
-                                actual_fee: r.actual_fee,
-                                status: r.status,
-                                status_data: r.status_data,
-                                messages_sent: r.messages_sent,
-                                l1_origin_message: r.l1_origin_message,
-                                events: r.events,
-                            }
+                            let txn: Transaction = t.into();
+                            let result: Result<TransactionAndReceipt, TransactionAndReceiptMismatchError>  = (txn, receipt).try_into();
+                            result
                         })
-                        .collect();
-                    Transactions::FullWithReceipts(with_receipts)
+                        .collect::<Result<Vec<TransactionAndReceipt>, TransactionAndReceiptMismatchError>>()
+                        .map(Transactions::FullWithReceipts)?
                 }
             };
 
             use sequencer::reply::MaybePendingBlock;
             match block {
-                MaybePendingBlock::Block(block) => Self {
+                MaybePendingBlock::Block(block) => Ok(Self {
                     block_hash: Some(block.block_hash),
                     parent_hash: block.parent_block_hash,
                     block_number: Some(block.block_number),
@@ -423,8 +358,8 @@ pub mod reply {
                         // Default value for cairo <0.8.2 is 0
                         .unwrap_or(GasPrice::ZERO),
                     transactions,
-                },
-                MaybePendingBlock::Pending(pending) => Self {
+                }),
+                MaybePendingBlock::Pending(pending) => Ok(Self {
                     block_hash: None,
                     parent_hash: pending.parent_hash,
                     block_number: None,
@@ -435,7 +370,7 @@ pub mod reply {
                     accepted_time: pending.timestamp,
                     gas_price: pending.gas_price,
                     transactions,
-                },
+                }),
             }
         }
     }
@@ -620,25 +555,73 @@ pub mod reply {
 
     /// L2 transaction as returned by the RPC API.
     ///
-    /// `contract_address` field is available for Deploy and Invoke transactions.
-    /// `entry_point_selector` and `calldata` fields are available only
-    /// for Invoke transactions.
-    #[serde_as]
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct Transaction {
+    #[serde(tag = "type")]
+    pub enum Transaction {
+        #[serde(rename = "DECLARE")]
+        Declare(DeclareTransaction),
+        #[serde(rename = "INVOKE")]
+        Invoke(InvokeTransaction),
+        #[serde(rename = "DEPLOY")]
+        Deploy(DeployTransaction),
+    }
+
+    impl Transaction {
+        pub fn hash(&self) -> StarknetTransactionHash {
+            match self {
+                Transaction::Declare(declare) => declare.common.txn_hash,
+                Transaction::Invoke(invoke) => invoke.common.txn_hash,
+                Transaction::Deploy(deploy) => deploy.txn_hash,
+            }
+        }
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct CommonTransactionProperties {
         pub txn_hash: StarknetTransactionHash,
-        #[serde(default)]
-        pub contract_address: Option<ContractAddress>,
-        #[serde(default)]
-        pub entry_point_selector: Option<EntryPoint>,
-        #[serde(default)]
-        pub calldata: Option<Vec<CallParam>>,
-        #[serde_as(as = "Option<FeeAsHexStr>")]
-        #[serde(default)]
-        pub max_fee: Option<Fee>,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeclareTransaction {
+        #[serde(flatten)]
+        pub common: CommonTransactionProperties,
+
+        pub class_hash: ClassHash,
+        pub sender_address: ContractAddress,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct InvokeTransaction {
+        #[serde(flatten)]
+        pub common: CommonTransactionProperties,
+
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub calldata: Vec<CallParam>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeployTransaction {
+        pub txn_hash: StarknetTransactionHash,
+
+        pub contract_address: ContractAddress,
+        pub class_hash: ClassHash,
+        pub constructor_calldata: Vec<ConstructorParam>,
     }
 
     impl TryFrom<sequencer::reply::Transaction> for Transaction {
@@ -662,69 +645,150 @@ pub mod reply {
     impl From<&sequencer::reply::transaction::Transaction> for Transaction {
         fn from(txn: &sequencer::reply::transaction::Transaction) -> Self {
             match txn {
-                sequencer::reply::transaction::Transaction::Invoke(txn) => Self {
-                    txn_hash: txn.transaction_hash,
-                    contract_address: Some(txn.contract_address),
-                    entry_point_selector: Some(txn.entry_point_selector),
-                    calldata: Some(txn.calldata.clone()),
-                    max_fee: Some(txn.max_fee),
-                },
-                _ => Self {
-                    // TODO this is probably the best we can do until the RPC spec introduces
-                    // 3 variants for all the transaction types
-                    txn_hash: txn.hash(),
-                    contract_address: None,
-                    entry_point_selector: None,
-                    calldata: None,
-                    max_fee: None,
-                },
+                sequencer::reply::transaction::Transaction::Invoke(txn) => {
+                    Self::Invoke(InvokeTransaction {
+                        common: CommonTransactionProperties {
+                            txn_hash: txn.transaction_hash,
+                            max_fee: txn.max_fee,
+                            // no `version` in invoke transactions
+                            version: TransactionVersion(Default::default()),
+                            signature: txn.signature.clone(),
+                            // no `nonce` in invoke transactions
+                            nonce: TransactionNonce(Default::default()),
+                        },
+                        contract_address: txn.contract_address,
+                        entry_point_selector: txn.entry_point_selector,
+                        calldata: txn.calldata.clone(),
+                    })
+                }
+                sequencer::reply::transaction::Transaction::Declare(txn) => {
+                    Self::Declare(DeclareTransaction {
+                        common: CommonTransactionProperties {
+                            txn_hash: txn.transaction_hash,
+                            max_fee: txn.max_fee,
+                            version: txn.version,
+                            signature: txn.signature.clone(),
+                            nonce: txn.nonce,
+                        },
+                        class_hash: txn.class_hash,
+                        sender_address: txn.sender_address,
+                    })
+                }
+                sequencer::reply::transaction::Transaction::Deploy(txn) => {
+                    Self::Deploy(DeployTransaction {
+                        txn_hash: txn.transaction_hash,
+                        contract_address: txn.contract_address,
+                        class_hash: txn.class_hash,
+                        constructor_calldata: txn.constructor_calldata.clone(),
+                    })
+                }
             }
         }
     }
 
     /// L2 transaction receipt as returned by the RPC API.
     #[serde_as]
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct TransactionReceipt {
-        pub txn_hash: StarknetTransactionHash,
-        #[serde_as(as = "Option<FeeAsHexStr>")]
-        #[serde(default)]
-        pub actual_fee: Option<Fee>,
-        pub status: TransactionStatus,
-        pub status_data: String,
+    #[serde(untagged)]
+    pub enum TransactionReceipt {
+        Invoke(InvokeTransactionReceipt),
+        // We can't differentiate between declare and deploy in an untagged enum: they
+        // have the same properties in the JSON.
+        DeclareOrDeploy(DeclareOrDeployTransactionReceipt),
+    }
+
+    impl TransactionReceipt {
+        pub fn hash(&self) -> StarknetTransactionHash {
+            match self {
+                Self::Invoke(tx) => tx.common.txn_hash,
+                Self::DeclareOrDeploy(tx) => tx.common.txn_hash,
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct InvokeTransactionReceipt {
+        #[serde(flatten)]
+        pub common: CommonTransactionReceiptProperties,
+
         pub messages_sent: Vec<transaction_receipt::MessageToL1>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
         pub events: Vec<transaction_receipt::Event>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct CommonTransactionReceiptProperties {
+        pub txn_hash: StarknetTransactionHash,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub actual_fee: Fee,
+        pub status: TransactionStatus,
+        #[serde(
+            default,
+            rename = "statusData",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub status_data: Option<String>,
+    }
+
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeclareOrDeployTransactionReceipt {
+        #[serde(flatten)]
+        pub common: CommonTransactionReceiptProperties,
     }
 
     impl TransactionReceipt {
         pub fn with_block_status(
             receipt: sequencer::reply::transaction::Receipt,
             status: BlockStatus,
+            transaction: &sequencer::reply::transaction::Transaction,
         ) -> Self {
-            Self {
-                txn_hash: receipt.transaction_hash,
-                actual_fee: receipt.actual_fee,
-                status: status.into(),
-                // TODO at the moment not available in sequencer replies
-                status_data: String::new(),
-                messages_sent: receipt
-                    .l2_to_l1_messages
-                    .into_iter()
-                    .map(transaction_receipt::MessageToL1::from)
-                    .collect(),
-                l1_origin_message: receipt
-                    .l1_to_l2_consumed_message
-                    .map(transaction_receipt::MessageToL2::from),
-                events: receipt
-                    .events
-                    .into_iter()
-                    .map(transaction_receipt::Event::from)
-                    .collect(),
+            match transaction {
+                sequencer::reply::transaction::Transaction::Declare(_)
+                | sequencer::reply::transaction::Transaction::Deploy(_) => {
+                    Self::DeclareOrDeploy(DeclareOrDeployTransactionReceipt {
+                        common: CommonTransactionReceiptProperties {
+                            txn_hash: receipt.transaction_hash,
+                            actual_fee: receipt
+                                .actual_fee
+                                .unwrap_or_else(|| Fee(Default::default())),
+                            status: status.into(),
+                            // TODO: at the moment not available in sequencer replies
+                            status_data: None,
+                        },
+                    })
+                }
+                sequencer::reply::transaction::Transaction::Invoke(_) => {
+                    Self::Invoke(InvokeTransactionReceipt {
+                        common: CommonTransactionReceiptProperties {
+                            txn_hash: receipt.transaction_hash,
+                            actual_fee: receipt
+                                .actual_fee
+                                .unwrap_or_else(|| Fee(Default::default())),
+                            status: status.into(),
+                            // TODO: at the moment not available in sequencer replies
+                            status_data: None,
+                        },
+                        messages_sent: receipt
+                            .l2_to_l1_messages
+                            .into_iter()
+                            .map(transaction_receipt::MessageToL1::from)
+                            .collect(),
+                        l1_origin_message: receipt
+                            .l1_to_l2_consumed_message
+                            .map(transaction_receipt::MessageToL2::from),
+                        events: receipt
+                            .events
+                            .into_iter()
+                            .map(transaction_receipt::Event::from)
+                            .collect(),
+                    })
+                }
             }
         }
     }
@@ -806,35 +870,182 @@ pub mod reply {
 
     /// Used in [Block](crate::rpc::types::reply::Block) when the requested scope of
     /// reply is [BlockResponseScope::FullTransactionsAndReceipts](crate::rpc::types::request::BlockResponseScope).
-    ///
-    /// `contract_address` field is available for Deploy and Invoke transactions.
-    /// `entry_point_selector` and `calldata` fields are available only
-    /// for Invoke transactions.
-    #[serde_as]
-    #[skip_serializing_none]
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct TransactionAndReceipt {
-        pub txn_hash: StarknetTransactionHash,
-        #[serde(default)]
-        pub contract_address: Option<ContractAddress>,
-        #[serde(default)]
-        pub entry_point_selector: Option<EntryPoint>,
-        #[serde(default)]
-        pub calldata: Option<Vec<CallParam>>,
-        #[serde_as(as = "Option<FeeAsHexStr>")]
-        #[serde(default)]
-        pub max_fee: Option<Fee>,
-        #[serde_as(as = "Option<FeeAsHexStr>")]
-        #[serde(default)]
-        pub actual_fee: Option<Fee>,
-        pub status: TransactionStatus,
-        pub status_data: String,
+    #[serde(untagged)]
+    pub enum TransactionAndReceipt {
+        Declare(DeclareTransactionAndReceipt),
+        Invoke(InvokeTransactionAndReceipt),
+        Deploy(DeployTransactionAndReceipt),
+    }
+
+    impl TransactionAndReceipt {
+        pub fn hash(&self) -> StarknetTransactionHash {
+            match self {
+                TransactionAndReceipt::Declare(declare) => declare.common.txn_hash,
+                TransactionAndReceipt::Invoke(invoke) => invoke.common.txn_hash,
+                TransactionAndReceipt::Deploy(deploy) => deploy.txn_hash,
+            }
+        }
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeclareTransactionAndReceipt {
+        #[serde(flatten)]
+        pub common: CommonTransactionAndReceiptProperties,
+
+        pub class_hash: ClassHash,
+        pub sender_address: ContractAddress,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct InvokeTransactionAndReceipt {
+        #[serde(flatten)]
+        pub common: CommonTransactionAndReceiptProperties,
+
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub calldata: Vec<CallParam>,
+
         pub messages_sent: Vec<transaction_receipt::MessageToL1>,
-        #[serde(default)]
+        // Important!
+        // #[skip_serializing_none] does not work with #[serde(flatten)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         pub l1_origin_message: Option<transaction_receipt::MessageToL2>,
         pub events: Vec<transaction_receipt::Event>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeployTransactionAndReceipt {
+        // We cannot use [CommonTransactionAndReceiptProperties] here because
+        // DeployTransaction doesn't have all common properties.
+        // Transaction
+        pub txn_hash: StarknetTransactionHash,
+
+        // Receipt
+        // FIXME: update this once we know the deploy receipt type
+        #[serde_as(as = "FeeAsHexStr")]
+        pub actual_fee: Fee,
+        pub status: TransactionStatus,
+        // Important!
+        // #[skip_serializing_none] does not work with #[serde(flatten)]
+        #[serde(
+            default,
+            rename = "statusData",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub status_data: Option<String>,
+
+        pub contract_address: ContractAddress,
+        pub class_hash: ClassHash,
+        pub constructor_calldata: Vec<ConstructorParam>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct CommonTransactionAndReceiptProperties {
+        // Transaction
+        pub txn_hash: StarknetTransactionHash,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+
+        // Receipt
+        #[serde_as(as = "FeeAsHexStr")]
+        pub actual_fee: Fee,
+        pub status: TransactionStatus,
+        // Important!
+        // #[skip_serializing_none] does not work with #[serde(flatten)]
+        #[serde(
+            default,
+            rename = "statusData",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub status_data: Option<String>,
+    }
+
+    impl
+        From<(
+            CommonTransactionProperties,
+            CommonTransactionReceiptProperties,
+        )> for CommonTransactionAndReceiptProperties
+    {
+        fn from(
+            both: (
+                CommonTransactionProperties,
+                CommonTransactionReceiptProperties,
+            ),
+        ) -> Self {
+            let (t, r) = both;
+
+            assert_eq!(t.txn_hash, r.txn_hash);
+
+            Self {
+                txn_hash: t.txn_hash,
+                max_fee: t.max_fee,
+                version: t.version,
+                signature: t.signature,
+                nonce: t.nonce,
+                actual_fee: r.actual_fee,
+                status: r.status,
+                status_data: r.status_data,
+            }
+        }
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("transaction type does not match transaction receipt type")]
+    pub struct TransactionAndReceiptMismatchError;
+
+    impl TryFrom<(Transaction, TransactionReceipt)> for TransactionAndReceipt {
+        type Error = TransactionAndReceiptMismatchError;
+
+        fn try_from(both: (Transaction, TransactionReceipt)) -> Result<Self, Self::Error> {
+            let (t, r) = both;
+
+            match (t, r) {
+                (Transaction::Declare(t), TransactionReceipt::DeclareOrDeploy(r)) => Ok(
+                    TransactionAndReceipt::Declare(DeclareTransactionAndReceipt {
+                        common: (t.common, r.common).into(),
+                        class_hash: t.class_hash,
+                        sender_address: t.sender_address,
+                    }),
+                ),
+                (Transaction::Deploy(t), TransactionReceipt::DeclareOrDeploy(r)) => {
+                    Ok(TransactionAndReceipt::Deploy(DeployTransactionAndReceipt {
+                        txn_hash: t.txn_hash,
+                        actual_fee: r.common.actual_fee,
+                        status: r.common.status,
+                        status_data: r.common.status_data,
+                        contract_address: t.contract_address,
+                        class_hash: t.class_hash,
+                        constructor_calldata: t.constructor_calldata,
+                    }))
+                }
+                (Transaction::Invoke(t), TransactionReceipt::Invoke(r)) => {
+                    Ok(TransactionAndReceipt::Invoke(InvokeTransactionAndReceipt {
+                        common: (t.common, r.common).into(),
+                        contract_address: t.contract_address,
+                        entry_point_selector: t.entry_point_selector,
+                        calldata: t.calldata,
+                        messages_sent: r.messages_sent,
+                        l1_origin_message: r.l1_origin_message,
+                        events: r.events,
+                    }))
+                }
+                _ => Err(TransactionAndReceiptMismatchError),
+            }
+        }
     }
 
     /// Represents transaction status.
