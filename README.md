@@ -298,8 +298,7 @@ starknet_getTransactionByHash
 starknet_getTransactionByBlockIdAndIndex
 starknet_getTransactionReceipt
 # Block transaction counts
-starknet_getBlockTransactionCountByHash
-starknet_getBlockTransactionCountByNumber
+starknet_getBlockTransactionCount
 # The code of a class
 starknet_getClass
 # The class hash of a specific contract
