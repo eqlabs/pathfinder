@@ -17,7 +17,7 @@ use crate::{
         BlockHashOrTag, Tag,
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
-    state::{state_tree::GlobalStateTree, SyncState},
+    state::{state_tree::GlobalStateTree, PendingData, SyncState},
     storage::{
         ContractsTable, EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
         StarknetEventsTable, StarknetTransactionsTable, Storage,
@@ -44,6 +44,7 @@ pub struct RpcApi {
     call_handle: Option<ext_py::Handle>,
     shared_gas_price: Option<Cached>,
     sync_state: Arc<SyncState>,
+    pending_data: Option<PendingData>,
 }
 
 #[derive(Debug)]
@@ -81,6 +82,7 @@ impl RpcApi {
             call_handle: None,
             shared_gas_price: None,
             sync_state,
+            pending_data: None,
         }
     }
 
@@ -96,6 +98,23 @@ impl RpcApi {
             shared_gas_price: Some(shared),
             ..self
         }
+    }
+
+    pub fn with_pending_data(self, pending_data: PendingData) -> Self {
+        Self {
+            pending_data: Some(pending_data),
+            ..self
+        }
+    }
+
+    /// Returns [PendingData]; errors if [RpcApi] was not configured with one.
+    /// 
+    /// This is useful for queries to access pending data or return an error via `?` if it
+    /// is not meant to be used (as on testnet for example).
+    fn pending_data(&self) -> anyhow::Result<&PendingData> {
+        self.pending_data
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Pending data not supported in this configuration"))
     }
 
     /// Get block information given the block id.

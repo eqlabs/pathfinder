@@ -108,6 +108,10 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     let api = rpc::api::RpcApi::new(storage, sequencer, ethereum_chain, sync_state)
         .with_call_handling(call_handle)
         .with_eth_gas_price(shared);
+    let api = match config.poll_pending {
+        true => api.with_pending_data(pending_state),
+        false => api,
+    };
 
     let (rpc_handle, local_addr) = rpc::run_server(config.http_rpc_addr, api)
         .await
