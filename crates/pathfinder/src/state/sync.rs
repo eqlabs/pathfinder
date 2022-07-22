@@ -621,7 +621,7 @@ async fn l2_update(
         .context("Insert block into database")?;
 
         let rpc_state_update = (&block, state_diff, old_root).into();
-        StarknetStateUpdatesTable::upsert(&transaction, block.block_hash, &rpc_state_update)
+        StarknetStateUpdatesTable::insert(&transaction, block.block_hash, &rpc_state_update)
             .context("Insert state update into database")?;
 
         // Insert the transactions.
