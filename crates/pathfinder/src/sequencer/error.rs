@@ -22,7 +22,7 @@ impl From<SequencerError> for Error {
                 StarknetErrorCode::OutOfRangeBlockHash | StarknetErrorCode::BlockNotFound
                     if e.message.contains("Block hash") =>
                 {
-                    RpcErrorCode::InvalidBlockHash.into()
+                    RpcErrorCode::InvalidBlockId.into()
                 }
                 StarknetErrorCode::OutOfRangeContractAddress
                 | StarknetErrorCode::UninitializedContract => RpcErrorCode::ContractNotFound.into(),
@@ -35,7 +35,7 @@ impl From<SequencerError> for Error {
                     RpcErrorCode::InvalidMessageSelector.into()
                 }
                 StarknetErrorCode::BlockNotFound if e.message.contains("Block number") => {
-                    RpcErrorCode::InvalidBlockNumber.into()
+                    RpcErrorCode::InvalidBlockId.into()
                 }
                 StarknetErrorCode::InvalidContractDefinition => {
                     RpcErrorCode::InvalidContractDefinition.into()

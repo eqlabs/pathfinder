@@ -291,8 +291,8 @@ Here is an overview of the JSON-RPC calls which we support.
 
 ```bash
 # Block information
-starknet_getBlockByHash
-starknet_getBlockByNumber
+starknet_getBlockWithTxs
+starknet_getBlockWithTxHashes
 # Value of a storage at a given address and key
 starknet_getStorageAt
 # Transaction information

@@ -2,18 +2,18 @@
 use crate::{
     cairo::ext_py,
     core::{
-        CallResultValue, CallSignatureElem, Chain, ClassHash, ConstructorParam, ContractAddress,
-        ContractAddressSalt, ContractClass, ContractCode, Fee, GasPrice, GlobalRoot,
-        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StarknetTransactionIndex, StorageValue, TransactionNonce,
-        TransactionVersion,
+        BlockId, CallResultValue, CallSignatureElem, Chain, ClassHash, ConstructorParam,
+        ContractAddress, ContractAddressSalt, ContractClass, ContractCode, Fee, GasPrice,
+        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageValue,
+        TransactionNonce, TransactionVersion,
     },
     rpc::types::{
         reply::{
             Block, BlockStatus, ErrorCode, FeeEstimate, GetEventsResult, Syncing, Transaction,
-            TransactionAndReceipt, TransactionAndReceiptMismatchError, TransactionReceipt,
+            TransactionReceipt,
         },
-        request::{BlockResponseScope, Call, ContractCall, EventFilter, OverflowingStorageAddress},
+        request::{Call, ContractCall, EventFilter, OverflowingStorageAddress},
         BlockHashOrTag, BlockNumberOrTag, Tag,
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
@@ -59,6 +59,13 @@ pub struct RawBlock {
     pub gas_price: GasPrice,
 }
 
+/// Determines the type of response to block related queries.
+#[derive(Copy, Clone, Debug)]
+pub enum BlockResponseScope {
+    TransactionHashes,
+    FullTransactions,
+}
+
 /// Based on [the Starknet operator API spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
 impl RpcApi {
     pub fn new(
@@ -91,28 +98,26 @@ impl RpcApi {
         }
     }
 
-    /// Get block information given the block hash.
-    pub async fn get_block_by_hash(
+    /// Get block information given the block id.
+    pub async fn get_block(
         &self,
-        block_hash: BlockHashOrTag,
-        requested_scope: Option<BlockResponseScope>,
+        block_id: BlockId,
+        scope: BlockResponseScope,
     ) -> RpcResult<Block> {
-        let block_id = match block_hash {
-            BlockHashOrTag::Tag(Tag::Pending) => {
+        let block_id = match block_id {
+            BlockId::Pending => {
                 let block = self
                     .sequencer
-                    .block(block_hash.into())
+                    .block(block_id)
                     .await
                     .map_err(internal_server_error)?;
 
-                let scope = requested_scope.unwrap_or_default();
-
-                let block = Block::try_from_sequencer_scoped(block, scope)
-                    .map_err(internal_server_error)?;
+                let block = Block::from_sequencer_scoped(block, scope);
                 return Ok(block);
             }
-            BlockHashOrTag::Hash(hash) => hash.into(),
-            BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
+            BlockId::Hash(hash) => hash.into(),
+            BlockId::Number(number) => number.into(),
+            BlockId::Latest => StarknetBlocksBlockId::Latest,
         };
 
         let storage = self.storage.clone();
@@ -131,11 +136,9 @@ impl RpcApi {
                 .map_err(internal_server_error)?;
 
             // Need to get the block status. This also tests that the block hash is valid.
-            let block = Self::get_raw_block_by_hash(&transaction, block_id)?;
-            let scope = requested_scope.unwrap_or_default();
+            let block = Self::get_raw_block(&transaction, block_id)?;
 
-            let transactions =
-                Self::get_block_transactions(&transaction, block.number, block.status, scope)?;
+            let transactions = Self::get_block_transactions(&transaction, block.number, scope)?;
 
             Ok(Block::from_raw(block, transactions))
         })
@@ -166,7 +169,6 @@ impl RpcApi {
     fn get_block_transactions(
         db_tx: &rusqlite::Transaction<'_>,
         block_number: StarknetBlockNumber,
-        block_status: BlockStatus,
         scope: BlockResponseScope,
     ) -> RpcResult<super::types::reply::Transactions> {
         let transactions_receipts =
@@ -188,104 +190,18 @@ impl RpcApi {
                     .map(|(t, _)| t.into())
                     .collect(),
             )),
-            BlockResponseScope::FullTransactionsAndReceipts => transactions_receipts
-                .into_iter()
-                .map(|(t, r)| {
-                    let receipt = TransactionReceipt::with_block_status(r, block_status, &t);
-                    let txn: Transaction = t.into();
-                    let result: Result<TransactionAndReceipt, TransactionAndReceiptMismatchError> =
-                        (txn, receipt).try_into();
-                    result
-                })
-                .collect::<Result<Vec<TransactionAndReceipt>, TransactionAndReceiptMismatchError>>()
-                .map_err(internal_server_error)
-                .map(reply::Transactions::FullWithReceipts),
         }
     }
 
-    /// Get block information given the block number (its height).
-    pub async fn get_block_by_number(
-        &self,
-        block_number: BlockNumberOrTag,
-        requested_scope: Option<BlockResponseScope>,
-    ) -> RpcResult<Block> {
-        let block_id = match block_number {
-            BlockNumberOrTag::Number(number) => number.into(),
-            BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => {
-                let block = self
-                    .sequencer
-                    .block(block_number.into())
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
-
-                let scope = requested_scope.unwrap_or_default();
-
-                let block = Block::try_from_sequencer_scoped(block, scope)
-                    .map_err(internal_server_error)?;
-                return Ok(block);
-            }
-        };
-
-        let storage = self.storage.clone();
-        let span = tracing::Span::current();
-
-        tokio::task::spawn_blocking(move || {
-            let _g = span.enter();
-            let mut connection = storage
-                .connection()
-                .context("Opening database connection")
-                .map_err(internal_server_error)?;
-
-            let transaction = connection
-                .transaction()
-                .context("Creating database transaction")
-                .map_err(internal_server_error)?;
-
-            // Need to get the block status. This also tests that the block hash is valid.
-            let block = Self::get_raw_block_by_number(&transaction, block_id)?;
-            let scope = requested_scope.unwrap_or_default();
-
-            let transactions =
-                Self::get_block_transactions(&transaction, block.number, block.status, scope)?;
-
-            Ok(Block::from_raw(block, transactions))
-        })
-        .await
-        .context("Database read panic or shutting down")
-        .map_err(internal_server_error)
-        .and_then(|x| x)
-    }
-
-    fn get_raw_block_by_hash(
-        tx: &rusqlite::Transaction<'_>,
-        block_id: StarknetBlocksBlockId,
-    ) -> RpcResult<RawBlock> {
-        Self::get_raw_block(tx, block_id, ErrorCode::InvalidBlockHash)
-    }
-
-    fn get_raw_block_by_number(
-        tx: &rusqlite::Transaction<'_>,
-        block_id: StarknetBlocksBlockId,
-    ) -> RpcResult<RawBlock> {
-        Self::get_raw_block(tx, block_id, ErrorCode::InvalidBlockNumber)
-    }
-
     /// Fetches a [RawBlock] from storage.
-    ///
-    /// `error_code_for_latest` is the error code when the `latest` block is missing,
-    /// ie. when the storage is empty, wrapped by [`Self::get_raw_block_by_number`] and
-    /// [`Self::get_raw_block_by_number`] for the two different usecases.
     fn get_raw_block(
         transaction: &rusqlite::Transaction<'_>,
         block_id: StarknetBlocksBlockId,
-        error_code_for_latest: ErrorCode,
     ) -> RpcResult<RawBlock> {
         let block = StarknetBlocksTable::get(transaction, block_id)
             .context("Read block from database")
             .map_err(internal_server_error)?
-            .ok_or_else(|| Error::from(error_code_for_latest))?;
+            .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
 
         let block_status = Self::get_block_status(transaction, block.number)?;
 
@@ -395,7 +311,7 @@ impl RpcApi {
                 .map_err(internal_server_error)?
                 // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
                 // by using a dedicated error code from the RPC API spec
-                .ok_or_else(|| Error::from(ErrorCode::InvalidBlockHash))?;
+                .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
 
             let global_state_tree = GlobalStateTree::load(&tx, global_root)
                 .context("Global state tree")
@@ -536,7 +452,7 @@ impl RpcApi {
                         .context("Reading block from database")?
                     {
                         Some(_) => Err(ErrorCode::InvalidTransactionIndex.into()),
-                        None => Err(ErrorCode::InvalidBlockHash.into()),
+                        None => Err(ErrorCode::InvalidBlockId.into()),
                     }
                 }
             }
@@ -609,7 +525,7 @@ impl RpcApi {
                         .context("Reading block from database")?
                     {
                         Some(_) => Err(ErrorCode::InvalidTransactionIndex.into()),
-                        None => Err(ErrorCode::InvalidBlockNumber.into()),
+                        None => Err(ErrorCode::InvalidBlockId.into()),
                     }
                 }
             }
@@ -886,7 +802,7 @@ impl RpcApi {
                         .context("Reading block from database")?
                     {
                         Some(_) => Ok(0),
-                        None => Err(ErrorCode::InvalidBlockHash.into()),
+                        None => Err(ErrorCode::InvalidBlockId.into()),
                     }
                 }
                 other => Ok(other as u64),
@@ -951,7 +867,7 @@ impl RpcApi {
                         .context("Reading block from database")?
                     {
                         Some(_) => Ok(0),
-                        None => Err(ErrorCode::InvalidBlockNumber.into()),
+                        None => Err(ErrorCode::InvalidBlockId.into()),
                     }
                 }
                 other => Ok(other as u64),
@@ -1216,7 +1132,7 @@ impl From<ext_py::CallFailure> for jsonrpsee::core::Error {
     fn from(e: ext_py::CallFailure) -> Self {
         use ext_py::CallFailure::*;
         match e {
-            NoSuchBlock => Error::from(ErrorCode::InvalidBlockHash),
+            NoSuchBlock => Error::from(ErrorCode::InvalidBlockId),
             NoSuchContract => Error::from(ErrorCode::ContractNotFound),
             InvalidEntryPoint => Error::from(ErrorCode::InvalidMessageSelector),
             ExecutionFailed(e) => internal_server_error(e),
