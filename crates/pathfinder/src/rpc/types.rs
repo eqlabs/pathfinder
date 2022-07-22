@@ -463,12 +463,38 @@ pub mod reply {
         }
     }
 
+    // FIXME
+    // throw this conversion away once sync starts passing `sequencer::reply::StateUpdate` instead of
+    // `ethereum::state_update::StateUpdate`
+    impl
+        From<(
+            &sequencer::reply::Block,
+            crate::ethereum::state_update::StateUpdate,
+            crate::state::l2::OldRoot,
+        )> for StateUpdate
+    {
+        fn from(
+            (block, state_update, old_root): (
+                &sequencer::reply::Block,
+                crate::ethereum::state_update::StateUpdate,
+                crate::state::l2::OldRoot,
+            ),
+        ) -> Self {
+            Self {
+                block_hash: Some(block.block_hash),
+                new_root: block.state_root,
+                old_root: old_root.0,
+                state_diff: state_update.into(),
+            }
+        }
+    }
+
     /// State update related substructures.
     pub mod state_update {
         use crate::core::{
             ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
         };
-        use crate::sequencer;
+        use crate::{ethereum, sequencer};
         use serde::Serialize;
 
         /// L2 state diff.
@@ -496,9 +522,47 @@ pub mod reply {
                                 .collect(),
                         })
                         .collect(),
+                    // FIXME NOW!
                     delared_contracts: vec![],  // x.deployed_contracts,
                     deployed_contracts: vec![], // x.declared_contracts,
                     // FIXME once the sequencer API provides the nonces
+                    nonces: vec![],
+                }
+            }
+        }
+
+        // FIXME
+        // throw this conversion away once sync starts passing `sequencer::reply::StateUpdate` instead of
+        // `ethereum::state_update::StateUpdate`
+        impl From<ethereum::state_update::StateUpdate> for StateDiff {
+            fn from(x: ethereum::state_update::StateUpdate) -> Self {
+                Self {
+                    storage_diffs: x
+                        .contract_updates
+                        .into_iter()
+                        .map(|contract_update| StorageDiff {
+                            address: contract_update.address,
+                            storage_entries: contract_update
+                                .storage_updates
+                                .into_iter()
+                                .map(|storage_update| StorageItem {
+                                    key: storage_update.address,
+                                    value: storage_update.value,
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                    // FIXME
+                    delared_contracts: vec![],
+                    deployed_contracts: x
+                        .deployed_contracts
+                        .into_iter()
+                        .map(|deployed_contact| DeployedContract {
+                            address: deployed_contact.address,
+                            class_hash: deployed_contact.hash,
+                        })
+                        .collect(),
+                    // FIXME once the (yes, this is correct) sequencer API provides the nonces
                     nonces: vec![],
                 }
             }

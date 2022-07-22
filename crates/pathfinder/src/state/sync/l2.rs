@@ -25,11 +25,32 @@ pub struct Timings {
     pub class_declaration: Duration,
 }
 
+/// A wrapper type to distinguish from the new global root in [sequencer::reply::Block]
+/// when sending [Event::Update].
+// FIXME
+// throw this type away once sync starts passing `sequencer::reply::StateUpdate` instead of
+// `ethereum::state_update::StateUpdate`
+#[derive(Debug, Clone, Copy)]
+pub struct OldRoot(pub GlobalRoot);
+
 /// Events and queries emitted by L2 sync process.
 #[derive(Debug)]
 pub enum Event {
     /// New L2 [block update](StateUpdate) found.
-    Update(Box<Block>, StateUpdate, Timings),
+    ///
+    /// The [StateUpdate] used to be [ethereum::state_update::StateUpdate](crate::ethereum::state_update::StateUpdate)
+    /// but as it did not carry the old global root we are now using [sequencer::reply::StateUpdate]
+    /// [OldRoot] is needed for writing a complete [rpc::types::reply::StateUpdate](crate::rpc::types::reply::StateUpdate)
+    /// into the DB as neither [ethereum::state_update::StateUpdate](crate::ethereum::state_update::StateUpdate)
+    /// nor [sequencer::reply::Block] carry the old root.
+    // FIXME
+    // Or maybe abandon ethereum::state_update::StateUpdate and OldRoot
+    // and just use sequencer::reply::StateUpdate here,
+    // which will become incompatible with an alternative
+    // L1 fetched state update, which we currently don't use anyway.
+    // Do it in a separate PR ofc, as the ethereum::state_update::StateUpdate
+    // leaks into many places.
+    Update(Box<Block>, StateUpdate, OldRoot, Timings),
     /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
@@ -161,7 +182,12 @@ pub async fn sync(
         };
 
         tx_event
-            .send(Event::Update(block, update, timings))
+            .send(Event::Update(
+                block,
+                update,
+                OldRoot(state_update.old_root),
+                timings,
+            ))
             .await
             .context("Event channel closed")?;
     }

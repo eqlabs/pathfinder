@@ -24,7 +24,7 @@ use crate::{
     storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
         RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
-        StarknetTransactionsTable, Storage,
+        StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
     },
 };
 
@@ -251,7 +251,7 @@ where
                 },
             },
             l2_event = rx_l2.recv() => match l2_event {
-                Some(l2::Event::Update(block, diff, timings)) => {
+                Some(l2::Event::Update(block, diff, old_root, timings)) => {
                     pending_data.clear().await;
 
                     let block_number = block.block_number.0;
@@ -262,7 +262,7 @@ where
                         .map(|u| u.storage_updates.len())
                         .sum();
                     let update_t = std::time::Instant::now();
-                    l2_update(&mut db_conn, *block, diff)
+                    l2_update(&mut db_conn, *block, diff, old_root)
                         .await
                         .with_context(|| format!("Update L2 state to {}", block_number))?;
                     let block_time = last_block_start.elapsed();
@@ -586,14 +586,15 @@ async fn l2_update(
     connection: &mut Connection,
     block: Block,
     state_diff: StateUpdate,
+    old_root: l2::OldRoot,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
-        let new_root =
-            update_starknet_state(&transaction, state_diff).context("Updating Starknet state")?;
+        let new_root = update_starknet_state(&transaction, state_diff.clone())
+            .context("Updating Starknet state")?;
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
         anyhow::ensure!(new_root == block.state_root, "State root mismatch");
@@ -618,6 +619,11 @@ async fn l2_update(
             block.starknet_version.as_deref(),
         )
         .context("Insert block into database")?;
+
+        let rpc_state_update = (&block, state_diff, old_root).into();
+        StarknetStateUpdatesTable::upsert(&transaction, block.block_hash, &rpc_state_update)
+            .context("Insert state update into database")?;
+
         // Insert the transactions.
         anyhow::ensure!(
             block.transactions.len() == block.transaction_receipts.len(),
