@@ -17,7 +17,7 @@ pub(crate) mod state_tree;
 mod sync;
 
 pub use class_hash::compute_class_hash;
-pub use sync::{l1, l2, sync, State as SyncState};
+pub use sync::{l1, l2, sync, PendingData, State as SyncState};
 
 #[derive(Clone, PartialEq)]
 pub struct CompressedContract {
@@ -461,6 +461,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[ignore = "this is manual testing only, but we should really use the binary for this"]
     async fn go_sync() {
+        use std::sync::Arc;
+
         let storage = crate::storage::Storage::migrate(
             std::path::PathBuf::from("testing.sqlite"),
             crate::storage::JournalMode::WAL,
@@ -469,7 +471,7 @@ mod tests {
         let chain = crate::core::Chain::Goerli;
         let transport = crate::ethereum::transport::HttpTransport::test_transport(chain);
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
-        let state = std::sync::Arc::new(sync::State::default());
+        let state = Arc::new(sync::State::default());
 
         sync::sync(
             storage,
@@ -479,6 +481,8 @@ mod tests {
             state,
             sync::l1::sync,
             sync::l2::sync,
+            sync::PendingData::default(),
+            None,
         )
         .await
         .unwrap();

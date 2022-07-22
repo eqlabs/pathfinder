@@ -1,12 +1,13 @@
 pub mod l1;
 pub mod l2;
+mod pending;
 
 use std::future::Future;
 use std::sync::Arc;
 
 use crate::{
     core::{
-        Chain, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        Chain, ClassHash, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber,
     },
     ethereum::{
@@ -17,7 +18,7 @@ use crate::{
     rpc::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer::{
         self,
-        reply::{Block, MaybePendingBlock},
+        reply::{Block, MaybePendingBlock, PendingBlock},
     },
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
@@ -44,7 +45,50 @@ impl Default for State {
     }
 }
 
+struct PendingInner {
+    pub block: Arc<PendingBlock>,
+    pub state_update: Arc<sequencer::reply::StateUpdate>,
+}
+#[derive(Default, Clone)]
+pub struct PendingData {
+    inner: Arc<RwLock<Option<PendingInner>>>,
+}
+
+impl PendingData {
+    pub async fn set(
+        &self,
+        block: Arc<PendingBlock>,
+        state_update: Arc<sequencer::reply::StateUpdate>,
+    ) {
+        *self.inner.write().await = Some(PendingInner {
+            block,
+            state_update,
+        });
+    }
+
+    pub async fn clear(&self) {
+        *self.inner.write().await = None;
+    }
+
+    pub async fn block(&self) -> Option<Arc<PendingBlock>> {
+        self.inner
+            .read()
+            .await
+            .as_ref()
+            .map(|inner| inner.block.clone())
+    }
+
+    pub async fn state_update(&self) -> Option<Arc<sequencer::reply::StateUpdate>> {
+        self.inner
+            .read()
+            .await
+            .as_ref()
+            .map(|inner| inner.state_update.clone())
+    }
+}
+
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
+#[allow(clippy::too_many_arguments)]
 pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
     transport: Transport,
@@ -53,6 +97,8 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     state: Arc<State>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
+    pending_data: PendingData,
+    pending_poll_interval: Option<std::time::Duration>,
 ) -> anyhow::Result<()>
 where
     Transport: EthereumTransport + Clone,
@@ -63,8 +109,9 @@ where
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
-            Option<(StarknetBlockNumber, StarknetBlockHash)>,
+            Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
             Chain,
+            Option<std::time::Duration>,
         ) -> F2
         + Copy,
 {
@@ -82,15 +129,16 @@ where
             .context("Query L1 head from database")?;
         let l2_head = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
             .context("Query L2 head from database")?
-            .map(|block| (block.number, block.hash));
+            .map(|block| (block.number, block.hash, block.root));
         Ok((l1_head, l2_head))
     })?;
 
     // Start update sync-status process.
-    let (starting_block_num, starting_block_hash) = l2_head.unwrap_or((
+    let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
         // Seems a better choice for an invalid block number than 0
         StarknetBlockNumber(u64::MAX),
         StarknetBlockHash(StarkHash::ZERO),
+        GlobalRoot(StarkHash::ZERO),
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
         Arc::clone(&state),
@@ -102,7 +150,13 @@ where
 
     // Start L1 and L2 sync processes.
     let mut l1_handle = tokio::spawn(l1_sync(tx_l1, transport.clone(), chain, l1_head));
-    let mut l2_handle = tokio::spawn(l2_sync(tx_l2, sequencer.clone(), l2_head, chain));
+    let mut l2_handle = tokio::spawn(l2_sync(
+        tx_l2,
+        sequencer.clone(),
+        l2_head,
+        chain,
+        pending_poll_interval,
+    ));
 
     let mut existed = (0, 0);
 
@@ -189,6 +243,8 @@ where
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update(block, diff, timings)) => {
+                    pending_data.clear().await;
+
                     let block_number = block.block_number.0;
                     let block_hash = block.block_hash;
                     let storage_updates: usize = diff
@@ -247,6 +303,8 @@ where
                     }
                 }
                 Some(l2::Event::Reorg(reorg_tail)) => {
+                    pending_data.clear().await;
+
                     l2_reorg(&mut db_conn, reorg_tail)
                         .await
                         .with_context(|| format!("Reorg L2 state to {:?}", reorg_tail))?;
@@ -272,16 +330,16 @@ where
 
                     tracing::trace!("Inserted new contract {}", contract.hash.0.to_hex_str());
                 }
-                Some(l2::Event::QueryHash(block, tx)) => {
-                    let hash = tokio::task::block_in_place(|| {
+                Some(l2::Event::QueryBlock(number, tx)) => {
+                    let block = tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction()?;
-                        StarknetBlocksTable::get(&tx, block.into())
+                        StarknetBlocksTable::get(&tx, number.into())
                     })
-                    .with_context(|| format!("Query L2 block hash for block {:?}", block))?
-                    .map(|block| block.hash);
-                    let _ = tx.send(hash);
+                    .with_context(|| format!("Query L2 block hash for block {number}"))?
+                    .map(|block| (block.hash, block.root));
+                    let _ = tx.send(block);
 
-                    tracing::trace!("Query hash for L2 block {}", block.0);
+                    tracing::trace!(%number, "Query hash for L2 block");
                 }
                 Some(l2::Event::QueryContractExistance(contracts, tx)) => {
                     let exists =
@@ -302,7 +360,57 @@ where
 
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
+                Some(l2::Event::Pending(block, diff)) => {
+                    let deployed_classes = diff.state_diff.deployed_contracts.iter().map(|x| x.contract_hash);
+                    let declared_classes = diff.state_diff.declared_contracts.iter().cloned();
+                    let declared_classes_block = block
+                        .transactions
+                        .iter()
+                        .filter_map(|tx| {
+                            use sequencer::reply::transaction::Transaction::*;
+                            match tx {
+                                Declare(tx) => Some(tx.class_hash),
+                                Deploy(_) | Invoke(_) => None,
+                            }
+                        });
+                    let classes = deployed_classes
+                        .chain(declared_classes)
+                        .chain(declared_classes_block);
+                    download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, classes)
+                        .await
+                        .context("Downloading missing classes for pending block")?;
+
+                    // Collect all potentially new classes.
+                    let new_root = tokio::task::block_in_place(|| {
+                        // Update state tree to determine new state root, but rollback the changes as we do
+                        // not want to persist them.
+                        let tx = db_conn
+                            .transaction_with_behavior(TransactionBehavior::Immediate)
+                            .context("Create database transaction")?;
+                        let state_diff = (&diff.state_diff).into();
+                        let new_root = update_starknet_state(&tx, state_diff).context("Updating Starknet state")?;
+                        tx.rollback()?;
+                        anyhow::Result::<GlobalRoot>::Ok(new_root)
+                    }).context("Calculate pending state root")?;
+
+                    match new_root == diff.new_root {
+                        true => {
+                            pending_data.set(block, diff).await;
+                            tracing::debug!("Updated pending data");
+                        }
+                        false => {
+                            pending_data.clear().await;
+                            tracing::error!(
+                                head=%diff.old_root,
+                                pending=%diff.new_root,
+                                calculated=%new_root,
+                                "Pending state root mismatch"
+                            );
+                        }
+                    }
+                }
                 None => {
+                    pending_data.clear().await;
                     // L2 sync process failed; restart it.
                     match l2_handle.await.context("Join L2 sync process handle")? {
                         Ok(()) => {
@@ -318,12 +426,12 @@ where
                         StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
                     })
                     .context("Query L2 head from database")?
-                    .map(|block| (block.number, block.hash));
+                    .map(|block| (block.number, block.hash, block.root));
 
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    l2_handle = tokio::spawn(l2_sync(new_tx, sequencer.clone(), l2_head, chain));
+                    l2_handle = tokio::spawn(l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval));
                     tracing::info!("L2 sync process restarted.");
                 }
             }
@@ -464,6 +572,7 @@ async fn l1_reorg(
     })
 }
 
+/// Returns the new [GlobalRoot] after the update.
 async fn l2_update(
     connection: &mut Connection,
     block: Block,
@@ -619,6 +728,103 @@ fn deploy_contract(
         .context("Inserting class hash into contracts table")
 }
 
+/// Downloads and inserts class definitions for any classes in the
+/// list which are not already present in the database.
+async fn download_verify_and_insert_missing_classes<
+    SequencerClient: sequencer::ClientApi,
+    ClassIter: Iterator<Item = ClassHash>,
+>(
+    sequencer: SequencerClient,
+    connection: &mut Connection,
+    classes: ClassIter,
+) -> anyhow::Result<()> {
+    use crate::state::class_hash::extract_abi_code_hash;
+
+    // Make list unique.
+    let classes = classes
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter() // TODO: remove this allocation by using Iter in exists.
+        .collect::<Vec<_>>();
+
+    // Check database to see which are missing.
+    let exists = tokio::task::block_in_place(|| {
+        let transaction = connection.transaction()?;
+        ContractCodeTable::exists(&transaction, &classes)
+    })
+    .with_context(|| format!("Query storage for existance of classes {:?}", classes))?;
+    anyhow::ensure!(
+        exists.len() == classes.len(),
+        "Length mismatch when querying for class existance. Expected {} but got {}.",
+        classes.len(),
+        exists.len()
+    );
+    let missing = classes
+        .into_iter()
+        .zip(exists.into_iter())
+        .filter_map(|(class, exist)| (!exist).then(|| class));
+
+    // For each missing, download, verify and insert definition.
+    for class_hash in missing {
+        let definition = sequencer
+            .class_by_hash(class_hash)
+            .await
+            .with_context(|| format!("Downloading class {}", class_hash.0))?;
+
+        // Parse the contract definition for ABI, code and calculate the class hash. This can
+        // be expensive, so perform in a blocking task.
+        let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+            let (abi, bytecode, hash) = extract_abi_code_hash(&definition)?;
+            Ok((definition, abi, bytecode, hash))
+        });
+        let (definition, abi, bytecode, hash) = extract
+            .await
+            .context("Parse class definition and compute hash")??;
+
+        // Sanity check.
+        anyhow::ensure!(
+            class_hash == hash,
+            "Class hash mismatch, {} instead of {}",
+            hash.0,
+            class_hash.0
+        );
+
+        let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+            let mut compressor =
+                zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+
+            let abi = compressor.compress(&abi).context("Compress ABI")?;
+            let bytecode = compressor
+                .compress(&bytecode)
+                .context("Compress bytecode")?;
+            let definition = compressor
+                .compress(&*definition)
+                .context("Compress definition")?;
+
+            Ok((abi, bytecode, definition))
+        });
+        let (abi, bytecode, definition) = compress.await.context("Compress class")??;
+        let compressed = crate::state::CompressedContract {
+            abi,
+            bytecode,
+            definition,
+            hash,
+        };
+
+        tokio::task::block_in_place(|| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            ContractCodeTable::insert_compressed(&transaction, &compressed)?;
+            transaction.commit()?;
+            anyhow::Result::<()>::Ok(())
+        })
+        .with_context(|| format!("Insert class definition with hash: {:?}", compressed.hash))?;
+
+        tracing::trace!("Inserted new class {}", compressed.hash.0.to_hex_str());
+    }
+
+    Ok(())
+}
+
 /// Interval at which poll for new data when at the head of chain.
 ///
 /// Returns the interval to be used when polling while at the head of the chain. The
@@ -657,7 +863,7 @@ mod tests {
             reply,
             request::{self, add_transaction::ContractDefinition},
         },
-        state,
+        state::{self, sync::PendingData},
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
     use futures::stream::{StreamExt, TryStreamExt};
@@ -828,8 +1034,9 @@ mod tests {
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
         _: impl sequencer::ClientApi,
-        _: Option<(StarknetBlockNumber, StarknetBlockHash)>,
+        _: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
         _: Chain,
+        _: Option<std::time::Duration>,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -965,6 +1172,8 @@ mod tests {
                 sync_state.clone(),
                 l1,
                 l2_noop,
+                PendingData::default(),
+                None,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1033,6 +1242,8 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1,
                 l2_noop,
+                PendingData::default(),
+                None,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1097,6 +1308,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
+            PendingData::default(),
+            None,
         ));
 
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1130,6 +1343,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
+            PendingData::default(),
+            None,
         ));
 
         let timeout = std::time::Duration::from_secs(1);
@@ -1163,7 +1378,7 @@ mod tests {
         };
 
         // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 Box::new(block()),
                 state_update(),
@@ -1202,6 +1417,8 @@ mod tests {
                 sync_state.clone(),
                 l1_noop,
                 l2,
+                PendingData::default(),
+                None,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1241,7 +1458,7 @@ mod tests {
             let tx = connection.transaction().unwrap();
 
             // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
                 tx.send(l2::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
                     .await
                     .unwrap();
@@ -1265,6 +1482,8 @@ mod tests {
                 Arc::new(state::SyncState::default()),
                 l1_noop,
                 l2,
+                PendingData::default(),
+                None,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1299,7 +1518,7 @@ mod tests {
         let connection = storage.connection().unwrap();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewContract(state::CompressedContract {
                 abi: zstd_magic.clone(),
@@ -1323,6 +1542,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            PendingData::default(),
+            None,
         ));
 
         // TODO Find a better way to figure out that the DB update has already been performed
@@ -1344,15 +1565,16 @@ mod tests {
         StarknetBlocksTable::insert(&tx, &STORAGE_BLOCK0, None).unwrap();
 
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
-            let (tx1, rx1) = tokio::sync::oneshot::channel::<Option<StarknetBlockHash>>();
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+            let (tx1, rx1) = tokio::sync::oneshot::channel();
 
-            tx.send(l2::Event::QueryHash(StarknetBlockNumber(0), tx1))
+            tx.send(l2::Event::QueryBlock(StarknetBlockNumber(0), tx1))
                 .await
                 .unwrap();
 
             // Check the result straight away ¯\_(ツ)_/¯
-            assert_eq!(rx1.await.unwrap().unwrap(), StarknetBlockHash(*A));
+            let result = rx1.await.unwrap().unwrap();
+            assert_eq!(result, (STORAGE_BLOCK0.hash, STORAGE_BLOCK0.root));
 
             tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())
@@ -1367,6 +1589,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            PendingData::default(),
+            None,
         ));
     }
 
@@ -1389,7 +1613,7 @@ mod tests {
         .unwrap();
 
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel::<Vec<bool>>();
 
             tx.send(l2::Event::QueryContractExistance(vec![ClassHash(*A)], tx1))
@@ -1412,6 +1636,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            PendingData::default(),
+            None,
         ));
     }
 
@@ -1424,7 +1650,7 @@ mod tests {
         static CNT: AtomicUsize = AtomicUsize::new(0);
 
         // A simple L2 sync task
-        let l2 = move |_, _, _, _| async move {
+        let l2 = move |_, _, _, _, _| async move {
             CNT.fetch_add(1, Ordering::Relaxed);
             Ok(())
         };
@@ -1438,6 +1664,8 @@ mod tests {
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
+            PendingData::default(),
+            None,
         ));
 
         tokio::time::sleep(Duration::from_millis(5)).await;

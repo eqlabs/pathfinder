@@ -67,6 +67,10 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     };
     let sync_state = Arc::new(state::SyncState::default());
 
+    // TODO: add configuration for pending polling.
+    let pending_data = state::PendingData::default();
+    let pending_interval = None;
+
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
         eth_transport.clone(),
@@ -75,6 +79,8 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         sync_state.clone(),
         state::l1::sync,
         state::l2::sync,
+        pending_data,
+        pending_interval,
     ));
 
     // TODO: the error could be recovered, but currently it's required for startup. There should
