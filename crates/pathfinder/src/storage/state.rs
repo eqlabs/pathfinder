@@ -4,8 +4,9 @@ use stark_hash::StarkHash;
 use web3::types::H256;
 
 use crate::{
+    consts::{GOERLI_GENESIS_HASH, MAINNET_GENESIS_HASH},
     core::{
-        ClassHash, ContractAddress, ContractRoot, ContractStateHash, EthereumBlockHash,
+        Chain, ClassHash, ContractAddress, ContractRoot, ContractStateHash, EthereumBlockHash,
         EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
         EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
@@ -442,6 +443,19 @@ impl StarknetBlocksTable {
             StarknetBlockNumber(number)
         });
         Ok(number)
+    }
+
+    /// Returns the [chain](crate::core::Chain) based on genesis block hash stored in the DB.
+    pub fn determine_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
+        let genesis = Self::get(tx, StarknetBlockNumber(0).into())
+            .context("Read genesis block from database")?;
+
+        match genesis {
+            None => Ok(None),
+            Some(x) if x.hash == *GOERLI_GENESIS_HASH => Ok(Some(Chain::Goerli)),
+            Some(x) if x.hash == *MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
+            Some(x) => Err(anyhow::anyhow!("Unknown genesis block hash {}", x.hash.0)),
+        }
     }
 }
 
