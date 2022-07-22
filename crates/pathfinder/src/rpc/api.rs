@@ -14,7 +14,7 @@ use crate::{
             TransactionReceipt,
         },
         request::{Call, ContractCall, EventFilter, OverflowingStorageAddress},
-        BlockHashOrTag, BlockNumberOrTag, Tag,
+        BlockHashOrTag, Tag,
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
     state::{state_tree::GlobalStateTree, SyncState},
@@ -742,18 +742,16 @@ impl RpcApi {
             .and_then(|x| x)
     }
 
-    /// Get the number of transactions in a block given a block hash.
-    pub async fn get_block_transaction_count_by_hash(
-        &self,
-        block_hash: BlockHashOrTag,
-    ) -> RpcResult<u64> {
-        let block_id = match block_hash {
-            BlockHashOrTag::Hash(hash) => hash.into(),
-            BlockHashOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockHashOrTag::Tag(Tag::Pending) => {
+    /// Get the number of transactions in a block given a block id.
+    pub async fn get_block_transaction_count(&self, block_id: BlockId) -> RpcResult<u64> {
+        let block_id = match block_id {
+            BlockId::Hash(hash) => hash.into(),
+            BlockId::Number(number) => number.into(),
+            BlockId::Latest => StarknetBlocksBlockId::Latest,
+            BlockId::Pending => {
                 let block = self
                     .sequencer
-                    .block(block_hash.into())
+                    .block(BlockId::Pending)
                     .await
                     .context("Fetch block from sequencer")
                     .map_err(internal_server_error)?;
@@ -787,71 +785,6 @@ impl RpcApi {
             {
                 0 => {
                     // We need to check if the value was 0 because there were no transactions, or because the block hash
-                    // is invalid.
-                    //
-                    // get_root is cheaper than querying the full block.
-                    match StarknetBlocksTable::get_root(&tx, block_id)
-                        .context("Reading block from database")?
-                    {
-                        Some(_) => Ok(0),
-                        None => Err(ErrorCode::InvalidBlockId.into()),
-                    }
-                }
-                other => Ok(other as u64),
-            }
-        });
-
-        jh.await
-            .context("Database read panic or shutting down")
-            .map_err(internal_server_error)
-            .and_then(|x| x)
-    }
-
-    /// Get the number of transactions in a block given a block hash.
-    pub async fn get_block_transaction_count_by_number(
-        &self,
-        block_number: BlockNumberOrTag,
-    ) -> RpcResult<u64> {
-        let block_id = match block_number {
-            BlockNumberOrTag::Number(number) => number.into(),
-            BlockNumberOrTag::Tag(Tag::Latest) => StarknetBlocksBlockId::Latest,
-            BlockNumberOrTag::Tag(Tag::Pending) => {
-                let block = self
-                    .sequencer
-                    .block(block_number.into())
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
-
-                let len: u64 =
-                    block.transactions().len().try_into().map_err(|e| {
-                        Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
-                    })?;
-
-                return Ok(len);
-            }
-        };
-
-        let storage = self.storage.clone();
-        let span = tracing::Span::current();
-
-        let jh = tokio::task::spawn_blocking(move || {
-            let _g = span.enter();
-            let mut db = storage
-                .connection()
-                .context("Opening database connection")
-                .map_err(internal_server_error)?;
-            let tx = db
-                .transaction()
-                .context("Creating database transaction")
-                .map_err(internal_server_error)?;
-
-            match StarknetTransactionsTable::get_transaction_count(&tx, block_id)
-                .context("Reading transaction count from database")
-                .map_err(internal_server_error)?
-            {
-                0 => {
-                    // We need to check if the value was 0 because there were no transactions, or because the block number
                     // is invalid.
                     //
                     // get_root is cheaper than querying the full block.

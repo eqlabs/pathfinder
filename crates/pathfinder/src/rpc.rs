@@ -17,7 +17,7 @@ use crate::{
         types::{
             request::OverflowingStorageAddress,
             request::{Call, ContractCall, EventFilter},
-            BlockHashOrTag, BlockNumberOrTag,
+            BlockHashOrTag,
         },
     },
     sequencer::request::add_transaction::ContractDefinition,
@@ -230,26 +230,14 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             .await
     })?;
     module.register_async_method(
-        "starknet_getBlockTransactionCountByHash",
+        "starknet_getBlockTransactionCount",
         |params, context| async move {
             #[derive(Debug, Deserialize)]
             pub struct NamedArgs {
-                pub block_hash: BlockHashOrTag,
+                pub block_id: BlockId,
             }
             context
-                .get_block_transaction_count_by_hash(params.parse::<NamedArgs>()?.block_hash)
-                .await
-        },
-    )?;
-    module.register_async_method(
-        "starknet_getBlockTransactionCountByNumber",
-        |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            pub struct NamedArgs {
-                pub block_number: BlockNumberOrTag,
-            }
-            context
-                .get_block_transaction_count_by_number(params.parse::<NamedArgs>()?.block_number)
+                .get_block_transaction_count(params.parse::<NamedArgs>()?.block_id)
                 .await
         },
     )?;
@@ -1692,9 +1680,8 @@ mod tests {
         }
     }
 
-    mod get_block_transaction_count_by_hash {
+    mod get_block_transaction_count {
         use super::*;
-        use crate::rpc::types::{BlockHashOrTag, Tag};
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1704,11 +1691,11 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(StarknetBlockHash(
+            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(
                 StarkHash::from_be_slice(b"genesis").unwrap()
-            ));
+            )));
             let count = client(addr)
-                .request::<u64>("starknet_getBlockTransactionCountByHash", params)
+                .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap();
             assert_eq!(count, 1);
@@ -1725,9 +1712,9 @@ mod tests {
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
+                let params = rpc_params!(BlockId::Latest);
                 let count = client(addr)
-                    .request::<u64>("starknet_getBlockTransactionCountByHash", params)
+                    .request::<u64>("starknet_getBlockTransactionCount", params)
                     .await
                     .unwrap();
                 assert_eq!(count, 3);
@@ -1740,9 +1727,9 @@ mod tests {
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = by_name([("block_hash", json!("latest"))]);
+                let params = by_name([("block_id", json!("latest"))]);
                 let count = client(addr)
-                    .request::<u64>("starknet_getBlockTransactionCountByHash", params)
+                    .request::<u64>("starknet_getBlockTransactionCount", params)
                     .await
                     .unwrap();
                 assert_eq!(count, 3);
@@ -1756,108 +1743,38 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
+            let params = rpc_params!(BlockId::Pending);
             client(addr)
-                .request::<u64>("starknet_getBlockTransactionCountByHash", params)
+                .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap();
         }
 
         #[tokio::test]
-        async fn invalid() {
+        async fn invalid_hash() {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(StarknetBlockHash(StarkHash::ZERO));
+            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)));
             let error = client(addr)
-                .request::<u64>("starknet_getBlockTransactionCountByHash", params)
+                .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap_err();
             assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidBlockId, error);
         }
-    }
-
-    mod get_block_transaction_count_by_number {
-        use super::*;
-        use crate::rpc::types::{BlockNumberOrTag, Tag};
-        use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn genesis() {
-            let storage = setup_storage();
-            let sequencer = Client::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(0);
-            let count = client(addr)
-                .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
-                .await
-                .unwrap();
-            assert_eq!(count, 1);
-        }
-
-        mod latest {
-            use super::*;
-            use pretty_assertions::assert_eq;
-
-            #[tokio::test]
-            async fn positional_args() {
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Goerli).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Latest));
-                let count = client(addr)
-                    .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
-                    .await
-                    .unwrap();
-                assert_eq!(count, 3);
-            }
-
-            #[tokio::test]
-            async fn named_args() {
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Goerli).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = by_name([("block_number", json!("latest"))]);
-                let count = client(addr)
-                    .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
-                    .await
-                    .unwrap();
-                assert_eq!(count, 3);
-            }
-        }
-
-        #[tokio::test]
-        async fn pending() {
+        async fn invalid_number() {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockNumberOrTag::Tag(Tag::Pending));
-            client(addr)
-                .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
-                .await
-                .unwrap();
-        }
-
-        #[tokio::test]
-        async fn invalid() {
-            let storage = Storage::in_memory().unwrap();
-            let sequencer = Client::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(123);
+            let params = rpc_params!(BlockId::Number(StarknetBlockNumber(123)));
             let error = client(addr)
-                .request::<u64>("starknet_getBlockTransactionCountByNumber", params)
+                .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap_err();
             assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidBlockId, error);
