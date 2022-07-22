@@ -91,6 +91,46 @@ impl StateUpdate {
     }
 }
 
+impl From<&crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
+    fn from(diff: &crate::sequencer::reply::state_update::StateDiff) -> Self {
+        let deployed_contracts = diff
+            .deployed_contracts
+            .iter()
+            .map(|contract| DeployedContract {
+                address: contract.address,
+                hash: contract.contract_hash,
+                // TODO This is missing from sequencer API
+                call_data: vec![],
+            })
+            .collect::<Vec<_>>();
+
+        let contract_updates = diff
+            .storage_diffs
+            .iter()
+            .map(|contract_update| {
+                let storage_updates = contract_update
+                    .1
+                    .iter()
+                    .map(|diff| StorageUpdate {
+                        address: diff.key,
+                        value: diff.value,
+                    })
+                    .collect();
+
+                ContractUpdate {
+                    address: *contract_update.0,
+                    storage_updates,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        StateUpdate {
+            deployed_contracts,
+            contract_updates,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;

@@ -1,11 +1,9 @@
-use std::collections::HashSet;
 use std::time::Duration;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber};
-use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
 use crate::sequencer;
 use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{Contract, StateDiff};
@@ -13,6 +11,11 @@ use crate::sequencer::reply::Block;
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
+use crate::{core::GlobalRoot, ethereum::state_update::StateUpdate};
+use crate::{
+    core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber},
+    sequencer::reply::PendingBlock,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Timings {
@@ -33,44 +36,64 @@ pub enum Event {
     Reorg(StarknetBlockNumber),
     /// A new unique L2 [contract](CompressedContract) was found.
     NewContract(CompressedContract),
-    /// Query for the [block hash](StarknetBlockHash) of the given block.
+    /// Query for the [block hash](StarknetBlockHash) and [root](GlobalRoot) of the given block.
     ///
-    /// The receiver should return the [block hash](StarknetBlockHash) using the
-    /// [oneshot::channel].
-    QueryHash(
+    /// The receiver should return the data using the [oneshot::channel].
+    QueryBlock(
         StarknetBlockNumber,
-        oneshot::Sender<Option<StarknetBlockHash>>,
+        oneshot::Sender<Option<(StarknetBlockHash, GlobalRoot)>>,
     ),
     /// Query for the existance of the the given [contracts](ClassHash) in storage.
     ///
     /// The receiver should return true (if the contract exists) or false (if it does not exist)
     /// for each contract using the [oneshot::channel].
     QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
+    /// A new L2 pending update was polled.
+    Pending(Arc<PendingBlock>, Arc<sequencer::reply::StateUpdate>),
 }
 
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     sequencer: impl sequencer::ClientApi,
-    mut head: Option<(StarknetBlockNumber, StarknetBlockHash)>,
+    mut head: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
     chain: Chain,
+    pending_poll_interval: Option<Duration>,
 ) -> anyhow::Result<()> {
     use crate::state::sync::head_poll_interval;
 
     'outer: loop {
         // Get the next block from L2.
-        let (next, head_hash) = match head {
-            Some((number, hash)) => (number + 1, Some(hash)),
+        let (next, head_meta) = match head {
+            Some(head) => (head.0 + 1, Some(head)),
             None => (StarknetBlockNumber::GENESIS, None),
         };
-
         let t_block = std::time::Instant::now();
+
         let block = loop {
-            match download_block(next, chain, head_hash, &sequencer).await? {
+            match download_block(next, chain, head_meta.map(|h| h.1), &sequencer).await? {
                 DownloadBlock::Block(block) => break block,
                 DownloadBlock::AtHead => {
-                    let poll_interval = head_poll_interval(chain);
-                    tracing::info!(poll_interval=?poll_interval, "At head of chain");
-                    tokio::time::sleep(poll_interval).await;
+                    // Poll pending if it is enabled, otherwise just wait to poll head again.
+                    match pending_poll_interval {
+                        Some(interval) => {
+                            tracing::trace!("Entering pending mode");
+                            let head = head_meta
+                                .expect("Head hash should exist when entering pending mode");
+                            crate::state::sync::pending::poll_pending(
+                                tx_event.clone(),
+                                &sequencer,
+                                (head.1, head.2),
+                                interval,
+                            )
+                            .await
+                            .context("Polling pending block")?;
+                        }
+                        None => {
+                            let poll_interval = head_poll_interval(chain);
+                            tracing::info!(poll_interval=?poll_interval, "At head of chain");
+                            tokio::time::sleep(poll_interval).await;
+                        }
+                    }
                 }
                 DownloadBlock::Reorg => {
                     let some_head = head.unwrap();
@@ -126,44 +149,9 @@ pub async fn sync(
         let t_deploy = t_deploy.elapsed();
 
         // Map from sequencer type to the actual type... we should declutter these types.
-        let deployed_contracts = state_update
-            .state_diff
-            .deployed_contracts
-            .into_iter()
-            .map(|contract| DeployedContract {
-                address: contract.address,
-                hash: contract.contract_hash,
-                call_data: vec![], // todo!("This is missing from sequencer API..."),
-            })
-            .collect::<Vec<_>>();
+        let update = StateUpdate::from(&state_update.state_diff);
 
-        let contract_updates = state_update
-            .state_diff
-            .storage_diffs
-            .into_iter()
-            .map(|contract_update| {
-                let storage_updates = contract_update
-                    .1
-                    .into_iter()
-                    .map(|diff| StorageUpdate {
-                        address: diff.key,
-                        value: diff.value,
-                    })
-                    .collect();
-
-                ContractUpdate {
-                    address: contract_update.0,
-                    storage_updates,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let update = StateUpdate {
-            deployed_contracts,
-            contract_updates,
-        };
-
-        head = Some((next, block_hash));
+        head = Some((next, block_hash, state_update.new_root));
 
         let timings = Timings {
             block_download: t_block,
@@ -188,13 +176,15 @@ async fn declare_classes(
     sequencer: &impl sequencer::ClientApi,
     tx_event: &mpsc::Sender<Event>,
 ) -> Result<(), anyhow::Error> {
-    use crate::sequencer::reply::transaction::Transaction;
     let declared_classes = block
         .transactions
         .iter()
-        .filter_map(|tx| match tx {
-            Transaction::Declare(declare) => Some(declare.class_hash),
-            Transaction::Invoke(_) | Transaction::Deploy(_) => None,
+        .filter_map(|tx| {
+            use crate::sequencer::reply::transaction::Transaction::*;
+            match tx {
+                Declare(tx) => Some(tx.class_hash),
+                Deploy(_) | Invoke(_) => None,
+            }
         })
         // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
         .collect::<HashSet<_>>()
@@ -274,7 +264,7 @@ async fn download_block(
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
                 let verify_result = verify_block_hash(&block, chain, expected_block_hash)
-                    .with_context(move || format!("Verify block {block_number}"))?;
+                    .with_context(move || format!("Verify block {}", block_number.0))?;
                 Ok((block, verify_result))
             });
             let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
@@ -319,11 +309,11 @@ async fn download_block(
 }
 
 async fn reorg(
-    head: (StarknetBlockNumber, StarknetBlockHash),
+    head: (StarknetBlockNumber, StarknetBlockHash, GlobalRoot),
     chain: Chain,
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl sequencer::ClientApi,
-) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash)>> {
+) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
     let mut reorg_tail = head;
@@ -337,26 +327,26 @@ async fn reorg(
 
         let (tx, rx) = oneshot::channel();
         tx_event
-            .send(Event::QueryHash(previous_block_number, tx))
+            .send(Event::QueryBlock(previous_block_number, tx))
             .await
             .context("Event channel closed")?;
 
-        let previous_hash = match rx.await.context("Oneshot channel closed")? {
+        let previous = match rx.await.context("Oneshot channel closed")? {
             Some(hash) => hash,
             None => break None,
         };
 
-        match download_block(previous_block_number, chain, Some(previous_hash), sequencer)
+        match download_block(previous_block_number, chain, Some(previous.0), sequencer)
             .await
             .with_context(|| format!("Download block {} from sequencer", previous_block_number.0))?
         {
-            DownloadBlock::Block(block) if block.block_hash == previous_hash => {
-                break Some((previous_block_number, previous_hash));
+            DownloadBlock::Block(block) if block.block_hash == previous.0 => {
+                break Some((previous_block_number, previous.0, previous.1));
             }
             _ => {}
         };
 
-        reorg_tail = (previous_block_number, previous_hash);
+        reorg_tail = (previous_block_number, previous.0, previous.1);
     };
 
     let reorg_tail = new_head
@@ -948,7 +938,7 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1031,8 +1021,9 @@ mod tests {
                 let _jh = tokio::spawn(sync(
                     tx_event,
                     mock,
-                    Some((BLOCK0_NUMBER, *BLOCK0_HASH)),
+                    Some((BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)),
                     Chain::Goerli,
+                    None,
                 ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
@@ -1157,7 +1148,7 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1368,7 +1359,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1416,13 +1407,13 @@ mod tests {
                     assert!(state_update.deployed_contracts.is_empty());
                     assert!(state_update.contract_updates.is_empty());
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
-                    sender.send(Some(*BLOCK1_HASH)).unwrap();
+                    sender.send(Some((*BLOCK1_HASH, *GLOBAL_ROOT1))).unwrap();
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK0_NUMBER);
-                    sender.send(Some(*BLOCK0_HASH)).unwrap();
+                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT0))).unwrap();
                 });
                 // Reorg started at the genesis block
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
@@ -1662,7 +1653,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1715,17 +1706,17 @@ mod tests {
                     assert!(state_update.deployed_contracts.is_empty());
                     assert!(state_update.contract_updates.is_empty());
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK2_NUMBER);
-                    sender.send(Some(*BLOCK2_HASH)).unwrap();
+                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT2))).unwrap();
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
-                    sender.send(Some(*BLOCK1_HASH)).unwrap();
+                    sender.send(Some((*BLOCK1_HASH, *GLOBAL_ROOT1))).unwrap();
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK0_NUMBER);
-                    sender.send(Some(*BLOCK0_HASH)).unwrap();
+                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT0))).unwrap();
                 });
                 // Reorg started from block #1
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
@@ -1880,7 +1871,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1928,9 +1919,9 @@ mod tests {
                     assert!(state_update.deployed_contracts.is_empty());
                     assert!(state_update.contract_updates.is_empty());
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
-                    sender.send(Some(*BLOCK1_HASH)).unwrap();
+                    sender.send(Some((*BLOCK1_HASH, *GLOBAL_ROOT1))).unwrap();
                 });
                 // Reorg started from block #2
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
@@ -2085,7 +2076,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -2128,9 +2119,9 @@ mod tests {
                     state_update.contract_updates.sort();
                     assert_eq!(state_update, *EXPECTED_STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryHash(block_number, sender) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK0_NUMBER);
-                    sender.send(Some(*BLOCK0_HASH)).unwrap();
+                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT0))).unwrap();
                 });
                 // Reorg started from block #1
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
@@ -2171,7 +2162,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli));
+                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
 
                 // Wrap this in a timeout so we don't wait forever in case of test failure.
                 // Right now closing the channel causes an error.
