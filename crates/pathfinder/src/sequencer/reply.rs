@@ -66,6 +66,12 @@ impl From<Block> for MaybePendingBlock {
     }
 }
 
+impl From<PendingBlock> for MaybePendingBlock {
+    fn from(pending: PendingBlock) -> Self {
+        MaybePendingBlock::Pending(pending)
+    }
+}
+
 impl MaybePendingBlock {
     pub fn as_block(self) -> Option<Block> {
         match self {
