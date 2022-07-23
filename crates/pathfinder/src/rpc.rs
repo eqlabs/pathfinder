@@ -365,7 +365,7 @@ mod tests {
             test_utils::*,
             Client,
         },
-        state::{state_tree::GlobalStateTree, SyncState},
+        state::{state_tree::GlobalStateTree, PendingData, SyncState},
         storage::{
             ContractCodeTable, ContractsTable, StarknetBlock, StarknetBlocksTable,
             StarknetTransactionsTable, Storage,
@@ -589,6 +589,172 @@ mod tests {
 
         db_txn.commit().unwrap();
         storage
+    }
+
+    /// Creates [PendingData] which correctly links to the provided [Storage].
+    ///
+    /// i.e. the pending block's parent hash will be the latest block's hash from storage,
+    /// and similarly for the pending state diffs state root.
+    async fn create_pending_data(storage: Storage) -> PendingData {
+        use crate::core::{StorageValue, TransactionNonce};
+        use crate::sequencer::reply::transaction::DeclareTransaction;
+
+        let storage2 = storage.clone();
+        let latest = tokio::task::spawn_blocking(move || {
+            let mut db = storage2.connection().unwrap();
+            let tx = db.transaction().unwrap();
+
+            use crate::storage::StarknetBlocksBlockId;
+            let latest = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+                .unwrap()
+                .expect("Storage should contain a latest block");
+
+            latest
+        })
+        .await
+        .unwrap();
+
+        let transactions: Vec<Transaction> = vec![DeclareTransaction {
+            class_hash: ClassHash(StarkHash::from_be_slice(b"pending class hash 0").unwrap()),
+            max_fee: Call::DEFAULT_MAX_FEE,
+            nonce: TransactionNonce(StarkHash::from_be_slice(b"pending nonce 0").unwrap()),
+            sender_address: ContractAddress(
+                StarkHash::from_be_slice(b"pending contract addr 0").unwrap(),
+            ),
+            signature: vec![],
+            transaction_hash: StarknetTransactionHash(
+                StarkHash::from_be_slice(b"pending tx hash 0").unwrap(),
+            ),
+            version: TransactionVersion(web3::types::H256::from_low_u64_be(1)),
+        }
+        .into()];
+
+        let transaction_receipts = vec![Receipt {
+            actual_fee: None,
+            events: vec![],
+            execution_resources: ExecutionResources {
+                builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                    EmptyBuiltinInstanceCounter {},
+                ),
+                n_memory_holes: 0,
+                n_steps: 0,
+            },
+            l1_to_l2_consumed_message: None,
+            l2_to_l1_messages: vec![],
+            transaction_hash: transactions[0].hash(),
+            transaction_index: StarknetTransactionIndex(0),
+        }];
+
+        let block = crate::sequencer::reply::PendingBlock {
+            gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
+            parent_hash: latest.hash,
+            sequencer_address: SequencerAddress(
+                StarkHash::from_be_slice(b"pending sequencer address").unwrap(),
+            ),
+            status: crate::sequencer::reply::Status::Pending,
+            timestamp: StarknetBlockTimestamp(1234567),
+            transaction_receipts,
+            transactions,
+            starknet_version: Some("pending version".to_owned()),
+        };
+
+        use crate::sequencer::reply as seq_reply;
+        let deployed_contracts = vec![
+            seq_reply::state_update::Contract {
+                address: ContractAddress(
+                    StarkHash::from_be_slice(b"pending contract 0 address").unwrap(),
+                ),
+                contract_hash: ClassHash(
+                    StarkHash::from_be_slice(b"pending contract 0 hash").unwrap(),
+                ),
+            },
+            seq_reply::state_update::Contract {
+                address: ContractAddress(
+                    StarkHash::from_be_slice(b"pending contract 1 address").unwrap(),
+                ),
+                contract_hash: ClassHash(
+                    StarkHash::from_be_slice(b"pending contract 1 hash").unwrap(),
+                ),
+            },
+        ];
+        let storage_diffs = [(
+            deployed_contracts[1].address,
+            vec![
+                seq_reply::state_update::StorageDiff {
+                    key: StorageAddress(
+                        StarkHash::from_be_slice(b"pending storage key 0").unwrap(),
+                    ),
+                    value: StorageValue(
+                        StarkHash::from_be_slice(b"pending storage value 0").unwrap(),
+                    ),
+                },
+                seq_reply::state_update::StorageDiff {
+                    key: StorageAddress(
+                        StarkHash::from_be_slice(b"pending storage key 1").unwrap(),
+                    ),
+                    value: StorageValue(
+                        StarkHash::from_be_slice(b"pending storage value 1").unwrap(),
+                    ),
+                },
+            ],
+        )]
+        .into_iter()
+        .collect();
+
+        let state_diff = crate::sequencer::reply::state_update::StateDiff {
+            storage_diffs: storage_diffs,
+            deployed_contracts: deployed_contracts,
+            declared_contracts: Vec::new(),
+        };
+
+        // Use a roll-back transaction to calculate pending state root.
+        // This must not be committed as we don't want to inject the diff
+        // into storage, but do require database IO to determine the root.
+        //
+        // Load from latest block in storage's root.
+        let state_update = crate::ethereum::state_update::StateUpdate::from(&state_diff);
+        let pending_root = tokio::task::spawn_blocking(move || {
+            let mut db = storage.connection().unwrap();
+            let tmp_tx = db.transaction().unwrap();
+            let mut global_tree = GlobalStateTree::load(&tmp_tx, latest.root).unwrap();
+            for deployed in state_update.deployed_contracts {
+                // The abi, bytecode, definition are expected to be zstd compressed, and are
+                // checked for the magic bytes.
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+                let contract = crate::state::CompressedContract {
+                    abi: zstd_magic.clone(),
+                    bytecode: zstd_magic.clone(),
+                    definition: zstd_magic,
+                    hash: deployed.hash,
+                };
+                ContractCodeTable::insert_compressed(&tmp_tx, &contract).unwrap();
+                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.hash).unwrap();
+            }
+            for update in state_update.contract_updates {
+                use crate::state::update_contract_state;
+                let state_hash = update_contract_state(&update, &global_tree, &tmp_tx).unwrap();
+                global_tree.set(update.address, state_hash).unwrap();
+            }
+            let pending_root = global_tree.apply().unwrap();
+            tmp_tx.rollback().unwrap();
+            pending_root
+        })
+        .await
+        .unwrap();
+
+        let state_update = crate::sequencer::reply::StateUpdate {
+            // This must be `None` for a pending state update.
+            block_hash: None,
+            new_root: pending_root,
+            old_root: latest.root,
+            state_diff,
+        };
+
+        let pending_data = PendingData::default();
+        pending_data
+            .set(Arc::new(block), Arc::new(state_update))
+            .await;
+        pending_data
     }
 
     mod get_block {
