@@ -108,7 +108,7 @@ impl RpcApi {
     }
 
     /// Returns [PendingData]; errors if [RpcApi] was not configured with one.
-    /// 
+    ///
     /// This is useful for queries to access pending data or return an error via `?` if it
     /// is not meant to be used (as on testnet for example).
     fn pending_data(&self) -> anyhow::Result<&PendingData> {
@@ -124,16 +124,16 @@ impl RpcApi {
         scope: BlockResponseScope,
     ) -> RpcResult<Block> {
         let block_id = match block_id {
-            BlockId::Pending => {
-                let block = self
-                    .sequencer
-                    .block(block_id)
-                    .await
-                    .map_err(internal_server_error)?;
-
-                let block = Block::from_sequencer_scoped(block, scope);
-                return Ok(block);
-            }
+            BlockId::Pending => match self.pending_data()?.block().await {
+                Some(block) => {
+                    use std::ops::Deref;
+                    return Ok(Block::from_sequencer_scoped(
+                        block.deref().clone().into(),
+                        scope,
+                    ));
+                }
+                None => StarknetBlocksBlockId::Latest,
+            },
             BlockId::Hash(hash) => hash.into(),
             BlockId::Number(number) => number.into(),
             BlockId::Latest => StarknetBlocksBlockId::Latest,

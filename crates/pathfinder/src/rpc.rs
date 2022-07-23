@@ -856,9 +856,20 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
+            let pending_block = pending_data.block().await.unwrap();
+            let sequencer = Client::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockId::Pending);
-
-            check_result(params, move |_| {}).await;
+            let block = client(addr)
+                .request::<Block>("starknet_getBlockWithTxHashes", params)
+                .await
+                .unwrap();
+            assert_eq!(block.parent_hash, pending_block.parent_hash);
         }
 
         #[tokio::test]
