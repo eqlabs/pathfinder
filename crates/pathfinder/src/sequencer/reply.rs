@@ -367,6 +367,23 @@ pub mod transaction {
         pub transaction_hash: StarknetTransactionHash,
     }
 
+    impl From<DeclareTransaction> for Transaction {
+        fn from(tx: DeclareTransaction) -> Self {
+            Self::Declare(tx)
+        }
+    }
+
+    impl From<DeployTransaction> for Transaction {
+        fn from(tx: DeployTransaction) -> Self {
+            Self::Deploy(tx)
+        }
+    }
+
+    impl From<InvokeTransaction> for Transaction {
+        fn from(tx: InvokeTransaction) -> Self {
+            Self::Invoke(tx)
+        }
+    }
     /// Describes L2 transaction failure details.
     #[derive(Clone, Debug, Deserialize, PartialEq)]
     #[serde(deny_unknown_fields)]
