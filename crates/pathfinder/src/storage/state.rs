@@ -395,6 +395,21 @@ impl StarknetBlocksTable {
             None => Ok(None),
         }
     }
+
+    pub fn get_number(
+        tx: &Transaction<'_>,
+        hash: StarknetBlockHash,
+    ) -> anyhow::Result<Option<StarknetBlockNumber>> {
+        let mut statement =
+            tx.prepare("SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1")?;
+        let mut rows = statement.query(params![hash.0.as_be_bytes()])?;
+        let row = rows.next().context("Iterate rows")?;
+        let number = row.and_then(|row| {
+            let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
+            Some(StarknetBlockNumber(number))
+        });
+        Ok(number)
+    }
 }
 
 /// Identifies block in some [StarknetBlocksTable] queries.
@@ -1432,6 +1447,35 @@ mod tests {
                     let latest =
                         StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest).unwrap();
                     assert_eq!(latest, None);
+                }
+            }
+
+            mod number_by_hash {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    with_default_blocks(|tx, blocks| {
+                        for block in blocks {
+                            let result = StarknetBlocksTable::get_number(tx, block.hash.into())
+                                .unwrap()
+                                .unwrap();
+
+                            assert_eq!(result, block.number);
+                        }
+                    });
+                }
+
+                #[test]
+                fn none() {
+                    with_default_blocks(|tx, _blocks| {
+                        let non_existent =
+                            StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                        assert_eq!(
+                            StarknetBlocksTable::get_number(tx, non_existent.into()).unwrap(),
+                            None
+                        );
+                    });
                 }
             }
         }
