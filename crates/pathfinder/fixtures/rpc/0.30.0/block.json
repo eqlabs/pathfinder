@@ -10,7 +10,7 @@
         "transactions": [
             {
                 "type": "DECLARE",
-                "txn_hash": "0x4",
+                "transaction_hash": "0x4",
                 "max_fee": "0x5",
                 "version": "0x6",
                 "signature": [
@@ -22,7 +22,7 @@
             },
             {
                 "type": "INVOKE",
-                "txn_hash": "0x4",
+                "transaction_hash": "0x4",
                 "max_fee": "0x5",
                 "version": "0x6",
                 "signature": [
@@ -37,7 +37,7 @@
             },
             {
                 "type": "DEPLOY",
-                "txn_hash": "0xe",
+                "transaction_hash": "0xe",
                 "contract_address": "0xf",
                 "class_hash": "0x10",
                 "constructor_calldata": [
