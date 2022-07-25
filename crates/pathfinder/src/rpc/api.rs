@@ -302,10 +302,28 @@ impl RpcApi {
             BlockId::Number(number) => number.into(),
             BlockId::Latest => StarknetBlocksBlockId::Latest,
             BlockId::Pending => {
-                return Ok(self
-                    .sequencer
-                    .storage(contract_address, key, BlockHashOrTag::Tag(Tag::Pending))
-                    .await?);
+                // Pending storage will either be part of the pending state update,
+                // or it will come from latest if it isn't part of the pending diff.
+                match self.pending_data()?.state_update().await {
+                    Some(update) => {
+                        let pending_value = update
+                            .state_diff
+                            .storage_diffs
+                            .get(&contract_address)
+                            .and_then(|storage| {
+                                storage
+                                    .iter()
+                                    .find_map(|update| (update.key == key).then(|| update.value))
+                            });
+
+                        match pending_value {
+                            Some(value) => return Ok(value),
+                            None => StarknetBlocksBlockId::Latest,
+                        }
+                    }
+                    // Default to latest if pending data is not available.
+                    None => StarknetBlocksBlockId::Latest,
+                }
             }
         };
 

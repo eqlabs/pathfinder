@@ -1142,20 +1142,25 @@ mod tests {
 
         #[tokio::test]
         async fn pending_block() {
-            let storage = Storage::in_memory().unwrap();
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(
-                *VALID_CONTRACT_ADDR,
-                *VALID_KEY,
-                BlockHashOrTag::Tag(Tag::Pending)
-            );
-            client(addr)
+            // Pick an arbitrary pending storage update to query.
+            let state_update = pending_data.state_update().await.unwrap();
+            let (contract, updates) = state_update.state_diff.storage_diffs.iter().next().unwrap();
+            let storage_key = updates[0].key;
+            let storage_val = updates[0].value;
+
+            let params = rpc_params!(contract, storage_key, BlockHashOrTag::Tag(Tag::Pending));
+            let result = client(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
+            assert_eq!(result, storage_val);
         }
     }
 
