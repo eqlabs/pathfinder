@@ -179,9 +179,9 @@ pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
     use crate::{
         core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, EntryPoint, EventData,
-            EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+            EntryPoint, EventData, EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash,
+            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
             TransactionSignatureElem, TransactionVersion,
         },
         rpc::{
@@ -557,10 +557,14 @@ pub mod reply {
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeployTransaction {
+        // This part is a subset of CommonTransactionProperties
         #[serde(rename = "transaction_hash")]
         pub hash: StarknetTransactionHash,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
 
         pub contract_address: ContractAddress,
+        pub contract_address_salt: ContractAddressSalt,
         pub class_hash: ClassHash,
         pub constructor_calldata: Vec<ConstructorParam>,
     }
@@ -618,7 +622,10 @@ pub mod reply {
                 sequencer::reply::transaction::Transaction::Deploy(txn) => {
                     Self::Deploy(DeployTransaction {
                         hash: txn.transaction_hash,
+                        // no `version` in deploy transactions
+                        version: TransactionVersion(Default::default()),
                         contract_address: txn.contract_address,
+                        contract_address_salt: txn.contract_address_salt,
                         class_hash: txn.class_hash,
                         constructor_calldata: txn.constructor_calldata.clone(),
                     })
@@ -668,11 +675,7 @@ pub mod reply {
         #[serde_as(as = "FeeAsHexStr")]
         pub actual_fee: Fee,
         pub status: TransactionStatus,
-        #[serde(
-            default,
-            rename = "statusData",
-            skip_serializing_if = "Option::is_none"
-        )]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         pub status_data: Option<String>,
     }
 
@@ -1059,7 +1062,7 @@ pub mod reply {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../fixtures/rpc/0.30.0/", $file_name))
+                include_str!(concat!("../../fixtures/rpc/0.31.0/", $file_name))
                     .replace(&[' ', '\n'], "")
             };
         }
@@ -1110,7 +1113,15 @@ pub mod reply {
                                 }),
                                 Transaction::Deploy(DeployTransaction {
                                     hash: StarknetTransactionHash::from_hex_str("0xe").unwrap(),
+
+                                    version: TransactionVersion(
+                                        web3::types::H256::from_low_u64_be(1),
+                                    ),
                                     contract_address: ContractAddress::from_hex_str("0xf").unwrap(),
+                                    contract_address_salt: ContractAddressSalt::from_hex_str(
+                                        "0xee",
+                                    )
+                                    .unwrap(),
                                     class_hash: ClassHash::from_hex_str("0x10").unwrap(),
                                     constructor_calldata: vec![ConstructorParam::from_hex_str(
                                         "0x11",

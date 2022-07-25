@@ -38,7 +38,9 @@
             {
                 "type": "DEPLOY",
                 "transaction_hash": "0xe",
+                "version": "0x1",
                 "contract_address": "0xf",
+                "contract_address_salt": "0xee",
                 "class_hash": "0x10",
                 "constructor_calldata": [
                     "0x11"
