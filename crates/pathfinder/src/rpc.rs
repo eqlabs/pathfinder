@@ -597,7 +597,7 @@ mod tests {
     /// and similarly for the pending state diffs state root.
     async fn create_pending_data(storage: Storage) -> PendingData {
         use crate::core::{StorageValue, TransactionNonce};
-        use crate::sequencer::reply::transaction::DeclareTransaction;
+        use crate::sequencer::reply::transaction::{DeclareTransaction, DeployTransaction};
 
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {
@@ -614,36 +614,67 @@ mod tests {
         .await
         .unwrap();
 
-        let transactions: Vec<Transaction> = vec![DeclareTransaction {
-            class_hash: ClassHash(StarkHash::from_be_slice(b"pending class hash 0").unwrap()),
-            max_fee: Call::DEFAULT_MAX_FEE,
-            nonce: TransactionNonce(StarkHash::from_be_slice(b"pending nonce 0").unwrap()),
-            sender_address: ContractAddress(
-                StarkHash::from_be_slice(b"pending contract addr 0").unwrap(),
-            ),
-            signature: vec![],
-            transaction_hash: StarknetTransactionHash(
-                StarkHash::from_be_slice(b"pending tx hash 0").unwrap(),
-            ),
-            version: TransactionVersion(web3::types::H256::from_low_u64_be(1)),
-        }
-        .into()];
-
-        let transaction_receipts = vec![Receipt {
-            actual_fee: None,
-            events: vec![],
-            execution_resources: ExecutionResources {
-                builtin_instance_counter: BuiltinInstanceCounter::Empty(
-                    EmptyBuiltinInstanceCounter {},
+        let transactions: Vec<Transaction> = vec![
+            DeclareTransaction {
+                class_hash: ClassHash(StarkHash::from_be_slice(b"pending class hash 0").unwrap()),
+                max_fee: Call::DEFAULT_MAX_FEE,
+                nonce: TransactionNonce(StarkHash::from_be_slice(b"pending nonce 0").unwrap()),
+                sender_address: ContractAddress(
+                    StarkHash::from_be_slice(b"pending contract addr 0").unwrap(),
                 ),
-                n_memory_holes: 0,
-                n_steps: 0,
+                signature: vec![],
+                transaction_hash: StarknetTransactionHash(
+                    StarkHash::from_be_slice(b"pending tx hash 0").unwrap(),
+                ),
+                version: TransactionVersion(web3::types::H256::from_low_u64_be(1)),
+            }
+            .into(),
+            DeployTransaction {
+                contract_address: ContractAddress::from_hex_str("0x1122355").unwrap(),
+                contract_address_salt: ContractAddressSalt(
+                    StarkHash::from_be_slice(b"salty").unwrap(),
+                ),
+                class_hash: ClassHash(StarkHash::from_be_slice(b"pending class hash 1").unwrap()),
+                constructor_calldata: vec![],
+                transaction_hash: StarknetTransactionHash(
+                    StarkHash::from_be_slice(b"pending tx hash 1").unwrap(),
+                ),
+            }
+            .into(),
+        ];
+
+        let transaction_receipts = vec![
+            Receipt {
+                actual_fee: None,
+                events: vec![],
+                execution_resources: ExecutionResources {
+                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                        EmptyBuiltinInstanceCounter {},
+                    ),
+                    n_memory_holes: 0,
+                    n_steps: 0,
+                },
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: vec![],
+                transaction_hash: transactions[0].hash(),
+                transaction_index: StarknetTransactionIndex(0),
             },
-            l1_to_l2_consumed_message: None,
-            l2_to_l1_messages: vec![],
-            transaction_hash: transactions[0].hash(),
-            transaction_index: StarknetTransactionIndex(0),
-        }];
+            Receipt {
+                actual_fee: None,
+                events: vec![],
+                execution_resources: ExecutionResources {
+                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                        EmptyBuiltinInstanceCounter {},
+                    ),
+                    n_memory_holes: 0,
+                    n_steps: 0,
+                },
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: vec![],
+                transaction_hash: transactions[1].hash(),
+                transaction_index: StarknetTransactionIndex(1),
+            },
+        ];
 
         let block = crate::sequencer::reply::PendingBlock {
             gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
@@ -1324,8 +1355,26 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let params = rpc_params!(BlockId::Pending, 0);
-            check_result(params, move |_| {}).await;
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
+            let sequencer = Client::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            const TX_IDX: usize = 1;
+            let expected = pending_data.block().await.unwrap();
+            assert!(TX_IDX <= expected.transactions.len());
+            let expected: Transaction = expected.transactions.iter().nth(TX_IDX).unwrap().into();
+
+            let params = rpc_params!(BlockId::Pending, TX_IDX);
+            let transaction = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
+                .await
+                .unwrap();
+
+            assert_eq!(transaction, expected);
         }
 
         #[tokio::test]

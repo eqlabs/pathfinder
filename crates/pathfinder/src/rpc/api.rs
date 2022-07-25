@@ -458,22 +458,18 @@ impl RpcApi {
             BlockId::Hash(hash) => hash.into(),
             BlockId::Number(number) => number.into(),
             BlockId::Latest => StarknetBlocksBlockId::Latest,
-            BlockId::Pending => {
-                let block = self
-                    .sequencer
-                    .block(BlockId::Pending)
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
-
-                return block
-                    .transactions()
-                    .iter()
-                    .nth(index)
-                    .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
-                        Ok(txn.into())
-                    });
-            }
+            BlockId::Pending => match self.pending_data()?.block().await {
+                Some(block) => {
+                    return block
+                        .transactions
+                        .get(index)
+                        .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
+                            Ok(txn.into())
+                        })
+                }
+                // Default to latest if pending data is not available.
+                None => StarknetBlocksBlockId::Latest,
+            },
         };
 
         let storage = self.storage.clone();
