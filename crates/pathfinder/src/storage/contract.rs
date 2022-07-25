@@ -96,7 +96,7 @@ impl ContractCodeTable {
         };
 
         let definition = zstd::decode_all(&*definition)
-            .context("Corruption: invalid compressed column (abi)")?;
+            .context("Corruption: invalid compressed column (definition)")?;
 
         let (program, entry_points_by_type) = extract_program_and_entry_points_by_type(&definition)
             .context("Extract program and entry points from contract definition")?;
