@@ -677,6 +677,8 @@ pub mod reply {
         pub status: TransactionStatus,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub status_data: Option<String>,
+        pub block_hash: StarknetBlockHash,
+        pub block_number: StarknetBlockNumber,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -687,9 +689,11 @@ pub mod reply {
     }
 
     impl TransactionReceipt {
-        pub fn with_block_status(
+        pub fn with_block_data(
             receipt: sequencer::reply::transaction::Receipt,
             status: BlockStatus,
+            block_hash: StarknetBlockHash,
+            block_number: StarknetBlockNumber,
             transaction: &sequencer::reply::transaction::Transaction,
         ) -> Self {
             match transaction {
@@ -704,6 +708,8 @@ pub mod reply {
                             status: status.into(),
                             // TODO: at the moment not available in sequencer replies
                             status_data: None,
+                            block_hash,
+                            block_number,
                         },
                     })
                 }
@@ -717,6 +723,8 @@ pub mod reply {
                             status: status.into(),
                             // TODO: at the moment not available in sequencer replies
                             status_data: None,
+                            block_hash,
+                            block_number,
                         },
                         messages_sent: receipt
                             .l2_to_l1_messages
