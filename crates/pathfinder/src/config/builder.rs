@@ -115,7 +115,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                     )),
                 }
             }
-            None => Ok(false),
+            None => Ok(true),
         }?;
 
         // Parse the HTTP-RPC listening address and port.
@@ -351,7 +351,7 @@ mod tests {
 
             #[test]
             fn sqlite_wal() {
-                let expected = false;
+                let expected = true;
                 let config = builder_with_all_required().try_build().unwrap();
                 assert_eq!(config.sqlite_wal, expected);
             }
