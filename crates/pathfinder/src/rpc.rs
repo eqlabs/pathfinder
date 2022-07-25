@@ -738,6 +738,30 @@ mod tests {
             declared_contracts: Vec::new(),
         };
 
+        // The class definitions must be inserted into the database.
+        let deployed_contracts = state_diff.deployed_contracts.clone();
+        let deploy_storage = storage.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut db = deploy_storage.connection().unwrap();
+            let tx = db.transaction().unwrap();
+            let compressed_definition = include_bytes!("../fixtures/contract_definition.json.zst");
+            for deployed in deployed_contracts {
+                // The abi, bytecode, definition are expected to be zstd compressed, and are
+                // checked for the magic bytes.
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+                let contract = crate::state::CompressedContract {
+                    abi: zstd_magic.clone(),
+                    bytecode: zstd_magic.clone(),
+                    definition: compressed_definition.to_vec(),
+                    hash: deployed.contract_hash,
+                };
+                ContractCodeTable::insert_compressed(&tx, &contract).unwrap();
+            }
+            tx.commit().unwrap();
+        })
+        .await
+        .unwrap();
+
         // Use a roll-back transaction to calculate pending state root.
         // This must not be committed as we don't want to inject the diff
         // into storage, but do require database IO to determine the root.
@@ -749,16 +773,6 @@ mod tests {
             let tmp_tx = db.transaction().unwrap();
             let mut global_tree = GlobalStateTree::load(&tmp_tx, latest.root).unwrap();
             for deployed in state_update.deployed_contracts {
-                // The abi, bytecode, definition are expected to be zstd compressed, and are
-                // checked for the magic bytes.
-                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-                let contract = crate::state::CompressedContract {
-                    abi: zstd_magic.clone(),
-                    bytecode: zstd_magic.clone(),
-                    definition: zstd_magic,
-                    hash: deployed.hash,
-                };
-                ContractCodeTable::insert_compressed(&tmp_tx, &contract).unwrap();
                 ContractsTable::upsert(&tmp_tx, deployed.address, deployed.hash).unwrap();
             }
             for update in state_update.contract_updates {
@@ -1815,6 +1829,26 @@ mod tests {
                 .unwrap_err();
 
             assert_eq!(ErrorCode::ContractNotFound, not_found);
+        }
+
+        #[tokio::test]
+        async fn pending() {
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
+            let sequencer = Client::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            let contract = pending_data.state_update().await.unwrap();
+            let contract = contract.state_diff.deployed_contracts.first().unwrap();
+
+            let params = rpc_params!(BlockId::Pending, contract.address);
+            client(addr)
+                .request::<ContractClass>("starknet_getClassAt", params)
+                .await
+                .unwrap();
         }
     }
 

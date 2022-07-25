@@ -729,6 +729,7 @@ impl RpcApi {
         contract_address: ContractAddress,
     ) -> RpcResult<ContractClass> {
         use crate::storage::ContractCodeTable;
+        let span = tracing::Span::current();
 
         let block_id = match block_id {
             BlockId::Hash(hash) => hash.into(),
@@ -745,7 +746,33 @@ impl RpcApi {
                                 (deploy.address == contract_address).then_some(deploy.contract_hash)
                             });
                     match class_hash {
-                        Some(class_hash) => return Ok(class_hash),
+                        Some(class_hash) => {
+                            let storage = self.storage.clone();
+                            let code = tokio::task::spawn_blocking(move || {
+                                let _g = span.enter();
+                                let mut db = storage
+                                    .connection()
+                                    .context("Opening database connection")
+                                    .map_err(internal_server_error)?;
+                                let tx = db
+                                    .transaction()
+                                    .context("Creating database transaction")
+                                    .map_err(internal_server_error)?;
+                                let code = ContractCodeTable::get_class(&tx, class_hash)
+                                    .context("Fetching code from database");
+                                dbg!(&code);
+
+                                let code = code.map_err(internal_server_error)?;
+
+                                anyhow::Result::<_>::Ok(code)
+                            })
+                            .await
+                            .context("Database read panic or shutting down")
+                            .map_err(internal_server_error)??
+                            .context("Missing class in database")
+                            .map_err(internal_server_error)?;
+                            return Ok(code);
+                        }
                         // Check if contract does not already exist in known blocks.
                         None => StarknetBlocksBlockId::Latest,
                     }
@@ -756,7 +783,6 @@ impl RpcApi {
         };
 
         let storage = self.storage.clone();
-        let span = tracing::Span::current();
 
         let jh = tokio::task::spawn_blocking(move || {
             let _g = span.enter();
