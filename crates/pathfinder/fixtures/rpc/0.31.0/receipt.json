@@ -3,7 +3,7 @@
         "transaction_hash": "0x0",
         "actual_fee": "0x1",
         "status": "ACCEPTED_ON_L1",
-        "statusData": "blah",
+        "status_data": "blah",
         "messages_sent": [
             {
                 "to_address": "0x2",
@@ -48,6 +48,6 @@
         "transaction_hash": "0x0",
         "actual_fee": "0x1",
         "status": "ACCEPTED_ON_L1",
-        "statusData": "blah"
+        "status_data": "blah"
     }
 ]

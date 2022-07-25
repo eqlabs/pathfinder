@@ -668,11 +668,7 @@ pub mod reply {
         #[serde_as(as = "FeeAsHexStr")]
         pub actual_fee: Fee,
         pub status: TransactionStatus,
-        #[serde(
-            default,
-            rename = "statusData",
-            skip_serializing_if = "Option::is_none"
-        )]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         pub status_data: Option<String>,
     }
 
@@ -1059,7 +1055,7 @@ pub mod reply {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../fixtures/rpc/0.30.0/", $file_name))
+                include_str!(concat!("../../fixtures/rpc/0.31.0/", $file_name))
                     .replace(&[' ', '\n'], "")
             };
         }
