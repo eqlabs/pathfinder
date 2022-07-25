@@ -986,7 +986,29 @@ impl RpcApi {
                 .context("Opening database connection")
                 .map_err(internal_server_error)?;
 
-            let filter = request.into();
+            let from_block = request.from_block.map(|block_id| match block_id {
+                BlockId::Number(number) => number,
+                BlockId::Hash(_) => todo!(),
+                BlockId::Latest => todo!(),
+                BlockId::Pending => todo!(),
+            });
+
+            let to_block = request.to_block.map(|block_id| match block_id {
+                BlockId::Number(number) => number,
+                BlockId::Hash(_) => todo!(),
+                BlockId::Latest => todo!(),
+                BlockId::Pending => todo!(),
+            });
+
+            let filter = crate::storage::StarknetEventFilter {
+                from_block,
+                to_block,
+                contract_address: request.address,
+                keys: request.keys,
+                page_size: request.page_size,
+                page_number: request.page_number,
+            };
+
             let tx = connection
                 .transaction()
                 .context("Opening database transaction")

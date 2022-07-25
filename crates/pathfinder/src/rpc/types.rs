@@ -80,7 +80,7 @@ pub mod request {
     use crate::{
         core::{
             CallParam, CallSignatureElem, ContractAddress, EntryPoint, EventKey, Fee,
-            StarknetBlockNumber, TransactionVersion,
+            TransactionVersion,
         },
         rpc::serde::{
             CallSignatureElemAsDecimalStr, FeeAsHexStr, H256AsNoLeadingZerosHexStr,
@@ -159,9 +159,9 @@ pub mod request {
     #[serde(deny_unknown_fields)]
     pub struct EventFilter {
         #[serde(default, rename = "fromBlock")]
-        pub from_block: Option<StarknetBlockNumber>,
+        pub from_block: Option<crate::core::BlockId>,
         #[serde(default, rename = "toBlock")]
-        pub to_block: Option<StarknetBlockNumber>,
+        pub to_block: Option<crate::core::BlockId>,
         #[serde(default)]
         pub address: Option<ContractAddress>,
         #[serde(default)]

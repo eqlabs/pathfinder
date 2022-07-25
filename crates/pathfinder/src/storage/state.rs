@@ -670,19 +670,6 @@ pub struct StarknetEventFilter {
     pub page_number: usize,
 }
 
-impl From<crate::rpc::types::request::EventFilter> for StarknetEventFilter {
-    fn from(filter: crate::rpc::types::request::EventFilter) -> Self {
-        Self {
-            from_block: filter.from_block,
-            to_block: filter.to_block,
-            contract_address: filter.address,
-            keys: filter.keys,
-            page_size: filter.page_size,
-            page_number: filter.page_number,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct StarknetEmittedEvent {
     pub from_address: ContractAddress,

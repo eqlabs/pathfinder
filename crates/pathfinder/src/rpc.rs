@@ -2479,8 +2479,8 @@ mod tests {
 
                 let expected_event = &events[1];
                 let params = rpc_params!(EventFilter {
-                    from_block: Some(expected_event.block_number),
-                    to_block: Some(expected_event.block_number),
+                    from_block: Some(expected_event.block_number.into()),
+                    to_block: Some(expected_event.block_number.into()),
                     address: Some(expected_event.from_address),
                     // we're using a key which is present in _all_ events
                     keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
@@ -2512,8 +2512,8 @@ mod tests {
 
                 const BLOCK_NUMBER: usize = 2;
                 let params = rpc_params!(EventFilter {
-                    from_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
-                    to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
+                    from_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64).into()),
+                    to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64).into()),
                     address: None,
                     keys: vec![],
                     page_size: test_utils::NUM_EVENTS,
@@ -2703,8 +2703,12 @@ mod tests {
                 let params = by_name([(
                     "filter",
                     json!({
-                        "fromBlock": expected_event.block_number.0,
-                        "toBlock": expected_event.block_number.0,
+                        "fromBlock": {
+                            "block_number": expected_event.block_number.0
+                        },
+                        "toBlock": {
+                            "block_number": expected_event.block_number.0
+                        },
                         "address": expected_event.from_address,
                         "keys": [expected_event.keys[0]],
                         "page_size": super::test_utils::NUM_EVENTS,
