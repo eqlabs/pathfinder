@@ -218,17 +218,6 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             .get_class_at(params.block_id, params.contract_address)
             .await
     })?;
-    // This is the old, now deprecated name of `starknet_getClassAt`. We keep this around for a while to avoid introducing
-    // a breaking change.
-    module.register_async_method("starknet_getCode", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub contract_address: ContractAddress,
-        }
-        context
-            .get_code(params.parse::<NamedArgs>()?.contract_address)
-            .await
-    })?;
     module.register_async_method(
         "starknet_getBlockTransactionCount",
         |params, context| async move {
@@ -1531,56 +1520,6 @@ mod tests {
                 .unwrap_err();
 
             assert_eq!(ErrorCode::ContractNotFound, not_found);
-        }
-    }
-
-    mod get_code {
-        use super::contract_setup::setup_class_and_contract;
-        use super::*;
-        use pretty_assertions::assert_eq;
-
-        #[tokio::test]
-        async fn returns_abi_and_code_for_known() {
-            use crate::core::ContractCode;
-            use futures::stream::TryStreamExt;
-
-            let storage = setup_storage();
-            let mut conn = storage.connection().unwrap();
-            let transaction = conn.transaction().unwrap();
-            let (contract_address, _class_hash, _program, _entry_points) =
-                setup_class_and_contract(&transaction).unwrap();
-            transaction.commit().unwrap();
-
-            let sequencer = Client::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-            let client = client(addr);
-
-            // both parameters, these used to be separate tests
-            let rets = [
-                rpc_params!(contract_address),
-                by_name([("contract_address", json!(contract_address))]),
-            ]
-            .into_iter()
-            .map(|arg| client.request::<ContractCode>("starknet_getCode", arg))
-            .collect::<futures::stream::FuturesOrdered<_>>()
-            .try_collect::<Vec<_>>()
-            .await
-            .unwrap();
-
-            assert_eq!(rets.len(), 2);
-
-            assert_eq!(rets[0], rets[1]);
-            let abi = rets[0].abi.to_string();
-            assert_eq!(
-                abi,
-                // this should not have the quotes because that'd be in json:
-                // `"abi":"\"[{....}]\""`
-                r#"[{"inputs":[{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"contract_address","type":"felt"},{"name":"address","type":"felt"},{"name":"value","type":"felt"}],"name":"call_increase_value","outputs":[],"type":"function"},{"inputs":[{"name":"address","type":"felt"}],"name":"get_value","outputs":[{"name":"res","type":"felt"}],"type":"function"}]"#
-            );
-            assert_eq!(rets[0].bytecode.len(), 132);
         }
     }
 
