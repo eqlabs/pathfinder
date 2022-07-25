@@ -1204,6 +1204,27 @@ mod tests {
                     .unwrap();
                 assert_eq!(transaction.hash(), hash);
             }
+
+            #[tokio::test]
+            async fn pending() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data.clone());
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                // Select an arbitrary pending transaction to query.
+                let expected = pending_data.block().await.unwrap();
+                let expected: Transaction = expected.transactions.first().unwrap().into();
+
+                let params = rpc_params!(expected.hash());
+                let transaction = client(addr)
+                    .request::<Transaction>("starknet_getTransactionByHash", params)
+                    .await
+                    .unwrap();
+                assert_eq!(transaction, expected.into());
+            }
         }
 
         #[tokio::test]

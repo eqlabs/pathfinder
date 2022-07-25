@@ -400,6 +400,21 @@ impl RpcApi {
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> RpcResult<Transaction> {
+        // First check pending data as this is in-mem and should be faster.
+        if let Ok(pending) = self.pending_data() {
+            let pending_tx = pending.block().await.and_then(|block| {
+                block
+                    .transactions
+                    .iter()
+                    .find(|tx| tx.hash() == transaction_hash)
+                    .cloned()
+            });
+
+            if let Some(pending_tx) = pending_tx {
+                return Ok(pending_tx.into());
+            }
+        }
+
         let storage = self.storage.clone();
         let span = tracing::Span::current();
 
