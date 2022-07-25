@@ -6,7 +6,7 @@
 //! should not cause issues in WAL mode.
 //!
 //! Use of the call functionality happens through [`Handle::call`], which hands out futures in
-//! exchange for [`Call`] and [`BlockHashOrTag`], former selects the contract and method to call,
+//! exchange for [`Call`] and "when" in chain, former selects the contract and method to call,
 //! latter selectes "when" to call it on the history. None of the block or tags are resolved over
 //! at rust side, because transactions cannot carry over between processes.
 //!
@@ -16,7 +16,8 @@
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
 use crate::core::CallResultValue;
-use crate::rpc::types::{reply::FeeEstimate, request::Call, BlockHashOrTag};
+use crate::rpc::types::{reply::FeeEstimate, request::Call};
+use crate::sequencer::reply::StateUpdate;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -25,6 +26,8 @@ use de::ErrorKind;
 
 mod ser;
 use ser::UsedChain;
+pub use ser::{BlockHashNumberOrLatest, Pending};
+
 mod sub_process;
 
 mod service;
@@ -42,7 +45,8 @@ impl Handle {
     pub async fn call(
         &self,
         call: Call,
-        at_block: BlockHashOrTag,
+        at_block: BlockHashNumberOrLatest,
+        diffs: Option<Arc<StateUpdate>>,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -55,6 +59,7 @@ impl Handle {
                     call,
                     at_block,
                     chain: self.chain,
+                    diffs,
                     response,
                 },
                 continued_span,
@@ -74,8 +79,9 @@ impl Handle {
     pub async fn estimate_fee(
         &self,
         call: Call,
-        at_block: BlockHashOrTag,
+        at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
+        diffs: Option<Arc<StateUpdate>>,
     ) -> Result<FeeEstimate, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -89,6 +95,7 @@ impl Handle {
                     at_block,
                     gas_price,
                     chain: self.chain,
+                    diffs,
                     response,
                 },
                 continued_span,
@@ -170,16 +177,18 @@ type SharedReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
 enum Command {
     Call {
         call: Call,
-        at_block: BlockHashOrTag,
+        at_block: BlockHashNumberOrLatest,
         chain: UsedChain,
+        diffs: Option<Arc<StateUpdate>>,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
         call: Call,
-        at_block: BlockHashOrTag,
+        at_block: BlockHashNumberOrLatest,
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
         chain: UsedChain,
+        diffs: Option<Arc<StateUpdate>>,
         response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
     },
 }
@@ -243,13 +252,14 @@ impl From<std::io::Error> for SubprocessError {
 
 #[cfg(test)]
 mod tests {
+
     use super::sub_process::launch_python;
     use stark_hash::StarkHash;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
 
     #[test_log::test(tokio::test)]
-    #[ignore]
+    #[ignore = "needs python venv"]
     async fn start_with_wrong_database_schema_fails() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -281,7 +291,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    #[ignore] // these tests require that you've entered into python venv
+    #[ignore = "needs python venv"]
     async fn call_like_in_python_ten_times() {
         use futures::stream::StreamExt;
 
@@ -338,9 +348,10 @@ mod tests {
                                 max_fee: super::Call::DEFAULT_MAX_FEE,
                                 version: super::Call::DEFAULT_VERSION,
                             },
-                            super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                            crate::core::StarknetBlockHash(
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                            ))
+                            ).into(),
+                            None
                         ).await.unwrap();
                     }
                 })
@@ -357,7 +368,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    #[ignore] // these tests require that you've entered into python venv
+    #[ignore = "needs python venv"]
     async fn estimate_fee_for_example() {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
@@ -410,10 +421,12 @@ mod tests {
         let at_block_fee = handle
             .estimate_fee(
                 call.clone(),
-                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                crate::core::StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )),
+                )
+                .into(),
                 super::GasPriceSource::PastBlock,
+                None,
             )
             .await
             .unwrap();
@@ -432,10 +445,12 @@ mod tests {
         let current_fee = handle
             .estimate_fee(
                 call,
-                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                crate::core::StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )),
+                )
+                .into(),
                 super::GasPriceSource::Current(H256::from_low_u64_be(10)),
+                None,
             )
             .await
             .unwrap();
@@ -455,7 +470,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    #[ignore]
+    #[ignore = "needs python venv"]
     async fn call_with_unknown_contract() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -507,9 +522,11 @@ mod tests {
         let result = handle
             .call(
                 call,
-                super::BlockHashOrTag::Hash(crate::core::StarknetBlockHash(
+                crate::core::StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )),
+                )
+                .into(),
+                None,
             )
             .await
             .unwrap_err();
@@ -517,6 +534,109 @@ mod tests {
         assert_eq!(result, super::CallFailure::NoSuchContract);
 
         let _ = shutdown_tx.send(());
+        jh.await.unwrap();
+    }
+
+    #[test_log::test(tokio::test)]
+    #[ignore = "needs python venv"]
+    async fn call_with_pending_updates() {
+        use crate::sequencer::reply::StateUpdate;
+
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+
+        let s = crate::storage::Storage::migrate(
+            PathBuf::from(db_file.path()),
+            crate::storage::JournalMode::WAL,
+        )
+        .unwrap();
+
+        let mut conn = s.connection().unwrap();
+        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
+
+        let tx = conn.transaction().unwrap();
+
+        fill_example_state(&tx);
+
+        tx.commit().unwrap();
+
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let (handle, jh) = super::start(
+            PathBuf::from(db_file.path()),
+            std::num::NonZeroUsize::new(1).unwrap(),
+            async move {
+                let _ = shutdown_rx.await;
+            },
+            crate::core::Chain::Goerli,
+        )
+        .await
+        .unwrap();
+
+        let target_contract = crate::core::ContractAddress(
+            StarkHash::from_hex_str(
+                "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+            )
+            .unwrap(),
+        );
+
+        let storage_address = StarkHash::from_hex_str("0x84").unwrap();
+
+        let call = super::Call {
+            contract_address: target_contract,
+            calldata: vec![crate::core::CallParam(storage_address)],
+            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            signature: Default::default(),
+            max_fee: super::Call::DEFAULT_MAX_FEE,
+            version: super::Call::DEFAULT_VERSION,
+        };
+
+        let res = handle
+            .call(
+                call.clone(),
+                crate::rpc::types::Tag::Latest.try_into().unwrap(),
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res, &[crate::core::CallResultValue(StarkHash::from(3u64))]);
+
+        let update = std::sync::Arc::new(StateUpdate {
+            block_hash: None,
+            old_root: crate::core::GlobalRoot(StarkHash::ZERO),
+            new_root: crate::core::GlobalRoot(StarkHash::ZERO),
+            state_diff: crate::sequencer::reply::state_update::StateDiff {
+                storage_diffs: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert(
+                        target_contract,
+                        vec![crate::sequencer::reply::state_update::StorageDiff {
+                            key: crate::core::StorageAddress(storage_address),
+                            value: crate::core::StorageValue(
+                                StarkHash::from_hex_str("0x4").unwrap(),
+                            ),
+                        }],
+                    );
+                    map
+                },
+                deployed_contracts: vec![],
+                declared_contracts: vec![],
+            },
+        });
+
+        let res = handle
+            .call(
+                call,
+                crate::rpc::types::Tag::Latest.try_into().unwrap(),
+                Some(update),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res, &[crate::core::CallResultValue(StarkHash::from(4u64))]);
+
+        shutdown_tx.send(()).unwrap();
+
         jh.await.unwrap();
     }
 
