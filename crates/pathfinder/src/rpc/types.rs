@@ -509,9 +509,9 @@ pub mod reply {
     impl Transaction {
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
-                Transaction::Declare(declare) => declare.common.txn_hash,
-                Transaction::Invoke(invoke) => invoke.common.txn_hash,
-                Transaction::Deploy(deploy) => deploy.txn_hash,
+                Transaction::Declare(declare) => declare.common.hash,
+                Transaction::Invoke(invoke) => invoke.common.hash,
+                Transaction::Deploy(deploy) => deploy.hash,
             }
         }
     }
@@ -520,7 +520,8 @@ pub mod reply {
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonTransactionProperties {
-        pub txn_hash: StarknetTransactionHash,
+        #[serde(rename = "transaction_hash")]
+        pub hash: StarknetTransactionHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
@@ -556,7 +557,8 @@ pub mod reply {
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeployTransaction {
-        pub txn_hash: StarknetTransactionHash,
+        #[serde(rename = "transaction_hash")]
+        pub hash: StarknetTransactionHash,
 
         pub contract_address: ContractAddress,
         pub class_hash: ClassHash,
@@ -587,7 +589,7 @@ pub mod reply {
                 sequencer::reply::transaction::Transaction::Invoke(txn) => {
                     Self::Invoke(InvokeTransaction {
                         common: CommonTransactionProperties {
-                            txn_hash: txn.transaction_hash,
+                            hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
                             // no `version` in invoke transactions
                             version: TransactionVersion(Default::default()),
@@ -603,7 +605,7 @@ pub mod reply {
                 sequencer::reply::transaction::Transaction::Declare(txn) => {
                     Self::Declare(DeclareTransaction {
                         common: CommonTransactionProperties {
-                            txn_hash: txn.transaction_hash,
+                            hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
                             version: txn.version,
                             signature: txn.signature.clone(),
@@ -615,7 +617,7 @@ pub mod reply {
                 }
                 sequencer::reply::transaction::Transaction::Deploy(txn) => {
                     Self::Deploy(DeployTransaction {
-                        txn_hash: txn.transaction_hash,
+                        hash: txn.transaction_hash,
                         contract_address: txn.contract_address,
                         class_hash: txn.class_hash,
                         constructor_calldata: txn.constructor_calldata.clone(),
@@ -640,8 +642,8 @@ pub mod reply {
     impl TransactionReceipt {
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
-                Self::Invoke(tx) => tx.common.txn_hash,
-                Self::DeclareOrDeploy(tx) => tx.common.txn_hash,
+                Self::Invoke(tx) => tx.common.transaction_hash,
+                Self::DeclareOrDeploy(tx) => tx.common.transaction_hash,
             }
         }
     }
@@ -662,7 +664,7 @@ pub mod reply {
     #[derive(Clone, Debug, Serialize, PartialEq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonTransactionReceiptProperties {
-        pub txn_hash: StarknetTransactionHash,
+        pub transaction_hash: StarknetTransactionHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub actual_fee: Fee,
         pub status: TransactionStatus,
@@ -692,7 +694,7 @@ pub mod reply {
                 | sequencer::reply::transaction::Transaction::Deploy(_) => {
                     Self::DeclareOrDeploy(DeclareOrDeployTransactionReceipt {
                         common: CommonTransactionReceiptProperties {
-                            txn_hash: receipt.transaction_hash,
+                            transaction_hash: receipt.transaction_hash,
                             actual_fee: receipt
                                 .actual_fee
                                 .unwrap_or_else(|| Fee(Default::default())),
@@ -705,7 +707,7 @@ pub mod reply {
                 sequencer::reply::transaction::Transaction::Invoke(_) => {
                     Self::Invoke(InvokeTransactionReceipt {
                         common: CommonTransactionReceiptProperties {
-                            txn_hash: receipt.transaction_hash,
+                            transaction_hash: receipt.transaction_hash,
                             actual_fee: receipt
                                 .actual_fee
                                 .unwrap_or_else(|| Fee(Default::default())),
@@ -1057,7 +1059,7 @@ pub mod reply {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../fixtures/rpc/0.21.0/", $file_name))
+                include_str!(concat!("../../fixtures/rpc/0.30.0/", $file_name))
                     .replace(&[' ', '\n'], "")
             };
         }
@@ -1080,7 +1082,7 @@ pub mod reply {
                 impl Block {
                     pub fn test_data() -> Self {
                         let common = CommonTransactionProperties {
-                            txn_hash: StarknetTransactionHash::from_hex_str("0x4").unwrap(),
+                            hash: StarknetTransactionHash::from_hex_str("0x4").unwrap(),
                             max_fee: Fee(web3::types::H128::from_low_u64_be(0x5)),
                             version: TransactionVersion(web3::types::H256::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem::from_hex_str("0x7").unwrap()],
@@ -1107,7 +1109,7 @@ pub mod reply {
                                     calldata: vec![CallParam::from_hex_str("0xd").unwrap()],
                                 }),
                                 Transaction::Deploy(DeployTransaction {
-                                    txn_hash: StarknetTransactionHash::from_hex_str("0xe").unwrap(),
+                                    hash: StarknetTransactionHash::from_hex_str("0xe").unwrap(),
                                     contract_address: ContractAddress::from_hex_str("0xf").unwrap(),
                                     class_hash: ClassHash::from_hex_str("0x10").unwrap(),
                                     constructor_calldata: vec![ConstructorParam::from_hex_str(
@@ -1150,7 +1152,7 @@ pub mod reply {
                 impl CommonTransactionReceiptProperties {
                     pub fn test_data() -> Self {
                         Self {
-                            txn_hash: StarknetTransactionHash::from_hex_str("0x0").unwrap(),
+                            transaction_hash: StarknetTransactionHash::from_hex_str("0x0").unwrap(),
                             actual_fee: Fee(web3::types::H128::from_low_u64_be(0x1)),
                             status: TransactionStatus::AcceptedOnL1,
                             status_data: Some("blah".to_string()),

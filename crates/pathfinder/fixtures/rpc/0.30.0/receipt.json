@@ -1,6 +1,6 @@
 [
     {
-        "txn_hash": "0x0",
+        "transaction_hash": "0x0",
         "actual_fee": "0x1",
         "status": "ACCEPTED_ON_L1",
         "statusData": "blah",
@@ -31,7 +31,7 @@
         ]
     },
     {
-        "txn_hash": "0x0",
+        "transaction_hash": "0x0",
         "actual_fee": "0x1",
         "status": "ACCEPTED_ON_L1",
         "messages_sent": [
@@ -45,7 +45,7 @@
         "events": []
     },
     {
-        "txn_hash": "0x0",
+        "transaction_hash": "0x0",
         "actual_fee": "0x1",
         "status": "ACCEPTED_ON_L1",
         "statusData": "blah"
