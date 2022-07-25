@@ -1467,6 +1467,28 @@ mod tests {
                     )
                 );
             }
+
+            #[tokio::test]
+            async fn pending() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data.clone());
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                // Select an arbitrary pending transaction to query.
+                let expected = pending_data.block().await.unwrap();
+                let expected = expected.transaction_receipts.first().unwrap();
+
+                let params = rpc_params!(expected.transaction_hash);
+                let receipt = client(addr)
+                    .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
+                    .await
+                    .unwrap();
+                // Only asserting the hash because translating from Sequencer receipt to RPC receipt is pita.
+                assert_eq!(receipt.hash(), expected.transaction_hash);
+            }
         }
 
         #[tokio::test]
