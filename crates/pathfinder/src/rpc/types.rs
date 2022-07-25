@@ -986,8 +986,10 @@ pub mod reply {
         pub data: Vec<EventData>,
         pub keys: Vec<EventKey>,
         pub from_address: ContractAddress,
-        pub block_hash: StarknetBlockHash,
-        pub block_number: StarknetBlockNumber,
+        /// [None] for pending events.
+        pub block_hash: Option<StarknetBlockHash>,
+        /// [None] for pending events.
+        pub block_number: Option<StarknetBlockNumber>,
         pub transaction_hash: StarknetTransactionHash,
     }
 
@@ -997,8 +999,8 @@ pub mod reply {
                 data: event.data,
                 keys: event.keys,
                 from_address: event.from_address,
-                block_hash: event.block_hash,
-                block_number: event.block_number,
+                block_hash: Some(event.block_hash),
+                block_number: Some(event.block_number),
                 transaction_hash: event.transaction_hash,
             }
         }

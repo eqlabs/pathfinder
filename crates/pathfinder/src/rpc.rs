@@ -2479,8 +2479,8 @@ mod tests {
 
                 let expected_event = &events[1];
                 let params = rpc_params!(EventFilter {
-                    from_block: Some(expected_event.block_number.into()),
-                    to_block: Some(expected_event.block_number.into()),
+                    from_block: Some(expected_event.block_number.unwrap().into()),
+                    to_block: Some(expected_event.block_number.unwrap().into()),
                     address: Some(expected_event.from_address),
                     // we're using a key which is present in _all_ events
                     keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
@@ -2704,10 +2704,10 @@ mod tests {
                     "filter",
                     json!({
                         "fromBlock": {
-                            "block_number": expected_event.block_number.0
+                            "block_number": expected_event.block_number.unwrap().0
                         },
                         "toBlock": {
-                            "block_number": expected_event.block_number.0
+                            "block_number": expected_event.block_number.unwrap().0
                         },
                         "address": expected_event.from_address,
                         "keys": [expected_event.keys[0]],
