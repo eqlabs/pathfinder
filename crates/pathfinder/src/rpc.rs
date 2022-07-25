@@ -2007,15 +2007,19 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let expected = pending_data.block().await.unwrap().transactions.len();
             let params = rpc_params!(BlockId::Pending);
-            client(addr)
+            let count = client(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap();
+            assert_eq!(count, expected as u64);
         }
 
         #[tokio::test]

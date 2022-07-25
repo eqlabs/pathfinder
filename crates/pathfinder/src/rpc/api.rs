@@ -835,19 +835,12 @@ impl RpcApi {
             BlockId::Number(number) => number.into(),
             BlockId::Latest => StarknetBlocksBlockId::Latest,
             BlockId::Pending => {
-                let block = self
-                    .sequencer
-                    .block(BlockId::Pending)
-                    .await
-                    .context("Fetch block from sequencer")
-                    .map_err(internal_server_error)?;
+                let count = match self.pending_data()?.block().await {
+                    Some(block) => block.transactions.len(),
+                    None => 0,
+                };
 
-                let len: u64 =
-                    block.transactions().len().try_into().map_err(|e| {
-                        Error::Call(CallError::InvalidParams(anyhow::Error::new(e)))
-                    })?;
-
-                return Ok(len);
+                return Ok(count as u64);
             }
         };
 
