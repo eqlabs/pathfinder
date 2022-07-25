@@ -1653,6 +1653,27 @@ mod tests {
                     .unwrap_err();
                 assert_eq!(ErrorCode::ContractNotFound, error);
             }
+
+            #[tokio::test]
+            async fn pending() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data.clone());
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let contract = pending_data.state_update().await.unwrap();
+                let contract = contract.state_diff.deployed_contracts.first().unwrap();
+
+                let params = rpc_params!(BlockId::Pending, contract.address);
+                let class_hash = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap();
+                assert_eq!(class_hash, contract.contract_hash);
+            }
         }
 
         mod named_args {

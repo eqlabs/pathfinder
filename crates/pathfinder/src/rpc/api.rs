@@ -642,9 +642,25 @@ impl RpcApi {
             BlockId::Hash(hash) => hash.into(),
             BlockId::Number(number) => number.into(),
             BlockId::Latest => StarknetBlocksBlockId::Latest,
-            BlockId::Pending => {
-                return Err(ErrorCode::InvalidBlockId.into());
-            }
+            BlockId::Pending => match self.pending_data()?.state_update().await {
+                Some(state_update) => {
+                    let class_hash =
+                        state_update
+                            .state_diff
+                            .deployed_contracts
+                            .iter()
+                            .find_map(|deploy| {
+                                (deploy.address == contract_address).then_some(deploy.contract_hash)
+                            });
+                    match class_hash {
+                        Some(class_hash) => return Ok(class_hash),
+                        // Check if contract does not already exist in known blocks.
+                        None => StarknetBlocksBlockId::Latest,
+                    }
+                }
+                // Default to latest if pending data is not available.
+                None => StarknetBlocksBlockId::Latest,
+            },
         };
 
         let storage = self.storage.clone();
@@ -718,9 +734,25 @@ impl RpcApi {
             BlockId::Hash(hash) => hash.into(),
             BlockId::Number(number) => number.into(),
             BlockId::Latest => StarknetBlocksBlockId::Latest,
-            BlockId::Pending => {
-                return Err(ErrorCode::InvalidBlockId.into());
-            }
+            BlockId::Pending => match self.pending_data()?.state_update().await {
+                Some(state_update) => {
+                    let class_hash =
+                        state_update
+                            .state_diff
+                            .deployed_contracts
+                            .iter()
+                            .find_map(|deploy| {
+                                (deploy.address == contract_address).then_some(deploy.contract_hash)
+                            });
+                    match class_hash {
+                        Some(class_hash) => return Ok(class_hash),
+                        // Check if contract does not already exist in known blocks.
+                        None => StarknetBlocksBlockId::Latest,
+                    }
+                }
+                // Default to latest if pending data is not available.
+                None => StarknetBlocksBlockId::Latest,
+            },
         };
 
         let storage = self.storage.clone();
