@@ -859,7 +859,10 @@ pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
 
 #[cfg(test)]
 mod tests {
-    use super::{l1, l2};
+    use super::{
+        l1,
+        l2::{self, OldRoot},
+    };
     use crate::{
         core::{
             CallSignatureElem, Chain, ClassHash, ConstructorParam, ContractAddress,
@@ -1399,6 +1402,7 @@ mod tests {
             tx.send(l2::Event::Update(
                 Box::new(block()),
                 state_update(),
+                OldRoot(GlobalRoot(StarkHash::ZERO)),
                 timings,
             ))
             .await

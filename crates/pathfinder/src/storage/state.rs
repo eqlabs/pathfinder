@@ -2480,4 +2480,8 @@ mod tests {
             assert_eq!(count, expected);
         }
     }
+
+    mod starknet_updates {
+        // FIXME
+    }
 }

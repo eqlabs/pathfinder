@@ -440,8 +440,7 @@ pub mod reply {
     /// Implements spec version [v0.1.0-rc1](https://github.com/starkware-libs/starknet-specs/releases/tag/v0.1.0-rc1)
     /// plus this PR: ["Pack storage diff entries per contract address"](https://github.com/starkware-libs/starknet-specs/pull/26)
     #[skip_serializing_none]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct StateUpdate {
         /// None for `pending`
@@ -498,8 +497,7 @@ pub mod reply {
         use serde::Serialize;
 
         /// L2 state diff.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StateDiff {
             storage_diffs: Vec<StorageDiff>,
@@ -579,8 +577,7 @@ pub mod reply {
         }
 
         /// L2 storage diff of a contract.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageDiff {
             address: ContractAddress,
@@ -588,8 +585,7 @@ pub mod reply {
         }
 
         /// L2 storage diff item of a contract.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageItem {
             key: StorageAddress,
@@ -606,16 +602,14 @@ pub mod reply {
         }
 
         /// L2 state diff declared contract item.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct DeclaredContract {
             class_hash: ClassHash,
         }
 
         /// L2 state diff deployed contract item.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct DeployedContract {
             address: ContractAddress,
@@ -623,8 +617,7 @@ pub mod reply {
         }
 
         /// L2 state diff nonce item.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Nonce {
             contract_address: ContractAddress,
