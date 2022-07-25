@@ -411,11 +411,11 @@ impl ClientApi for Client {
 pub mod test_utils {
     use crate::{
         core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, EntryPoint, EventData,
-            EventKey, GlobalRoot, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem,
-            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
-            StarknetTransactionIndex, StorageAddress, StorageValue, TransactionNonce,
-            TransactionSignatureElem,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+            EntryPoint, EventData, EventKey, GlobalRoot, L1ToL2MessagePayloadElem,
+            L2ToL1MessagePayloadElem, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+            StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
+            TransactionNonce, TransactionSignatureElem,
         },
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
     };
@@ -435,6 +435,7 @@ pub mod test_utils {
     impl_from_hex_str!(ClassHash);
     impl_from_hex_str!(ConstructorParam);
     impl_from_hex_str!(ContractAddress);
+    impl_from_hex_str!(ContractAddressSalt);
     impl_from_hex_str!(EntryPoint);
     impl_from_hex_str!(EventData);
     impl_from_hex_str!(EventKey);
