@@ -445,10 +445,10 @@ pub mod reply {
     pub struct StateUpdate {
         /// None for `pending`
         #[serde(default)]
-        block_hash: Option<StarknetBlockHash>,
-        new_root: GlobalRoot,
-        old_root: GlobalRoot,
-        state_diff: state_update::StateDiff,
+        pub block_hash: Option<StarknetBlockHash>,
+        pub new_root: GlobalRoot,
+        pub old_root: GlobalRoot,
+        pub state_diff: state_update::StateDiff,
     }
 
     impl From<sequencer::reply::StateUpdate> for StateUpdate {
@@ -500,10 +500,10 @@ pub mod reply {
         #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StateDiff {
-            storage_diffs: Vec<StorageDiff>,
-            declared_contracts: Vec<DeclaredContract>,
-            deployed_contracts: Vec<DeployedContract>,
-            nonces: Vec<Nonce>,
+            pub storage_diffs: Vec<StorageDiff>,
+            pub declared_contracts: Vec<DeclaredContract>,
+            pub deployed_contracts: Vec<DeployedContract>,
+            pub nonces: Vec<Nonce>,
         }
 
         impl From<sequencer::reply::state_update::StateDiff> for StateDiff {
@@ -580,16 +580,16 @@ pub mod reply {
         #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageDiff {
-            address: ContractAddress,
-            storage_entries: Vec<StorageItem>,
+            pub address: ContractAddress,
+            pub storage_entries: Vec<StorageItem>,
         }
 
         /// L2 storage diff item of a contract.
         #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageItem {
-            key: StorageAddress,
-            value: StorageValue,
+            pub key: StorageAddress,
+            pub value: StorageValue,
         }
 
         impl From<sequencer::reply::state_update::StorageDiff> for StorageItem {
@@ -605,23 +605,23 @@ pub mod reply {
         #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct DeclaredContract {
-            class_hash: ClassHash,
+            pub class_hash: ClassHash,
         }
 
         /// L2 state diff deployed contract item.
         #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct DeployedContract {
-            address: ContractAddress,
-            class_hash: ClassHash,
+            pub address: ContractAddress,
+            pub class_hash: ClassHash,
         }
 
         /// L2 state diff nonce item.
         #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Nonce {
-            contract_address: ContractAddress,
-            nonce: ContractNonce,
+            pub contract_address: ContractAddress,
+            pub nonce: ContractNonce,
         }
     }
 
