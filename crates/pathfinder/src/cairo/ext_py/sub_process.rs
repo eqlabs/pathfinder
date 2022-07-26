@@ -261,7 +261,7 @@ async fn spawn(
                     (level, displayed.unwrap_or(std::borrow::Cow::Borrowed(rem)))
                 } else {
                     // this means that the line probably comes from beyond our code
-                    (tracing::Level::ERROR, std::borrow::Cow::Borrowed(buffer))
+                    (tracing::Level::TRACE, std::borrow::Cow::Borrowed(buffer))
                 };
 
                 // if the python script would turn out to be very chatty, this would become an issue
