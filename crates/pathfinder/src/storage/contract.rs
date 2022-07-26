@@ -1,5 +1,5 @@
 use crate::{
-    core::{ByteCodeWord, ClassHash, ContractAddress, ContractClass, ContractCode},
+    core::{ClassHash, ContractAddress, ContractClass},
     state::{class_hash::extract_program_and_entry_points_by_type, CompressedContract},
 };
 
@@ -68,51 +68,6 @@ impl ContractCodeTable {
             },
         )?;
         Ok(())
-    }
-
-    pub fn get_code(
-        transaction: &Transaction<'_>,
-        hash: ClassHash,
-    ) -> anyhow::Result<Option<ContractCode>> {
-        let row = transaction
-            .query_row(
-                "SELECT bytecode, abi
-                FROM contract_code
-                WHERE hash = :hash",
-                named_params! {
-                    ":hash": &hash.0.to_be_bytes()
-                },
-                |row| {
-                    let bytecode: Vec<u8> = row.get("bytecode")?;
-                    let abi: Vec<u8> = row.get("abi")?;
-
-                    Ok((bytecode, abi))
-                },
-            )
-            .optional()?;
-
-        let (bytecode, abi) = match row {
-            None => return Ok(None),
-            Some((bytecode, abi)) => (bytecode, abi),
-        };
-
-        // It might be dangerious to not have some upper bound on the compressed size.
-        // someone could put a very tight bomb to our database, and then have it OOM during
-        // runtime, but if you can already modify our database at will, maybe there's more useful
-        // things to do.
-
-        let bytecode = zstd::decode_all(&*bytecode)
-            .context("Corruption: invalid compressed column (bytecode)")?;
-
-        let abi = zstd::decode_all(&*abi).context("Corruption: invalid compressed column (abi)")?;
-
-        let abi =
-            String::from_utf8(abi).context("Corruption: invalid uncompressed column (abi)")?;
-
-        let bytecode = serde_json::from_slice::<Vec<ByteCodeWord>>(&bytecode)
-            .context("Corruption: invalid uncompressed column (bytecode)")?;
-
-        Ok(Some(ContractCode { bytecode, abi }))
     }
 
     pub fn get_class(
@@ -269,14 +224,26 @@ mod tests {
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let (hash, contract_code) = setup_class(&transaction);
+        let (hash, program, entry_points_by_type) = setup_class(&transaction);
 
-        let result = ContractCodeTable::get_code(&transaction, hash).unwrap();
+        let result = ContractCodeTable::get_class(&transaction, hash).unwrap();
 
-        assert_eq!(result, Some(contract_code));
+        assert_matches::assert_matches!(
+            result,
+            Some(result) => {
+                use std::io::{Cursor, Read};
+
+                assert_eq!(result.entry_points_by_type, entry_points_by_type);
+
+                let mut decompressor = flate2::read::GzDecoder::new(Cursor::new(base64::decode(result.program).unwrap()));
+                let mut result_program = Vec::new();
+                decompressor.read_to_end(&mut result_program).unwrap();
+                assert_eq!(&result_program, program);
+            }
+        );
     }
 
-    fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, ContractCode) {
+    fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
         let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
 
         // list of objects
@@ -288,10 +255,8 @@ mod tests {
 
         (
             hash,
-            ContractCode {
-                abi: String::from_utf8(abi.to_vec()).unwrap(),
-                bytecode: serde_json::from_slice::<Vec<ByteCodeWord>>(code).unwrap(),
-            },
+            br#"{"huge":"hash"}"#,
+            serde_json::json!({"this might be a":"hash"}),
         )
     }
 
@@ -301,7 +266,7 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
 
-        let (hash, _) = setup_class(&transaction);
+        let (hash, _, _) = setup_class(&transaction);
         let non_existent = ClassHash(StarkHash::from_hex_str("456").unwrap());
 
         let result = ContractCodeTable::exists(&transaction, &[hash, non_existent]).unwrap();

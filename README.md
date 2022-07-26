@@ -305,8 +305,6 @@ starknet_getClass
 starknet_getClassHashAt
 # The code of a specific contract
 starknet_getClassAt
-# The old, now deprecated name for starknet_getClassAt is also supported
-starknet_getCode
 # Call a StarkNet function without creating a transaction
 starknet_call
 # The latest StarkNet block height
