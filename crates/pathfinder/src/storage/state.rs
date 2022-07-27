@@ -772,6 +772,62 @@ impl StarknetEventsTable {
 
     pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
 
+    pub fn event_count(
+        tx: &Transaction<'_>,
+        from_block: StarknetBlockNumber,
+        to_block: StarknetBlockNumber,
+        contract_address: Option<ContractAddress>,
+        keys: Vec<EventKey>,
+    ) -> anyhow::Result<usize> {
+        let mut base_query =
+        r#"SELECT COUNT(1)
+           FROM starknet_events
+           INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
+           INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#
+            .to_string();
+
+        let mut where_statement_parts: Vec<&'static str> = Vec::new();
+        let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
+
+        // filter on block range
+        where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
+        params.push((":from_block", &from_block.0));
+        params.push((":to_block", &to_block.0));
+
+        // on contract address
+        if let Some(contract_address) = &contract_address {
+            where_statement_parts.push("from_address = :contract_address");
+            params.push((":contract_address", contract_address.0.as_be_bytes()))
+        }
+
+        // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
+        // The idea is that we convert keys to a space-separated list of Bas64 encoded string
+        // representation and then use the full-text index to find events matching the events.
+        // HACK: make sure key_fts_expression lives long enough
+        let key_fts_expression;
+        if !keys.is_empty() {
+            let base64_keys: Vec<String> = keys
+                .iter()
+                .map(|key| format!("\"{}\"", Self::event_key_to_base64_string(key)))
+                .collect();
+            key_fts_expression = base64_keys.join(" OR ");
+
+            base_query.push_str("INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
+            where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
+            params.push((":events_match", &key_fts_expression));
+        }
+
+        let query = format!(
+            "{} WHERE {}",
+            base_query,
+            where_statement_parts.join(" AND ")
+        );
+
+        let count: usize = tx.query_row(&query, params.as_slice(), |row| row.get(0))?;
+
+        Ok(count)
+    }
+
     pub fn get_events(
         tx: &Transaction<'_>,
         filter: &StarknetEventFilter,
@@ -2197,6 +2253,64 @@ mod tests {
                     is_last_page: true
                 }
             );
+        }
+
+        #[test]
+        fn event_count_by_block() {
+            let (storage, _) = test_utils::setup_test_storage();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            const BLOCK: StarknetBlockNumber = StarknetBlockNumber(2);
+
+            let count = StarknetEventsTable::event_count(&tx, BLOCK, BLOCK, None, vec![]).unwrap();
+            assert_eq!(count, test_utils::EVENTS_PER_BLOCK);
+        }
+
+        #[test]
+        fn event_count_from_contract() {
+            let (storage, events) = test_utils::setup_test_storage();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            let addr = events[0].from_address;
+            let expected = events
+                .iter()
+                .filter(|event| event.from_address == addr)
+                .count();
+
+            let count = StarknetEventsTable::event_count(
+                &tx,
+                StarknetBlockNumber::GENESIS,
+                StarknetBlockNumber::MAX,
+                Some(addr),
+                vec![],
+            )
+            .unwrap();
+            assert_eq!(count, expected);
+        }
+
+        #[test]
+        fn event_count_by_key() {
+            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            let key = emitted_events[27].keys[0];
+            let expected = emitted_events
+                .iter()
+                .filter(|event| event.keys.contains(&key))
+                .count();
+
+            let count = StarknetEventsTable::event_count(
+                &tx,
+                StarknetBlockNumber::GENESIS,
+                StarknetBlockNumber::MAX,
+                None,
+                vec![key],
+            )
+            .unwrap();
+            assert_eq!(count, expected);
         }
     }
 }
