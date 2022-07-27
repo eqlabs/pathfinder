@@ -479,7 +479,7 @@ mod tests {
 
         let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
         let block0 = StarknetBlock {
-            number: StarknetBlockNumber(0),
+            number: StarknetBlockNumber::GENESIS,
             hash: genesis_hash,
             root: global_root0,
             timestamp: StarknetBlockTimestamp(0),
@@ -816,7 +816,7 @@ mod tests {
             let params = rpc_params!(genesis_id);
 
             check_result(params, move |block| {
-                assert_eq!(block.block_number, Some(StarknetBlockNumber(0)));
+                assert_eq!(block.block_number, Some(StarknetBlockNumber::GENESIS));
                 assert_eq!(block.block_hash, Some(genesis_hash));
             })
             .await;
@@ -848,11 +848,11 @@ mod tests {
         #[tokio::test]
         async fn genesis_by_number() {
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
-            let genesis_id = BlockId::Number(StarknetBlockNumber(0));
+            let genesis_id = BlockId::Number(StarknetBlockNumber::GENESIS);
             let params = rpc_params!(genesis_id);
 
             check_result(params, move |block| {
-                assert_eq!(block.block_number, Some(StarknetBlockNumber(0)));
+                assert_eq!(block.block_number, Some(StarknetBlockNumber::GENESIS));
                 assert_eq!(block.block_hash, Some(genesis_hash));
             })
             .await;
@@ -1327,7 +1327,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis_by_number() {
-            let genesis_id = BlockId::Number(StarknetBlockNumber(0));
+            let genesis_id = BlockId::Number(StarknetBlockNumber::GENESIS);
             let params = rpc_params!(genesis_id, 0);
             check_result(params, move |txn| {
                 assert_eq!(
@@ -1660,7 +1660,10 @@ mod tests {
 
                 let contract_address =
                     ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap());
-                let params = rpc_params!(BlockId::Number(StarknetBlockNumber(0)), contract_address);
+                let params = rpc_params!(
+                    BlockId::Number(StarknetBlockNumber::GENESIS),
+                    contract_address
+                );
                 let error = client(addr)
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await

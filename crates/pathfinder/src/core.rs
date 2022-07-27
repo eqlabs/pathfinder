@@ -207,6 +207,10 @@ pub enum BlockId {
 
 impl StarknetBlockNumber {
     pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber(0);
+    /// The maximum [StarknetBlockNumber] we can support. Restricted to `u64::MAX/2` to
+    /// match Sqlite's maximum integer value.
+    #[cfg(test)]
+    pub const MAX: StarknetBlockNumber = StarknetBlockNumber(i64::MAX as u64);
 }
 
 impl std::cmp::PartialOrd for StarknetBlockNumber {

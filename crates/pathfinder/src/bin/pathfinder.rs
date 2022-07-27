@@ -160,7 +160,7 @@ fn verify_database_chain(storage: &Storage, expected: core::Chain) -> anyhow::Re
         .context("Create database transaction")?;
     let genesis = pathfinder_lib::storage::StarknetBlocksTable::get(
         &transaction,
-        StarknetBlockNumber(0).into(),
+        StarknetBlockNumber::GENESIS.into(),
     )
     .context("Read genesis block from database")?;
 

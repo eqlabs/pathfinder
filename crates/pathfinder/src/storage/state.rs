@@ -1745,7 +1745,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let block = StarknetBlock {
-                number: StarknetBlockNumber(0),
+                number: StarknetBlockNumber::GENESIS,
                 hash: StarknetBlockHash::from_hex_str("0x1234").unwrap(),
                 root: GlobalRoot(StarkHash::from_hex_str("0x1234").unwrap()),
                 timestamp: StarknetBlockTimestamp(0),

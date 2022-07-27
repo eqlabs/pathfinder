@@ -1097,7 +1097,7 @@ pub mod reply {
                             status: BlockStatus::AcceptedOnL1,
                             block_hash: Some(StarknetBlockHash::from_hex_str("0x0").unwrap()),
                             parent_hash: StarknetBlockHash::from_hex_str("0x1").unwrap(),
-                            block_number: Some(StarknetBlockNumber(0)),
+                            block_number: Some(StarknetBlockNumber::GENESIS),
                             new_root: Some(GlobalRoot::from_hex_str("0x2").unwrap()),
                             timestamp: StarknetBlockTimestamp(1),
                             sequencer_address: SequencerAddress::from_hex_str("0x3").unwrap(),
