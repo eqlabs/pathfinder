@@ -202,8 +202,6 @@ pub mod reply {
     pub enum BlockStatus {
         #[serde(rename = "PENDING")]
         Pending,
-        #[serde(rename = "PROVEN")]
-        Proven,
         #[serde(rename = "ACCEPTED_ON_L2")]
         AcceptedOnL2,
         #[serde(rename = "ACCEPTED_ON_L1")]
@@ -817,10 +815,6 @@ pub mod reply {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub enum TransactionStatus {
-        #[serde(rename = "UNKNOWN")]
-        Unknown,
-        #[serde(rename = "RECEIVED")]
-        Received,
         #[serde(rename = "PENDING")]
         Pending,
         #[serde(rename = "ACCEPTED_ON_L2")]
@@ -831,27 +825,10 @@ pub mod reply {
         Rejected,
     }
 
-    impl From<sequencer::reply::Status> for TransactionStatus {
-        fn from(status: sequencer::reply::Status) -> Self {
-            match status {
-                // TODO verify this mapping with Starkware
-                sequencer::reply::Status::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
-                sequencer::reply::Status::AcceptedOnL2 => TransactionStatus::AcceptedOnL2,
-                sequencer::reply::Status::NotReceived => TransactionStatus::Unknown,
-                sequencer::reply::Status::Pending => TransactionStatus::Pending,
-                sequencer::reply::Status::Received => TransactionStatus::Received,
-                sequencer::reply::Status::Rejected => TransactionStatus::Rejected,
-                sequencer::reply::Status::Reverted => TransactionStatus::Unknown,
-                sequencer::reply::Status::Aborted => TransactionStatus::Unknown,
-            }
-        }
-    }
-
     impl From<BlockStatus> for TransactionStatus {
         fn from(status: BlockStatus) -> Self {
             match status {
                 BlockStatus::Pending => TransactionStatus::Pending,
-                BlockStatus::Proven => TransactionStatus::Received,
                 BlockStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnL2,
                 BlockStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
                 BlockStatus::Rejected => TransactionStatus::Rejected,
