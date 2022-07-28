@@ -349,9 +349,13 @@ mod tests {
         },
         rpc::{run_server, types::reply::BlockHashAndNumber},
         sequencer::{
-            reply::transaction::{
-                execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                EntryPointType, Event, ExecutionResources, InvokeTransaction, Receipt, Transaction,
+            reply::{
+                state_update::StorageDiff,
+                transaction::{
+                    execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+                    EntryPointType, Event, ExecutionResources, InvokeTransaction, Receipt,
+                    Transaction,
+                },
             },
             test_utils::*,
             Client,
@@ -386,7 +390,6 @@ mod tests {
     fn setup_storage() -> Storage {
         use crate::{
             core::StorageValue,
-            ethereum::state_update::{ContractUpdate, StorageUpdate},
             state::{update_contract_state, CompressedContract},
         };
         use web3::types::H128;
@@ -401,25 +404,21 @@ mod tests {
         let class0_hash = ClassHash(StarkHash::from_be_slice(b"class 0 hash").unwrap());
         let class1_hash = ClassHash(StarkHash::from_be_slice(b"class 1 hash").unwrap());
 
-        let contract0_update = ContractUpdate {
-            address: contract0_addr,
-            storage_updates: vec![],
-        };
+        let contract0_update = vec![];
 
         let storage_addr = StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap());
-        let contract1_update0 = ContractUpdate {
-            address: contract1_addr,
-            storage_updates: vec![StorageUpdate {
-                address: storage_addr,
-                value: StorageValue(StarkHash::from_be_slice(b"storage value 0").unwrap()),
-            }],
-        };
-        let mut contract1_update1 = contract1_update0.clone();
-        contract1_update1.storage_updates.get_mut(0).unwrap().value =
-            StorageValue(StarkHash::from_be_slice(b"storage value 1").unwrap());
-        let mut contract1_update2 = contract1_update0.clone();
-        contract1_update2.storage_updates.get_mut(0).unwrap().value =
-            StorageValue(StarkHash::from_be_slice(b"storage value 2").unwrap());
+        let contract1_update0 = vec![StorageDiff {
+            key: storage_addr,
+            value: StorageValue(StarkHash::from_be_slice(b"storage value 0").unwrap()),
+        }];
+        let contract1_update1 = vec![StorageDiff {
+            key: storage_addr,
+            value: StorageValue(StarkHash::from_be_slice(b"storage value 1").unwrap()),
+        }];
+        let contract1_update2 = vec![StorageDiff {
+            key: storage_addr,
+            value: StorageValue(StarkHash::from_be_slice(b"storage value 2").unwrap()),
+        }];
 
         // We need to set the magic bytes for zstd compression to simulate a compressed
         // contract definition, as this is asserted for internally
@@ -441,7 +440,8 @@ mod tests {
 
         let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
         let contract_state_hash =
-            update_contract_state(&contract0_update, &global_tree, &db_txn).unwrap();
+            update_contract_state(contract0_addr, &contract0_update, &global_tree, &db_txn)
+                .unwrap();
         global_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
@@ -449,12 +449,14 @@ mod tests {
 
         let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
         let contract_state_hash =
-            update_contract_state(&contract1_update0, &global_tree, &db_txn).unwrap();
+            update_contract_state(contract1_addr, &contract1_update0, &global_tree, &db_txn)
+                .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let contract_state_hash =
-            update_contract_state(&contract1_update1, &global_tree, &db_txn).unwrap();
+            update_contract_state(contract1_addr, &contract1_update1, &global_tree, &db_txn)
+                .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
@@ -462,7 +464,8 @@ mod tests {
 
         let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
         let contract_state_hash =
-            update_contract_state(&contract1_update2, &global_tree, &db_txn).unwrap();
+            update_contract_state(contract1_addr, &contract1_update2, &global_tree, &db_txn)
+                .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
@@ -1858,10 +1861,8 @@ mod tests {
 
     mod contract_setup {
         use crate::{
-            core::StorageValue,
-            ethereum::state_update::{ContractUpdate, StorageUpdate},
-            state::update_contract_state,
-            storage::StarknetBlocksBlockId,
+            core::StorageValue, sequencer::reply::state_update::StorageDiff,
+            state::update_contract_state, storage::StarknetBlocksBlockId,
         };
 
         use super::*;
@@ -1917,13 +1918,10 @@ mod tests {
 
             // insert a new block whose state includes the contract
             let storage_addr = StorageAddress(StarkHash::from_be_slice(b"storage addr").unwrap());
-            let contract_update = ContractUpdate {
-                address: contract_address,
-                storage_updates: vec![StorageUpdate {
-                    address: storage_addr,
-                    value: StorageValue(StarkHash::from_be_slice(b"storage_value").unwrap()),
-                }],
-            };
+            let storage_diff = vec![StorageDiff {
+                key: storage_addr,
+                value: StorageValue(StarkHash::from_be_slice(b"storage_value").unwrap()),
+            }];
             let block2 = StarknetBlocksTable::get(
                 transaction,
                 StarknetBlocksBlockId::Number(StarknetBlockNumber(2)),
@@ -1932,7 +1930,8 @@ mod tests {
             .unwrap();
             let mut global_tree = GlobalStateTree::load(transaction, block2.root).unwrap();
             let contract_state_hash =
-                update_contract_state(&contract_update, &global_tree, transaction).unwrap();
+                update_contract_state(contract_address, &storage_diff, &global_tree, transaction)
+                    .unwrap();
             global_tree
                 .set(contract_address, contract_state_hash)
                 .unwrap();

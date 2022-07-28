@@ -853,10 +853,7 @@ pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        l1,
-        l2::{self, OldRoot},
-    };
+    use super::{l1, l2};
     use crate::{
         core::{
             CallSignatureElem, Chain, ClassHash, ConstructorParam, ContractAddress,
@@ -1122,9 +1119,15 @@ mod tests {
             sequencer_address: SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap()),
         };
         // Causes root to remain 0
-        pub static ref STATE_UPDATE0: ethereum::state_update::StateUpdate = ethereum::state_update::StateUpdate {
-            contract_updates: vec![],
-            deployed_contracts: vec![],
+        pub static ref STATE_UPDATE0: sequencer::reply::StateUpdate = sequencer::reply::StateUpdate {
+            block_hash: Some(StarknetBlockHash(*A)),
+            new_root: GlobalRoot(StarkHash::ZERO),
+            old_root: GlobalRoot(StarkHash::ZERO),
+            state_diff: sequencer::reply::state_update::StateDiff{
+                storage_diffs: std::collections::HashMap::new(),
+                deployed_contracts: vec![],
+                declared_contracts: vec![],
+            },
         };
     }
 
@@ -1396,7 +1399,6 @@ mod tests {
             tx.send(l2::Event::Update(
                 Box::new(block()),
                 state_update(),
-                OldRoot(GlobalRoot(StarkHash::ZERO)),
                 timings,
             ))
             .await

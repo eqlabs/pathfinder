@@ -4,6 +4,7 @@ use stark_hash::{stark_hash, StarkHash};
 
 use crate::{
     core::{ClassHash, ContractAddress, ContractRoot, ContractStateHash},
+    sequencer::reply::state_update::StorageDiff,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{ContractsStateTable, ContractsTable},
 };
@@ -43,7 +44,7 @@ impl std::fmt::Debug for CompressedContract {
 /// Specifically, it updates the [ContractsStateTree] and [ContractsStateTable].
 pub(crate) fn update_contract_state(
     contract_address: ContractAddress,
-    updates: &[crate::sequencer::reply::state_update::StorageDiff],
+    updates: &[StorageDiff],
     global_tree: &GlobalStateTree<'_>,
     db: &Transaction<'_>,
 ) -> anyhow::Result<ContractStateHash> {
