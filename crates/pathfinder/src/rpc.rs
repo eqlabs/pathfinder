@@ -3,6 +3,8 @@ pub mod api;
 pub mod serde;
 #[cfg(test)]
 pub mod test_client;
+#[cfg(test)]
+pub mod test_setup;
 pub mod types;
 
 use crate::{
@@ -941,55 +943,8 @@ mod tests {
         }
     }
 
-    // FIXME
     mod get_state_update {
-        use super::*;
-        use crate::rpc::types::{reply::StateUpdate, BlockHashOrTag, Tag};
-
-        #[tokio::test]
-        #[should_panic]
-        async fn genesis() {
-            let storage = Storage::in_memory().unwrap();
-            let sequencer = Client::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(*GENESIS_BLOCK_HASH);
-            client(addr)
-                .request::<StateUpdate>("starknet_getStateUpdate", params)
-                .await
-                .unwrap();
-        }
-
-        #[tokio::test]
-        #[should_panic]
-        async fn latest() {
-            let storage = Storage::in_memory().unwrap();
-            let sequencer = Client::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
-            client(addr)
-                .request::<StateUpdate>("starknet_getStateUpdate", params)
-                .await
-                .unwrap();
-        }
-
-        // #[tokio::test]
-        // #[should_panic]
-        // async fn pending() {
-        //     let storage = Storage::in_memory().unwrap();
-        //     let sequencer = Client::new(Chain::Goerli).unwrap();
-        //     let sync_state = Arc::new(SyncState::default());
-        //     let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-        //     let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-        //     let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
-        //     client(addr)
-        //         .request::<StateUpdate>("starknet_getStateUpdate", params)
-        //         .await
-        //         .unwrap();
-        // }
+        // FIXME
     }
 
     mod get_storage_at {
