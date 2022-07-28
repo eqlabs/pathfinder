@@ -10,15 +10,11 @@ use crate::{
         Chain, ClassHash, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber,
     },
-    ethereum::{
-        log::StateUpdateLog,
-        state_update::{DeployedContract, StateUpdate},
-        transport::EthereumTransport,
-    },
+    ethereum::{log::StateUpdateLog, transport::EthereumTransport},
     rpc::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer::{
         self,
-        reply::{Block, MaybePendingBlock, PendingBlock},
+        reply::{Block, MaybePendingBlock, PendingBlock, StateUpdate},
     },
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
@@ -251,18 +247,14 @@ where
                 },
             },
             l2_event = rx_l2.recv() => match l2_event {
-                Some(l2::Event::Update(block, diff, old_root, timings)) => {
+                Some(l2::Event::Update(block, state_update, timings)) => {
                     pending_data.clear().await;
 
                     let block_number = block.block_number.0;
                     let block_hash = block.block_hash;
-                    let storage_updates: usize = diff
-                        .contract_updates
-                        .iter()
-                        .map(|u| u.storage_updates.len())
-                        .sum();
+                    let storage_updates: usize = state_update.state_diff.storage_diffs.iter().map(|(_, storage_diffs)| storage_diffs.len()).sum();
                     let update_t = std::time::Instant::now();
-                    l2_update(&mut db_conn, *block, diff, old_root)
+                    l2_update(&mut db_conn, *block, state_update)
                         .await
                         .with_context(|| format!("Update L2 state to {}", block_number))?;
                     let block_time = last_block_start.elapsed();
@@ -369,9 +361,9 @@ where
 
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
-                Some(l2::Event::Pending(block, diff)) => {
-                    let deployed_classes = diff.state_diff.deployed_contracts.iter().map(|x| x.contract_hash);
-                    let declared_classes = diff.state_diff.declared_contracts.iter().cloned();
+                Some(l2::Event::Pending(block, state_update)) => {
+                    let deployed_classes = state_update.state_diff.deployed_contracts.iter().map(|x| x.contract_hash);
+                    let declared_classes = state_update.state_diff.declared_contracts.iter().cloned();
                     let declared_classes_block = block
                         .transactions
                         .iter()
@@ -396,22 +388,21 @@ where
                         let tx = db_conn
                             .transaction_with_behavior(TransactionBehavior::Immediate)
                             .context("Create database transaction")?;
-                        let state_diff = (&diff.state_diff).into();
-                        let new_root = update_starknet_state(&tx, state_diff).context("Updating Starknet state")?;
+                        let new_root = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?;
                         tx.rollback()?;
                         anyhow::Result::<GlobalRoot>::Ok(new_root)
                     }).context("Calculate pending state root")?;
 
-                    match new_root == diff.new_root {
+                    match new_root == state_update.new_root {
                         true => {
-                            pending_data.set(block, diff).await;
+                            pending_data.set(block, state_update).await;
                             tracing::debug!("Updated pending data");
                         }
                         false => {
                             pending_data.clear().await;
                             tracing::error!(
-                                head=%diff.old_root,
-                                pending=%diff.new_root,
+                                head=%state_update.old_root,
+                                pending=%state_update.new_root,
                                 calculated=%new_root,
                                 "Pending state root mismatch"
                             );
@@ -585,15 +576,14 @@ async fn l1_reorg(
 async fn l2_update(
     connection: &mut Connection,
     block: Block,
-    state_diff: StateUpdate,
-    old_root: l2::OldRoot,
+    state_update: StateUpdate,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
-        let new_root = update_starknet_state(&transaction, state_diff.clone())
+        let new_root = update_starknet_state(&transaction, &state_update)
             .context("Updating Starknet state")?;
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
@@ -620,7 +610,7 @@ async fn l2_update(
         )
         .context("Insert block into database")?;
 
-        let rpc_state_update = (&block, state_diff, old_root).into();
+        let rpc_state_update = state_update.into();
         StarknetStateUpdatesTable::insert(&transaction, block.block_hash, &rpc_state_update)
             .context("Insert state update into database")?;
 
@@ -696,7 +686,7 @@ async fn l2_reorg(
 
 fn update_starknet_state(
     transaction: &Transaction<'_>,
-    diff: StateUpdate,
+    state_update: &StateUpdate,
 ) -> anyhow::Result<GlobalRoot> {
     let global_root = StarknetBlocksTable::get(transaction, StarknetBlocksBlockId::Latest)
         .context("Query latest state root")?
@@ -705,17 +695,18 @@ fn update_starknet_state(
     let mut global_tree =
         GlobalStateTree::load(transaction, global_root).context("Loading global state tree")?;
 
-    for contract in diff.deployed_contracts {
+    for contract in &state_update.state_diff.deployed_contracts {
         deploy_contract(transaction, &mut global_tree, contract).context("Deploying contract")?;
     }
 
-    for update in diff.contract_updates {
-        let contract_state_hash = update_contract_state(&update, &global_tree, transaction)
-            .context("Update contract state")?;
+    for (contract_address, updates) in &state_update.state_diff.storage_diffs {
+        let contract_state_hash =
+            update_contract_state(*contract_address, updates, &global_tree, transaction)
+                .context("Update contract state")?;
 
         // Update the global state tree.
         global_tree
-            .set(update.address, contract_state_hash)
+            .set(*contract_address, contract_state_hash)
             .context("Updating global state tree")?;
     }
 
@@ -728,17 +719,20 @@ fn update_starknet_state(
 fn deploy_contract(
     transaction: &Transaction<'_>,
     global_tree: &mut GlobalStateTree<'_>,
-    contract: DeployedContract,
+    contract: &sequencer::reply::state_update::Contract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.
     let contract_root = ContractRoot(StarkHash::ZERO);
-    let state_hash = calculate_contract_state_hash(contract.hash, contract_root);
+    // sequencer::reply::state_update::Contract::contract_hash is the old (pre cairo 0.9.0)
+    // name for `class_hash`.
+    let class_hash = contract.contract_hash;
+    let state_hash = calculate_contract_state_hash(class_hash, contract_root);
     global_tree
         .set(contract.address, state_hash)
         .context("Adding deployed contract to global state tree")?;
-    ContractsStateTable::upsert(transaction, state_hash, contract.hash, contract_root)
+    ContractsStateTable::upsert(transaction, state_hash, class_hash, contract_root)
         .context("Insert constract state hash into contracts state table")?;
-    ContractsTable::upsert(transaction, contract.address, contract.hash)
+    ContractsTable::upsert(transaction, contract.address, class_hash)
         .context("Inserting class hash into contracts table")
 }
 

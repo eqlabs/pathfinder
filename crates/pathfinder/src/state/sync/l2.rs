@@ -4,6 +4,7 @@ use std::{collections::HashSet, sync::Arc};
 use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::core::GlobalRoot;
 use crate::sequencer;
 use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{Contract, StateDiff};
@@ -11,10 +12,9 @@ use crate::sequencer::reply::Block;
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
-use crate::{core::GlobalRoot, ethereum::state_update::StateUpdate};
 use crate::{
     core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber},
-    sequencer::reply::PendingBlock,
+    sequencer::reply::{PendingBlock, StateUpdate},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -37,20 +37,7 @@ pub struct OldRoot(pub GlobalRoot);
 #[derive(Debug)]
 pub enum Event {
     /// New L2 [block update](StateUpdate) found.
-    ///
-    /// The [StateUpdate] used to be [ethereum::state_update::StateUpdate](crate::ethereum::state_update::StateUpdate)
-    /// but as it did not carry the old global root we are now using [sequencer::reply::StateUpdate]
-    /// [OldRoot] is needed for writing a complete [rpc::types::reply::StateUpdate](crate::rpc::types::reply::StateUpdate)
-    /// into the DB as neither [ethereum::state_update::StateUpdate](crate::ethereum::state_update::StateUpdate)
-    /// nor [sequencer::reply::Block] carry the old root.
-    // FIXME
-    // Or maybe abandon ethereum::state_update::StateUpdate and OldRoot
-    // and just use sequencer::reply::StateUpdate here,
-    // which will become incompatible with an alternative
-    // L1 fetched state update, which we currently don't use anyway.
-    // Do it in a separate PR ofc, as the ethereum::state_update::StateUpdate
-    // leaks into many places.
-    Update(Box<Block>, StateUpdate, OldRoot, Timings),
+    Update(Box<Block>, StateUpdate, Timings),
     /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
@@ -169,9 +156,6 @@ pub async fn sync(
             .with_context(|| format!("Deploying new contracts for block {:?}", next))?;
         let t_deploy = t_deploy.elapsed();
 
-        // Map from sequencer type to the actual type... we should declutter these types.
-        let update = StateUpdate::from(&state_update.state_diff);
-
         head = Some((next, block_hash, state_update.new_root));
 
         let timings = Timings {
@@ -182,12 +166,7 @@ pub async fn sync(
         };
 
         tx_event
-            .send(Event::Update(
-                block,
-                update,
-                OldRoot(state_update.old_root),
-                timings,
-            ))
+            .send(Event::Update(block, state_update, timings))
             .await
             .context("Event channel closed")?;
     }

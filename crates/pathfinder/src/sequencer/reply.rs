@@ -441,7 +441,7 @@ pub mod state_update {
     }
 
     /// L2 contract data within state diff.
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     pub struct Contract {
         pub address: ContractAddress,
