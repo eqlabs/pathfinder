@@ -58,11 +58,9 @@ fn main() {
     };
 
     let path = std::path::PathBuf::from(path);
-    let storage = pathfinder_lib::storage::Storage::migrate(
-        path.clone(),
-        pathfinder_lib::storage::JournalMode::WAL,
-    )
-    .unwrap();
+    let storage =
+        pathfinder_lib::storage::Storage::migrate(path, pathfinder_lib::storage::JournalMode::WAL)
+            .unwrap();
 
     let mut connection = storage.connection().unwrap();
     let transaction = connection.transaction().unwrap();
@@ -176,21 +174,21 @@ pub fn extract_state_updates<F>(
 
         // The global tree visitor will find all contract state hashes that will point us
         // to each and every contract's state
-        let mut global_visitor = |node: &Node, path: &BitSlice<Msb0, u8>| match node {
-            Node::Leaf(contract_state_hash) => {
+        let mut global_visitor = |node: &Node, path: &BitSlice<Msb0, u8>| {
+            if let Node::Leaf(contract_state_hash) = node {
                 // Leaf value is the contract state hash for a particular contract address (which is the leaf path)
                 // having a contract state hash we can get the contract state root
                 // and traverse the entire contract state tree
 
                 let contract_address = ContractAddress(StarkHash::from_bits(path).unwrap());
                 let contract_state_root = ContractsStateTable::get_root(
-                    &transaction,
+                    transaction,
                     ContractStateHash(*contract_state_hash),
                 )
                 .unwrap()
                 .unwrap();
                 let contract_state_tree =
-                    ContractsStateTree::load(&transaction, contract_state_root).unwrap();
+                    ContractsStateTree::load(transaction, contract_state_root).unwrap();
 
                 // Any new changes to this contract's storage that occured withing this block go here
                 let current_contract_delta = current_block_storage_delta
@@ -201,8 +199,8 @@ pub fn extract_state_updates<F>(
                 let current_contract_global_storage = global_storage.entry(contract_address);
 
                 // We use this visitor to inspect all the storage values for the current contract being processed in this very block
-                let mut contract_visitor = |node: &Node, path: &BitSlice<Msb0, u8>| match node {
-                    Node::Leaf(storage_value) => {
+                let mut contract_visitor = |node: &Node, path: &BitSlice<Msb0, u8>| {
+                    if let Node::Leaf(storage_value) = node {
                         // Leaf value is the storage value for a particular storage key (which is the leaf path)
 
                         let storage_key = StorageAddress(StarkHash::from_bits(path).unwrap());
@@ -238,7 +236,6 @@ pub fn extract_state_updates<F>(
                             }
                         }
                     }
-                    _ => {}
                 };
 
                 contract_state_tree.dfs(&mut contract_visitor);
@@ -248,15 +245,14 @@ pub fn extract_state_updates<F>(
                     current_block_storage_delta.remove(&contract_address);
                 }
             }
-            _ => {}
         };
 
         global_tree.dfs(&mut global_visitor);
 
+        // FIXME old_root, deployed, declared
         let mut state_update = StateUpdate {
             block_hash: Some(block.hash),
             new_root: block.root,
-            // FIXME old_root
             old_root: GlobalRoot(StarkHash::ZERO),
             state_diff: StateDiff {
                 storage_diffs: HashMap::new(),
