@@ -38,7 +38,7 @@ impl std::fmt::Debug for CompressedContract {
     }
 }
 
-/// Updates a contract's state with the given [storage updates](ContractUpdate). It returns the
+/// Updates a contract's state with the given [`StorageDiff`]. It returns the
 /// [ContractStateHash] of the new state.
 ///
 /// Specifically, it updates the [ContractsStateTree] and [ContractsStateTable].
