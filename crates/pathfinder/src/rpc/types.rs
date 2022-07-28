@@ -570,7 +570,7 @@ pub mod reply {
                             class_hash: deployed_contact.hash,
                         })
                         .collect(),
-                    // FIXME once the (yes, this is correct) sequencer API provides the nonces
+                    // FIXME once the sequencer API provides the nonces
                     nonces: vec![],
                 }
             }

@@ -2484,96 +2484,14 @@ mod tests {
     mod starknet_updates {
 
         use super::*;
-        use crate::{
-            core::{ContractNonce, StorageAddress, StorageValue},
-            rpc::types::reply::{
-                state_update::{
-                    DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff, StorageItem,
-                },
-                StateUpdate,
-            },
-        };
-        use rusqlite::Transaction;
-
-        macro_rules! hash {
-            ($($value:expr),*) => {
-                StarkHash::from_be_slice(&[$($value),*]).unwrap()
-            };
-        }
-
-        fn with_default_state_updates<F>(f: F)
-        where
-            F: FnOnce(&Transaction<'_>, Vec<StateUpdate>),
-        {
-            let storage = Storage::in_memory().unwrap();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
-
-            impl StateUpdate {
-                pub fn with_block_hash(h: u8) -> Self {
-                    Self {
-                        block_hash: Some(StarknetBlockHash(hash!(h))),
-                        new_root: GlobalRoot(hash!(10, h)),
-                        old_root: GlobalRoot(hash!(11, h)),
-                        state_diff: StateDiff {
-                            storage_diffs: vec![StorageDiff {
-                                address: ContractAddress(hash!(12, h)),
-                                storage_entries: vec![StorageItem {
-                                    key: StorageAddress(hash!(13, h)),
-                                    value: StorageValue(hash!(14, h)),
-                                }],
-                            }],
-                            declared_contracts: vec![DeclaredContract {
-                                class_hash: ClassHash(hash!(15, h)),
-                            }],
-                            deployed_contracts: vec![DeployedContract {
-                                address: ContractAddress(hash!(16, h)),
-                                class_hash: ClassHash(hash!(17, h)),
-                            }],
-                            nonces: vec![Nonce {
-                                contract_address: ContractAddress(hash!(18, h)),
-                                nonce: ContractNonce(hash!(19, h)),
-                            }],
-                        },
-                    }
-                }
-            }
-
-            impl StarknetBlock {
-                pub fn with_block_hash_and_number(h: u8, n: usize) -> Self {
-                    Self {
-                        number: StarknetBlockNumber(n as u64),
-                        hash: StarknetBlockHash(hash!(h)),
-                        root: GlobalRoot(hash!(10, h)),
-                        timestamp: StarknetBlockTimestamp(n as u64 + 100),
-                        gas_price: GasPrice(n as u128 + 200),
-                        sequencer_address: SequencerAddress(hash!(20, h)),
-                    }
-                }
-            }
-
-            let updates = [1, 2].into_iter().enumerate().map(|(n, h)| {
-                StarknetBlocksTable::insert(
-                    &tx,
-                    &StarknetBlock::with_block_hash_and_number(h, n),
-                    None,
-                )
-                .unwrap();
-                let update = StateUpdate::with_block_hash(h);
-                StarknetStateUpdatesTable::insert(&tx, update.block_hash.unwrap(), &update)
-                    .unwrap();
-                update
-            });
-
-            f(&tx, updates.collect())
-        }
+        use crate::storage::fixtures::{hash, with_n_state_updates};
 
         mod get {
             use super::*;
 
             #[test]
             fn some() {
-                with_default_state_updates(|tx, state_updates| {
+                with_n_state_updates(1, |_, tx, state_updates| {
                     for expected in state_updates {
                         let actual =
                             StarknetStateUpdatesTable::get(tx, expected.block_hash.unwrap())
@@ -2586,7 +2504,7 @@ mod tests {
 
             #[test]
             fn none() {
-                with_default_state_updates(|tx, _| {
+                with_n_state_updates(1, |_, tx, _| {
                     let non_existent = StarknetBlockHash(hash!(0xFF));
                     let actual = StarknetStateUpdatesTable::get(tx, non_existent).unwrap();
                     assert!(actual.is_none());

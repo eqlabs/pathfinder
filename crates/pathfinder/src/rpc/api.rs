@@ -253,13 +253,15 @@ impl RpcApi {
     }
 
     /// Get the information about the result of executing the requested block.
+    ///
+    /// FIXME: add support for pending
     pub async fn get_state_update(&self, block_id: BlockId) -> RpcResult<StateUpdate> {
         let block_id = match block_id {
             BlockId::Hash(hash) => hash.into(),
             BlockId::Number(number) => number.into(),
             BlockId::Latest => StarknetBlocksBlockId::Latest,
             BlockId::Pending => {
-                return Ok(self.sequencer.state_update(BlockId::Pending).await?.into())
+                return Err(ErrorCode::InvalidBlockId.into());
             }
         };
 

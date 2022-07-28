@@ -22,8 +22,3 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
 
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    // FIXME
-}
