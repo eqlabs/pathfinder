@@ -605,11 +605,9 @@ mod tests {
             let tx = db.transaction().unwrap();
 
             use crate::storage::StarknetBlocksBlockId;
-            let latest = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+            StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
                 .unwrap()
-                .expect("Storage should contain a latest block");
-
-            latest
+                .expect("Storage should contain a latest block")
         })
         .await
         .unwrap();
@@ -769,8 +767,8 @@ mod tests {
         .collect();
 
         let state_diff = crate::sequencer::reply::state_update::StateDiff {
-            storage_diffs: storage_diffs,
-            deployed_contracts: deployed_contracts,
+            storage_diffs,
+            deployed_contracts,
             declared_contracts: Vec::new(),
         };
 
@@ -1304,7 +1302,7 @@ mod tests {
                     .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
-                assert_eq!(transaction, expected.into());
+                assert_eq!(transaction, expected);
             }
         }
 
@@ -1416,7 +1414,7 @@ mod tests {
             const TX_IDX: usize = 1;
             let expected = pending_data.block().await.unwrap();
             assert!(TX_IDX <= expected.transactions.len());
-            let expected: Transaction = expected.transactions.iter().nth(TX_IDX).unwrap().into();
+            let expected: Transaction = expected.transactions.get(TX_IDX).unwrap().into();
 
             let params = rpc_params!(BlockId::Pending, TX_IDX);
             let transaction = client(addr)

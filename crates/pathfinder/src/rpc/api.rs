@@ -520,20 +520,16 @@ impl RpcApi {
     ) -> RpcResult<TransactionReceipt> {
         // First check pending data as this is in-mem and should be faster.
         if let Ok(pending) = self.pending_data() {
-            let receipt_transaction = pending
-                .block()
-                .await
-                .map(|block| {
-                    block
-                        .transaction_receipts
-                        .iter()
-                        .zip(block.transactions.iter())
-                        .find_map(|(receipt, tx)| {
-                            (receipt.transaction_hash == transaction_hash)
-                                .then(|| (receipt.clone(), tx.clone()))
-                        })
-                })
-                .flatten();
+            let receipt_transaction = pending.block().await.and_then(|block| {
+                block
+                    .transaction_receipts
+                    .iter()
+                    .zip(block.transactions.iter())
+                    .find_map(|(receipt, tx)| {
+                        (receipt.transaction_hash == transaction_hash)
+                            .then(|| (receipt.clone(), tx.clone()))
+                    })
+            });
 
             if let Some((receipt, transaction)) = receipt_transaction {
                 return Ok(TransactionReceipt::with_block_status(
@@ -1017,7 +1013,7 @@ impl RpcApi {
                         return true;
                     }
                 }
-                return false;
+                false
             })
             .skip(skip)
             // We need to take an extra event to determine is_last_page.
@@ -1168,14 +1164,14 @@ impl RpcApi {
                 None
             };
 
-            return Ok((
+            Ok((
                 GetEventsResult {
                     events: page.events.into_iter().map(|e| e.into()).collect(),
                     page_number: filter.page_number,
                     is_last_page: page.is_last_page,
                 },
                 event_count,
-            ));
+            ))
         });
 
         let (mut events, count) = db_events

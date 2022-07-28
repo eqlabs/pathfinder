@@ -404,9 +404,9 @@ impl StarknetBlocksTable {
             tx.prepare("SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1")?;
         let mut rows = statement.query(params![hash.0.as_be_bytes()])?;
         let row = rows.next().context("Iterate rows")?;
-        let number = row.and_then(|row| {
+        let number = row.map(|row| {
             let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
-            Some(StarknetBlockNumber(number))
+            StarknetBlockNumber(number)
         });
         Ok(number)
     }
@@ -1537,7 +1537,7 @@ mod tests {
                 fn some() {
                     with_default_blocks(|tx, blocks| {
                         for block in blocks {
-                            let result = StarknetBlocksTable::get_number(tx, block.hash.into())
+                            let result = StarknetBlocksTable::get_number(tx, block.hash)
                                 .unwrap()
                                 .unwrap();
 
@@ -1552,7 +1552,7 @@ mod tests {
                         let non_existent =
                             StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
-                            StarknetBlocksTable::get_number(tx, non_existent.into()).unwrap(),
+                            StarknetBlocksTable::get_number(tx, non_existent).unwrap(),
                             None
                         );
                     });
