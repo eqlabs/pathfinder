@@ -126,9 +126,8 @@ impl RpcApi {
         let block_id = match block_id {
             BlockId::Pending => match self.pending_data()?.block().await {
                 Some(block) => {
-                    use std::ops::Deref;
                     return Ok(Block::from_sequencer_scoped(
-                        block.deref().clone().into(),
+                        block.as_ref().clone().into(),
                         scope,
                     ));
                 }
@@ -1059,7 +1058,6 @@ impl RpcApi {
         use BlockId::*;
 
         let storage = self.storage.clone();
-        let span = tracing::Span::current();
 
         // Handle the trivial (1) and (2) cases.
         match (request.from_block, request.to_block) {
@@ -1094,6 +1092,7 @@ impl RpcApi {
         let keys = request.keys.clone();
         // blocking task to perform database event query and optionally, the event count
         // required for (4d).
+        let span = tracing::Span::current();
         let db_events = tokio::task::spawn_blocking(move || {
             let _g = span.enter();
             let mut connection = storage

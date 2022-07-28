@@ -838,8 +838,11 @@ mod tests {
 
     mod get_block {
         use super::*;
-        use crate::core::{StarknetBlockHash, StarknetBlockNumber};
         use crate::rpc::types::reply::{Block, Transactions};
+        use crate::{
+            core::{StarknetBlockHash, StarknetBlockNumber},
+            sequencer::reply::PendingBlock,
+        };
         use pretty_assertions::assert_eq;
         use stark_hash::StarkHash;
 
@@ -849,18 +852,23 @@ mod tests {
             let genesis_id = BlockId::Hash(genesis_hash);
             let params = rpc_params!(genesis_id);
 
-            check_result(params, move |block| {
+            check_result(params, move |block, _| {
                 assert_eq!(block.block_number, Some(StarknetBlockNumber::GENESIS));
                 assert_eq!(block.block_hash, Some(genesis_hash));
             })
             .await;
         }
 
-        async fn check_result<F: Fn(&Block)>(params: Option<ParamsSer<'_>>, check_fn: F) {
+        async fn check_result<F: Fn(&Block, &PendingBlock)>(
+            params: Option<ParamsSer<'_>>,
+            check_fn: F,
+        ) {
             let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
             let block = client(addr)
@@ -869,14 +877,16 @@ mod tests {
                 .unwrap();
 
             assert_matches!(block.transactions, Transactions::HashesOnly(_) => {});
-            check_fn(&block);
+            let pending_block = pending_data.block().await.unwrap();
+            check_fn(&block, &pending_block);
 
             let block = client(addr)
                 .request::<Block>("starknet_getBlockWithTxs", params)
                 .await
                 .unwrap();
             assert_matches!(block.transactions, Transactions::Full(_) => {});
-            check_fn(&block);
+            let pending_block = pending_data.block().await.unwrap();
+            check_fn(&block, &pending_block);
         }
 
         #[tokio::test]
@@ -885,7 +895,7 @@ mod tests {
             let genesis_id = BlockId::Number(StarknetBlockNumber::GENESIS);
             let params = rpc_params!(genesis_id);
 
-            check_result(params, move |block| {
+            check_result(params, move |block, _| {
                 assert_eq!(block.block_number, Some(StarknetBlockNumber::GENESIS));
                 assert_eq!(block.block_hash, Some(genesis_hash));
             })
@@ -905,7 +915,7 @@ mod tests {
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = rpc_params!(BlockId::Latest);
 
-                    check_result(params, move |block| {
+                    check_result(params, move |block, _| {
                         assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
                         assert_eq!(block.block_hash, Some(latest_hash));
                     })
@@ -924,7 +934,7 @@ mod tests {
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = by_name([("block_id", json!("latest"))]);
 
-                    check_result(params, move |block| {
+                    check_result(params, move |block, _| {
                         assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
                         assert_eq!(block.block_hash, Some(latest_hash));
                     })
@@ -935,20 +945,11 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let storage = setup_storage();
-            let pending_data = create_pending_data(storage.clone()).await;
-            let pending_block = pending_data.block().await.unwrap();
-            let sequencer = Client::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
-                .with_pending_data(pending_data);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockId::Pending);
-            let block = client(addr)
-                .request::<Block>("starknet_getBlockWithTxHashes", params)
-                .await
-                .unwrap();
-            assert_eq!(block.parent_hash, pending_block.parent_hash);
+            check_result(params, move |block, pending| {
+                assert_eq!(block.parent_hash, pending.parent_hash);
+            })
+            .await;
         }
 
         #[tokio::test]
@@ -2836,10 +2837,10 @@ mod tests {
                     .await
                     .unwrap();
 
-                let expected = dbg!(events)
+                let expected = events
                     .events
                     .into_iter()
-                    .chain(dbg!(pending_events).events.into_iter())
+                    .chain(pending_events.events.into_iter())
                     .collect::<Vec<_>>();
 
                 assert_eq!(all_events.events, expected);

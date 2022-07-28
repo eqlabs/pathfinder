@@ -779,21 +779,11 @@ impl StarknetEventsTable {
         contract_address: Option<ContractAddress>,
         keys: Vec<EventKey>,
     ) -> anyhow::Result<usize> {
-        let mut base_query =
-        r#"SELECT COUNT(1),
-           block_number,
-           starknet_transactions.idx as transaction_idx,
-           from_address,
-           starknet_events.keys as keys
-           FROM starknet_events
-           INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
-           INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#
-            .to_string();
+        let mut base_query = "SELECT COUNT(1) FROM starknet_events".to_string();
 
         let mut where_statement_parts: Vec<&'static str> = Vec::new();
         let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
 
-        // filter on block range
         // filter on block range
         match (&from_block, &to_block) {
             (Some(from_block), Some(to_block)) => {
@@ -830,22 +820,18 @@ impl StarknetEventsTable {
                 .collect();
             key_fts_expression = base64_keys.join(" OR ");
 
-            base_query.push_str("INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
+            base_query.push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
             where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
             params.push((":events_match", &key_fts_expression));
         }
 
-        let query = if where_statement_parts.is_empty() {
-            format!(
-                "{} ORDER BY block_number, transaction_idx, starknet_events.idx",
-                base_query
-            )
-        } else {
-            format!(
-                "{} WHERE {} ORDER BY block_number, transaction_idx, starknet_events.idx",
+        let query = match where_statement_parts.is_empty() {
+            true => base_query,
+            false => format!(
+                "{} WHERE {}",
                 base_query,
-                where_statement_parts.join(" AND "),
-            )
+                where_statement_parts.join(" AND ")
+            ),
         };
         let count: usize = tx.query_row(&query, params.as_slice(), |row| row.get(0))?;
 
