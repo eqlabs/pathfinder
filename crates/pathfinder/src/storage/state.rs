@@ -774,13 +774,17 @@ impl StarknetEventsTable {
 
     pub fn event_count(
         tx: &Transaction<'_>,
-        from_block: StarknetBlockNumber,
-        to_block: StarknetBlockNumber,
+        from_block: Option<StarknetBlockNumber>,
+        to_block: Option<StarknetBlockNumber>,
         contract_address: Option<ContractAddress>,
         keys: Vec<EventKey>,
     ) -> anyhow::Result<usize> {
         let mut base_query =
-        r#"SELECT COUNT(1)
+        r#"SELECT COUNT(1),
+           block_number,
+           starknet_transactions.idx as transaction_idx,
+           from_address,
+           starknet_events.keys as keys
            FROM starknet_events
            INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
            INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#
@@ -790,9 +794,23 @@ impl StarknetEventsTable {
         let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
 
         // filter on block range
-        where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
-        params.push((":from_block", &from_block.0));
-        params.push((":to_block", &to_block.0));
+        // filter on block range
+        match (&from_block, &to_block) {
+            (Some(from_block), Some(to_block)) => {
+                where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
+                params.push((":from_block", &from_block.0));
+                params.push((":to_block", &to_block.0));
+            }
+            (Some(from_block), None) => {
+                where_statement_parts.push("block_number >= :from_block");
+                params.push((":from_block", &from_block.0));
+            }
+            (None, Some(to_block)) => {
+                where_statement_parts.push("block_number <= :to_block");
+                params.push((":to_block", &to_block.0));
+            }
+            (None, None) => {}
+        }
 
         // on contract address
         if let Some(contract_address) = &contract_address {
@@ -817,12 +835,18 @@ impl StarknetEventsTable {
             params.push((":events_match", &key_fts_expression));
         }
 
-        let query = format!(
-            "{} WHERE {}",
-            base_query,
-            where_statement_parts.join(" AND ")
-        );
-
+        let query = if where_statement_parts.is_empty() {
+            format!(
+                "{} ORDER BY block_number, transaction_idx, starknet_events.idx",
+                base_query
+            )
+        } else {
+            format!(
+                "{} WHERE {} ORDER BY block_number, transaction_idx, starknet_events.idx",
+                base_query,
+                where_statement_parts.join(" AND "),
+            )
+        };
         let count: usize = tx.query_row(&query, params.as_slice(), |row| row.get(0))?;
 
         Ok(count)
@@ -2261,7 +2285,7 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            const BLOCK: StarknetBlockNumber = StarknetBlockNumber(2);
+            const BLOCK: Option<StarknetBlockNumber> = Some(StarknetBlockNumber(2));
 
             let count = StarknetEventsTable::event_count(&tx, BLOCK, BLOCK, None, vec![]).unwrap();
             assert_eq!(count, test_utils::EVENTS_PER_BLOCK);
@@ -2281,8 +2305,8 @@ mod tests {
 
             let count = StarknetEventsTable::event_count(
                 &tx,
-                StarknetBlockNumber::GENESIS,
-                StarknetBlockNumber::MAX,
+                Some(StarknetBlockNumber::GENESIS),
+                Some(StarknetBlockNumber::MAX),
                 Some(addr),
                 vec![],
             )
@@ -2304,8 +2328,8 @@ mod tests {
 
             let count = StarknetEventsTable::event_count(
                 &tx,
-                StarknetBlockNumber::GENESIS,
-                StarknetBlockNumber::MAX,
+                Some(StarknetBlockNumber::GENESIS),
+                Some(StarknetBlockNumber::MAX),
                 None,
                 vec![key],
             )

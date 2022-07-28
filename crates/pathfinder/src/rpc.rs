@@ -646,7 +646,25 @@ mod tests {
         let transaction_receipts = vec![
             Receipt {
                 actual_fee: None,
-                events: vec![],
+                events: vec![
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
+                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
+                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcaaaaaaa").unwrap(),
+                        keys: vec![EventKey(
+                            StarkHash::from_be_slice(b"pending key 2").unwrap(),
+                        )],
+                    },
+                ],
                 execution_resources: ExecutionResources {
                     builtin_instance_counter: BuiltinInstanceCounter::Empty(
                         EmptyBuiltinInstanceCounter {},
@@ -661,7 +679,25 @@ mod tests {
             },
             Receipt {
                 actual_fee: None,
-                events: vec![],
+                events: vec![
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
+                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
+                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcaaaaaaa").unwrap(),
+                        keys: vec![EventKey(
+                            StarkHash::from_be_slice(b"pending key 2").unwrap(),
+                        )],
+                    },
+                ],
                 execution_resources: ExecutionResources {
                     builtin_instance_counter: BuiltinInstanceCounter::Empty(
                         EmptyBuiltinInstanceCounter {},
@@ -2718,6 +2754,7 @@ mod tests {
                         "page_number": 0,
                     }),
                 )]);
+
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
@@ -2731,6 +2768,131 @@ mod tests {
                         is_last_page: true,
                     }
                 );
+            }
+        }
+
+        mod pending {
+            use super::*;
+
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn backward_range() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = rpc_params!(EventFilter {
+                    from_block: Some(BlockId::Pending),
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    page_size: 100,
+                    page_number: 0,
+                });
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert!(rpc_result.events.is_empty());
+            }
+
+            #[tokio::test]
+            async fn all_events() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let mut filter = EventFilter {
+                    from_block: None,
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    page_size: 1024,
+                    page_number: 0,
+                };
+
+                let events = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter.clone()))
+                    .await
+                    .unwrap();
+
+                filter.from_block = Some(BlockId::Pending);
+                filter.to_block = Some(BlockId::Pending);
+                let pending_events = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter.clone()))
+                    .await
+                    .unwrap();
+
+                filter.from_block = None;
+                let all_events = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter))
+                    .await
+                    .unwrap();
+
+                let expected = dbg!(events)
+                    .events
+                    .into_iter()
+                    .chain(dbg!(pending_events).events.into_iter())
+                    .collect::<Vec<_>>();
+
+                assert_eq!(all_events.events, expected);
+                assert!(all_events.is_last_page);
+            }
+
+            #[tokio::test]
+            async fn paging() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let mut filter = EventFilter {
+                    from_block: None,
+                    to_block: Some(BlockId::Pending),
+                    address: None,
+                    keys: vec![],
+                    page_size: 1024,
+                    page_number: 0,
+                };
+
+                let all = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter.clone()))
+                    .await
+                    .unwrap()
+                    .events;
+
+                filter.page_size = 2;
+                let mut last_pages = Vec::new();
+                for (idx, chunk) in all.chunks(filter.page_size).enumerate() {
+                    filter.page_number = idx;
+                    let result = client(addr)
+                        .request::<GetEventsResult>(
+                            "starknet_getEvents",
+                            rpc_params!(filter.clone()),
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(result.page_number, idx);
+                    assert_eq!(result.events, chunk);
+
+                    last_pages.push(result.is_last_page);
+                }
+
+                let mut expected = vec![false; last_pages.len() - 1];
+                expected.push(true);
+                assert_eq!(last_pages, expected);
             }
         }
     }

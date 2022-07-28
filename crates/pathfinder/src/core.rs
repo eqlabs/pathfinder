@@ -139,7 +139,7 @@ pub struct L2ToL1MessagePayloadElem(pub StarkHash);
 pub struct EventData(pub StarkHash);
 
 /// StarkNet transaction event key.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize, Hash, Eq)]
 pub struct EventKey(pub StarkHash);
 
 /// StarkNet sequencer address.
