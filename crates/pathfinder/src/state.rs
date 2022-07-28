@@ -11,9 +11,9 @@ use crate::{
 
 pub mod block_hash;
 pub(crate) mod class_hash;
-mod merkle_node;
+pub mod merkle_node;
 pub(crate) mod merkle_tree;
-pub(crate) mod state_tree;
+pub mod state_tree;
 mod sync;
 
 pub use class_hash::compute_class_hash;
