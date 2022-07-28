@@ -1,3 +1,4 @@
+#![allow(rustdoc::private_intra_doc_links)]
 //! Contains constructs for describing the nodes in a Binary Merkle Patricia Tree
 //! used by Starknet.
 //!

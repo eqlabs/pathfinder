@@ -1,3 +1,4 @@
+#![allow(rustdoc::private_intra_doc_links)]
 //! Contains the [GlobalStateTree] and [ContractsStateTree] trees, which combined
 //! store the total StarkNet state.
 //!
