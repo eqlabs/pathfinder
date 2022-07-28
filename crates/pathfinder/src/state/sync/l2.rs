@@ -25,14 +25,6 @@ pub struct Timings {
     pub class_declaration: Duration,
 }
 
-/// A wrapper type to distinguish from the new global root in [sequencer::reply::Block]
-/// when sending [Event::Update].
-// FIXME
-// throw this type away once sync starts passing `sequencer::reply::StateUpdate` instead of
-// `ethereum::state_update::StateUpdate`
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct OldRoot(pub GlobalRoot);
-
 /// Events and queries emitted by L2 sync process.
 #[derive(Debug)]
 pub enum Event {
