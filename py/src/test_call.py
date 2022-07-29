@@ -1,14 +1,19 @@
 from call import (
-    do_loop,
-    loop_inner,
-    EXPECTED_SCHEMA_REVISION,
     check_cairolang_version,
+    do_loop,
+    EXPECTED_SCHEMA_REVISION,
+    int_param,
+    loop_inner,
+    maybe_pending_updates,
+    maybe_pending_deployed,
     resolve_block,
 )
 import sqlite3
 import io
 import json
 import pytest
+import copy
+from starkware.starknet.definitions.general_config import StarknetChainId
 
 
 # this is from 64a7f6aed9757d3d8d6c28bd972df73272b0cb0a of cairo-lang
@@ -278,7 +283,6 @@ def test_positive_directly():
     """
     this is like test_success but does it directly with the do_call, instead of the json wrapping, which hides exceptions which come from upgrading.
     """
-    from starkware.starknet.definitions.general_config import StarknetChainId
 
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -408,8 +412,6 @@ def test_check_cairolang_version():
 
 
 def test_fee_estimate_on_positive_directly():
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
     # fee estimation is a new thing on top of a call, but returning only the estimated fee
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -486,10 +488,145 @@ def test_starknet_version_is_resolved():
     assert info.starknet_version == "0.9.1"
 
 
+def test_call_on_pending_updated():
+    con = inmemory_with_tables()
+    contract_address = populate_test_contract_with_132_on_3(con)
+    con.execute("BEGIN")
+    contract_address = "0x" + contract_address.to_bytes(32, "big").hex()
+
+    pending_updates = maybe_pending_updates(
+        {
+            contract_address: [
+                {"key": "0x84", "value": "0x99"},
+            ]
+        }
+    )
+
+    command = {
+        "command": "call",
+        "at_block": "latest",
+        "contract_address": int_param(contract_address),
+        "entry_point_selector": "get_value",
+        "calldata": [132],
+        "chain": StarknetChainId.MAINNET,
+        "pending_updates": pending_updates,
+    }
+
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == [0x99]
+
+    del command["pending_updates"]
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == [3]
+
+
+def test_call_on_pending_deployed():
+    con = inmemory_with_tables()
+    _ = populate_test_contract_with_132_on_3(con)
+    con.execute("BEGIN")
+    contract_address = (
+        "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d"
+    )
+    contract_hash = "0x050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+
+    pending_updates = maybe_pending_updates(
+        {
+            contract_address: [
+                {"key": "0x5", "value": "0x65"},
+            ]
+        }
+    )
+
+    pending_deployed = maybe_pending_deployed(
+        [
+            {
+                "address": contract_address,
+                "contract_hash": contract_hash,
+            }
+        ]
+    )
+
+    command = {
+        "command": "call",
+        "at_block": "latest",
+        "contract_address": int_param(contract_address),
+        "entry_point_selector": "get_value",
+        "calldata": [5],
+        "gas_price": None,
+        "chain": StarknetChainId.MAINNET,
+        "pending_updates": pending_updates,
+        "pending_deployed": pending_deployed,
+    }
+
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == [0x65]
+
+    del command["pending_updates"]
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == [0]
+
+
+def test_call_on_pending_deployed_through_existing():
+    con = inmemory_with_tables()
+    orig_contract_address = populate_test_contract_with_132_on_3(con)
+    con.execute("BEGIN")
+    contract_address = (
+        "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d"
+    )
+    contract_hash = "0x050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+
+    pending_updates = maybe_pending_updates(
+        {
+            contract_address: [
+                {"key": "0x5", "value": "0x65"},
+            ]
+        }
+    )
+
+    pending_deployed = maybe_pending_deployed(
+        [
+            {
+                "address": contract_address,
+                "contract_hash": contract_hash,
+            }
+        ]
+    )
+
+    command = {
+        "command": "call",
+        "at_block": "latest",
+        "contract_address": orig_contract_address,
+        "entry_point_selector": "call_increase_value",
+        "calldata": [
+            # target contract
+            int_param(contract_address),
+            # address
+            5,
+            # increment by
+            4,
+        ],
+        "gas_price": None,
+        "chain": StarknetChainId.MAINNET,
+        "pending_updates": pending_updates,
+        "pending_deployed": pending_deployed,
+    }
+
+    # the call_increase_value doesn't return anything, which is a bit unfortunate.
+    # the reason why this works is probably because the contract is already
+    # loaded due to called contract sharing the contract.
+    #
+    # FIXME: add a test case for calling from existing to a new deployed contract.
+    # It'll probably be easy to just modify the existing test.cairo thing we
+    # already have, add a method or a return value to call_increase_value.
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == []
+
+
+# Rest of the test cases require a mainnet or goerli database in some path.
+
+
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
 def test_failing_mainnet_tx2():
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
     con = sqlite3.connect("../../crates/pathfinder/mainnet.sqlite")
     con.execute("BEGIN")
 
@@ -529,18 +666,155 @@ def test_failing_mainnet_tx2():
 
     print(_timings)
 
-    # this is wrong answer, but good enough for now
-    # assert output == {
-    #     "gas_consumed": 0,
-    #     "gas_price": 21367239423,
-    #     "overall_fee": 21858685929729,
-    # }
-
-    # this is correct
+    # this is correct in 0.9.1
     assert output == {
-        "gas_consumed": 8732,
+        "gas_consumed": 10083,
         "gas_price": 21367239423,
-        "overall_fee": 186590486623319,
+        "overall_fee": 215446943464081,
     }
 
     assert output["overall_fee"] == 0xA9B3FBAC7457
+
+
+@pytest.mark.skip(reason="this requires an early goerli database")
+def test_positive_streamed_on_early_goerli_block_without_deployed():
+    con = sqlite3.connect("../../goerli.sqlite")
+    con.execute("BEGIN")
+
+    # this is copypasted from the get_state_update
+    pending_updates = {
+        "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451": [
+            {"key": "0x5", "value": "0x0"}
+        ],
+        # this is the one we care about, it was written at block 5 to 0x64
+        "0x543e54f26ae33686f57da2ceebed98b340c3a78e9390931bd84fb711d5caabc": [
+            {"key": "0x5", "value": "0x22b"}
+        ],
+        # leave this out since it was deployed, which we should list as well, but not yet
+        # "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d": [
+        #     {"key": "0x5", "value": "0x65"},
+        #     {
+        #         "key": "0x2199e6fee3564246f851c45e8268c79fe073caff90420878b3fb11458d77139",
+        #         "value": "0x563e7b33aef472392dfb1a491f739295bad7105e669a6183c6f1a76124bafd1",
+        #     },
+        # ],
+        "0x2fb7ff5b1b474e8e691f5bebad9aa7aa3009f6ef22ccc2816f96cdfe217604d": [
+            {"key": "0x5", "value": "0x64"}
+        ],
+    }
+
+    pending_updates = maybe_pending_updates(pending_updates)
+
+    without_updates = {
+        "command": "call",
+        "at_block": 6,
+        "contract_address": int_param(
+            "0x543e54f26ae33686f57da2ceebed98b340c3a78e9390931bd84fb711d5caabc"
+        ),
+        "entry_point_selector": "get_value",
+        "calldata": [5],
+        "gas_price": None,
+        "chain": StarknetChainId.TESTNET,
+    }
+
+    with_updates = copy.deepcopy(without_updates)
+    with_updates["pending_updates"] = pending_updates
+
+    (verb, output, _timings) = loop_inner(con, without_updates)
+    assert output == [0x64]
+
+    (verb, output, _timings) = loop_inner(con, with_updates)
+    assert output == [0x22B]
+
+
+@pytest.mark.skip(reason="this requires an early goerli database")
+def test_positive_streamed_on_early_goerli_block_with_deployed():
+    con = sqlite3.connect("../../goerli.sqlite")
+    con.execute("BEGIN")
+
+    # this is copypasted from the get_state_update
+    pending_updates = {
+        "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451": [
+            {"key": "0x5", "value": "0x0"}
+        ],
+        # this is the one we care about, it was written at block 5 to 0x64
+        "0x543e54f26ae33686f57da2ceebed98b340c3a78e9390931bd84fb711d5caabc": [
+            {"key": "0x5", "value": "0x22b"}
+        ],
+        "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d": [
+            {"key": "0x5", "value": "0x65"},
+            {
+                "key": "0x2199e6fee3564246f851c45e8268c79fe073caff90420878b3fb11458d77139",
+                "value": "0x563e7b33aef472392dfb1a491f739295bad7105e669a6183c6f1a76124bafd1",
+            },
+        ],
+        "0x2fb7ff5b1b474e8e691f5bebad9aa7aa3009f6ef22ccc2816f96cdfe217604d": [
+            {"key": "0x5", "value": "0x64"}
+        ],
+    }
+
+    pending_updates = maybe_pending_updates(pending_updates)
+
+    # this matches sequencer state update
+    pending_deployed = [
+        {
+            "address": "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d",
+            "contract_hash": "0x010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8",
+        }
+    ]
+
+    # pending deployed contracts need to be included because otherwise the contract => class mapping could not be resolved.
+    pending_deployed = maybe_pending_deployed(pending_deployed)
+
+    without_updates = {
+        "command": "call",
+        "at_block": 6,
+        "contract_address": int_param(
+            "0x543e54f26ae33686f57da2ceebed98b340c3a78e9390931bd84fb711d5caabc"
+        ),
+        "entry_point_selector": "get_value",
+        "calldata": [5],
+        "gas_price": None,
+        "chain": StarknetChainId.TESTNET,
+    }
+
+    with_updates = copy.deepcopy(without_updates)
+    with_updates["pending_updates"] = pending_updates
+    with_updates["pending_deployed"] = pending_deployed
+
+    (verb, output, _timings) = loop_inner(con, without_updates)
+    assert output == [0x64]
+
+    (verb, output, _timings) = loop_inner(con, with_updates)
+    assert output == [0x22B]
+
+    # "tail case"
+    #
+    # I was initially confused why does this case seem to work without pushing
+    # all pending_deployed's contract_hashes to be loaded at the StateSelector,
+    # because such was required in the minimal standalone case but not here.
+    # the reason must be that other pending_updates had prompted fetching of
+    # the required (and shared) contract_hash so this didn't seem to require
+    # it.
+
+    on_newly_deployed = {
+        "command": "call",
+        "at_block": 6,
+        "contract_address": int_param(
+            "0x18b2088accbd652384e5ac545fd249095cb17bdc709868d1d748094d52b9f7d"
+        ),
+        "entry_point_selector": "get_value",
+        "calldata": [5],
+        "gas_price": None,
+        "chain": StarknetChainId.MAINNET,
+        "pending_updates": pending_updates,
+        "pending_deployed": pending_deployed,
+    }
+
+    (verb, output, _timings) = loop_inner(con, on_newly_deployed)
+    assert output == [0x65]
+
+    del on_newly_deployed["pending_updates"][on_newly_deployed["contract_address"]]
+
+    (verb, output, _timings) = loop_inner(con, on_newly_deployed)
+    assert output == [0]

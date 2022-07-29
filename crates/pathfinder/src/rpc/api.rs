@@ -771,10 +771,19 @@ impl RpcApi {
             (Some(h), &BlockHashOrTag::Hash(_) | &BlockHashOrTag::Tag(Tag::Latest)) => {
                 // we don't yet handle pending at all, and latest has been decided to be whatever
                 // block we have, which is exactly how the py/src/call.py handles it.
-                h.call(request, block_hash).map_err(Error::from).await
+                h.call(
+                    request,
+                    block_hash
+                        .try_into()
+                        .expect("should had converted since matched Hash or Latest"),
+                    None,
+                )
+                .map_err(Error::from)
+                .await
             }
             (Some(_), _) => {
-                // just forward it to the sequencer for now.
+                // FIXME: use latest PendingData and clone the inner arc as the diffs arg, use
+                // Latest as the block which to run on
                 self.sequencer
                     .call(request.into(), block_hash)
                     .map_ok(|x| x.result)
@@ -976,10 +985,10 @@ impl RpcApi {
             self.shared_gas_price.as_ref(),
             &block_hash,
         ) {
-            (Some(h), _, &BlockHashOrTag::Hash(_)) => {
+            (Some(h), _, &BlockHashOrTag::Hash(hash)) => {
                 // discussed during estimateFee work: when using block_hash use the gasPrice from
                 // the starknet_blocks::gas_price column, otherwise (tags) get the latest eth_gasPrice.
-                h.estimate_fee(request, block_hash, GasPriceSource::PastBlock)
+                h.estimate_fee(request, hash.into(), GasPriceSource::PastBlock, None)
                     .await
                     .map_err(Error::from)
             }
@@ -992,11 +1001,18 @@ impl RpcApi {
                     .await
                     .ok_or_else(|| internal_server_error("eth_gasPrice unavailable"))?;
 
-                h.estimate_fee(request, block_hash, GasPriceSource::Current(gas_price))
-                    .await
-                    .map_err(Error::from)
+                h.estimate_fee(
+                    request,
+                    ext_py::BlockHashNumberOrLatest::Latest,
+                    GasPriceSource::Current(gas_price),
+                    None,
+                )
+                .await
+                .map_err(Error::from)
             }
             (Some(_), Some(_), &BlockHashOrTag::Tag(Tag::Pending)) => {
+                // FIXME: use latest PendingData and clone the inner arc as the diffs arg, use
+                // Latest as the block which to run on
                 Err(internal_server_error("Unimplemented"))
             }
             _ => {
