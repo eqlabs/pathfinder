@@ -29,7 +29,7 @@ async fn main() {
     let mut connection = storage.connection().unwrap();
     let transaction = connection.transaction().unwrap();
 
-    let chain = match StarknetBlocksTable::determine_chain(&transaction).unwrap() {
+    let chain = match StarknetBlocksTable::get_chain(&transaction).unwrap() {
         Some(x) => x,
         None => return,
     };

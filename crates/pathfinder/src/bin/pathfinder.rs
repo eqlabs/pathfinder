@@ -158,7 +158,7 @@ fn verify_database_chain(storage: &Storage, expected: core::Chain) -> anyhow::Re
         .transaction()
         .context("Create database transaction")?;
 
-    let db_chain = match StarknetBlocksTable::determine_chain(&transaction)
+    let db_chain = match StarknetBlocksTable::get_chain(&transaction)
         .context("Get chain from genesis block in the DB")?
     {
         Some(chain) => chain,

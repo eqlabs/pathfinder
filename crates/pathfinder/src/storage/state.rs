@@ -447,7 +447,7 @@ impl StarknetBlocksTable {
     }
 
     /// Returns the [chain](crate::core::Chain) based on genesis block hash stored in the DB.
-    pub fn determine_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
+    pub fn get_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
         let genesis = Self::get_hash(tx, StarknetBlockNumber(0).into())
             .context("Read genesis block from database")?;
 
