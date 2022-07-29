@@ -439,6 +439,12 @@ pub mod reply {
     /// FIXME remove this note after the PR is merged into the spec
     /// Implements spec version [v0.1.0-rc1](https://github.com/starkware-libs/starknet-specs/releases/tag/v0.1.0-rc1)
     /// plus this PR: ["Pack storage diff entries per contract address"](https://github.com/starkware-libs/starknet-specs/pull/26)
+    ///
+    /// # Serialization
+    ///
+    /// This structure derives [serde::Deserialize] without depending
+    /// on the `rpc-full-serde` feature because state updates are
+    /// stored in the DB as compressed raw JSON bytes.
     #[skip_serializing_none]
     #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
@@ -463,15 +469,21 @@ pub mod reply {
     }
 
     /// State update related substructures.
+    ///
+    /// # Serialization
+    ///
+    /// All structures in this module derive [serde::Deserialize] without depending
+    /// on the `rpc-full-serde` feature because state updates are
+    /// stored in the DB as compressed raw JSON bytes.
     pub mod state_update {
         use crate::core::{
             ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
         };
         use crate::sequencer;
-        use serde::Serialize;
+        use serde::{Deserialize, Serialize};
 
         /// L2 state diff.
-        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StateDiff {
             pub storage_diffs: Vec<StorageDiff>,
@@ -514,7 +526,7 @@ pub mod reply {
         }
 
         /// L2 storage diff of a contract.
-        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageDiff {
             pub address: ContractAddress,
@@ -522,7 +534,7 @@ pub mod reply {
         }
 
         /// L2 storage diff item of a contract.
-        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageItem {
             pub key: StorageAddress,
@@ -539,14 +551,14 @@ pub mod reply {
         }
 
         /// L2 state diff declared contract item.
-        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct DeclaredContract {
             pub class_hash: ClassHash,
         }
 
         /// L2 state diff deployed contract item.
-        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct DeployedContract {
             pub address: ContractAddress,
@@ -554,7 +566,7 @@ pub mod reply {
         }
 
         /// L2 state diff nonce item.
-        #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct Nonce {
             pub contract_address: ContractAddress,
