@@ -135,7 +135,6 @@ pub(super) async fn launch_python(
 
     // important to close up the stdin not to deadlock
     drop(stdin);
-    drop(stdout);
 
     // give the subprocess a bit of time, since it might be less risky/better for sqlite to
     // exit/cleanup properly
