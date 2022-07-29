@@ -779,18 +779,20 @@ mod tests {
         // into storage, but do require database IO to determine the root.
         //
         // Load from latest block in storage's root.
-        let state_update = crate::ethereum::state_update::StateUpdate::from(&state_diff);
+        let state_diff2 = state_diff.clone();
         let pending_root = tokio::task::spawn_blocking(move || {
             let mut db = storage.connection().unwrap();
             let tmp_tx = db.transaction().unwrap();
             let mut global_tree = GlobalStateTree::load(&tmp_tx, latest.root).unwrap();
-            for deployed in state_update.deployed_contracts {
-                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.hash).unwrap();
+            for deployed in state_diff2.deployed_contracts {
+                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.contract_hash).unwrap();
             }
-            for update in state_update.contract_updates {
+            for (contract_address, storage_diffs) in state_diff2.storage_diffs {
                 use crate::state::update_contract_state;
-                let state_hash = update_contract_state(&update, &global_tree, &tmp_tx).unwrap();
-                global_tree.set(update.address, state_hash).unwrap();
+                let state_hash =
+                    update_contract_state(contract_address, &storage_diffs, &global_tree, &tmp_tx)
+                        .unwrap();
+                global_tree.set(contract_address, state_hash).unwrap();
             }
             let pending_root = global_tree.apply().unwrap();
             tmp_tx.rollback().unwrap();
