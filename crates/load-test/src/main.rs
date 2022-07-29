@@ -216,8 +216,8 @@ async fn task_get_events(user: &mut GooseUser) -> TransactionResult {
     let events = get_events(
         user,
         EventFilter {
-            from_block: Some(StarknetBlockNumber(1000)),
-            to_block: Some(StarknetBlockNumber(1100)),
+            from_block: Some(StarknetBlockNumber(1000).into()),
+            to_block: Some(StarknetBlockNumber(1100).into()),
             address: Some(ContractAddress(
                 StarkHash::from_hex_str(
                     "0x103114c4c5ac233a360d39a9217b9067be6979f3d08e1cf971fd22baf8f8713",

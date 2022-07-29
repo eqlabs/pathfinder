@@ -365,7 +365,7 @@ mod tests {
             test_utils::*,
             Client,
         },
-        state::{state_tree::GlobalStateTree, SyncState},
+        state::{state_tree::GlobalStateTree, PendingData, SyncState},
         storage::{
             ContractCodeTable, ContractsTable, StarknetBlock, StarknetBlocksTable,
             StarknetTransactionsTable, Storage,
@@ -479,7 +479,7 @@ mod tests {
 
         let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
         let block0 = StarknetBlock {
-            number: StarknetBlockNumber(0),
+            number: StarknetBlockNumber::GENESIS,
             hash: genesis_hash,
             root: global_root0,
             timestamp: StarknetBlockTimestamp(0),
@@ -591,10 +591,258 @@ mod tests {
         storage
     }
 
+    /// Creates [PendingData] which correctly links to the provided [Storage].
+    ///
+    /// i.e. the pending block's parent hash will be the latest block's hash from storage,
+    /// and similarly for the pending state diffs state root.
+    async fn create_pending_data(storage: Storage) -> PendingData {
+        use crate::core::{StorageValue, TransactionNonce};
+        use crate::sequencer::reply::transaction::{DeclareTransaction, DeployTransaction};
+
+        let storage2 = storage.clone();
+        let latest = tokio::task::spawn_blocking(move || {
+            let mut db = storage2.connection().unwrap();
+            let tx = db.transaction().unwrap();
+
+            use crate::storage::StarknetBlocksBlockId;
+            StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+                .unwrap()
+                .expect("Storage should contain a latest block")
+        })
+        .await
+        .unwrap();
+
+        let transactions: Vec<Transaction> = vec![
+            DeclareTransaction {
+                class_hash: ClassHash(StarkHash::from_be_slice(b"pending class hash 0").unwrap()),
+                max_fee: Call::DEFAULT_MAX_FEE,
+                nonce: TransactionNonce(StarkHash::from_be_slice(b"pending nonce 0").unwrap()),
+                sender_address: ContractAddress(
+                    StarkHash::from_be_slice(b"pending contract addr 0").unwrap(),
+                ),
+                signature: vec![],
+                transaction_hash: StarknetTransactionHash(
+                    StarkHash::from_be_slice(b"pending tx hash 0").unwrap(),
+                ),
+                version: TransactionVersion(web3::types::H256::from_low_u64_be(1)),
+            }
+            .into(),
+            DeployTransaction {
+                contract_address: ContractAddress::from_hex_str("0x1122355").unwrap(),
+                contract_address_salt: ContractAddressSalt(
+                    StarkHash::from_be_slice(b"salty").unwrap(),
+                ),
+                class_hash: ClassHash(StarkHash::from_be_slice(b"pending class hash 1").unwrap()),
+                constructor_calldata: vec![],
+                transaction_hash: StarknetTransactionHash(
+                    StarkHash::from_be_slice(b"pending tx hash 1").unwrap(),
+                ),
+            }
+            .into(),
+        ];
+
+        let transaction_receipts = vec![
+            Receipt {
+                actual_fee: None,
+                events: vec![
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
+                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
+                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcaaaaaaa").unwrap(),
+                        keys: vec![EventKey(
+                            StarkHash::from_be_slice(b"pending key 2").unwrap(),
+                        )],
+                    },
+                ],
+                execution_resources: ExecutionResources {
+                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                        EmptyBuiltinInstanceCounter {},
+                    ),
+                    n_memory_holes: 0,
+                    n_steps: 0,
+                },
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: vec![],
+                transaction_hash: transactions[0].hash(),
+                transaction_index: StarknetTransactionIndex(0),
+            },
+            Receipt {
+                actual_fee: None,
+                events: vec![
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
+                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
+                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: ContractAddress::from_hex_str("0xabcaaaaaaa").unwrap(),
+                        keys: vec![EventKey(
+                            StarkHash::from_be_slice(b"pending key 2").unwrap(),
+                        )],
+                    },
+                ],
+                execution_resources: ExecutionResources {
+                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                        EmptyBuiltinInstanceCounter {},
+                    ),
+                    n_memory_holes: 0,
+                    n_steps: 0,
+                },
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: vec![],
+                transaction_hash: transactions[1].hash(),
+                transaction_index: StarknetTransactionIndex(1),
+            },
+        ];
+
+        let block = crate::sequencer::reply::PendingBlock {
+            gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
+            parent_hash: latest.hash,
+            sequencer_address: SequencerAddress(
+                StarkHash::from_be_slice(b"pending sequencer address").unwrap(),
+            ),
+            status: crate::sequencer::reply::Status::Pending,
+            timestamp: StarknetBlockTimestamp(1234567),
+            transaction_receipts,
+            transactions,
+            starknet_version: Some("pending version".to_owned()),
+        };
+
+        use crate::sequencer::reply as seq_reply;
+        let deployed_contracts = vec![
+            seq_reply::state_update::Contract {
+                address: ContractAddress(
+                    StarkHash::from_be_slice(b"pending contract 0 address").unwrap(),
+                ),
+                contract_hash: ClassHash(
+                    StarkHash::from_be_slice(b"pending contract 0 hash").unwrap(),
+                ),
+            },
+            seq_reply::state_update::Contract {
+                address: ContractAddress(
+                    StarkHash::from_be_slice(b"pending contract 1 address").unwrap(),
+                ),
+                contract_hash: ClassHash(
+                    StarkHash::from_be_slice(b"pending contract 1 hash").unwrap(),
+                ),
+            },
+        ];
+        let storage_diffs = [(
+            deployed_contracts[1].address,
+            vec![
+                seq_reply::state_update::StorageDiff {
+                    key: StorageAddress(
+                        StarkHash::from_be_slice(b"pending storage key 0").unwrap(),
+                    ),
+                    value: StorageValue(
+                        StarkHash::from_be_slice(b"pending storage value 0").unwrap(),
+                    ),
+                },
+                seq_reply::state_update::StorageDiff {
+                    key: StorageAddress(
+                        StarkHash::from_be_slice(b"pending storage key 1").unwrap(),
+                    ),
+                    value: StorageValue(
+                        StarkHash::from_be_slice(b"pending storage value 1").unwrap(),
+                    ),
+                },
+            ],
+        )]
+        .into_iter()
+        .collect();
+
+        let state_diff = crate::sequencer::reply::state_update::StateDiff {
+            storage_diffs,
+            deployed_contracts,
+            declared_contracts: Vec::new(),
+        };
+
+        // The class definitions must be inserted into the database.
+        let deployed_contracts = state_diff.deployed_contracts.clone();
+        let deploy_storage = storage.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut db = deploy_storage.connection().unwrap();
+            let tx = db.transaction().unwrap();
+            let compressed_definition = include_bytes!("../fixtures/contract_definition.json.zst");
+            for deployed in deployed_contracts {
+                // The abi, bytecode, definition are expected to be zstd compressed, and are
+                // checked for the magic bytes.
+                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+                let contract = crate::state::CompressedContract {
+                    abi: zstd_magic.clone(),
+                    bytecode: zstd_magic.clone(),
+                    definition: compressed_definition.to_vec(),
+                    hash: deployed.contract_hash,
+                };
+                ContractCodeTable::insert_compressed(&tx, &contract).unwrap();
+            }
+            tx.commit().unwrap();
+        })
+        .await
+        .unwrap();
+
+        // Use a roll-back transaction to calculate pending state root.
+        // This must not be committed as we don't want to inject the diff
+        // into storage, but do require database IO to determine the root.
+        //
+        // Load from latest block in storage's root.
+        let state_update = crate::ethereum::state_update::StateUpdate::from(&state_diff);
+        let pending_root = tokio::task::spawn_blocking(move || {
+            let mut db = storage.connection().unwrap();
+            let tmp_tx = db.transaction().unwrap();
+            let mut global_tree = GlobalStateTree::load(&tmp_tx, latest.root).unwrap();
+            for deployed in state_update.deployed_contracts {
+                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.hash).unwrap();
+            }
+            for update in state_update.contract_updates {
+                use crate::state::update_contract_state;
+                let state_hash = update_contract_state(&update, &global_tree, &tmp_tx).unwrap();
+                global_tree.set(update.address, state_hash).unwrap();
+            }
+            let pending_root = global_tree.apply().unwrap();
+            tmp_tx.rollback().unwrap();
+            pending_root
+        })
+        .await
+        .unwrap();
+
+        let state_update = crate::sequencer::reply::StateUpdate {
+            // This must be `None` for a pending state update.
+            block_hash: None,
+            new_root: pending_root,
+            old_root: latest.root,
+            state_diff,
+        };
+
+        let pending_data = PendingData::default();
+        pending_data
+            .set(Arc::new(block), Arc::new(state_update))
+            .await;
+        pending_data
+    }
+
     mod get_block {
         use super::*;
-        use crate::core::{StarknetBlockHash, StarknetBlockNumber};
         use crate::rpc::types::reply::{Block, Transactions};
+        use crate::{
+            core::{StarknetBlockHash, StarknetBlockNumber},
+            sequencer::reply::PendingBlock,
+        };
         use pretty_assertions::assert_eq;
         use stark_hash::StarkHash;
 
@@ -604,18 +852,23 @@ mod tests {
             let genesis_id = BlockId::Hash(genesis_hash);
             let params = rpc_params!(genesis_id);
 
-            check_result(params, move |block| {
-                assert_eq!(block.block_number, Some(StarknetBlockNumber(0)));
+            check_result(params, move |block, _| {
+                assert_eq!(block.block_number, Some(StarknetBlockNumber::GENESIS));
                 assert_eq!(block.block_hash, Some(genesis_hash));
             })
             .await;
         }
 
-        async fn check_result<F: Fn(&Block)>(params: Option<ParamsSer<'_>>, check_fn: F) {
+        async fn check_result<F: Fn(&Block, &PendingBlock)>(
+            params: Option<ParamsSer<'_>>,
+            check_fn: F,
+        ) {
             let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
             let block = client(addr)
@@ -624,24 +877,26 @@ mod tests {
                 .unwrap();
 
             assert_matches!(block.transactions, Transactions::HashesOnly(_) => {});
-            check_fn(&block);
+            let pending_block = pending_data.block().await.unwrap();
+            check_fn(&block, &pending_block);
 
             let block = client(addr)
                 .request::<Block>("starknet_getBlockWithTxs", params)
                 .await
                 .unwrap();
             assert_matches!(block.transactions, Transactions::Full(_) => {});
-            check_fn(&block);
+            let pending_block = pending_data.block().await.unwrap();
+            check_fn(&block, &pending_block);
         }
 
         #[tokio::test]
         async fn genesis_by_number() {
             let genesis_hash = StarknetBlockHash(StarkHash::from_be_slice(b"genesis").unwrap());
-            let genesis_id = BlockId::Number(StarknetBlockNumber(0));
+            let genesis_id = BlockId::Number(StarknetBlockNumber::GENESIS);
             let params = rpc_params!(genesis_id);
 
-            check_result(params, move |block| {
-                assert_eq!(block.block_number, Some(StarknetBlockNumber(0)));
+            check_result(params, move |block, _| {
+                assert_eq!(block.block_number, Some(StarknetBlockNumber::GENESIS));
                 assert_eq!(block.block_hash, Some(genesis_hash));
             })
             .await;
@@ -660,7 +915,7 @@ mod tests {
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = rpc_params!(BlockId::Latest);
 
-                    check_result(params, move |block| {
+                    check_result(params, move |block, _| {
                         assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
                         assert_eq!(block.block_hash, Some(latest_hash));
                     })
@@ -679,7 +934,7 @@ mod tests {
                         StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap());
                     let params = by_name([("block_id", json!("latest"))]);
 
-                    check_result(params, move |block| {
+                    check_result(params, move |block, _| {
                         assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
                         assert_eq!(block.block_hash, Some(latest_hash));
                     })
@@ -691,8 +946,10 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let params = rpc_params!(BlockId::Pending);
-
-            check_result(params, move |_| {}).await;
+            check_result(params, move |block, pending| {
+                assert_eq!(block.parent_hash, pending.parent_hash);
+            })
+            .await;
         }
 
         #[tokio::test]
@@ -965,20 +1222,25 @@ mod tests {
 
         #[tokio::test]
         async fn pending_block() {
-            let storage = Storage::in_memory().unwrap();
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(
-                *VALID_CONTRACT_ADDR,
-                *VALID_KEY,
-                BlockHashOrTag::Tag(Tag::Pending)
-            );
-            client(addr)
+            // Pick an arbitrary pending storage update to query.
+            let state_update = pending_data.state_update().await.unwrap();
+            let (contract, updates) = state_update.state_diff.storage_diffs.iter().next().unwrap();
+            let storage_key = updates[0].key;
+            let storage_val = updates[0].value;
+
+            let params = rpc_params!(contract, storage_key, BlockHashOrTag::Tag(Tag::Pending));
+            let result = client(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
+            assert_eq!(result, storage_val);
         }
     }
 
@@ -1021,6 +1283,27 @@ mod tests {
                     .await
                     .unwrap();
                 assert_eq!(transaction.hash(), hash);
+            }
+
+            #[tokio::test]
+            async fn pending() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data.clone());
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                // Select an arbitrary pending transaction to query.
+                let expected = pending_data.block().await.unwrap();
+                let expected: Transaction = expected.transactions.first().unwrap().into();
+
+                let params = rpc_params!(expected.hash());
+                let transaction = client(addr)
+                    .request::<Transaction>("starknet_getTransactionByHash", params)
+                    .await
+                    .unwrap();
+                assert_eq!(transaction, expected);
             }
         }
 
@@ -1079,7 +1362,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis_by_number() {
-            let genesis_id = BlockId::Number(StarknetBlockNumber(0));
+            let genesis_id = BlockId::Number(StarknetBlockNumber::GENESIS);
             let params = rpc_params!(genesis_id, 0);
             check_result(params, move |txn| {
                 assert_eq!(
@@ -1121,8 +1404,26 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let params = rpc_params!(BlockId::Pending, 0);
-            check_result(params, move |_| {}).await;
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
+            let sequencer = Client::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            const TX_IDX: usize = 1;
+            let expected = pending_data.block().await.unwrap();
+            assert!(TX_IDX <= expected.transactions.len());
+            let expected: Transaction = expected.transactions.get(TX_IDX).unwrap().into();
+
+            let params = rpc_params!(BlockId::Pending, TX_IDX);
+            let transaction = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
+                .await
+                .unwrap();
+
+            assert_eq!(transaction, expected);
         }
 
         #[tokio::test]
@@ -1214,6 +1515,28 @@ mod tests {
                         EventKey(StarkHash::from_be_slice(b"event 0 key").unwrap())
                     )
                 );
+            }
+
+            #[tokio::test]
+            async fn pending() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data.clone());
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                // Select an arbitrary pending transaction to query.
+                let expected = pending_data.block().await.unwrap();
+                let expected = expected.transaction_receipts.first().unwrap();
+
+                let params = rpc_params!(expected.transaction_hash);
+                let receipt = client(addr)
+                    .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
+                    .await
+                    .unwrap();
+                // Only asserting the hash because translating from Sequencer receipt to RPC receipt is pita.
+                assert_eq!(receipt.hash(), expected.transaction_hash);
             }
         }
 
@@ -1372,12 +1695,36 @@ mod tests {
 
                 let contract_address =
                     ContractAddress(StarkHash::from_be_slice(b"contract 1").unwrap());
-                let params = rpc_params!(BlockId::Number(StarknetBlockNumber(0)), contract_address);
+                let params = rpc_params!(
+                    BlockId::Number(StarknetBlockNumber::GENESIS),
+                    contract_address
+                );
                 let error = client(addr)
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap_err();
                 assert_eq!(ErrorCode::ContractNotFound, error);
+            }
+
+            #[tokio::test]
+            async fn pending() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data.clone());
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let contract = pending_data.state_update().await.unwrap();
+                let contract = contract.state_diff.deployed_contracts.first().unwrap();
+
+                let params = rpc_params!(BlockId::Pending, contract.address);
+                let class_hash = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap();
+                assert_eq!(class_hash, contract.contract_hash);
             }
         }
 
@@ -1520,6 +1867,26 @@ mod tests {
                 .unwrap_err();
 
             assert_eq!(ErrorCode::ContractNotFound, not_found);
+        }
+
+        #[tokio::test]
+        async fn pending() {
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
+            let sequencer = Client::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            let contract = pending_data.state_update().await.unwrap();
+            let contract = contract.state_diff.deployed_contracts.first().unwrap();
+
+            let params = rpc_params!(BlockId::Pending, contract.address);
+            client(addr)
+                .request::<ContractClass>("starknet_getClassAt", params)
+                .await
+                .unwrap();
         }
     }
 
@@ -1678,15 +2045,19 @@ mod tests {
         #[tokio::test]
         async fn pending() {
             let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Goerli).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let expected = pending_data.block().await.unwrap().transactions.len();
             let params = rpc_params!(BlockId::Pending);
-            client(addr)
+            let count = client(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap();
+            assert_eq!(count, expected as u64);
         }
 
         #[tokio::test]
@@ -2146,8 +2517,8 @@ mod tests {
 
                 let expected_event = &events[1];
                 let params = rpc_params!(EventFilter {
-                    from_block: Some(expected_event.block_number),
-                    to_block: Some(expected_event.block_number),
+                    from_block: Some(expected_event.block_number.unwrap().into()),
+                    to_block: Some(expected_event.block_number.unwrap().into()),
                     address: Some(expected_event.from_address),
                     // we're using a key which is present in _all_ events
                     keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
@@ -2179,8 +2550,8 @@ mod tests {
 
                 const BLOCK_NUMBER: usize = 2;
                 let params = rpc_params!(EventFilter {
-                    from_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
-                    to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
+                    from_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64).into()),
+                    to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64).into()),
                     address: None,
                     keys: vec![],
                     page_size: test_utils::NUM_EVENTS,
@@ -2370,14 +2741,19 @@ mod tests {
                 let params = by_name([(
                     "filter",
                     json!({
-                        "fromBlock": expected_event.block_number.0,
-                        "toBlock": expected_event.block_number.0,
+                        "fromBlock": {
+                            "block_number": expected_event.block_number.unwrap().0
+                        },
+                        "toBlock": {
+                            "block_number": expected_event.block_number.unwrap().0
+                        },
                         "address": expected_event.from_address,
                         "keys": [expected_event.keys[0]],
                         "page_size": super::test_utils::NUM_EVENTS,
                         "page_number": 0,
                     }),
                 )]);
+
                 let rpc_result = client(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
@@ -2391,6 +2767,131 @@ mod tests {
                         is_last_page: true,
                     }
                 );
+            }
+        }
+
+        mod pending {
+            use super::*;
+
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn backward_range() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = rpc_params!(EventFilter {
+                    from_block: Some(BlockId::Pending),
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    page_size: 100,
+                    page_number: 0,
+                });
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert!(rpc_result.events.is_empty());
+            }
+
+            #[tokio::test]
+            async fn all_events() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let mut filter = EventFilter {
+                    from_block: None,
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    page_size: 1024,
+                    page_number: 0,
+                };
+
+                let events = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter.clone()))
+                    .await
+                    .unwrap();
+
+                filter.from_block = Some(BlockId::Pending);
+                filter.to_block = Some(BlockId::Pending);
+                let pending_events = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter.clone()))
+                    .await
+                    .unwrap();
+
+                filter.from_block = None;
+                let all_events = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter))
+                    .await
+                    .unwrap();
+
+                let expected = events
+                    .events
+                    .into_iter()
+                    .chain(pending_events.events.into_iter())
+                    .collect::<Vec<_>>();
+
+                assert_eq!(all_events.events, expected);
+                assert!(all_events.is_last_page);
+            }
+
+            #[tokio::test]
+            async fn paging() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Goerli).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                    .with_pending_data(pending_data);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let mut filter = EventFilter {
+                    from_block: None,
+                    to_block: Some(BlockId::Pending),
+                    address: None,
+                    keys: vec![],
+                    page_size: 1024,
+                    page_number: 0,
+                };
+
+                let all = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter.clone()))
+                    .await
+                    .unwrap()
+                    .events;
+
+                filter.page_size = 2;
+                let mut last_pages = Vec::new();
+                for (idx, chunk) in all.chunks(filter.page_size).enumerate() {
+                    filter.page_number = idx;
+                    let result = client(addr)
+                        .request::<GetEventsResult>(
+                            "starknet_getEvents",
+                            rpc_params!(filter.clone()),
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(result.page_number, idx);
+                    assert_eq!(result.events, chunk);
+
+                    last_pages.push(result.is_last_page);
+                }
+
+                let mut expected = vec![false; last_pages.len() - 1];
+                expected.push(true);
+                assert_eq!(last_pages, expected);
             }
         }
     }

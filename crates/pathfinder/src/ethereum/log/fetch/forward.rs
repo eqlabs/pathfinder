@@ -244,7 +244,7 @@ mod tests {
                 )
                 .unwrap(),
             ),
-            block_number: StarknetBlockNumber(0),
+            block_number: StarknetBlockNumber::GENESIS,
         };
 
         let genesis_block = starknet_genesis_log.origin.block.number;

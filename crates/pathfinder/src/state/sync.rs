@@ -1058,7 +1058,7 @@ mod tests {
             },
         };
         pub static ref STATE_UPDATE_LOG0: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
-            block_number: StarknetBlockNumber(0),
+            block_number: StarknetBlockNumber::GENESIS,
             // State update actually doesn't change the state hence 0 root
             global_root: GlobalRoot(StarkHash::ZERO),
             origin: ETH_ORIG.clone(),
@@ -1070,7 +1070,7 @@ mod tests {
         };
         pub static ref BLOCK0: reply::Block = reply::Block {
             block_hash: StarknetBlockHash(*A),
-            block_number: StarknetBlockNumber(0),
+            block_number: StarknetBlockNumber::GENESIS,
             gas_price: Some(GasPrice::ZERO),
             parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
             sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
@@ -1095,7 +1095,7 @@ mod tests {
             starknet_version: None,
         };
         pub static ref STORAGE_BLOCK0: storage::StarknetBlock = storage::StarknetBlock {
-            number: StarknetBlockNumber(0),
+            number: StarknetBlockNumber::GENESIS,
             hash: StarknetBlockHash(*A),
             root: GlobalRoot(StarkHash::ZERO),
             timestamp: StarknetBlockTimestamp(0),
@@ -1193,7 +1193,7 @@ mod tests {
                 // Case 0: no L1-L2 head expected
                 None,
                 // Case 1: some L1-L2 head expected
-                Some(StarknetBlockNumber(0)),
+                Some(StarknetBlockNumber::GENESIS),
                 // Case 2: some L1-L2 head expected
                 Some(StarknetBlockNumber(1))
             ]
@@ -1267,7 +1267,10 @@ mod tests {
                 // Case 0: no L1-L2 head expected, as we start from genesis
                 (None, None),
                 // Case 1: some L1-L2 head expected, block #1 removed
-                (Some(StarknetBlockNumber(0)), Some(StarknetBlockNumber(0)))
+                (
+                    Some(StarknetBlockNumber::GENESIS),
+                    Some(StarknetBlockNumber::GENESIS)
+                )
             ]
         );
     }
@@ -1288,7 +1291,7 @@ mod tests {
             let (tx1, rx1) =
                 tokio::sync::oneshot::channel::<Option<ethereum::log::StateUpdateLog>>();
 
-            tx.send(l1::Event::QueryUpdate(StarknetBlockNumber(0), tx1))
+            tx.send(l1::Event::QueryUpdate(StarknetBlockNumber::GENESIS, tx1))
                 .await
                 .unwrap();
 
@@ -1438,7 +1441,7 @@ mod tests {
                 // Case 0: no L1-L2 head expected
                 None,
                 // Case 1: some L1-L2 head expected
-                Some(StarknetBlockNumber(0))
+                Some(StarknetBlockNumber::GENESIS)
             ]
         );
     }
@@ -1507,7 +1510,10 @@ mod tests {
                 // Case 0: no L1-L2 head expected, as we start from genesis
                 (None, None),
                 // Case 1: some L1-L2 head expected, block #1 removed
-                (Some(StarknetBlockNumber(0)), Some(StarknetBlockNumber(0)))
+                (
+                    Some(StarknetBlockNumber::GENESIS),
+                    Some(StarknetBlockNumber::GENESIS)
+                )
             ]
         );
     }
@@ -1568,7 +1574,7 @@ mod tests {
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel();
 
-            tx.send(l2::Event::QueryBlock(StarknetBlockNumber(0), tx1))
+            tx.send(l2::Event::QueryBlock(StarknetBlockNumber::GENESIS, tx1))
                 .await
                 .unwrap();
 

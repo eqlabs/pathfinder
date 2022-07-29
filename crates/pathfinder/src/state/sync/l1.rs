@@ -305,7 +305,7 @@ mod tests {
                     log_index: EthereumLogIndex(10),
                 },
                 global_root: GlobalRoot(StarkHash::from_hex_str("123").unwrap()),
-                block_number: StarknetBlockNumber(0),
+                block_number: StarknetBlockNumber::GENESIS,
             }];
 
             let logs2 = vec![StateUpdateLog {
@@ -379,7 +379,7 @@ mod tests {
                     log_index: EthereumLogIndex(10),
                 },
                 global_root: GlobalRoot(StarkHash::from_hex_str("123").unwrap()),
-                block_number: StarknetBlockNumber(0),
+                block_number: StarknetBlockNumber::GENESIS,
             }];
 
             // Closing the event's channel should trigger the sync to exit after the first send.

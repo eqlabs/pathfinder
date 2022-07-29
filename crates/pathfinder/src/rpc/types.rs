@@ -80,7 +80,7 @@ pub mod request {
     use crate::{
         core::{
             CallParam, CallSignatureElem, ContractAddress, EntryPoint, EventKey, Fee,
-            StarknetBlockNumber, TransactionVersion,
+            TransactionVersion,
         },
         rpc::serde::{
             CallSignatureElemAsDecimalStr, FeeAsHexStr, H256AsNoLeadingZerosHexStr,
@@ -159,9 +159,9 @@ pub mod request {
     #[serde(deny_unknown_fields)]
     pub struct EventFilter {
         #[serde(default, rename = "fromBlock")]
-        pub from_block: Option<StarknetBlockNumber>,
+        pub from_block: Option<crate::core::BlockId>,
         #[serde(default, rename = "toBlock")]
-        pub to_block: Option<StarknetBlockNumber>,
+        pub to_block: Option<crate::core::BlockId>,
         #[serde(default)]
         pub address: Option<ContractAddress>,
         #[serde(default)]
@@ -963,8 +963,10 @@ pub mod reply {
         pub data: Vec<EventData>,
         pub keys: Vec<EventKey>,
         pub from_address: ContractAddress,
-        pub block_hash: StarknetBlockHash,
-        pub block_number: StarknetBlockNumber,
+        /// [None] for pending events.
+        pub block_hash: Option<StarknetBlockHash>,
+        /// [None] for pending events.
+        pub block_number: Option<StarknetBlockNumber>,
         pub transaction_hash: StarknetTransactionHash,
     }
 
@@ -974,8 +976,8 @@ pub mod reply {
                 data: event.data,
                 keys: event.keys,
                 from_address: event.from_address,
-                block_hash: event.block_hash,
-                block_number: event.block_number,
+                block_hash: Some(event.block_hash),
+                block_number: Some(event.block_number),
                 transaction_hash: event.transaction_hash,
             }
         }
@@ -1072,7 +1074,7 @@ pub mod reply {
                             status: BlockStatus::AcceptedOnL1,
                             block_hash: Some(StarknetBlockHash::from_hex_str("0x0").unwrap()),
                             parent_hash: StarknetBlockHash::from_hex_str("0x1").unwrap(),
-                            block_number: Some(StarknetBlockNumber(0)),
+                            block_number: Some(StarknetBlockNumber::GENESIS),
                             new_root: Some(GlobalRoot::from_hex_str("0x2").unwrap()),
                             timestamp: StarknetBlockTimestamp(1),
                             sequencer_address: SequencerAddress::from_hex_str("0x3").unwrap(),

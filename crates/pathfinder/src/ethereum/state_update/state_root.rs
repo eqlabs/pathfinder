@@ -61,7 +61,7 @@ mod tests {
         let first_fetch = uut.fetch(transport).await.unwrap();
         let first = first_fetch.first().expect("Should be at least one log");
 
-        assert_eq!(first.block_number, StarknetBlockNumber(0));
+        assert_eq!(first.block_number, StarknetBlockNumber::GENESIS);
     }
 
     mod genesis {

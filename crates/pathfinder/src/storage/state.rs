@@ -395,6 +395,21 @@ impl StarknetBlocksTable {
             None => Ok(None),
         }
     }
+
+    pub fn get_number(
+        tx: &Transaction<'_>,
+        hash: StarknetBlockHash,
+    ) -> anyhow::Result<Option<StarknetBlockNumber>> {
+        let mut statement =
+            tx.prepare("SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1")?;
+        let mut rows = statement.query(params![hash.0.as_be_bytes()])?;
+        let row = rows.next().context("Iterate rows")?;
+        let number = row.map(|row| {
+            let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
+            StarknetBlockNumber(number)
+        });
+        Ok(number)
+    }
 }
 
 /// Identifies block in some [StarknetBlocksTable] queries.
@@ -670,19 +685,6 @@ pub struct StarknetEventFilter {
     pub page_number: usize,
 }
 
-impl From<crate::rpc::types::request::EventFilter> for StarknetEventFilter {
-    fn from(filter: crate::rpc::types::request::EventFilter) -> Self {
-        Self {
-            from_block: filter.from_block,
-            to_block: filter.to_block,
-            contract_address: filter.address,
-            keys: filter.keys,
-            page_size: filter.page_size,
-            page_number: filter.page_number,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct StarknetEmittedEvent {
     pub from_address: ContractAddress,
@@ -769,6 +771,72 @@ impl StarknetEventsTable {
     }
 
     pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
+
+    pub fn event_count(
+        tx: &Transaction<'_>,
+        from_block: Option<StarknetBlockNumber>,
+        to_block: Option<StarknetBlockNumber>,
+        contract_address: Option<ContractAddress>,
+        keys: Vec<EventKey>,
+    ) -> anyhow::Result<usize> {
+        let mut base_query = "SELECT COUNT(1) FROM starknet_events".to_string();
+
+        let mut where_statement_parts: Vec<&'static str> = Vec::new();
+        let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
+
+        // filter on block range
+        match (&from_block, &to_block) {
+            (Some(from_block), Some(to_block)) => {
+                where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
+                params.push((":from_block", &from_block.0));
+                params.push((":to_block", &to_block.0));
+            }
+            (Some(from_block), None) => {
+                where_statement_parts.push("block_number >= :from_block");
+                params.push((":from_block", &from_block.0));
+            }
+            (None, Some(to_block)) => {
+                where_statement_parts.push("block_number <= :to_block");
+                params.push((":to_block", &to_block.0));
+            }
+            (None, None) => {}
+        }
+
+        // on contract address
+        if let Some(contract_address) = &contract_address {
+            where_statement_parts.push("from_address = :contract_address");
+            params.push((":contract_address", contract_address.0.as_be_bytes()))
+        }
+
+        // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
+        // The idea is that we convert keys to a space-separated list of Bas64 encoded string
+        // representation and then use the full-text index to find events matching the events.
+        // HACK: make sure key_fts_expression lives long enough
+        let key_fts_expression;
+        if !keys.is_empty() {
+            let base64_keys: Vec<String> = keys
+                .iter()
+                .map(|key| format!("\"{}\"", Self::event_key_to_base64_string(key)))
+                .collect();
+            key_fts_expression = base64_keys.join(" OR ");
+
+            base_query.push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
+            where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
+            params.push((":events_match", &key_fts_expression));
+        }
+
+        let query = match where_statement_parts.is_empty() {
+            true => base_query,
+            false => format!(
+                "{} WHERE {}",
+                base_query,
+                where_statement_parts.join(" AND ")
+            ),
+        };
+        let count: usize = tx.query_row(&query, params.as_slice(), |row| row.get(0))?;
+
+        Ok(count)
+    }
 
     pub fn get_events(
         tx: &Transaction<'_>,
@@ -1447,6 +1515,35 @@ mod tests {
                     assert_eq!(latest, None);
                 }
             }
+
+            mod number_by_hash {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    with_default_blocks(|tx, blocks| {
+                        for block in blocks {
+                            let result = StarknetBlocksTable::get_number(tx, block.hash)
+                                .unwrap()
+                                .unwrap();
+
+                            assert_eq!(result, block.number);
+                        }
+                    });
+                }
+
+                #[test]
+                fn none() {
+                    with_default_blocks(|tx, _blocks| {
+                        let non_existent =
+                            StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                        assert_eq!(
+                            StarknetBlocksTable::get_number(tx, non_existent).unwrap(),
+                            None
+                        );
+                    });
+                }
+            }
         }
 
         mod get_root {
@@ -1714,7 +1811,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let block = StarknetBlock {
-                number: StarknetBlockNumber(0),
+                number: StarknetBlockNumber::GENESIS,
                 hash: StarknetBlockHash::from_hex_str("0x1234").unwrap(),
                 root: GlobalRoot(StarkHash::from_hex_str("0x1234").unwrap()),
                 timestamp: StarknetBlockTimestamp(0),
@@ -2166,6 +2263,64 @@ mod tests {
                     is_last_page: true
                 }
             );
+        }
+
+        #[test]
+        fn event_count_by_block() {
+            let (storage, _) = test_utils::setup_test_storage();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            const BLOCK: Option<StarknetBlockNumber> = Some(StarknetBlockNumber(2));
+
+            let count = StarknetEventsTable::event_count(&tx, BLOCK, BLOCK, None, vec![]).unwrap();
+            assert_eq!(count, test_utils::EVENTS_PER_BLOCK);
+        }
+
+        #[test]
+        fn event_count_from_contract() {
+            let (storage, events) = test_utils::setup_test_storage();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            let addr = events[0].from_address;
+            let expected = events
+                .iter()
+                .filter(|event| event.from_address == addr)
+                .count();
+
+            let count = StarknetEventsTable::event_count(
+                &tx,
+                Some(StarknetBlockNumber::GENESIS),
+                Some(StarknetBlockNumber::MAX),
+                Some(addr),
+                vec![],
+            )
+            .unwrap();
+            assert_eq!(count, expected);
+        }
+
+        #[test]
+        fn event_count_by_key() {
+            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            let key = emitted_events[27].keys[0];
+            let expected = emitted_events
+                .iter()
+                .filter(|event| event.keys.contains(&key))
+                .count();
+
+            let count = StarknetEventsTable::event_count(
+                &tx,
+                Some(StarknetBlockNumber::GENESIS),
+                Some(StarknetBlockNumber::MAX),
+                None,
+                vec![key],
+            )
+            .unwrap();
+            assert_eq!(count, expected);
         }
     }
 }

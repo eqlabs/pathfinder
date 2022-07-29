@@ -139,7 +139,7 @@ pub struct L2ToL1MessagePayloadElem(pub StarkHash);
 pub struct EventData(pub StarkHash);
 
 /// StarkNet transaction event key.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize, Hash, Eq)]
 pub struct EventKey(pub StarkHash);
 
 /// StarkNet sequencer address.
@@ -207,6 +207,10 @@ pub enum BlockId {
 
 impl StarknetBlockNumber {
     pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber(0);
+    /// The maximum [StarknetBlockNumber] we can support. Restricted to `u64::MAX/2` to
+    /// match Sqlite's maximum integer value.
+    #[cfg(test)]
+    pub const MAX: StarknetBlockNumber = StarknetBlockNumber(i64::MAX as u64);
 }
 
 impl std::cmp::PartialOrd for StarknetBlockNumber {
