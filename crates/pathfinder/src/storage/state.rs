@@ -448,14 +448,14 @@ impl StarknetBlocksTable {
 
     /// Returns the [chain](crate::core::Chain) based on genesis block hash stored in the DB.
     pub fn determine_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
-        let genesis = Self::get(tx, StarknetBlockNumber(0).into())
+        let genesis = Self::get_hash(tx, StarknetBlockNumber(0).into())
             .context("Read genesis block from database")?;
 
         match genesis {
             None => Ok(None),
-            Some(x) if x.hash == *GOERLI_GENESIS_HASH => Ok(Some(Chain::Goerli)),
-            Some(x) if x.hash == *MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
-            Some(x) => Err(anyhow::anyhow!("Unknown genesis block hash {}", x.hash.0)),
+            Some(hash) if hash == *GOERLI_GENESIS_HASH => Ok(Some(Chain::Goerli)),
+            Some(hash) if hash == *MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
+            Some(hash) => Err(anyhow::anyhow!("Unknown genesis block hash {}", hash.0)),
         }
     }
 
