@@ -7,7 +7,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::core::GlobalRoot;
 use crate::sequencer;
 use crate::sequencer::error::SequencerError;
-use crate::sequencer::reply::state_update::{Contract, StateDiff};
+use crate::sequencer::reply::state_update::{DeployedContract, StateDiff};
 use crate::sequencer::reply::Block;
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::class_hash::extract_abi_code_hash;
@@ -366,7 +366,7 @@ async fn deploy_contracts(
     let unique_contracts = state_diff
         .deployed_contracts
         .iter()
-        .map(|contract| contract.contract_hash)
+        .map(|contract| contract.class_hash)
         .collect::<HashSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -404,7 +404,7 @@ async fn deploy_contracts(
         let contract = state_diff
             .deployed_contracts
             .iter()
-            .find(|contract| contract.contract_hash == contract_hash)
+            .find(|contract| contract.class_hash == contract_hash)
             .unwrap();
 
         let contract = download_and_compress_contract(contract, sequencer)
@@ -474,7 +474,7 @@ async fn download_and_compress_class(
 }
 
 async fn download_and_compress_contract(
-    contract: &Contract,
+    contract: &DeployedContract,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<CompressedContract> {
     let contract_definition = sequencer
@@ -494,7 +494,7 @@ async fn download_and_compress_contract(
 
     // Sanity check.
     anyhow::ensure!(
-        contract.contract_hash == hash,
+        contract.class_hash == hash,
         "Class hash mismatch for contract {:?}",
         contract.address
     );
@@ -672,9 +672,9 @@ mod tests {
                 new_root: *GLOBAL_ROOT0,
                 old_root: GlobalRoot(StarkHash::ZERO),
                 state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![reply::state_update::Contract {
+                    deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT0_ADDR,
-                        contract_hash: *CONTRACT0_HASH,
+                        class_hash: *CONTRACT0_HASH,
                     }],
                     storage_diffs: HashMap::from([(
                      *CONTRACT0_ADDR,
@@ -691,9 +691,9 @@ mod tests {
                 new_root: *GLOBAL_ROOT0_V2,
                 old_root: GlobalRoot(StarkHash::ZERO),
                 state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![reply::state_update::Contract {
+                    deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT0_ADDR_V2,
-                        contract_hash: *CONTRACT0_HASH_V2,
+                        class_hash: *CONTRACT0_HASH_V2,
                     }],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
@@ -704,9 +704,9 @@ mod tests {
                 new_root: *GLOBAL_ROOT1,
                 old_root: *GLOBAL_ROOT0,
                 state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![reply::state_update::Contract {
+                    deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT1_ADDR,
-                        contract_hash: *CONTRACT1_HASH,
+                        class_hash: *CONTRACT1_HASH,
                     }],
                     storage_diffs: HashMap::from([
                         (

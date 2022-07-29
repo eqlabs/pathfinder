@@ -362,7 +362,7 @@ where
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
-                    let deployed_classes = state_update.state_diff.deployed_contracts.iter().map(|x| x.contract_hash);
+                    let deployed_classes = state_update.state_diff.deployed_contracts.iter().map(|x| x.class_hash);
                     let declared_classes = state_update.state_diff.declared_contracts.iter().cloned();
                     let declared_classes_block = block
                         .transactions
@@ -719,13 +719,13 @@ fn update_starknet_state(
 fn deploy_contract(
     transaction: &Transaction<'_>,
     global_tree: &mut GlobalStateTree<'_>,
-    contract: &sequencer::reply::state_update::Contract,
+    contract: &sequencer::reply::state_update::DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.
     let contract_root = ContractRoot(StarkHash::ZERO);
     // sequencer::reply::state_update::Contract::contract_hash is the old (pre cairo 0.9.0)
     // name for `class_hash`.
-    let class_hash = contract.contract_hash;
+    let class_hash = contract.class_hash;
     let state_hash = calculate_contract_state_hash(class_hash, contract_root);
     global_tree
         .set(contract.address, state_hash)

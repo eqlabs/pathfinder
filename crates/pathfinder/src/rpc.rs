@@ -703,19 +703,19 @@ mod tests {
 
         use crate::sequencer::reply as seq_reply;
         let deployed_contracts = vec![
-            seq_reply::state_update::Contract {
+            seq_reply::state_update::DeployedContract {
                 address: ContractAddress(
                     StarkHash::from_be_slice(b"pending contract 0 address").unwrap(),
                 ),
-                contract_hash: ClassHash(
+                class_hash: ClassHash(
                     StarkHash::from_be_slice(b"pending contract 0 hash").unwrap(),
                 ),
             },
-            seq_reply::state_update::Contract {
+            seq_reply::state_update::DeployedContract {
                 address: ContractAddress(
                     StarkHash::from_be_slice(b"pending contract 1 address").unwrap(),
                 ),
-                contract_hash: ClassHash(
+                class_hash: ClassHash(
                     StarkHash::from_be_slice(b"pending contract 1 hash").unwrap(),
                 ),
             },
@@ -765,7 +765,7 @@ mod tests {
                     abi: zstd_magic.clone(),
                     bytecode: zstd_magic.clone(),
                     definition: compressed_definition.to_vec(),
-                    hash: deployed.contract_hash,
+                    hash: deployed.class_hash,
                 };
                 ContractCodeTable::insert_compressed(&tx, &contract).unwrap();
             }
@@ -785,7 +785,7 @@ mod tests {
             let tmp_tx = db.transaction().unwrap();
             let mut global_tree = GlobalStateTree::load(&tmp_tx, latest.root).unwrap();
             for deployed in state_diff2.deployed_contracts {
-                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.contract_hash).unwrap();
+                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.class_hash).unwrap();
             }
             for (contract_address, storage_diffs) in state_diff2.storage_diffs {
                 use crate::state::update_contract_state;
@@ -1695,7 +1695,7 @@ mod tests {
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap();
-                assert_eq!(class_hash, contract.contract_hash);
+                assert_eq!(class_hash, contract.class_hash);
             }
         }
 

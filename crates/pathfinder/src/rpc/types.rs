@@ -512,7 +512,7 @@ pub mod reply {
                         .into_iter()
                         .map(|deployed_contract| DeployedContract {
                             address: deployed_contract.address,
-                            class_hash: deployed_contract.contract_hash,
+                            class_hash: deployed_contract.class_hash,
                         })
                         .collect(),
                     // FIXME once the sequencer API provides the nonces

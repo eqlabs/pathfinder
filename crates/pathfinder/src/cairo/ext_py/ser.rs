@@ -2,7 +2,7 @@
 
 use crate::core::{CallParam, ContractAddress, EntryPoint};
 use crate::rpc::types::BlockHashOrTag;
-use crate::sequencer::reply::state_update::{Contract, StorageDiff};
+use crate::sequencer::reply::state_update::{DeployedContract, StorageDiff};
 use std::collections::HashMap;
 
 /// The command we send to the python loop.
@@ -114,7 +114,7 @@ impl<'a> serde::Serialize for DiffElement<'a> {
 
 /// Custom type for setting the serialization in stone, or at least same as python code.
 #[derive(Debug)]
-pub struct DeployedContractsWrapper<'a>(Option<&'a [Contract]>);
+pub struct DeployedContractsWrapper<'a>(Option<&'a [DeployedContract]>);
 
 impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for DeployedContractsWrapper<'a> {
     fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
@@ -141,7 +141,7 @@ impl<'a> serde::Serialize for DeployedContractsWrapper<'a> {
     }
 }
 
-struct DeployedContractElement<'a>(&'a crate::sequencer::reply::state_update::Contract);
+struct DeployedContractElement<'a>(&'a crate::sequencer::reply::state_update::DeployedContract);
 
 impl<'a> serde::Serialize for DeployedContractElement<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -151,7 +151,7 @@ impl<'a> serde::Serialize for DeployedContractElement<'a> {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(2))?;
         map.serialize_entry("address", &self.0.address)?;
-        map.serialize_entry("contract_hash", &self.0.contract_hash)?;
+        map.serialize_entry("contract_hash", &self.0.class_hash)?;
         map.end()
     }
 }
@@ -292,17 +292,17 @@ mod tests {
     fn serialize_some_deployed_contracts() {
         use super::DeployedContractsWrapper;
         use crate::core::{ClassHash, ContractAddress};
-        use crate::sequencer::reply::state_update::Contract;
+        use crate::sequencer::reply::state_update::DeployedContract;
 
         let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
-        let contracts = vec![Contract {
+        let contracts = vec![DeployedContract {
             address: ContractAddress(
                 StarkHash::from_hex_str(
                     "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451",
                 )
                 .unwrap(),
             ),
-            contract_hash: ClassHash(
+            class_hash: ClassHash(
                 StarkHash::from_hex_str(
                     "0x010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8",
                 )

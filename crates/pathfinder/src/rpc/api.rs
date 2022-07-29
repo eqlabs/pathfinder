@@ -664,7 +664,7 @@ impl RpcApi {
                             .deployed_contracts
                             .iter()
                             .find_map(|deploy| {
-                                (deploy.address == contract_address).then_some(deploy.contract_hash)
+                                (deploy.address == contract_address).then_some(deploy.class_hash)
                             });
                     match class_hash {
                         Some(class_hash) => return Ok(class_hash),
@@ -755,7 +755,7 @@ impl RpcApi {
                             .deployed_contracts
                             .iter()
                             .find_map(|deploy| {
-                                (deploy.address == contract_address).then_some(deploy.contract_hash)
+                                (deploy.address == contract_address).then_some(deploy.class_hash)
                             });
                     match class_hash {
                         Some(class_hash) => {
