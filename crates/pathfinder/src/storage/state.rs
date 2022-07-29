@@ -458,6 +458,34 @@ impl StarknetBlocksTable {
             Some(x) => Err(anyhow::anyhow!("Unknown genesis block hash {}", x.hash.0)),
         }
     }
+
+    /// Returns hash of a given block number or `latest`
+    pub fn get_hash(
+        tx: &Transaction<'_>,
+        block: StarknetBlocksNumberOrLatest,
+    ) -> anyhow::Result<Option<StarknetBlockHash>> {
+        let mut statement = match block {
+            StarknetBlocksNumberOrLatest::Number(_) => {
+                tx.prepare("SELECT hash FROM starknet_blocks WHERE number = ?")?
+            }
+            StarknetBlocksNumberOrLatest::Latest => {
+                tx.prepare("SELECT hash FROM starknet_blocks ORDER BY number DESC LIMIT 1")?
+            }
+        };
+        let mut rows = match block {
+            StarknetBlocksNumberOrLatest::Number(n) => statement.query([n.0])?,
+            StarknetBlocksNumberOrLatest::Latest => statement.query([])?,
+        };
+        let row = rows.next().context("Iterate rows")?;
+        match row {
+            Some(row) => {
+                let hash = row.get_ref_unwrap("hash").as_blob().unwrap();
+                let hash = StarknetBlockHash(StarkHash::from_be_slice(hash).unwrap());
+                Ok(Some(hash))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 /// Identifies block in some [StarknetBlocksTable] queries.
@@ -477,6 +505,35 @@ impl From<StarknetBlockNumber> for StarknetBlocksBlockId {
 impl From<StarknetBlockHash> for StarknetBlocksBlockId {
     fn from(hash: StarknetBlockHash) -> Self {
         StarknetBlocksBlockId::Hash(hash)
+    }
+}
+
+/// Identifies block in some [StarknetBlocksTable] queries.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StarknetBlocksNumberOrLatest {
+    Number(StarknetBlockNumber),
+    Latest,
+}
+
+impl From<StarknetBlockNumber> for StarknetBlocksNumberOrLatest {
+    fn from(number: StarknetBlockNumber) -> Self {
+        Self::Number(number)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("expected starknet block number or `latest`, got starknet block hash {0}")]
+pub struct FromStarknetBlocksBlockIdError(StarknetBlockHash);
+
+impl TryFrom<StarknetBlocksBlockId> for StarknetBlocksNumberOrLatest {
+    type Error = FromStarknetBlocksBlockIdError;
+
+    fn try_from(value: StarknetBlocksBlockId) -> Result<Self, Self::Error> {
+        match value {
+            StarknetBlocksBlockId::Number(n) => Ok(Self::Number(n)),
+            StarknetBlocksBlockId::Hash(h) => Err(FromStarknetBlocksBlockIdError(h)),
+            StarknetBlocksBlockId::Latest => Ok(Self::Latest),
+        }
     }
 }
 
@@ -1869,6 +1926,65 @@ mod tests {
                     StarknetBlocksTable::get_latest_hash_and_number(&tx).unwrap(),
                     None
                 );
+            }
+        }
+        mod get_hash {
+            use super::*;
+
+            mod by_number {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    with_default_blocks(|tx, blocks| {
+                        for block in blocks {
+                            let result = StarknetBlocksTable::get_hash(tx, block.number.into())
+                                .unwrap()
+                                .unwrap();
+
+                            assert_eq!(result, block.hash);
+                        }
+                    })
+                }
+
+                #[test]
+                fn none() {
+                    with_default_blocks(|tx, blocks| {
+                        let non_existent = blocks.last().unwrap().number + 1;
+                        assert_eq!(
+                            StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
+                            None
+                        );
+                    });
+                }
+            }
+
+            mod latest {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    with_default_blocks(|tx, blocks| {
+                        let expected = blocks.last().unwrap().hash;
+
+                        let latest =
+                            StarknetBlocksTable::get_hash(tx, StarknetBlocksNumberOrLatest::Latest)
+                                .unwrap()
+                                .unwrap();
+                        assert_eq!(latest, expected);
+                    })
+                }
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let mut connection = storage.connection().unwrap();
+                    let tx = connection.transaction().unwrap();
+
+                    let latest =
+                        StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest).unwrap();
+                    assert_eq!(latest, None);
+                }
             }
         }
     }
