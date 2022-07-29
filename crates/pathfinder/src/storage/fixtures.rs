@@ -19,10 +19,10 @@ use stark_hash::StarkHash;
 
 /// Generate [`StarkHash`] from a sequence of bytes.
 macro_rules! hash {
-        ($($value:expr),*) => {
-            StarkHash::from_be_slice(&[$($value),*]).unwrap()
-        };
-    }
+    ($($value:expr),*) => {
+        StarkHash::from_be_slice(&[$($value),*]).unwrap()
+    };
+}
 
 pub(crate) use hash;
 
