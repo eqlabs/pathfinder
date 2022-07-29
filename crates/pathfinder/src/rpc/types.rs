@@ -434,11 +434,7 @@ pub mod reply {
         }
     }
 
-    /// L2 state update as returned by the [RPC API](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json).
-    ///
-    /// FIXME remove this note after the PR is merged into the spec
-    /// Implements spec version [v0.1.0-rc1](https://github.com/starkware-libs/starknet-specs/releases/tag/v0.1.0-rc1)
-    /// plus this PR: ["Pack storage diff entries per contract address"](https://github.com/starkware-libs/starknet-specs/pull/26)
+    /// L2 state update as returned by the [RPC API v0.1.0](https://github.com/starkware-libs/starknet-specs/blob/30e5bafcda60c31b5fb4021b4f5ddcfc18d2ff7d/api/starknet_api_openrpc.json#L846).
     ///
     /// # Serialization
     ///
@@ -498,12 +494,12 @@ pub mod reply {
                     storage_diffs: x
                         .storage_diffs
                         .into_iter()
-                        .map(|(contract_address, storage_diffs)| StorageDiff {
-                            address: contract_address,
-                            storage_entries: storage_diffs
-                                .into_iter()
-                                .map(StorageItem::from)
-                                .collect(),
+                        .flat_map(|(contract_address, storage_diffs)| {
+                            storage_diffs.into_iter().map(move |x| StorageDiff {
+                                address: contract_address,
+                                key: x.key,
+                                value: x.value,
+                            })
                         })
                         .collect(),
                     declared_contracts: x
@@ -530,25 +526,18 @@ pub mod reply {
         #[serde(deny_unknown_fields)]
         pub struct StorageDiff {
             pub address: ContractAddress,
-            pub storage_entries: Vec<StorageItem>,
-        }
-
-        /// L2 storage diff item of a contract.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-        #[serde(deny_unknown_fields)]
-        pub struct StorageItem {
             pub key: StorageAddress,
             pub value: StorageValue,
         }
 
-        impl From<sequencer::reply::state_update::StorageDiff> for StorageItem {
-            fn from(x: sequencer::reply::state_update::StorageDiff) -> Self {
-                Self {
-                    key: x.key,
-                    value: x.value,
-                }
-            }
-        }
+        // impl From<sequencer::reply::state_update::StorageDiff> for StorageItem {
+        //     fn from(x: sequencer::reply::state_update::StorageDiff) -> Self {
+        //         Self {
+        //             key: x.key,
+        //             value: x.value,
+        //         }
+        //     }
+        // }
 
         /// L2 state diff declared contract item.
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

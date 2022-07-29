@@ -7,9 +7,7 @@ use crate::{
         StorageValue,
     },
     rpc::types::reply::{
-        state_update::{
-            DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff, StorageItem,
-        },
+        state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
         StateUpdate,
     },
     storage::{StarknetBlock, Storage},
@@ -55,10 +53,8 @@ impl StateUpdate {
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {
                     address: ContractAddress(hash!(3, h)),
-                    storage_entries: vec![StorageItem {
-                        key: StorageAddress(hash!(4, h)),
-                        value: StorageValue(hash!(5, h)),
-                    }],
+                    key: StorageAddress(hash!(4, h)),
+                    value: StorageValue(hash!(5, h)),
                 }],
                 declared_contracts: vec![DeclaredContract {
                     class_hash: ClassHash(hash!(6, h)),
