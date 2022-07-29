@@ -626,8 +626,6 @@ impl RpcApi {
     }
 
     /// Get the class hash of a specific contract.
-    ///
-    /// FIXME: add support for pending
     pub async fn get_class_hash_at(
         &self,
         block_id: BlockId,
@@ -716,8 +714,6 @@ impl RpcApi {
 
     /// Get the class of a specific contract.
     /// `contract_address` is the address of the contract to read from.
-    ///
-    /// FIXME: add support for pending
     pub async fn get_class_at(
         &self,
         block_id: BlockId,
@@ -755,7 +751,6 @@ impl RpcApi {
                                     .map_err(internal_server_error)?;
                                 let code = ContractCodeTable::get_class(&tx, class_hash)
                                     .context("Fetching code from database");
-                                dbg!(&code);
 
                                 let code = code.map_err(internal_server_error)?;
 
