@@ -331,6 +331,21 @@ You can build the image by running:
 ```bash
 docker build -t pathfinder .
 ```
+### Docker compose
+
+Create the folder `pathfinder` where your `docker-compose.yaml is
+
+```bash
+mkdir -p pathfinder
+
+# replace the value by of PATHFINDER_ETHEREUM_API_URL by the HTTP(s) URL pointing to your Ethereum node's endpoint
+cp example.pathfinder-var.env pathfinder-var.env
+
+
+docker-compose up -d
+```
+
+To check if it's running well use `docker-compose logs -f`.
 
 ## JSON-RPC API
 

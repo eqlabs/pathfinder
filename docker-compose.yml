@@ -1,0 +1,13 @@
+version: "3"
+services:
+  starknet-node:
+    image: eqlabs/pathfinder:latest
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
+    env_file:
+      - pathfinder-var.env
+    volumes:
+      - ./pathfinder:/usr/share/pathfinder/data
+    ports:
+      - 9545:9545
