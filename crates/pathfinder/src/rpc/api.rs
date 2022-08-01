@@ -1,6 +1,6 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
-    cairo::ext_py,
+    cairo::ext_py::{self, BlockHashNumberOrLatest},
     core::{
         BlockId, CallResultValue, CallSignatureElem, Chain, ClassHash, ConstructorParam,
         ContractAddress, ContractAddressSalt, ContractClass, Fee, GasPrice, GlobalRoot,
@@ -872,42 +872,22 @@ impl RpcApi {
             .and_then(|x| x)
     }
 
-    /// Call a starknet function without creating a StarkNet transaction.
+    /// Call a starknet transaction locally.
     pub async fn call(
         &self,
         request: Call,
         block_hash: BlockHashOrTag,
     ) -> RpcResult<Vec<CallResultValue>> {
-        use futures::future::TryFutureExt;
+        // handle is always required; we no longer do any call forwarding to feeder_gateway as was
+        // done before local pending support for calls, never for estimate_fee.
+        let handle = self
+            .call_handle
+            .as_ref()
+            .ok_or_else(|| internal_server_error("Unsupported configuration"))?;
 
-        match (self.call_handle.as_ref(), &block_hash) {
-            (Some(h), &BlockHashOrTag::Hash(_) | &BlockHashOrTag::Tag(Tag::Latest)) => {
-                // we don't yet handle pending at all, and latest has been decided to be whatever
-                // block we have, which is exactly how the py/src/call.py handles it.
-                h.call(
-                    request,
-                    block_hash
-                        .try_into()
-                        .expect("should had converted since matched Hash or Latest"),
-                    None,
-                )
-                .map_err(Error::from)
-                .await
-            }
-            (Some(_), _) => {
-                // FIXME: use latest PendingData and clone the inner arc as the diffs arg, use
-                // Latest as the block which to run on
-                self.sequencer
-                    .call(request.into(), block_hash)
-                    .map_ok(|x| x.result)
-                    .map_err(Error::from)
-                    .await
-            }
-            (None, _) => {
-                // this is to remain consistent with estimateFee
-                Err(internal_server_error("Unsupported configuration"))
-            }
-        }
+        let (when, pending_update) = self.base_block_and_pending_for_call(block_hash).await?;
+
+        Ok(handle.call(request, when, pending_update).await?)
     }
 
     /// Get the most recent accepted block number.
@@ -1275,6 +1255,7 @@ impl RpcApi {
         })
     }
 
+    /// Estimate fee on a starknet transaction locally.
     pub async fn estimate_fee(
         &self,
         request: Call,
@@ -1282,44 +1263,67 @@ impl RpcApi {
     ) -> RpcResult<FeeEstimate> {
         use crate::cairo::ext_py::GasPriceSource;
 
-        match (
-            self.call_handle.as_ref(),
-            self.shared_gas_price.as_ref(),
-            &block_hash,
-        ) {
-            (Some(h), _, &BlockHashOrTag::Hash(hash)) => {
-                // discussed during estimateFee work: when using block_hash use the gasPrice from
-                // the starknet_blocks::gas_price column, otherwise (tags) get the latest eth_gasPrice.
-                h.estimate_fee(request, hash.into(), GasPriceSource::PastBlock, None)
-                    .await
-                    .map_err(Error::from)
-            }
-            (Some(h), Some(g), &BlockHashOrTag::Tag(Tag::Latest)) => {
-                // now we want the gas_price from our hopefully pre-fetched source, it will be the
-                // same when we finally have pending support
+        let handle = self
+            .call_handle
+            .as_ref()
+            .ok_or_else(|| internal_server_error("Unsupported configuration"))?;
 
-                let gas_price = g
-                    .get()
-                    .await
-                    .ok_or_else(|| internal_server_error("eth_gasPrice unavailable"))?;
+        let gas_price = if matches!(block_hash, BlockHashOrTag::Tag(Tag::Latest | Tag::Pending)) {
+            let gas_price = match self.shared_gas_price.as_ref() {
+                Some(cached) => cached.get().await,
+                None => None,
+            };
 
-                h.estimate_fee(
-                    request,
-                    ext_py::BlockHashNumberOrLatest::Latest,
-                    GasPriceSource::Current(gas_price),
-                    None,
-                )
-                .await
-                .map_err(Error::from)
-            }
-            (Some(_), Some(_), &BlockHashOrTag::Tag(Tag::Pending)) => {
-                // FIXME: use latest PendingData and clone the inner arc as the diffs arg, use
-                // Latest as the block which to run on
-                Err(internal_server_error("Unimplemented"))
-            }
-            _ => {
-                // sequencer return type is incompatible with jsonrpc api return type
-                Err(internal_server_error("Unsupported configuration"))
+            let gas_price = gas_price
+                .ok_or_else(|| internal_server_error("Current eth_gasPrice is unavailable"))?;
+
+            GasPriceSource::Current(gas_price)
+        } else {
+            GasPriceSource::PastBlock
+        };
+
+        let (when, pending_update) = self.base_block_and_pending_for_call(block_hash).await?;
+
+        Ok(handle
+            .estimate_fee(request, when, gas_price, pending_update)
+            .await?)
+    }
+
+    /// Transforms the request to call or estimate fee at some point in time to the type expected
+    /// by [`crate::cargo::ext_py`] with the optional, latest pending data.
+    ///
+    /// The procedure is shared between call and estimate fee.
+    async fn base_block_and_pending_for_call(
+        &self,
+        at_block: BlockHashOrTag,
+    ) -> Result<
+        (
+            BlockHashNumberOrLatest,
+            Option<Arc<sequencer::reply::StateUpdate>>,
+        ),
+        anyhow::Error,
+    > {
+        use crate::cairo::ext_py::Pending;
+
+        match BlockHashNumberOrLatest::try_from(at_block) {
+            Ok(when) => Ok((when, None)),
+            Err(Pending) => {
+                // we must have pending_data configured for pending requests, otherwise we fail
+                // fast.
+                let pending = self.pending_data()?;
+
+                // call on this particular parent block hash; if it's not found at query time over
+                // at python, it should fall back to latest and **disregard** the pending data.
+                let pending_on_top_of_a_block = pending
+                    .state_update_on_parent_block()
+                    .await
+                    .map(|(parent_block, data)| (parent_block.into(), Some(data)));
+
+                // if there is no pending data available, just execute on whatever latest. this is
+                // the "intent" of the pending functinality other rpc methods should follow as
+                // well, that "pending" is just an emphemeral view of the latest, when it's not
+                // available one is supposed to use latest (for example: testnet).
+                Ok(pending_on_top_of_a_block.unwrap_or((BlockHashNumberOrLatest::Latest, None)))
             }
         }
     }
