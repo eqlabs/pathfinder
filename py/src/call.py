@@ -36,6 +36,10 @@ def main():
         sys.exit(1)
 
     with sqlite3.connect(database_path) as connection:
+        # this is not a sort of "usual" isolation_level switch with sqlite like
+        # read_uncommited or anything like that. instead this asks that the
+        # python side doesn't inspect the queries and try to manage autocommit
+        # like behaviour around them.
         connection.isolation_level = None
 
         connection.execute("BEGIN")
