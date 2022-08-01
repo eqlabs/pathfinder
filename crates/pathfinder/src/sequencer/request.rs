@@ -112,6 +112,7 @@ pub mod add_transaction {
         // gzip + base64 encoded JSON of the compiled contract JSON
         pub program: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
+        pub abi: Option<serde_json::Value>,
     }
 
     /// Contract deployment transaction details.

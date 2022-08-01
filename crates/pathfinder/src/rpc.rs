@@ -2999,6 +2999,7 @@ mod tests {
                 pub static ref CONTRACT_DEFINITION: ContractDefinition = ContractDefinition {
                     program: PROGRAM.clone(),
                     entry_points_by_type: ENTRY_POINTS_BY_TYPE.clone(),
+                    abi: Some(CONTRACT_DEFINITION_JSON["abi"].clone()),
                 };
             }
 
@@ -3056,13 +3057,13 @@ mod tests {
                     DeclareTransactionResult {
                         transaction_hash: StarknetTransactionHash(
                             StarkHash::from_hex_str(
-                                "0x05aa2a3468bfe8942e321dde6fbebc2c0359da311340c7e35b0bb9b089d4d469"
+                                "0x077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
                             )
                             .unwrap()
                         ),
                         class_hash: ClassHash(
                             StarkHash::from_hex_str(
-                                "0x0371b5f7c5517d84205365a87f02dcef230efa7b4dd91a9e4ba7e04c5b69d69b"
+                                "0x0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
                             )
                             .unwrap()
                         ),
@@ -3103,13 +3104,13 @@ mod tests {
                     DeployTransactionResult {
                         transaction_hash: StarknetTransactionHash(
                             StarkHash::from_hex_str(
-                                "0x061ac8650de524e1b9c8c1b99e1d4f6ca3320e9c735ba60713e7e7b2a98022c9"
+                                "0x057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
                             )
                             .unwrap()
                         ),
                         contract_address: ContractAddress(
                             StarkHash::from_hex_str(
-                                "0x002b4b43ef820dd137533e821a8cd4952a73b4876c0c29e0ff2fe7aa87dcbf23"
+                                "0x03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
                             )
                             .unwrap()
                         ),
@@ -3203,13 +3204,13 @@ mod tests {
                     DeclareTransactionResult {
                         transaction_hash: StarknetTransactionHash(
                             StarkHash::from_hex_str(
-                                "0x05aa2a3468bfe8942e321dde6fbebc2c0359da311340c7e35b0bb9b089d4d469"
+                                "0x077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
                             )
                             .unwrap()
                         ),
                         class_hash: ClassHash(
                             StarkHash::from_hex_str(
-                                "0x0371b5f7c5517d84205365a87f02dcef230efa7b4dd91a9e4ba7e04c5b69d69b"
+                                "0x0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
                             )
                             .unwrap()
                         ),
@@ -3244,13 +3245,13 @@ mod tests {
                     DeployTransactionResult {
                         transaction_hash: StarknetTransactionHash(
                             StarkHash::from_hex_str(
-                                "0x061ac8650de524e1b9c8c1b99e1d4f6ca3320e9c735ba60713e7e7b2a98022c9"
+                                "0x057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
                             )
                             .unwrap()
                         ),
                         contract_address: ContractAddress(
                             StarkHash::from_hex_str(
-                                "0x002b4b43ef820dd137533e821a8cd4952a73b4876c0c29e0ff2fe7aa87dcbf23"
+                                "0x03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
                             )
                             .unwrap()
                         ),
