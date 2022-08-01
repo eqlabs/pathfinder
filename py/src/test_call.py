@@ -3,6 +3,7 @@ from call import (
     do_loop,
     EXPECTED_SCHEMA_REVISION,
     int_param,
+    int_hash_or_latest,
     loop_inner,
     maybe_pending_updates,
     maybe_pending_deployed,
@@ -620,6 +621,80 @@ def test_call_on_pending_deployed_through_existing():
     # already have, add a method or a return value to call_increase_value.
     (verb, output, _timings) = loop_inner(con, command)
     assert output == []
+
+
+def test_call_on_reorgged_pending_block():
+    """
+    This was discussed during the pending implementation:
+
+    When calling or estimating the fee on a pending block, rust side will
+    always execute it on a specific block (pending's parent block). If that
+    block is not found, we should default to the latest block IFF there are
+    pending updates or deploys.
+
+    This now gives meaning to the `pending_{updates,deployed}: None` vs.
+    `pending_{updates,deployed}: <default>` cases.
+    """
+
+    con = inmemory_with_tables()
+    contract_address = populate_test_contract_with_132_on_3(con)
+
+    existing_block = int_hash_or_latest(f'0x{(b"some blockhash somewhere").hex()}')
+    reorgged_block = int_hash_or_latest(f'0x{(b"this block got reorgged").hex()}')
+
+    commands = []
+
+    commands.append(
+        (
+            {
+                "command": "call",
+                "at_block": existing_block,
+                "contract_address": contract_address,
+                "entry_point_selector": "get_value",
+                "calldata": [132],
+                "gas_price": None,
+                "chain": StarknetChainId.MAINNET,
+                "pending_updates": {
+                    contract_address: [
+                        {"key": 132, "value": 5},
+                    ]
+                },
+                "pending_deployed": maybe_pending_deployed([]),
+            },
+            [5],
+        )
+    )
+
+    commands.append(
+        (
+            {
+                "command": "call",
+                # this block is not found
+                "at_block": reorgged_block,
+                "contract_address": contract_address,
+                "entry_point_selector": "get_value",
+                "calldata": [132],
+                "gas_price": None,
+                "chain": StarknetChainId.MAINNET,
+                # because the block is not found, the updates are not used
+                "pending_updates": {
+                    contract_address: [
+                        {"key": 132, "value": 5},
+                    ]
+                },
+                "pending_deployed": maybe_pending_deployed([]),
+            },
+            [3],
+        )
+    )
+
+    # existing test cases calling on non-existing blocks should work as they have been,
+    # because they don't define any value for pending stuffs
+
+    con.execute("BEGIN")
+    for command, expected in commands:
+        (verb, output, _timings) = loop_inner(con, command)
+        assert output == expected
 
 
 # Rest of the test cases require a mainnet or goerli database in some path.

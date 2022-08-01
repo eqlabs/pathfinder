@@ -155,19 +155,32 @@ def loop_inner(connection, command):
     verb = command["command"]
     general_config = create_general_config(command["chain"])
 
+    at_block = command["at_block"]
     signature = command.get("signature", None)
     max_fee = command.get("max_fee", 0)
     version = command.get("version", 0)
+    gas_price = command.get("gas_price", None)
 
     timings = {}
     started_at = time.time()
-    pending_updates = command.get("pending_updates", {})
-    pending_deployed = command.get("pending_deployed", {})
+    pending_updates = command.get("pending_updates", None)
+    pending_deployed = command.get("pending_deployed", None)
+
+    fallback_to_latest = type(at_block) == bytes and (
+        pending_updates is not None or pending_deployed is not None
+    )
 
     # the later parts will have access to gas_price through this block_info
-    (block_info, global_root) = resolve_block(
-        connection, command["at_block"], command.get("gas_price", None)
-    )
+    try:
+        (block_info, global_root) = resolve_block(connection, at_block, gas_price)
+    except NoSuchBlock:
+        if fallback_to_latest:
+            pending_updates = None
+            pending_deployed = None
+
+            (block_info, global_root) = resolve_block(connection, "latest", gas_price)
+        else:
+            raise
 
     timings["resolve_block"] = time.time() - started_at
     started_at = time.time()
@@ -328,7 +341,7 @@ def required_chain(s):
 
 def maybe_pending_updates(s):
     if s is None:
-        return {}
+        return None
 
     # currently just using the format from sequencers get_state_update
     return dict(
@@ -354,7 +367,7 @@ def maybe_pending_updates(s):
 
 def maybe_pending_deployed(deployed_contracts):
     if deployed_contracts is None:
-        return {}
+        return None
 
     # this accepts the form used in the sequencer state update
     # which is "prop": [ { "address": "0x...", "contract_hash": "0x..." }, ... ]
@@ -676,6 +689,11 @@ async def do_call(
 
     # the root tree has to always be height=251
     shared_state = SharedState(PatriciaTree(root, 251), block_info)
+
+    # these needed to be moved to here because `test_call_on_reorgged_pending_block` provided
+    # semantics on Nones at the command level
+    pending_updates = pending_updates if pending_updates is not None else {}
+    pending_deployed = pending_deployed if pending_deployed is not None else {}
 
     # we firstly want to load the target contract
     contract_addresses = {contract_address}
