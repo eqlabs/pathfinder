@@ -391,6 +391,7 @@ def test_no_such_block():
         con,
         (
             # there's only block 1
+            # it is important that none of these have pending_updates or pending_deployed
             f'{{ "command": "call", "at_block": 99999999999, "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
             f'{{ "command": "call", "at_block": "0x{(b"no such block").hex()}", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
             f'{{ "command": "call", "at_block": "latest", "contract_address": {contract_address}, "entry_point_selector": "get_value", "calldata": [132], "gas_price": null, "chain": "GOERLI" }}',
