@@ -14,9 +14,7 @@ use crate::{
     rpc::{
         api::{BlockResponseScope, RpcApi},
         serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
-        types::{
-            request::{Call, ContractCall, EventFilter},
-        },
+        types::request::{Call, ContractCall, EventFilter},
     },
     sequencer::request::add_transaction::ContractDefinition,
 };

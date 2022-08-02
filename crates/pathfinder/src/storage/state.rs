@@ -1785,7 +1785,10 @@ mod tests {
                 let mut connection = storage.connection().unwrap();
                 let tx = connection.transaction().unwrap();
 
-                assert_eq!(StarknetBlocksTable::get_latest_hash_and_number(&tx).unwrap(), None);
+                assert_eq!(
+                    StarknetBlocksTable::get_latest_hash_and_number(&tx).unwrap(),
+                    None
+                );
             }
         }
     }
