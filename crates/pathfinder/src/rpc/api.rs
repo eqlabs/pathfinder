@@ -889,9 +889,8 @@ impl RpcApi {
             StarknetBlocksTable::get_latest_number(&tx)
                 .context("Reading latest block number from database")
                 .map_err(internal_server_error)?
-                .context("Database is empty")
-                .map_err(internal_server_error)
                 .map(|number| number.0)
+                .ok_or_else(|| Error::from(ErrorCode::NoBlocks))
         });
 
         jh.await
