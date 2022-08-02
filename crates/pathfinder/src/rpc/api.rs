@@ -974,10 +974,47 @@ impl RpcApi {
         Ok(self.chain.starknet_chain_id().to_hex_str().into_owned())
     }
 
-    // /// Returns the transactions in the transaction pool, recognized by this sequencer.
-    // pub async fn pending_transactions(&self) -> RpcResult<Vec<Transaction>> {
-    //     todo!("Figure out where to take them from.")
-    // }
+    /// Returns the current pending transactions.
+    pub async fn pending_transactions(&self) -> RpcResult<Vec<Transaction>> {
+        match self.pending_data()?.block().await {
+            Some(block) => {
+                println!("here");
+                let tx = block.transactions.iter().map(Transaction::from).collect();
+                Ok(tx)
+            }
+            None => {
+                // Get transactions from `latest` instead.
+                let storage = self.storage.clone();
+                let span = tracing::Span::current();
+
+                let jh = tokio::task::spawn_blocking(move || {
+                    let _g = span.enter();
+                    let mut db = storage
+                        .connection()
+                        .context("Opening database connection")
+                        .map_err(internal_server_error)?;
+
+                    let db_tx = db
+                        .transaction()
+                        .context("Creating database transaction")
+                        .map_err(internal_server_error)?;
+
+                    let tx = StarknetTransactionsTable::get_transactions_for_latest_block(&db_tx)
+                        .map_err(internal_server_error)?
+                        .into_iter()
+                        .map(Transaction::from)
+                        .collect();
+
+                    Ok(tx)
+                });
+
+                jh.await
+                    .context("Database read panic or shutting down")
+                    .map_err(internal_server_error)
+                    .and_then(|x| x)
+            }
+        }
+    }
 
     // /// Returns the current starknet protocol version identifier, as supported by this node.
     // pub async fn protocol_version(&self) -> RpcResult<StarknetProtocolVersion> {
