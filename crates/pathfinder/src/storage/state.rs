@@ -396,6 +396,32 @@ impl StarknetBlocksTable {
         }
     }
 
+    /// Returns the [hash](StarknetBlockHash) and [number](StarknetBlockNumber) of the latest block.
+    pub fn get_latest_hash_and_number(
+        tx: &Transaction<'_>,
+    ) -> anyhow::Result<Option<(StarknetBlockHash, StarknetBlockNumber)>> {
+        let mut statement =
+            tx.prepare("SELECT hash, number FROM starknet_blocks ORDER BY number DESC LIMIT 1")?;
+        let mut rows = statement.query([])?;
+        let row = rows.next().context("Iterate rows")?;
+        match row {
+            Some(row) => {
+                let hash = row
+                    .get_ref_unwrap("hash")
+                    .as_blob()
+                    .expect("hash column should exist");
+                let hash =
+                    StarkHash::from_be_slice(hash).expect("hash column should contain valid hash");
+                let hash = StarknetBlockHash(hash);
+
+                let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
+                let number = StarknetBlockNumber(number);
+                Ok(Some((hash, number)))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub fn get_number(
         tx: &Transaction<'_>,
         hash: StarknetBlockHash,
@@ -1736,6 +1762,30 @@ mod tests {
                 let tx = connection.transaction().unwrap();
 
                 assert_eq!(StarknetBlocksTable::get_latest_number(&tx).unwrap(), None);
+            }
+        }
+
+        mod get_latest_hash_and_number {
+            use super::*;
+
+            #[test]
+            fn some() {
+                with_default_blocks(|tx, blocks| {
+                    let latest = blocks.last().unwrap();
+                    assert_eq!(
+                        StarknetBlocksTable::get_latest_hash_and_number(tx).unwrap(),
+                        Some((latest.hash, latest.number))
+                    );
+                });
+            }
+
+            #[test]
+            fn none() {
+                let storage = Storage::in_memory().unwrap();
+                let mut connection = storage.connection().unwrap();
+                let tx = connection.transaction().unwrap();
+
+                assert_eq!(StarknetBlocksTable::get_latest_hash_and_number(&tx).unwrap(), None);
             }
         }
     }
