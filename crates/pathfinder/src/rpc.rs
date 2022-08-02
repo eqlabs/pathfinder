@@ -354,7 +354,6 @@ mod tests {
                 transaction::{
                     execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
                     EntryPointType, Event, ExecutionResources, InvokeTransaction, Receipt,
-                    Transaction,
                 },
             },
             test_utils::*,
@@ -388,6 +387,7 @@ mod tests {
 
     // Local test helper
     fn setup_storage() -> Storage {
+        use crate::sequencer::reply::transaction::Transaction;
         use crate::{
             core::StorageValue,
             state::{update_contract_state, CompressedContract},
@@ -592,6 +592,7 @@ mod tests {
     async fn create_pending_data(storage: Storage) -> PendingData {
         use crate::core::StorageValue;
         use crate::sequencer::reply::transaction::DeployTransaction;
+        use crate::sequencer::reply::transaction::Transaction;
 
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {
