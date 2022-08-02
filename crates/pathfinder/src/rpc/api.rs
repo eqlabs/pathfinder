@@ -5,15 +5,15 @@ use crate::{
         BlockId, CallResultValue, CallSignatureElem, Chain, ClassHash, ConstructorParam,
         ContractAddress, ContractAddressSalt, ContractClass, Fee, GasPrice, GlobalRoot,
         SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StarknetTransactionIndex, StorageValue, TransactionNonce,
-        TransactionVersion,
+        StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
+        TransactionNonce, TransactionVersion,
     },
     rpc::types::{
         reply::{
-            Block, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate, GetEventsResult, Syncing,
-            Transaction, TransactionReceipt,
+            Block, BlockHashAndNumber, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate,
+            GetEventsResult, Syncing, Transaction, TransactionReceipt,
         },
-        request::{Call, ContractCall, EventFilter, OverflowingStorageAddress},
+        request::{Call, ContractCall, EventFilter},
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
@@ -275,25 +275,10 @@ impl RpcApi {
     pub async fn get_storage_at(
         &self,
         contract_address: ContractAddress,
-        key: OverflowingStorageAddress,
+        key: StorageAddress,
         block_id: BlockId,
     ) -> RpcResult<StorageValue> {
-        use crate::{
-            core::StorageAddress, state::state_tree::ContractsStateTree,
-            storage::ContractsStateTable,
-        };
-        use stark_hash::OverflowError;
-
-        let key = StorageAddress(StarkHash::from_be_bytes(key.0.to_fixed_bytes()).map_err(
-            // Report that the value is >= than the field modulus
-            // Use explicit typing in closure arg to force compiler error should error variants ever be expanded
-            |_e: OverflowError| Error::from(ErrorCode::InvalidStorageKey),
-        )?);
-
-        if key.0.has_more_than_251_bits() {
-            // Report that the value is more than 251 bits
-            return Err(Error::from(ErrorCode::InvalidStorageKey));
-        }
+        use crate::{state::state_tree::ContractsStateTree, storage::ContractsStateTable};
 
         let block_id = match block_id {
             BlockId::Hash(hash) => hash.into(),
@@ -885,7 +870,7 @@ impl RpcApi {
         Ok(handle.call(request, when, pending_update).await?)
     }
 
-    /// Get the most recent accepted block number.
+    /// Get the latest local block's number.
     pub async fn block_number(&self) -> RpcResult<u64> {
         let storage = self.storage.clone();
         let span = tracing::Span::current();
@@ -904,9 +889,37 @@ impl RpcApi {
             StarknetBlocksTable::get_latest_number(&tx)
                 .context("Reading latest block number from database")
                 .map_err(internal_server_error)?
-                .context("Database is empty")
-                .map_err(internal_server_error)
                 .map(|number| number.0)
+                .ok_or_else(|| Error::from(ErrorCode::NoBlocks))
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
+    }
+
+    /// Get the latest local block's hash and number.
+    pub async fn block_hash_and_number(&self) -> RpcResult<BlockHashAndNumber> {
+        let storage = self.storage.clone();
+        let span = tracing::Span::current();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            StarknetBlocksTable::get_latest_hash_and_number(&tx)
+                .context("Reading latest block number from database")
+                .map_err(internal_server_error)?
+                .map(|(hash, number)| BlockHashAndNumber { hash, number })
+                .ok_or_else(|| Error::from(ErrorCode::NoBlocks))
         });
 
         jh.await

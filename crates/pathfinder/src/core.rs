@@ -8,7 +8,9 @@ use web3::types::{H128, H160, H256};
 
 /// The address of a StarkNet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
-pub struct ContractAddress(pub StarkHash);
+pub struct ContractAddress(
+    #[serde(deserialize_with = "deserialize_starkhash_251_bits")] pub StarkHash,
+);
 
 /// The salt of a StarkNet contract address.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
@@ -87,7 +89,41 @@ pub struct ByteCodeWord(pub StarkHash);
 
 /// The address of a storage element for a StarkNet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
-pub struct StorageAddress(pub StarkHash);
+pub struct StorageAddress(
+    #[serde(deserialize_with = "deserialize_starkhash_251_bits")] pub StarkHash,
+);
+
+/// Deserializes a [StarkHash] and in addition enforces that it has at most 251 bits
+/// used. This is slightly less than the maximum [StarkHash] value, but 251 bit limit are
+/// required by types which are keys of the state trees.
+fn deserialize_starkhash_251_bits<'de, D>(de: D) -> Result<StarkHash, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct StarkHash251;
+
+    impl<'de> serde::de::Visitor<'de> for StarkHash251 {
+        type Value = StarkHash;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("A hex string with at most 251 bits set.")
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            let hash = StarkHash::from_hex_str(v).map_err(serde::de::Error::custom)?;
+
+            match hash.has_more_than_251_bits() {
+                true => Err(serde::de::Error::custom("more than 251 bits set")),
+                false => Ok(hash),
+            }
+        }
+    }
+
+    de.deserialize_str(StarkHash251)
+}
 
 /// The value of a storage element for a StarkNet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
