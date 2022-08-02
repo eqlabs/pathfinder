@@ -1,0 +1,14 @@
+[package]
+name = "p2p_proto"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+build = "build.rs"
+
+[dependencies]
+anyhow = "1.0.62"
+prost = "0.11.0"
+stark_hash = { version = "0.1.0", path = "../stark_hash" }
+
+[build-dependencies]
+prost-build = "0.11.0"

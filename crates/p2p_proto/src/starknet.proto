@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package starknet;
+
+message FieldElement { bytes elements = 1; }
+
+message BlockHeader {
+  FieldElement parent_block_hash = 1;
+  uint64 block_number = 2;
+  FieldElement global_state_root = 3;
+  FieldElement sequencer_address = 4;
+  uint64 block_timestamp = 5;
+
+  uint32 transaction_count = 6;
+  FieldElement transaction_commitment = 7;
+
+  uint32 event_count = 8;
+  FieldElement event_commitment = 9;
+
+  uint32 protocol_version = 10;
+}
+
+message InvokeTransaction {
+  FieldElement contract_address = 1;
+  FieldElement entry_point_selector = 2;
+  repeated FieldElement calldata = 3;
+  repeated FieldElement signature = 4;
+  FieldElement max_fee = 5;
+  FieldElement version = 6;
+}
+
+message DeclareTransaction {
+  ContractClass contract_class = 1;
+  FieldElement sender_address = 2;
+  FieldElement max_fee = 3;
+  repeated FieldElement signature = 4;
+  FieldElement nonce = 5;
+  FieldElement version = 6;
+}
+
+message ContractClass {
+  message EntryPoint {
+    FieldElement selector = 1;
+    FieldElement offset = 2;
+  }
+
+  repeated EntryPoint constructor_entry_points = 1;
+  repeated EntryPoint external_entry_points = 2;
+  repeated EntryPoint l1_handler_entry_points = 3;
+  repeated string used_builtins = 4;
+  FieldElement contract_program_hash = 5;
+  repeated FieldElement bytecode = 6;
+  string version = 7;
+}
+
+message Transaction {
+  oneof txn {
+    InvokeTransaction invoke = 1;
+    DeclareTransaction declare = 2;
+  }
+}
+
+message Event { uint32 placeholder = 1; }
+
+message BlockBody {
+  uint32 transaction_count = 1;
+  repeated Transaction transactions = 2;
+
+  uint32 event_count = 3;
+  repeated Event events = 4;
+}
