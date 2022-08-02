@@ -82,23 +82,10 @@ pub mod request {
             CallParam, CallSignatureElem, ContractAddress, EntryPoint, EventKey, Fee,
             TransactionVersion,
         },
-        rpc::serde::{
-            CallSignatureElemAsDecimalStr, FeeAsHexStr, H256AsNoLeadingZerosHexStr,
-            TransactionVersionAsHexStr,
-        },
+        rpc::serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
     };
     use serde::Deserialize;
     use serde_with::{serde_as, skip_serializing_none};
-    use web3::types::H256;
-
-    /// The address of a storage element for a StarkNet contract.
-    ///
-    /// __This type is not checked for 251 bits overflow__ in contrast to
-    /// [`StarkHash`](stark_hash::StarkHash).
-    #[serde_as]
-    #[derive(Debug, Copy, Clone, Deserialize, PartialEq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
-    pub struct OverflowingStorageAddress(#[serde_as(as = "H256AsNoLeadingZerosHexStr")] pub H256);
 
     /// Contains parameters passed to `starknet_call`.
     #[serde_as]

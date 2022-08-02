@@ -15,7 +15,6 @@ use crate::{
         api::{BlockResponseScope, RpcApi},
         serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
         types::{
-            request::OverflowingStorageAddress,
             request::{Call, ContractCall, EventFilter},
         },
     },
@@ -140,7 +139,7 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         pub struct NamedArgs {
             pub contract_address: ContractAddress,
             // Accept overflowing type here to report INVALID_STORAGE_KEY properly
-            pub key: OverflowingStorageAddress,
+            pub key: crate::core::StorageAddress,
             pub block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
@@ -1024,14 +1023,10 @@ mod tests {
                 .unwrap(),
                 BlockId::Latest
             );
-            let error = client(addr)
+            client(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
-            assert_eq!(
-                crate::rpc::types::reply::ErrorCode::InvalidStorageKey,
-                error
-            );
         }
 
         #[tokio::test]
@@ -1051,14 +1046,10 @@ mod tests {
                 .unwrap(),
                 BlockId::Latest
             );
-            let error = client(addr)
+            client(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
-            assert_eq!(
-                crate::rpc::types::reply::ErrorCode::InvalidStorageKey,
-                error
-            );
         }
 
         #[tokio::test]

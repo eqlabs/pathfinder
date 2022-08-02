@@ -5,15 +5,15 @@ use crate::{
         BlockId, CallResultValue, CallSignatureElem, Chain, ClassHash, ConstructorParam,
         ContractAddress, ContractAddressSalt, ContractClass, Fee, GasPrice, GlobalRoot,
         SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StarknetTransactionIndex, StorageValue, TransactionNonce,
-        TransactionVersion,
+        StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
+        TransactionNonce, TransactionVersion,
     },
     rpc::types::{
         reply::{
             Block, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate, GetEventsResult, Syncing,
             Transaction, TransactionReceipt,
         },
-        request::{Call, ContractCall, EventFilter, OverflowingStorageAddress},
+        request::{Call, ContractCall, EventFilter},
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
@@ -275,25 +275,10 @@ impl RpcApi {
     pub async fn get_storage_at(
         &self,
         contract_address: ContractAddress,
-        key: OverflowingStorageAddress,
+        key: StorageAddress,
         block_id: BlockId,
     ) -> RpcResult<StorageValue> {
-        use crate::{
-            core::StorageAddress, state::state_tree::ContractsStateTree,
-            storage::ContractsStateTable,
-        };
-        use stark_hash::OverflowError;
-
-        let key = StorageAddress(StarkHash::from_be_bytes(key.0.to_fixed_bytes()).map_err(
-            // Report that the value is >= than the field modulus
-            // Use explicit typing in closure arg to force compiler error should error variants ever be expanded
-            |_e: OverflowError| Error::from(ErrorCode::InvalidStorageKey),
-        )?);
-
-        if key.0.has_more_than_251_bits() {
-            // Report that the value is more than 251 bits
-            return Err(Error::from(ErrorCode::InvalidStorageKey));
-        }
+        use crate::{state::state_tree::ContractsStateTree, storage::ContractsStateTable};
 
         let block_id = match block_id {
             BlockId::Hash(hash) => hash.into(),
