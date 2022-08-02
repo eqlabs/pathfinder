@@ -136,7 +136,6 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
             pub contract_address: ContractAddress,
-            // Accept overflowing type here to report INVALID_STORAGE_KEY properly
             pub key: crate::core::StorageAddress,
             pub block_id: BlockId,
         }
