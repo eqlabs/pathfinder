@@ -14,7 +14,6 @@ use crate::{
             Transaction, TransactionReceipt,
         },
         request::{Call, ContractCall, EventFilter, OverflowingStorageAddress},
-        BlockHashOrTag, Tag,
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
@@ -873,11 +872,7 @@ impl RpcApi {
     }
 
     /// Call a starknet transaction locally.
-    pub async fn call(
-        &self,
-        request: Call,
-        block_hash: BlockHashOrTag,
-    ) -> RpcResult<Vec<CallResultValue>> {
+    pub async fn call(&self, request: Call, block_id: BlockId) -> RpcResult<Vec<CallResultValue>> {
         // handle is always required; we no longer do any call forwarding to feeder_gateway as was
         // done before local pending support for calls, never for estimate_fee.
         let handle = self
@@ -885,7 +880,7 @@ impl RpcApi {
             .as_ref()
             .ok_or_else(|| internal_server_error("Unsupported configuration"))?;
 
-        let (when, pending_update) = self.base_block_and_pending_for_call(block_hash).await?;
+        let (when, pending_update) = self.base_block_and_pending_for_call(block_id).await?;
 
         Ok(handle.call(request, when, pending_update).await?)
     }
@@ -1256,11 +1251,7 @@ impl RpcApi {
     }
 
     /// Estimate fee on a starknet transaction locally.
-    pub async fn estimate_fee(
-        &self,
-        request: Call,
-        block_hash: BlockHashOrTag,
-    ) -> RpcResult<FeeEstimate> {
+    pub async fn estimate_fee(&self, request: Call, block_id: BlockId) -> RpcResult<FeeEstimate> {
         use crate::cairo::ext_py::GasPriceSource;
 
         let handle = self
@@ -1275,7 +1266,7 @@ impl RpcApi {
         // the fact that [`Self::base_block_and_pending_for_call`] transforms pending cases to use
         // actual parent blocks by hash is an internal transformation we do for correctness,
         // unrelated to this consideration.
-        let gas_price = if matches!(block_hash, BlockHashOrTag::Tag(Tag::Latest | Tag::Pending)) {
+        let gas_price = if matches!(block_id, BlockId::Pending | BlockId::Latest) {
             let gas_price = match self.shared_gas_price.as_ref() {
                 Some(cached) => cached.get().await,
                 None => None,
@@ -1289,7 +1280,7 @@ impl RpcApi {
             GasPriceSource::PastBlock
         };
 
-        let (when, pending_update) = self.base_block_and_pending_for_call(block_hash).await?;
+        let (when, pending_update) = self.base_block_and_pending_for_call(block_id).await?;
 
         Ok(handle
             .estimate_fee(request, when, gas_price, pending_update)
@@ -1302,7 +1293,7 @@ impl RpcApi {
     /// The procedure is shared between call and estimate fee.
     async fn base_block_and_pending_for_call(
         &self,
-        at_block: BlockHashOrTag,
+        at_block: BlockId,
     ) -> Result<
         (
             BlockHashNumberOrLatest,
@@ -1388,7 +1379,8 @@ fn static_internal_server_error() -> jsonrpsee::core::Error {
 
 /// Caching of `eth_gasPrice` with single request at a time refreshing.
 ///
-/// The `gasPrice` is used for [`RpcApi::estimate_fee`] when user requests for [`BlockHashOrTag::Tag`].
+/// The `gasPrice` is used for [`RpcApi::estimate_fee`] when user requests for [`BlockId::Latest`] or
+/// [`BlockId::Pending`].
 #[derive(Clone)]
 pub struct Cached {
     inner: std::sync::Arc<std::sync::Mutex<Inner>>,

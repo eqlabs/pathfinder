@@ -64,7 +64,9 @@ rpc_call '{
             "contract_address": "0x019245f0f49d23f2379d3e3f20d1f3f46207d1c4a1d09cac8dd50e8d528aabe1",
             "entry_point_selector": "0x026813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0"
         },
-        "block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
+        "block_id": {
+            "block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
+        }
     }
 }'
 
@@ -96,13 +98,15 @@ rpc_call '{
             "max_fee": "0x12C72866EFA9B",
             "version": "0x0"
         },
-        "block_hash": "0x0147c4b0f702079384e26d9d34a15e7758881e32b219fc68c076b09d0be13f8c"
+        "block_id": {
+            "block_hash": "0x0147c4b0f702079384e26d9d34a15e7758881e32b219fc68c076b09d0be13f8c"
+        }
     }
 }'
 
 # mainnet transaction 0xccb3808126726235eee5818e6298e5cc2c9db3731442d66ad63f7e3f7d396d again
 # because this specifies a block hash to estimate on, this will use that blocks recorded historic gas price
-# try with "block_hash": "latest" for current "eth_gasPrice".
+# try with "block_id": "latest" for current "eth_gasPrice".
 rpc_call '{
     "jsonrpc": "2.0",
     "id": "1",
@@ -130,7 +134,9 @@ rpc_call '{
             "max_fee": "0x12C72866EFA9B",
             "version": "0x0"
         },
-        "block_hash": "0x0147c4b0f702079384e26d9d34a15e7758881e32b219fc68c076b09d0be13f8c"
+        "block_id": {
+            "block_hash": "0x0147c4b0f702079384e26d9d34a15e7758881e32b219fc68c076b09d0be13f8c"
+        }
     }
 }'
 

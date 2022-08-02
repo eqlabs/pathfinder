@@ -17,7 +17,6 @@ use crate::{
         types::{
             request::OverflowingStorageAddress,
             request::{Call, ContractCall, EventFilter},
-            BlockHashOrTag,
         },
     },
     sequencer::request::add_transaction::ContractDefinition,
@@ -234,21 +233,19 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
             pub request: Call,
-            pub block_hash: BlockHashOrTag,
+            pub block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
-        context.call(params.request, params.block_hash).await
+        context.call(params.request, params.block_id).await
     })?;
     module.register_async_method("starknet_estimateFee", |params, context| async move {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
             pub request: Call,
-            pub block_hash: BlockHashOrTag,
+            pub block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
-        context
-            .estimate_fee(params.request, params.block_hash)
-            .await
+        context.estimate_fee(params.request, params.block_id).await
     })?;
     module.register_async_method("starknet_blockNumber", |_, context| async move {
         context.block_number().await
@@ -2088,11 +2085,14 @@ mod tests {
         use super::*;
         use crate::{
             core::{CallParam, CallResultValue},
-            rpc::types::{request::Call, BlockHashOrTag, Tag},
+            rpc::types::request::Call,
         };
         use pretty_assertions::assert_eq;
 
         lazy_static::lazy_static! {
+            static ref INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash::from_hex_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap());
+            static ref PRE_DEPLOY_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash::from_hex_str("0x05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f").unwrap());
+            static ref INVALID_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash::from_hex_str("0x06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap());
             static ref CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("1234").unwrap()];
         }
 
@@ -2113,7 +2113,7 @@ mod tests {
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
                 },
-                *INVOKE_CONTRACT_BLOCK_HASH
+                *INVOKE_CONTRACT_BLOCK_ID
             );
             client(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
@@ -2141,7 +2141,7 @@ mod tests {
                         max_fee: Call::DEFAULT_MAX_FEE,
                         version: Call::DEFAULT_VERSION,
                     },
-                    BlockHashOrTag::Tag(Tag::Latest)
+                    BlockId::Latest
                 );
                 client(addr)
                     .request::<Vec<CallResultValue>>("starknet_call", params)
@@ -2166,7 +2166,7 @@ mod tests {
                             "entry_point_selector": *VALID_ENTRY_POINT,
                         }),
                     ),
-                    ("block_hash", json!("latest")),
+                    ("block_id", json!("latest")),
                 ]);
                 client(addr)
                     .request::<Vec<CallResultValue>>("starknet_call", params)
@@ -2192,7 +2192,7 @@ mod tests {
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
                 },
-                BlockHashOrTag::Tag(Tag::Pending)
+                BlockId::Pending
             );
             client(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
@@ -2217,7 +2217,7 @@ mod tests {
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
                 },
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockId::Latest
             );
             let error = client(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
@@ -2246,7 +2246,7 @@ mod tests {
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
                 },
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockId::Latest
             );
             let error = client(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
@@ -2272,7 +2272,7 @@ mod tests {
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
                 },
-                BlockHashOrTag::Tag(Tag::Latest)
+                BlockId::Latest
             );
             let error = client(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
@@ -2298,7 +2298,7 @@ mod tests {
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
                 },
-                *PRE_DEPLOY_CONTRACT_BLOCK_HASH
+                *PRE_DEPLOY_CONTRACT_BLOCK_ID
             );
             let error = client(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
@@ -2324,7 +2324,7 @@ mod tests {
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
                 },
-                *INVALID_BLOCK_HASH
+                *INVALID_BLOCK_ID
             );
             let error = client(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
