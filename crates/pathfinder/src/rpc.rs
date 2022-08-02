@@ -596,8 +596,8 @@ mod tests {
     /// i.e. the pending block's parent hash will be the latest block's hash from storage,
     /// and similarly for the pending state diffs state root.
     async fn create_pending_data(storage: Storage) -> PendingData {
-        use crate::core::{StorageValue, TransactionNonce};
-        use crate::sequencer::reply::transaction::{DeclareTransaction, DeployTransaction};
+        use crate::core::StorageValue;
+        use crate::sequencer::reply::transaction::DeployTransaction;
 
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {
@@ -613,18 +613,20 @@ mod tests {
         .unwrap();
 
         let transactions: Vec<Transaction> = vec![
-            DeclareTransaction {
-                class_hash: ClassHash(StarkHash::from_be_slice(b"pending class hash 0").unwrap()),
-                max_fee: Call::DEFAULT_MAX_FEE,
-                nonce: TransactionNonce(StarkHash::from_be_slice(b"pending nonce 0").unwrap()),
-                sender_address: ContractAddress(
+            InvokeTransaction {
+                calldata: vec![],
+                contract_address: ContractAddress(
                     StarkHash::from_be_slice(b"pending contract addr 0").unwrap(),
                 ),
+                entry_point_selector: EntryPoint(
+                    StarkHash::from_be_slice(b"entry point 0").unwrap(),
+                ),
+                entry_point_type: EntryPointType::External,
+                max_fee: Call::DEFAULT_MAX_FEE,
                 signature: vec![],
                 transaction_hash: StarknetTransactionHash(
                     StarkHash::from_be_slice(b"pending tx hash 0").unwrap(),
                 ),
-                version: TransactionVersion(web3::types::H256::from_low_u64_be(1)),
             }
             .into(),
             DeployTransaction {
@@ -677,25 +679,7 @@ mod tests {
             },
             Receipt {
                 actual_fee: None,
-                events: vec![
-                    Event {
-                        data: vec![],
-                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
-                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
-                    },
-                    Event {
-                        data: vec![],
-                        from_address: ContractAddress::from_hex_str("0xabcddddddd").unwrap(),
-                        keys: vec![EventKey(StarkHash::from_be_slice(b"pending key").unwrap())],
-                    },
-                    Event {
-                        data: vec![],
-                        from_address: ContractAddress::from_hex_str("0xabcaaaaaaa").unwrap(),
-                        keys: vec![EventKey(
-                            StarkHash::from_be_slice(b"pending key 2").unwrap(),
-                        )],
-                    },
-                ],
+                events: vec![],
                 execution_resources: ExecutionResources {
                     builtin_instance_counter: BuiltinInstanceCounter::Empty(
                         EmptyBuiltinInstanceCounter {},
@@ -1537,6 +1521,13 @@ mod tests {
                     .unwrap();
                 // Only asserting the hash because translating from Sequencer receipt to RPC receipt is pita.
                 assert_eq!(receipt.hash(), expected.transaction_hash);
+                assert_matches!(
+                    receipt,
+                    TransactionReceipt::PendingInvoke(invoke) => {
+                        assert_eq!(invoke.common.actual_fee, Fee(Default::default()));
+                        assert_eq!(invoke.events.len(), 3);
+                    }
+                );
             }
         }
 

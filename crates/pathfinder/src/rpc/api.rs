@@ -531,11 +531,7 @@ impl RpcApi {
             });
 
             if let Some((receipt, transaction)) = receipt_transaction {
-                return Ok(TransactionReceipt::with_block_status(
-                    receipt,
-                    BlockStatus::Pending,
-                    &transaction,
-                ));
+                return Ok(TransactionReceipt::pending_from(receipt, &transaction));
             };
         }
 
@@ -573,9 +569,11 @@ impl RpcApi {
                         .context("Reading transaction from database")
                         .map_err(internal_server_error)?
                     {
-                        Some(transaction) => Ok(TransactionReceipt::with_block_status(
+                        Some(transaction) => Ok(TransactionReceipt::with_block_data(
                             receipt,
                             block_status,
+                            block.hash,
+                            block.number,
                             &transaction,
                         )),
                         None => Err(ErrorCode::InvalidTransactionHash.into()),
