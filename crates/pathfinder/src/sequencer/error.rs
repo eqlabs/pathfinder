@@ -29,7 +29,6 @@ impl From<SequencerError> for Error {
                 StarknetErrorCode::OutOfRangeTransactionHash => {
                     RpcErrorCode::InvalidTransactionHash.into()
                 }
-                StarknetErrorCode::OutOfRangeStorageKey => RpcErrorCode::InvalidStorageKey.into(),
                 StarknetErrorCode::TransactionFailed => RpcErrorCode::InvalidCallData.into(),
                 StarknetErrorCode::EntryPointNotFound => {
                     RpcErrorCode::InvalidMessageSelector.into()
@@ -37,9 +36,7 @@ impl From<SequencerError> for Error {
                 StarknetErrorCode::BlockNotFound if e.message.contains("Block number") => {
                     RpcErrorCode::InvalidBlockId.into()
                 }
-                StarknetErrorCode::InvalidContractDefinition => {
-                    RpcErrorCode::InvalidContractDefinition.into()
-                }
+                StarknetErrorCode::InvalidContractDefinition => RpcErrorCode::ContractError.into(),
                 StarknetErrorCode::BlockNotFound
                 | StarknetErrorCode::SchemaValidationError
                 | StarknetErrorCode::MalformedRequest
@@ -81,8 +78,6 @@ pub enum StarknetErrorCode {
     EntryPointNotFound,
     #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_CONTRACT_ADDRESS")]
     OutOfRangeContractAddress,
-    #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_CONTRACT_STORAGE_KEY")]
-    OutOfRangeStorageKey,
     #[serde(rename = "StarkErrorCode.SCHEMA_VALIDATION_ERROR")]
     SchemaValidationError,
     #[serde(rename = "StarknetErrorCode.TRANSACTION_FAILED")]

@@ -312,14 +312,13 @@ pub mod reply {
         ContractNotFound = 20,
         InvalidMessageSelector = 21,
         InvalidCallData = 22,
-        InvalidStorageKey = 23,
         InvalidBlockId = 24,
         InvalidTransactionHash = 25,
         InvalidTransactionIndex = 27,
         InvalidContractClassHash = 28,
         PageSizeTooBig = 31,
+        NoBlocks = 32,
         ContractError = 40,
-        InvalidContractDefinition = 50,
     }
 
     /// We can have this equality and should have it in order to use it for tests. It is meant to
@@ -367,14 +366,13 @@ pub mod reply {
                 20 => ContractNotFound,
                 21 => InvalidMessageSelector,
                 22 => InvalidCallData,
-                23 => InvalidStorageKey,
                 24 => InvalidBlockId,
                 25 => InvalidTransactionHash,
                 27 => InvalidTransactionIndex,
                 28 => InvalidContractClassHash,
                 31 => PageSizeTooBig,
+                32 => NoBlocks,
                 40 => ContractError,
-                50 => InvalidContractDefinition,
                 x => return Err(x),
             })
         }
@@ -388,7 +386,6 @@ pub mod reply {
                 ErrorCode::ContractNotFound => "Contract not found",
                 ErrorCode::InvalidMessageSelector => "Invalid message selector",
                 ErrorCode::InvalidCallData => "Invalid call data",
-                ErrorCode::InvalidStorageKey => "Invalid storage key",
                 ErrorCode::InvalidBlockId => "Invalid block id",
                 ErrorCode::InvalidTransactionHash => "Invalid transaction hash",
                 ErrorCode::InvalidTransactionIndex => "Invalid transaction index in a block",
@@ -397,7 +394,7 @@ pub mod reply {
                 }
                 ErrorCode::PageSizeTooBig => "Requested page size is too big",
                 ErrorCode::ContractError => "Contract error",
-                ErrorCode::InvalidContractDefinition => "Invalid contract definition",
+                ErrorCode::NoBlocks => "There are no blocks",
             }
         }
     }
