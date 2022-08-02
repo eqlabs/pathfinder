@@ -275,11 +275,14 @@ mod tests {
         assert_eq!(expected, s);
     }
 
+    /// It is important this outcome is different from the empty list or dict, because the None and
+    /// non-None values now carry a difference at the python side.
+    ///
+    /// See python test `test_call.py::test_call_on_reorgged_pending_block`.
     #[test]
     fn serialize_none_updates() {
         use super::ContractUpdatesWrapper;
 
-        // this could be an empty object just as well
         let expected = "null";
         let s = serde_json::to_string(&ContractUpdatesWrapper(None)).unwrap();
         assert_eq!(expected, s);
@@ -315,11 +318,11 @@ mod tests {
         assert_eq!("[]", s);
     }
 
+    /// It is important that this is not `[]` or `{}`, see [`serialize_none_updates`].
     #[test]
     fn serialize_none_deployed_contracts() {
         use super::DeployedContractsWrapper;
 
-        // in python's view, this is an optional, whichever [] or null would work
         let expected = r#"null"#;
         let s = serde_json::to_string(&DeployedContractsWrapper(None)).unwrap();
         assert_eq!(expected, s);

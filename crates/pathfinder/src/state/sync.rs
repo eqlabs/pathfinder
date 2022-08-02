@@ -85,6 +85,15 @@ impl PendingData {
             .as_ref()
             .map(|inner| inner.state_update.clone())
     }
+
+    pub async fn state_update_on_parent_block(
+        &self,
+    ) -> Option<(StarknetBlockHash, Arc<sequencer::reply::StateUpdate>)> {
+        let g = self.inner.read().await;
+        let inner = g.as_ref()?;
+
+        Some((inner.block.parent_hash, inner.state_update.clone()))
+    }
 }
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
