@@ -1268,6 +1268,13 @@ impl RpcApi {
             .as_ref()
             .ok_or_else(|| internal_server_error("Unsupported configuration"))?;
 
+        // discussed during estimateFee work: when user is requesting using block_hash use the
+        // gasPrice from the starknet_blocks::gas_price column, otherwise (tags) get the latest
+        // eth_gasPrice.
+        //
+        // the fact that [`Self::base_block_and_pending_for_call`] transforms pending cases to use
+        // actual parent blocks by hash is an internal transformation we do for correctness,
+        // unrelated to this consideration.
         let gas_price = if matches!(block_hash, BlockHashOrTag::Tag(Tag::Latest | Tag::Pending)) {
             let gas_price = match self.shared_gas_price.as_ref() {
                 Some(cached) => cached.get().await,
@@ -1290,7 +1297,7 @@ impl RpcApi {
     }
 
     /// Transforms the request to call or estimate fee at some point in time to the type expected
-    /// by [`crate::cargo::ext_py`] with the optional, latest pending data.
+    /// by [`crate::cairo::ext_py`] with the optional, latest pending data.
     ///
     /// The procedure is shared between call and estimate fee.
     async fn base_block_and_pending_for_call(

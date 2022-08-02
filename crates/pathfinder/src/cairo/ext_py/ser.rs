@@ -318,7 +318,7 @@ mod tests {
         assert_eq!("[]", s);
     }
 
-    /// It is important that this is not [] or {}, see [`serialize_none_updates`].
+    /// It is important that this is not `[]` or `{}`, see [`serialize_none_updates`].
     #[test]
     fn serialize_none_deployed_contracts() {
         use super::DeployedContractsWrapper;
