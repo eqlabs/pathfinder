@@ -1714,6 +1714,30 @@ mod tests {
                 assert_eq!(rows.len(), 2, "nulls were not expected in {rows:?}");
             }
         }
+
+        mod get_latest_number {
+            use super::*;
+
+            #[test]
+            fn some() {
+                with_default_blocks(|tx, blocks| {
+                    let latest = blocks.last().unwrap().number;
+                    assert_eq!(
+                        StarknetBlocksTable::get_latest_number(tx).unwrap(),
+                        Some(latest)
+                    );
+                });
+            }
+
+            #[test]
+            fn none() {
+                let storage = Storage::in_memory().unwrap();
+                let mut connection = storage.connection().unwrap();
+                let tx = connection.transaction().unwrap();
+
+                assert_eq!(StarknetBlocksTable::get_latest_number(&tx).unwrap(), None);
+            }
+        }
     }
 
     mod starknet_events {
