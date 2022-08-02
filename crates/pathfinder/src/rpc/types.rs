@@ -241,6 +241,15 @@ pub mod reply {
         pub transactions: Transactions,
     }
 
+    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct BlockHashAndNumber {
+        #[serde(rename = "block_hash")]
+        pub hash: StarknetBlockHash,
+        #[serde(rename = "block_number")]
+        pub number: StarknetBlockNumber,
+    }
+
     impl Block {
         /// Constructs [Block] from [RawBlock]
         pub fn from_raw(block: RawBlock, transactions: Transactions) -> Self {

@@ -249,6 +249,9 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     module.register_async_method("starknet_blockNumber", |_, context| async move {
         context.block_number().await
     })?;
+    module.register_async_method("starknet_blockHashAndNumber", |_, context| async move {
+        context.block_hash_and_number().await
+    })?;
     module.register_async_method("starknet_chainId", |_, context| async move {
         context.chain_id().await
     })?;
@@ -352,7 +355,7 @@ mod tests {
             GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
             StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress,
         },
-        rpc::run_server,
+        rpc::{run_server, types::reply::BlockHashAndNumber},
         sequencer::{
             reply::transaction::{
                 execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
@@ -2337,6 +2340,24 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(number, 2);
+    }
+
+    #[tokio::test]
+    async fn block_hash_and_number() {
+        let storage = setup_storage();
+        let sequencer = Client::new(Chain::Goerli).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+        let latest = client(addr)
+            .request::<BlockHashAndNumber>("starknet_blockHashAndNumber", rpc_params!())
+            .await
+            .unwrap();
+        let expected = BlockHashAndNumber {
+            hash: StarknetBlockHash(StarkHash::from_be_slice(b"latest").unwrap()),
+            number: StarknetBlockNumber(2),
+        };
+        assert_eq!(latest, expected);
     }
 
     #[tokio::test]

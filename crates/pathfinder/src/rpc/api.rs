@@ -10,8 +10,8 @@ use crate::{
     },
     rpc::types::{
         reply::{
-            Block, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate, GetEventsResult, Syncing,
-            Transaction, TransactionReceipt,
+            Block, BlockHashAndNumber, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate,
+            GetEventsResult, Syncing, Transaction, TransactionReceipt,
         },
         request::{Call, ContractCall, EventFilter},
     },
@@ -870,7 +870,7 @@ impl RpcApi {
         Ok(handle.call(request, when, pending_update).await?)
     }
 
-    /// Get the most recent accepted block number.
+    /// Get the latest local block's number.
     pub async fn block_number(&self) -> RpcResult<u64> {
         let storage = self.storage.clone();
         let span = tracing::Span::current();
@@ -890,6 +890,35 @@ impl RpcApi {
                 .context("Reading latest block number from database")
                 .map_err(internal_server_error)?
                 .map(|number| number.0)
+                .ok_or_else(|| Error::from(ErrorCode::NoBlocks))
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            .and_then(|x| x)
+    }
+
+    /// Get the latest local block's hash and number.
+    pub async fn block_hash_and_number(&self) -> RpcResult<BlockHashAndNumber> {
+        let storage = self.storage.clone();
+        let span = tracing::Span::current();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            StarknetBlocksTable::get_latest_hash_and_number(&tx)
+                .context("Reading latest block number from database")
+                .map_err(internal_server_error)?
+                .map(|(hash, number)| BlockHashAndNumber { hash, number })
                 .ok_or_else(|| Error::from(ErrorCode::NoBlocks))
         });
 
