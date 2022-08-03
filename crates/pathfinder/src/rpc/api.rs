@@ -283,11 +283,13 @@ impl RpcApi {
             let block_hash = match block_id {
                 StarknetBlocksBlockId::Hash(h) => h,
                 StarknetBlocksBlockId::Number(_) | StarknetBlocksBlockId::Latest => {
-                    // Unwrap is safe because block_id is never a hash here
-                    StarknetBlocksTable::get_hash(&tx, block_id.try_into().unwrap())
-                        .context("Read block from database")
-                        .map_err(internal_server_error)?
-                        .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?
+                    StarknetBlocksTable::get_hash(
+                        &tx,
+                        block_id.try_into().expect("block_id is not a hash"),
+                    )
+                    .context("Read block from database")
+                    .map_err(internal_server_error)?
+                    .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?
                 }
             };
 
