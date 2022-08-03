@@ -247,9 +247,9 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     module.register_async_method("starknet_chainId", |_, context| async move {
         context.chain_id().await
     })?;
-    // module.register_async_method("starknet_pendingTransactions", |_, context| async move {
-    //     context.pending_transactions().await
-    // })?;
+    module.register_async_method("starknet_pendingTransactions", |_, context| async move {
+        context.pending_transactions().await
+    })?;
     // module.register_async_method("starknet_protocolVersion", |_, context| async move {
     //     context.protocol_version().await
     // })?;
@@ -354,7 +354,6 @@ mod tests {
                 transaction::{
                     execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
                     EntryPointType, Event, ExecutionResources, InvokeTransaction, Receipt,
-                    Transaction,
                 },
             },
             test_utils::*,
@@ -388,6 +387,7 @@ mod tests {
 
     // Local test helper
     fn setup_storage() -> Storage {
+        use crate::sequencer::reply::transaction::Transaction;
         use crate::{
             core::StorageValue,
             state::{update_contract_state, CompressedContract},
@@ -592,6 +592,7 @@ mod tests {
     async fn create_pending_data(storage: Storage) -> PendingData {
         use crate::core::StorageValue;
         use crate::sequencer::reply::transaction::DeployTransaction;
+        use crate::sequencer::reply::transaction::Transaction;
 
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {
@@ -2058,6 +2059,68 @@ mod tests {
         }
     }
 
+    mod pending_transactions {
+        use super::*;
+        use crate::rpc::types::reply::Transaction;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn with_pending() {
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
+            let sequencer = Client::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            let expected = pending_data
+                .block()
+                .await
+                .unwrap()
+                .transactions
+                .clone()
+                .into_iter()
+                .map(Transaction::from)
+                .collect::<Vec<_>>();
+
+            let transactions = client(addr)
+                .request::<Vec<Transaction>>("starknet_pendingTransactions", rpc_params![])
+                .await
+                .unwrap();
+
+            assert_eq!(transactions, expected);
+        }
+
+        #[tokio::test]
+        async fn defaults_to_latest() {
+            let storage = setup_storage();
+            // empty pending data, which should result in `starknet_pendingTransactions` using
+            // the `latest` transactions instead.
+            let pending_data = PendingData::default();
+            let sequencer = Client::new(Chain::Goerli).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage.clone(), sequencer, Chain::Goerli, sync_state)
+                .with_pending_data(pending_data.clone());
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            let mut conn = storage.connection().unwrap();
+            let db_tx = conn.transaction().unwrap();
+            let expected = StarknetTransactionsTable::get_transactions_for_latest_block(&db_tx)
+                .unwrap()
+                .into_iter()
+                .map(Transaction::from)
+                .collect::<Vec<_>>();
+
+            let transactions = client(addr)
+                .request::<Vec<Transaction>>("starknet_pendingTransactions", rpc_params![])
+                .await
+                .unwrap();
+
+            assert_eq!(transactions, expected);
+        }
+    }
+
     // FIXME: these tests are largely defunct because they have never used ext_py, and handle
     // parsing issues.
     mod call {
@@ -2372,20 +2435,6 @@ mod tests {
                 format!("0x{}", hex::encode("SN_MAIN")),
             ]
         );
-    }
-
-    #[tokio::test]
-    #[should_panic]
-    async fn pending_transactions() {
-        let storage = Storage::in_memory().unwrap();
-        let sequencer = Client::new(Chain::Goerli).unwrap();
-        let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-        client(addr)
-            .request::<()>("starknet_pendingTransactions", rpc_params!())
-            .await
-            .unwrap();
     }
 
     #[tokio::test]

@@ -639,6 +639,36 @@ impl StarknetTransactionsTable {
         Ok(data)
     }
 
+    pub fn get_transactions_for_latest_block(
+        sqlite_tx: &Transaction<'_>,
+    ) -> anyhow::Result<Vec<transaction::Transaction>> {
+        let mut stmt = sqlite_tx
+            .prepare(
+                r"SELECT tx FROM starknet_transactions
+                  WHERE starknet_transactions.block_hash = 
+                    (SELECT hash FROM starknet_blocks b WHERE b.number = (SELECT MAX(number) FROM starknet_blocks))
+                  ORDER BY starknet_transactions.idx",
+            )
+            .context("Preparing statement")?;
+
+        let mut rows = stmt.query([]).context("Executing query")?;
+
+        let mut data = Vec::new();
+        while let Some(row) = rows.next()? {
+            let starknet_tx = row
+                .get_ref_unwrap("tx")
+                .as_blob_or_null()?
+                .context("Transaction data missing")?;
+            let starknet_tx = zstd::decode_all(starknet_tx).context("Decompressing transaction")?;
+            let starknet_tx =
+                serde_json::from_slice(&starknet_tx).context("Deserializing transaction")?;
+
+            data.push(starknet_tx);
+        }
+
+        Ok(data)
+    }
+
     pub fn get_transaction_at_block(
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
