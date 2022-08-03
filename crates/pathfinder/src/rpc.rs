@@ -220,6 +220,15 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
                 .await
         },
     )?;
+    module.register_async_method("starknet_getNonce", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        pub struct NamedArgs {
+            pub contract_address: ContractAddress,
+        }
+        context
+            .get_nonce(params.parse::<NamedArgs>()?.contract_address)
+            .await
+    })?;
     module.register_async_method("starknet_call", |params, context| async move {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
@@ -2116,6 +2125,52 @@ mod tests {
 
             assert_eq!(transactions, expected);
         }
+    }
+
+    #[tokio::test]
+    async fn get_nonce() {
+        use crate::core::ContractNonce;
+
+        let storage = setup_storage();
+        let sequencer = Client::new(Chain::Goerli).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state.clone());
+        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+        // This contract is created in `setup_storage`
+        let valid_contract = ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap());
+
+        // With no version set yet -- this occurs when `getNonce` is called before
+        // we have received a `latest` update from the gateway at pathfinder startup.
+        // Unlikely to occur, but worth testing.
+        client(addr)
+            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
+            .await
+            .expect_err("unset version should error");
+
+        // Nonces pre-0.10.0 have a default value of 0.
+        *sync_state.version.write().await = Some("0.9.1".to_string());
+        let version = client(addr)
+            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
+            .await
+            .expect("pre-0.10.0 version should succeed");
+        assert_eq!(version, ContractNonce(StarkHash::ZERO));
+
+        // Invalid contract should error.
+        let invalid_contract = ContractAddress(StarkHash::from_be_slice(b"invalid").unwrap());
+        let error = client(addr)
+            .request::<ContractNonce>("starknet_getNonce", rpc_params!(invalid_contract))
+            .await
+            .expect_err("invalid contract should error");
+        let expected = crate::rpc::types::reply::ErrorCode::ContractNotFound;
+        assert_eq!(expected, error);
+
+        // Versions post 0.10.0 are unsupported currently.
+        *sync_state.version.write().await = Some("0.10.0".to_string());
+        client(addr)
+            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
+            .await
+            .expect_err("post-0.10.0 version should fail");
     }
 
     // FIXME: these tests are largely defunct because they have never used ext_py, and handle

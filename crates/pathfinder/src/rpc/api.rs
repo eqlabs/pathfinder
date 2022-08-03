@@ -3,10 +3,10 @@ use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
     core::{
         BlockId, CallResultValue, CallSignatureElem, Chain, ClassHash, ConstructorParam,
-        ContractAddress, ContractAddressSalt, ContractClass, Fee, GasPrice, GlobalRoot,
-        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
-        TransactionNonce, TransactionVersion,
+        ContractAddress, ContractAddressSalt, ContractClass, ContractNonce, Fee, GasPrice,
+        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
+        StorageValue, TransactionNonce, TransactionVersion,
     },
     rpc::types::{
         reply::{
@@ -1011,6 +1011,63 @@ impl RpcApi {
                     .context("Database read panic or shutting down")
                     .map_err(internal_server_error)
                     .and_then(|x| x)
+            }
+        }
+    }
+
+    /// Returns the contract's latest nonce.
+    ///
+    /// Not currently supported correctly as nonce's aren't implemented yet. In the mean time
+    /// returns "0x0" until starknet reaches 0.10 at which point it will return an error instead.
+    pub async fn get_nonce(&self, contract: ContractAddress) -> RpcResult<ContractNonce> {
+        // Check that contract actually exists..
+        let storage = self.storage.clone();
+        let span = tracing::Span::current();
+        let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")?;
+            let tx = db.transaction().context("Creating database transaction")?;
+
+            let exists = crate::storage::ContractsTable::exists(&tx, contract)
+                .context("Reading contract from database")?;
+
+            anyhow::Result::<_, anyhow::Error>::Ok(exists)
+        });
+        let exists = jh
+            .await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)?
+            .map_err(internal_server_error)?;
+        if !exists {
+            return Err(Error::from(ErrorCode::ContractNotFound));
+        }
+
+        // Check the latest known starknet version, and return "0" if its < 0.10.0
+        let version = { self.sync_state.version.read().await.clone() };
+        match version {
+            Some(version) => {
+                let version = semver::Version::parse(&version)
+                    .with_context(|| format!("Failed to parse starknet version {version}"))
+                    .map_err(internal_server_error)?;
+
+                const VERSION_0_10_0: semver::Version = semver::Version::new(0, 10, 0);
+
+                if version < VERSION_0_10_0 {
+                    Ok(ContractNonce(StarkHash::ZERO))
+                } else {
+                    Err(internal_server_error(
+                        "Not supported for StarkNet versions from 0.10.0 onwards",
+                    ))
+                }
+            }
+            None => {
+                // The `latest` sync status has not been set which means we are still waiting for our
+                // first `sync` latest poll to complete.
+                Err(internal_server_error(
+                    "Waiting to connect to StarkNet gateway, please try again later",
+                ))
             }
         }
     }
