@@ -1038,8 +1038,9 @@ impl RpcApi {
         let exists = jh
             .await
             .context("Database read panic or shutting down")
-            .map_err(internal_server_error)?
+            .and_then(|x| x)
             .map_err(internal_server_error)?;
+
         if !exists {
             return Err(Error::from(ErrorCode::ContractNotFound));
         }
@@ -1047,21 +1048,12 @@ impl RpcApi {
         // Check the latest known starknet version, and return "0" if its < 0.10.0
         let version = { self.sync_state.version.read().await.clone() };
         match version {
-            Some(version) => {
-                let version = semver::Version::parse(&version)
-                    .with_context(|| format!("Failed to parse starknet version {version}"))
-                    .map_err(internal_server_error)?;
-
-                const VERSION_0_10_0: semver::Version = semver::Version::new(0, 10, 0);
-
-                if version < VERSION_0_10_0 {
-                    Ok(ContractNonce(StarkHash::ZERO))
-                } else {
-                    Err(internal_server_error(
-                        "Not supported for StarkNet versions from 0.10.0 onwards",
-                    ))
-                }
-            }
+            // This field was only populated from version 0.9 onwards, so earlier versions don't exist.
+            // This property has no confirmed specification, so we are hesistant to alaways parse it as semver.
+            Some(version) if version.starts_with("0.9.") => Ok(ContractNonce(StarkHash::ZERO)),
+            Some(_) => Err(internal_server_error(
+                "Not supported for StarkNet versions from 0.10.0 onwards",
+            )),
             None => {
                 // The `latest` sync status has not been set which means we are still waiting for our
                 // first `sync` latest poll to complete.
