@@ -1392,7 +1392,7 @@ mod tests {
     mod state_update_matches_by_hash_on {
         use super::{
             reply::{
-                state_update::{Contract, StorageDiff},
+                state_update::{DeployedContract, StorageDiff},
                 StateUpdate,
             },
             *,
@@ -1404,7 +1404,7 @@ mod tests {
         #[derive(Clone, Debug, PartialEq)]
         pub struct OrderedStateDiff {
             pub storage_diffs: HashMap<ContractAddress, BTreeSet<StorageDiff>>,
-            pub deployed_contracts: BTreeSet<Contract>,
+            pub deployed_contracts: BTreeSet<DeployedContract>,
         }
 
         #[derive(Clone, Debug, PartialEq)]

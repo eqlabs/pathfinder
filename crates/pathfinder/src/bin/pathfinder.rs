@@ -151,26 +151,18 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
 /// Verifies that the database matches the expected chain; throws an error if it does not.
 fn verify_database_chain(storage: &Storage, expected: core::Chain) -> anyhow::Result<()> {
-    use pathfinder_lib::consts::{GOERLI_GENESIS_HASH, MAINNET_GENESIS_HASH};
-    use pathfinder_lib::core::StarknetBlockNumber;
+    use pathfinder_lib::storage::StarknetBlocksTable;
 
     let mut connection = storage.connection().context("Create database connection")?;
     let transaction = connection
         .transaction()
         .context("Create database transaction")?;
-    let genesis = pathfinder_lib::storage::StarknetBlocksTable::get(
-        &transaction,
-        StarknetBlockNumber::GENESIS.into(),
-    )
-    .context("Read genesis block from database")?;
 
-    let db_chain = match genesis {
+    let db_chain = match StarknetBlocksTable::get_chain(&transaction)
+        .context("Get chain from genesis block in the DB")?
+    {
+        Some(chain) => chain,
         None => return Ok(()),
-        Some(genesis) if genesis.hash == *GOERLI_GENESIS_HASH => core::Chain::Goerli,
-        Some(genesis) if genesis.hash == *MAINNET_GENESIS_HASH => core::Chain::Mainnet,
-        Some(genesis) => {
-            anyhow::bail!("Unknown genesis block hash {}", genesis.hash.0)
-        }
     };
 
     anyhow::ensure!(

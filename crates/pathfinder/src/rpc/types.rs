@@ -434,52 +434,132 @@ pub mod reply {
         }
     }
 
-    /// L2 state update as returned by the RPC API.
+    /// L2 state update as returned by the [RPC API v0.1.0](https://github.com/starkware-libs/starknet-specs/blob/30e5bafcda60c31b5fb4021b4f5ddcfc18d2ff7d/api/starknet_api_openrpc.json#L846).
+    ///
+    /// # Serialization
+    ///
+    /// This structure derives [serde::Deserialize] without depending
+    /// on the `rpc-full-serde` feature because state updates are
+    /// stored in the DB as compressed raw JSON bytes.
     #[skip_serializing_none]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct StateUpdate {
         /// None for `pending`
         #[serde(default)]
-        block_hash: Option<StarknetBlockHash>,
-        new_root: GlobalRoot,
-        old_root: GlobalRoot,
-        accepted_time: u64,
-        state_diff: state_update::StateDiff,
+        pub block_hash: Option<StarknetBlockHash>,
+        pub new_root: GlobalRoot,
+        pub old_root: GlobalRoot,
+        pub state_diff: state_update::StateDiff,
+    }
+
+    impl From<sequencer::reply::StateUpdate> for StateUpdate {
+        fn from(x: sequencer::reply::StateUpdate) -> Self {
+            Self {
+                block_hash: x.block_hash,
+                new_root: x.new_root,
+                old_root: x.old_root,
+                state_diff: x.state_diff.into(),
+            }
+        }
     }
 
     /// State update related substructures.
+    ///
+    /// # Serialization
+    ///
+    /// All structures in this module derive [serde::Deserialize] without depending
+    /// on the `rpc-full-serde` feature because state updates are
+    /// stored in the DB as compressed raw JSON bytes.
     pub mod state_update {
-        use crate::core::{ClassHash, ContractAddress, StorageAddress, StorageValue};
-        use serde::Serialize;
+        use crate::core::{
+            ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
+        };
+        use crate::sequencer;
+        use serde::{Deserialize, Serialize};
 
         /// L2 state diff.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StateDiff {
-            storage_diffs: Vec<StorageDiff>,
-            contracts: Vec<Contract>,
+            pub storage_diffs: Vec<StorageDiff>,
+            pub declared_contracts: Vec<DeclaredContract>,
+            pub deployed_contracts: Vec<DeployedContract>,
+            pub nonces: Vec<Nonce>,
         }
 
-        /// L2 storage diff.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+        impl From<sequencer::reply::state_update::StateDiff> for StateDiff {
+            fn from(x: sequencer::reply::state_update::StateDiff) -> Self {
+                Self {
+                    storage_diffs: x
+                        .storage_diffs
+                        .into_iter()
+                        .flat_map(|(contract_address, storage_diffs)| {
+                            storage_diffs.into_iter().map(move |x| StorageDiff {
+                                address: contract_address,
+                                key: x.key,
+                                value: x.value,
+                            })
+                        })
+                        .collect(),
+                    declared_contracts: x
+                        .declared_contracts
+                        .into_iter()
+                        .map(|class_hash| DeclaredContract { class_hash })
+                        .collect(),
+                    deployed_contracts: x
+                        .deployed_contracts
+                        .into_iter()
+                        .map(|deployed_contract| DeployedContract {
+                            address: deployed_contract.address,
+                            class_hash: deployed_contract.class_hash,
+                        })
+                        .collect(),
+                    // FIXME once the sequencer API provides the nonces
+                    nonces: vec![],
+                }
+            }
+        }
+
+        /// L2 storage diff of a contract.
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageDiff {
-            address: ContractAddress,
-            key: StorageAddress,
-            value: StorageValue,
+            pub address: ContractAddress,
+            pub key: StorageAddress,
+            pub value: StorageValue,
         }
 
-        /// L2 contract data within state diff.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+        // impl From<sequencer::reply::state_update::StorageDiff> for StorageItem {
+        //     fn from(x: sequencer::reply::state_update::StorageDiff) -> Self {
+        //         Self {
+        //             key: x.key,
+        //             value: x.value,
+        //         }
+        //     }
+        // }
+
+        /// L2 state diff declared contract item.
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(deny_unknown_fields)]
-        pub struct Contract {
-            address: ContractAddress,
-            contract_hash: ClassHash,
+        pub struct DeclaredContract {
+            pub class_hash: ClassHash,
+        }
+
+        /// L2 state diff deployed contract item.
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct DeployedContract {
+            pub address: ContractAddress,
+            pub class_hash: ClassHash,
+        }
+
+        /// L2 state diff nonce item.
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct Nonce {
+            pub contract_address: ContractAddress,
+            pub nonce: ContractNonce,
         }
     }
 

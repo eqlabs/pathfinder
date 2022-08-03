@@ -4,13 +4,15 @@ use stark_hash::StarkHash;
 use web3::types::H256;
 
 use crate::{
+    consts::{GOERLI_GENESIS_HASH, MAINNET_GENESIS_HASH},
     core::{
-        ClassHash, ContractAddress, ContractRoot, ContractStateHash, EthereumBlockHash,
+        Chain, ClassHash, ContractAddress, ContractRoot, ContractStateHash, EthereumBlockHash,
         EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
         EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
     },
     ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
+    rpc::types::reply::StateUpdate,
     sequencer::reply::transaction,
 };
 
@@ -443,6 +445,47 @@ impl StarknetBlocksTable {
         });
         Ok(number)
     }
+
+    /// Returns the [chain](crate::core::Chain) based on genesis block hash stored in the DB.
+    pub fn get_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
+        let genesis = Self::get_hash(tx, StarknetBlockNumber(0).into())
+            .context("Read genesis block from database")?;
+
+        match genesis {
+            None => Ok(None),
+            Some(hash) if hash == *GOERLI_GENESIS_HASH => Ok(Some(Chain::Goerli)),
+            Some(hash) if hash == *MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
+            Some(hash) => Err(anyhow::anyhow!("Unknown genesis block hash {}", hash.0)),
+        }
+    }
+
+    /// Returns hash of a given block number or `latest`
+    pub fn get_hash(
+        tx: &Transaction<'_>,
+        block: StarknetBlocksNumberOrLatest,
+    ) -> anyhow::Result<Option<StarknetBlockHash>> {
+        let mut statement = match block {
+            StarknetBlocksNumberOrLatest::Number(_) => {
+                tx.prepare("SELECT hash FROM starknet_blocks WHERE number = ?")?
+            }
+            StarknetBlocksNumberOrLatest::Latest => {
+                tx.prepare("SELECT hash FROM starknet_blocks ORDER BY number DESC LIMIT 1")?
+            }
+        };
+        let mut rows = match block {
+            StarknetBlocksNumberOrLatest::Number(n) => statement.query([n.0])?,
+            StarknetBlocksNumberOrLatest::Latest => statement.query([])?,
+        };
+        let row = rows.next().context("Iterate rows")?;
+        match row {
+            Some(row) => {
+                let hash = row.get_ref_unwrap("hash").as_blob().unwrap();
+                let hash = StarknetBlockHash(StarkHash::from_be_slice(hash).unwrap());
+                Ok(Some(hash))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 /// Identifies block in some [StarknetBlocksTable] queries.
@@ -462,6 +505,35 @@ impl From<StarknetBlockNumber> for StarknetBlocksBlockId {
 impl From<StarknetBlockHash> for StarknetBlocksBlockId {
     fn from(hash: StarknetBlockHash) -> Self {
         StarknetBlocksBlockId::Hash(hash)
+    }
+}
+
+/// Identifies block in some [StarknetBlocksTable] queries.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StarknetBlocksNumberOrLatest {
+    Number(StarknetBlockNumber),
+    Latest,
+}
+
+impl From<StarknetBlockNumber> for StarknetBlocksNumberOrLatest {
+    fn from(number: StarknetBlockNumber) -> Self {
+        Self::Number(number)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("expected starknet block number or `latest`, got starknet block hash {0}")]
+pub struct FromStarknetBlocksBlockIdError(StarknetBlockHash);
+
+impl TryFrom<StarknetBlocksBlockId> for StarknetBlocksNumberOrLatest {
+    type Error = FromStarknetBlocksBlockIdError;
+
+    fn try_from(value: StarknetBlocksBlockId) -> Result<Self, Self::Error> {
+        match value {
+            StarknetBlocksBlockId::Number(n) => Ok(Self::Number(n)),
+            StarknetBlocksBlockId::Hash(h) => Err(FromStarknetBlocksBlockIdError(h)),
+            StarknetBlocksBlockId::Latest => Ok(Self::Latest),
+        }
     }
 }
 
@@ -1148,6 +1220,64 @@ impl ContractsStateTable {
     }
 }
 
+/// Stores all known [Starknet state updates][crate::rpc::types::reply::StateUpdate].
+pub struct StarknetStateUpdatesTable {}
+impl StarknetStateUpdatesTable {
+    /// Inserts a StarkNet state update accociated with a particular block into the [StarknetStateUpdatesTable].
+    ///
+    /// Overwrites existing data if the block hash already exists.
+    pub fn insert(
+        tx: &Transaction<'_>,
+        block_hash: StarknetBlockHash,
+        state_update: &StateUpdate,
+    ) -> anyhow::Result<()> {
+        let serialized =
+            serde_json::to_vec(&state_update).context("Serialize Starknet state update")?;
+
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+        let compressed = compressor
+            .compress(&serialized)
+            .context("Compress Starknet state update")?;
+
+        tx.execute(
+            r"INSERT INTO starknet_state_updates (block_hash, data) VALUES (:block_hash, :data)",
+            named_params![
+                ":block_hash": block_hash.0.as_be_bytes(),
+                ":data": &compressed,
+            ],
+        )
+        .context("Insert state update data into state updates table")?;
+
+        Ok(())
+    }
+
+    /// Gets a StarkNet state update for block.
+    pub fn get(
+        tx: &Transaction<'_>,
+        block_hash: StarknetBlockHash,
+    ) -> anyhow::Result<Option<StateUpdate>> {
+        let mut stmt = tx
+            .prepare("SELECT data FROM starknet_state_updates WHERE block_hash = ?1")
+            .context("Preparing statement")?;
+
+        let mut rows = stmt
+            .query(params![block_hash.0.as_be_bytes()])
+            .context("Executing query")?;
+
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let state_update = row.get_ref_unwrap(0).as_blob()?;
+        let state_update = zstd::decode_all(state_update).context("Decompressing state update")?;
+        let state_update =
+            serde_json::from_slice(&state_update).context("Deserializing state update")?;
+
+        Ok(Some(state_update))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1798,6 +1928,65 @@ mod tests {
                 );
             }
         }
+        mod get_hash {
+            use super::*;
+
+            mod by_number {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    with_default_blocks(|tx, blocks| {
+                        for block in blocks {
+                            let result = StarknetBlocksTable::get_hash(tx, block.number.into())
+                                .unwrap()
+                                .unwrap();
+
+                            assert_eq!(result, block.hash);
+                        }
+                    })
+                }
+
+                #[test]
+                fn none() {
+                    with_default_blocks(|tx, blocks| {
+                        let non_existent = blocks.last().unwrap().number + 1;
+                        assert_eq!(
+                            StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
+                            None
+                        );
+                    });
+                }
+            }
+
+            mod latest {
+                use super::*;
+
+                #[test]
+                fn some() {
+                    with_default_blocks(|tx, blocks| {
+                        let expected = blocks.last().unwrap().hash;
+
+                        let latest =
+                            StarknetBlocksTable::get_hash(tx, StarknetBlocksNumberOrLatest::Latest)
+                                .unwrap()
+                                .unwrap();
+                        assert_eq!(latest, expected);
+                    })
+                }
+
+                #[test]
+                fn none() {
+                    let storage = Storage::in_memory().unwrap();
+                    let mut connection = storage.connection().unwrap();
+                    let tx = connection.transaction().unwrap();
+
+                    let latest =
+                        StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest).unwrap();
+                    assert_eq!(latest, None);
+                }
+            }
+        }
     }
 
     mod starknet_events {
@@ -2405,6 +2594,38 @@ mod tests {
             )
             .unwrap();
             assert_eq!(count, expected);
+        }
+    }
+
+    mod starknet_updates {
+
+        use super::*;
+        use crate::storage::fixtures::{hash, with_n_state_updates};
+
+        mod get {
+            use super::*;
+
+            #[test]
+            fn some() {
+                with_n_state_updates(1, |_, tx, state_updates| {
+                    for expected in state_updates {
+                        let actual =
+                            StarknetStateUpdatesTable::get(tx, expected.block_hash.unwrap())
+                                .unwrap()
+                                .unwrap();
+                        assert_eq!(actual, expected);
+                    }
+                })
+            }
+
+            #[test]
+            fn none() {
+                with_n_state_updates(1, |_, tx, _| {
+                    let non_existent = StarknetBlockHash(hash!(0xFF));
+                    let actual = StarknetStateUpdatesTable::get(tx, non_existent).unwrap();
+                    assert!(actual.is_none());
+                })
+            }
         }
     }
 }

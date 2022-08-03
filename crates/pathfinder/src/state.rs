@@ -3,8 +3,8 @@ use rusqlite::Transaction;
 use stark_hash::{stark_hash, StarkHash};
 
 use crate::{
-    core::{ClassHash, ContractRoot, ContractStateHash},
-    ethereum::state_update::ContractUpdate,
+    core::{ClassHash, ContractAddress, ContractRoot, ContractStateHash},
+    sequencer::reply::state_update::StorageDiff,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{ContractsStateTable, ContractsTable},
 };
@@ -38,18 +38,19 @@ impl std::fmt::Debug for CompressedContract {
     }
 }
 
-/// Updates a contract's state with the given [storage updates](ContractUpdate). It returns the
+/// Updates a contract's state with the given [`StorageDiff`]. It returns the
 /// [ContractStateHash] of the new state.
 ///
 /// Specifically, it updates the [ContractsStateTree] and [ContractsStateTable].
 pub(crate) fn update_contract_state(
-    update: &ContractUpdate,
+    contract_address: ContractAddress,
+    updates: &[StorageDiff],
     global_tree: &GlobalStateTree<'_>,
     db: &Transaction<'_>,
 ) -> anyhow::Result<ContractStateHash> {
     // Update the contract state tree.
     let contract_state_hash = global_tree
-        .get(update.address)
+        .get(contract_address)
         .context("Get contract state hash from global state tree")?;
     let contract_root = ContractsStateTable::get_root(db, contract_state_hash)
         .context("Read contract root from contracts state table")?
@@ -58,9 +59,9 @@ pub(crate) fn update_contract_state(
     // Load the contract tree and insert the updates.
     let mut contract_tree =
         ContractsStateTree::load(db, contract_root).context("Load contract state tree")?;
-    for storage_update in &update.storage_updates {
+    for storage_diff in updates {
         contract_tree
-            .set(storage_update.address, storage_update.value)
+            .set(storage_diff.key, storage_diff.value)
             .context("Update contract storage tree")?;
     }
     let new_contract_root = contract_tree
@@ -68,7 +69,7 @@ pub(crate) fn update_contract_state(
         .context("Apply contract storage tree changes")?;
 
     // Calculate contract state hash, update global state tree and persist pre-image.
-    let class_hash = ContractsTable::get_hash(db, update.address)
+    let class_hash = ContractsTable::get_hash(db, contract_address)
         .context("Read class hash from contracts table")?
         .context("Class hash is missing from contracts table")?;
     let contract_state_hash = calculate_contract_state_hash(class_hash, new_contract_root);

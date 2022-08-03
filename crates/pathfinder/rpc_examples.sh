@@ -20,9 +20,9 @@ rpc_call '{"jsonrpc":"2.0","id":"6","method":"starknet_getBlockWithTxHashes","pa
 rpc_call '{"jsonrpc":"2.0","id":"12","method":"starknet_getBlockWithTxs","params":[{"block_hash": "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"}]}'
 rpc_call '{"jsonrpc":"2.0","id":"13","method":"starknet_getBlockWithTxs","params":[{"block_number": 41000}]}'
 
-# TODO not implemented yet
-# rpc_call '[{"jsonrpc":"2.0","id":"14","method":"starknet_getStateUpdateByHash","params":["latest"]},
-# {"jsonrpc":"2.0","id":"15","method":"starknet_getStateUpdateByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}]'
+rpc_call '[{"jsonrpc":"2.0","id":"0","method":"starknet_getStateUpdate","params":["latest"]},
+{"jsonrpc":"2.0","id":"1","method":"starknet_getStateUpdate","params":[{"block_number":0}]},
+{"jsonrpc":"2.0","id":"2","method":"starknet_getStateUpdate","params":[{"block_hash":"0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"}]}]'
 
 rpc_call '[{"jsonrpc":"2.0","id":"16","method":"starknet_getStorageAt","params":["0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39", "0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091", "latest"]},
 {"jsonrpc":"2.0","id":"17","method":"starknet_getStorageAt","params":["0x6fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39", "0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091", "pending"]},

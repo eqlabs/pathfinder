@@ -4,6 +4,8 @@
 
 mod contract;
 mod ethereum;
+#[cfg(test)]
+pub(crate) mod fixtures;
 pub(crate) mod merkle_tree;
 mod schema;
 mod state;
@@ -17,7 +19,7 @@ pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 pub use state::{
     ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId, RefsTable, StarknetBlock,
     StarknetBlocksBlockId, StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter,
-    StarknetEventsTable, StarknetTransactionsTable,
+    StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable,
 };
 
 use anyhow::Context;
@@ -30,7 +32,7 @@ const DB_VERSION_EMPTY: u32 = 0;
 /// Current database version.
 ///
 /// **Make sure** `EXPECTED_SCHEMA_REVISION` in `call.py` is also updated every time the value is incremented.
-const DB_VERSION_CURRENT: u32 = 15;
+const DB_VERSION_CURRENT: u32 = 16;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -166,6 +168,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
             12 => schema::revision_0013::migrate(&transaction).context("migrating from 12")?,
             13 => schema::revision_0014::migrate(&transaction).context("migrating from 13")?,
             14 => schema::revision_0015::migrate(&transaction).context("migrating from 14")?,
+            15 => schema::revision_0016::migrate(&transaction).context("migrating from 15")?,
             _ => unreachable!("Database version constraint was already checked!"),
         };
         transaction

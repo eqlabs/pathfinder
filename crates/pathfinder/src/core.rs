@@ -12,6 +12,11 @@ pub struct ContractAddress(
     #[serde(deserialize_with = "deserialize_starkhash_251_bits")] pub StarkHash,
 );
 
+/// A nonce that is associated with a particular deployed StarkNet contract
+/// distinguishing it from other contracts that use the same contract class.
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ContractNonce(pub StarkHash);
+
 /// The salt of a StarkNet contract address.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddressSalt(pub StarkHash);
@@ -463,6 +468,7 @@ thin_starkhash_debug!(ContractAddress, StarknetTransactionHash, ClassHash,);
 
 thin_starkhash_debug_display!(
     ContractAddressSalt,
+    ContractNonce,
     ContractStateHash,
     ContractRoot,
     EntryPoint,

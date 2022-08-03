@@ -420,7 +420,7 @@ pub mod state_update {
     pub struct StateDiff {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
-        pub deployed_contracts: Vec<Contract>,
+        pub deployed_contracts: Vec<DeployedContract>,
 
         /// Optional field of declared contracts.
         ///
@@ -441,38 +441,42 @@ pub mod state_update {
     }
 
     /// L2 contract data within state diff.
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
-    pub struct Contract {
+    pub struct DeployedContract {
         pub address: ContractAddress,
         /// `class_hash` is the field name from cairo 0.9.0 onwards
-        /// `contract_hash` is the name for cairo before 0.9.0
-        #[serde(alias = "class_hash")]
-        pub contract_hash: ClassHash,
+        /// `contract_hash` is the name from cairo before 0.9.0
+        #[serde(alias = "contract_hash")]
+        pub class_hash: ClassHash,
     }
 
     #[cfg(test)]
     mod tests {
         #[test]
         fn contract_field_backward_compatibility() {
-            use super::{ClassHash, Contract, ContractAddress};
+            use super::{ClassHash, ContractAddress, DeployedContract};
             use stark_hash::StarkHash;
 
-            let expected = Contract {
+            let expected = DeployedContract {
                 address: ContractAddress(StarkHash::from_hex_str("0x01").unwrap()),
-                contract_hash: ClassHash(StarkHash::from_hex_str("0x02").unwrap()),
+                class_hash: ClassHash(StarkHash::from_hex_str("0x02").unwrap()),
             };
 
             // cario <0.9.0
             assert_eq!(
-                serde_json::from_str::<Contract>(r#"{"address":"0x01","contract_hash":"0x02"}"#)
-                    .unwrap(),
+                serde_json::from_str::<DeployedContract>(
+                    r#"{"address":"0x01","contract_hash":"0x02"}"#
+                )
+                .unwrap(),
                 expected
             );
             // cario >=0.9.0
             assert_eq!(
-                serde_json::from_str::<Contract>(r#"{"address":"0x01","class_hash":"0x02"}"#)
-                    .unwrap(),
+                serde_json::from_str::<DeployedContract>(
+                    r#"{"address":"0x01","class_hash":"0x02"}"#
+                )
+                .unwrap(),
                 expected
             );
         }

@@ -98,7 +98,7 @@ impl From<&crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
             .iter()
             .map(|contract| DeployedContract {
                 address: contract.address,
-                hash: contract.contract_hash,
+                hash: contract.class_hash,
                 // TODO This is missing from sequencer API
                 call_data: vec![],
             })

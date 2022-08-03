@@ -4,17 +4,17 @@ use std::{collections::HashSet, sync::Arc};
 use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::core::GlobalRoot;
 use crate::sequencer;
 use crate::sequencer::error::SequencerError;
-use crate::sequencer::reply::state_update::{Contract, StateDiff};
+use crate::sequencer::reply::state_update::{DeployedContract, StateDiff};
 use crate::sequencer::reply::Block;
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
-use crate::{core::GlobalRoot, ethereum::state_update::StateUpdate};
 use crate::{
     core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber},
-    sequencer::reply::PendingBlock,
+    sequencer::reply::{PendingBlock, StateUpdate},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -148,9 +148,6 @@ pub async fn sync(
             .with_context(|| format!("Deploying new contracts for block {:?}", next))?;
         let t_deploy = t_deploy.elapsed();
 
-        // Map from sequencer type to the actual type... we should declutter these types.
-        let update = StateUpdate::from(&state_update.state_diff);
-
         head = Some((next, block_hash, state_update.new_root));
 
         let timings = Timings {
@@ -161,7 +158,7 @@ pub async fn sync(
         };
 
         tx_event
-            .send(Event::Update(block, update, timings))
+            .send(Event::Update(block, state_update, timings))
             .await
             .context("Event channel closed")?;
     }
@@ -369,7 +366,7 @@ async fn deploy_contracts(
     let unique_contracts = state_diff
         .deployed_contracts
         .iter()
-        .map(|contract| contract.contract_hash)
+        .map(|contract| contract.class_hash)
         .collect::<HashSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -407,7 +404,7 @@ async fn deploy_contracts(
         let contract = state_diff
             .deployed_contracts
             .iter()
-            .find(|contract| contract.contract_hash == contract_hash)
+            .find(|contract| contract.class_hash == contract_hash)
             .unwrap();
 
         let contract = download_and_compress_contract(contract, sequencer)
@@ -477,7 +474,7 @@ async fn download_and_compress_class(
 }
 
 async fn download_and_compress_contract(
-    contract: &Contract,
+    contract: &DeployedContract,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<CompressedContract> {
     let contract_definition = sequencer
@@ -497,7 +494,7 @@ async fn download_and_compress_contract(
 
     // Sanity check.
     anyhow::ensure!(
-        contract.contract_hash == hash,
+        contract.class_hash == hash,
         "Class hash mismatch for contract {:?}",
         contract.address
     );
@@ -535,12 +532,10 @@ mod tests {
                 StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
                 StorageValue,
             },
-            ethereum::state_update,
             sequencer::{
                 error::{SequencerError, StarknetError, StarknetErrorCode},
                 reply, MockClientApi,
             },
-            state,
         };
         use assert_matches::assert_matches;
         use stark_hash::StarkHash;
@@ -677,9 +672,9 @@ mod tests {
                 new_root: *GLOBAL_ROOT0,
                 old_root: GlobalRoot(StarkHash::ZERO),
                 state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![reply::state_update::Contract {
+                    deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT0_ADDR,
-                        contract_hash: *CONTRACT0_HASH,
+                        class_hash: *CONTRACT0_HASH,
                     }],
                     storage_diffs: HashMap::from([(
                      *CONTRACT0_ADDR,
@@ -696,9 +691,9 @@ mod tests {
                 new_root: *GLOBAL_ROOT0_V2,
                 old_root: GlobalRoot(StarkHash::ZERO),
                 state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![reply::state_update::Contract {
+                    deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT0_ADDR_V2,
-                        contract_hash: *CONTRACT0_HASH_V2,
+                        class_hash: *CONTRACT0_HASH_V2,
                     }],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
@@ -709,9 +704,9 @@ mod tests {
                 new_root: *GLOBAL_ROOT1,
                 old_root: *GLOBAL_ROOT0,
                 state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![reply::state_update::Contract {
+                    deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT1_ADDR,
-                        contract_hash: *CONTRACT1_HASH,
+                        class_hash: *CONTRACT1_HASH,
                     }],
                     storage_diffs: HashMap::from([
                         (
@@ -771,52 +766,6 @@ mod tests {
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
                 },
-            };
-
-            static ref EXPECTED_STATE_UPDATE0: state_update::StateUpdate = state_update::StateUpdate {
-                contract_updates: vec![state_update::ContractUpdate {
-                    address: *CONTRACT0_ADDR,
-                    storage_updates: vec![
-                        state_update::StorageUpdate {
-                            address: *STORAGE_KEY0,
-                            value: *STORAGE_VAL0,
-                        }
-                    ]
-                }],
-                deployed_contracts: vec![
-                    state::sync::DeployedContract {
-                        address: *CONTRACT0_ADDR,
-                        hash: *CONTRACT0_HASH,
-                        call_data: vec![],
-                }],
-            };
-            static ref EXPECTED_STATE_UPDATE1: state_update::StateUpdate = state_update::StateUpdate {
-                contract_updates: vec![
-                    state_update::ContractUpdate {
-                        address: *CONTRACT0_ADDR,
-                        storage_updates: vec![
-                            state_update::StorageUpdate {
-                                address: *STORAGE_KEY0,
-                                value: *STORAGE_VAL0_V2,
-                            }
-                        ]
-                    },
-                    state_update::ContractUpdate {
-                        address: *CONTRACT1_ADDR,
-                        storage_updates: vec![
-                            state_update::StorageUpdate {
-                                address: *STORAGE_KEY1,
-                                value: *STORAGE_VAL1,
-                            }
-                        ]
-                    }
-                ],
-                deployed_contracts: vec![
-                    state::sync::DeployedContract {
-                        address: *CONTRACT1_ADDR,
-                        hash: *CONTRACT1_HASH,
-                        call_data: vec![],
-                }],
             };
         }
 
@@ -954,9 +903,9 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,state_update,_) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE0);
+                    assert_eq!(state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -970,10 +919,9 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,mut state_update,_) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    state_update.contract_updates.sort();
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE1);
+                    assert_eq!(state_update, *STATE_UPDATE1);
                 });
             }
 
@@ -1040,16 +988,9 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block,mut state_update,_) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update.deployed_contracts, vec![
-                        state::sync::DeployedContract {
-                            address: *CONTRACT1_ADDR,
-                            hash: *CONTRACT1_HASH,
-                            call_data: vec![],
-                    }]);
-                    state_update.contract_updates.sort();
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE1);
+                    assert_eq!(state_update, *STATE_UPDATE1);
                 });
             }
         }
@@ -1166,7 +1107,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE0);
+                    assert_eq!(state_update, *STATE_UPDATE0);
                 });
                 // Reorg started from the genesis block
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
@@ -1186,13 +1127,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
-                    assert_eq!(state_update.deployed_contracts, vec![
-                        state::sync::DeployedContract {
-                            address: *CONTRACT0_ADDR_V2,
-                            hash: *CONTRACT0_HASH_V2,
-                            call_data: vec![],
-                    }]);
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE0_V2);
                 });
             }
 
@@ -1377,7 +1312,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE0);
+                    assert_eq!(state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -1391,21 +1326,13 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, mut state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update.deployed_contracts, vec![
-                        state::sync::DeployedContract {
-                            address: *CONTRACT1_ADDR,
-                            hash: *CONTRACT1_HASH,
-                            call_data: vec![],
-                    }]);
-                    state_update.contract_updates.sort();
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE1);
+                    assert_eq!(state_update, *STATE_UPDATE1);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
@@ -1433,18 +1360,12 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
-                    assert_eq!(state_update.deployed_contracts, vec![
-                        state::sync::DeployedContract {
-                            address: *CONTRACT0_ADDR_V2,
-                            hash: *CONTRACT0_HASH_V2,
-                            call_data: vec![],
-                    }]);
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE0_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block1_v2);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert!(state_update.state_diff.deployed_contracts.is_empty());
+                    assert!(state_update.state_diff.storage_diffs.is_empty());
                 });
             }
 
@@ -1671,7 +1592,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE0);
+                    assert_eq!(state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -1685,26 +1606,17 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, mut state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update.deployed_contracts, vec![
-                        state::sync::DeployedContract {
-                            address: *CONTRACT1_ADDR,
-                            hash: *CONTRACT1_HASH,
-                            call_data: vec![],
-                    }]);
-                    state_update.contract_updates.sort();
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE1);
+                    assert_eq!(state_update, *STATE_UPDATE1);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block3);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE3);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK2_NUMBER);
@@ -1724,13 +1636,11 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block1_v2);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE1_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block2_v2);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE2_V2);
                 });
             }
 
@@ -1889,7 +1799,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE0);
+                    assert_eq!(state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -1903,21 +1813,13 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, mut state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update.deployed_contracts, vec![
-                        state::sync::DeployedContract {
-                            address: *CONTRACT1_ADDR,
-                            hash: *CONTRACT1_HASH,
-                            call_data: vec![],
-                    }]);
-                    state_update.contract_updates.sort();
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE1);
+                    assert_eq!(state_update, *STATE_UPDATE1);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
@@ -1929,8 +1831,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block2_v2);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE2_V2);
                 });
             }
 
@@ -2094,7 +1995,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE0);
+                    assert_eq!(state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -2108,16 +2009,9 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, mut state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update.deployed_contracts, vec![
-                        state::sync::DeployedContract {
-                            address: *CONTRACT1_ADDR,
-                            hash: *CONTRACT1_HASH,
-                            call_data: vec![],
-                    }]);
-                    state_update.contract_updates.sort();
-                    assert_eq!(state_update, *EXPECTED_STATE_UPDATE1);
+                    assert_eq!(state_update, *STATE_UPDATE1);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK0_NUMBER);
@@ -2129,13 +2023,11 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block1_v2);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE1_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block2);
-                    assert!(state_update.deployed_contracts.is_empty());
-                    assert!(state_update.contract_updates.is_empty());
+                    assert_eq!(state_update, *STATE_UPDATE2);
                 });
             }
 

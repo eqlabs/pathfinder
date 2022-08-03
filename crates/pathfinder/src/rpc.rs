@@ -3,6 +3,8 @@ pub mod api;
 pub mod serde;
 #[cfg(test)]
 pub mod test_client;
+#[cfg(test)]
+pub mod test_setup;
 pub mod types;
 
 use crate::{
@@ -117,21 +119,14 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             .get_block(params.block_id, BlockResponseScope::FullTransactions)
             .await
     })?;
-    // module.register_async_method(
-    //     "starknet_getStateUpdateByHash",
-    //     |params, context| async move {
-    //         let hash = if params.is_object() {
-    //             #[derive(Debug, Deserialize)]
-    //             pub struct NamedArgs {
-    //                 pub block_hash: BlockHashOrTag,
-    //             }
-    //             params.parse::<NamedArgs>()?.block_hash
-    //         } else {
-    //             params.one::<BlockHashOrTag>()?
-    //         };
-    //         context.get_state_update_by_hash(hash).await
-    //     },
-    // )?;
+    module.register_async_method("starknet_getStateUpdate", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        pub struct NamedArgs {
+            pub block_id: BlockId,
+        }
+        let params = params.parse::<NamedArgs>()?;
+        context.get_state_update(params.block_id).await
+    })?;
     module.register_async_method("starknet_getStorageAt", |params, context| async move {
         #[derive(Debug, Deserialize)]
         pub struct NamedArgs {
@@ -354,9 +349,13 @@ mod tests {
         },
         rpc::{run_server, types::reply::BlockHashAndNumber},
         sequencer::{
-            reply::transaction::{
-                execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                EntryPointType, Event, ExecutionResources, InvokeTransaction, Receipt, Transaction,
+            reply::{
+                state_update::StorageDiff,
+                transaction::{
+                    execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+                    EntryPointType, Event, ExecutionResources, InvokeTransaction, Receipt,
+                    Transaction,
+                },
             },
             test_utils::*,
             Client,
@@ -391,7 +390,6 @@ mod tests {
     fn setup_storage() -> Storage {
         use crate::{
             core::StorageValue,
-            ethereum::state_update::{ContractUpdate, StorageUpdate},
             state::{update_contract_state, CompressedContract},
         };
         use web3::types::H128;
@@ -406,25 +404,21 @@ mod tests {
         let class0_hash = ClassHash(StarkHash::from_be_slice(b"class 0 hash").unwrap());
         let class1_hash = ClassHash(StarkHash::from_be_slice(b"class 1 hash").unwrap());
 
-        let contract0_update = ContractUpdate {
-            address: contract0_addr,
-            storage_updates: vec![],
-        };
+        let contract0_update = vec![];
 
         let storage_addr = StorageAddress(StarkHash::from_be_slice(b"storage addr 0").unwrap());
-        let contract1_update0 = ContractUpdate {
-            address: contract1_addr,
-            storage_updates: vec![StorageUpdate {
-                address: storage_addr,
-                value: StorageValue(StarkHash::from_be_slice(b"storage value 0").unwrap()),
-            }],
-        };
-        let mut contract1_update1 = contract1_update0.clone();
-        contract1_update1.storage_updates.get_mut(0).unwrap().value =
-            StorageValue(StarkHash::from_be_slice(b"storage value 1").unwrap());
-        let mut contract1_update2 = contract1_update0.clone();
-        contract1_update2.storage_updates.get_mut(0).unwrap().value =
-            StorageValue(StarkHash::from_be_slice(b"storage value 2").unwrap());
+        let contract1_update0 = vec![StorageDiff {
+            key: storage_addr,
+            value: StorageValue(StarkHash::from_be_slice(b"storage value 0").unwrap()),
+        }];
+        let contract1_update1 = vec![StorageDiff {
+            key: storage_addr,
+            value: StorageValue(StarkHash::from_be_slice(b"storage value 1").unwrap()),
+        }];
+        let contract1_update2 = vec![StorageDiff {
+            key: storage_addr,
+            value: StorageValue(StarkHash::from_be_slice(b"storage value 2").unwrap()),
+        }];
 
         // We need to set the magic bytes for zstd compression to simulate a compressed
         // contract definition, as this is asserted for internally
@@ -446,7 +440,8 @@ mod tests {
 
         let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
         let contract_state_hash =
-            update_contract_state(&contract0_update, &global_tree, &db_txn).unwrap();
+            update_contract_state(contract0_addr, &contract0_update, &global_tree, &db_txn)
+                .unwrap();
         global_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
@@ -454,12 +449,14 @@ mod tests {
 
         let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
         let contract_state_hash =
-            update_contract_state(&contract1_update0, &global_tree, &db_txn).unwrap();
+            update_contract_state(contract1_addr, &contract1_update0, &global_tree, &db_txn)
+                .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let contract_state_hash =
-            update_contract_state(&contract1_update1, &global_tree, &db_txn).unwrap();
+            update_contract_state(contract1_addr, &contract1_update1, &global_tree, &db_txn)
+                .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
@@ -467,7 +464,8 @@ mod tests {
 
         let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
         let contract_state_hash =
-            update_contract_state(&contract1_update2, &global_tree, &db_txn).unwrap();
+            update_contract_state(contract1_addr, &contract1_update2, &global_tree, &db_txn)
+                .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
@@ -705,19 +703,19 @@ mod tests {
 
         use crate::sequencer::reply as seq_reply;
         let deployed_contracts = vec![
-            seq_reply::state_update::Contract {
+            seq_reply::state_update::DeployedContract {
                 address: ContractAddress(
                     StarkHash::from_be_slice(b"pending contract 0 address").unwrap(),
                 ),
-                contract_hash: ClassHash(
+                class_hash: ClassHash(
                     StarkHash::from_be_slice(b"pending contract 0 hash").unwrap(),
                 ),
             },
-            seq_reply::state_update::Contract {
+            seq_reply::state_update::DeployedContract {
                 address: ContractAddress(
                     StarkHash::from_be_slice(b"pending contract 1 address").unwrap(),
                 ),
-                contract_hash: ClassHash(
+                class_hash: ClassHash(
                     StarkHash::from_be_slice(b"pending contract 1 hash").unwrap(),
                 ),
             },
@@ -767,7 +765,7 @@ mod tests {
                     abi: zstd_magic.clone(),
                     bytecode: zstd_magic.clone(),
                     definition: compressed_definition.to_vec(),
-                    hash: deployed.contract_hash,
+                    hash: deployed.class_hash,
                 };
                 ContractCodeTable::insert_compressed(&tx, &contract).unwrap();
             }
@@ -781,18 +779,20 @@ mod tests {
         // into storage, but do require database IO to determine the root.
         //
         // Load from latest block in storage's root.
-        let state_update = crate::ethereum::state_update::StateUpdate::from(&state_diff);
+        let state_diff2 = state_diff.clone();
         let pending_root = tokio::task::spawn_blocking(move || {
             let mut db = storage.connection().unwrap();
             let tmp_tx = db.transaction().unwrap();
             let mut global_tree = GlobalStateTree::load(&tmp_tx, latest.root).unwrap();
-            for deployed in state_update.deployed_contracts {
-                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.hash).unwrap();
+            for deployed in state_diff2.deployed_contracts {
+                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.class_hash).unwrap();
             }
-            for update in state_update.contract_updates {
+            for (contract_address, storage_diffs) in state_diff2.storage_diffs {
                 use crate::state::update_contract_state;
-                let state_hash = update_contract_state(&update, &global_tree, &tmp_tx).unwrap();
-                global_tree.set(update.address, state_hash).unwrap();
+                let state_hash =
+                    update_contract_state(contract_address, &storage_diffs, &global_tree, &tmp_tx)
+                        .unwrap();
+                global_tree.set(contract_address, state_hash).unwrap();
             }
             let pending_root = global_tree.apply().unwrap();
             tmp_tx.rollback().unwrap();
@@ -948,53 +948,45 @@ mod tests {
         }
     }
 
-    mod get_state_update_by_hash {
-        use super::*;
-        use crate::rpc::types::{reply::StateUpdate, BlockHashOrTag, Tag};
+    mod get_state_update {
+        use crate::rpc::{test_setup::Test, types::reply::ErrorCode};
+        use crate::storage::fixtures::init::with_n_state_updates;
+        use serde_json::json;
 
         #[tokio::test]
-        #[should_panic]
-        async fn genesis() {
-            let storage = Storage::in_memory().unwrap();
-            let sequencer = Client::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(*GENESIS_BLOCK_HASH);
-            client(addr)
-                .request::<StateUpdate>("starknet_getStateUpdateByHash", params)
-                .await
-                .unwrap();
+        async fn happy_path_and_starkware_errors() {
+            Test::new("starknet_getStateUpdate", line!())
+                .with_storage(|tx| with_n_state_updates(tx, 3))
+                .with_params_json(json!([
+                    {"block_hash":"0x0"},
+                    {"block_hash":"0x1"},
+                    {"block_number":0},
+                    {"block_number":1},
+                    "latest",
+                    {"block_hash":"0xdead"},
+                    {"block_number":9999}
+                ]))
+                .map_err_to_starkware_error_code()
+                .map_expected(|in_storage| {
+                    let in_storage = in_storage.collect::<Vec<_>>();
+                    vec![
+                        Ok(in_storage[0].clone()),
+                        Ok(in_storage[1].clone()),
+                        Ok(in_storage[0].clone()),
+                        Ok(in_storage[1].clone()),
+                        Ok(in_storage[2].clone()),
+                        Err(ErrorCode::InvalidBlockId),
+                        Err(ErrorCode::InvalidBlockId),
+                    ]
+                })
+                .run()
+                .await;
         }
 
         #[tokio::test]
-        #[should_panic]
-        async fn latest() {
-            let storage = Storage::in_memory().unwrap();
-            let sequencer = Client::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Latest));
-            client(addr)
-                .request::<StateUpdate>("starknet_getStateUpdateByHash", params)
-                .await
-                .unwrap();
-        }
-
-        #[tokio::test]
-        #[should_panic]
+        #[ignore = "implement after local pending is merged into master"]
         async fn pending() {
-            let storage = Storage::in_memory().unwrap();
-            let sequencer = Client::new(Chain::Goerli).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockHashOrTag::Tag(Tag::Pending));
-            client(addr)
-                .request::<StateUpdate>("starknet_getStateUpdateByHash", params)
-                .await
-                .unwrap();
+            todo!()
         }
     }
 
@@ -1703,7 +1695,7 @@ mod tests {
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap();
-                assert_eq!(class_hash, contract.contract_hash);
+                assert_eq!(class_hash, contract.class_hash);
             }
         }
 
@@ -1871,10 +1863,8 @@ mod tests {
 
     mod contract_setup {
         use crate::{
-            core::StorageValue,
-            ethereum::state_update::{ContractUpdate, StorageUpdate},
-            state::update_contract_state,
-            storage::StarknetBlocksBlockId,
+            core::StorageValue, sequencer::reply::state_update::StorageDiff,
+            state::update_contract_state, storage::StarknetBlocksBlockId,
         };
 
         use super::*;
@@ -1930,13 +1920,10 @@ mod tests {
 
             // insert a new block whose state includes the contract
             let storage_addr = StorageAddress(StarkHash::from_be_slice(b"storage addr").unwrap());
-            let contract_update = ContractUpdate {
-                address: contract_address,
-                storage_updates: vec![StorageUpdate {
-                    address: storage_addr,
-                    value: StorageValue(StarkHash::from_be_slice(b"storage_value").unwrap()),
-                }],
-            };
+            let storage_diff = vec![StorageDiff {
+                key: storage_addr,
+                value: StorageValue(StarkHash::from_be_slice(b"storage_value").unwrap()),
+            }];
             let block2 = StarknetBlocksTable::get(
                 transaction,
                 StarknetBlocksBlockId::Number(StarknetBlockNumber(2)),
@@ -1945,7 +1932,8 @@ mod tests {
             .unwrap();
             let mut global_tree = GlobalStateTree::load(transaction, block2.root).unwrap();
             let contract_state_hash =
-                update_contract_state(&contract_update, &global_tree, transaction).unwrap();
+                update_contract_state(contract_address, &storage_diff, &global_tree, transaction)
+                    .unwrap();
             global_tree
                 .set(contract_address, contract_state_hash)
                 .unwrap();

@@ -7,7 +7,7 @@ from starkware.starkware_utils.error_handling import WebFriendlyException
 from starkware.storage.storage import Storage
 
 # used from tests, and the query which asserts that the schema is of expected version.
-EXPECTED_SCHEMA_REVISION = 15
+EXPECTED_SCHEMA_REVISION = 16
 EXPECTED_CAIRO_VERSION = "0.9.1"
 SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
 

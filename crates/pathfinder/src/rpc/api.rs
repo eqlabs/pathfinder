@@ -11,7 +11,7 @@ use crate::{
     rpc::types::{
         reply::{
             Block, BlockHashAndNumber, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate,
-            GetEventsResult, Syncing, Transaction, TransactionReceipt,
+            GetEventsResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
         },
         request::{Call, ContractCall, EventFilter},
     },
@@ -19,7 +19,7 @@ use crate::{
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
     storage::{
         ContractsTable, EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
-        StarknetEventsTable, StarknetTransactionsTable, Storage,
+        StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
     },
 };
 use anyhow::Context;
@@ -252,20 +252,61 @@ impl RpcApi {
         Ok(block)
     }
 
-    // /// Get the information about the result of executing the requested block.
-    // pub async fn get_state_update_by_hash(
-    //     &self,
-    //     block_hash: BlockHashOrTag,
-    // ) -> RpcResult<StateUpdate> {
-    //     // TODO get this from storage or directly from L1
-    //     match block_hash {
-    //         BlockHashOrTag::Tag(Tag::Latest) => todo!("Implement L1 state diff retrieval."),
-    //         BlockHashOrTag::Tag(Tag::Pending) => {
-    //             todo!("Implement when sequencer support for pending tag available.")
-    //         }
-    //         BlockHashOrTag::Hash(_) => todo!("Implement L1 state diff retrieval."),
-    //     }
-    // }
+    /// Get the information about the result of executing the requested block.
+    ///
+    /// FIXME: add support for pending
+    pub async fn get_state_update(&self, block_id: BlockId) -> RpcResult<StateUpdate> {
+        let block_id = match block_id {
+            BlockId::Hash(hash) => hash.into(),
+            BlockId::Number(number) => number.into(),
+            BlockId::Latest => StarknetBlocksBlockId::Latest,
+            BlockId::Pending => {
+                return Err(ErrorCode::InvalidBlockId.into());
+            }
+        };
+
+        let storage = self.storage.clone();
+        let span = tracing::Span::current();
+
+        let jh = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
+            let mut db = storage
+                .connection()
+                .context("Opening database connection")
+                .map_err(internal_server_error)?;
+
+            let tx = db
+                .transaction()
+                .context("Creating database transaction")
+                .map_err(internal_server_error)?;
+
+            let block_hash = match block_id {
+                StarknetBlocksBlockId::Hash(h) => h,
+                StarknetBlocksBlockId::Number(_) | StarknetBlocksBlockId::Latest => {
+                    StarknetBlocksTable::get_hash(
+                        &tx,
+                        block_id.try_into().expect("block_id is not a hash"),
+                    )
+                    .context("Read block from database")
+                    .map_err(internal_server_error)?
+                    .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?
+                }
+            };
+
+            let state_update = StarknetStateUpdatesTable::get(&tx, block_hash)
+                .context("Read state update from database")
+                .map_err(internal_server_error)?
+                .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
+
+            Ok(state_update)
+        });
+
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)
+            // flatten is unstable
+            .and_then(|x| x)
+    }
 
     /// Get the value of the storage at the given address and key.
     ///
@@ -625,7 +666,7 @@ impl RpcApi {
                             .deployed_contracts
                             .iter()
                             .find_map(|deploy| {
-                                (deploy.address == contract_address).then_some(deploy.contract_hash)
+                                (deploy.address == contract_address).then_some(deploy.class_hash)
                             });
                     match class_hash {
                         Some(class_hash) => return Ok(class_hash),
@@ -716,7 +757,7 @@ impl RpcApi {
                             .deployed_contracts
                             .iter()
                             .find_map(|deploy| {
-                                (deploy.address == contract_address).then_some(deploy.contract_hash)
+                                (deploy.address == contract_address).then_some(deploy.class_hash)
                             });
                     match class_hash {
                         Some(class_hash) => {
