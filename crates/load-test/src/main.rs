@@ -17,7 +17,7 @@ use stark_hash::StarkHash;
 
 use pathfinder_lib::{
     core::{
-        ContractAddress, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
+        BlockId, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
         StarknetTransactionIndex, StorageAddress, StorageValue,
     },
     rpc::types::{
@@ -26,7 +26,6 @@ use pathfinder_lib::{
             TransactionReceipt as StarknetTransactionReceipt, Transactions as StarknetTransactions,
         },
         request::EventFilter,
-        BlockHashOrTag, BlockNumberOrTag,
     },
 };
 
@@ -92,23 +91,19 @@ async fn task_block_by_hash(user: &mut GooseUser) -> TransactionResult {
 async fn task_block_transaction_count_by_hash(user: &mut GooseUser) -> TransactionResult {
     get_block_transaction_count_by_hash(
         user,
-        BlockHashOrTag::Hash(StarknetBlockHash(
+        StarknetBlockHash(
             StarkHash::from_hex_str(
                 "0x58d8604f22510af5b120d1204ebf25292a79bfb09c4882c2e456abc2763d4a",
             )
             .unwrap(),
-        )),
+        ),
     )
     .await?;
     Ok(())
 }
 
 async fn task_block_transaction_count_by_number(user: &mut GooseUser) -> TransactionResult {
-    get_block_transaction_count_by_number(
-        user,
-        BlockNumberOrTag::Number(StarknetBlockNumber(1000)),
-    )
-    .await?;
+    get_block_transaction_count_by_number(user, StarknetBlockNumber(1000)).await?;
     Ok(())
 }
 
@@ -195,7 +190,7 @@ async fn task_call(user: &mut GooseUser) -> TransactionResult {
         // "set_value" entry point
         "0x3d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3",
         // hash of mainnet block 0
-        BlockHashOrTag::Hash(StarknetBlockHash(
+        BlockId::Hash(StarknetBlockHash(
             StarkHash::from_hex_str(
                 "0x47c3637b57c2b079b93c61539950c17e868a28f46cdef28f88521067f21e943",
             )
@@ -259,7 +254,7 @@ async fn task_get_storage_at(user: &mut GooseUser) -> TransactionResult {
             )
             .unwrap(),
         ),
-        BlockHashOrTag::Hash(StarknetBlockHash(
+        BlockId::Hash(StarknetBlockHash(
             StarkHash::from_hex_str(
                 "0x58cfbc4ebe276882a28badaa9fe0fb545cba57314817e5f229c2c9cf1f7cc87",
             )
@@ -352,24 +347,24 @@ async fn get_transaction_receipt_by_hash(
 
 async fn get_block_transaction_count_by_hash(
     user: &mut GooseUser,
-    hash: BlockHashOrTag,
+    hash: StarknetBlockHash,
 ) -> MethodResult<u64> {
     post_jsonrpc_request(
         user,
-        "starknet_getBlockTransactionCountByHash",
-        json!({ "block_hash": hash }),
+        "starknet_getBlockTransactionCount",
+        json!({ "block_id": { "block_hash": hash } }),
     )
     .await
 }
 
 async fn get_block_transaction_count_by_number(
     user: &mut GooseUser,
-    number: BlockNumberOrTag,
+    number: StarknetBlockNumber,
 ) -> MethodResult<u64> {
     post_jsonrpc_request(
         user,
-        "starknet_getBlockTransactionCountByNumber",
-        json!({ "block_number": number }),
+        "starknet_getBlockTransactionCount",
+        json!({ "block_id": { "block_number": number } }),
     )
     .await
 }
@@ -394,12 +389,12 @@ async fn get_storage_at(
     user: &mut GooseUser,
     contract_address: ContractAddress,
     key: StorageAddress,
-    block_hash: BlockHashOrTag,
+    block_id: BlockId,
 ) -> MethodResult<StorageValue> {
     post_jsonrpc_request(
         user,
         "starknet_getStorageAt",
-        json!({ "contract_address": contract_address, "key": key, "block_hash": block_hash }),
+        json!({ "contract_address": contract_address, "key": key, "block_id": block_id }),
     )
     .await
 }
@@ -409,7 +404,7 @@ async fn call(
     contract_address: ContractAddress,
     call_data: &[&str],
     entry_point_selector: &str,
-    at_block: BlockHashOrTag,
+    at_block: BlockId,
 ) -> MethodResult<Vec<String>> {
     post_jsonrpc_request(
         user,
@@ -420,7 +415,7 @@ async fn call(
                 "calldata": call_data,
                 "entry_point_selector": entry_point_selector,
             },
-            "block_hash": at_block,
+            "block_id": at_block,
         }),
     )
     .await
