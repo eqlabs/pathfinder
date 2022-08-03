@@ -1015,11 +1015,6 @@ impl RpcApi {
         }
     }
 
-    // /// Returns the current starknet protocol version identifier, as supported by this node.
-    // pub async fn protocol_version(&self) -> RpcResult<StarknetProtocolVersion> {
-    //     todo!("Figure out where to take it from.")
-    // }
-
     /// Returns an object about the sync status, or false if the node is not synching.
     pub async fn syncing(&self) -> RpcResult<Syncing> {
         // Scoped so I don't have to think too hard about mutex guard drop semantics.
