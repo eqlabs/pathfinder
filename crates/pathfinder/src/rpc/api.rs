@@ -978,7 +978,6 @@ impl RpcApi {
     pub async fn pending_transactions(&self) -> RpcResult<Vec<Transaction>> {
         match self.pending_data()?.block().await {
             Some(block) => {
-                println!("here");
                 let tx = block.transactions.iter().map(Transaction::from).collect();
                 Ok(tx)
             }

@@ -642,18 +642,16 @@ impl StarknetTransactionsTable {
     pub fn get_transactions_for_latest_block(
         sqlite_tx: &Transaction<'_>,
     ) -> anyhow::Result<Vec<transaction::Transaction>> {
-        let block_hash = match StarknetBlocksTable::get(sqlite_tx, StarknetBlocksBlockId::Latest)? {
-            Some(block) => block.hash,
-            None => return Ok(Vec::new()),
-        };
-
         let mut stmt = sqlite_tx
-            .prepare("SELECT tx FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC")
+            .prepare(
+                r"SELECT tx FROM starknet_transactions
+                  WHERE starknet_transactions.block_hash = 
+                    (SELECT hash FROM starknet_blocks b WHERE b.number = (SELECT MAX(number) FROM starknet_blocks))
+                  ORDER BY starknet_transactions.idx",
+            )
             .context("Preparing statement")?;
 
-        let mut rows = stmt
-            .query(params![block_hash.0.as_be_bytes()])
-            .context("Executing query")?;
+        let mut rows = stmt.query([]).context("Executing query")?;
 
         let mut data = Vec::new();
         while let Some(row) = rows.next()? {
