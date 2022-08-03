@@ -1833,6 +1833,7 @@ mod tests {
             ContractDefinition {
                 program: program.to_owned(),
                 entry_points_by_type,
+                abi: Some(json["contract_definition"]["abi"].clone()),
             }
         }
 
@@ -1882,6 +1883,7 @@ mod tests {
                         ContractDefinition {
                             program: "".to_owned(),
                             entry_points_by_type: HashMap::new(),
+                            abi: None,
                         },
                         Some(EXPECTED_TOKEN.to_owned()),
                     )
@@ -1903,6 +1905,7 @@ mod tests {
                         ContractDefinition {
                             program: "".to_owned(),
                             entry_points_by_type: HashMap::new(),
+                            abi: None,
                         },
                         None,
                     )
