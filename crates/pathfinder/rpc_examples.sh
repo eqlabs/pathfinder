@@ -236,5 +236,4 @@ rpc_call '{
 # TODO not implemented yet
 # rpc_call '{"jsonrpc":"2.0","id":"37","method":"starknet_chainId"}'
 # rpc_call '{"jsonrpc":"2.0","id":"38","method":"starknet_pendingTransactions"}'
-# rpc_call '{"jsonrpc":"2.0","id":"39","method":"starknet_protocolVersion"}'
 # rpc_call '{"jsonrpc":"2.0","id":"40","method":"starknet_syncing"}'

@@ -250,9 +250,6 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     module.register_async_method("starknet_pendingTransactions", |_, context| async move {
         context.pending_transactions().await
     })?;
-    // module.register_async_method("starknet_protocolVersion", |_, context| async move {
-    //     context.protocol_version().await
-    // })?;
     module.register_async_method("starknet_syncing", |_, context| async move {
         context.syncing().await
     })?;
@@ -345,7 +342,7 @@ mod tests {
         core::{
             Chain, ClassHash, ContractAddress, EntryPoint, EventData, EventKey, GasPrice,
             GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetProtocolVersion, StorageAddress,
+            StarknetBlockTimestamp, StorageAddress,
         },
         rpc::{run_server, types::reply::BlockHashAndNumber},
         sequencer::{
@@ -2435,20 +2432,6 @@ mod tests {
                 format!("0x{}", hex::encode("SN_MAIN")),
             ]
         );
-    }
-
-    #[tokio::test]
-    #[should_panic]
-    async fn protocol_version() {
-        let storage = Storage::in_memory().unwrap();
-        let sequencer = Client::new(Chain::Goerli).unwrap();
-        let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
-        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-        client(addr)
-            .request::<StarknetProtocolVersion>("starknet_protocolVersion", rpc_params!())
-            .await
-            .unwrap();
     }
 
     mod syncing {
