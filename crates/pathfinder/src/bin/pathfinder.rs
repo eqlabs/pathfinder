@@ -40,12 +40,6 @@ async fn main() -> anyhow::Result<()> {
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     )?;
 
-    // Pending is only for use on mainnet as it is meant as a work-around for slow block times.
-    anyhow::ensure!(
-        !(config.poll_pending && ethereum_chain != core::Chain::Mainnet),
-        "Poll pending option may only be enabled on Mainnet"
-    );
-
     let database_path = config.data_directory.join(match ethereum_chain {
         core::Chain::Mainnet => "mainnet.sqlite",
         core::Chain::Goerli => "goerli.sqlite",
