@@ -190,6 +190,8 @@ sequencer-url = "https://..."
 python-subprocesses = 2
 # Whether to enable SQLite write-ahead logging. Defaults to true.
 sqlite-wal = true
+# Whether to enable pending support.
+poll-pending = true
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
@@ -197,6 +199,12 @@ url      = "https://goerli.infura.io/v3/..." #
 # The optional password for your Ethereum endpoint.
 password = "..."
 ```
+
+### Pending Support
+
+Block times on `mainnet` can be prohibitively long for certain applications. As a work-around, StarkNet added the concept of a `pending` block which is the block currently under construction. This is supported by pathfinder, and usage is documented in the [JSON-RPC API](#json-rpc-api) with various methods accepting `"block_id"="pending"`.
+
+Note that `pending` support is disabled by default and must be enabled by setting `poll-pending=true` in the configuration options.
 
 ### Logging
 
