@@ -22,7 +22,7 @@ This includes any documentation issues, feature requests and bugs that you may e
 
 For help or to submit bug reports or feature requests, please open an issue or alternatively visit the StarkNet [discord channel](https://discord.com/invite/uJ9HZTUk2Y).
 
-## Installation
+## Installation (from source)
 
 If you'd like to just run the node, please consider skipping ahead to [docker instructions](#running-with-docker).
 The following are instructions on how to build from source.
@@ -125,6 +125,49 @@ You should now be able to compile `pathfinder` by running (from within the `path
 cargo build --release --bin pathfinder
 ```
 
+## Updating `pathfinder`
+
+Updating a `pathfinder` node from source is fairly straight forward and is a simpler variant of the installation and compilation described above.
+
+#### `pathfinder` repository
+
+Start by updating the `pathfinder` repository to the desired version. From within your `pathfinder` folder:
+
+```bash
+git fetch 
+git checkout <version-tag>
+```
+
+where `<version-tag>` is the desired pathfinder version. To display a list of all available versions, run
+
+```
+git tag
+```
+
+#### Python dependencies
+
+Next, update the python dependencies. First enable your python virtual environment (if you are using one). For our example installation this would be:
+
+```bash
+source ./py/.venv/bin/activate
+```
+
+and then update:
+
+```bash
+PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+```
+
+#### Build and run `pathfinder`
+
+Re-compile `pathfinder`:
+
+```bash
+cargo build --release --bin pathfinder
+```
+
+and you should now be able to run your `pathfinder` node as described in the [next section](#running-the-node).
+
 ## Running the node
 
 Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup).
@@ -190,6 +233,8 @@ sequencer-url = "https://..."
 python-subprocesses = 2
 # Whether to enable SQLite write-ahead logging. Defaults to true.
 sqlite-wal = true
+# Whether to enable pending support.
+poll-pending = true
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
@@ -197,6 +242,12 @@ url      = "https://goerli.infura.io/v3/..." #
 # The optional password for your Ethereum endpoint.
 password = "..."
 ```
+
+### Pending Support
+
+Block times on `mainnet` can be prohibitively long for certain applications. As a work-around, StarkNet added the concept of a `pending` block which is the block currently under construction. This is supported by pathfinder, and usage is documented in the [JSON-RPC API](#json-rpc-api) with various methods accepting `"block_id"="pending"`.
+
+Note that `pending` support is disabled by default and must be enabled by setting `poll-pending=true` in the configuration options.
 
 ### Logging
 
@@ -281,48 +332,22 @@ You can build the image by running:
 docker build -t pathfinder .
 ```
 
-## API
+## JSON-RPC API
 
-The full specification is available [here](https://github.com/starkware-libs/starknet-specs).
-Note that we currently only support a subset of these.
-Here is an overview of the JSON-RPC calls which we support.
+Pathfinder supports version `v0.1.0` of the StarkNet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_api_openrpc.json), with the exception of `starknet_protocolVersion`. This method will be removed from the specification in its next version as its semantics and usage was questionable. We decided to not implement it.
 
-```bash
-# Block information
-starknet_getBlockWithTxs
-starknet_getBlockWithTxHashes
-# Value of a storage at a given address and key
-starknet_getStorageAt
-# Transaction information
-starknet_getTransactionByHash
-starknet_getTransactionByBlockIdAndIndex
-starknet_getTransactionReceipt
-# Block transaction counts
-starknet_getBlockTransactionCount
-# The code of a class
-starknet_getClass
-# The class hash of a specific contract
-starknet_getClassHashAt
-# The code of a specific contract
-starknet_getClassAt
-# Call a StarkNet function without creating a transaction
-starknet_call
-# The latest StarkNet block height
-starknet_blockNumber
-# The StarkNet chain this node is on
-starknet_chainId
-# The node's sync status
-starknet_syncing
-# Returns all events matching the given filter
-starknet_getEvents
-# Submit a new invoke contract transaction
-starknet_addInvokeTransaction
-# Submit a new deploy contract transaction
-starknet_addDeployTransaction
-# Submit a new declare contract transaction
-starknet_addDeclareTransaction
-```
+In addition, pathfinder also supports submitting transactions by passing these requests on to the StarkNet gateway. See [here](#transaction-write-api) for more details.
 
+When browsing the specification project, please be aware of the following pitfalls:
+- It uses git tags for release versions. The link above should take you to the version supported by pathfinder.
+- The `master` branch is an active development branch and may contain unreleased specification changes.
+- The playground link listed there does not link to the specific version, but instead reflects the `master` branch. Here is a corrected [playground link](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://raw.githubusercontent.com/starkware-libs/starknet-specs/v0.1.0/api/starknet_api_openrpc.json&uiSchema).
+
+### Transaction write API
+
+Pathfinder also support's submitting StarkNet transaction's to the StarkNet gateway. Here are links to the [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_write_api.json) and the [playground](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://gist.githubusercontent.com/Mirko-von-Leipzig/f4515d423775edee68ab08c3f4b6afec/raw/65ce9b3adfb97393152450b2f36d6d3572ee2354/StarkNet%2520Write%2520API%2520v0.1.0.json).
+
+Note that `mainnet` requires an additional `token` parameter to submit transactions.
 ## License
 
 Licensed under either of
