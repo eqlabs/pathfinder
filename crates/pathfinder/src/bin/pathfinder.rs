@@ -78,18 +78,6 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         false => None,
     };
 
-    let sync_handle = tokio::spawn(state::sync(
-        storage.clone(),
-        eth_transport.clone(),
-        ethereum_chain,
-        sequencer.clone(),
-        sync_state.clone(),
-        state::l1::sync,
-        state::l2::sync,
-        pending_state.clone(),
-        pending_interval,
-    ));
-
     // TODO: the error could be recovered, but currently it's required for startup. There should
     // not be other reason for the start to fail than python script not firing up.
     let (call_handle, cairo_handle) = cairo::ext_py::start(
@@ -102,6 +90,18 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     .context(
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
+
+    let sync_handle = tokio::spawn(state::sync(
+        storage.clone(),
+        eth_transport.clone(),
+        ethereum_chain,
+        sequencer.clone(),
+        sync_state.clone(),
+        state::l1::sync,
+        state::l2::sync,
+        pending_state.clone(),
+        pending_interval,
+    ));
 
     let shared = rpc::api::Cached::new(Arc::new(eth_transport));
 
