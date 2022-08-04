@@ -100,8 +100,8 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         "starknet_getBlockWithTxHashes",
         |params, context| async move {
             #[derive(Debug, Deserialize)]
-            pub struct NamedArgs {
-                pub block_id: BlockId,
+            struct NamedArgs {
+                block_id: BlockId,
             }
             let params = params.parse::<NamedArgs>()?;
             context
@@ -111,8 +111,8 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     )?;
     module.register_async_method("starknet_getBlockWithTxs", |params, context| async move {
         #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub block_id: BlockId,
+        struct NamedArgs {
+            block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
         context
@@ -121,18 +121,18 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     })?;
     module.register_async_method("starknet_getStateUpdate", |params, context| async move {
         #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub block_id: BlockId,
+        struct NamedArgs {
+            block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
         context.get_state_update(params.block_id).await
     })?;
     module.register_async_method("starknet_getStorageAt", |params, context| async move {
         #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub contract_address: ContractAddress,
-            pub key: crate::core::StorageAddress,
-            pub block_id: BlockId,
+        struct NamedArgs {
+            contract_address: ContractAddress,
+            key: crate::core::StorageAddress,
+            block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
         context
@@ -143,8 +143,8 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         "starknet_getTransactionByHash",
         |params, context| async move {
             #[derive(Debug, Deserialize)]
-            pub struct NamedArgs {
-                pub transaction_hash: StarknetTransactionHash,
+            struct NamedArgs {
+                transaction_hash: StarknetTransactionHash,
             }
             context
                 .get_transaction_by_hash(params.parse::<NamedArgs>()?.transaction_hash)
@@ -155,9 +155,9 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         "starknet_getTransactionByBlockIdAndIndex",
         |params, context| async move {
             #[derive(Debug, Deserialize)]
-            pub struct NamedArgs {
-                pub block_id: BlockId,
-                pub index: StarknetTransactionIndex,
+            struct NamedArgs {
+                block_id: BlockId,
+                index: StarknetTransactionIndex,
             }
             let params = params.parse::<NamedArgs>()?;
             context
@@ -169,8 +169,8 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         "starknet_getTransactionReceipt",
         |params, context| async move {
             #[derive(Debug, Deserialize)]
-            pub struct NamedArgs {
-                pub transaction_hash: StarknetTransactionHash,
+            struct NamedArgs {
+                transaction_hash: StarknetTransactionHash,
             }
             context
                 .get_transaction_receipt(params.parse::<NamedArgs>()?.transaction_hash)
@@ -179,8 +179,8 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     )?;
     module.register_async_method("starknet_getClass", |params, context| async move {
         #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub class_hash: ClassHash,
+        struct NamedArgs {
+            class_hash: ClassHash,
         }
         context
             .get_class(params.parse::<NamedArgs>()?.class_hash)
@@ -188,9 +188,9 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     })?;
     module.register_async_method("starknet_getClassHashAt", |params, context| async move {
         #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub block_id: BlockId,
-            pub contract_address: ContractAddress,
+        struct NamedArgs {
+            block_id: BlockId,
+            contract_address: ContractAddress,
         }
         let params = params.parse::<NamedArgs>()?;
         context
@@ -199,9 +199,9 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     })?;
     module.register_async_method("starknet_getClassAt", |params, context| async move {
         #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub block_id: BlockId,
-            pub contract_address: ContractAddress,
+        struct NamedArgs {
+            block_id: BlockId,
+            contract_address: ContractAddress,
         }
         let params = params.parse::<NamedArgs>()?;
         context
@@ -212,28 +212,37 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         "starknet_getBlockTransactionCount",
         |params, context| async move {
             #[derive(Debug, Deserialize)]
-            pub struct NamedArgs {
-                pub block_id: BlockId,
+            struct NamedArgs {
+                block_id: BlockId,
             }
             context
                 .get_block_transaction_count(params.parse::<NamedArgs>()?.block_id)
                 .await
         },
     )?;
+    module.register_async_method("starknet_getNonce", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            contract_address: ContractAddress,
+        }
+        context
+            .get_nonce(params.parse::<NamedArgs>()?.contract_address)
+            .await
+    })?;
     module.register_async_method("starknet_call", |params, context| async move {
         #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub request: Call,
-            pub block_id: BlockId,
+        struct NamedArgs {
+            request: Call,
+            block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
         context.call(params.request, params.block_id).await
     })?;
     module.register_async_method("starknet_estimateFee", |params, context| async move {
         #[derive(Debug, Deserialize)]
-        pub struct NamedArgs {
-            pub request: Call,
-            pub block_id: BlockId,
+        struct NamedArgs {
+            request: Call,
+            block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
         context.estimate_fee(params.request, params.block_id).await
@@ -256,7 +265,7 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     module.register_async_method("starknet_getEvents", |params, context| async move {
         #[derive(Debug, Deserialize)]
         struct NamedArgs {
-            pub filter: EventFilter,
+            filter: EventFilter,
         }
         let request = params.parse::<NamedArgs>()?.filter;
         context.get_events(request).await
@@ -266,14 +275,14 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         |params, context| async move {
             #[serde_with::serde_as]
             #[derive(Debug, Deserialize)]
-            pub struct NamedArgs {
-                pub function_invocation: ContractCall,
+            struct NamedArgs {
+                function_invocation: ContractCall,
                 #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
-                pub signature: Vec<CallSignatureElem>,
+                signature: Vec<CallSignatureElem>,
                 #[serde_as(as = "FeeAsHexStr")]
-                pub max_fee: Fee,
+                max_fee: Fee,
                 #[serde_as(as = "TransactionVersionAsHexStr")]
-                pub version: TransactionVersion,
+                version: TransactionVersion,
             }
             let params = params.parse::<NamedArgs>()?;
             context
@@ -291,14 +300,14 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         |params, context| async move {
             #[serde_with::serde_as]
             #[derive(Debug, Deserialize)]
-            pub struct NamedArgs {
-                pub contract_class: ContractDefinition,
+            struct NamedArgs {
+                contract_class: ContractDefinition,
                 #[serde_as(as = "TransactionVersionAsHexStr")]
-                pub version: TransactionVersion,
+                version: TransactionVersion,
                 // An undocumented parameter that we forward to the sequencer API
                 // A deploy token is required to deploy contracts on Starknet mainnet only.
                 #[serde(default)]
-                pub token: Option<String>,
+                token: Option<String>,
             }
             let params = params.parse::<NamedArgs>()?;
             context
@@ -310,14 +319,14 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         "starknet_addDeployTransaction",
         |params, context| async move {
             #[derive(Debug, Deserialize)]
-            pub struct NamedArgs {
-                pub contract_address_salt: ContractAddressSalt,
-                pub constructor_calldata: Vec<ConstructorParam>,
-                pub contract_definition: ContractDefinition,
+            struct NamedArgs {
+                contract_address_salt: ContractAddressSalt,
+                constructor_calldata: Vec<ConstructorParam>,
+                contract_definition: ContractDefinition,
                 // An undocumented parameter that we forward to the sequencer API
                 // A deploy token is required to deploy contracts on Starknet mainnet only.
                 #[serde(default)]
-                pub token: Option<String>,
+                token: Option<String>,
             }
             let params = params.parse::<NamedArgs>()?;
             context
@@ -2116,6 +2125,52 @@ mod tests {
 
             assert_eq!(transactions, expected);
         }
+    }
+
+    #[tokio::test]
+    async fn get_nonce() {
+        use crate::core::ContractNonce;
+
+        let storage = setup_storage();
+        let sequencer = Client::new(Chain::Goerli).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state.clone());
+        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+        // This contract is created in `setup_storage`
+        let valid_contract = ContractAddress(StarkHash::from_be_slice(b"contract 0").unwrap());
+
+        // With no version set yet -- this occurs when `getNonce` is called before
+        // we have received a `latest` update from the gateway at pathfinder startup.
+        // Unlikely to occur, but worth testing.
+        client(addr)
+            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
+            .await
+            .expect_err("unset version should error");
+
+        // Nonces pre-0.10.0 have a default value of 0.
+        *sync_state.version.write().await = Some("0.9.1".to_string());
+        let version = client(addr)
+            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
+            .await
+            .expect("pre-0.10.0 version should succeed");
+        assert_eq!(version, ContractNonce(StarkHash::ZERO));
+
+        // Invalid contract should error.
+        let invalid_contract = ContractAddress(StarkHash::from_be_slice(b"invalid").unwrap());
+        let error = client(addr)
+            .request::<ContractNonce>("starknet_getNonce", rpc_params!(invalid_contract))
+            .await
+            .expect_err("invalid contract should error");
+        let expected = crate::rpc::types::reply::ErrorCode::ContractNotFound;
+        assert_eq!(expected, error);
+
+        // Versions post 0.10.0 are unsupported currently.
+        *sync_state.version.write().await = Some("0.10.0".to_string());
+        client(addr)
+            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
+            .await
+            .expect_err("post-0.10.0 version should fail");
     }
 
     // FIXME: these tests are largely defunct because they have never used ext_py, and handle

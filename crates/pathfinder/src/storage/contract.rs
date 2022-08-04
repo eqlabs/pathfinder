@@ -150,6 +150,14 @@ impl ContractsTable {
         Ok(())
     }
 
+    /// Returns true if the given contract exists in this table.
+    pub fn exists(transaction: &Transaction<'_>, address: ContractAddress) -> anyhow::Result<bool> {
+        let exists = transaction
+            .prepare("SELECT 1 FROM contracts WHERE address = ?")?
+            .exists([address.0.as_be_bytes()])?;
+        Ok(exists)
+    }
+
     /// Gets the specified contract's class hash.
     pub fn get_hash(
         transaction: &Transaction<'_>,
