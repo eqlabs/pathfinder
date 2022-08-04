@@ -22,7 +22,7 @@ This includes any documentation issues, feature requests and bugs that you may e
 
 For help or to submit bug reports or feature requests, please open an issue or alternatively visit the StarkNet [discord channel](https://discord.com/invite/uJ9HZTUk2Y).
 
-## Installation
+## Installation (from source)
 
 If you'd like to just run the node, please consider skipping ahead to [docker instructions](#running-with-docker).
 The following are instructions on how to build from source.
@@ -124,6 +124,49 @@ You should now be able to compile `pathfinder` by running (from within the `path
 ```bash
 cargo build --release --bin pathfinder
 ```
+
+## Updating `pathfinder`
+
+Updating a `pathfinder` node from source is fairly straight forward and is a simpler variant of the installation and compilation described above.
+
+#### `pathfinder` repository
+
+Start by updating the `pathfinder` repository to the desired version. From within your `pathfinder` folder:
+
+```bash
+git fetch 
+git checkout <version-tag>
+```
+
+where `<version-tag>` is the desired pathfinder version. To display a list of all available versions, run
+
+```
+git tag
+```
+
+#### Python dependencies
+
+Next, update the python dependencies. First enable your python virtual environment (if you are using one). For our example installation this would be:
+
+```bash
+source ./py/.venv/bin/activate
+```
+
+and then update:
+
+```bash
+PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+```
+
+#### Build and run `pathfinder`
+
+Re-compile `pathfinder`:
+
+```bash
+cargo build --release --bin pathfinder
+```
+
+and you should now be able to run your `pathfinder` node as described in the [next section](#running-the-node).
 
 ## Running the node
 
