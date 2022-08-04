@@ -121,11 +121,25 @@ def do_loop(connection, input_gen, output_file):
             if str(e.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
                 out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
             else:
-                report_failed(logger, command, e)
+                # as of cairo-lang 0.9.1 we don't have access to all exceptions
+                # except as strings one with the longest stack traces is doing the
+                # merkle tree reads to depth until a NoSuchContract
+                stringified = str(e)
+                if "\\ncall.NoSuchContract: Could not find the contract" in stringified:
+                    # this is not turned into "status": "error", "kind": "NO_SUCH_CONTRACT" because
+                    # it's unclear if that error code is wanted for nested calls failing with this
+                    report_failed(
+                        logger,
+                        command,
+                        f"Filtered nested NoSuchContract, original report was {len(stringified)} bytes",
+                    )
+                else:
+                    report_failed(logger, command, e)
                 # this is hopefully something we can give to the user
                 out = {"status": "failed", "exception": str(e.code)}
         except Exception as e:
             stringified = str(e)
+
             if len(stringified) > 200:
                 stringified = stringified[:197] + "..."
             report_failed(logger, command, e)
@@ -466,6 +480,10 @@ class NoSuchBlock(Exception):
 
 class NoSuchContract(Exception):
     def __init__(self):
+        """
+        Nothing for this class can change without making other changes, since there's a string dependency.
+        Look for `call.NoSuchContract: Could not find the contract`.
+        """
         super().__init__("Could not find the contract")
 
 
