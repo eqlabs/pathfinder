@@ -332,6 +332,21 @@ You can build the image by running:
 docker build -t pathfinder .
 ```
 
+### Docker compose
+
+Create the folder `pathfinder` where your `docker-compose.yaml is
+
+```bash
+mkdir -p pathfinder
+
+# replace the value by of PATHFINDER_ETHEREUM_API_URL by the HTTP(s) URL pointing to your Ethereum node's endpoint
+cp example.pathfinder-var.env pathfinder-var.env
+
+docker-compose up -d
+```
+
+To check if it's running well use `docker-compose logs -f`.
+
 ## JSON-RPC API
 
 Pathfinder supports version `v0.1.0` of the StarkNet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_api_openrpc.json), with the exception of `starknet_protocolVersion`. This method will be removed from the specification in its next version as its semantics and usage was questionable. We decided to not implement it.

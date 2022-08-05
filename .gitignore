@@ -12,3 +12,7 @@
 
 # database files
 *.sqlite
+
+
+# pathfinder variables env file
+pathfinder-var.env
