@@ -27,18 +27,13 @@ async fn main() {
 
     let storage = Storage::migrate(path, JournalMode::WAL).unwrap();
     let mut connection = storage.connection().unwrap();
-    let transaction = connection.transaction().unwrap();
 
-    let chain = match StarknetBlocksTable::get_chain(&transaction).unwrap() {
-        Some(x) => x,
-        None => return,
-    };
-
-    let latest_block_number = match StarknetBlocksTable::get_latest_number(&transaction).unwrap() {
-        Some(x) => x.0,
-        None => unreachable!(
-            "If there is a genesis block in the DB then there must be a latest block too."
-        ),
+    let chain = {
+        let tx = connection.transaction().unwrap();
+        match StarknetBlocksTable::get_chain(&tx).unwrap() {
+            Some(x) => x,
+            None => return,
+        }
     };
 
     tracing::info!("Downloading state updates for all blocks, this can take a while...");
@@ -47,63 +42,64 @@ async fn main() {
 
     let handle = tokio::runtime::Handle::current();
 
-    let (downloaded_tx, downloaded_rx) = std::sync::mpsc::sync_channel(1);
-    let (compressed_tx, compressed_rx) = std::sync::mpsc::sync_channel(1);
+    let (downloaded_tx, downloaded_rx) = std::sync::mpsc::sync_channel(2);
+    let (compressed_tx, compressed_rx) = std::sync::mpsc::sync_channel(2);
 
     let downloader = std::thread::spawn(move || {
         use pathfinder_lib::core::{BlockId, StarknetBlockNumber};
         use pathfinder_lib::sequencer::{Client, ClientApi};
 
-        let client = Client::new(chain).unwrap();
+        let client = Client::new(chain)?;
 
-        for block_number in (0..=latest_block_number).rev() {
-            let state_update = handle
-                .block_on(client.state_update(BlockId::Number(StarknetBlockNumber(block_number))))
-                .unwrap();
+        let mut con = storage.connection()?;
+        let tx = con.transaction()?;
 
-            downloaded_tx.send(state_update).unwrap();
+        let mut query = tx.prepare("select b.number from starknet_blocks b left outer join starknet_state_updates up on (b.hash = up.block_hash) where up.block_hash is null")?;
+        let mut rows = query.query([])?;
+
+        while let Some(row) = rows.next()? {
+            let block_num = row.get_unwrap::<_, i64>(0) as u64;
+            let block_num = StarknetBlockNumber(block_num);
+            let state_update = handle.block_on(client.state_update(BlockId::Number(block_num)))?;
+
+            downloaded_tx.send((block_num, state_update))?;
         }
+
+        Ok::<_, anyhow::Error>(())
     });
 
     let compressor = std::thread::spawn(move || {
         let mut compressor = zstd::bulk::Compressor::new(10).unwrap();
 
-        for sequencer_state_upate in downloaded_rx.iter() {
+        for (block_num, sequencer_state_update) in downloaded_rx.iter() {
             use pathfinder_lib::rpc::types::reply::StateUpdate;
 
             // Unwrap is safe because all non-pending state updates contain a block hash
-            let block_hash = sequencer_state_upate.block_hash.unwrap();
-            let rpc_state_update: StateUpdate = sequencer_state_upate.into();
+            let block_hash = sequencer_state_update.block_hash.unwrap();
+            let rpc_state_update: StateUpdate = sequencer_state_update.into();
             let rpc_state_update = serde_json::to_vec(&rpc_state_update).unwrap();
             let rpc_state_update = compressor.compress(&rpc_state_update).unwrap();
 
-            compressed_tx.send((block_hash, rpc_state_update)).unwrap();
+            compressed_tx
+                .send((block_num, block_hash, rpc_state_update))
+                .unwrap();
         }
     });
 
-    let mut checkpoint = std::time::Instant::now();
-    let mut block_cnt = 0;
+    for (block_num, block_hash, compressed_state_update) in compressed_rx.iter() {
+        let tx = connection.transaction().unwrap();
+        tx.execute(
+            r"INSERT INTO starknet_state_updates (block_hash, data) VALUES(?1, ?2);",
+            rusqlite::params![block_hash.0.as_be_bytes(), &compressed_state_update],
+        )
+        .unwrap_or_else(|_| panic!("Inserting state update for block {block_hash} or {block_num}"));
 
-    for (block_hash, compressed_state_update) in compressed_rx.iter() {
-        transaction
-            .execute(
-                r"INSERT INTO starknet_state_updates (block_hash, data) VALUES(?1, ?2);",
-                rusqlite::params![block_hash.0.as_be_bytes(), &compressed_state_update],
-            )
-            .unwrap_or_else(|_| panic!("Inserting state update for block {block_hash}"));
-
-        block_cnt += 1;
-
-        if checkpoint.elapsed() >= std::time::Duration::from_secs(10) {
-            tracing::info!("Downloaded {block_cnt}/{}", latest_block_number + 1);
-            checkpoint = std::time::Instant::now();
-        }
+        tx.commit().unwrap();
+        tracing::info!("Downloaded {block_num}");
     }
 
-    downloader.join().unwrap();
+    downloader.join().unwrap().unwrap();
     compressor.join().unwrap();
-
-    transaction.commit().unwrap();
 
     tracing::info!("Done after {:?}", started.elapsed());
 }
