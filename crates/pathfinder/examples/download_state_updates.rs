@@ -28,12 +28,15 @@ async fn main() {
     let storage = Storage::migrate(path, JournalMode::WAL).unwrap();
     let mut connection = storage.connection().unwrap();
 
-    let chain = {
+    let (chain, work_todo) = {
         let tx = connection.transaction().unwrap();
-        match StarknetBlocksTable::get_chain(&tx).unwrap() {
+        let chain = match StarknetBlocksTable::get_chain(&tx).unwrap() {
             Some(x) => x,
             None => return,
-        }
+        };
+
+        let work_todo = tx.query_row("select count(1) from starknet_blocks b left outer join starknet_state_updates up on (b.hash = up.block_hash) where up.block_hash is null", [], |row| Ok(row.get_unwrap::<_, i64>(0))).unwrap();
+        (chain, work_todo as u64)
     };
 
     tracing::info!("Downloading state updates for all blocks, this can take a while...");
@@ -86,6 +89,8 @@ async fn main() {
         }
     });
 
+    let mut done = 0;
+
     for (block_num, block_hash, compressed_state_update) in compressed_rx.iter() {
         let tx = connection.transaction().unwrap();
         tx.execute(
@@ -95,7 +100,10 @@ async fn main() {
         .unwrap_or_else(|_| panic!("Inserting state update for block {block_hash} or {block_num}"));
 
         tx.commit().unwrap();
-        tracing::info!("Downloaded {block_num}");
+
+        done += 1;
+
+        tracing::info!("Downloaded {block_num}, {done}/{work_todo}");
     }
 
     downloader.join().unwrap().unwrap();
