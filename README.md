@@ -362,7 +362,10 @@ When browsing the specification project, please be aware of the following pitfal
 
 Pathfinder also support's submitting StarkNet transaction's to the StarkNet gateway. Here are links to the [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_write_api.json) and the [playground](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://gist.githubusercontent.com/Mirko-von-Leipzig/f4515d423775edee68ab08c3f4b6afec/raw/65ce9b3adfb97393152450b2f36d6d3572ee2354/StarkNet%2520Write%2520API%2520v0.1.0.json).
 
-Note that `mainnet` requires an additional `token` parameter to submit transactions.
+Note that:
+
+- `mainnet` requires an additional `token` parameter to submit transactions
+- `starknet_addDeployTransaction` and `starknet_addDeclareTransaction` allow an optional `abi` field
 ## License
 
 Licensed under either of
