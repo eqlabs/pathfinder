@@ -86,14 +86,87 @@ impl StarkHash {
         StarkHash::from_be_bytes(buf)
     }
 
-    /// Creates a [StarkHash] from big-endian bytes.
-    ///
-    /// Returns [OverflowError] if not less than the field modulus.
-    pub fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, OverflowError> {
+    #[cfg(fuzzing)]
+    pub fn from_be_bytes_orig(bytes: [u8; 32]) -> Result<Self, OverflowError> {
         // FieldElement::from_repr[_vartime] does the check in a correct way
         match FieldElement::from_repr_vartime(FieldElementRepr(bytes)) {
             Some(field_element) => Ok(Self(field_element.to_repr().0)),
             None => Err(OverflowError),
+        }
+    }
+
+    /// Creates a [StarkHash] from big-endian bytes.
+    ///
+    /// Returns [OverflowError] if not less than the field modulus.
+    pub const fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, OverflowError> {
+        // ff uses byteorder BigEndian::read_u64_into which uses copy_nonoverlapping(..) and
+        // u64::to_be(), this is essentially the same, though would like to test conclusively
+
+        // FIXME: in 1.63 ptr::copy_nonoverlapping should become available, it should make this at
+        // least more readable and no one has to wonder if all offsets are accounted for.
+        #[rustfmt::skip]
+        let mut limbs = [
+            u64::from_ne_bytes([
+                bytes[0], bytes[1], bytes[2], bytes[3],
+                bytes[4], bytes[5], bytes[6], bytes[7],
+            ]),
+            u64::from_ne_bytes([
+                bytes[8], bytes[9], bytes[10], bytes[11],
+                bytes[12], bytes[13], bytes[14], bytes[15],
+            ]),
+            u64::from_ne_bytes([
+                bytes[16], bytes[17], bytes[18], bytes[19],
+                bytes[20], bytes[21], bytes[22], bytes[23],
+            ]),
+            u64::from_ne_bytes([
+                bytes[24], bytes[25], bytes[26], bytes[27],
+                bytes[28], bytes[29], bytes[30], bytes[31],
+            ]),
+        ];
+
+        // this is what byteorder::BigEndian::read_u64_into does after copy_nonoverlapping
+        let mut index = 0;
+        loop {
+            if index == limbs.len() {
+                break;
+            }
+
+            limbs[index] = limbs[index].to_be();
+            index += 1;
+        }
+
+        // array::swap is unstable const, clippy 0.1.62 doesn't know this
+        #[allow(clippy::manual_swap)]
+        {
+            let temp = limbs[0];
+            limbs[0] = limbs[3];
+            limbs[3] = temp;
+
+            let temp = limbs[1];
+            limbs[1] = limbs[2];
+            limbs[2] = temp;
+        }
+
+        // this is from expansion, `const MODULUS_LIMBS: FieldElementRepr = [...];`
+        let modulus = [1u64, 0u64, 0u64, 576460752303423505u64];
+
+        let mut borrow = 0;
+        let mut index = 0;
+
+        loop {
+            if index == limbs.len() {
+                break;
+            }
+            borrow = ff::derive::sbb(limbs[index], modulus[index], borrow).1;
+            index += 1;
+        }
+
+        if borrow == 0 {
+            // equal to or larger than modulus
+            Err(OverflowError)
+        } else {
+            // substraction overflow; input is smaller than modulus
+            Ok(StarkHash(bytes))
         }
     }
 
