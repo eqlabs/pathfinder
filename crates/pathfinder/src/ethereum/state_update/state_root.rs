@@ -130,7 +130,6 @@ mod tests {
     }
 
     mod reorg {
-        use stark_hash::StarkHash;
         use web3::types::H256;
 
         use crate::{
@@ -142,6 +141,7 @@ mod tests {
                 log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
                 TransactionOrigin,
             },
+            starkhash,
         };
 
         use super::*;
@@ -169,7 +169,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(11),
                 },
-                global_root: GlobalRoot(StarkHash::from_hex_str("12354").unwrap()),
+                global_root: GlobalRoot(starkhash!("012354")),
                 block_number: StarknetBlockNumber(3),
             };
 
@@ -199,7 +199,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(11),
                 },
-                global_root: GlobalRoot(StarkHash::from_hex_str("12354").unwrap()),
+                global_root: GlobalRoot(starkhash!("012354")),
                 block_number: StarknetBlockNumber(3),
             };
 

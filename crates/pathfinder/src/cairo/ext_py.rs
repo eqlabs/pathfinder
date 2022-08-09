@@ -254,6 +254,7 @@ impl From<std::io::Error> for SubprocessError {
 mod tests {
 
     use super::sub_process::launch_python;
+    use crate::starkhash;
     use stark_hash::StarkHash;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
@@ -335,13 +336,12 @@ mod tests {
                         handle.call(
                             super::Call {
                                 contract_address: crate::core::ContractAddress(
-                                    StarkHash::from_hex_str(
-                                        "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                                    starkhash!(
+                                        "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                                     )
-                                    .unwrap(),
                                 ),
                                 calldata: vec![crate::core::CallParam(
-                                    StarkHash::from_hex_str("0x84").unwrap(),
+                                    starkhash!("84"),
                                 )],
                                 entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
                                 signature: Default::default(),
@@ -403,15 +403,10 @@ mod tests {
         .unwrap();
 
         let call = super::Call {
-            contract_address: crate::core::ContractAddress(
-                StarkHash::from_hex_str(
-                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
-                )
-                .unwrap(),
-            ),
-            calldata: vec![crate::core::CallParam(
-                StarkHash::from_hex_str("0x84").unwrap(),
-            )],
+            contract_address: crate::core::ContractAddress(starkhash!(
+                "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
+            )),
+            calldata: vec![crate::core::CallParam(starkhash!("84"))],
             entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
@@ -503,16 +498,11 @@ mod tests {
         .unwrap();
 
         let call = super::Call {
-            contract_address: crate::core::ContractAddress(
-                StarkHash::from_hex_str(
-                    // this is one bit off from other examples
-                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375",
-                )
-                .unwrap(),
-            ),
-            calldata: vec![crate::core::CallParam(
-                StarkHash::from_hex_str("0x84").unwrap(),
-            )],
+            contract_address: crate::core::ContractAddress(starkhash!(
+                // this is one bit off from other examples
+                "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375"
+            )),
+            calldata: vec![crate::core::CallParam(starkhash!("84"))],
             entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
@@ -572,14 +562,11 @@ mod tests {
         .await
         .unwrap();
 
-        let target_contract = crate::core::ContractAddress(
-            StarkHash::from_hex_str(
-                "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
-            )
-            .unwrap(),
-        );
+        let target_contract = crate::core::ContractAddress(starkhash!(
+            "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
+        ));
 
-        let storage_address = StarkHash::from_hex_str("0x84").unwrap();
+        let storage_address = starkhash!("84");
 
         let call = super::Call {
             contract_address: target_contract,
@@ -612,9 +599,7 @@ mod tests {
                         target_contract,
                         vec![crate::sequencer::reply::state_update::StorageDiff {
                             key: crate::core::StorageAddress(storage_address),
-                            value: crate::core::StorageValue(
-                                StarkHash::from_hex_str("0x4").unwrap(),
-                            ),
+                            value: crate::core::StorageValue(starkhash!("04")),
                         }],
                     );
                     map
@@ -646,14 +631,10 @@ mod tests {
         )))
         .unwrap();
 
-        let address = StarkHash::from_hex_str(
-            "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
-        )
-        .unwrap();
-        let expected_hash = StarkHash::from_hex_str(
-            "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b",
-        )
-        .unwrap();
+        let address =
+            starkhash!("057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374");
+        let expected_hash =
+            starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
 
         let (abi, bytecode, hash) =
             crate::state::class_hash::extract_abi_code_hash(&*contract_definition).unwrap();

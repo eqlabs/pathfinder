@@ -1344,7 +1344,7 @@ impl RpcApi {
             .add_declare_transaction(
                 contract_class,
                 // actual address dumped from a `starknet declare` call
-                ContractAddress(StarkHash::from_hex_str("0x1").unwrap()),
+                ContractAddress(crate::starkhash!("01")),
                 Fee(0u128.to_be_bytes().into()),
                 vec![],
                 TransactionNonce(StarkHash::ZERO),

@@ -168,6 +168,7 @@ fn parse_starkhash(value: U256) -> Result<StarkHash> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::starkhash;
 
     fn u256_from_starkhash(hash: StarkHash) -> U256 {
         let bytes = hash.to_be_bytes();
@@ -253,15 +254,15 @@ mod tests {
 
     fn contract_update() -> ContractUpdate {
         ContractUpdate {
-            address: ContractAddress(StarkHash::from_hex_str("123456").unwrap()),
+            address: ContractAddress(starkhash!("123456")),
             storage_updates: vec![
                 StorageUpdate {
-                    address: StorageAddress(StarkHash::from_hex_str("1").unwrap()),
-                    value: StorageValue(StarkHash::from_hex_str("301").unwrap()),
+                    address: StorageAddress(starkhash!("01")),
+                    value: StorageValue(starkhash!("0301")),
                 },
                 StorageUpdate {
-                    address: StorageAddress(StarkHash::from_hex_str("2").unwrap()),
-                    value: StorageValue(StarkHash::from_hex_str("305").unwrap()),
+                    address: StorageAddress(starkhash!("02")),
+                    value: StorageValue(starkhash!("0305")),
                 },
             ],
         }
@@ -269,13 +270,9 @@ mod tests {
 
     fn deployed_contract() -> DeployedContract {
         DeployedContract {
-            address: ContractAddress(StarkHash::from_hex_str("45691").unwrap()),
-            hash: ClassHash(StarkHash::from_hex_str("22513").unwrap()),
-            call_data: vec![
-                StarkHash::from_hex_str("1").unwrap(),
-                StarkHash::from_hex_str("2").unwrap(),
-                StarkHash::from_hex_str("1230").unwrap(),
-            ],
+            address: ContractAddress(starkhash!("045691")),
+            hash: ClassHash(starkhash!("022513")),
+            call_data: vec![starkhash!("01"), starkhash!("02"), starkhash!("1230")],
         }
     }
 
@@ -311,13 +308,14 @@ mod tests {
 
     mod parse_storage_update {
         use super::*;
+        use crate::starkhash;
         use pretty_assertions::assert_eq;
 
         #[test]
         fn ok() {
             let update = StorageUpdate {
-                address: StorageAddress(StarkHash::from_hex_str("200").unwrap()),
-                value: StorageValue(StarkHash::from_hex_str("300").unwrap()),
+                address: StorageAddress(starkhash!("0200")),
+                value: StorageValue(starkhash!("0300")),
             };
             let data: Vec<U256> = update.clone().into();
 
@@ -329,8 +327,8 @@ mod tests {
         #[test]
         fn missing_data() {
             let update = StorageUpdate {
-                address: StorageAddress(StarkHash::from_hex_str("200").unwrap()),
-                value: StorageValue(StarkHash::from_hex_str("300").unwrap()),
+                address: StorageAddress(starkhash!("0200")),
+                value: StorageValue(starkhash!("0300")),
             };
             let mut data: Vec<U256> = update.into();
             data.pop();
@@ -342,6 +340,7 @@ mod tests {
 
     mod parse_contract_update {
         use super::*;
+        use crate::starkhash;
         use pretty_assertions::assert_eq;
 
         #[test]
@@ -357,7 +356,7 @@ mod tests {
         #[test]
         fn no_storage_updates() {
             let update = ContractUpdate {
-                address: ContractAddress(StarkHash::from_hex_str("123456").unwrap()),
+                address: ContractAddress(starkhash!("123456")),
                 storage_updates: Vec::new(),
             };
 

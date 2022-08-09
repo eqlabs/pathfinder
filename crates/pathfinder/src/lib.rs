@@ -22,4 +22,16 @@ macro_rules! starkhash {
     }};
 }
 
+#[allow(unused)]
+macro_rules! starkhash_bytes {
+    ($bytes:expr) => {{
+        match stark_hash::StarkHash::from_be_slice($bytes) {
+            Ok(sh) => sh,
+            Err(stark_hash::OverflowError) => panic!("Invalid constant: OverflowError"),
+        }
+    }};
+}
+
 pub(crate) use starkhash;
+#[cfg(test)]
+pub(crate) use starkhash_bytes;

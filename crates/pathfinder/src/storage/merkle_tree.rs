@@ -396,12 +396,13 @@ mod tests {
 
     mod serde {
         use super::*;
+        use crate::starkhash;
 
         #[test]
         fn edge() {
             // Tests all different possible path lengths. This is an area of concern as we are serializing
             // and deserializing big endian bit paths to a fixed size big endian array.
-            let child = StarkHash::from_hex_str("123abc").unwrap();
+            let child = starkhash!("123abc");
             // 251 randomly generated bits.
             let bits251 = bitvec![Msb0, u8; 1,0,0,1,1,0,1,1,0,0,1,1,1,1,0,0,1,1,1,0,1,0,0,1,0,1,0,1,1,0,0,0,
                                                            1,1,1,1,1,1,1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,1,1,0,0,0,1,0,1,0,0,
@@ -427,8 +428,8 @@ mod tests {
         #[test]
         fn binary() {
             let original = PersistedNode::Binary(PersistedBinaryNode {
-                left: StarkHash::from_hex_str("123").unwrap(),
-                right: StarkHash::from_hex_str("abc").unwrap(),
+                left: starkhash!("0123"),
+                right: starkhash!("0abc"),
             });
 
             let serialized = original.clone().serialize();
@@ -440,6 +441,7 @@ mod tests {
 
     mod reference_count {
         use super::*;
+        use crate::starkhash;
 
         #[test]
         fn increment() {
@@ -447,10 +449,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let key = StarkHash::from_hex_str("123abc").unwrap();
+            let key = starkhash!("123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: StarkHash::from_hex_str("321").unwrap(),
-                right: StarkHash::from_hex_str("abc").unwrap(),
+                left: starkhash!("0321"),
+                right: starkhash!("0abc"),
             });
 
             uut.upsert(key, node).unwrap();
@@ -470,10 +472,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let key = StarkHash::from_hex_str("123abc").unwrap();
+            let key = starkhash!("123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: StarkHash::from_hex_str("321").unwrap(),
-                right: StarkHash::from_hex_str("abc").unwrap(),
+                left: starkhash!("0321"),
+                right: starkhash!("0abc"),
             });
 
             uut.upsert(key, node).unwrap();
@@ -496,10 +498,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let key = StarkHash::from_hex_str("123abc").unwrap();
+            let key = starkhash!("123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: StarkHash::from_hex_str("321").unwrap(),
-                right: StarkHash::from_hex_str("abc").unwrap(),
+                left: starkhash!("0321"),
+                right: starkhash!("0abc"),
             });
 
             uut.upsert(key, node.clone()).unwrap();
@@ -511,6 +513,7 @@ mod tests {
 
     mod insert_get {
         use super::*;
+        use crate::starkhash;
 
         #[test]
         fn missing() {
@@ -518,7 +521,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let key = StarkHash::from_hex_str("123abc").unwrap();
+            let key = starkhash!("123abc");
             assert_eq!(uut.get(key).unwrap(), None);
         }
 
@@ -528,13 +531,13 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let left_child_key = StarkHash::from_hex_str("123abc").unwrap();
+            let left_child_key = starkhash!("123abc");
             let left_child = PersistedNode::Leaf;
 
-            let right_child_key = StarkHash::from_hex_str("ddd111").unwrap();
+            let right_child_key = starkhash!("ddd111");
             let right_child = PersistedNode::Leaf;
 
-            let parent_key = StarkHash::from_hex_str("def123").unwrap();
+            let parent_key = starkhash!("def123");
             let parent = PersistedNode::Binary(PersistedBinaryNode {
                 left: left_child_key,
                 right: right_child_key,
@@ -559,10 +562,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let child_key = StarkHash::from_hex_str("123abc").unwrap();
+            let child_key = starkhash!("123abc");
             let child = PersistedNode::Leaf;
 
-            let parent_key = StarkHash::from_hex_str("def123").unwrap();
+            let parent_key = starkhash!("def123");
             let parent = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],
                 child: child_key,
@@ -583,7 +586,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let key = StarkHash::from_hex_str("123abc").unwrap();
+            let key = starkhash!("123abc");
             let node = PersistedNode::Leaf;
 
             uut.upsert(key, node.clone()).unwrap();
@@ -593,6 +596,7 @@ mod tests {
 
     mod delete {
         use super::*;
+        use crate::starkhash;
 
         #[test]
         fn leaf() {
@@ -600,7 +604,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let key = StarkHash::from_hex_str("123abc").unwrap();
+            let key = starkhash!("123abc");
             let node = PersistedNode::Leaf;
 
             uut.upsert(key, node.clone()).unwrap();
@@ -616,13 +620,13 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let left_child_key = StarkHash::from_hex_str("123abc").unwrap();
+            let left_child_key = starkhash!("123abc");
             let left_child = PersistedNode::Leaf;
 
-            let right_child_key = StarkHash::from_hex_str("ddd111").unwrap();
+            let right_child_key = starkhash!("ddd111");
             let right_child = PersistedNode::Leaf;
 
-            let parent_key = StarkHash::from_hex_str("def123").unwrap();
+            let parent_key = starkhash!("def123");
             let parent = PersistedNode::Binary(PersistedBinaryNode {
                 left: left_child_key,
                 right: right_child_key,
@@ -644,10 +648,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let child_key = StarkHash::from_hex_str("123abc").unwrap();
+            let child_key = starkhash!("123abc");
             let child = PersistedNode::Leaf;
 
-            let parent_key = StarkHash::from_hex_str("def123").unwrap();
+            let parent_key = starkhash!("def123");
             let parent = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],
                 child: child_key,
@@ -667,11 +671,11 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
 
-            let leaf_key = StarkHash::from_hex_str("123abc").unwrap();
+            let leaf_key = starkhash!("123abc");
             let leaf_node = PersistedNode::Leaf;
 
-            let parent_key_1 = StarkHash::from_hex_str("111").unwrap();
-            let parent_key_2 = StarkHash::from_hex_str("222").unwrap();
+            let parent_key_1 = starkhash!("0111");
+            let parent_key_2 = starkhash!("0222");
 
             let parent_node_1 = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],

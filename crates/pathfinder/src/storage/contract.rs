@@ -192,6 +192,7 @@ impl ContractsTable {
 
 #[cfg(test)]
 mod tests {
+    use crate::starkhash;
     use crate::storage::Storage;
 
     use super::*;
@@ -202,8 +203,8 @@ mod tests {
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
-        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
+        let address = ContractAddress(starkhash!("0abc"));
+        let hash = ClassHash(starkhash!("0123"));
 
         ContractsTable::upsert(&transaction, address, hash).unwrap_err();
     }
@@ -214,8 +215,8 @@ mod tests {
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let address = ContractAddress(StarkHash::from_hex_str("abc").unwrap());
-        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
+        let address = ContractAddress(starkhash!("0abc"));
+        let hash = ClassHash(starkhash!("0123"));
         let definition = vec![9, 13, 25];
 
         ContractCodeTable::insert(&transaction, hash, &[][..], &[][..], &definition[..]).unwrap();
@@ -252,7 +253,7 @@ mod tests {
     }
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
-        let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
+        let hash = ClassHash(starkhash!("0123"));
 
         // list of objects
         let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
@@ -275,7 +276,7 @@ mod tests {
         let transaction = connection.transaction().unwrap();
 
         let (hash, _, _) = setup_class(&transaction);
-        let non_existent = ClassHash(StarkHash::from_hex_str("456").unwrap());
+        let non_existent = ClassHash(starkhash!("0456"));
 
         let result = ContractCodeTable::exists(&transaction, &[hash, non_existent]).unwrap();
         let expected = vec![true, false];

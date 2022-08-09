@@ -99,26 +99,18 @@ fn calculate_contract_state_hash(hash: ClassHash, root: ContractRoot) -> Contrac
 mod tests {
     use super::{calculate_contract_state_hash, sync};
     use crate::core::{ClassHash, ContractRoot, ContractStateHash};
-    use stark_hash::StarkHash;
+    use crate::starkhash;
 
     #[test]
     fn hash() {
-        let root = StarkHash::from_hex_str(
-            "04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028",
-        )
-        .unwrap();
+        let root = starkhash!("04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028");
         let root = ContractRoot(root);
 
-        let hash = StarkHash::from_hex_str(
-            "02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779",
-        )
-        .unwrap();
+        let hash = starkhash!("02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779");
         let hash = ClassHash(hash);
 
-        let expected = StarkHash::from_hex_str(
-            "07161b591c893836263a64f2a7e0d829c92f6956148a60ce5e99a3f55c7973f3",
-        )
-        .unwrap();
+        let expected =
+            starkhash!("07161b591c893836263a64f2a7e0d829c92f6956148a60ce5e99a3f55c7973f3");
         let expected = ContractStateHash(expected);
 
         let result = calculate_contract_state_hash(hash, root);

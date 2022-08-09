@@ -231,12 +231,9 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        core::StarknetTransactionHash,
-        storage::schema::{self},
-    };
+    use crate::starkhash;
+    use crate::{core::StarknetTransactionHash, storage::schema};
     use rusqlite::{named_params, Connection};
-    use stark_hash::StarkHash;
     use web3::types::H128;
 
     use super::transaction;
@@ -338,7 +335,7 @@ mod tests {
             named_params![
                 ":hash": tx.hash().0.as_be_bytes(),
                 ":idx": idx,
-                ":block_hash": StarkHash::from_hex_str("0x1").unwrap().as_be_bytes(),
+                ":block_hash": crate::starkhash!("01").as_be_bytes(),
                 ":tx": &compressed_tx,
                 ":receipt": &[],
             ]
@@ -356,10 +353,6 @@ mod tests {
         "signature":null,
         "transaction_hash":"0xe0a2e45a80bb827967e096bcf58874f6c01c191e0a0530624cba66a508ae75",
         "type":"DEPLOY"}"#;
-    const OLD_DEPLOY_TX_WITHOUT_CLASS_HASH_TX_HASH: &str =
-        "0xe0a2e45a80bb827967e096bcf58874f6c01c191e0a0530624cba66a508ae75";
-    const OLD_DEPLOY_TX_WITHOUT_CLASS_HASH_CONTRACT_ADDRESS: &str =
-        "0x20cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6";
 
     #[test]
     fn old_declare_transaction_with_missing_class_hash() {
@@ -368,9 +361,9 @@ mod tests {
 
         migrate_to_previous_version(&transaction);
 
-        let fake_class_hash = StarkHash::from_hex_str("0xdeadadd").unwrap();
+        let fake_class_hash = starkhash!("0deadadd");
         let contract_address =
-            StarkHash::from_hex_str(OLD_DEPLOY_TX_WITHOUT_CLASS_HASH_CONTRACT_ADDRESS).unwrap();
+            starkhash!("020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6");
 
         // insert fake class
         transaction
@@ -399,7 +392,7 @@ mod tests {
         super::migrate(&transaction).unwrap();
 
         let transaction_hash =
-            StarkHash::from_hex_str(OLD_DEPLOY_TX_WITHOUT_CLASS_HASH_TX_HASH).unwrap();
+            starkhash!("e0a2e45a80bb827967e096bcf58874f6c01c191e0a0530624cba66a508ae75");
 
         let migrated_tx = crate::storage::state::StarknetTransactionsTable::get_transaction(
             &transaction,
@@ -429,8 +422,6 @@ mod tests {
         "type":"INVOKE_FUNCTION",
         "version":null
     }"#;
-    const OLD_INVOKE_TX_WITHOUT_MAX_FEE_HASH: &str =
-        "0x5d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42";
 
     #[test]
     fn old_invoke_transaction_with_missing_max_fee() {
@@ -443,7 +434,8 @@ mod tests {
 
         super::migrate(&transaction).unwrap();
 
-        let transaction_hash = StarkHash::from_hex_str(OLD_INVOKE_TX_WITHOUT_MAX_FEE_HASH).unwrap();
+        let transaction_hash =
+            starkhash!("05d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42");
 
         let migrated_tx = crate::storage::state::StarknetTransactionsTable::get_transaction(
             &transaction,
