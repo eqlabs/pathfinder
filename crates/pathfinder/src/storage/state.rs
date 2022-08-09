@@ -453,8 +453,8 @@ impl StarknetBlocksTable {
 
         match genesis {
             None => Ok(None),
-            Some(hash) if hash == *GOERLI_GENESIS_HASH => Ok(Some(Chain::Goerli)),
-            Some(hash) if hash == *MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
+            Some(hash) if hash == GOERLI_GENESIS_HASH => Ok(Some(Chain::Goerli)),
+            Some(hash) if hash == MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
             Some(hash) => Err(anyhow::anyhow!("Unknown genesis block hash {}", hash.0)),
         }
     }

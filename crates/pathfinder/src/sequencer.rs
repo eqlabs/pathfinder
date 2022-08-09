@@ -159,8 +159,8 @@ impl Client {
             .block_hash;
 
         match genesis_hash {
-            goerli if goerli == *GOERLI_GENESIS_HASH => Ok(Chain::Goerli),
-            mainnet if mainnet == *MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
+            goerli if goerli == GOERLI_GENESIS_HASH => Ok(Chain::Goerli),
+            mainnet if mainnet == MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
             other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),
         }
     }
