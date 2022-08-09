@@ -1,8 +1,9 @@
 use anyhow::Context;
 use rusqlite::{named_params, Transaction as RusqliteTransaction};
 use stark_hash::StarkHash;
+use web3::types::H128;
 
-use crate::core::ClassHash;
+use crate::core::{ClassHash, Fee};
 
 // This is a copy of the sequencer reply types _without_ deny_unknown_fields
 // The point is that with the old `struct Transaction` we had some optional
@@ -71,7 +72,8 @@ mod transaction {
     pub struct DeployTransaction {
         pub contract_address: ContractAddress,
         pub contract_address_salt: ContractAddressSalt,
-        // FIXME: why this has to be optional
+        // This is optional because there are old transactions in the DB which don't have it.
+        // We fix up missing class hash before serializing the data.
         pub class_hash: Option<ClassHash>,
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
@@ -87,8 +89,10 @@ mod transaction {
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
         pub entry_point_type: EntryPointType,
-        #[serde_as(as = "FeeAsHexStr")]
-        pub max_fee: Fee,
+        // This is optional because there are old transactions in the DB which don't have it.
+        // We fix up missing max_fee with the default (0) before serializing the data.
+        #[serde_as(as = "Option<FeeAsHexStr>")]
+        pub max_fee: Option<Fee>,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: StarknetTransactionHash,
@@ -172,7 +176,13 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
             transaction::Transaction::Declare(declare) => {
                 transaction::Transaction::Declare(declare)
             }
-            transaction::Transaction::Invoke(invoke) => transaction::Transaction::Invoke(invoke),
+            transaction::Transaction::Invoke(mut invoke) => {
+                if invoke.max_fee.is_none() {
+                    invoke.max_fee = Some(Fee(H128::zero()));
+                    tracing::trace!(transaction_hash = ?invoke.transaction_hash, "Fixed missing max_fee for invoke transaction");
+                }
+                transaction::Transaction::Invoke(invoke)
+            }
         };
 
         let tx = serde_json::to_vec(&tx).context("Serializing transaction")?;
@@ -227,6 +237,7 @@ mod tests {
     };
     use rusqlite::{named_params, Connection};
     use stark_hash::StarkHash;
+    use web3::types::H128;
 
     use super::transaction;
 
@@ -399,6 +410,50 @@ mod tests {
 
         assert_matches::assert_matches!(migrated_tx, crate::sequencer::reply::transaction::Transaction::Deploy(deploy) => {
             assert_eq!(deploy.class_hash.0, fake_class_hash);
+        });
+    }
+
+    const OLD_INVOKE_TX_WITHOUT_MAX_FEE: &str = r#"{
+        "calldata":["1","2087021424722619777119509474943472645767659996348769578120564519014510906823","232670485425082704932579856502088130646006032362877466777181098476241604910","0","3","3","490809789286600582400843108881568438665982864055734060730291220939795284993","7700000000000000","0","0"],
+        "class_hash":null,
+        "constructor_calldata":null,
+        "contract_address":"0x4f9e9d3f9d8138a97efda56b33bc5d2065043d015ff089e5a26360573ae8759",
+        "contract_address_salt":null,
+        "entry_point_type":"EXTERNAL",
+        "entry_point_selector":"0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+        "max_fee":null,
+        "nonce":null,
+        "sender_address":null,
+        "signature":["1315154516032005373376104412744922964590083352995277496702591367622675229681","2722865577796457381979632752916119040497485378397880545907561256288316181904"],
+        "transaction_hash":"0x5d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42",
+        "type":"INVOKE_FUNCTION",
+        "version":null
+    }"#;
+    const OLD_INVOKE_TX_WITHOUT_MAX_FEE_HASH: &str =
+        "0x5d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42";
+
+    #[test]
+    fn old_invoke_transaction_with_missing_max_fee() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+
+        migrate_to_previous_version(&transaction);
+
+        insert_transaction(&transaction, OLD_INVOKE_TX_WITHOUT_MAX_FEE, 0);
+
+        super::migrate(&transaction).unwrap();
+
+        let transaction_hash = StarkHash::from_hex_str(OLD_INVOKE_TX_WITHOUT_MAX_FEE_HASH).unwrap();
+
+        let migrated_tx = crate::storage::state::StarknetTransactionsTable::get_transaction(
+            &transaction,
+            StarknetTransactionHash(transaction_hash),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_matches::assert_matches!(migrated_tx, crate::sequencer::reply::transaction::Transaction::Invoke(invoke) => {
+            assert_eq!(invoke.max_fee.0, H128::zero());
         });
     }
 }
