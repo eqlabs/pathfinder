@@ -65,12 +65,12 @@ impl StarkHash {
     pub const ZERO: StarkHash = StarkHash([0u8; 32]);
 
     /// Returns the big-endian representation of this [StarkHash].
-    pub fn to_be_bytes(self) -> [u8; 32] {
+    pub const fn to_be_bytes(self) -> [u8; 32] {
         self.0
     }
 
     /// Big-endian representation of this [StarkHash].
-    pub fn as_be_bytes(&self) -> &[u8; 32] {
+    pub const fn as_be_bytes(&self) -> &[u8; 32] {
         &self.0
     }
 
@@ -203,17 +203,42 @@ impl StarkHash {
     pub fn has_more_than_251_bits(&self) -> bool {
         self.0[0] & 0b1111_1000 > 0
     }
+
+    pub const fn from_u64(u: u64) -> Self {
+        const_expect!(
+            Self::from_be_slice(&u.to_be_bytes()),
+            "64 bits is less than 251 bits"
+        )
+    }
+
+    pub const fn from_u128(u: u128) -> Self {
+        const_expect!(
+            Self::from_be_slice(&u.to_be_bytes()),
+            "128 bits is less than 251 bits"
+        )
+    }
 }
+
+macro_rules! const_expect {
+    ($e:expr, $why:expr) => {{
+        match $e {
+            Ok(x) => x,
+            Err(_) => panic!(concat!("Expectation failed: ", $why)),
+        }
+    }};
+}
+
+use const_expect;
 
 impl From<u64> for StarkHash {
     fn from(value: u64) -> Self {
-        Self::from_be_slice(&value.to_be_bytes()).expect("64 bits is less than 251 bits")
+        Self::from_u64(value)
     }
 }
 
 impl From<u128> for StarkHash {
     fn from(value: u128) -> Self {
-        Self::from_be_slice(&value.to_be_bytes()).expect("128 bits is less than 251 bits")
+        Self::from_u128(value)
     }
 }
 
