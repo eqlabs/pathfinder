@@ -75,13 +75,22 @@ impl StarkHash {
     }
 
     /// Convenience function which extends [StarkHash::from_be_bytes] to work with slices.
-    pub fn from_be_slice(bytes: &[u8]) -> Result<Self, OverflowError> {
+    pub const fn from_be_slice(bytes: &[u8]) -> Result<Self, OverflowError> {
         if bytes.len() > 32 {
             return Err(OverflowError);
         }
 
         let mut buf = [0u8; 32];
-        buf[32 - bytes.len()..].copy_from_slice(bytes);
+        let mut index = 0;
+
+        loop {
+            if index == bytes.len() {
+                break;
+            }
+
+            buf[32 - bytes.len() + index] = bytes[index];
+            index += 1;
+        }
 
         StarkHash::from_be_bytes(buf)
     }
