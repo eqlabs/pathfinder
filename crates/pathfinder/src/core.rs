@@ -432,6 +432,40 @@ impl std::fmt::Display for Chain {
     }
 }
 
+macro_rules! starkhash_common_newtype {
+    ($target:ty) => {
+        starkhash_to_from_sql!($target);
+        thin_starkhash_debug_display!($target);
+    };
+
+    ($head:ty, $($tail:ty),+ $(,)?) => {
+        starkhash_common_newtype!($head);
+        starkhash_common_newtype!($($tail),+);
+    };
+}
+
+macro_rules! starkhash_to_from_sql {
+    ($target:ty) => {
+        impl rusqlite::ToSql for $target {
+            fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+                use rusqlite::types::{ToSqlOutput, ValueRef};
+                Ok(ToSqlOutput::Borrowed(ValueRef::Blob(self.0.as_be_bytes())))
+            }
+        }
+
+        impl rusqlite::types::FromSql for $target {
+            fn column_result(
+                value: rusqlite::types::ValueRef<'_>,
+            ) -> rusqlite::types::FromSqlResult<Self> {
+                let blob = value.as_blob()?;
+                let sh = StarkHash::from_be_slice(blob)
+                    .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
+                Ok(Self(sh))
+            }
+        }
+    };
+}
+
 /// Adds a thin Debug and Disply implementations.
 ///
 /// Debug impl produces `WrapperType(hash)` instead of automatic derives generated
@@ -451,11 +485,6 @@ macro_rules! thin_starkhash_debug_display {
                 std::fmt::Display::fmt(&self.0, f)
             }
         }
-    };
-
-    ($head:ty, $($tail:ty),+ $(,)?) => {
-        thin_starkhash_debug_display!($head);
-        thin_starkhash_debug_display!($($tail),+);
     };
 }
 
@@ -484,7 +513,11 @@ macro_rules! thin_starkhash_debug {
 // FIXME: it'd be better if these had normal varlen display and lenient parsing.
 thin_starkhash_debug!(ContractAddress, StarknetTransactionHash, ClassHash,);
 
-thin_starkhash_debug_display!(
+starkhash_to_from_sql!(ContractAddress);
+starkhash_to_from_sql!(StarknetTransactionHash);
+starkhash_to_from_sql!(ClassHash);
+
+starkhash_common_newtype!(
     ContractAddressSalt,
     ContractNonce,
     ContractStateHash,
@@ -500,7 +533,6 @@ thin_starkhash_debug_display!(
     StorageValue,
     GlobalRoot,
     StarknetBlockHash,
-    StarknetBlockNumber,
     TransactionSignatureElem,
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
@@ -510,6 +542,9 @@ thin_starkhash_debug_display!(
     SequencerAddress,
     TransactionNonce,
 );
+
+thin_starkhash_debug_display!(StarknetBlockNumber);
+thin_starkhash_debug_display!(StarknetBlockTimestamp);
 
 #[cfg(test)]
 mod tests {
