@@ -147,6 +147,12 @@ pub struct StarknetBlockHash(pub StarkHash);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockNumber(pub u64);
 
+impl rusqlite::ToSql for StarknetBlockNumber {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        self.0.to_sql()
+    }
+}
+
 /// The timestamp of a Starknet block.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetBlockTimestamp(pub u64);

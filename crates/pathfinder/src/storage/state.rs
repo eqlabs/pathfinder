@@ -53,7 +53,7 @@ impl L1StateTable {
                         :ethereum_log_index
                     )",
             named_params! {
-                ":starknet_block_number": update.block_number.0,
+                ":starknet_block_number": update.block_number,
                 ":starknet_global_root": update.global_root.0.as_be_bytes(),
                 ":ethereum_block_hash": &update.origin.block.hash.0[..],
                 ":ethereum_block_number": update.origin.block.number.0,
@@ -71,7 +71,7 @@ impl L1StateTable {
     pub fn reorg(tx: &Transaction<'_>, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
         tx.execute(
             "DELETE FROM l1_state WHERE starknet_block_number >= ?",
-            params![reorg_tail.0],
+            [reorg_tail],
         )?;
         Ok(())
     }
@@ -139,7 +139,7 @@ impl L1StateTable {
         }?;
 
         let mut rows = match block {
-            L1TableBlockId::Number(number) => statement.query(params![number.0]),
+            L1TableBlockId::Number(number) => statement.query([number]),
             L1TableBlockId::Latest => statement.query([]),
         }?;
 
@@ -229,10 +229,7 @@ impl RefsTable {
         tx: &Transaction<'_>,
         head: Option<StarknetBlockNumber>,
     ) -> anyhow::Result<()> {
-        match head {
-            Some(number) => tx.execute("UPDATE refs SET l1_l2_head = ? WHERE idx = 1", [number.0]),
-            None => tx.execute("UPDATE refs SET l1_l2_head = NULL WHERE idx = 1", []),
-        }?;
+        tx.execute("UPDATE refs SET l1_l2_head = ? WHERE idx = 1", [head])?;
 
         Ok(())
     }
@@ -292,7 +289,7 @@ impl StarknetBlocksTable {
         }?;
 
         let mut rows = match block {
-            StarknetBlocksBlockId::Number(number) => statement.query(params![number.0]),
+            StarknetBlocksBlockId::Number(number) => statement.query([number]),
             StarknetBlocksBlockId::Hash(hash) => statement.query(params![hash.0.as_be_bytes()]),
             StarknetBlocksBlockId::Latest => statement.query([]),
         }?;
@@ -997,16 +994,16 @@ impl StarknetEventsTable {
         match (&filter.from_block, &filter.to_block) {
             (Some(from_block), Some(to_block)) => {
                 where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
-                params.push((":from_block", &from_block.0));
-                params.push((":to_block", &to_block.0));
+                params.push((":from_block", from_block));
+                params.push((":to_block", to_block));
             }
             (Some(from_block), None) => {
                 where_statement_parts.push("block_number >= :from_block");
-                params.push((":from_block", &from_block.0));
+                params.push((":from_block", from_block));
             }
             (None, Some(to_block)) => {
                 where_statement_parts.push("block_number <= :to_block");
-                params.push((":to_block", &to_block.0));
+                params.push((":to_block", to_block));
             }
             (None, None) => {}
         }
