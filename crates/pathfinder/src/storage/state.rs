@@ -842,20 +842,21 @@ impl StarknetEventsTable {
 
     pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
 
-    pub fn event_count(
-        tx: &Transaction<'_>,
-        from_block: Option<StarknetBlockNumber>,
-        to_block: Option<StarknetBlockNumber>,
-        contract_address: Option<ContractAddress>,
-        keys: Vec<EventKey>,
-    ) -> anyhow::Result<usize> {
-        let mut base_query = "SELECT COUNT(1) FROM starknet_events".to_string();
+    fn event_query<'a>(
+        base: &'_ str,
+        from_block: Option<&'a StarknetBlockNumber>,
+        to_block: Option<&'a StarknetBlockNumber>,
+        contract_address: Option<&'a ContractAddress>,
+        keys: &'a [EventKey],
+        key_fts_expression: &'a mut String,
+    ) -> (String, Vec<(&'static str, &'a dyn rusqlite::ToSql)>) {
+        let mut base_query = base.to_string();
 
         let mut where_statement_parts: Vec<&'static str> = Vec::new();
         let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
 
         // filter on block range
-        match (&from_block, &to_block) {
+        match (from_block, to_block) {
             (Some(from_block), Some(to_block)) => {
                 where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
                 params.push((":from_block", from_block));
@@ -873,7 +874,7 @@ impl StarknetEventsTable {
         }
 
         // on contract address
-        if let Some(contract_address) = &contract_address {
+        if let Some(contract_address) = contract_address {
             where_statement_parts.push("from_address = :contract_address");
             params.push((":contract_address", contract_address))
         }
@@ -882,15 +883,16 @@ impl StarknetEventsTable {
         // The idea is that we convert keys to a space-separated list of Bas64 encoded string
         // representation and then use the full-text index to find events matching the events.
         // HACK: make sure key_fts_expression lives long enough
-        let mut key_fts_expression;
         if !keys.is_empty() {
-            key_fts_expression = String::with_capacity(
-                (keys.len() * (" OR ".len() + "\"\"".len() + 44)).saturating_sub(" OR ".len()),
-            );
+            let needed =
+                (keys.len() * (" OR ".len() + "\"\"".len() + 44)).saturating_sub(" OR ".len());
+            if let Some(more) = needed.checked_sub(key_fts_expression.capacity()) {
+                key_fts_expression.reserve(more);
+            }
 
             keys.iter().enumerate().for_each(|(i, key)| {
                 key_fts_expression.push('"');
-                Self::encode_event_key_to_base64(key, &mut key_fts_expression);
+                Self::encode_event_key_to_base64(key, key_fts_expression);
                 key_fts_expression.push('"');
 
                 if i != keys.len() - 1 {
@@ -902,7 +904,7 @@ impl StarknetEventsTable {
 
             base_query.push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
             where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
-            params.push((":events_match", &key_fts_expression));
+            params.push((":events_match", &*key_fts_expression));
         }
 
         let query = match where_statement_parts.is_empty() {
@@ -913,6 +915,27 @@ impl StarknetEventsTable {
                 where_statement_parts.join(" AND ")
             ),
         };
+
+        (query, params)
+    }
+
+    pub fn event_count(
+        tx: &Transaction<'_>,
+        from_block: Option<StarknetBlockNumber>,
+        to_block: Option<StarknetBlockNumber>,
+        contract_address: Option<ContractAddress>,
+        keys: Vec<EventKey>,
+    ) -> anyhow::Result<usize> {
+        let mut key_fts_expression = String::new();
+        let (query, params) = Self::event_query(
+            "SELECT COUNT(1) FROM starknet_events",
+            from_block.as_ref(),
+            to_block.as_ref(),
+            contract_address.as_ref(),
+            &keys,
+            &mut key_fts_expression,
+        );
+
         let count: usize = tx.query_row(&query, params.as_slice(), |row| row.get(0))?;
 
         Ok(count)
@@ -922,8 +945,7 @@ impl StarknetEventsTable {
         tx: &Transaction<'_>,
         filter: &StarknetEventFilter,
     ) -> anyhow::Result<PageOfEvents> {
-        let mut base_query =
-            r#"SELECT
+        let base_query = r#"SELECT
                   block_number,
                   starknet_blocks.hash as block_hash,
                   transaction_hash,
@@ -933,62 +955,18 @@ impl StarknetEventsTable {
                   starknet_events.keys as keys
                FROM starknet_events
                INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
-               INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#
-                .to_string();
-        let mut where_statement_parts: Vec<&'static str> = Vec::new();
-        let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
+               INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#;
 
-        // filter on block range
-        match (&filter.from_block, &filter.to_block) {
-            (Some(from_block), Some(to_block)) => {
-                where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
-                params.push((":from_block", from_block));
-                params.push((":to_block", to_block));
-            }
-            (Some(from_block), None) => {
-                where_statement_parts.push("block_number >= :from_block");
-                params.push((":from_block", from_block));
-            }
-            (None, Some(to_block)) => {
-                where_statement_parts.push("block_number <= :to_block");
-                params.push((":to_block", to_block));
-            }
-            (None, None) => {}
-        }
+        let mut key_fts_expression = String::new();
 
-        // filter on contract address
-        if let Some(contract_address) = &filter.contract_address {
-            where_statement_parts.push("from_address = :contract_address");
-            params.push((":contract_address", contract_address))
-        }
-
-        // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
-        // The idea is that we convert keys to a space-separated list of Bas64 encoded string
-        // representation and then use the full-text index to find events matching the events.
-        // HACK: make sure key_fts_expression lives long enough
-        let mut key_fts_expression;
-        if !filter.keys.is_empty() {
-            key_fts_expression = String::with_capacity(
-                (filter.keys.len() * (" OR ".len() + "\"\"".len() + 44))
-                    .saturating_sub(" OR ".len()),
-            );
-
-            filter.keys.iter().enumerate().for_each(|(i, key)| {
-                key_fts_expression.push('"');
-                Self::encode_event_key_to_base64(key, &mut key_fts_expression);
-                key_fts_expression.push('"');
-
-                if i != filter.keys.len() - 1 {
-                    key_fts_expression.push_str(" OR ");
-                }
-            });
-
-            debug_assert_eq!(key_fts_expression.capacity(), key_fts_expression.len());
-
-            base_query.push_str("INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
-            where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
-            params.push((":events_match", &key_fts_expression));
-        }
+        let (mut base_query, mut params) = Self::event_query(
+            base_query,
+            filter.from_block.as_ref(),
+            filter.to_block.as_ref(),
+            filter.contract_address.as_ref(),
+            &filter.keys,
+            &mut key_fts_expression,
+        );
 
         // Paging
         if filter.page_size > Self::PAGE_SIZE_LIMIT {
@@ -1004,20 +982,9 @@ impl StarknetEventsTable {
         params.push((":limit", &limit));
         params.push((":offset", &offset));
 
-        let query = if where_statement_parts.is_empty() {
-            format!(
-                "{} ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
-                base_query
-            )
-        } else {
-            format!(
-                "{} WHERE {} ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
-                base_query,
-                where_statement_parts.join(" AND "),
-            )
-        };
+        base_query.push_str(" ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset");
 
-        let mut statement = tx.prepare(&query).context("Preparing SQL query")?;
+        let mut statement = tx.prepare(&base_query).context("Preparing SQL query")?;
         let mut rows = statement
             .query(params.as_slice())
             .context("Executing SQL query")?;
