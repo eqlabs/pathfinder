@@ -143,19 +143,35 @@ pub struct GlobalRoot(pub StarkHash);
 #[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetBlockHash(pub StarkHash);
 
+macro_rules! i64_masquerading_as_u64_newtype_to_from_sql {
+    ($target:ty) => {
+        impl rusqlite::ToSql for $target {
+            fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+                self.0.to_sql()
+            }
+        }
+
+        impl rusqlite::types::FromSql for $target {
+            fn column_result(
+                value: rusqlite::types::ValueRef<'_>,
+            ) -> rusqlite::types::FromSqlResult<Self> {
+                Ok(Self(value.as_i64()? as u64))
+            }
+        }
+    };
+}
+
 /// A StarkNet block number.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockNumber(pub u64);
 
-impl rusqlite::ToSql for StarknetBlockNumber {
-    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        self.0.to_sql()
-    }
-}
+i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockNumber);
 
 /// The timestamp of a Starknet block.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetBlockTimestamp(pub u64);
+
+i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockTimestamp);
 
 /// A StarkNet transaction hash.
 #[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
@@ -164,6 +180,8 @@ pub struct StarknetTransactionHash(pub StarkHash);
 /// A StarkNet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetTransactionIndex(pub u64);
+
+i64_masquerading_as_u64_newtype_to_from_sql!(StarknetTransactionIndex);
 
 /// A single element of a signature used to secure a StarkNet transaction.
 #[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
