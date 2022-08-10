@@ -774,9 +774,11 @@ impl StarknetEventsTable {
     pub fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
         // with padding it seems 44 bytes are needed for each
         let needed = (keys.len() * (" ".len() + 44)).saturating_sub(" ".len());
-        if let Some(more) = needed.checked_sub(out.capacity()) {
+        if let Some(more) = needed.checked_sub(out.capacity() - out.len()) {
             out.reserve(more);
         }
+
+        let _capacity = out.capacity();
 
         keys.iter().enumerate().for_each(|(i, x)| {
             Self::encode_event_key_to_base64(x, out);
@@ -785,6 +787,8 @@ impl StarknetEventsTable {
                 out.push(' ');
             }
         });
+
+        debug_assert_eq!(_capacity, out.capacity(), "pre-reservation was not enough");
     }
 
     pub fn insert_events(
@@ -893,6 +897,8 @@ impl StarknetEventsTable {
                 key_fts_expression.reserve(more);
             }
 
+            let _capacity = key_fts_expression.capacity();
+
             keys.iter().enumerate().for_each(|(i, key)| {
                 key_fts_expression.push('"');
                 Self::encode_event_key_to_base64(key, key_fts_expression);
@@ -903,7 +909,11 @@ impl StarknetEventsTable {
                 }
             });
 
-            assert_eq!(key_fts_expression.capacity(), key_fts_expression.len());
+            debug_assert_eq!(
+                _capacity,
+                key_fts_expression.capacity(),
+                "pre-reservation was not enough"
+            );
 
             base_query.to_mut().push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
             where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
@@ -916,9 +926,11 @@ impl StarknetEventsTable {
                 + where_statement_parts.iter().map(|x| x.len()).sum::<usize>();
 
             let q = base_query.to_mut();
-            if let Some(more) = needed.checked_sub(q.capacity()) {
+            if let Some(more) = needed.checked_sub(q.capacity() - q.len()) {
                 q.reserve(more);
             }
+
+            let _capacity = q.capacity();
 
             q.push_str(" WHERE ");
 
@@ -933,6 +945,8 @@ impl StarknetEventsTable {
                         q.push_str(" AND ");
                     }
                 });
+
+            debug_assert_eq!(_capacity, q.capacity(), "pre-reservation was not enough");
         }
 
         (base_query, params)
