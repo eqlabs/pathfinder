@@ -374,12 +374,13 @@ impl StarknetBlocksTable {
         tx: &Transaction<'_>,
         hash: StarknetBlockHash,
     ) -> anyhow::Result<Option<StarknetBlockNumber>> {
-        let mut statement =
-            tx.prepare("SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1")?;
-        let mut rows = statement.query([hash])?;
-        let row = rows.next().context("Iterate rows")?;
-        let number = row.map(|row| row.get_unwrap("number"));
-        Ok(number)
+        tx.query_row(
+            "SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1",
+            [hash],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.into())
     }
 
     /// Returns the [chain](crate::core::Chain) based on genesis block hash stored in the DB.
@@ -400,23 +401,20 @@ impl StarknetBlocksTable {
         tx: &Transaction<'_>,
         block: StarknetBlocksNumberOrLatest,
     ) -> anyhow::Result<Option<StarknetBlockHash>> {
-        let mut statement = match block {
-            StarknetBlocksNumberOrLatest::Number(_) => {
-                tx.prepare("SELECT hash FROM starknet_blocks WHERE number = ?")?
-            }
-            StarknetBlocksNumberOrLatest::Latest => {
-                tx.prepare("SELECT hash FROM starknet_blocks ORDER BY number DESC LIMIT 1")?
-            }
-        };
-        let mut rows = match block {
-            StarknetBlocksNumberOrLatest::Number(n) => statement.query([n])?,
-            StarknetBlocksNumberOrLatest::Latest => statement.query([])?,
-        };
-        let row = rows.next().context("Iterate rows")?;
-        match row {
-            Some(row) => Ok(Some(row.get_unwrap("hash"))),
-            None => Ok(None),
+        match block {
+            StarknetBlocksNumberOrLatest::Number(n) => tx.query_row(
+                "SELECT hash FROM starknet_blocks WHERE number = ?",
+                [n],
+                |row| row.get(0),
+            ),
+            StarknetBlocksNumberOrLatest::Latest => tx.query_row(
+                "SELECT hash FROM starknet_blocks ORDER BY number DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            ),
         }
+        .optional()
+        .map_err(|e| e.into())
     }
 }
 
