@@ -1005,10 +1005,16 @@ impl StarknetEventsTable {
                 .collect();
 
             let keys = row.get_ref_unwrap("keys").as_str().unwrap();
+
+            // no need to allocate a vec for this in loop
+            let mut temp = [0u8; 32];
+
             let keys: Vec<_> = keys
                 .split(' ')
                 .map(|key| {
-                    let key = StarkHash::from_be_slice(&base64::decode(key).unwrap()).unwrap();
+                    let used =
+                        base64::decode_config_slice(key, base64::STANDARD, &mut temp).unwrap();
+                    let key = StarkHash::from_be_slice(&temp[..used]).unwrap();
                     EventKey(key)
                 })
                 .collect();
