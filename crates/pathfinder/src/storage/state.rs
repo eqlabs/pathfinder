@@ -309,29 +309,25 @@ impl StarknetBlocksTable {
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
     ) -> anyhow::Result<Option<GlobalRoot>> {
-        let mut statement = match block {
-            StarknetBlocksBlockId::Number(_) => {
-                tx.prepare("SELECT root FROM starknet_blocks WHERE number = ?")
-            }
-            StarknetBlocksBlockId::Hash(_) => {
-                tx.prepare("SELECT root FROM starknet_blocks WHERE hash = ?")
-            }
-            StarknetBlocksBlockId::Latest => {
-                tx.prepare("SELECT root FROM starknet_blocks ORDER BY number DESC LIMIT 1")
-            }
-        }?;
-
-        let mut rows = match block {
-            StarknetBlocksBlockId::Number(number) => statement.query([number]),
-            StarknetBlocksBlockId::Hash(hash) => statement.query([hash]),
-            StarknetBlocksBlockId::Latest => statement.query([]),
-        }?;
-
-        let row = rows.next().context("Iterate rows")?;
-        match row {
-            Some(row) => Ok(Some(row.get_unwrap("root"))),
-            None => Ok(None),
+        match block {
+            StarknetBlocksBlockId::Number(number) => tx.query_row(
+                "SELECT root FROM starknet_blocks WHERE number = ?",
+                [number],
+                |row| row.get(0),
+            ),
+            StarknetBlocksBlockId::Hash(hash) => tx.query_row(
+                "SELECT root FROM starknet_blocks WHERE hash = ?",
+                [hash],
+                |row| row.get(0),
+            ),
+            StarknetBlocksBlockId::Latest => tx.query_row(
+                "SELECT root FROM starknet_blocks ORDER BY number DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            ),
         }
+        .optional()
+        .map_err(|e| e.into())
     }
 
     /// Deletes all rows from __head down-to reorg_tail__
