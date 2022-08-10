@@ -803,21 +803,19 @@ impl StarknetEventsTable {
                 transaction_hash,
                 ..
             }) => {
+                let mut stmt = tx.prepare(
+                    r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
+                                           VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)")?;
                 for (idx, event) in events.iter().enumerate() {
-                    tx
-                        .execute(
-                            r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
-                                                   VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
-                            named_params![
-                                ":block_number": block_number.0,
-                                ":idx": idx,
-                                ":transaction_hash": &transaction_hash.0.as_be_bytes()[..],
-                                ":from_address": &event.from_address.0.as_be_bytes()[..],
-                                ":keys": Self::event_keys_to_base64_strings(&event.keys),
-                                ":data": Self::event_data_to_bytes(&event.data),
-                            ],
-                        )
-                        .context("Insert events into events table")?;
+                    stmt.execute(named_params![
+                        ":block_number": block_number,
+                        ":idx": idx,
+                        ":transaction_hash": &transaction_hash,
+                        ":from_address": &event.from_address,
+                        ":keys": Self::event_keys_to_base64_strings(&event.keys),
+                        ":data": Self::event_data_to_bytes(&event.data),
+                    ])
+                    .context("Insert events into events table")?;
                 }
                 Ok(())
             }
