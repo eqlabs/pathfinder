@@ -889,7 +889,6 @@ impl StarknetEventsTable {
         // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
         // The idea is that we convert keys to a space-separated list of Bas64 encoded string
         // representation and then use the full-text index to find events matching the events.
-        // HACK: make sure key_fts_expression lives long enough
         if !keys.is_empty() {
             let needed =
                 (keys.len() * (" OR ".len() + "\"\"".len() + 44)).saturating_sub(" OR ".len());
