@@ -220,6 +220,7 @@ pub(crate) mod test_utils {
         sequencer::reply::transaction::{
             self, DeclareTransaction, DeployTransaction, EntryPointType, InvokeTransaction,
         },
+        starkhash,
     };
 
     use stark_hash::StarkHash;
@@ -259,11 +260,15 @@ pub(crate) mod test_utils {
         let transactions = (0..NUM_TRANSACTIONS).map(|i| match i % TRANSACTIONS_PER_BLOCK {
             x if x < INVOKE_TRANSACTIONS_PER_BLOCK => {
                 transaction::Transaction::Invoke(InvokeTransaction {
-                    calldata: vec![CallParam::from_hex_str(&"0".repeat(i + 3)).unwrap()],
+                    calldata: vec![CallParam(
+                        StarkHash::from_hex_str(&"0".repeat(i + 3)).unwrap(),
+                    )],
                     contract_address: ContractAddress(
                         StarkHash::from_hex_str(&"1".repeat(i + 3)).unwrap(),
                     ),
-                    entry_point_selector: EntryPoint::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                    entry_point_selector: EntryPoint(
+                        StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                    ),
                     entry_point_type: if i & 1 == 0 {
                         EntryPointType::External
                     } else {
@@ -326,7 +331,7 @@ pub(crate) mod test_utils {
                     )],
                     keys: vec![
                         EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
-                        EventKey(StarkHash::from_hex_str("deadbeef").unwrap()),
+                        EventKey(starkhash!("deadbeef")),
                     ],
                 }]
             } else {

@@ -55,7 +55,7 @@ pub fn verify_block_hash(
             num_transactions,
             transaction_commitment,
             block.parent_block_hash,
-            *chain.starknet_chain_id(),
+            chain.starknet_chain_id(),
         );
         block_hash == expected_block_hash
     } else {
@@ -96,9 +96,8 @@ pub fn verify_block_hash(
 mod meta {
     use std::ops::Range;
 
-    use stark_hash::StarkHash;
-
     use crate::core::{Chain, SequencerAddress, StarknetBlockNumber};
+    use crate::starkhash;
 
     /// Metadata about Starknet chains we use for block hash calculation
     ///
@@ -143,29 +142,21 @@ mod meta {
         }
     }
 
-    lazy_static::lazy_static! {
-        static ref TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-            first_0_7_block: StarknetBlockNumber(47028),
-            not_verifiable_range: Some(StarknetBlockNumber(119802)..StarknetBlockNumber(148428)),
-            fallback_sequencer_address: SequencerAddress(
-                StarkHash::from_hex_str(
-                    "0x46a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b",
-                )
-                .unwrap(),
-            ),
-        };
+    const TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
+        first_0_7_block: StarknetBlockNumber(47028),
+        not_verifiable_range: Some(StarknetBlockNumber(119802)..StarknetBlockNumber(148428)),
+        fallback_sequencer_address: SequencerAddress(starkhash!(
+            "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
+        )),
+    };
 
-        static ref MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-            first_0_7_block: StarknetBlockNumber(833),
-            not_verifiable_range: None,
-            fallback_sequencer_address: SequencerAddress(
-                StarkHash::from_hex_str(
-                    "0x21f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5",
-                )
-                .unwrap(),
-            ),
-        };
-    }
+    const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
+        first_0_7_block: StarknetBlockNumber(833),
+        not_verifiable_range: None,
+        fallback_sequencer_address: SequencerAddress(starkhash!(
+            "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
+        )),
+    };
 
     pub fn for_chain(chain: Chain) -> &'static BlockHashMetaInfo {
         match chain {
@@ -402,6 +393,7 @@ mod tests {
     use crate::{
         core::{EntryPoint, Fee},
         sequencer::reply::transaction::{EntryPointType, InvokeTransaction},
+        starkhash,
     };
 
     use super::*;
@@ -411,28 +403,26 @@ mod tests {
         use crate::core::{ContractAddress, EventData, EventKey};
 
         let event = Event {
-            from_address: ContractAddress::from_hex_str("0xdeadbeef").unwrap(),
+            from_address: ContractAddress(starkhash!("deadbeef")),
             data: vec![
-                EventData(StarkHash::from_hex_str("0x5").unwrap()),
-                EventData(StarkHash::from_hex_str("0x6").unwrap()),
-                EventData(StarkHash::from_hex_str("0x7").unwrap()),
-                EventData(StarkHash::from_hex_str("0x8").unwrap()),
-                EventData(StarkHash::from_hex_str("0x9").unwrap()),
+                EventData(starkhash!("05")),
+                EventData(starkhash!("06")),
+                EventData(starkhash!("07")),
+                EventData(starkhash!("08")),
+                EventData(starkhash!("09")),
             ],
             keys: vec![
-                EventKey(StarkHash::from_hex_str("0x1").unwrap()),
-                EventKey(StarkHash::from_hex_str("0x2").unwrap()),
-                EventKey(StarkHash::from_hex_str("0x3").unwrap()),
-                EventKey(StarkHash::from_hex_str("0x4").unwrap()),
+                EventKey(starkhash!("01")),
+                EventKey(starkhash!("02")),
+                EventKey(starkhash!("03")),
+                EventKey(starkhash!("04")),
             ],
         };
 
         // produced by the cairo-lang Python implementation:
         // `hex(calculate_event_hash(0xdeadbeef, [1, 2, 3, 4], [5, 6, 7, 8, 9]))`
-        let expected_event_hash = StarkHash::from_hex_str(
-            "0xdb96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4",
-        )
-        .unwrap();
+        let expected_event_hash =
+            starkhash!("db96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4");
         let calculated_event_hash = calculate_event_hash(&event);
         assert_eq!(expected_event_hash, calculated_event_hash);
     }
@@ -443,15 +433,15 @@ mod tests {
 
         let transaction = Transaction::Invoke(InvokeTransaction {
             calldata: vec![],
-            contract_address: ContractAddress::from_hex_str("0xdeadbeef").unwrap(),
+            contract_address: ContractAddress(starkhash!("deadbeef")),
             entry_point_type: EntryPointType::External,
-            entry_point_selector: EntryPoint::from_hex_str("0xe").unwrap(),
+            entry_point_selector: EntryPoint(starkhash!("0e")),
             max_fee: Fee(0u128.to_be_bytes().into()),
             signature: vec![
-                TransactionSignatureElem(StarkHash::from_hex_str("0x2").unwrap()),
-                TransactionSignatureElem(StarkHash::from_hex_str("0x3").unwrap()),
+                TransactionSignatureElem(starkhash!("02")),
+                TransactionSignatureElem(starkhash!("03")),
             ],
-            transaction_hash: StarknetTransactionHash(StarkHash::from_hex_str("0x1").unwrap()),
+            transaction_hash: StarknetTransactionHash(starkhash!("01")),
         });
 
         // produced by the cairo-lang Python implementation:
@@ -476,10 +466,8 @@ mod tests {
 
         // produced by the cairo-lang Python implementation:
         // `hex(asyncio.run(calculate_patricia_root([1, 2, 3, 4], height=64, ffc=ffc))))`
-        let expected_root_hash = StarkHash::from_hex_str(
-            "0x1a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461",
-        )
-        .unwrap();
+        let expected_root_hash =
+            starkhash!("01a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
         let computed_root_hash = tree.commit().unwrap();
 
         assert_eq!(expected_root_hash, computed_root_hash);

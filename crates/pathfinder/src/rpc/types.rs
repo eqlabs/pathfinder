@@ -1213,6 +1213,7 @@ pub mod reply {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
+            use crate::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]
@@ -1220,48 +1221,42 @@ pub mod reply {
                 impl Block {
                     pub fn test_data() -> Self {
                         let common = CommonTransactionProperties {
-                            hash: StarknetTransactionHash::from_hex_str("0x4").unwrap(),
+                            hash: StarknetTransactionHash(starkhash!("04")),
                             max_fee: Fee(web3::types::H128::from_low_u64_be(0x5)),
                             version: TransactionVersion(web3::types::H256::from_low_u64_be(0x6)),
-                            signature: vec![TransactionSignatureElem::from_hex_str("0x7").unwrap()],
-                            nonce: TransactionNonce::from_hex_str("0x8").unwrap(),
+                            signature: vec![TransactionSignatureElem(starkhash!("07"))],
+                            nonce: TransactionNonce(starkhash!("08")),
                         };
                         Self {
                             status: BlockStatus::AcceptedOnL1,
-                            block_hash: Some(StarknetBlockHash::from_hex_str("0x0").unwrap()),
-                            parent_hash: StarknetBlockHash::from_hex_str("0x1").unwrap(),
+                            block_hash: Some(StarknetBlockHash(starkhash!("00"))),
+                            parent_hash: StarknetBlockHash(starkhash!("01")),
                             block_number: Some(StarknetBlockNumber::GENESIS),
-                            new_root: Some(GlobalRoot::from_hex_str("0x2").unwrap()),
+                            new_root: Some(GlobalRoot(starkhash!("02"))),
                             timestamp: StarknetBlockTimestamp(1),
-                            sequencer_address: SequencerAddress::from_hex_str("0x3").unwrap(),
+                            sequencer_address: SequencerAddress(starkhash!("03")),
                             transactions: Transactions::Full(vec![
                                 Transaction::Declare(DeclareTransaction {
                                     common: common.clone(),
-                                    class_hash: ClassHash::from_hex_str("0x9").unwrap(),
-                                    sender_address: ContractAddress::from_hex_str("0xa").unwrap(),
+                                    class_hash: ClassHash(starkhash!("09")),
+                                    sender_address: ContractAddress(starkhash!("0a")),
                                 }),
                                 Transaction::Invoke(InvokeTransaction {
                                     common,
-                                    contract_address: ContractAddress::from_hex_str("0xb").unwrap(),
-                                    entry_point_selector: EntryPoint::from_hex_str("0xc").unwrap(),
-                                    calldata: vec![CallParam::from_hex_str("0xd").unwrap()],
+                                    contract_address: ContractAddress(starkhash!("0b")),
+                                    entry_point_selector: EntryPoint(starkhash!("0c")),
+                                    calldata: vec![CallParam(starkhash!("0d"))],
                                 }),
                                 Transaction::Deploy(DeployTransaction {
-                                    hash: StarknetTransactionHash::from_hex_str("0xe").unwrap(),
+                                    hash: StarknetTransactionHash(starkhash!("0e")),
 
                                     version: TransactionVersion(
                                         web3::types::H256::from_low_u64_be(1),
                                     ),
-                                    contract_address: ContractAddress::from_hex_str("0xf").unwrap(),
-                                    contract_address_salt: ContractAddressSalt::from_hex_str(
-                                        "0xee",
-                                    )
-                                    .unwrap(),
-                                    class_hash: ClassHash::from_hex_str("0x10").unwrap(),
-                                    constructor_calldata: vec![ConstructorParam::from_hex_str(
-                                        "0x11",
-                                    )
-                                    .unwrap()],
+                                    contract_address: ContractAddress(starkhash!("0f")),
+                                    contract_address_salt: ContractAddressSalt(starkhash!("ee")),
+                                    class_hash: ClassHash(starkhash!("10")),
+                                    constructor_calldata: vec![ConstructorParam(starkhash!("11"))],
                                 }),
                             ]),
                         }
@@ -1276,9 +1271,9 @@ pub mod reply {
                         block_hash: None,
                         block_number: None,
                         new_root: None,
-                        transactions: Transactions::HashesOnly(vec![
-                            StarknetTransactionHash::from_hex_str("0x4").unwrap(),
-                        ]),
+                        transactions: Transactions::HashesOnly(vec![StarknetTransactionHash(
+                            starkhash!("04"),
+                        )]),
                         ..Block::test_data()
                     },
                 ];
@@ -1298,11 +1293,11 @@ pub mod reply {
                 impl CommonTransactionReceiptProperties {
                     pub fn test_data() -> Self {
                         Self {
-                            transaction_hash: StarknetTransactionHash::from_hex_str("0x0").unwrap(),
+                            transaction_hash: StarknetTransactionHash(starkhash!("00")),
                             actual_fee: Fee(web3::types::H128::from_low_u64_be(0x1)),
                             status: TransactionStatus::AcceptedOnL1,
                             status_data: Some("blah".to_string()),
-                            block_hash: StarknetBlockHash::from_hex_str("0xaaa").unwrap(),
+                            block_hash: StarknetBlockHash(starkhash!("0aaa")),
                             block_number: StarknetBlockNumber(3),
                         }
                     }
@@ -1311,7 +1306,7 @@ pub mod reply {
                 impl CommonPendingTransactionReceiptProperties {
                     pub fn test_data() -> Self {
                         Self {
-                            transaction_hash: StarknetTransactionHash::from_hex_str("0x1").unwrap(),
+                            transaction_hash: StarknetTransactionHash(starkhash!("01")),
                             actual_fee: Fee(web3::types::H128::from_low_u64_be(0x2)),
                         }
                     }
@@ -1325,24 +1320,22 @@ pub mod reply {
                                 to_address: crate::core::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x2),
                                 ),
-                                payload: vec![crate::core::L2ToL1MessagePayloadElem::from_hex_str(
-                                    "0x3",
-                                )
-                                .unwrap()],
+                                payload: vec![crate::core::L2ToL1MessagePayloadElem(starkhash!(
+                                    "03"
+                                ))],
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
                                 from_address: crate::core::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x4),
                                 ),
-                                payload: vec![crate::core::L1ToL2MessagePayloadElem::from_hex_str(
-                                    "0x5",
-                                )
-                                .unwrap()],
+                                payload: vec![crate::core::L1ToL2MessagePayloadElem(starkhash!(
+                                    "05"
+                                ))],
                             }),
                             events: vec![transaction_receipt::Event {
-                                from_address: ContractAddress::from_hex_str("0x6").unwrap(),
-                                keys: vec![EventKey::from_hex_str("0x7").unwrap()],
-                                data: vec![EventData::from_hex_str("0x8").unwrap()],
+                                from_address: ContractAddress(starkhash!("06")),
+                                keys: vec![EventKey(starkhash!("07"))],
+                                data: vec![EventData(starkhash!("08"))],
                             }],
                         }
                     }
@@ -1356,24 +1349,22 @@ pub mod reply {
                                 to_address: crate::core::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x5),
                                 ),
-                                payload: vec![crate::core::L2ToL1MessagePayloadElem::from_hex_str(
-                                    "0x6",
-                                )
-                                .unwrap()],
+                                payload: vec![crate::core::L2ToL1MessagePayloadElem(starkhash!(
+                                    "06"
+                                ))],
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
                                 from_address: crate::core::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x77),
                                 ),
-                                payload: vec![crate::core::L1ToL2MessagePayloadElem::from_hex_str(
-                                    "0x7",
-                                )
-                                .unwrap()],
+                                payload: vec![crate::core::L1ToL2MessagePayloadElem(starkhash!(
+                                    "07"
+                                ))],
                             }),
                             events: vec![transaction_receipt::Event {
-                                from_address: ContractAddress::from_hex_str("0xa6").unwrap(),
-                                keys: vec![EventKey::from_hex_str("0xa7").unwrap()],
-                                data: vec![EventData::from_hex_str("0xa8").unwrap()],
+                                from_address: ContractAddress(starkhash!("a6")),
+                                keys: vec![EventKey(starkhash!("a7"))],
+                                data: vec![EventData(starkhash!("a8"))],
                             }],
                         }
                     }

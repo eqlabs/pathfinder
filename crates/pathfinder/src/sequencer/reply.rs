@@ -456,11 +456,11 @@ pub mod state_update {
         #[test]
         fn contract_field_backward_compatibility() {
             use super::{ClassHash, ContractAddress, DeployedContract};
-            use stark_hash::StarkHash;
+            use crate::starkhash;
 
             let expected = DeployedContract {
-                address: ContractAddress(StarkHash::from_hex_str("0x01").unwrap()),
-                class_hash: ClassHash(StarkHash::from_hex_str("0x02").unwrap()),
+                address: ContractAddress(starkhash!("01")),
+                class_hash: ClassHash(starkhash!("02")),
             };
 
             // cario <0.9.0
@@ -527,7 +527,7 @@ pub mod add_transaction {
 
     #[cfg(test)]
     mod serde_test {
-        use stark_hash::StarkHash;
+        use crate::starkhash;
 
         use super::*;
 
@@ -536,12 +536,9 @@ pub mod add_transaction {
             let result = serde_json::from_str::<InvokeResponse>(r#"{"code": "TRANSACTION_RECEIVED", "transaction_hash": "0x389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"}"#).unwrap();
             let expected = InvokeResponse {
                 code: "TRANSACTION_RECEIVED".to_owned(),
-                transaction_hash: StarknetTransactionHash(
-                    StarkHash::from_hex_str(
-                        "0x389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b",
-                    )
-                    .unwrap(),
-                ),
+                transaction_hash: StarknetTransactionHash(starkhash!(
+                    "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
+                )),
             };
             assert_eq!(expected, result);
         }
@@ -551,18 +548,12 @@ pub mod add_transaction {
             let result = serde_json::from_str::<DeployResponse>(r#"{"code": "TRANSACTION_RECEIVED", "transaction_hash": "0x296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f", "address": "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"}"#).unwrap();
             let expected = DeployResponse {
                 code: "TRANSACTION_RECEIVED".to_owned(),
-                transaction_hash: StarknetTransactionHash(
-                    StarkHash::from_hex_str(
-                        "0x296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f",
-                    )
-                    .unwrap(),
-                ),
-                address: ContractAddress(
-                    StarkHash::from_hex_str(
-                        "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
-                    )
-                    .unwrap(),
-                ),
+                transaction_hash: StarknetTransactionHash(starkhash!(
+                    "0296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f"
+                )),
+                address: ContractAddress(starkhash!(
+                    "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                )),
             };
             assert_eq!(expected, result);
         }

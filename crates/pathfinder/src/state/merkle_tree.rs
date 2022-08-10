@@ -658,6 +658,7 @@ impl NodeStorage for () {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::starkhash;
     use bitvec::prelude::*;
 
     #[test]
@@ -666,10 +667,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
         let uut = MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-        let key = StarkHash::from_hex_str("99cadc82")
-            .unwrap()
-            .view_bits()
-            .to_bitvec();
+        let key = starkhash!("99cadc82").view_bits().to_bitvec();
         assert_eq!(uut.get(&key).unwrap(), StarkHash::ZERO);
     }
 
@@ -678,7 +676,7 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let non_root = StarkHash::from_hex_str("99cadc82").unwrap();
+        let non_root = starkhash!("99cadc82");
         MerkleTree::load("test".to_string(), &transaction, non_root).unwrap_err();
     }
 
@@ -692,22 +690,13 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key0 = StarkHash::from_hex_str("99cadc82")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let key1 = StarkHash::from_hex_str("901823")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let key2 = StarkHash::from_hex_str("8975")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
+            let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
+            let key1 = starkhash!("901823").view_bits().to_bitvec();
+            let key2 = starkhash!("8975").view_bits().to_bitvec();
 
-            let val0 = StarkHash::from_hex_str("891127cbaf").unwrap();
-            let val1 = StarkHash::from_hex_str("82233127cbaf").unwrap();
-            let val2 = StarkHash::from_hex_str("891124667aacde7cbaf").unwrap();
+            let val0 = starkhash!("891127cbaf");
+            let val1 = starkhash!("82233127cbaf");
+            let val2 = starkhash!("0891124667aacde7cbaf");
 
             uut.set(&key0, val0).unwrap();
             uut.set(&key1, val1).unwrap();
@@ -725,12 +714,9 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("123")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let old_value = StarkHash::from_hex_str("abc").unwrap();
-            let new_value = StarkHash::from_hex_str("def").unwrap();
+            let key = starkhash!("0123").view_bits().to_bitvec();
+            let old_value = starkhash!("0abc");
+            let new_value = starkhash!("0def");
 
             uut.set(&key, old_value).unwrap();
             uut.set(&key, new_value).unwrap();
@@ -749,11 +735,8 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("123")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let value = StarkHash::from_hex_str("abc").unwrap();
+            let key = starkhash!("0123").view_bits().to_bitvec();
+            let value = starkhash!("0abc");
 
             uut.set(&key, value).unwrap();
 
@@ -781,8 +764,8 @@ mod tests {
             let mut key1 = bitvec![Msb0, u8; 0; 251];
             key1.set(50, true);
 
-            let value0 = StarkHash::from_hex_str("abc").unwrap();
-            let value1 = StarkHash::from_hex_str("def").unwrap();
+            let value0 = starkhash!("0abc");
+            let value1 = starkhash!("0def");
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -845,8 +828,8 @@ mod tests {
             let mut key1 = bitvec![Msb0, u8; 0; 251];
             key1.set(0, true);
 
-            let value0 = StarkHash::from_hex_str("abc").unwrap();
-            let value1 = StarkHash::from_hex_str("def").unwrap();
+            let value0 = starkhash!("0abc");
+            let value1 = starkhash!("0def");
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -893,16 +876,10 @@ mod tests {
 
         #[test]
         fn binary_leaves() {
-            let key0 = StarkHash::from_hex_str("0")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let key1 = StarkHash::from_hex_str("1")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let value0 = StarkHash::from_hex_str("abc").unwrap();
-            let value1 = StarkHash::from_hex_str("def").unwrap();
+            let key0 = starkhash!("00").view_bits().to_bitvec();
+            let key1 = starkhash!("01").view_bits().to_bitvec();
+            let value0 = starkhash!("0abc");
+            let value1 = starkhash!("0def");
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -922,7 +899,7 @@ mod tests {
                 .expect("root should be an edge");
             // The edge's path will be the full key path excluding the final bit.
             // The final bit is represented by the following binary node.
-            let mut expected_path = key0.clone();
+            let mut expected_path = key0.to_bitvec();
             expected_path.pop();
 
             assert_eq!(edge.path, expected_path);
@@ -965,10 +942,7 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("123abc")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
+            let key = starkhash!("123abc").view_bits().to_bitvec();
             uut.delete_leaf(&key).unwrap();
 
             assert_eq!(*uut.root.borrow(), Node::Unresolved(StarkHash::ZERO));
@@ -981,11 +955,8 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("123")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let value = StarkHash::from_hex_str("abc").unwrap();
+            let key = starkhash!("0123").view_bits().to_bitvec();
+            let value = starkhash!("0abc");
 
             uut.set(&key, value).unwrap();
             uut.delete_leaf(&key).unwrap();
@@ -1001,22 +972,13 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key0 = StarkHash::from_hex_str("99cadc82")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let key1 = StarkHash::from_hex_str("901823")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let key2 = StarkHash::from_hex_str("8975")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
+            let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
+            let key1 = starkhash!("901823").view_bits().to_bitvec();
+            let key2 = starkhash!("8975").view_bits().to_bitvec();
 
-            let val0 = StarkHash::from_hex_str("1").unwrap();
-            let val1 = StarkHash::from_hex_str("2").unwrap();
-            let val2 = StarkHash::from_hex_str("3").unwrap();
+            let val0 = starkhash!("01");
+            let val1 = starkhash!("02");
+            let val2 = starkhash!("03");
 
             uut.set(&key0, val0).unwrap();
             uut.set(&key1, val1).unwrap();
@@ -1040,22 +1002,13 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key0 = StarkHash::from_hex_str("99cadc82")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let key1 = StarkHash::from_hex_str("901823")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let key2 = StarkHash::from_hex_str("8975")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
+            let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
+            let key1 = starkhash!("901823").view_bits().to_bitvec();
+            let key2 = starkhash!("8975").view_bits().to_bitvec();
 
-            let val0 = StarkHash::from_hex_str("1").unwrap();
-            let val1 = StarkHash::from_hex_str("2").unwrap();
-            let val2 = StarkHash::from_hex_str("3").unwrap();
+            let val0 = starkhash!("01");
+            let val1 = starkhash!("02");
+            let val2 = starkhash!("03");
 
             uut.set(&key0, val0).unwrap();
             uut.set(&key1, val1).unwrap();
@@ -1083,51 +1036,42 @@ mod tests {
 
             let leaves = [
                 (
-                    "0x01A2FD9B06EAB5BCA4D3885EE4C42736E835A57399FF8B7F6083A92FD2A20095",
-                    "0x0215AA555E0CE3E462423D18B7216378D3CCD5D94D724AC7897FBC83FAAA4ED4",
+                    starkhash!("01A2FD9B06EAB5BCA4D3885EE4C42736E835A57399FF8B7F6083A92FD2A20095"),
+                    starkhash!("0215AA555E0CE3E462423D18B7216378D3CCD5D94D724AC7897FBC83FAAA4ED4"),
                 ),
                 (
-                    "0x07AC69285B869DC3E8B305C748A0B867B2DE3027AECEBA51158ECA3B7354D76F",
-                    "0x065C85592F29501D97A2EA1CCF2BA867E6A838D602F4E7A7391EFCBF66958386",
+                    starkhash!("07AC69285B869DC3E8B305C748A0B867B2DE3027AECEBA51158ECA3B7354D76F"),
+                    starkhash!("065C85592F29501D97A2EA1CCF2BA867E6A838D602F4E7A7391EFCBF66958386"),
                 ),
                 (
-                    "0x05C71AB5EF6A5E9DBC7EFD5C61554AB36039F60E5BA076833102E24344524566",
-                    "0x060970DF8E8A19AF3F41B78E93B845EC074A0AED4E96D18C6633580722B93A28",
+                    starkhash!("05C71AB5EF6A5E9DBC7EFD5C61554AB36039F60E5BA076833102E24344524566"),
+                    starkhash!("060970DF8E8A19AF3F41B78E93B845EC074A0AED4E96D18C6633580722B93A28"),
                 ),
                 (
-                    "0x0000000000000000000000000000000000000000000000000000000000000005",
-                    "0x000000000000000000000000000000000000000000000000000000000000022B",
+                    starkhash!("0000000000000000000000000000000000000000000000000000000000000005"),
+                    starkhash!("000000000000000000000000000000000000000000000000000000000000022B"),
                 ),
                 (
-                    "0x0000000000000000000000000000000000000000000000000000000000000005",
-                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    starkhash!("0000000000000000000000000000000000000000000000000000000000000005"),
+                    starkhash!("0000000000000000000000000000000000000000000000000000000000000000"),
                 ),
             ];
 
             // Add the first four leaves and commit them to storage.
             for (key, val) in &leaves[..4] {
-                let key = StarkHash::from_hex_str(key)
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let val = StarkHash::from_hex_str(val).unwrap();
-                uut.set(&key, val).unwrap();
+                let key = key.view_bits();
+                uut.set(key, *val).unwrap();
             }
             let root = uut.commit().unwrap();
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
             let mut uut = MerkleTree::load("test".to_string(), &transaction, root).unwrap();
-            let key = StarkHash::from_hex_str(leaves[4].0)
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let val = StarkHash::from_hex_str(leaves[4].1).unwrap();
+            let key = leaves[4].0.view_bits().to_bitvec();
+            let val = leaves[4].1;
             uut.set(&key, val).unwrap();
             let root = uut.commit().unwrap();
-            let expect = StarkHash::from_hex_str(
-                "05f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896",
-            )
-            .unwrap();
+            let expect =
+                starkhash!("05f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896");
             assert_eq!(root, expect);
         }
 
@@ -1139,22 +1083,13 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = StarkHash::from_hex_str("99cadc82")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let key1 = StarkHash::from_hex_str("901823")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let key2 = StarkHash::from_hex_str("8975")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
+                let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
+                let key1 = starkhash!("901823").view_bits().to_bitvec();
+                let key2 = starkhash!("8975").view_bits().to_bitvec();
 
-                let val0 = StarkHash::from_hex_str("1").unwrap();
-                let val1 = StarkHash::from_hex_str("2").unwrap();
-                let val2 = StarkHash::from_hex_str("3").unwrap();
+                let val0 = starkhash!("01");
+                let val1 = starkhash!("02");
+                let val2 = starkhash!("03");
 
                 let mut uut =
                     MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
@@ -1190,22 +1125,13 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = StarkHash::from_hex_str("99cadc82")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let key1 = StarkHash::from_hex_str("901823")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let key2 = StarkHash::from_hex_str("8975")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
+                let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
+                let key1 = starkhash!("901823").view_bits().to_bitvec();
+                let key2 = starkhash!("8975").view_bits().to_bitvec();
 
-                let val0 = StarkHash::from_hex_str("1").unwrap();
-                let val1 = StarkHash::from_hex_str("2").unwrap();
-                let val2 = StarkHash::from_hex_str("3").unwrap();
+                let val0 = starkhash!("01");
+                let val1 = starkhash!("02");
+                let val2 = starkhash!("03");
 
                 let mut uut =
                     MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
@@ -1245,22 +1171,13 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = StarkHash::from_hex_str("99cadc82")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let key1 = StarkHash::from_hex_str("901823")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let key2 = StarkHash::from_hex_str("8975")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
+                let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
+                let key1 = starkhash!("901823").view_bits().to_bitvec();
+                let key2 = starkhash!("8975").view_bits().to_bitvec();
 
-                let val0 = StarkHash::from_hex_str("1").unwrap();
-                let val1 = StarkHash::from_hex_str("2").unwrap();
-                let val2 = StarkHash::from_hex_str("3").unwrap();
+                let val0 = starkhash!("01");
+                let val1 = starkhash!("02");
+                let val2 = starkhash!("03");
 
                 let mut uut =
                     MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
@@ -1296,22 +1213,13 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = StarkHash::from_hex_str("99cadc82")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let key1 = StarkHash::from_hex_str("901823")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let key2 = StarkHash::from_hex_str("8975")
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
+                let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
+                let key1 = starkhash!("901823").view_bits().to_bitvec();
+                let key2 = starkhash!("8975").view_bits().to_bitvec();
 
-                let val0 = StarkHash::from_hex_str("1").unwrap();
-                let val1 = StarkHash::from_hex_str("2").unwrap();
-                let val2 = StarkHash::from_hex_str("3").unwrap();
+                let val0 = starkhash!("01");
+                let val1 = starkhash!("02");
+                let val2 = starkhash!("03");
 
                 let mut uut =
                     MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
@@ -1350,11 +1258,8 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("99cadc82")
-                .unwrap()
-                .view_bits()
-                .to_bitvec();
-            let val = StarkHash::from_hex_str("12345678").unwrap();
+            let key = starkhash!("99cadc82").view_bits().to_bitvec();
+            let val = starkhash!("12345678");
             uut.set(&key, val).unwrap();
 
             let root0 = uut.commit().unwrap();
@@ -1390,6 +1295,7 @@ mod tests {
 
     mod real_world {
         use super::*;
+        use crate::starkhash;
 
         #[test]
         fn simple() {
@@ -1400,32 +1306,20 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            uut.set(
-                StarkHash::from_hex_str("0x1").unwrap().view_bits(),
-                StarkHash::from_hex_str("0x0").unwrap(),
-            )
-            .unwrap();
+            uut.set(starkhash!("01").view_bits(), starkhash!("00"))
+                .unwrap();
 
-            uut.set(
-                StarkHash::from_hex_str("0x86").unwrap().view_bits(),
-                StarkHash::from_hex_str("0x1").unwrap(),
-            )
-            .unwrap();
+            uut.set(starkhash!("86").view_bits(), starkhash!("01"))
+                .unwrap();
 
-            uut.set(
-                StarkHash::from_hex_str("0x87").unwrap().view_bits(),
-                StarkHash::from_hex_str("0x2").unwrap(),
-            )
-            .unwrap();
+            uut.set(starkhash!("87").view_bits(), starkhash!("02"))
+                .unwrap();
 
             let root = uut.commit().unwrap();
 
             assert_eq!(
                 root,
-                StarkHash::from_hex_str(
-                    "0x05458b9f8491e7c845bffa4cd36cdb3a7c29dcdf75f2809bd6f4ce65386facfc"
-                )
-                .unwrap()
+                starkhash!("05458b9f8491e7c845bffa4cd36cdb3a7c29dcdf75f2809bd6f4ce65386facfc")
             );
         }
 
@@ -1438,23 +1332,23 @@ mod tests {
             //
             // The bug was identified by comparing root and nodes against the python
             // utility in `root/py/src/test_generate_test_storage_tree.py`.
-            let leaves = vec![
-                ("0x5", "0x66"),
+            let leaves = [
+                (starkhash!("05"), starkhash!("66")),
                 (
-                    "0x1BF95D4B58F0741FEA29F94EE5A118D0847C8B7AE0173C2A570C9F74CCA9EA1",
-                    "0x7E5",
+                    starkhash!("01BF95D4B58F0741FEA29F94EE5A118D0847C8B7AE0173C2A570C9F74CCA9EA1"),
+                    starkhash!("07E5"),
                 ),
                 (
-                    "0x3C75C20765D020B0EC41B48BB8C5338AC4B619FC950D59994E844E1E1B9D2A9",
-                    "0x7C7",
+                    starkhash!("03C75C20765D020B0EC41B48BB8C5338AC4B619FC950D59994E844E1E1B9D2A9"),
+                    starkhash!("07C7"),
                 ),
                 (
-                    "0x4065B936C56F5908A981084DAFA66DC17600937DC80C52EEB834693BB811792",
-                    "0x7970C532B764BB36FAF5696B8BC1317505B8A4DC9EEE5DF4994671757975E4D",
+                    starkhash!("04065B936C56F5908A981084DAFA66DC17600937DC80C52EEB834693BB811792"),
+                    starkhash!("07970C532B764BB36FAF5696B8BC1317505B8A4DC9EEE5DF4994671757975E4D"),
                 ),
                 (
-                    "0x4B5FBB4904167E2E8195C35F7D4E78501A3FE95896794367C85B60B39AEFFC2",
-                    "0x232C969EAFC5B30C20648759D7FA1E2F4256AC6604E1921578101DCE4DFDF48",
+                    starkhash!("04B5FBB4904167E2E8195C35F7D4E78501A3FE95896794367C85B60B39AEFFC2"),
+                    starkhash!("0232C969EAFC5B30C20648759D7FA1E2F4256AC6604E1921578101DCE4DFDF48"),
                 ),
             ];
 
@@ -1466,20 +1360,14 @@ mod tests {
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
             for (key, val) in leaves {
-                let key = StarkHash::from_hex_str(key)
-                    .unwrap()
-                    .view_bits()
-                    .to_bitvec();
-                let val = StarkHash::from_hex_str(val).unwrap();
-                tree.set(&key, val).unwrap();
+                let key = key.view_bits();
+                tree.set(key, val).unwrap();
             }
 
             let root = tree.commit().unwrap();
 
-            let expected = StarkHash::from_hex_str(
-                "0x06ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe",
-            )
-            .unwrap();
+            let expected =
+                starkhash!("06ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe");
 
             assert_eq!(root, expected);
         }
@@ -1487,6 +1375,7 @@ mod tests {
 
     mod dfs {
         use super::{BinaryNode, EdgeNode, MerkleTree, Node};
+        use crate::starkhash;
         use bitvec::{bitvec, prelude::Msb0};
         use stark_hash::StarkHash;
         use std::cell::RefCell;
@@ -1511,8 +1400,8 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key = StarkHash::from_hex_str("1").unwrap();
-            let value = StarkHash::from_hex_str("2").unwrap();
+            let key = starkhash!("01");
+            let value = starkhash!("02");
 
             uut.set(key.view_bits(), value).unwrap();
 
@@ -1541,10 +1430,10 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key_left = StarkHash::from_hex_str("0").unwrap();
-            let value_left = StarkHash::from_hex_str("2").unwrap();
-            let key_right = StarkHash::from_hex_str("1").unwrap();
-            let value_right = StarkHash::from_hex_str("3").unwrap();
+            let key_left = starkhash!("00");
+            let value_left = starkhash!("02");
+            let key_right = starkhash!("01");
+            let value_right = starkhash!("03");
 
             uut.set(key_right.view_bits(), value_right).unwrap();
             uut.set(key_left.view_bits(), value_left).unwrap();
@@ -1581,12 +1470,12 @@ mod tests {
             let mut uut =
                 MerkleTree::load("test".to_string(), &transaction, StarkHash::ZERO).unwrap();
 
-            let key_a = StarkHash::from_hex_str("10").unwrap();
-            let value_a = StarkHash::from_hex_str("a").unwrap();
-            let key_b = StarkHash::from_hex_str("11").unwrap();
-            let value_b = StarkHash::from_hex_str("b").unwrap();
-            let key_c = StarkHash::from_hex_str("13").unwrap();
-            let value_c = StarkHash::from_hex_str("c").unwrap();
+            let key_a = starkhash!("10");
+            let value_a = starkhash!("0a");
+            let key_b = starkhash!("11");
+            let value_b = starkhash!("0b");
+            let key_c = starkhash!("13");
+            let value_c = starkhash!("0c");
 
             uut.set(key_c.view_bits(), value_c).unwrap();
             uut.set(key_a.view_bits(), value_a).unwrap();

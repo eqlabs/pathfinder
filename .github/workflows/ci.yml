@@ -114,3 +114,16 @@ jobs:
           source py/.venv/bin/activate
           cargo test --no-run -p pathfinder
           timeout 5m cargo test -p pathfinder -- cairo::ext_py --ignored
+
+  fuzz_targets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@v1
+      - run: cargo install cargo-fuzz
+      - name: stark_hash
+        run: cargo fuzz build
+        working-directory: crates/stark_hash

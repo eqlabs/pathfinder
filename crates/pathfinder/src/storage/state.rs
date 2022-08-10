@@ -453,8 +453,8 @@ impl StarknetBlocksTable {
 
         match genesis {
             None => Ok(None),
-            Some(hash) if hash == *GOERLI_GENESIS_HASH => Ok(Some(Chain::Goerli)),
-            Some(hash) if hash == *MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
+            Some(hash) if hash == GOERLI_GENESIS_HASH => Ok(Some(Chain::Goerli)),
+            Some(hash) if hash == MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
             Some(hash) => Err(anyhow::anyhow!("Unknown genesis block hash {}", hash.0)),
         }
     }
@@ -645,7 +645,7 @@ impl StarknetTransactionsTable {
         let mut stmt = sqlite_tx
             .prepare(
                 r"SELECT tx FROM starknet_transactions
-                  WHERE starknet_transactions.block_hash = 
+                  WHERE starknet_transactions.block_hash =
                     (SELECT hash FROM starknet_blocks b WHERE b.number = (SELECT MAX(number) FROM starknet_blocks))
                   ORDER BY starknet_transactions.idx",
             )
@@ -1315,6 +1315,7 @@ mod tests {
 
     mod contracts {
         use super::*;
+        use crate::starkhash;
 
         #[test]
         fn get_root() {
@@ -1322,9 +1323,9 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let transaction = connection.transaction().unwrap();
 
-            let state_hash = ContractStateHash(StarkHash::from_hex_str("abc").unwrap());
-            let hash = ClassHash(StarkHash::from_hex_str("123").unwrap());
-            let root = ContractRoot(StarkHash::from_hex_str("def").unwrap());
+            let state_hash = ContractStateHash(starkhash!("0abc"));
+            let hash = ClassHash(starkhash!("0123"));
+            let root = ContractRoot(starkhash!("0def"));
 
             ContractsStateTable::upsert(&transaction, state_hash, hash, root).unwrap();
 
@@ -2026,14 +2027,15 @@ mod tests {
 
         use crate::core::{EntryPoint, EventData, Fee};
         use crate::sequencer::reply::transaction;
+        use crate::starkhash;
         use crate::storage::test_utils;
 
         #[test]
         fn event_data_serialization() {
             let data = vec![
-                EventData(StarkHash::from_hex_str("0x1").unwrap()),
-                EventData(StarkHash::from_hex_str("0x2").unwrap()),
-                EventData(StarkHash::from_hex_str("0x3").unwrap()),
+                EventData(starkhash!("01")),
+                EventData(starkhash!("02")),
+                EventData(starkhash!("03")),
             ];
             assert_eq!(
                 &StarknetEventsTable::event_data_to_bytes(&data),
@@ -2049,15 +2051,14 @@ mod tests {
         #[test]
         fn event_keys_to_base64_strings() {
             let event = transaction::Event {
-                from_address: ContractAddress::from_hex_str(
-                    "0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39",
-                )
-                .unwrap(),
+                from_address: ContractAddress(starkhash!(
+                    "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
+                )),
                 data: vec![],
                 keys: vec![
-                    EventKey(StarkHash::from_hex_str("0x901823").unwrap()),
-                    EventKey(StarkHash::from_hex_str("0x901824").unwrap()),
-                    EventKey(StarkHash::from_hex_str("0x901825").unwrap()),
+                    EventKey(starkhash!("901823")),
+                    EventKey(starkhash!("901824")),
+                    EventKey(starkhash!("901825")),
                 ],
             };
             assert_eq!(
@@ -2078,7 +2079,7 @@ mod tests {
                 to_block: Some(expected_event.block_number),
                 contract_address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
-                keys: vec![EventKey(StarkHash::from_hex_str("deadbeef").unwrap())],
+                keys: vec![EventKey(starkhash!("deadbeef"))],
                 page_size: test_utils::NUM_EVENTS,
                 page_number: 0,
             };
@@ -2115,11 +2116,11 @@ mod tests {
 
             let block = StarknetBlock {
                 number: StarknetBlockNumber::GENESIS,
-                hash: StarknetBlockHash::from_hex_str("0x1234").unwrap(),
-                root: GlobalRoot(StarkHash::from_hex_str("0x1234").unwrap()),
+                hash: StarknetBlockHash(starkhash!("1234")),
+                root: GlobalRoot(starkhash!("1234")),
                 timestamp: StarknetBlockTimestamp(0),
                 gas_price: GasPrice(0),
-                sequencer_address: SequencerAddress(StarkHash::from_hex_str("0x1234").unwrap()),
+                sequencer_address: SequencerAddress(starkhash!("1234")),
             };
 
             // Note: hashes are reverse ordered to trigger the sorting bug.
@@ -2132,9 +2133,7 @@ mod tests {
                     entry_point_selector: EntryPoint(StarkHash::ZERO),
                     max_fee: Fee(H128::zero()),
                     signature: vec![],
-                    transaction_hash: StarknetTransactionHash(
-                        StarkHash::from_hex_str("0xF").unwrap(),
-                    ),
+                    transaction_hash: StarknetTransactionHash(starkhash!("0F")),
                 }),
                 transaction::Transaction::Invoke(transaction::InvokeTransaction {
                     calldata: vec![],
@@ -2144,9 +2143,7 @@ mod tests {
                     entry_point_selector: EntryPoint(StarkHash::ZERO),
                     max_fee: Fee(H128::zero()),
                     signature: vec![],
-                    transaction_hash: StarknetTransactionHash(
-                        StarkHash::from_hex_str("0x1").unwrap(),
-                    ),
+                    transaction_hash: StarknetTransactionHash(starkhash!("01")),
                 }),
             ];
 
@@ -2630,7 +2627,7 @@ mod tests {
     mod starknet_updates {
 
         use super::*;
-        use crate::storage::fixtures::{hash, with_n_state_updates};
+        use crate::storage::fixtures::with_n_state_updates;
 
         mod get {
             use super::*;
@@ -2650,8 +2647,9 @@ mod tests {
 
             #[test]
             fn none() {
+                use crate::starkhash;
                 with_n_state_updates(1, |_, tx, _| {
-                    let non_existent = StarknetBlockHash(hash!(0xFF));
+                    let non_existent = StarknetBlockHash(starkhash!("ff"));
                     let actual = StarknetStateUpdatesTable::get(tx, non_existent).unwrap();
                     assert!(actual.is_none());
                 })

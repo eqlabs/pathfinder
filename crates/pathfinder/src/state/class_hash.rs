@@ -363,10 +363,9 @@ mod json {
         async fn first() {
             // this test is a bit on the slow side because of the download and because of the long
             // processing time in dev builds. expected --release speed is 9 contracts/s.
-            let expected = stark_hash::StarkHash::from_hex_str(
-                "0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576",
-            )
-            .unwrap();
+            let expected = crate::starkhash!(
+                "0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576"
+            );
 
             // this is quite big payload, ~500kB
             let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc")
@@ -396,22 +395,19 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                stark_hash::StarkHash::from_hex_str(
+                crate::starkhash!(
                     "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
                 )
-                .unwrap()
             );
         }
 
         #[tokio::test]
         async fn genesis_contract() {
             use crate::sequencer::ClientApi;
-            use stark_hash::StarkHash;
 
-            let contract = StarkHash::from_hex_str(
-                "0x0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3",
-            )
-            .unwrap();
+            let contract = crate::starkhash!(
+                "0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3"
+            );
             let contract = crate::core::ContractAddress(contract);
 
             let chain = crate::core::Chain::Goerli;
@@ -432,22 +428,16 @@ mod json {
             use super::super::extract_abi_code_hash;
             use crate::core::{ClassHash, ContractAddress};
             use crate::sequencer::{self, ClientApi};
-            use stark_hash::StarkHash;
+            use crate::starkhash;
 
             // Known contract which triggered a hash mismatch failure.
-            let address = ContractAddress(
-                StarkHash::from_hex_str(
-                    "0x0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC",
-                )
-                .unwrap(),
-            );
+            let address = ContractAddress(starkhash!(
+                "0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC"
+            ));
 
-            let expected = ClassHash(
-                StarkHash::from_hex_str(
-                    "0x056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3",
-                )
-                .unwrap(),
-            );
+            let expected = ClassHash(starkhash!(
+                "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
+            ));
             let sequencer = sequencer::Client::new(crate::core::Chain::Goerli).unwrap();
 
             let contract_definition = sequencer.full_contract(address).await.unwrap();
@@ -520,17 +510,14 @@ mod tests {
     #[test]
     fn truncated_keccak_matches_pythonic() {
         use super::truncated_keccak;
+        use crate::starkhash;
         use sha3::{Digest, Keccak256};
-        use stark_hash::StarkHash;
         let all_set = Keccak256::digest(&[0xffu8; 32]);
         assert!(all_set[0] > 0xf);
         let truncated = truncated_keccak(all_set.into());
         assert_eq!(
             truncated,
-            StarkHash::from_hex_str(
-                "01c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9"
-            )
-            .unwrap()
+            starkhash!("01c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9")
         );
     }
 }

@@ -80,15 +80,15 @@ mod tests {
         sequencer,
     };
 
+    use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
-    use stark_hash::StarkHash;
 
     lazy_static::lazy_static!(
-        pub static ref PARENT_HASH: StarknetBlockHash =  StarknetBlockHash::from_hex_str("1234").unwrap();
-        pub static ref PARENT_ROOT: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"parent root").unwrap());
+        pub static ref PARENT_HASH: StarknetBlockHash =  StarknetBlockHash(starkhash!("1234"));
+        pub static ref PARENT_ROOT: GlobalRoot = GlobalRoot(starkhash_bytes!(b"parent root"));
 
         pub static ref NEXT_BLOCK: sequencer::reply::Block = sequencer::reply::Block{
-            block_hash: StarknetBlockHash::from_hex_str("0xabcd").unwrap(),
+            block_hash: StarknetBlockHash(starkhash!("abcd")),
             block_number: StarknetBlockNumber(1),
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
@@ -103,7 +103,7 @@ mod tests {
 
         pub static ref PENDING_DIFF: sequencer::reply::StateUpdate = sequencer::reply::StateUpdate {
             block_hash: None,
-            new_root: GlobalRoot(StarkHash::from_be_slice(b"new root").unwrap()),
+            new_root: GlobalRoot(starkhash_bytes!(b"new root")),
             old_root: *PARENT_ROOT,
             state_diff: sequencer::reply::state_update::StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
@@ -115,7 +115,7 @@ mod tests {
         pub static ref PENDING_BLOCK: sequencer::reply::PendingBlock = sequencer::reply::PendingBlock {
             gas_price: GasPrice(11),
             parent_hash: NEXT_BLOCK.parent_block_hash,
-            sequencer_address: SequencerAddress(StarkHash::from_be_slice(b"seqeunecer address").unwrap()),
+            sequencer_address: SequencerAddress(starkhash_bytes!(b"seqeunecer address")),
             status: sequencer::reply::Status::Pending,
             timestamp: StarknetBlockTimestamp(20),
             transaction_receipts: Vec::new(),
@@ -201,7 +201,7 @@ mod tests {
         let mut sequencer = sequencer::MockClientApi::new();
 
         let mut pending_block = PENDING_BLOCK.clone();
-        pending_block.parent_hash = StarknetBlockHash::from_hex_str("0xFFFFFF").unwrap();
+        pending_block.parent_hash = StarknetBlockHash(starkhash!("FFFFFF"));
         sequencer.expect_block().returning(move |_| {
             Ok(sequencer::reply::MaybePendingBlock::Pending(
                 pending_block.clone(),
@@ -240,8 +240,7 @@ mod tests {
         });
 
         let mut disconnected_diff = PENDING_DIFF.clone();
-        disconnected_diff.old_root =
-            GlobalRoot(StarkHash::from_be_slice(b"different old root").unwrap());
+        disconnected_diff.old_root = GlobalRoot(starkhash_bytes!(b"different old root"));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(disconnected_diff.clone()));

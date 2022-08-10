@@ -245,7 +245,7 @@ impl TryFrom<crate::core::BlockId> for BlockHashNumberOrLatest {
 
 #[cfg(test)]
 mod tests {
-    use stark_hash::StarkHash;
+    use crate::starkhash;
 
     #[test]
     fn serialize_some_updates() {
@@ -258,15 +258,12 @@ mod tests {
         let map = {
             let mut map = HashMap::new();
             map.insert(
-                ContractAddress(
-                    StarkHash::from_hex_str(
-                        "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451",
-                    )
-                    .unwrap(),
-                ),
+                ContractAddress(starkhash!(
+                    "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
+                )),
                 vec![StorageDiff {
-                    key: StorageAddress(StarkHash::from_hex_str("0x5").unwrap()),
-                    value: StorageValue(StarkHash::from_hex_str("0x0").unwrap()),
+                    key: StorageAddress(starkhash!("05")),
+                    value: StorageValue(starkhash!("00")),
                 }],
             );
             map
@@ -296,18 +293,12 @@ mod tests {
 
         let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
         let contracts = vec![DeployedContract {
-            address: ContractAddress(
-                StarkHash::from_hex_str(
-                    "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451",
-                )
-                .unwrap(),
-            ),
-            class_hash: ClassHash(
-                StarkHash::from_hex_str(
-                    "0x010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8",
-                )
-                .unwrap(),
-            ),
+            address: ContractAddress(starkhash!(
+                "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
+            )),
+            class_hash: ClassHash(starkhash!(
+                "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+            )),
         }];
         let s = serde_json::to_string(&DeployedContractsWrapper(Some(&contracts))).unwrap();
         assert_eq!(expected, s);
@@ -332,6 +323,7 @@ mod tests {
     fn serialize_block_hash_num_latest() {
         use super::BlockHashNumberOrLatest;
         use crate::core::{StarknetBlockHash, StarknetBlockNumber};
+        use stark_hash::StarkHash;
 
         let data = &[
             (StarknetBlockHash(StarkHash::ZERO).into(), "\"0x0\""),

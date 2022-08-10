@@ -274,6 +274,7 @@ mod tests {
                 EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
             },
             ethereum::{BlockOrigin, EthOrigin, TransactionOrigin},
+            starkhash,
         };
 
         use super::*;
@@ -304,7 +305,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(10),
                 },
-                global_root: GlobalRoot(StarkHash::from_hex_str("123").unwrap()),
+                global_root: GlobalRoot(starkhash!("0123")),
                 block_number: StarknetBlockNumber::GENESIS,
             }];
 
@@ -320,7 +321,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(2),
                 },
-                global_root: GlobalRoot(StarkHash::from_hex_str("456abc").unwrap()),
+                global_root: GlobalRoot(starkhash!("456abc")),
                 block_number: StarknetBlockNumber(1),
             }];
 
@@ -378,7 +379,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(10),
                 },
-                global_root: GlobalRoot(StarkHash::from_hex_str("123").unwrap()),
+                global_root: GlobalRoot(starkhash!("0123")),
                 block_number: StarknetBlockNumber::GENESIS,
             }];
 

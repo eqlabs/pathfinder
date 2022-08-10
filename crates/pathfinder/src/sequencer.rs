@@ -159,8 +159,8 @@ impl Client {
             .block_hash;
 
         match genesis_hash {
-            goerli if goerli == *GOERLI_GENESIS_HASH => Ok(Chain::Goerli),
-            mainnet if mainnet == *MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
+            goerli if goerli == GOERLI_GENESIS_HASH => Ok(Chain::Goerli),
+            mainnet if mainnet == MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
             other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),
         }
     }
@@ -411,66 +411,62 @@ impl ClientApi for Client {
 pub mod test_utils {
     use crate::{
         core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, EventData, EventKey, GlobalRoot, L1ToL2MessagePayloadElem,
-            L2ToL1MessagePayloadElem, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-            StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
-            TransactionNonce, TransactionSignatureElem,
+            CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
+            StarknetBlockNumber, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
         },
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
+        starkhash,
     };
-    use stark_hash::{HexParseError, StarkHash};
+    use stark_hash::StarkHash;
 
-    macro_rules! impl_from_hex_str {
-        ($type:ty) => {
-            impl $type {
-                pub fn from_hex_str(s: &str) -> std::result::Result<Self, HexParseError> {
-                    Ok(Self(StarkHash::from_hex_str(s)?))
-                }
-            }
-        };
-    }
-
-    impl_from_hex_str!(CallParam);
-    impl_from_hex_str!(ClassHash);
-    impl_from_hex_str!(ConstructorParam);
-    impl_from_hex_str!(ContractAddress);
-    impl_from_hex_str!(ContractAddressSalt);
-    impl_from_hex_str!(EntryPoint);
-    impl_from_hex_str!(EventData);
-    impl_from_hex_str!(EventKey);
-    impl_from_hex_str!(GlobalRoot);
-    impl_from_hex_str!(L1ToL2MessagePayloadElem);
-    impl_from_hex_str!(L2ToL1MessagePayloadElem);
-    impl_from_hex_str!(SequencerAddress);
-    impl_from_hex_str!(StarknetBlockHash);
-    impl_from_hex_str!(StarknetTransactionHash);
-    impl_from_hex_str!(StorageAddress);
-    impl_from_hex_str!(StorageValue);
-    impl_from_hex_str!(TransactionSignatureElem);
-    impl_from_hex_str!(TransactionNonce);
-
+    pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
+        BlockNumberOrTag::Number(StarknetBlockNumber::GENESIS);
+    pub const INVALID_BLOCK_NUMBER: BlockNumberOrTag =
+        BlockNumberOrTag::Number(StarknetBlockNumber::MAX);
+    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
+        starkhash!("07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"),
+    ));
+    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
+        starkhash!("06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"),
+    ));
+    pub const PRE_DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag =
+        BlockHashOrTag::Hash(StarknetBlockHash(starkhash!(
+            "05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"
+        )));
+    pub const INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
+        starkhash!("03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"),
+    ));
+    pub const VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(starkhash!(
+        "0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
+    ));
+    pub const INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(starkhash!(
+        "0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
+    ));
+    pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress(starkhash!(
+        "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
+    ));
+    pub const INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress(starkhash!(
+        "05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
+    ));
+    pub const VALID_ENTRY_POINT: EntryPoint = EntryPoint(starkhash!(
+        "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+    ));
+    pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
+    pub const INVALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(u64::MAX);
+    pub const VALID_KEY: StorageAddress = StorageAddress(starkhash!(
+        "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
+    ));
     lazy_static::lazy_static! {
-        pub static ref GENESIS_BLOCK_NUMBER: BlockNumberOrTag = BlockNumberOrTag::Number(StarknetBlockNumber::GENESIS);
-        pub static ref INVALID_BLOCK_NUMBER: BlockNumberOrTag = BlockNumberOrTag::Number(StarknetBlockNumber::MAX);
-        pub static ref GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap());
-        pub static ref INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b").unwrap());
-        pub static ref PRE_DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f").unwrap());
-        pub static ref INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash::from_hex_str("0x03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27").unwrap());
-        pub static ref VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-        pub static ref INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash::from_hex_str("0x0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24").unwrap();
-        pub static ref VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-        pub static ref INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::from_hex_str("0x05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39").unwrap();
-        pub static ref VALID_ENTRY_POINT: EntryPoint = EntryPoint::from_hex_str("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320").unwrap();
-        pub static ref INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
-        pub static ref INVALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(u64::MAX);
-        pub static ref VALID_KEY: StorageAddress = StorageAddress::from_hex_str("0x0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091").unwrap();
         pub static ref VALID_KEY_DEC: String = crate::rpc::serde::starkhash_to_dec_str(&VALID_KEY.0);
-        pub static ref VALID_CALL_DATA: Vec<CallParam> = vec![CallParam::from_hex_str("0x4d2").unwrap()];
-        /// Class hash for VALID_CONTRACT_ADDR
-        pub static ref VALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x021a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2").unwrap();
-        pub static ref INVALID_CLASS_HASH: ClassHash = ClassHash::from_hex_str("0x031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2").unwrap();
     }
+    pub const VALID_CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("04d2"))];
+    /// Class hash for VALID_CONTRACT_ADDR
+    pub const VALID_CLASS_HASH: ClassHash = ClassHash(starkhash!(
+        "021a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
+    ));
+    pub const INVALID_CLASS_HASH: ClassHash = ClassHash(starkhash!(
+        "031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
+    ));
 }
 
 #[cfg(test)]
@@ -660,31 +656,29 @@ mod tests {
 
     mod block_matches_by_hash_on {
         use super::*;
+        use crate::starkhash;
 
         #[tokio::test]
         async fn genesis() {
             let (_jh, client) = setup([
                 (
-                    format!(
-                        "/feeder_gateway/get_block?blockHash={}",
-                        *GENESIS_BLOCK_HASH
-                    ),
+                    format!("/feeder_gateway/get_block?blockHash={}", GENESIS_BLOCK_HASH),
                     response!("0.9.0/block/genesis.json"),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_block?blockNumber={}",
-                        *GENESIS_BLOCK_NUMBER
+                        GENESIS_BLOCK_NUMBER
                     ),
                     response!("0.9.0/block/genesis.json"),
                 ),
             ]);
             let by_hash = client
-                .block(BlockId::from(*GENESIS_BLOCK_HASH))
+                .block(BlockId::from(GENESIS_BLOCK_HASH))
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockId::from(*GENESIS_BLOCK_NUMBER))
+                .block(BlockId::from(GENESIS_BLOCK_NUMBER))
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -704,10 +698,9 @@ mod tests {
             ]);
             let by_hash = client
                 .block(
-                    StarknetBlockHash::from_hex_str(
-                        "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
-                    )
-                    .unwrap()
+                    StarknetBlockHash(starkhash!(
+                        "040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746"
+                    ))
                     .into(),
                 )
                 .await
@@ -750,14 +743,11 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn invalid_hash() {
             let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_block?blockHash={}",
-                    *INVALID_BLOCK_HASH
-                ),
+                format!("/feeder_gateway/get_block?blockHash={}", INVALID_BLOCK_HASH),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
-                .block(BlockId::from(*INVALID_BLOCK_HASH))
+                .block(BlockId::from(INVALID_BLOCK_HASH))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -771,12 +761,12 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_block?blockNumber={}",
-                    *INVALID_BLOCK_NUMBER
+                    INVALID_BLOCK_NUMBER
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
-                .block(BlockId::from(*INVALID_BLOCK_NUMBER))
+                .block(BlockId::from(INVALID_BLOCK_NUMBER))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -838,9 +828,9 @@ mod tests {
             let error = client
                 .call(
                     request::Call {
-                        calldata: VALID_CALL_DATA.clone(),
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *INVALID_ENTRY_POINT,
+                        calldata: VALID_CALL_DATA.to_vec(),
+                        contract_address: VALID_CONTRACT_ADDR,
+                        entry_point_selector: INVALID_ENTRY_POINT,
                         signature: vec![],
                     },
                     BlockHashOrTag::Tag(Tag::Latest),
@@ -862,9 +852,9 @@ mod tests {
             let error = client
                 .call(
                     request::Call {
-                        calldata: VALID_CALL_DATA.clone(),
-                        contract_address: *INVALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
+                        calldata: VALID_CALL_DATA.to_vec(),
+                        contract_address: INVALID_CONTRACT_ADDR,
+                        entry_point_selector: VALID_ENTRY_POINT,
                         signature: vec![],
                     },
                     BlockHashOrTag::Tag(Tag::Latest),
@@ -882,7 +872,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/call_contract?blockHash={}",
-                    *INVOKE_CONTRACT_BLOCK_HASH
+                    INVOKE_CONTRACT_BLOCK_HASH
                 ),
                 StarknetErrorCode::TransactionFailed.into_response(),
             )]);
@@ -890,11 +880,11 @@ mod tests {
                 .call(
                     request::Call {
                         calldata: vec![],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
+                        contract_address: VALID_CONTRACT_ADDR,
+                        entry_point_selector: VALID_ENTRY_POINT,
                         signature: vec![],
                     },
-                    *INVOKE_CONTRACT_BLOCK_HASH,
+                    INVOKE_CONTRACT_BLOCK_HASH,
                 )
                 .await
                 .unwrap_err();
@@ -909,7 +899,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/call_contract?blockHash={}",
-                    *GENESIS_BLOCK_HASH
+                    GENESIS_BLOCK_HASH
                 ),
                 StarknetErrorCode::UninitializedContract.into_response(),
             )]);
@@ -917,11 +907,11 @@ mod tests {
                 .call(
                     request::Call {
                         calldata: vec![],
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
+                        contract_address: VALID_CONTRACT_ADDR,
+                        entry_point_selector: VALID_ENTRY_POINT,
                         signature: vec![],
                     },
-                    *GENESIS_BLOCK_HASH,
+                    GENESIS_BLOCK_HASH,
                 )
                 .await
                 .unwrap_err();
@@ -936,19 +926,19 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/call_contract?blockHash={}",
-                    *INVALID_BLOCK_HASH
+                    INVALID_BLOCK_HASH
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
                 .call(
                     request::Call {
-                        calldata: VALID_CALL_DATA.clone(),
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
+                        calldata: VALID_CALL_DATA.to_vec(),
+                        contract_address: VALID_CONTRACT_ADDR,
+                        entry_point_selector: VALID_ENTRY_POINT,
                         signature: vec![],
                     },
-                    *INVALID_BLOCK_HASH,
+                    INVALID_BLOCK_HASH,
                 )
                 .await
                 .unwrap_err();
@@ -963,19 +953,19 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/call_contract?blockHash={}",
-                    *INVOKE_CONTRACT_BLOCK_HASH
+                    INVOKE_CONTRACT_BLOCK_HASH
                 ),
                 (r#"{"result":[]}"#, 200),
             )]);
             client
                 .call(
                     request::Call {
-                        calldata: VALID_CALL_DATA.clone(),
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
+                        calldata: VALID_CALL_DATA.to_vec(),
+                        contract_address: VALID_CONTRACT_ADDR,
+                        entry_point_selector: VALID_ENTRY_POINT,
                         signature: vec![],
                     },
-                    *INVOKE_CONTRACT_BLOCK_HASH,
+                    INVOKE_CONTRACT_BLOCK_HASH,
                 )
                 .await
                 .unwrap();
@@ -990,9 +980,9 @@ mod tests {
             client
                 .call(
                     request::Call {
-                        calldata: VALID_CALL_DATA.clone(),
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
+                        calldata: VALID_CALL_DATA.to_vec(),
+                        contract_address: VALID_CONTRACT_ADDR,
+                        entry_point_selector: VALID_ENTRY_POINT,
                         signature: vec![],
                     },
                     BlockHashOrTag::Tag(Tag::Latest),
@@ -1010,9 +1000,9 @@ mod tests {
             client
                 .call(
                     request::Call {
-                        calldata: VALID_CALL_DATA.clone(),
-                        contract_address: *VALID_CONTRACT_ADDR,
-                        entry_point_selector: *VALID_ENTRY_POINT,
+                        calldata: VALID_CALL_DATA.to_vec(),
+                        contract_address: VALID_CONTRACT_ADDR,
+                        entry_point_selector: VALID_ENTRY_POINT,
                         signature: vec![],
                     },
                     BlockHashOrTag::Tag(Tag::Pending),
@@ -1031,12 +1021,12 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_full_contract?contractAddress={}",
-                    *INVALID_CONTRACT_ADDR
+                    INVALID_CONTRACT_ADDR
                 ),
                 StarknetErrorCode::UninitializedContract.into_response(),
             )]);
             let error = client
-                .full_contract(*INVALID_CONTRACT_ADDR)
+                .full_contract(INVALID_CONTRACT_ADDR)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1050,11 +1040,11 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_full_contract?contractAddress={}",
-                    *VALID_CONTRACT_ADDR
+                    VALID_CONTRACT_ADDR
                 ),
                 (r#"{"hello":"world"}"#, 200),
             )]);
-            let bytes = client.full_contract(*VALID_CONTRACT_ADDR).await.unwrap();
+            let bytes = client.full_contract(VALID_CONTRACT_ADDR).await.unwrap();
             serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
         }
     }
@@ -1068,11 +1058,11 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_by_hash?classHash={}",
-                    *INVALID_CLASS_HASH
+                    INVALID_CLASS_HASH
                 ),
                 StarknetErrorCode::UndeclaredClass.into_response(),
             )]);
-            let error = client.class_by_hash(*INVALID_CLASS_HASH).await.unwrap_err();
+            let error = client.class_by_hash(INVALID_CLASS_HASH).await.unwrap_err();
             assert_matches!(
                 error,
                 SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UndeclaredClass)
@@ -1084,11 +1074,11 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_by_hash?classHash={}",
-                    *VALID_CLASS_HASH
+                    VALID_CLASS_HASH
                 ),
                 (r#"{"hello":"world"}"#, 200),
             )]);
-            let bytes = client.class_by_hash(*VALID_CLASS_HASH).await.unwrap();
+            let bytes = client.class_by_hash(VALID_CLASS_HASH).await.unwrap();
             serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
         }
     }
@@ -1102,12 +1092,12 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_hash_at?contractAddress={}",
-                    *INVALID_CONTRACT_ADDR
+                    INVALID_CONTRACT_ADDR
                 ),
                 StarknetErrorCode::UninitializedContract.into_response(),
             )]);
             let error = client
-                .class_hash_at(*INVALID_CONTRACT_ADDR)
+                .class_hash_at(INVALID_CONTRACT_ADDR)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1121,16 +1111,17 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_hash_at?contractAddress={}",
-                    *VALID_CONTRACT_ADDR
+                    VALID_CONTRACT_ADDR
                 ),
                 (r#""0x01""#, 200),
             )]);
-            client.class_hash_at(*VALID_CONTRACT_ADDR).await.unwrap();
+            client.class_hash_at(VALID_CONTRACT_ADDR).await.unwrap();
         }
     }
 
     mod storage {
         use super::*;
+        use crate::starkhash;
         use pretty_assertions::assert_eq;
 
         #[test_log::test(tokio::test)]
@@ -1138,14 +1129,14 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
-                    *INVALID_CONTRACT_ADDR, *VALID_KEY_DEC
+                    INVALID_CONTRACT_ADDR, *VALID_KEY_DEC
                 ),
                 (r#""0x0""#, 200),
             )]);
             let result = client
                 .storage(
-                    *INVALID_CONTRACT_ADDR,
-                    *VALID_KEY,
+                    INVALID_CONTRACT_ADDR,
+                    VALID_KEY,
                     BlockHashOrTag::Tag(Tag::Latest),
                 )
                 .await
@@ -1158,13 +1149,13 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key=0&blockNumber=latest",
-                    *VALID_CONTRACT_ADDR
+                    VALID_CONTRACT_ADDR
                 ),
                 (r#""0x0""#, 200),
             )]);
             let result = client
                 .storage(
-                    *VALID_CONTRACT_ADDR,
+                    VALID_CONTRACT_ADDR,
                     StorageAddress(StarkHash::ZERO),
                     BlockHashOrTag::Tag(Tag::Latest),
                 )
@@ -1178,12 +1169,12 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
-                    *VALID_CONTRACT_ADDR, *VALID_KEY_DEC, *INVALID_BLOCK_HASH
+                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC, INVALID_BLOCK_HASH
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
-                .storage(*VALID_CONTRACT_ADDR, *VALID_KEY, *INVALID_BLOCK_HASH)
+                .storage(VALID_CONTRACT_ADDR, VALID_KEY, INVALID_BLOCK_HASH)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1197,22 +1188,15 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
-                    *VALID_CONTRACT_ADDR, *VALID_KEY_DEC, *INVOKE_CONTRACT_BLOCK_HASH
+                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC, INVOKE_CONTRACT_BLOCK_HASH
                 ),
                 (r#""0x1e240""#, 200),
             )]);
             let result = client
-                .storage(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
-                    *INVOKE_CONTRACT_BLOCK_HASH,
-                )
+                .storage(VALID_CONTRACT_ADDR, VALID_KEY, INVOKE_CONTRACT_BLOCK_HASH)
                 .await
                 .unwrap();
-            assert_eq!(
-                result,
-                StorageValue(StarkHash::from_hex_str("0x1e240").unwrap())
-            );
+            assert_eq!(result, StorageValue(starkhash!("01e240")));
         }
 
         #[tokio::test]
@@ -1220,22 +1204,19 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
-                    *VALID_CONTRACT_ADDR, *VALID_KEY_DEC,
+                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC,
                 ),
                 (r#""0x1e240""#, 200),
             )]);
             let result = client
                 .storage(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
+                    VALID_CONTRACT_ADDR,
+                    VALID_KEY,
                     BlockHashOrTag::Tag(Tag::Latest),
                 )
                 .await
                 .unwrap();
-            assert_eq!(
-                result,
-                StorageValue(StarkHash::from_hex_str("0x1e240").unwrap())
-            );
+            assert_eq!(result, StorageValue(starkhash!("01e240")));
         }
 
         #[tokio::test]
@@ -1243,27 +1224,25 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=pending",
-                    *VALID_CONTRACT_ADDR, *VALID_KEY_DEC
+                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC
                 ),
                 (r#""0x1e240""#, 200),
             )]);
             let result = client
                 .storage(
-                    *VALID_CONTRACT_ADDR,
-                    *VALID_KEY,
+                    VALID_CONTRACT_ADDR,
+                    VALID_KEY,
                     BlockHashOrTag::Tag(Tag::Pending),
                 )
                 .await
                 .unwrap();
-            assert_eq!(
-                result,
-                StorageValue(StarkHash::from_hex_str("0x1e240").unwrap())
-            );
+            assert_eq!(result, StorageValue(starkhash!("01e240")));
         }
     }
 
     mod transaction {
         use super::{reply::Status, *};
+        use crate::starkhash;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1274,12 +1253,9 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(
-                        StarknetTransactionHash::from_hex_str(
-                            "0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
-                        )
-                        .unwrap()
-                    )
+                    .transaction(StarknetTransactionHash(starkhash!(
+                        "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
+                    )))
                     .await
                     .unwrap()
                     .status,
@@ -1295,12 +1271,9 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(
-                        StarknetTransactionHash::from_hex_str(
-                            "0x3d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
-                        )
-                        .unwrap()
-                    )
+                    .transaction(StarknetTransactionHash(starkhash!(
+                        "03d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
+                    )))
                     .await
                     .unwrap()
                     .status,
@@ -1316,12 +1289,9 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(
-                        StarknetTransactionHash::from_hex_str(
-                            "0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
-                        )
-                        .unwrap()
-                    )
+                    .transaction(StarknetTransactionHash(starkhash!(
+                        "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
+                    )))
                     .await
                     .unwrap()
                     .status,
@@ -1334,12 +1304,12 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_transaction?transactionHash={}",
-                    *INVALID_TX_HASH
+                    INVALID_TX_HASH
                 ),
                 (r#"{"status": "NOT_RECEIVED"}"#, 200),
             )]);
             assert_eq!(
-                client.transaction(*INVALID_TX_HASH).await.unwrap().status,
+                client.transaction(INVALID_TX_HASH).await.unwrap().status,
                 Status::NotReceived,
             );
         }
@@ -1347,6 +1317,7 @@ mod tests {
 
     mod transaction_status {
         use super::{reply::Status, *};
+        use crate::starkhash;
 
         #[tokio::test]
         async fn accepted() {
@@ -1356,12 +1327,9 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction_status(
-                        StarknetTransactionHash::from_hex_str(
-                            "0x79cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205"
-                        )
-                        .unwrap()
-                    )
+                    .transaction_status(StarknetTransactionHash(starkhash!(
+                        "079cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205"
+                    )))
                     .await
                     .unwrap()
                     .tx_status,
@@ -1374,13 +1342,13 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_transaction_status?transactionHash={}",
-                    *INVALID_TX_HASH
+                    INVALID_TX_HASH
                 ),
                 (r#"{"tx_status": "NOT_RECEIVED"}"#, 200),
             )]);
             assert_eq!(
                 client
-                    .transaction_status(*INVALID_TX_HASH)
+                    .transaction_status(INVALID_TX_HASH)
                     .await
                     .unwrap()
                     .tx_status,
@@ -1397,7 +1365,10 @@ mod tests {
             },
             *,
         };
-        use crate::core::{ContractAddress, GlobalRoot};
+        use crate::{
+            core::{ContractAddress, GlobalRoot},
+            starkhash,
+        };
         use pretty_assertions::assert_eq;
         use std::collections::{BTreeSet, HashMap};
 
@@ -1442,18 +1413,18 @@ mod tests {
                 (
                     format!(
                         "/feeder_gateway/get_state_update?blockHash={}",
-                        *GENESIS_BLOCK_HASH
+                        GENESIS_BLOCK_HASH
                     ),
                     response!("0.9.0/state_update/genesis.json"),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update(BlockId::from(*GENESIS_BLOCK_NUMBER))
+                .state_update(BlockId::from(GENESIS_BLOCK_NUMBER))
                 .await
                 .unwrap()
                 .into();
             let by_hash: OrderedStateUpdate = client
-                .state_update(BlockId::from(*GENESIS_BLOCK_HASH))
+                .state_update(BlockId::from(GENESIS_BLOCK_HASH))
                 .await
                 .unwrap()
                 .into();
@@ -1480,10 +1451,9 @@ mod tests {
                 .into();
             let by_hash: OrderedStateUpdate = client
                 .state_update(
-                    StarknetBlockHash::from_hex_str(
-                        "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
-                    )
-                    .unwrap()
+                    StarknetBlockHash(starkhash!(
+                        "040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746"
+                    ))
                     .into(),
                 )
                 .await
@@ -1502,12 +1472,12 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_state_update?blockNumber={}",
-                    *INVALID_BLOCK_NUMBER
+                    INVALID_BLOCK_NUMBER
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
-                .state_update(BlockId::from(*INVALID_BLOCK_NUMBER))
+                .state_update(BlockId::from(INVALID_BLOCK_NUMBER))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1521,12 +1491,12 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_state_update?blockHash={}",
-                    *INVALID_BLOCK_HASH
+                    INVALID_BLOCK_HASH
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
             let error = client
-                .state_update(BlockId::from(*INVALID_BLOCK_HASH))
+                .state_update(BlockId::from(INVALID_BLOCK_HASH))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -1588,6 +1558,7 @@ mod tests {
         use crate::{
             core::{ByteCodeOffset, CallParam, CallSignatureElem, EntryPoint},
             sequencer::request::contract::{EntryPointType, SelectorAndOffset},
+            starkhash,
         };
 
         use web3::types::H256;
@@ -1600,49 +1571,34 @@ mod tests {
                 "/gateway/add_transaction",
                 StarknetErrorCode::UnsupportedSelectorForFee.into_response(),
             )]);
-            let  error = client
+            let error = client
                 .add_invoke_transaction(
                     Call {
-                        contract_address: ContractAddress(
-                            StarkHash::from_hex_str(
-                                "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
-                            )
-                            .unwrap(),
-                        ),
+                        contract_address: ContractAddress(starkhash!(
+                            "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
+                        )),
                         calldata: vec![
-                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
-                            CallParam(
-                                StarkHash::from_hex_str(
-                                    "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
-                                )
-                                .unwrap(),
-                            ),
-                            CallParam(
-                                StarkHash::from_hex_str(
-                                    "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
-                                )
-                                .unwrap(),
-                            ),
+                            CallParam(starkhash!("01")),
+                            CallParam(starkhash!(
+                                "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                            )),
+                            CallParam(starkhash!(
+                                "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+                            )),
                             CallParam(StarkHash::ZERO),
-                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
-                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
-                            CallParam(StarkHash::from_hex_str("0x2b").unwrap()),
+                            CallParam(starkhash!("01")),
+                            CallParam(starkhash!("01")),
+                            CallParam(starkhash!("2b")),
                             CallParam(StarkHash::ZERO),
                         ],
                         entry_point_selector: EntryPoint(StarkHash::ZERO),
                         signature: vec![
-                            CallSignatureElem(
-                                StarkHash::from_hex_str(
-                                    "0x7dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
-                                )
-                                .unwrap(),
-                            ),
-                            CallSignatureElem(
-                                StarkHash::from_hex_str(
-                                    "0x71456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                                )
-                                .unwrap(),
-                            ),
+                            CallSignatureElem(starkhash!(
+                                "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                            )),
+                            CallSignatureElem(starkhash!(
+                                "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                            )),
                         ],
                     },
                     Fee(5444010076217u128.to_be_bytes().into()),
@@ -1669,51 +1625,33 @@ mod tests {
             client
                 .add_invoke_transaction(
                     Call {
-                        contract_address: ContractAddress(
-                            StarkHash::from_hex_str(
-                                "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
-                            )
-                            .unwrap(),
-                        ),
+                        contract_address: ContractAddress(starkhash!(
+                            "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
+                        )),
                         calldata: vec![
-                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
-                            CallParam(
-                                StarkHash::from_hex_str(
-                                    "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
-                                )
-                                .unwrap(),
-                            ),
-                            CallParam(
-                                StarkHash::from_hex_str(
-                                    "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
-                                )
-                                .unwrap(),
-                            ),
+                            CallParam(starkhash!("01")),
+                            CallParam(starkhash!(
+                                "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                            )),
+                            CallParam(starkhash!(
+                                "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+                            )),
                             CallParam(StarkHash::ZERO),
-                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
-                            CallParam(StarkHash::from_hex_str("0x1").unwrap()),
-                            CallParam(StarkHash::from_hex_str("0x2b").unwrap()),
+                            CallParam(starkhash!("01")),
+                            CallParam(starkhash!("01")),
+                            CallParam(starkhash!("2b")),
                             CallParam(StarkHash::ZERO),
                         ],
-                        entry_point_selector: EntryPoint(
-                            StarkHash::from_hex_str(
-                                "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
-                            )
-                            .unwrap(),
-                        ),
+                        entry_point_selector: EntryPoint(starkhash!(
+                            "015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
+                        )),
                         signature: vec![
-                            CallSignatureElem(
-                                StarkHash::from_hex_str(
-                                    "0x7dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5",
-                                )
-                                .unwrap(),
-                            ),
-                            CallSignatureElem(
-                                StarkHash::from_hex_str(
-                                    "0x71456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8",
-                                )
-                                .unwrap(),
-                            ),
+                            CallSignatureElem(starkhash!(
+                                "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                            )),
+                            CallSignatureElem(starkhash!(
+                                "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                            )),
                         ],
                     },
                     Fee(5444010076217u128.to_be_bytes().into()),
@@ -1758,7 +1696,7 @@ mod tests {
                 .add_declare_transaction(
                     contract_class,
                     // actual address dumped from a `starknet declare` call
-                    ContractAddress(StarkHash::from_hex_str("0x1").unwrap()),
+                    ContractAddress(starkhash!("01")),
                     Fee(0u128.to_be_bytes().into()),
                     vec![],
                     TransactionNonce(StarkHash::ZERO),
@@ -1783,15 +1721,12 @@ mod tests {
             )]);
             client
                 .add_deploy_transaction(
-                    ContractAddressSalt(
-                        StarkHash::from_hex_str(
-                            "0x5864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d",
-                        )
-                        .unwrap(),
-                    ),
+                    ContractAddressSalt(starkhash!(
+                        "05864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"
+                    )),
                     // Regression: use a dummy constructor param here to make sure that
                     // it is serialized properly
-                    vec![ConstructorParam::from_hex_str("0x01").unwrap()],
+                    vec![ConstructorParam(starkhash!("01"))],
                     contract_definition,
                     None,
                 )
@@ -1811,20 +1746,16 @@ mod tests {
                                 EntryPointType::External,
                                 vec![
                                     SelectorAndOffset {
-                                        offset: ByteCodeOffset(StarkHash::from_hex_str("0x3a").unwrap()),
-                                        selector: EntryPoint(StarkHash::from_hex_str(
-                                                "0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
-                                            )
-                                            .unwrap()
+                                        offset: ByteCodeOffset(starkhash!("3a")),
+                                        selector: EntryPoint(starkhash!(
+                                                "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")
                                         ),
                                     },
                                     SelectorAndOffset{
-                                        offset: ByteCodeOffset(StarkHash::from_hex_str("0x5b").unwrap()),
-                                        selector: EntryPoint(StarkHash::from_hex_str(
-                                                "0x39e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695",
-                                            )
-                                            .unwrap()
-                                        ),
+                                        offset: ByteCodeOffset(starkhash!("5b")),
+                                        selector: EntryPoint(starkhash!(
+                                                "039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695"
+                                        )),
                                     },
                                 ],
                             ),
