@@ -842,15 +842,18 @@ impl StarknetEventsTable {
 
     pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
 
-    fn event_query<'a>(
-        base: &'_ str,
-        from_block: Option<&'a StarknetBlockNumber>,
-        to_block: Option<&'a StarknetBlockNumber>,
-        contract_address: Option<&'a ContractAddress>,
-        keys: &'a [EventKey],
-        key_fts_expression: &'a mut String,
-    ) -> (String, Vec<(&'static str, &'a dyn rusqlite::ToSql)>) {
-        let mut base_query = base.to_string();
+    fn event_query<'query, 'arg>(
+        base: &'query str,
+        from_block: Option<&'arg StarknetBlockNumber>,
+        to_block: Option<&'arg StarknetBlockNumber>,
+        contract_address: Option<&'arg ContractAddress>,
+        keys: &'arg [EventKey],
+        key_fts_expression: &'arg mut String,
+    ) -> (
+        std::borrow::Cow<'query, str>,
+        Vec<(&'static str, &'arg dyn rusqlite::ToSql)>,
+    ) {
+        let mut base_query = std::borrow::Cow::Borrowed(base);
 
         let mut where_statement_parts: Vec<&'static str> = Vec::new();
         let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
@@ -902,21 +905,37 @@ impl StarknetEventsTable {
 
             assert_eq!(key_fts_expression.capacity(), key_fts_expression.len());
 
-            base_query.push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
+            base_query.to_mut().push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
             where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
             params.push((":events_match", &*key_fts_expression));
         }
 
-        let query = match where_statement_parts.is_empty() {
-            true => base_query,
-            false => format!(
-                "{} WHERE {}",
-                base_query,
-                where_statement_parts.join(" AND ")
-            ),
-        };
+        if !where_statement_parts.is_empty() {
+            let needed = " WHERE ".len()
+                + where_statement_parts.len() * " AND ".len()
+                + where_statement_parts.iter().map(|x| x.len()).sum::<usize>();
 
-        (query, params)
+            let q = base_query.to_mut();
+            if let Some(more) = needed.checked_sub(q.capacity()) {
+                q.reserve(more);
+            }
+
+            q.push_str(" WHERE ");
+
+            let total = where_statement_parts.len();
+            where_statement_parts
+                .into_iter()
+                .enumerate()
+                .for_each(|(i, part)| {
+                    q.push_str(part);
+
+                    if i != total - 1 {
+                        q.push_str(" AND ");
+                    }
+                });
+        }
+
+        (base_query, params)
     }
 
     pub fn event_count(
@@ -984,7 +1003,7 @@ impl StarknetEventsTable {
         params.push((":limit", &limit));
         params.push((":offset", &offset));
 
-        base_query.push_str(" ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset");
+        base_query.to_mut().push_str(" ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset");
 
         let mut statement = tx.prepare(&base_query).context("Preparing SQL query")?;
         let mut rows = statement
