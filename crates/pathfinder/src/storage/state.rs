@@ -987,43 +987,40 @@ impl StarknetEventsTable {
         let mut is_last_page = true;
         let mut emitted_events = Vec::new();
         while let Some(row) = rows.next().context("Fetching next event")? {
-            let block_number = row.get_unwrap("block_number");
-
-            let block_hash = row.get_unwrap("block_hash");
-
-            let transaction_hash = row.get_unwrap("transaction_hash");
-
-            let from_address = row.get_unwrap("from_address");
-
-            let data = row.get_ref_unwrap("data").as_blob().unwrap();
-            let data: Vec<_> = data
-                .chunks_exact(32)
-                .map(|data| {
-                    let data = StarkHash::from_be_slice(data).unwrap();
-                    EventData(data)
-                })
-                .collect();
-
-            let keys = row.get_ref_unwrap("keys").as_str().unwrap();
-
-            // no need to allocate a vec for this in loop
-            let mut temp = [0u8; 32];
-
-            let keys: Vec<_> = keys
-                .split(' ')
-                .map(|key| {
-                    let used =
-                        base64::decode_config_slice(key, base64::STANDARD, &mut temp).unwrap();
-                    let key = StarkHash::from_be_slice(&temp[..used]).unwrap();
-                    EventKey(key)
-                })
-                .collect();
-
             if emitted_events.len() == filter.page_size {
                 // We already have a full page, and are just fetching the extra event
                 // This means that there are more pages.
                 is_last_page = false;
             } else {
+                let block_number = row.get_unwrap("block_number");
+                let block_hash = row.get_unwrap("block_hash");
+                let transaction_hash = row.get_unwrap("transaction_hash");
+                let from_address = row.get_unwrap("from_address");
+
+                let data = row.get_ref_unwrap("data").as_blob().unwrap();
+                let data: Vec<_> = data
+                    .chunks_exact(32)
+                    .map(|data| {
+                        let data = StarkHash::from_be_slice(data).unwrap();
+                        EventData(data)
+                    })
+                    .collect();
+
+                let keys = row.get_ref_unwrap("keys").as_str().unwrap();
+
+                // no need to allocate a vec for this in loop
+                let mut temp = [0u8; 32];
+
+                let keys: Vec<_> = keys
+                    .split(' ')
+                    .map(|key| {
+                        let used =
+                            base64::decode_config_slice(key, base64::STANDARD, &mut temp).unwrap();
+                        let key = StarkHash::from_be_slice(&temp[..used]).unwrap();
+                        EventKey(key)
+                    })
+                    .collect();
+
                 let event = StarknetEmittedEvent {
                     data,
                     from_address,
