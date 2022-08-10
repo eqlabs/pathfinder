@@ -12,6 +12,8 @@ pub mod state;
 pub mod storage;
 pub mod update;
 
+/// Creates a [`stark_hash::StarkHash`] from an even hex string, resulting in compile-time error
+/// when invalid.
 macro_rules! starkhash {
     ($hex:expr) => {{
         let bytes = hex_literal::hex!($hex);
@@ -22,7 +24,9 @@ macro_rules! starkhash {
     }};
 }
 
-#[allow(unused)]
+/// Creates a [`stark_hash::StarkHash`] from a byte slice, resulting in compile-time error when
+/// invalid.
+#[cfg(test)]
 macro_rules! starkhash_bytes {
     ($bytes:expr) => {{
         match stark_hash::StarkHash::from_be_slice($bytes) {
