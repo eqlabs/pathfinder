@@ -763,20 +763,28 @@ pub struct PageOfEvents {
 
 pub struct StarknetEventsTable {}
 impl StarknetEventsTable {
-    pub fn event_data_to_bytes(data: &[EventData]) -> Vec<u8> {
-        data.iter()
-            .flat_map(|e| (*e.0.as_be_bytes()).into_iter())
-            .collect()
+    pub fn encode_event_data_to_bytes(data: &[EventData], buffer: &mut Vec<u8>) {
+        buffer.extend(data.iter().flat_map(|e| (*e.0.as_be_bytes()).into_iter()))
     }
 
-    fn event_key_to_base64_string(key: &EventKey) -> String {
-        base64::encode(key.0.as_be_bytes())
+    fn encode_event_key_to_base64(key: &EventKey, buf: &mut String) {
+        base64::encode_config_buf(key.0.as_be_bytes(), base64::STANDARD, buf);
     }
 
-    pub fn event_keys_to_base64_strings(keys: &[EventKey]) -> String {
-        // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
-        let keys: Vec<String> = keys.iter().map(Self::event_key_to_base64_string).collect();
-        keys.join(" ")
+    pub fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
+        // with padding it seems 44 bytes are needed for each
+        let needed = (keys.len() * (" ".len() + 44)).saturating_sub(" ".len());
+        if let Some(more) = needed.checked_sub(out.capacity()) {
+            out.reserve(more);
+        }
+
+        keys.iter().enumerate().for_each(|(i, x)| {
+            Self::encode_event_key_to_base64(x, out);
+
+            if i != keys.len() - 1 {
+                out.push(' ');
+            }
+        });
     }
 
     pub fn insert_events(
@@ -806,14 +814,24 @@ impl StarknetEventsTable {
                 let mut stmt = tx.prepare(
                     r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
                                            VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)")?;
+
+                let mut keys = String::new();
+                let mut buffer = Vec::new();
+
                 for (idx, event) in events.iter().enumerate() {
+                    keys.clear();
+                    Self::event_keys_to_base64_strings(&event.keys, &mut keys);
+
+                    buffer.clear();
+                    Self::encode_event_data_to_bytes(&event.data, &mut buffer);
+
                     stmt.execute(named_params![
                         ":block_number": block_number,
                         ":idx": idx,
                         ":transaction_hash": &transaction_hash,
                         ":from_address": &event.from_address,
-                        ":keys": Self::event_keys_to_base64_strings(&event.keys),
-                        ":data": Self::event_data_to_bytes(&event.data),
+                        ":keys": &keys,
+                        ":data": &buffer,
                     ])
                     .context("Insert events into events table")?;
                 }
@@ -864,13 +882,23 @@ impl StarknetEventsTable {
         // The idea is that we convert keys to a space-separated list of Bas64 encoded string
         // representation and then use the full-text index to find events matching the events.
         // HACK: make sure key_fts_expression lives long enough
-        let key_fts_expression;
+        let mut key_fts_expression;
         if !keys.is_empty() {
-            let base64_keys: Vec<String> = keys
-                .iter()
-                .map(|key| format!("\"{}\"", Self::event_key_to_base64_string(key)))
-                .collect();
-            key_fts_expression = base64_keys.join(" OR ");
+            key_fts_expression = String::with_capacity(
+                (keys.len() * (" OR ".len() + "\"\"".len() + 44)).saturating_sub(" OR ".len()),
+            );
+
+            keys.iter().enumerate().for_each(|(i, key)| {
+                key_fts_expression.push('"');
+                Self::encode_event_key_to_base64(key, &mut key_fts_expression);
+                key_fts_expression.push('"');
+
+                if i != keys.len() - 1 {
+                    key_fts_expression.push_str(" OR ");
+                }
+            });
+
+            assert_eq!(key_fts_expression.capacity(), key_fts_expression.len());
 
             base_query.push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
             where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
@@ -938,14 +966,24 @@ impl StarknetEventsTable {
         // The idea is that we convert keys to a space-separated list of Bas64 encoded string
         // representation and then use the full-text index to find events matching the events.
         // HACK: make sure key_fts_expression lives long enough
-        let key_fts_expression;
+        let mut key_fts_expression;
         if !filter.keys.is_empty() {
-            let base64_keys: Vec<String> = filter
-                .keys
-                .iter()
-                .map(|key| format!("\"{}\"", Self::event_key_to_base64_string(key)))
-                .collect();
-            key_fts_expression = base64_keys.join(" OR ");
+            key_fts_expression = String::with_capacity(
+                (filter.keys.len() * (" OR ".len() + "\"\"".len() + 44))
+                    .saturating_sub(" OR ".len()),
+            );
+
+            filter.keys.iter().enumerate().for_each(|(i, key)| {
+                key_fts_expression.push('"');
+                Self::encode_event_key_to_base64(key, &mut key_fts_expression);
+                key_fts_expression.push('"');
+
+                if i != filter.keys.len() - 1 {
+                    key_fts_expression.push_str(" OR ");
+                }
+            });
+
+            debug_assert_eq!(key_fts_expression.capacity(), key_fts_expression.len());
 
             base_query.push_str("INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
             where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
@@ -1926,13 +1964,17 @@ mod tests {
 
         #[test]
         fn event_data_serialization() {
-            let data = vec![
+            let data = [
                 EventData(starkhash!("01")),
                 EventData(starkhash!("02")),
                 EventData(starkhash!("03")),
             ];
+
+            let mut buffer = Vec::new();
+            StarknetEventsTable::encode_event_data_to_bytes(&data, &mut buffer);
+
             assert_eq!(
-                &StarknetEventsTable::event_data_to_bytes(&data),
+                &buffer,
                 &[
                     0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -1955,8 +1997,12 @@ mod tests {
                     EventKey(starkhash!("901825")),
                 ],
             };
+
+            let mut buf = String::new();
+            StarknetEventsTable::event_keys_to_base64_strings(&event.keys, &mut buf);
+            assert_eq!(buf.capacity(), buf.len());
             assert_eq!(
-                StarknetEventsTable::event_keys_to_base64_strings(&event.keys),
+                buf,
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCM= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCQ= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCU="
             );
         }
