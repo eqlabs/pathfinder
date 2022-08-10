@@ -945,6 +945,14 @@ impl StarknetEventsTable {
         tx: &Transaction<'_>,
         filter: &StarknetEventFilter,
     ) -> anyhow::Result<PageOfEvents> {
+        if filter.page_size > Self::PAGE_SIZE_LIMIT {
+            return Err(EventFilterError::PageSizeTooBig(Self::PAGE_SIZE_LIMIT).into());
+        }
+
+        if filter.page_size < 1 {
+            anyhow::bail!("Invalid page size");
+        }
+
         let base_query = r#"SELECT
                   block_number,
                   starknet_blocks.hash as block_hash,
@@ -968,14 +976,8 @@ impl StarknetEventsTable {
             &mut key_fts_expression,
         );
 
-        // Paging
-        if filter.page_size > Self::PAGE_SIZE_LIMIT {
-            return Err(EventFilterError::PageSizeTooBig(Self::PAGE_SIZE_LIMIT).into());
-        }
-        if filter.page_size < 1 {
-            anyhow::bail!("Invalid page size");
-        }
         let offset = filter.page_number * filter.page_size;
+
         // We have to be able to decide if there are more events. We request one extra event
         // above the requested page size, so that we can decide.
         let limit = filter.page_size + 1;
