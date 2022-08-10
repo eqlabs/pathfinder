@@ -1151,7 +1151,7 @@ impl ContractsStateTable {
                 named_params! {
                     ":state_hash": state_hash
                 },
-                |row| row.get::<_, ContractRoot>("root"),
+                |row| row.get("root"),
             )
             .optional()
             .map_err(|e| e.into())
