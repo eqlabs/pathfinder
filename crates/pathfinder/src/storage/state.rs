@@ -688,11 +688,7 @@ impl StarknetTransactionsTable {
             None => return Ok(None),
         };
 
-        let transaction = match row.get_ref_unwrap(0).as_blob_or_null()? {
-            Some(data) => data,
-            None => return Ok(None),
-        };
-
+        let transaction = row.get_ref_unwrap(0).as_blob()?;
         let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction =
             serde_json::from_slice(&transaction).context("Deserializing transaction")?;
