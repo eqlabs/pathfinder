@@ -164,13 +164,13 @@ macro_rules! i64_masquerading_as_u64_newtype_to_from_sql {
 }
 
 /// A StarkNet block number.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockNumber(pub u64);
 
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockNumber);
 
 /// The timestamp of a Starknet block.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetBlockTimestamp(pub u64);
 
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockTimestamp);
@@ -434,10 +434,13 @@ impl std::fmt::Display for Chain {
     }
 }
 
+/// Common trait implementations for *[StarkHash]* newtypes, meaning tuple structs with single
+/// field.
 macro_rules! starkhash_common_newtype {
     ($target:ty) => {
         starkhash_to_from_sql!($target);
-        thin_starkhash_debug_display!($target);
+        thin_starkhash_debug!($target);
+        thin_newtype_display!($target);
     };
 
     ($head:ty, $($tail:ty),+ $(,)?) => {
@@ -446,6 +449,14 @@ macro_rules! starkhash_common_newtype {
     };
 }
 
+/// Adds the common ToSql and FromSql implementations for the type.
+///
+/// This avoids having to implement the traits over at `stark_hash` which would require a
+/// dependency to `rusqlite` over at `stark_hash`.
+///
+/// This allows direct use of the values as sql parameters or reading them from the rows. It should
+/// be noted that `Option<_>` must be used to when reading a nullable column, as this
+/// implementation will error at `as_blob()?`.
 macro_rules! starkhash_to_from_sql {
     ($target:ty) => {
         impl rusqlite::ToSql for $target {
@@ -460,7 +471,7 @@ macro_rules! starkhash_to_from_sql {
                 value: rusqlite::types::ValueRef<'_>,
             ) -> rusqlite::types::FromSqlResult<Self> {
                 let blob = value.as_blob()?;
-                let sh = StarkHash::from_be_slice(blob)
+                let sh = stark_hash::StarkHash::from_be_slice(blob)
                     .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
                 Ok(Self(sh))
             }
@@ -468,20 +479,9 @@ macro_rules! starkhash_to_from_sql {
     };
 }
 
-/// Adds a thin Debug and Disply implementations.
-///
-/// Debug impl produces `WrapperType(hash)` instead of automatic derives generated
-/// `WrapperType(StarkHash(hash))`.
-///
-/// Display impl produces just `hash`.
-///
-/// Naming: this is called starkhash instead of anything more generic, like newtype, to discourage
-/// from using with for example `primitive_types::H256`, which has always lossy display
-/// implementation.
-macro_rules! thin_starkhash_debug_display {
+/// Adds a thin display implementation which skips the type name.
+macro_rules! thin_newtype_display {
     ($target:ty) => {
-        thin_starkhash_debug!($target);
-
         impl std::fmt::Display for $target {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 std::fmt::Display::fmt(&self.0, f)
@@ -490,12 +490,10 @@ macro_rules! thin_starkhash_debug_display {
     };
 }
 
-/// Adds a thin Debug implementation. Called by [`thin_starkhash_debug_display`].
+/// Adds a thin Debug implementation, which skips `X(StarkHash(debug))` as `X(debug)`.
 ///
 /// The implementation uses Display of the wrapped value to produce smallest possible string, but
 /// still wraps it in a default Debug derive style `TypeName(hash)`.
-///
-/// Naming: see [`thin_starkhash_debug_display`].
 macro_rules! thin_starkhash_debug {
     ($target:ty) => {
         impl std::fmt::Debug for $target {
@@ -545,8 +543,8 @@ starkhash_common_newtype!(
     TransactionNonce,
 );
 
-thin_starkhash_debug_display!(StarknetBlockNumber);
-thin_starkhash_debug_display!(StarknetBlockTimestamp);
+thin_newtype_display!(StarknetBlockNumber);
+thin_newtype_display!(StarknetBlockTimestamp);
 
 #[cfg(test)]
 mod tests {
