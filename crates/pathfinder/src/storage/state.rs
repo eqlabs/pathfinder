@@ -53,8 +53,8 @@ impl L1StateTable {
                         :ethereum_log_index
                     )",
             named_params! {
-                ":starknet_block_number": update.block_number.0,
-                ":starknet_global_root": update.global_root.0.as_be_bytes(),
+                ":starknet_block_number": update.block_number,
+                ":starknet_global_root": &update.global_root,
                 ":ethereum_block_hash": &update.origin.block.hash.0[..],
                 ":ethereum_block_number": update.origin.block.number.0,
                 ":ethereum_transaction_hash": &update.origin.transaction.hash.0[..],
@@ -71,7 +71,7 @@ impl L1StateTable {
     pub fn reorg(tx: &Transaction<'_>, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
         tx.execute(
             "DELETE FROM l1_state WHERE starknet_block_number >= ?",
-            params![reorg_tail.0],
+            [reorg_tail],
         )?;
         Ok(())
     }
@@ -90,7 +90,7 @@ impl L1StateTable {
         }?;
 
         let mut rows = match block {
-            L1TableBlockId::Number(number) => statement.query(params![number.0]),
+            L1TableBlockId::Number(number) => statement.query([number]),
             L1TableBlockId::Latest => statement.query([]),
         }?;
 
@@ -100,14 +100,9 @@ impl L1StateTable {
             None => return Ok(None),
         };
 
-        let starknet_global_root = row
-            .get_ref_unwrap("starknet_global_root")
-            .as_blob()
-            .unwrap();
-        let starknet_global_root = StarkHash::from_be_slice(starknet_global_root).unwrap();
-        let starknet_global_root = GlobalRoot(starknet_global_root);
-
-        Ok(Some(starknet_global_root))
+        row.get("starknet_global_root")
+            .map(Some)
+            .map_err(|e| e.into())
     }
 
     /// Returns the [update](StateUpdateLog) of the given block.
@@ -139,7 +134,7 @@ impl L1StateTable {
         }?;
 
         let mut rows = match block {
-            L1TableBlockId::Number(number) => statement.query(params![number.0]),
+            L1TableBlockId::Number(number) => statement.query([number]),
             L1TableBlockId::Latest => statement.query([]),
         }?;
 
@@ -149,18 +144,9 @@ impl L1StateTable {
             None => return Ok(None),
         };
 
-        let starknet_block_number = row
-            .get_ref_unwrap("starknet_block_number")
-            .as_i64()
-            .unwrap() as u64;
-        let starknet_block_number = StarknetBlockNumber(starknet_block_number);
+        let starknet_block_number = row.get_unwrap("starknet_block_number");
 
-        let starknet_global_root = row
-            .get_ref_unwrap("starknet_global_root")
-            .as_blob()
-            .unwrap();
-        let starknet_global_root = StarkHash::from_be_slice(starknet_global_root).unwrap();
-        let starknet_global_root = GlobalRoot(starknet_global_root);
+        let starknet_global_root = row.get_unwrap("starknet_global_root");
 
         let ethereum_block_hash = row.get_ref_unwrap("ethereum_block_hash").as_blob().unwrap();
         let ethereum_block_hash = EthereumBlockHash(H256(ethereum_block_hash.try_into().unwrap()));
@@ -210,18 +196,10 @@ impl RefsTable {
     /// Returns the current L1-L2 head. This indicates the latest block for which L1 and L2 agree.
     pub fn get_l1_l2_head(tx: &Transaction<'_>) -> anyhow::Result<Option<StarknetBlockNumber>> {
         // This table always contains exactly one row.
-        let block_number =
-            tx.query_row("SELECT l1_l2_head FROM refs WHERE idx = 1", [], |row| {
-                let block_number = row
-                    .get_ref_unwrap(0)
-                    .as_i64_or_null()
-                    .unwrap()
-                    .map(|x| StarknetBlockNumber(x as u64));
-
-                Ok(block_number)
-            })?;
-
-        Ok(block_number)
+        tx.query_row("SELECT l1_l2_head FROM refs WHERE idx = 1", [], |row| {
+            row.get::<_, Option<_>>(0)
+        })
+        .map_err(|e| e.into())
     }
 
     /// Sets the current L1-L2 head. This should indicate the latest block for which L1 and L2 agree.
@@ -229,10 +207,7 @@ impl RefsTable {
         tx: &Transaction<'_>,
         head: Option<StarknetBlockNumber>,
     ) -> anyhow::Result<()> {
-        match head {
-            Some(number) => tx.execute("UPDATE refs SET l1_l2_head = ? WHERE idx = 1", [number.0]),
-            None => tx.execute("UPDATE refs SET l1_l2_head = NULL WHERE idx = 1", []),
-        }?;
+        tx.execute("UPDATE refs SET l1_l2_head = ? WHERE idx = 1", [head])?;
 
         Ok(())
     }
@@ -258,12 +233,12 @@ impl StarknetBlocksTable {
             r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id)
                                    VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id)",
             named_params! {
-                ":number": block.number.0,
-                ":hash": block.hash.0.as_be_bytes(),
-                ":root": block.root.0.as_be_bytes(),
-                ":timestamp": block.timestamp.0,
+                ":number": block.number,
+                ":hash": block.hash,
+                ":root": block.root,
+                ":timestamp": block.timestamp,
                 ":gas_price": &block.gas_price.to_be_bytes(),
-                ":sequencer_address": block.sequencer_address.0.as_be_bytes(),
+                ":sequencer_address": block.sequencer_address,
                 ":version_id": version_id,
             },
         )?;
@@ -292,8 +267,8 @@ impl StarknetBlocksTable {
         }?;
 
         let mut rows = match block {
-            StarknetBlocksBlockId::Number(number) => statement.query(params![number.0]),
-            StarknetBlocksBlockId::Hash(hash) => statement.query(params![hash.0.as_be_bytes()]),
+            StarknetBlocksBlockId::Number(number) => statement.query([number]),
+            StarknetBlocksBlockId::Hash(hash) => statement.query([hash]),
             StarknetBlocksBlockId::Latest => statement.query([]),
         }?;
 
@@ -301,26 +276,18 @@ impl StarknetBlocksTable {
 
         match row {
             Some(row) => {
-                let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
-                let number = StarknetBlockNumber(number);
+                let number = row.get_unwrap("number");
 
-                let hash = row.get_ref_unwrap("hash").as_blob().unwrap();
-                let hash = StarkHash::from_be_slice(hash).unwrap();
-                let hash = StarknetBlockHash(hash);
+                let hash = row.get_unwrap("hash");
 
-                let root = row.get_ref_unwrap("root").as_blob().unwrap();
-                let root = StarkHash::from_be_slice(root).unwrap();
-                let root = GlobalRoot(root);
+                let root = row.get_unwrap("root");
 
-                let timestamp = row.get_ref_unwrap("timestamp").as_i64().unwrap() as u64;
-                let timestamp = StarknetBlockTimestamp(timestamp);
+                let timestamp = row.get_unwrap("timestamp");
 
                 let gas_price = row.get_ref_unwrap("gas_price").as_blob().unwrap();
                 let gas_price = GasPrice::from_be_slice(gas_price).unwrap();
 
-                let sequencer_address = row.get_ref_unwrap("sequencer_address").as_blob().unwrap();
-                let sequencer_address = StarkHash::from_be_slice(sequencer_address).unwrap();
-                let sequencer_address = SequencerAddress(sequencer_address);
+                let sequencer_address = row.get_unwrap("sequencer_address");
 
                 let block = StarknetBlock {
                     number,
@@ -342,34 +309,25 @@ impl StarknetBlocksTable {
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
     ) -> anyhow::Result<Option<GlobalRoot>> {
-        let mut statement = match block {
-            StarknetBlocksBlockId::Number(_) => {
-                tx.prepare("SELECT root FROM starknet_blocks WHERE number = ?")
-            }
-            StarknetBlocksBlockId::Hash(_) => {
-                tx.prepare("SELECT root FROM starknet_blocks WHERE hash = ?")
-            }
-            StarknetBlocksBlockId::Latest => {
-                tx.prepare("SELECT root FROM starknet_blocks ORDER BY number DESC LIMIT 1")
-            }
-        }?;
-
-        let mut rows = match block {
-            StarknetBlocksBlockId::Number(number) => statement.query(params![number.0]),
-            StarknetBlocksBlockId::Hash(hash) => statement.query(params![hash.0.as_be_bytes()]),
-            StarknetBlocksBlockId::Latest => statement.query([]),
-        }?;
-
-        let row = rows.next().context("Iterate rows")?;
-        match row {
-            Some(row) => {
-                let root = row.get_ref_unwrap("root").as_blob().unwrap();
-                let root = StarkHash::from_be_slice(root).unwrap();
-                let root = GlobalRoot(root);
-                Ok(Some(root))
-            }
-            None => Ok(None),
+        match block {
+            StarknetBlocksBlockId::Number(number) => tx.query_row(
+                "SELECT root FROM starknet_blocks WHERE number = ?",
+                [number],
+                |row| row.get(0),
+            ),
+            StarknetBlocksBlockId::Hash(hash) => tx.query_row(
+                "SELECT root FROM starknet_blocks WHERE hash = ?",
+                [hash],
+                |row| row.get(0),
+            ),
+            StarknetBlocksBlockId::Latest => tx.query_row(
+                "SELECT root FROM starknet_blocks ORDER BY number DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            ),
         }
+        .optional()
+        .map_err(|e| e.into())
     }
 
     /// Deletes all rows from __head down-to reorg_tail__
@@ -377,7 +335,7 @@ impl StarknetBlocksTable {
     pub fn reorg(tx: &Transaction<'_>, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
         tx.execute(
             "DELETE FROM starknet_blocks WHERE number >= ?",
-            params![reorg_tail.0],
+            [reorg_tail],
         )?;
         Ok(())
     }
@@ -388,15 +346,7 @@ impl StarknetBlocksTable {
             .query_row(
                 "SELECT number FROM starknet_blocks ORDER BY number DESC LIMIT 1",
                 [],
-                |row| {
-                    let num = row
-                        .get_ref_unwrap(0)
-                        .as_i64()
-                        .expect("number column should contain an integer")
-                        as u64;
-                    let num = StarknetBlockNumber(num);
-                    Ok(num)
-                },
+                |row| Ok(row.get_unwrap(0)),
             )
             .optional()?;
         Ok(maybe)
@@ -411,19 +361,8 @@ impl StarknetBlocksTable {
                 "SELECT hash, number FROM starknet_blocks ORDER BY number DESC LIMIT 1",
                 [],
                 |row| {
-                    let hash = row
-                        .get_ref_unwrap(0)
-                        .as_blob()
-                        .expect("hash column should contain a blob");
-                    let hash = StarkHash::from_be_slice(hash)
-                        .expect("hash column should contain valid hash");
-                    let hash = StarknetBlockHash(hash);
-                    let num = row
-                        .get_ref_unwrap(1)
-                        .as_i64()
-                        .expect("number column should contain an integer")
-                        as u64;
-                    let num = StarknetBlockNumber(num);
+                    let hash = row.get_unwrap(0);
+                    let num = row.get_unwrap(1);
                     Ok((hash, num))
                 },
             )
@@ -435,15 +374,13 @@ impl StarknetBlocksTable {
         tx: &Transaction<'_>,
         hash: StarknetBlockHash,
     ) -> anyhow::Result<Option<StarknetBlockNumber>> {
-        let mut statement =
-            tx.prepare("SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1")?;
-        let mut rows = statement.query(params![hash.0.as_be_bytes()])?;
-        let row = rows.next().context("Iterate rows")?;
-        let number = row.map(|row| {
-            let number = row.get_ref_unwrap("number").as_i64().unwrap() as u64;
-            StarknetBlockNumber(number)
-        });
-        Ok(number)
+        tx.query_row(
+            "SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1",
+            [hash],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.into())
     }
 
     /// Returns the [chain](crate::core::Chain) based on genesis block hash stored in the DB.
@@ -464,27 +401,20 @@ impl StarknetBlocksTable {
         tx: &Transaction<'_>,
         block: StarknetBlocksNumberOrLatest,
     ) -> anyhow::Result<Option<StarknetBlockHash>> {
-        let mut statement = match block {
-            StarknetBlocksNumberOrLatest::Number(_) => {
-                tx.prepare("SELECT hash FROM starknet_blocks WHERE number = ?")?
-            }
-            StarknetBlocksNumberOrLatest::Latest => {
-                tx.prepare("SELECT hash FROM starknet_blocks ORDER BY number DESC LIMIT 1")?
-            }
-        };
-        let mut rows = match block {
-            StarknetBlocksNumberOrLatest::Number(n) => statement.query([n.0])?,
-            StarknetBlocksNumberOrLatest::Latest => statement.query([])?,
-        };
-        let row = rows.next().context("Iterate rows")?;
-        match row {
-            Some(row) => {
-                let hash = row.get_ref_unwrap("hash").as_blob().unwrap();
-                let hash = StarknetBlockHash(StarkHash::from_be_slice(hash).unwrap());
-                Ok(Some(hash))
-            }
-            None => Ok(None),
+        match block {
+            StarknetBlocksNumberOrLatest::Number(n) => tx.query_row(
+                "SELECT hash FROM starknet_blocks WHERE number = ?",
+                [n],
+                |row| row.get(0),
+            ),
+            StarknetBlocksNumberOrLatest::Latest => tx.query_row(
+                "SELECT hash FROM starknet_blocks ORDER BY number DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            ),
         }
+        .optional()
+        .map_err(|e| e.into())
     }
 }
 
@@ -570,9 +500,9 @@ impl StarknetTransactionsTable {
 
             tx.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
         named_params![
-                    ":hash": transaction.hash().0.as_be_bytes(),
+                    ":hash": transaction.hash(),
                     ":idx": i,
-                    ":block_hash": block_hash.0.as_be_bytes(),
+                    ":block_hash": block_hash,
                     ":tx": &tx_data,
                     ":receipt": &serialized_receipt,
                 ]).context("Insert transaction data into transactions table")?;
@@ -611,9 +541,7 @@ impl StarknetTransactionsTable {
             )
             .context("Preparing statement")?;
 
-        let mut rows = stmt
-            .query(params![block_hash.0.as_be_bytes()])
-            .context("Executing query")?;
+        let mut rows = stmt.query([block_hash]).context("Executing query")?;
 
         let mut data = Vec::new();
         while let Some(row) = rows.next()? {
@@ -696,7 +624,7 @@ impl StarknetTransactionsTable {
             .context("Preparing statement")?;
 
         let mut rows = stmt
-            .query(params![block_hash.0.as_be_bytes(), index])
+            .query(params![block_hash, index])
             .context("Executing query")?;
 
         let row = match rows.next()? {
@@ -740,10 +668,7 @@ impl StarknetTransactionsTable {
         let receipt = zstd::decode_all(receipt).context("Decompressing transaction")?;
         let receipt = serde_json::from_slice(&receipt).context("Deserializing transaction")?;
 
-        let block_hash = row.get_ref_unwrap("block_hash").as_blob()?;
-        let block_hash =
-            StarkHash::from_be_slice(block_hash).context("Deserializing block hash")?;
-        let block_hash = StarknetBlockHash(block_hash);
+        let block_hash = row.get_unwrap("block_hash");
 
         Ok(Some((receipt, block_hash)))
     }
@@ -756,20 +681,14 @@ impl StarknetTransactionsTable {
             .prepare("SELECT tx FROM starknet_transactions WHERE hash = ?1")
             .context("Preparing statement")?;
 
-        let mut rows = stmt
-            .query(params![transaction.0.as_be_bytes()])
-            .context("Executing query")?;
+        let mut rows = stmt.query([transaction]).context("Executing query")?;
 
         let row = match rows.next()? {
             Some(row) => row,
             None => return Ok(None),
         };
 
-        let transaction = match row.get_ref_unwrap(0).as_blob_or_null()? {
-            Some(data) => data,
-            None => return Ok(None),
-        };
-
+        let transaction = row.get_ref_unwrap(0).as_blob()?;
         let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
         let transaction =
             serde_json::from_slice(&transaction).context("Deserializing transaction")?;
@@ -787,14 +706,14 @@ impl StarknetTransactionsTable {
                     "SELECT COUNT(*) FROM starknet_transactions
                     JOIN starknet_blocks ON starknet_transactions.block_hash = starknet_blocks.hash
                     WHERE number = ?1",
-                    params![number.0],
+                    [number],
                     |row| row.get(0),
                 )
                 .context("Counting transactions"),
             StarknetBlocksBlockId::Hash(hash) => tx
                 .query_row(
                     "SELECT COUNT(*) FROM starknet_transactions WHERE block_hash = ?1",
-                    params![hash.0.as_be_bytes()],
+                    [hash],
                     |row| row.get(0),
                 )
                 .context("Counting transactions"),
@@ -923,16 +842,16 @@ impl StarknetEventsTable {
         match (&from_block, &to_block) {
             (Some(from_block), Some(to_block)) => {
                 where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
-                params.push((":from_block", &from_block.0));
-                params.push((":to_block", &to_block.0));
+                params.push((":from_block", from_block));
+                params.push((":to_block", to_block));
             }
             (Some(from_block), None) => {
                 where_statement_parts.push("block_number >= :from_block");
-                params.push((":from_block", &from_block.0));
+                params.push((":from_block", from_block));
             }
             (None, Some(to_block)) => {
                 where_statement_parts.push("block_number <= :to_block");
-                params.push((":to_block", &to_block.0));
+                params.push((":to_block", to_block));
             }
             (None, None) => {}
         }
@@ -940,7 +859,7 @@ impl StarknetEventsTable {
         // on contract address
         if let Some(contract_address) = &contract_address {
             where_statement_parts.push("from_address = :contract_address");
-            params.push((":contract_address", contract_address.0.as_be_bytes()))
+            params.push((":contract_address", contract_address))
         }
 
         // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
@@ -997,16 +916,16 @@ impl StarknetEventsTable {
         match (&filter.from_block, &filter.to_block) {
             (Some(from_block), Some(to_block)) => {
                 where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
-                params.push((":from_block", &from_block.0));
-                params.push((":to_block", &to_block.0));
+                params.push((":from_block", from_block));
+                params.push((":to_block", to_block));
             }
             (Some(from_block), None) => {
                 where_statement_parts.push("block_number >= :from_block");
-                params.push((":from_block", &from_block.0));
+                params.push((":from_block", from_block));
             }
             (None, Some(to_block)) => {
                 where_statement_parts.push("block_number <= :to_block");
-                params.push((":to_block", &to_block.0));
+                params.push((":to_block", to_block));
             }
             (None, None) => {}
         }
@@ -1014,7 +933,7 @@ impl StarknetEventsTable {
         // filter on contract address
         if let Some(contract_address) = &filter.contract_address {
             where_statement_parts.push("from_address = :contract_address");
-            params.push((":contract_address", contract_address.0.as_be_bytes()))
+            params.push((":contract_address", contract_address))
         }
 
         // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
@@ -1070,20 +989,13 @@ impl StarknetEventsTable {
         let mut is_last_page = true;
         let mut emitted_events = Vec::new();
         while let Some(row) = rows.next().context("Fetching next event")? {
-            let block_number = row.get_ref_unwrap("block_number").as_i64().unwrap() as u64;
-            let block_number = StarknetBlockNumber(block_number);
+            let block_number = row.get_unwrap("block_number");
 
-            let block_hash = row.get_ref_unwrap("block_hash").as_blob().unwrap();
-            let block_hash = StarkHash::from_be_slice(block_hash).unwrap();
-            let block_hash = StarknetBlockHash(block_hash);
+            let block_hash = row.get_unwrap("block_hash");
 
-            let transaction_hash = row.get_ref_unwrap("transaction_hash").as_blob().unwrap();
-            let transaction_hash = StarkHash::from_be_slice(transaction_hash).unwrap();
-            let transaction_hash = StarknetTransactionHash(transaction_hash);
+            let transaction_hash = row.get_unwrap("transaction_hash");
 
-            let from_address = row.get_ref_unwrap("from_address").as_blob().unwrap();
-            let from_address = StarkHash::from_be_slice(from_address).unwrap();
-            let from_address = ContractAddress(from_address);
+            let from_address = row.get_unwrap("from_address");
 
             let data = row.get_ref_unwrap("data").as_blob().unwrap();
             let data: Vec<_> = data
@@ -1175,7 +1087,7 @@ impl StarknetVersionsTable {
             let rows = transaction
                 .execute(
                     "INSERT INTO starknet_versions(version) VALUES (?)",
-                    &[version],
+                    [version],
                 )
                 .context("Inserting unique starknet_version")?;
 
@@ -1209,9 +1121,9 @@ impl ContractsStateTable {
         transaction.execute(
             "INSERT OR IGNORE INTO contract_states (state_hash, hash, root) VALUES (:state_hash, :hash, :root)",
             named_params! {
-                ":state_hash": state_hash.0.to_be_bytes(),
-                ":hash": hash.0.to_be_bytes(),
-                ":root": root.0.to_be_bytes(),
+                ":state_hash": state_hash,
+                ":hash": hash,
+                ":root": root,
             },
         )?;
         Ok(())
@@ -1223,30 +1135,16 @@ impl ContractsStateTable {
         transaction: &Transaction<'_>,
         state_hash: ContractStateHash,
     ) -> anyhow::Result<Option<ContractRoot>> {
-        let bytes: Option<Vec<u8>> = transaction
+        transaction
             .query_row(
                 "SELECT root FROM contract_states WHERE state_hash = :state_hash",
                 named_params! {
-                    ":state_hash": state_hash.0.to_be_bytes()
+                    ":state_hash": state_hash
                 },
                 |row| row.get("root"),
             )
-            .optional()?;
-
-        let bytes = match bytes {
-            Some(bytes) => bytes,
-            None => return Ok(None),
-        };
-
-        let bytes: [u8; 32] = match bytes.try_into() {
-            Ok(bytes) => bytes,
-            Err(bytes) => anyhow::bail!("Bad contract root length: {}", bytes.len()),
-        };
-
-        let root = StarkHash::from_be_bytes(bytes)?;
-        let root = ContractRoot(root);
-
-        Ok(Some(root))
+            .optional()
+            .map_err(|e| e.into())
     }
 }
 
@@ -1271,10 +1169,7 @@ impl StarknetStateUpdatesTable {
 
         tx.execute(
             r"INSERT INTO starknet_state_updates (block_hash, data) VALUES (:block_hash, :data)",
-            named_params![
-                ":block_hash": block_hash.0.as_be_bytes(),
-                ":data": &compressed,
-            ],
+            named_params![":block_hash": block_hash, ":data": &compressed,],
         )
         .context("Insert state update data into state updates table")?;
 
@@ -1290,9 +1185,7 @@ impl StarknetStateUpdatesTable {
             .prepare("SELECT data FROM starknet_state_updates WHERE block_hash = ?1")
             .context("Preparing statement")?;
 
-        let mut rows = stmt
-            .query(params![block_hash.0.as_be_bytes()])
-            .context("Executing query")?;
+        let mut rows = stmt.query([block_hash]).context("Executing query")?;
 
         let row = match rows.next()? {
             Some(row) => row,

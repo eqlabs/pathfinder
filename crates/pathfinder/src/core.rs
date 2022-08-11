@@ -143,13 +143,37 @@ pub struct GlobalRoot(pub StarkHash);
 #[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetBlockHash(pub StarkHash);
 
+macro_rules! i64_masquerading_as_u64_newtype_to_from_sql {
+    ($target:ty) => {
+        impl rusqlite::ToSql for $target {
+            fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+                // this uses i64::try_from(u64_value) thus limiting our u64 to 0..=i64::MAX
+                // TODO: it would be best to handle this check at deserialization time.
+                self.0.to_sql()
+            }
+        }
+
+        impl rusqlite::types::FromSql for $target {
+            fn column_result(
+                value: rusqlite::types::ValueRef<'_>,
+            ) -> rusqlite::types::FromSqlResult<Self> {
+                Ok(Self(value.as_i64()? as u64))
+            }
+        }
+    };
+}
+
 /// A StarkNet block number.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockNumber(pub u64);
 
+i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockNumber);
+
 /// The timestamp of a Starknet block.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetBlockTimestamp(pub u64);
+
+i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockTimestamp);
 
 /// A StarkNet transaction hash.
 #[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
@@ -158,6 +182,8 @@ pub struct StarknetTransactionHash(pub StarkHash);
 /// A StarkNet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
 pub struct StarknetTransactionIndex(pub u64);
+
+i64_masquerading_as_u64_newtype_to_from_sql!(StarknetTransactionIndex);
 
 /// A single element of a signature used to secure a StarkNet transaction.
 #[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
@@ -408,39 +434,66 @@ impl std::fmt::Display for Chain {
     }
 }
 
-/// Adds a thin Debug and Disply implementations.
-///
-/// Debug impl produces `WrapperType(hash)` instead of automatic derives generated
-/// `WrapperType(StarkHash(hash))`.
-///
-/// Display impl produces just `hash`.
-///
-/// Naming: this is called starkhash instead of anything more generic, like newtype, to discourage
-/// from using with for example `primitive_types::H256`, which has always lossy display
-/// implementation.
-macro_rules! thin_starkhash_debug_display {
+/// Common trait implementations for *[StarkHash]* newtypes, meaning tuple structs with single
+/// field.
+macro_rules! starkhash_common_newtype {
     ($target:ty) => {
+        starkhash_to_from_sql!($target);
         thin_starkhash_debug!($target);
+        thin_newtype_display!($target);
+    };
 
+    ($head:ty, $($tail:ty),+ $(,)?) => {
+        starkhash_common_newtype!($head);
+        starkhash_common_newtype!($($tail),+);
+    };
+}
+
+/// Adds the common ToSql and FromSql implementations for the type.
+///
+/// This avoids having to implement the traits over at `stark_hash` which would require a
+/// dependency to `rusqlite` over at `stark_hash`.
+///
+/// This allows direct use of the values as sql parameters or reading them from the rows. It should
+/// be noted that `Option<_>` must be used to when reading a nullable column, as this
+/// implementation will error at `as_blob()?`.
+macro_rules! starkhash_to_from_sql {
+    ($target:ty) => {
+        impl rusqlite::ToSql for $target {
+            fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+                use rusqlite::types::{ToSqlOutput, ValueRef};
+                Ok(ToSqlOutput::Borrowed(ValueRef::Blob(self.0.as_be_bytes())))
+            }
+        }
+
+        impl rusqlite::types::FromSql for $target {
+            fn column_result(
+                value: rusqlite::types::ValueRef<'_>,
+            ) -> rusqlite::types::FromSqlResult<Self> {
+                let blob = value.as_blob()?;
+                let sh = stark_hash::StarkHash::from_be_slice(blob)
+                    .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
+                Ok(Self(sh))
+            }
+        }
+    };
+}
+
+/// Adds a thin display implementation which skips the type name.
+macro_rules! thin_newtype_display {
+    ($target:ty) => {
         impl std::fmt::Display for $target {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 std::fmt::Display::fmt(&self.0, f)
             }
         }
     };
-
-    ($head:ty, $($tail:ty),+ $(,)?) => {
-        thin_starkhash_debug_display!($head);
-        thin_starkhash_debug_display!($($tail),+);
-    };
 }
 
-/// Adds a thin Debug implementation. Called by [`thin_starkhash_debug_display`].
+/// Adds a thin Debug implementation, which skips `X(StarkHash(debug))` as `X(debug)`.
 ///
 /// The implementation uses Display of the wrapped value to produce smallest possible string, but
 /// still wraps it in a default Debug derive style `TypeName(hash)`.
-///
-/// Naming: see [`thin_starkhash_debug_display`].
 macro_rules! thin_starkhash_debug {
     ($target:ty) => {
         impl std::fmt::Debug for $target {
@@ -460,7 +513,11 @@ macro_rules! thin_starkhash_debug {
 // FIXME: it'd be better if these had normal varlen display and lenient parsing.
 thin_starkhash_debug!(ContractAddress, StarknetTransactionHash, ClassHash,);
 
-thin_starkhash_debug_display!(
+starkhash_to_from_sql!(ContractAddress);
+starkhash_to_from_sql!(StarknetTransactionHash);
+starkhash_to_from_sql!(ClassHash);
+
+starkhash_common_newtype!(
     ContractAddressSalt,
     ContractNonce,
     ContractStateHash,
@@ -476,7 +533,6 @@ thin_starkhash_debug_display!(
     StorageValue,
     GlobalRoot,
     StarknetBlockHash,
-    StarknetBlockNumber,
     TransactionSignatureElem,
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
@@ -486,6 +542,9 @@ thin_starkhash_debug_display!(
     SequencerAddress,
     TransactionNonce,
 );
+
+thin_newtype_display!(StarknetBlockNumber);
+thin_newtype_display!(StarknetBlockTimestamp);
 
 #[cfg(test)]
 mod tests {
