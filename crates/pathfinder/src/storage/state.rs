@@ -763,20 +763,32 @@ pub struct PageOfEvents {
 
 pub struct StarknetEventsTable {}
 impl StarknetEventsTable {
-    pub fn event_data_to_bytes(data: &[EventData]) -> Vec<u8> {
-        data.iter()
-            .flat_map(|e| (*e.0.as_be_bytes()).into_iter())
-            .collect()
+    pub fn encode_event_data_to_bytes(data: &[EventData], buffer: &mut Vec<u8>) {
+        buffer.extend(data.iter().flat_map(|e| (*e.0.as_be_bytes()).into_iter()))
     }
 
-    fn event_key_to_base64_string(key: &EventKey) -> String {
-        base64::encode(key.0.as_be_bytes())
+    fn encode_event_key_to_base64(key: &EventKey, buf: &mut String) {
+        base64::encode_config_buf(key.0.as_be_bytes(), base64::STANDARD, buf);
     }
 
-    pub fn event_keys_to_base64_strings(keys: &[EventKey]) -> String {
-        // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
-        let keys: Vec<String> = keys.iter().map(Self::event_key_to_base64_string).collect();
-        keys.join(" ")
+    pub fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
+        // with padding it seems 44 bytes are needed for each
+        let needed = (keys.len() * (" ".len() + 44)).saturating_sub(" ".len());
+        if let Some(more) = needed.checked_sub(out.capacity() - out.len()) {
+            out.reserve(more);
+        }
+
+        let _capacity = out.capacity();
+
+        keys.iter().enumerate().for_each(|(i, x)| {
+            Self::encode_event_key_to_base64(x, out);
+
+            if i != keys.len() - 1 {
+                out.push(' ');
+            }
+        });
+
+        debug_assert_eq!(_capacity, out.capacity(), "pre-reservation was not enough");
     }
 
     pub fn insert_events(
@@ -803,21 +815,29 @@ impl StarknetEventsTable {
                 transaction_hash,
                 ..
             }) => {
+                let mut stmt = tx.prepare(
+                    r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
+                                           VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)")?;
+
+                let mut keys = String::new();
+                let mut buffer = Vec::new();
+
                 for (idx, event) in events.iter().enumerate() {
-                    tx
-                        .execute(
-                            r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
-                                                   VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)",
-                            named_params![
-                                ":block_number": block_number.0,
-                                ":idx": idx,
-                                ":transaction_hash": &transaction_hash.0.as_be_bytes()[..],
-                                ":from_address": &event.from_address.0.as_be_bytes()[..],
-                                ":keys": Self::event_keys_to_base64_strings(&event.keys),
-                                ":data": Self::event_data_to_bytes(&event.data),
-                            ],
-                        )
-                        .context("Insert events into events table")?;
+                    keys.clear();
+                    Self::event_keys_to_base64_strings(&event.keys, &mut keys);
+
+                    buffer.clear();
+                    Self::encode_event_data_to_bytes(&event.data, &mut buffer);
+
+                    stmt.execute(named_params![
+                        ":block_number": block_number,
+                        ":idx": idx,
+                        ":transaction_hash": &transaction_hash,
+                        ":from_address": &event.from_address,
+                        ":keys": &keys,
+                        ":data": &buffer,
+                    ])
+                    .context("Insert events into events table")?;
                 }
                 Ok(())
             }
@@ -826,20 +846,24 @@ impl StarknetEventsTable {
 
     pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
 
-    pub fn event_count(
-        tx: &Transaction<'_>,
-        from_block: Option<StarknetBlockNumber>,
-        to_block: Option<StarknetBlockNumber>,
-        contract_address: Option<ContractAddress>,
-        keys: Vec<EventKey>,
-    ) -> anyhow::Result<usize> {
-        let mut base_query = "SELECT COUNT(1) FROM starknet_events".to_string();
+    fn event_query<'query, 'arg>(
+        base: &'query str,
+        from_block: Option<&'arg StarknetBlockNumber>,
+        to_block: Option<&'arg StarknetBlockNumber>,
+        contract_address: Option<&'arg ContractAddress>,
+        keys: &'arg [EventKey],
+        key_fts_expression: &'arg mut String,
+    ) -> (
+        std::borrow::Cow<'query, str>,
+        Vec<(&'static str, &'arg dyn rusqlite::ToSql)>,
+    ) {
+        let mut base_query = std::borrow::Cow::Borrowed(base);
 
         let mut where_statement_parts: Vec<&'static str> = Vec::new();
         let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
 
         // filter on block range
-        match (&from_block, &to_block) {
+        match (from_block, to_block) {
             (Some(from_block), Some(to_block)) => {
                 where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
                 params.push((":from_block", from_block));
@@ -857,7 +881,7 @@ impl StarknetEventsTable {
         }
 
         // on contract address
-        if let Some(contract_address) = &contract_address {
+        if let Some(contract_address) = contract_address {
             where_statement_parts.push("from_address = :contract_address");
             params.push((":contract_address", contract_address))
         }
@@ -865,28 +889,85 @@ impl StarknetEventsTable {
         // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
         // The idea is that we convert keys to a space-separated list of Bas64 encoded string
         // representation and then use the full-text index to find events matching the events.
-        // HACK: make sure key_fts_expression lives long enough
-        let key_fts_expression;
         if !keys.is_empty() {
-            let base64_keys: Vec<String> = keys
-                .iter()
-                .map(|key| format!("\"{}\"", Self::event_key_to_base64_string(key)))
-                .collect();
-            key_fts_expression = base64_keys.join(" OR ");
+            let needed =
+                (keys.len() * (" OR ".len() + "\"\"".len() + 44)).saturating_sub(" OR ".len());
+            if let Some(more) = needed.checked_sub(key_fts_expression.capacity()) {
+                key_fts_expression.reserve(more);
+            }
 
-            base_query.push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
+            let _capacity = key_fts_expression.capacity();
+
+            keys.iter().enumerate().for_each(|(i, key)| {
+                key_fts_expression.push('"');
+                Self::encode_event_key_to_base64(key, key_fts_expression);
+                key_fts_expression.push('"');
+
+                if i != keys.len() - 1 {
+                    key_fts_expression.push_str(" OR ");
+                }
+            });
+
+            debug_assert_eq!(
+                _capacity,
+                key_fts_expression.capacity(),
+                "pre-reservation was not enough"
+            );
+
+            base_query.to_mut().push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
             where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
-            params.push((":events_match", &key_fts_expression));
+            params.push((":events_match", &*key_fts_expression));
         }
 
-        let query = match where_statement_parts.is_empty() {
-            true => base_query,
-            false => format!(
-                "{} WHERE {}",
-                base_query,
-                where_statement_parts.join(" AND ")
-            ),
-        };
+        if !where_statement_parts.is_empty() {
+            let needed = " WHERE ".len()
+                + where_statement_parts.len() * " AND ".len()
+                + where_statement_parts.iter().map(|x| x.len()).sum::<usize>();
+
+            let q = base_query.to_mut();
+            if let Some(more) = needed.checked_sub(q.capacity() - q.len()) {
+                q.reserve(more);
+            }
+
+            let _capacity = q.capacity();
+
+            q.push_str(" WHERE ");
+
+            let total = where_statement_parts.len();
+            where_statement_parts
+                .into_iter()
+                .enumerate()
+                .for_each(|(i, part)| {
+                    q.push_str(part);
+
+                    if i != total - 1 {
+                        q.push_str(" AND ");
+                    }
+                });
+
+            debug_assert_eq!(_capacity, q.capacity(), "pre-reservation was not enough");
+        }
+
+        (base_query, params)
+    }
+
+    pub fn event_count(
+        tx: &Transaction<'_>,
+        from_block: Option<StarknetBlockNumber>,
+        to_block: Option<StarknetBlockNumber>,
+        contract_address: Option<ContractAddress>,
+        keys: Vec<EventKey>,
+    ) -> anyhow::Result<usize> {
+        let mut key_fts_expression = String::new();
+        let (query, params) = Self::event_query(
+            "SELECT COUNT(1) FROM starknet_events",
+            from_block.as_ref(),
+            to_block.as_ref(),
+            contract_address.as_ref(),
+            &keys,
+            &mut key_fts_expression,
+        );
+
         let count: usize = tx.query_row(&query, params.as_slice(), |row| row.get(0))?;
 
         Ok(count)
@@ -896,8 +977,15 @@ impl StarknetEventsTable {
         tx: &Transaction<'_>,
         filter: &StarknetEventFilter,
     ) -> anyhow::Result<PageOfEvents> {
-        let mut base_query =
-            r#"SELECT
+        if filter.page_size > Self::PAGE_SIZE_LIMIT {
+            return Err(EventFilterError::PageSizeTooBig(Self::PAGE_SIZE_LIMIT).into());
+        }
+
+        if filter.page_size < 1 {
+            anyhow::bail!("Invalid page size");
+        }
+
+        let base_query = r#"SELECT
                   block_number,
                   starknet_blocks.hash as block_hash,
                   transaction_hash,
@@ -907,81 +995,30 @@ impl StarknetEventsTable {
                   starknet_events.keys as keys
                FROM starknet_events
                INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
-               INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#
-                .to_string();
-        let mut where_statement_parts: Vec<&'static str> = Vec::new();
-        let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
+               INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#;
 
-        // filter on block range
-        match (&filter.from_block, &filter.to_block) {
-            (Some(from_block), Some(to_block)) => {
-                where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
-                params.push((":from_block", from_block));
-                params.push((":to_block", to_block));
-            }
-            (Some(from_block), None) => {
-                where_statement_parts.push("block_number >= :from_block");
-                params.push((":from_block", from_block));
-            }
-            (None, Some(to_block)) => {
-                where_statement_parts.push("block_number <= :to_block");
-                params.push((":to_block", to_block));
-            }
-            (None, None) => {}
-        }
+        let mut key_fts_expression = String::new();
 
-        // filter on contract address
-        if let Some(contract_address) = &filter.contract_address {
-            where_statement_parts.push("from_address = :contract_address");
-            params.push((":contract_address", contract_address))
-        }
+        let (mut base_query, mut params) = Self::event_query(
+            base_query,
+            filter.from_block.as_ref(),
+            filter.to_block.as_ref(),
+            filter.contract_address.as_ref(),
+            &filter.keys,
+            &mut key_fts_expression,
+        );
 
-        // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
-        // The idea is that we convert keys to a space-separated list of Bas64 encoded string
-        // representation and then use the full-text index to find events matching the events.
-        // HACK: make sure key_fts_expression lives long enough
-        let key_fts_expression;
-        if !filter.keys.is_empty() {
-            let base64_keys: Vec<String> = filter
-                .keys
-                .iter()
-                .map(|key| format!("\"{}\"", Self::event_key_to_base64_string(key)))
-                .collect();
-            key_fts_expression = base64_keys.join(" OR ");
-
-            base_query.push_str("INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
-            where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
-            params.push((":events_match", &key_fts_expression));
-        }
-
-        // Paging
-        if filter.page_size > Self::PAGE_SIZE_LIMIT {
-            return Err(EventFilterError::PageSizeTooBig(Self::PAGE_SIZE_LIMIT).into());
-        }
-        if filter.page_size < 1 {
-            anyhow::bail!("Invalid page size");
-        }
         let offset = filter.page_number * filter.page_size;
+
         // We have to be able to decide if there are more events. We request one extra event
         // above the requested page size, so that we can decide.
         let limit = filter.page_size + 1;
         params.push((":limit", &limit));
         params.push((":offset", &offset));
 
-        let query = if where_statement_parts.is_empty() {
-            format!(
-                "{} ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
-                base_query
-            )
-        } else {
-            format!(
-                "{} WHERE {} ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
-                base_query,
-                where_statement_parts.join(" AND "),
-            )
-        };
+        base_query.to_mut().push_str(" ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset");
 
-        let mut statement = tx.prepare(&query).context("Preparing SQL query")?;
+        let mut statement = tx.prepare(&base_query).context("Preparing SQL query")?;
         let mut rows = statement
             .query(params.as_slice())
             .context("Executing SQL query")?;
@@ -989,37 +1026,40 @@ impl StarknetEventsTable {
         let mut is_last_page = true;
         let mut emitted_events = Vec::new();
         while let Some(row) = rows.next().context("Fetching next event")? {
-            let block_number = row.get_unwrap("block_number");
-
-            let block_hash = row.get_unwrap("block_hash");
-
-            let transaction_hash = row.get_unwrap("transaction_hash");
-
-            let from_address = row.get_unwrap("from_address");
-
-            let data = row.get_ref_unwrap("data").as_blob().unwrap();
-            let data: Vec<_> = data
-                .chunks_exact(32)
-                .map(|data| {
-                    let data = StarkHash::from_be_slice(data).unwrap();
-                    EventData(data)
-                })
-                .collect();
-
-            let keys = row.get_ref_unwrap("keys").as_str().unwrap();
-            let keys: Vec<_> = keys
-                .split(' ')
-                .map(|key| {
-                    let key = StarkHash::from_be_slice(&base64::decode(key).unwrap()).unwrap();
-                    EventKey(key)
-                })
-                .collect();
-
             if emitted_events.len() == filter.page_size {
                 // We already have a full page, and are just fetching the extra event
                 // This means that there are more pages.
                 is_last_page = false;
             } else {
+                let block_number = row.get_unwrap("block_number");
+                let block_hash = row.get_unwrap("block_hash");
+                let transaction_hash = row.get_unwrap("transaction_hash");
+                let from_address = row.get_unwrap("from_address");
+
+                let data = row.get_ref_unwrap("data").as_blob().unwrap();
+                let data: Vec<_> = data
+                    .chunks_exact(32)
+                    .map(|data| {
+                        let data = StarkHash::from_be_slice(data).unwrap();
+                        EventData(data)
+                    })
+                    .collect();
+
+                let keys = row.get_ref_unwrap("keys").as_str().unwrap();
+
+                // no need to allocate a vec for this in loop
+                let mut temp = [0u8; 32];
+
+                let keys: Vec<_> = keys
+                    .split(' ')
+                    .map(|key| {
+                        let used =
+                            base64::decode_config_slice(key, base64::STANDARD, &mut temp).unwrap();
+                        let key = StarkHash::from_be_slice(&temp[..used]).unwrap();
+                        EventKey(key)
+                    })
+                    .collect();
+
                 let event = StarknetEmittedEvent {
                     data,
                     from_address,
@@ -1925,13 +1965,17 @@ mod tests {
 
         #[test]
         fn event_data_serialization() {
-            let data = vec![
+            let data = [
                 EventData(starkhash!("01")),
                 EventData(starkhash!("02")),
                 EventData(starkhash!("03")),
             ];
+
+            let mut buffer = Vec::new();
+            StarknetEventsTable::encode_event_data_to_bytes(&data, &mut buffer);
+
             assert_eq!(
-                &StarknetEventsTable::event_data_to_bytes(&data),
+                &buffer,
                 &[
                     0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -1954,8 +1998,12 @@ mod tests {
                     EventKey(starkhash!("901825")),
                 ],
             };
+
+            let mut buf = String::new();
+            StarknetEventsTable::event_keys_to_base64_strings(&event.keys, &mut buf);
+            assert_eq!(buf.capacity(), buf.len());
             assert_eq!(
-                StarknetEventsTable::event_keys_to_base64_strings(&event.keys),
+                buf,
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCM= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCQ= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCU="
             );
         }
