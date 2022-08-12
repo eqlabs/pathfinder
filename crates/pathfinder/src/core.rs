@@ -143,6 +143,45 @@ pub struct GlobalRoot(pub StarkHash);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockHash(pub StarkHash);
 
+macro_rules! i64_backed_newtype_new_get_partialeq {
+    ($target:ty) => {
+        impl $target {
+            pub const fn new(val: u64) -> Option<Self> {
+                let max = i64::MAX as u64;
+                // Range::contains is not const
+                if val <= max {
+                    Some(Self(val))
+                } else {
+                    None
+                }
+            }
+
+            pub const fn new_or_panic(val: u64) -> Self {
+                match Self::new(val) {
+                    Some(x) => x,
+                    None => panic!("Invalid constant"),
+                }
+            }
+
+            pub const fn get(&self) -> u64 {
+                self.0
+            }
+        }
+
+        impl PartialEq<u64> for $target {
+            fn eq(&self, other: &u64) -> bool {
+                self.0 == *other
+            }
+        }
+
+        impl PartialEq<i64> for $target {
+            fn eq(&self, other: &i64) -> bool {
+                u64::try_from(*other).map(|x| self.0 == x).unwrap_or(false)
+            }
+        }
+    };
+}
+
 macro_rules! i64_masquerading_as_u64_newtype_to_from_sql {
     ($target:ty) => {
         impl rusqlite::ToSql for $target {
@@ -163,27 +202,76 @@ macro_rules! i64_masquerading_as_u64_newtype_to_from_sql {
     };
 }
 
+macro_rules! i64_backed_newtype_serde {
+    ($target:ty) => {
+        impl serde::Serialize for $target {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_u64(self.0)
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $target {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let raw = u64::deserialize(deserializer)?;
+                <$target>::deserialize_value::<D::Error>(raw)
+            }
+        }
+
+        impl $target {
+            pub fn deserialize_value<E>(raw: u64) -> Result<Self, E>
+            where
+                E: serde::de::Error,
+            {
+                <$target>::new(raw).ok_or_else(|| {
+                    serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Unsigned(raw),
+                        &"i64::MAX unsigned integer",
+                    )
+                })
+            }
+        }
+    };
+}
+
 /// A StarkNet block number.
-#[derive(Copy, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct StarknetBlockNumber(pub u64);
+#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd)]
+pub struct StarknetBlockNumber(u64);
 
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockNumber);
+i64_backed_newtype_new_get_partialeq!(StarknetBlockNumber);
+i64_backed_newtype_serde!(StarknetBlockNumber);
+
+impl From<StarknetBlockNumber> for StarkHash {
+    fn from(x: StarknetBlockNumber) -> Self {
+        StarkHash::from(x.0)
+    }
+}
 
 /// The timestamp of a Starknet block.
-#[derive(Copy, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq)]
 pub struct StarknetBlockTimestamp(pub u64);
 
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockTimestamp);
+i64_backed_newtype_new_get_partialeq!(StarknetBlockTimestamp);
+i64_backed_newtype_serde!(StarknetBlockTimestamp);
 
 /// A StarkNet transaction hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetTransactionHash(pub StarkHash);
 
 /// A StarkNet transaction index.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct StarknetTransactionIndex(pub u64);
 
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetTransactionIndex);
+i64_backed_newtype_new_get_partialeq!(StarknetTransactionIndex);
+i64_backed_newtype_serde!(StarknetTransactionIndex);
 
 /// A single element of a signature used to secure a StarkNet transaction.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -269,17 +357,10 @@ pub enum BlockId {
 }
 
 impl StarknetBlockNumber {
-    pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber(0);
+    pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(0);
     /// The maximum [StarknetBlockNumber] we can support. Restricted to `u64::MAX/2` to
     /// match Sqlite's maximum integer value.
-    #[cfg(test)]
-    pub const MAX: StarknetBlockNumber = StarknetBlockNumber(i64::MAX as u64);
-}
-
-impl std::cmp::PartialOrd for StarknetBlockNumber {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
+    pub const MAX: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(i64::MAX as u64);
 }
 
 impl std::ops::Add<u64> for StarknetBlockNumber {

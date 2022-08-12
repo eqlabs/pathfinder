@@ -89,7 +89,7 @@ mod tests {
 
         pub static ref NEXT_BLOCK: sequencer::reply::Block = sequencer::reply::Block{
             block_hash: StarknetBlockHash(starkhash!("abcd")),
-            block_number: StarknetBlockNumber(1),
+            block_number: StarknetBlockNumber::new_or_panic(1),
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
             sequencer_address: None,

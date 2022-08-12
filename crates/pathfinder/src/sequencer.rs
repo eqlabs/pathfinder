@@ -706,7 +706,7 @@ mod tests {
                 .await
                 .unwrap();
             let by_number = client
-                .block(StarknetBlockNumber(231579).into())
+                .block(StarknetBlockNumber::new_or_panic(231579).into())
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -792,7 +792,7 @@ mod tests {
             let expected_version = "0.9.1";
 
             let block = client
-                .block(StarknetBlockNumber(192844).into())
+                .block(StarknetBlockNumber::new_or_panic(192844).into())
                 .await
                 .unwrap();
             assert_eq!(
@@ -1445,7 +1445,7 @@ mod tests {
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update(StarknetBlockNumber(231579).into())
+                .state_update(StarknetBlockNumber::new_or_panic(231579).into())
                 .await
                 .unwrap()
                 .into();
@@ -1531,7 +1531,7 @@ mod tests {
             )]);
 
             let parsed = client
-                .state_update(StarknetBlockNumber(193137).into())
+                .state_update(StarknetBlockNumber::new_or_panic(193137).into())
                 .await
                 .expect("should had parsed with the optional declared contracts");
 

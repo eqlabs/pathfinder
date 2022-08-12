@@ -261,7 +261,7 @@ async fn download_block(
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
                 let verify_result = verify_block_hash(&block, chain, expected_block_hash)
-                    .with_context(move || format!("Verify block {}", block_number.0))?;
+                    .with_context(move || format!("Verify block {}", block_number))?;
                 Ok((block, verify_result))
             });
             let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
@@ -335,7 +335,7 @@ async fn reorg(
 
         match download_block(previous_block_number, chain, Some(previous.0), sequencer)
             .await
-            .with_context(|| format!("Download block {} from sequencer", previous_block_number.0))?
+            .with_context(|| format!("Download block {} from sequencer", previous_block_number))?
         {
             DownloadBlock::Block(block) if block.block_hash == previous.0 => {
                 break Some((previous_block_number, previous.0, previous.1));
@@ -558,10 +558,10 @@ mod tests {
         }"#;
 
         const BLOCK0_NUMBER: StarknetBlockNumber = StarknetBlockNumber::GENESIS;
-        const BLOCK1_NUMBER: StarknetBlockNumber = StarknetBlockNumber(1);
-        const BLOCK2_NUMBER: StarknetBlockNumber = StarknetBlockNumber(2);
-        const BLOCK3_NUMBER: StarknetBlockNumber = StarknetBlockNumber(3);
-        const BLOCK4_NUMBER: StarknetBlockNumber = StarknetBlockNumber(4);
+        const BLOCK1_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(1);
+        const BLOCK2_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(2);
+        const BLOCK3_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(3);
+        const BLOCK4_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(4);
 
         lazy_static::lazy_static! {
             static ref BLOCK0_HASH: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 0 hash").unwrap());

@@ -257,12 +257,12 @@ mod tests {
 
         let logs = root_fetcher.fetch(transport.clone()).await.unwrap();
         for log in logs {
-            assert_eq!(log.block_number.0, block_number, "First fetch");
+            assert_eq!(log.block_number.get(), block_number, "First fetch");
             block_number += 1;
         }
         let logs = root_fetcher.fetch(transport).await.unwrap();
         for log in logs {
-            assert_eq!(log.block_number.0, block_number, "Second fetch");
+            assert_eq!(log.block_number.get(), block_number, "Second fetch");
             block_number += 1;
         }
     }

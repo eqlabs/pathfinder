@@ -180,7 +180,7 @@ impl<'a> Request<'a, stage::Params> {
 
         let block: BlockId = block.into();
         let (name, value) = match block {
-            BlockId::Number(number) => ("blockNumber", Cow::from(number.0.to_string())),
+            BlockId::Number(number) => ("blockNumber", Cow::from(number.get().to_string())),
             BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str()),
             // These have to use "blockNumber", "blockHash" does not accept tags.
             BlockId::Latest => ("blockNumber", Cow::from("latest")),

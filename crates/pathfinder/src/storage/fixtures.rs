@@ -76,7 +76,7 @@ impl StarknetBlock {
     /// Creates a [`StarknetBlock`] with number `n` and hash `0xh` filled with arbitrary data useful for testing.
     pub fn nth(n: u8) -> Self {
         Self {
-            number: StarknetBlockNumber(n as u64),
+            number: StarknetBlockNumber::new(n as u64).expect("block number out of range"),
             hash: StarknetBlockHash(hash!(n)),
             root: GlobalRoot(hash!(1, n)),
             timestamp: StarknetBlockTimestamp(n as u64 + 1000),

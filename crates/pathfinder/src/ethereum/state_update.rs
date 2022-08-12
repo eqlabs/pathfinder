@@ -167,7 +167,7 @@ mod tests {
             global_root: GlobalRoot(starkhash!(
                 "01256D7337B57DD78AAA67563760FBDB561D7F51F335771E6D8D6CE60E4C1387"
             )),
-            block_number: StarknetBlockNumber(16407),
+            block_number: StarknetBlockNumber::new_or_panic(16407),
         };
 
         let chain = crate::core::Chain::Goerli;

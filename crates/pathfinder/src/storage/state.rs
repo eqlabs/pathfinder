@@ -385,7 +385,7 @@ impl StarknetBlocksTable {
 
     /// Returns the [chain](crate::core::Chain) based on genesis block hash stored in the DB.
     pub fn get_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
-        let genesis = Self::get_hash(tx, StarknetBlockNumber(0).into())
+        let genesis = Self::get_hash(tx, StarknetBlockNumber::GENESIS.into())
             .context("Read genesis block from database")?;
 
         match genesis {
@@ -1290,11 +1290,11 @@ mod tests {
                 let mut connection = storage.connection().unwrap();
                 let tx = connection.transaction().unwrap();
 
-                let expected = Some(StarknetBlockNumber(22));
+                let expected = Some(StarknetBlockNumber::new(22).unwrap());
                 RefsTable::set_l1_l2_head(&tx, expected).unwrap();
                 assert_eq!(expected, RefsTable::get_l1_l2_head(&tx).unwrap());
 
-                let expected = Some(StarknetBlockNumber(25));
+                let expected = Some(StarknetBlockNumber::new(25).unwrap());
                 RefsTable::set_l1_l2_head(&tx, expected).unwrap();
                 assert_eq!(expected, RefsTable::get_l1_l2_head(&tx).unwrap());
 
@@ -2172,8 +2172,8 @@ mod tests {
 
             const BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
-                from_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
-                to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64)),
+                from_block: Some(StarknetBlockNumber::new(BLOCK_NUMBER as u64).unwrap()),
+                to_block: Some(StarknetBlockNumber::new(BLOCK_NUMBER as u64).unwrap()),
                 contract_address: None,
                 keys: vec![],
                 page_size: test_utils::NUM_EVENTS,
@@ -2201,7 +2201,7 @@ mod tests {
             const UNTIL_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
                 from_block: None,
-                to_block: Some(StarknetBlockNumber(UNTIL_BLOCK_NUMBER as u64)),
+                to_block: Some(StarknetBlockNumber::new(UNTIL_BLOCK_NUMBER as u64).unwrap()),
                 contract_address: None,
                 keys: vec![],
                 page_size: test_utils::NUM_EVENTS,
@@ -2228,7 +2228,7 @@ mod tests {
 
             const FROM_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
-                from_block: Some(StarknetBlockNumber(FROM_BLOCK_NUMBER as u64)),
+                from_block: Some(StarknetBlockNumber::new(FROM_BLOCK_NUMBER as u64).unwrap()),
                 to_block: None,
                 contract_address: None,
                 keys: vec![],
@@ -2512,9 +2512,9 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            const BLOCK: Option<StarknetBlockNumber> = Some(StarknetBlockNumber(2));
+            let block = Some(StarknetBlockNumber::new_or_panic(2));
 
-            let count = StarknetEventsTable::event_count(&tx, BLOCK, BLOCK, None, vec![]).unwrap();
+            let count = StarknetEventsTable::event_count(&tx, block, block, None, vec![]).unwrap();
             assert_eq!(count, test_utils::EVENTS_PER_BLOCK);
         }
 

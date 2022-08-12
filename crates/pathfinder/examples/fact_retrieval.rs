@@ -112,7 +112,8 @@ Examples:
     let block = H256::from_str(block).expect("A valid block hash");
     let block = EthereumBlockHash(block);
     let seq_no = U256::from_dec_str(seq_no).expect("A valid sequence number");
-    let seq_no = StarknetBlockNumber(seq_no.as_u64());
+    let seq_no =
+        StarknetBlockNumber::new(seq_no.as_u64()).expect("Too large starknet block number");
 
     let client = HttpTransport::new(Web3::new(client));
 
