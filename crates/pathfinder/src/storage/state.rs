@@ -2103,7 +2103,7 @@ mod tests {
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[0].hash(),
-                    transaction_index: crate::core::StarknetTransactionIndex(0),
+                    transaction_index: crate::core::StarknetTransactionIndex::new_or_panic(0),
                 },
                 transaction::Receipt {
                     actual_fee: None,
@@ -2119,7 +2119,7 @@ mod tests {
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[1].hash(),
-                    transaction_index: crate::core::StarknetTransactionIndex(1),
+                    transaction_index: crate::core::StarknetTransactionIndex::new_or_panic(1),
                 },
             ];
 

@@ -267,7 +267,7 @@ pub struct StarknetTransactionHash(pub StarkHash);
 
 /// A StarkNet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct StarknetTransactionIndex(pub u64);
+pub struct StarknetTransactionIndex(u64);
 
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetTransactionIndex);
 i64_backed_newtype_new_get_partialeq!(StarknetTransactionIndex);

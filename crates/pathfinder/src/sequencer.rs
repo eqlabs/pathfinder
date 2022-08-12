@@ -412,7 +412,7 @@ pub mod test_utils {
     use crate::{
         core::{
             CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
-            StarknetBlockNumber, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
+            StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
         },
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
         starkhash,
@@ -452,7 +452,6 @@ pub mod test_utils {
         "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
     ));
     pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
-    pub const INVALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(u64::MAX);
     pub const VALID_KEY: StorageAddress = StorageAddress(starkhash!(
         "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
     ));

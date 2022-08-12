@@ -533,7 +533,7 @@ mod tests {
             l1_to_l2_consumed_message: None,
             l2_to_l1_messages: vec![],
             transaction_hash: txn0_hash,
-            transaction_index: StarknetTransactionIndex(0),
+            transaction_index: StarknetTransactionIndex::new_or_panic(0),
         };
         let txn1_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 1"));
         let txn2_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 2"));
@@ -663,7 +663,7 @@ mod tests {
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[0].hash(),
-                transaction_index: StarknetTransactionIndex(0),
+                transaction_index: StarknetTransactionIndex::new_or_panic(0),
             },
             Receipt {
                 actual_fee: None,
@@ -678,7 +678,7 @@ mod tests {
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[1].hash(),
-                transaction_index: StarknetTransactionIndex(1),
+                transaction_index: StarknetTransactionIndex::new_or_panic(1),
             },
         ];
 

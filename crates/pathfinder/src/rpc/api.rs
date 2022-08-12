@@ -474,7 +474,7 @@ impl RpcApi {
         index: StarknetTransactionIndex,
     ) -> RpcResult<Transaction> {
         let index: usize = index
-            .0
+            .get()
             .try_into()
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
 

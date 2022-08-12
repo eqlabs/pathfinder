@@ -53,7 +53,7 @@ async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
             let transaction_by_hash_and_index = get_transaction_by_block_hash_and_index(
                 user,
                 block.block_hash.unwrap(),
-                StarknetTransactionIndex(idx as u64),
+                StarknetTransactionIndex::new_or_panic(idx as u64),
             )
             .await?;
             assert_eq!(transaction, transaction_by_hash_and_index);
@@ -61,7 +61,7 @@ async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
             let transaction_by_number_and_index = get_transaction_by_block_number_and_index(
                 user,
                 block.block_number.unwrap(),
-                StarknetTransactionIndex(idx as u64),
+                StarknetTransactionIndex::new_or_panic(idx as u64),
             )
             .await?;
             assert_eq!(transaction, transaction_by_number_and_index);
@@ -129,7 +129,7 @@ async fn task_transaction_by_block_number_and_index(user: &mut GooseUser) -> Tra
     get_transaction_by_block_number_and_index(
         user,
         StarknetBlockNumber::new_or_panic(1000),
-        StarknetTransactionIndex(3),
+        StarknetTransactionIndex::new_or_panic(3),
     )
     .await?;
     Ok(())
@@ -144,7 +144,7 @@ async fn task_transaction_by_block_hash_and_index(user: &mut GooseUser) -> Trans
             )
             .unwrap(),
         ),
-        StarknetTransactionIndex(3),
+        StarknetTransactionIndex::new_or_panic(3),
     )
     .await?;
     Ok(())

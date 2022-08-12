@@ -350,7 +350,7 @@ pub(crate) mod test_utils {
             transaction_hash: StarknetTransactionHash(
                 StarkHash::from_hex_str(&"e".repeat(i + 3)).unwrap(),
             ),
-            transaction_index: StarknetTransactionIndex(i as u64 + 2311),
+            transaction_index: StarknetTransactionIndex::new_or_panic(i as u64 + 2311),
         });
 
         transactions
