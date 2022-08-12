@@ -176,7 +176,7 @@ macro_rules! i64_backed_newtype_new_get_partialeq {
 
         impl PartialEq<i64> for $target {
             fn eq(&self, other: &i64) -> bool {
-                u64::try_from(*other).map(|x| self.0 == x).unwrap_or(false)
+                u64::try_from(*other).map(|x| self == &x).unwrap_or(false)
             }
         }
     };
