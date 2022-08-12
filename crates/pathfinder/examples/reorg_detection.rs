@@ -70,14 +70,11 @@ async fn init_local_head(w3: &Web3<Http>, depth: u64) -> Block<H256> {
 
     // Start back a bit so that we don't have to wait to fill up history.
     let local_head = l1_latest - depth;
-    let local_head = w3
-        .eth()
+    w3.eth()
         .block(BlockId::Number(BlockNumber::Number(local_head)))
         .await
         .expect("Failed to read block")
-        .expect("Earliest block is missing");
-
-    local_head
+        .expect("Earliest block is missing")
 }
 
 /// Handles L1 chain reorgs, by deleting history until we are back in sync

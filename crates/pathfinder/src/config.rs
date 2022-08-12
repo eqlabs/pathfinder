@@ -49,7 +49,7 @@ impl Display for ConfigOption {
 }
 
 /// Ethereum configuration parameters.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct EthereumConfig {
     /// The Ethereum URL.
     pub url: Url,
@@ -58,7 +58,7 @@ pub struct EthereumConfig {
 }
 
 /// Node configuration options.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Configuration {
     /// The Ethereum settings.
     pub ethereum: EthereumConfig,

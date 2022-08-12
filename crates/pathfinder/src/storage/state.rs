@@ -419,7 +419,7 @@ impl StarknetBlocksTable {
 }
 
 /// Identifies block in some [StarknetBlocksTable] queries.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StarknetBlocksBlockId {
     Number(StarknetBlockNumber),
     Hash(StarknetBlockHash),
@@ -439,7 +439,7 @@ impl From<StarknetBlockHash> for StarknetBlocksBlockId {
 }
 
 /// Identifies block in some [StarknetBlocksTable] queries.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StarknetBlocksNumberOrLatest {
     Number(StarknetBlockNumber),
     Latest,
@@ -739,7 +739,7 @@ pub struct StarknetEventFilter {
     pub page_number: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StarknetEmittedEvent {
     pub from_address: ContractAddress,
     pub data: Vec<EventData>,
@@ -749,13 +749,13 @@ pub struct StarknetEmittedEvent {
     pub transaction_hash: StarknetTransactionHash,
 }
 
-#[derive(Copy, Clone, Debug, thiserror::Error, PartialEq)]
+#[derive(Copy, Clone, Debug, thiserror::Error, PartialEq, Eq)]
 pub enum EventFilterError {
     #[error("requested page size is too big, supported maximum is {0}")]
     PageSizeTooBig(usize),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PageOfEvents {
     pub events: Vec<StarknetEmittedEvent>,
     pub is_last_page: bool,
@@ -1043,7 +1043,7 @@ impl StarknetEventsTable {
 ///
 /// While the sequencer version on each block (when present) is stored since starknet 0.9.1, it is
 /// not yet read.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StarknetBlock {
     pub number: StarknetBlockNumber,
     pub hash: StarknetBlockHash,

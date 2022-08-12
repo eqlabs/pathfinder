@@ -26,7 +26,7 @@ mod transaction {
     use serde_with::serde_as;
 
     /// Represents deserialized L2 transaction data.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(tag = "type")]
     pub enum Transaction {
         #[serde(rename = "DECLARE")]
@@ -51,7 +51,7 @@ mod transaction {
 
     /// Represents deserialized L2 declare transaction data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     pub struct DeclareTransaction {
         pub class_hash: ClassHash,
         #[serde_as(as = "FeeAsHexStr")]
@@ -68,7 +68,7 @@ mod transaction {
 
     /// Represents deserialized L2 deploy transaction data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     pub struct DeployTransaction {
         pub contract_address: ContractAddress,
         pub contract_address_salt: ContractAddressSalt,
@@ -82,7 +82,7 @@ mod transaction {
 
     /// Represents deserialized L2 invoke transaction data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     pub struct InvokeTransaction {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,

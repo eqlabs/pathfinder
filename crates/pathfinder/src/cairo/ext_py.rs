@@ -111,7 +111,7 @@ impl Handle {
 }
 
 /// Reasons for a call to fail.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CallFailure {
     /// The requested block could not be found.
     NoSuchBlock,

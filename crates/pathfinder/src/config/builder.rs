@@ -8,7 +8,7 @@ use std::{collections::HashMap, net::SocketAddr, path::PathBuf, str::FromStr};
 /// A convenient way of collecting and merging configuration options.
 ///
 /// Once finalised, can be converted to [Configuration] using `try_build`.
-#[derive(Default, PartialEq, Debug)]
+#[derive(Default, PartialEq, Eq, Debug)]
 pub struct ConfigBuilder(HashMap<ConfigOption, String>);
 
 impl ConfigBuilder {

@@ -188,7 +188,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            StarkHash::from_hex_str(&*s).with_context(|| format!("Invalid bytecode at index {i}"))
+            StarkHash::from_hex_str(s).with_context(|| format!("Invalid bytecode at index {i}"))
         })
         .try_fold(HashChain::default(), |mut hc, next| {
             hc.update(next?);

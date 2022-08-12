@@ -48,7 +48,7 @@ impl std::default::Default for StarkHash {
 
 /// Error returned by [StarkHash::from_be_bytes] indicating that
 /// the maximum field value was exceeded.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct OverflowError;
 
 impl Error for OverflowError {}
@@ -435,7 +435,7 @@ impl StarkHash {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum HexParseError {
     InvalidNibble(u8),
     InvalidLength { max: usize, actual: usize },

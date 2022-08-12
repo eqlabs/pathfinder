@@ -54,7 +54,7 @@ pub struct EdgeNode {
 /// Describes the direction a child of a [BinaryNode] may have.
 ///
 /// Binary nodes have two children, one left and one right.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Left,
     Right,

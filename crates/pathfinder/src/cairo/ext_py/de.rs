@@ -82,7 +82,7 @@ pub enum ErrorKind {
     InvalidEntryPoint,
 }
 
-#[derive(serde::Deserialize, PartialEq, Debug)]
+#[derive(serde::Deserialize, PartialEq, Eq, Debug)]
 pub enum Status {
     /// No errors
     #[serde(rename = "ok")]

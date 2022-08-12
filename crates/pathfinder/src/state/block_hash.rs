@@ -12,7 +12,7 @@ use crate::sequencer::reply::{
 };
 use crate::state::merkle_tree::MerkleTree;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
     Match,
     Mismatch,

@@ -11,7 +11,7 @@ use std::convert::From;
 
 /// Used to serialize payload for [ClientApi::call](crate::sequencer::ClientApi::call).
 #[serde_with::serde_as]
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct Call {
     pub contract_address: ContractAddress,
     #[serde_as(as = "Vec<CallParamAsDecimalStr>")]

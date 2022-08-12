@@ -11,7 +11,7 @@ use serde_with::serde_as;
 
 /// Used to deserialize replies to [ClientApi::block](crate::sequencer::ClientApi::block).
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     pub block_hash: StarknetBlockHash,
@@ -35,7 +35,7 @@ pub struct Block {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct PendingBlock {
     #[serde_as(as = "GasPriceAsHexStr")]
@@ -52,7 +52,7 @@ pub struct PendingBlock {
     pub starknet_version: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum MaybePendingBlock {
     Block(Block),
@@ -103,7 +103,7 @@ impl MaybePendingBlock {
 }
 
 /// Block and transaction status values.
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub enum Status {
     #[serde(rename = "NOT_RECEIVED")]
@@ -125,7 +125,7 @@ pub enum Status {
 }
 
 /// Used to deserialize a reply from [ClientApi::call](crate::sequencer::ClientApi::call).
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Call {
     pub result: Vec<CallResultValue>,
@@ -139,7 +139,7 @@ pub mod call {
 
     /// Describes problems encountered during some of call failures .
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Problems {
         #[serde_as(as = "HashMap<_, _>")]
@@ -149,7 +149,7 @@ pub mod call {
 
 /// Used to deserialize replies to [ClientApi::transaction](crate::sequencer::ClientApi::transaction).
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Transaction {
     #[serde(default)]
@@ -165,7 +165,7 @@ pub struct Transaction {
 
 /// Used to deserialize replies to [ClientApi::transaction_status](crate::sequencer::ClientApi::transaction_status).
 #[serde_as]
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionStatus {
     #[serde(default)]
@@ -194,7 +194,7 @@ pub mod transaction {
     use serde_with::serde_as;
 
     /// Represents deserialized L2 transaction entry point values.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
@@ -204,7 +204,7 @@ pub mod transaction {
     }
 
     /// Represents execution resources for L2 transaction.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
         pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
@@ -217,7 +217,7 @@ pub mod transaction {
         use serde::{Deserialize, Serialize};
 
         /// Sometimes `builtin_instance_counter` JSON object is returned empty.
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(untagged)]
         #[serde(deny_unknown_fields)]
         pub enum BuiltinInstanceCounter {
@@ -225,7 +225,7 @@ pub mod transaction {
             Empty(EmptyBuiltinInstanceCounter),
         }
 
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(deny_unknown_fields)]
         pub struct NormalBuiltinInstanceCounter {
             bitwise_builtin: u64,
@@ -236,13 +236,13 @@ pub mod transaction {
             range_check_builtin: u64,
         }
 
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         pub struct EmptyBuiltinInstanceCounter {}
     }
 
     /// Represents deserialized L1 to L2 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L1ToL2Message {
         #[serde_as(as = "EthereumAddressAsHexStr")]
@@ -257,7 +257,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 to L1 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         pub from_address: ContractAddress,
@@ -269,7 +269,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 transaction receipt data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
         #[serde_as(as = "Option<FeeAsHexStr>")]
@@ -285,7 +285,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 transaction event data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Event {
         #[serde_as(as = "Vec<EventDataAsDecimalStr>")]
@@ -296,7 +296,7 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction data.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(tag = "type")]
     #[serde(deny_unknown_fields)]
     pub enum Transaction {
@@ -321,7 +321,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 declare transaction data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransaction {
         pub class_hash: ClassHash,
@@ -339,7 +339,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 deploy transaction data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeployTransaction {
         pub contract_address: ContractAddress,
@@ -352,7 +352,7 @@ pub mod transaction {
 
     /// Represents deserialized L2 invoke transaction data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransaction {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
@@ -385,7 +385,7 @@ pub mod transaction {
         }
     }
     /// Describes L2 transaction failure details.
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Failure {
         pub code: String,
@@ -396,7 +396,7 @@ pub mod transaction {
 
 /// Used to deserialize a reply from
 /// [ClientApi::state_update](crate::sequencer::ClientApi::state_update).
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
     /// This field is absent for a `pending` state update
@@ -415,7 +415,7 @@ pub mod state_update {
 
     /// L2 state diff.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
@@ -500,7 +500,7 @@ pub mod add_transaction {
     use crate::core::{ClassHash, ContractAddress, StarknetTransactionHash};
 
     /// API response for an INVOKE_FUNCTION transaction
-    #[derive(Clone, Debug, serde::Deserialize, PartialEq)]
+    #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeResponse {
         pub code: String, // TRANSACTION_RECEIVED
@@ -508,7 +508,7 @@ pub mod add_transaction {
     }
 
     /// API response for a DECLARE transaction
-    #[derive(Clone, Debug, serde::Deserialize, PartialEq)]
+    #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareResponse {
         pub code: String, // TRANSACTION_RECEIVED
@@ -517,7 +517,7 @@ pub mod add_transaction {
     }
 
     /// API response for a DEPLOY transaction
-    #[derive(Clone, Debug, serde::Deserialize, PartialEq)]
+    #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeployResponse {
         pub code: String, // TRANSACTION_RECEIVED

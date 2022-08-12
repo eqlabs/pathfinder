@@ -19,7 +19,7 @@ mod sync;
 pub use class_hash::compute_class_hash;
 pub use sync::{l1, l2, sync, PendingData, State as SyncState};
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct CompressedContract {
     pub abi: Vec<u8>,
     pub bytecode: Vec<u8>,

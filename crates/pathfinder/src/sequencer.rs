@@ -1372,13 +1372,13 @@ mod tests {
         use pretty_assertions::assert_eq;
         use std::collections::{BTreeSet, HashMap};
 
-        #[derive(Clone, Debug, PartialEq)]
+        #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct OrderedStateDiff {
             pub storage_diffs: HashMap<ContractAddress, BTreeSet<StorageDiff>>,
             pub deployed_contracts: BTreeSet<DeployedContract>,
         }
 
-        #[derive(Clone, Debug, PartialEq)]
+        #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct OrderedStateUpdate {
             pub new_root: GlobalRoot,
             pub old_root: GlobalRoot,

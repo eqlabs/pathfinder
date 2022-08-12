@@ -81,21 +81,21 @@ impl<'a> crate::state::merkle_tree::NodeStorage for RcNodeStorage<'a> {
 }
 
 /// A binary node which can be read / written from an [RcNodeStorage].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedBinaryNode {
     pub left: StarkHash,
     pub right: StarkHash,
 }
 
 /// An edge node which can be read / written from an [RcNodeStorage].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedEdgeNode {
     pub path: BitVec<Msb0, u8>,
     pub child: StarkHash,
 }
 
 /// A node which can be read / written from an [RcNodeStorage].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PersistedNode {
     Binary(PersistedBinaryNode),
     Edge(PersistedEdgeNode),
