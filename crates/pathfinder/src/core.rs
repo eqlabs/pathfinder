@@ -187,7 +187,6 @@ macro_rules! i64_masquerading_as_u64_newtype_to_from_sql {
         impl rusqlite::ToSql for $target {
             fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
                 // this uses i64::try_from(u64_value) thus limiting our u64 to 0..=i64::MAX
-                // TODO: it would be best to handle this check at deserialization time.
                 self.0.to_sql()
             }
         }
