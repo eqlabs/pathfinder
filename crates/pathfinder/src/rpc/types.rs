@@ -1239,11 +1239,13 @@ pub mod reply {
                                 Transaction::Declare(DeclareTransaction {
                                     common: common.clone(),
                                     class_hash: ClassHash(starkhash!("09")),
-                                    sender_address: ContractAddress(starkhash!("0a")),
+                                    sender_address: ContractAddress::new_or_panic(starkhash!("0a")),
                                 }),
                                 Transaction::Invoke(InvokeTransaction {
                                     common,
-                                    contract_address: ContractAddress(starkhash!("0b")),
+                                    contract_address: ContractAddress::new_or_panic(starkhash!(
+                                        "0b"
+                                    )),
                                     entry_point_selector: EntryPoint(starkhash!("0c")),
                                     calldata: vec![CallParam(starkhash!("0d"))],
                                 }),
@@ -1253,7 +1255,9 @@ pub mod reply {
                                     version: TransactionVersion(
                                         web3::types::H256::from_low_u64_be(1),
                                     ),
-                                    contract_address: ContractAddress(starkhash!("0f")),
+                                    contract_address: ContractAddress::new_or_panic(starkhash!(
+                                        "0f"
+                                    )),
                                     contract_address_salt: ContractAddressSalt(starkhash!("ee")),
                                     class_hash: ClassHash(starkhash!("10")),
                                     constructor_calldata: vec![ConstructorParam(starkhash!("11"))],
@@ -1333,7 +1337,7 @@ pub mod reply {
                                 ))],
                             }),
                             events: vec![transaction_receipt::Event {
-                                from_address: ContractAddress(starkhash!("06")),
+                                from_address: ContractAddress::new_or_panic(starkhash!("06")),
                                 keys: vec![EventKey(starkhash!("07"))],
                                 data: vec![EventData(starkhash!("08"))],
                             }],
@@ -1362,7 +1366,7 @@ pub mod reply {
                                 ))],
                             }),
                             events: vec![transaction_receipt::Event {
-                                from_address: ContractAddress(starkhash!("a6")),
+                                from_address: ContractAddress::new_or_panic(starkhash!("a6")),
                                 keys: vec![EventKey(starkhash!("a7"))],
                                 data: vec![EventData(starkhash!("a8"))],
                             }],

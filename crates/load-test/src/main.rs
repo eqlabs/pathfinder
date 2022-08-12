@@ -179,7 +179,7 @@ async fn task_call(user: &mut GooseUser) -> TransactionResult {
     // https://voyager.online/contract/0x06ee3440b08a9c805305449ec7f7003f27e9f7e287b83610952ec36bdc5a6bae
     call(
         user,
-        ContractAddress(
+        ContractAddress::new_or_panic(
             StarkHash::from_hex_str(
                 "0x06ee3440b08a9c805305449ec7f7003f27e9f7e287b83610952ec36bdc5a6bae",
             )
@@ -217,7 +217,7 @@ async fn task_get_events(user: &mut GooseUser) -> TransactionResult {
         EventFilter {
             from_block: Some(StarknetBlockNumber::new_or_panic(1000).into()),
             to_block: Some(StarknetBlockNumber::new_or_panic(1100).into()),
-            address: Some(ContractAddress(
+            address: Some(ContractAddress::new_or_panic(
                 StarkHash::from_hex_str(
                     "0x103114c4c5ac233a360d39a9217b9067be6979f3d08e1cf971fd22baf8f8713",
                 )
@@ -246,13 +246,13 @@ async fn task_get_storage_at(user: &mut GooseUser) -> TransactionResult {
     // "value": "0x44054cde571399c485119e55cf0b9fc7dcc151fb3486f70020d3ee4d7b20f8d"}]
     get_storage_at(
         user,
-        ContractAddress(
+        ContractAddress::new_or_panic(
             StarkHash::from_hex_str(
                 "0x27a761524e94ed6d0c882e232bb4d34f12aae1b906e29c62dc682b526349056",
             )
             .unwrap(),
         ),
-        StorageAddress(
+        StorageAddress::new_or_panic(
             StarkHash::from_hex_str(
                 "0x79deb98f1f7fc9a64df7073f93ce645a5f6a7588c34773ba76fdc879a2346e1",
             )

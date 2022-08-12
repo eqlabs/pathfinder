@@ -580,9 +580,9 @@ mod tests {
             static ref GLOBAL_ROOT2_V2: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 2 v2").unwrap());
             static ref GLOBAL_ROOT3: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 3").unwrap());
 
-            static ref CONTRACT0_ADDR: ContractAddress = ContractAddress(StarkHash::from_be_slice(b"contract 0 addr").unwrap());
-            static ref CONTRACT0_ADDR_V2: ContractAddress = ContractAddress(StarkHash::from_be_slice(b"contract 0 addr v2").unwrap());
-            static ref CONTRACT1_ADDR: ContractAddress = ContractAddress(StarkHash::from_be_slice(b"contract 1 addr").unwrap());
+            static ref CONTRACT0_ADDR: ContractAddress = ContractAddress::new_or_panic(StarkHash::from_be_slice(b"contract 0 addr").unwrap());
+            static ref CONTRACT0_ADDR_V2: ContractAddress = ContractAddress::new_or_panic(StarkHash::from_be_slice(b"contract 0 addr v2").unwrap());
+            static ref CONTRACT1_ADDR: ContractAddress = ContractAddress::new_or_panic(StarkHash::from_be_slice(b"contract 1 addr").unwrap());
 
             static ref CONTRACT0_HASH: ClassHash = ClassHash(
                 StarkHash::from_hex_str(
@@ -607,8 +607,8 @@ mod tests {
             static ref CONTRACT0_DEF_V2: bytes::Bytes = bytes::Bytes::from(format!("{}0 v2{}", DEF0, DEF1));
             static ref CONTRACT1_DEF: bytes::Bytes = bytes::Bytes::from(format!("{}1{}", DEF0, DEF1));
 
-            static ref STORAGE_KEY0: StorageAddress = StorageAddress(StarkHash::from_be_slice(b"contract 0 storage addr 0").unwrap());
-            static ref STORAGE_KEY1: StorageAddress = StorageAddress(StarkHash::from_be_slice(b"contract 1 storage addr 0").unwrap());
+            static ref STORAGE_KEY0: StorageAddress = StorageAddress::new_or_panic(StarkHash::from_be_slice(b"contract 0 storage addr 0").unwrap());
+            static ref STORAGE_KEY1: StorageAddress = StorageAddress::new_or_panic(StarkHash::from_be_slice(b"contract 1 storage addr 0").unwrap());
 
             static ref STORAGE_VAL0: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0").unwrap());
             static ref STORAGE_VAL0_V2: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0 v2").unwrap());

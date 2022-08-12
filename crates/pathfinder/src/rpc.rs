@@ -405,15 +405,15 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let db_txn = connection.transaction().unwrap();
 
-        let contract0_addr = ContractAddress(starkhash_bytes!(b"contract 0"));
-        let contract1_addr = ContractAddress(starkhash_bytes!(b"contract 1"));
+        let contract0_addr = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
+        let contract1_addr = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
 
         let class0_hash = ClassHash(starkhash_bytes!(b"class 0 hash"));
         let class1_hash = ClassHash(starkhash_bytes!(b"class 1 hash"));
 
         let contract0_update = vec![];
 
-        let storage_addr = StorageAddress(starkhash_bytes!(b"storage addr 0"));
+        let storage_addr = StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0"));
         let contract1_update0 = vec![StorageDiff {
             key: storage_addr,
             value: StorageValue(starkhash_bytes!(b"storage value 0")),
@@ -552,7 +552,7 @@ mod tests {
         txn3.contract_address = contract1_addr;
         txn4.transaction_hash = txn4_hash;
 
-        txn4.contract_address = ContractAddress(StarkHash::ZERO);
+        txn4.contract_address = ContractAddress::new_or_panic(StarkHash::ZERO);
         let mut txn5 = txn4.clone();
         txn5.transaction_hash = txn5_hash;
         let txn0 = Transaction::Invoke(txn0);
@@ -568,7 +568,7 @@ mod tests {
         let mut receipt5 = receipt0.clone();
         receipt0.events = vec![Event {
             data: vec![EventData(starkhash_bytes!(b"event 0 data"))],
-            from_address: ContractAddress(starkhash_bytes!(b"event 0 from addr")),
+            from_address: ContractAddress::new_or_panic(starkhash_bytes!(b"event 0 from addr")),
             keys: vec![EventKey(starkhash_bytes!(b"event 0 key"))],
         }];
         receipt1.transaction_hash = txn1_hash;
@@ -615,7 +615,9 @@ mod tests {
         let transactions: Vec<Transaction> = vec![
             InvokeTransaction {
                 calldata: vec![],
-                contract_address: ContractAddress(starkhash_bytes!(b"pending contract addr 0")),
+                contract_address: ContractAddress::new_or_panic(starkhash_bytes!(
+                    b"pending contract addr 0"
+                )),
                 entry_point_selector: EntryPoint(starkhash_bytes!(b"entry point 0")),
                 entry_point_type: EntryPointType::External,
                 max_fee: Call::DEFAULT_MAX_FEE,
@@ -624,7 +626,7 @@ mod tests {
             }
             .into(),
             DeployTransaction {
-                contract_address: ContractAddress(starkhash!("01122355")),
+                contract_address: ContractAddress::new_or_panic(starkhash!("01122355")),
                 contract_address_salt: ContractAddressSalt(starkhash_bytes!(b"salty")),
                 class_hash: ClassHash(starkhash_bytes!(b"pending class hash 1")),
                 constructor_calldata: vec![],
@@ -639,17 +641,17 @@ mod tests {
                 events: vec![
                     Event {
                         data: vec![],
-                        from_address: ContractAddress(starkhash!("abcddddddd")),
+                        from_address: ContractAddress::new_or_panic(starkhash!("abcddddddd")),
                         keys: vec![EventKey(starkhash_bytes!(b"pending key"))],
                     },
                     Event {
                         data: vec![],
-                        from_address: ContractAddress(starkhash!("abcddddddd")),
+                        from_address: ContractAddress::new_or_panic(starkhash!("abcddddddd")),
                         keys: vec![EventKey(starkhash_bytes!(b"pending key"))],
                     },
                     Event {
                         data: vec![],
-                        from_address: ContractAddress(starkhash!("abcaaaaaaa")),
+                        from_address: ContractAddress::new_or_panic(starkhash!("abcaaaaaaa")),
                         keys: vec![EventKey(starkhash_bytes!(b"pending key 2"))],
                     },
                 ],
@@ -696,11 +698,15 @@ mod tests {
         use crate::sequencer::reply as seq_reply;
         let deployed_contracts = vec![
             seq_reply::state_update::DeployedContract {
-                address: ContractAddress(starkhash_bytes!(b"pending contract 0 address")),
+                address: ContractAddress::new_or_panic(starkhash_bytes!(
+                    b"pending contract 0 address"
+                )),
                 class_hash: ClassHash(starkhash_bytes!(b"pending contract 0 hash")),
             },
             seq_reply::state_update::DeployedContract {
-                address: ContractAddress(starkhash_bytes!(b"pending contract 1 address")),
+                address: ContractAddress::new_or_panic(starkhash_bytes!(
+                    b"pending contract 1 address"
+                )),
                 class_hash: ClassHash(starkhash_bytes!(b"pending contract 1 hash")),
             },
         ];
@@ -708,11 +714,11 @@ mod tests {
             deployed_contracts[1].address,
             vec![
                 seq_reply::state_update::StorageDiff {
-                    key: StorageAddress(starkhash_bytes!(b"pending storage key 0")),
+                    key: StorageAddress::new_or_panic(starkhash_bytes!(b"pending storage key 0")),
                     value: StorageValue(starkhash_bytes!(b"pending storage value 0")),
                 },
                 seq_reply::state_update::StorageDiff {
-                    key: StorageAddress(starkhash_bytes!(b"pending storage key 1")),
+                    key: StorageAddress::new_or_panic(starkhash_bytes!(b"pending storage key 1")),
                     value: StorageValue(starkhash_bytes!(b"pending storage value 1")),
                 },
             ],
@@ -988,7 +994,7 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress(starkhash_bytes!(b"contract 0")),
+                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
                 web3::types::H256::from_str(
                     "0x0800000000000011000000000000000000000000000000000000000000000001"
                 )
@@ -1011,7 +1017,7 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress(starkhash_bytes!(b"contract 0")),
+                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
                 web3::types::H256::from_str(
                     "0x0800000000000000000000000000000000000000000000000000000000000000"
                 )
@@ -1032,8 +1038,8 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress(starkhash_bytes!(b"nonexistent")),
-                StorageAddress(starkhash_bytes!(b"storage addr 0")),
+                ContractAddress::new_or_panic(starkhash_bytes!(b"nonexistent")),
+                StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                 BlockId::Latest
             );
             let error = client(addr)
@@ -1051,8 +1057,8 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress(starkhash_bytes!(b"contract 1")),
-                StorageAddress(starkhash_bytes!(b"storage addr 0")),
+                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
+                StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                 BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"genesis")))
             );
             let error = client(addr)
@@ -1070,8 +1076,8 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress(starkhash_bytes!(b"contract 1")),
-                StorageAddress(starkhash_bytes!(b"storage addr 0")),
+                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
+                StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                 BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"nonexistent")))
             );
             let error = client(addr)
@@ -1089,8 +1095,8 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress(starkhash_bytes!(b"contract 1")),
-                StorageAddress(starkhash_bytes!(b"storage addr 0")),
+                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
+                StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                 BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"block 1")))
             );
             let value = client(addr)
@@ -1112,8 +1118,8 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(
-                    ContractAddress(starkhash_bytes!(b"contract 1")),
-                    StorageAddress(starkhash_bytes!(b"storage addr 0")),
+                    ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
+                    StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                     BlockId::Latest
                 );
                 let value = client(addr)
@@ -1603,7 +1609,8 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-                let contract_address = ContractAddress(starkhash_bytes!(b"contract 1"));
+                let contract_address =
+                    ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
                 let params = rpc_params!(BlockId::Latest, contract_address);
                 let class_hash = client(addr)
                     .request::<ClassHash>("starknet_getClassHashAt", params)
@@ -1621,7 +1628,8 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-                let contract_address = ContractAddress(starkhash_bytes!(b"contract 1"));
+                let contract_address =
+                    ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
                 let params = rpc_params!(
                     BlockId::Number(StarknetBlockNumber::GENESIS),
                     contract_address
@@ -1667,7 +1675,8 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-                let contract_address = ContractAddress(starkhash_bytes!(b"contract 1"));
+                let contract_address =
+                    ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
                 let params = by_name([
                     ("block_id", json!("latest")),
                     ("contract_address", json!(contract_address)),
@@ -1837,7 +1846,7 @@ mod tests {
             let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition))?;
             let contract_definition = Bytes::from(buffer);
 
-            let contract_address = ContractAddress(starkhash!(
+            let contract_address = ContractAddress::new_or_panic(starkhash!(
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
             ));
             let expected_hash =
@@ -1871,7 +1880,7 @@ mod tests {
             let program = base64::encode(program);
 
             // insert a new block whose state includes the contract
-            let storage_addr = StorageAddress(starkhash_bytes!(b"storage addr"));
+            let storage_addr = StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr"));
             let storage_diff = vec![StorageDiff {
                 key: storage_addr,
                 value: StorageValue(starkhash_bytes!(b"storage_value")),
@@ -2083,7 +2092,7 @@ mod tests {
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
         // This contract is created in `setup_storage`
-        let valid_contract = ContractAddress(starkhash_bytes!(b"contract 0"));
+        let valid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
 
         // With no version set yet -- this occurs when `getNonce` is called before
         // we have received a `latest` update from the gateway at pathfinder startup.
@@ -2102,7 +2111,7 @@ mod tests {
         assert_eq!(version, ContractNonce(StarkHash::ZERO));
 
         // Invalid contract should error.
-        let invalid_contract = ContractAddress(starkhash_bytes!(b"invalid"));
+        let invalid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
         let error = client(addr)
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(invalid_contract))
             .await
@@ -2951,7 +2960,7 @@ mod tests {
 
             lazy_static::lazy_static! {
                 pub static ref CALL: ContractCall = ContractCall {
-                    contract_address: ContractAddress(
+                    contract_address: ContractAddress::new_or_panic(
                         starkhash!("023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd")
                     ),
                     calldata: vec![
@@ -3092,7 +3101,7 @@ mod tests {
                         transaction_hash: StarknetTransactionHash(starkhash!(
                             "057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
                         )),
-                        contract_address: ContractAddress(starkhash!(
+                        contract_address: ContractAddress::new_or_panic(starkhash!(
                             "03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
                         )),
                     }
@@ -3218,7 +3227,7 @@ mod tests {
                         transaction_hash: StarknetTransactionHash(starkhash!(
                             "057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
                         )),
-                        contract_address: ContractAddress(starkhash!(
+                        contract_address: ContractAddress::new_or_panic(starkhash!(
                             "03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
                         )),
                     }

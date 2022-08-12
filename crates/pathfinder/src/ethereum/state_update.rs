@@ -178,7 +178,7 @@ mod tests {
 
         let expected = StateUpdate {
             deployed_contracts: vec![DeployedContract {
-                address: ContractAddress(starkhash!(
+                address: ContractAddress::new_or_panic(starkhash!(
                     "6CF1C6DCA6DE4CE15DB3EB7AEE1C6191537C82E2F2DE22FE4426199EE50E9A"
                 )),
                 hash: ClassHash(starkhash!(
@@ -190,12 +190,12 @@ mod tests {
             }],
             contract_updates: vec![
                 ContractUpdate {
-                    address: ContractAddress(starkhash!(
+                    address: ContractAddress::new_or_panic(starkhash!(
                         "6CF1C6DCA6DE4CE15DB3EB7AEE1C6191537C82E2F2DE22FE4426199EE50E9A"
                     )),
                     storage_updates: vec![
                         StorageUpdate {
-                            address: StorageAddress(starkhash!(
+                            address: StorageAddress::new_or_panic(starkhash!(
                                 "021683F821A0574472445355BE6D2B769119E8515F8376A1D7878523DFDECF7B"
                             )),
                             value: StorageValue(starkhash!(
@@ -203,7 +203,7 @@ mod tests {
                             )),
                         },
                         StorageUpdate {
-                            address: StorageAddress(starkhash!(
+                            address: StorageAddress::new_or_panic(starkhash!(
                                 "03B28019CCFDBD30FFC65951D94BB85C9E2B8434111A000B5AFD533CE65F57A4"
                             )),
                             value: StorageValue(starkhash!(
@@ -211,7 +211,7 @@ mod tests {
                             )),
                         },
                         StorageUpdate {
-                            address: StorageAddress(starkhash!(
+                            address: StorageAddress::new_or_panic(starkhash!(
                                 "03C0BA99F1A18BCDC81FCBCB6B4F15A9A6725F937075AED6FAC107FFCB147068"
                             )),
                             value: StorageValue(starkhash!("01")),
@@ -219,11 +219,11 @@ mod tests {
                     ],
                 },
                 ContractUpdate {
-                    address: ContractAddress(starkhash!(
+                    address: ContractAddress::new_or_panic(starkhash!(
                         "FDB9F231A6C257D492DB4D091703ABA277E97B583AB9E3115B5A571FC22E4D"
                     )),
                     storage_updates: vec![StorageUpdate {
-                        address: StorageAddress(starkhash!(
+                        address: StorageAddress::new_or_panic(starkhash!(
                             "0154D7895A89D2A9EA002F6455F0BE1F409302F4E3A53B06B86C8A83E12D343E"
                         )),
                         value: StorageValue(starkhash!(
@@ -232,18 +232,18 @@ mod tests {
                     }],
                 },
                 ContractUpdate {
-                    address: ContractAddress(starkhash!(
+                    address: ContractAddress::new_or_panic(starkhash!(
                         "029366B381BA18C53E9DB8A4476E0599C71CB63F001950D094CE23EDCD2CD81C"
                     )),
                     storage_updates: vec![
                         StorageUpdate {
-                            address: StorageAddress(starkhash!(
+                            address: StorageAddress::new_or_panic(starkhash!(
                                 "0367FBE030560FA33F15D19C5A53436B3345771F3769607B168E9BAFB540E665"
                             )),
                             value: StorageValue(starkhash!("8AC7230489E80000")),
                         },
                         StorageUpdate {
-                            address: StorageAddress(starkhash!(
+                            address: StorageAddress::new_or_panic(starkhash!(
                                 "0367FBE030560FA33F15D19C5A53436B3345771F3769607B168E9BAFB540E666"
                             )),
                             value: StorageValue(starkhash!("00")),
@@ -251,34 +251,34 @@ mod tests {
                     ],
                 },
                 ContractUpdate {
-                    address: ContractAddress(starkhash!(
+                    address: ContractAddress::new_or_panic(starkhash!(
                         "02FC0D82D539509C5642B64F59299B7E9FD23C114BD2640BDC979602667F8C1F"
                     )),
                     storage_updates: vec![StorageUpdate {
-                        address: StorageAddress(starkhash!(
+                        address: StorageAddress::new_or_panic(starkhash!(
                             "D34C3A8EDE05D741C7C11C8A517FEB3FEFCC425ED633E4D93758446BA289BA"
                         )),
                         value: StorageValue(starkhash!("07E5")),
                     }],
                 },
                 ContractUpdate {
-                    address: ContractAddress(starkhash!(
+                    address: ContractAddress::new_or_panic(starkhash!(
                         "04F664133F8C8C9A34B7D0B85AC09571BC92FBDC23CD7F82B0E8CEA3E3837B4C"
                     )),
                     storage_updates: vec![StorageUpdate {
-                        address: StorageAddress(starkhash!(
+                        address: StorageAddress::new_or_panic(starkhash!(
                             "D34C3A8EDE05D741C7C11C8A517FEB3FEFCC425ED633E4D93758446BA289BA"
                         )),
                         value: StorageValue(starkhash!("07C7")),
                     }],
                 },
                 ContractUpdate {
-                    address: ContractAddress(starkhash!(
+                    address: ContractAddress::new_or_panic(starkhash!(
                         "069A7CFDF88197230CA4CE9377E1D8AAE7AD5E36E25DD35C7F3C73DAAD16940E"
                     )),
                     storage_updates: vec![
                         StorageUpdate {
-                            address: StorageAddress(starkhash!(
+                            address: StorageAddress::new_or_panic(starkhash!(
                                 "01CCC09C8A19948E048DE7ADD6929589945E25F22059C7345AAF7837188D8D05"
                             )),
                             value: StorageValue(starkhash!(
@@ -286,13 +286,13 @@ mod tests {
                             )),
                         },
                         StorageUpdate {
-                            address: StorageAddress(starkhash!(
+                            address: StorageAddress::new_or_panic(starkhash!(
                                 "031E7534F8DDB1628D6E07DB5C743E33403B9A0B57508A93F4C49582040A2F71"
                             )),
                             value: StorageValue(starkhash!("00")),
                         },
                         StorageUpdate {
-                            address: StorageAddress(starkhash!(
+                            address: StorageAddress::new_or_panic(starkhash!(
                                 "037501DF619C4FC4E96F6C0243F55E3ABE7D1ACA7DB9AF8F3740BA3696B3FDAC"
                             )),
                             value: StorageValue(starkhash!("01")),
@@ -300,20 +300,20 @@ mod tests {
                     ],
                 },
                 ContractUpdate {
-                    address: ContractAddress(starkhash!(
+                    address: ContractAddress::new_or_panic(starkhash!(
                         "07075572D159FA30E93C6A917F75B5D664A99A7CEC4AF40FA7E6EF8094B7A3EE"
                     )),
                     storage_updates: vec![StorageUpdate {
-                        address: StorageAddress(starkhash!("05")),
+                        address: StorageAddress::new_or_panic(starkhash!("05")),
                         value: StorageValue(starkhash!("0456")),
                     }],
                 },
                 ContractUpdate {
-                    address: ContractAddress(starkhash!(
+                    address: ContractAddress::new_or_panic(starkhash!(
                         "07C1069DD27607ABF370C745B9781183FDD7E8082AC39C4E57D858913EE7D022"
                     )),
                     storage_updates: vec![StorageUpdate {
-                        address: StorageAddress(starkhash!("05")),
+                        address: StorageAddress::new_or_panic(starkhash!("05")),
                         value: StorageValue(starkhash!("66")),
                     }],
                 },

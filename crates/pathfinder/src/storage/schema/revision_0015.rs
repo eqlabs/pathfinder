@@ -1,9 +1,9 @@
 use anyhow::Context;
 use rusqlite::{named_params, Transaction as RusqliteTransaction};
-use stark_hash::StarkHash;
+
 use web3::types::H128;
 
-use crate::core::{ClassHash, Fee};
+use crate::core::{Fee};
 
 // This is a copy of the sequencer reply types _without_ deny_unknown_fields
 // The point is that with the old `struct Transaction` we had some optional
@@ -160,14 +160,12 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
         let tx = match tx {
             transaction::Transaction::Deploy(mut deploy) => {
                 if deploy.class_hash.is_none() {
-                    let class_hash = query_class_hash_stmt.query_row(
-                        named_params![":contract_address": deploy.contract_address.0.as_be_bytes()],
-                        |r| {
-                            let class_hash = r.get_ref_unwrap("hash").as_blob().unwrap();
-                            let class_hash = StarkHash::from_be_slice(class_hash).unwrap();
-                            Ok(ClassHash(class_hash))
-                        },
-                    ).context("Query class hash for contract")?;
+                    let class_hash = query_class_hash_stmt
+                        .query_row(
+                            named_params![":contract_address": deploy.contract_address],
+                            |r| r.get("hash"),
+                        )
+                        .context("Query class hash for contract")?;
                     deploy.class_hash = Some(class_hash);
                     tracing::trace!(transaction_hash = ?deploy.transaction_hash, "Fixed missing class_hash for deploy transaction");
                 }

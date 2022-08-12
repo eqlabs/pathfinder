@@ -374,7 +374,7 @@ fn calculate_event_hash(event: &Event) -> StarkHash {
     let data_hash = data_hash.finalize();
 
     let mut event_hash = HashChain::default();
-    event_hash.update(event.from_address.0);
+    event_hash.update(*event.from_address.get());
     event_hash.update(keys_hash);
     event_hash.update(data_hash);
 
@@ -405,7 +405,7 @@ mod tests {
         use crate::core::{ContractAddress, EventData, EventKey};
 
         let event = Event {
-            from_address: ContractAddress(starkhash!("deadbeef")),
+            from_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
             data: vec![
                 EventData(starkhash!("05")),
                 EventData(starkhash!("06")),
@@ -435,7 +435,7 @@ mod tests {
 
         let transaction = Transaction::Invoke(InvokeTransaction {
             calldata: vec![],
-            contract_address: ContractAddress(starkhash!("deadbeef")),
+            contract_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
             entry_point_type: EntryPointType::External,
             entry_point_selector: EntryPoint(starkhash!("0e")),
             max_fee: Fee(0u128.to_be_bytes().into()),

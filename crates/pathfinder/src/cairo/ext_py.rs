@@ -335,7 +335,7 @@ mod tests {
                     async move {
                         handle.call(
                             super::Call {
-                                contract_address: crate::core::ContractAddress(
+                                contract_address: crate::core::ContractAddress::new_or_panic(
                                     starkhash!(
                                         "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                                     )
@@ -403,7 +403,7 @@ mod tests {
         .unwrap();
 
         let call = super::Call {
-            contract_address: crate::core::ContractAddress(starkhash!(
+            contract_address: crate::core::ContractAddress::new_or_panic(starkhash!(
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
             )),
             calldata: vec![crate::core::CallParam(starkhash!("84"))],
@@ -498,7 +498,7 @@ mod tests {
         .unwrap();
 
         let call = super::Call {
-            contract_address: crate::core::ContractAddress(starkhash!(
+            contract_address: crate::core::ContractAddress::new_or_panic(starkhash!(
                 // this is one bit off from other examples
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375"
             )),
@@ -562,7 +562,7 @@ mod tests {
         .await
         .unwrap();
 
-        let target_contract = crate::core::ContractAddress(starkhash!(
+        let target_contract = crate::core::ContractAddress::new_or_panic(starkhash!(
             "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
         ));
 
@@ -598,7 +598,7 @@ mod tests {
                     map.insert(
                         target_contract,
                         vec![crate::sequencer::reply::state_update::StorageDiff {
-                            key: crate::core::StorageAddress(storage_address),
+                            key: crate::core::StorageAddress::new_or_panic(storage_address),
                             value: crate::core::StorageValue(starkhash!("04")),
                         }],
                     );
@@ -644,8 +644,12 @@ mod tests {
         crate::storage::ContractCodeTable::insert(tx, hash, &abi, &bytecode, &contract_definition)
             .unwrap();
 
-        crate::storage::ContractsTable::upsert(tx, crate::core::ContractAddress(address), hash)
-            .unwrap();
+        crate::storage::ContractsTable::upsert(
+            tx,
+            crate::core::ContractAddress::new_or_panic(address),
+            hash,
+        )
+        .unwrap();
 
         // this will create the table, not created by migration
         crate::state::state_tree::ContractsStateTree::load(

@@ -52,19 +52,19 @@ impl StateUpdate {
             old_root: GlobalRoot(hash!(2, h)),
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {
-                    address: ContractAddress(hash!(3, h)),
-                    key: StorageAddress(hash!(4, h)),
+                    address: ContractAddress::new_or_panic(hash!(3, h)),
+                    key: StorageAddress::new_or_panic(hash!(4, h)),
                     value: StorageValue(hash!(5, h)),
                 }],
                 declared_contracts: vec![DeclaredContract {
                     class_hash: ClassHash(hash!(6, h)),
                 }],
                 deployed_contracts: vec![DeployedContract {
-                    address: ContractAddress(hash!(7, h)),
+                    address: ContractAddress::new_or_panic(hash!(7, h)),
                     class_hash: ClassHash(hash!(8, h)),
                 }],
                 nonces: vec![Nonce {
-                    contract_address: ContractAddress(hash!(9, h)),
+                    contract_address: ContractAddress::new_or_panic(hash!(9, h)),
                     nonce: ContractNonce(hash!(10, h)),
                 }],
             },

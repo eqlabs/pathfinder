@@ -130,7 +130,7 @@ mod tests {
         // let s = crate::storage::Storage::in_memory().unwrap();
 
         // let contract_hash = ClassHash(StarkHash::from_hex_str("0x11").unwrap());
-        // let contract_addr = ContractAddress(StarkHash::from_hex_str("1").unwrap());
+        // let contract_addr = ContractAddress::new_or_panic(StarkHash::from_hex_str("1").unwrap());
         // let contract_deploy = DeployedContract {
         //     address: contract_addr,
         //     hash: contract_hash,
@@ -261,9 +261,9 @@ mod tests {
         // let unique_hash =
         //     ClassHash(StarkHash::from_be_slice(&b"this is unique contract"[..]).unwrap());
 
-        // let one = ContractAddress(StarkHash::from_hex_str("1").unwrap());
-        // let two = ContractAddress(StarkHash::from_hex_str("2").unwrap());
-        // let three = ContractAddress(StarkHash::from_hex_str("3").unwrap());
+        // let one = ContractAddress::new_or_panic(StarkHash::from_hex_str("1").unwrap());
+        // let two = ContractAddress::new_or_panic(StarkHash::from_hex_str("2").unwrap());
+        // let three = ContractAddress::new_or_panic(StarkHash::from_hex_str("3").unwrap());
 
         // let one_deploy = DeployedContract {
         //     address: one,
@@ -289,7 +289,7 @@ mod tests {
         //     contract_updates: vec![ContractUpdate {
         //         address: one,
         //         storage_updates: vec![StorageUpdate {
-        //             address: StorageAddress(StarkHash::from_hex_str("1").unwrap()),
+        //             address: StorageAddress::new_or_panic(StarkHash::from_hex_str("1").unwrap()),
         //             value: StorageValue(StarkHash::from_hex_str("dead").unwrap()),
         //         }],
         //     }],

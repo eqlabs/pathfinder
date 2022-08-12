@@ -78,7 +78,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
                     .execute(named_params![
                         ":idx": idx,
                         ":transaction_hash": transaction_hash,
-                        ":from_address": &event.from_address.0.as_be_bytes()[..],
+                        ":from_address": event.from_address,
                     ])
                     .context("Insert event data into events table")?;
 

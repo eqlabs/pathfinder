@@ -6,7 +6,7 @@ use crate::{
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
-use stark_hash::StarkHash;
+
 
 /// Stores StarkNet contract information, specifically a contract's
 ///
@@ -143,8 +143,8 @@ impl ContractsTable {
         transaction.execute(
             r"INSERT OR REPLACE INTO contracts (address, hash) VALUES (:address, :hash)",
             named_params! {
-                ":address": &address.0.to_be_bytes()[..],
-                ":hash": &hash.0.to_be_bytes()[..],
+                ":address": address,
+                ":hash": hash,
             },
         )?;
         Ok(())
@@ -154,7 +154,7 @@ impl ContractsTable {
     pub fn exists(transaction: &Transaction<'_>, address: ContractAddress) -> anyhow::Result<bool> {
         let exists = transaction
             .prepare("SELECT 1 FROM contracts WHERE address = ?")?
-            .exists([address.0.as_be_bytes()])?;
+            .exists([address])?;
         Ok(exists)
     }
 
@@ -163,30 +163,14 @@ impl ContractsTable {
         transaction: &Transaction<'_>,
         address: ContractAddress,
     ) -> anyhow::Result<Option<ClassHash>> {
-        let bytes: Option<Vec<u8>> = transaction
+        transaction
             .query_row(
-                "SELECT hash FROM contracts WHERE address = :address",
-                named_params! {
-                    ":address": &address.0.to_be_bytes()[..]
-                },
+                "SELECT hash FROM contracts WHERE address = ?",
+                [address],
                 |row| row.get("hash"),
             )
-            .optional()?;
-
-        let bytes = match bytes {
-            Some(bytes) => bytes,
-            None => return Ok(None),
-        };
-
-        let bytes: [u8; 32] = match bytes.try_into() {
-            Ok(bytes) => bytes,
-            Err(bytes) => anyhow::bail!("Bad class hash length: {}", bytes.len()),
-        };
-
-        let hash = StarkHash::from_be_bytes(bytes)?;
-        let hash = ClassHash(hash);
-
-        Ok(Some(hash))
+            .optional()
+            .map_err(|e| e.into())
     }
 }
 
@@ -203,7 +187,7 @@ mod tests {
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let address = ContractAddress(starkhash!("0abc"));
+        let address = ContractAddress::new_or_panic(starkhash!("0abc"));
         let hash = ClassHash(starkhash!("0123"));
 
         ContractsTable::upsert(&transaction, address, hash).unwrap_err();
@@ -215,7 +199,7 @@ mod tests {
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let address = ContractAddress(starkhash!("0abc"));
+        let address = ContractAddress::new_or_panic(starkhash!("0abc"));
         let hash = ClassHash(starkhash!("0123"));
         let definition = vec![9, 13, 25];
 

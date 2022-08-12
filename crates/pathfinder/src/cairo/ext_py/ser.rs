@@ -106,7 +106,7 @@ impl<'a> serde::Serialize for DiffElement<'a> {
     {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(2))?;
-        map.serialize_entry("key", &self.0.key.0)?;
+        map.serialize_entry("key", &self.0.key.get())?;
         map.serialize_entry("value", &self.0.value.0)?;
         map.end()
     }
@@ -258,11 +258,11 @@ mod tests {
         let map = {
             let mut map = HashMap::new();
             map.insert(
-                ContractAddress(starkhash!(
+                ContractAddress::new_or_panic(starkhash!(
                     "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
                 )),
                 vec![StorageDiff {
-                    key: StorageAddress(starkhash!("05")),
+                    key: StorageAddress::new_or_panic(starkhash!("05")),
                     value: StorageValue(starkhash!("00")),
                 }],
             );
@@ -293,7 +293,7 @@ mod tests {
 
         let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
         let contracts = vec![DeployedContract {
-            address: ContractAddress(starkhash!(
+            address: ContractAddress::new_or_panic(starkhash!(
                 "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
             )),
             class_hash: ClassHash(starkhash!(

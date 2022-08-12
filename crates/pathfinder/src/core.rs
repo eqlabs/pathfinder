@@ -8,11 +8,90 @@ use web3::types::{H128, H160, H256};
 
 mod macros;
 
+macro_rules! merkletree_key_newtype {
+    ($target:ty) => {
+        impl $target {
+            pub const fn new(hash: StarkHash) -> Option<Self> {
+                if hash.has_more_than_251_bits() {
+                    None
+                } else {
+                    Some(Self(hash))
+                }
+            }
+
+            pub const fn new_or_panic(hash: StarkHash) -> Self {
+                match Self::new(hash) {
+                    Some(key) => key,
+                    None => panic!("Too many bits, need less for MPT keys"),
+                }
+            }
+
+            pub const fn get(&self) -> &StarkHash {
+                &self.0
+            }
+
+            pub fn view_bits(&self) -> &bitvec::slice::BitSlice<bitvec::order::Msb0, u8> {
+                self.0.view_bits()
+            }
+        }
+    };
+}
+
+macro_rules! merkletree_key_deserialization {
+    ($target:ty) => {
+        impl $target {
+            pub fn deserialize_value<E>(original: &str, raw: StarkHash) -> Result<Self, E>
+            where
+                E: serde::de::Error,
+            {
+                Self::new(raw).ok_or_else(|| {
+                    serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Str(original),
+                        &"At most 251-bit value",
+                    )
+                })
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $target {
+            fn deserialize<D>(de: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct StarkHash251;
+
+                impl<'de> serde::de::Visitor<'de> for StarkHash251 {
+                    type Value = $target;
+
+                    fn expecting(
+                        &self,
+                        formatter: &mut std::fmt::Formatter<'_>,
+                    ) -> std::fmt::Result {
+                        formatter.write_str("A hex string with at most 251 bits set.")
+                    }
+
+                    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        let hash = StarkHash::from_hex_str(v).map_err(serde::de::Error::custom)?;
+
+                        <$target>::deserialize_value(v, hash)
+                    }
+                }
+
+                de.deserialize_str(StarkHash251)
+            }
+        }
+    };
+}
+
 /// The address of a StarkNet contract.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
-pub struct ContractAddress(
-    #[serde(deserialize_with = "deserialize_starkhash_251_bits")] pub StarkHash,
-);
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
+pub struct ContractAddress(StarkHash);
+
+merkletree_key_newtype!(ContractAddress);
+merkletree_key_deserialization!(ContractAddress);
 
 /// A nonce that is associated with a particular deployed StarkNet contract
 /// distinguishing it from other contracts that use the same contract class.
@@ -95,42 +174,11 @@ pub struct CallSignatureElem(pub StarkHash);
 pub struct ByteCodeWord(pub StarkHash);
 
 /// The address of a storage element for a StarkNet contract.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
-pub struct StorageAddress(
-    #[serde(deserialize_with = "deserialize_starkhash_251_bits")] pub StarkHash,
-);
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, PartialOrd, Ord)]
+pub struct StorageAddress(StarkHash);
 
-/// Deserializes a [StarkHash] and in addition enforces that it has at most 251 bits
-/// used. This is slightly less than the maximum [StarkHash] value, but 251 bit limit are
-/// required by types which are keys of the state trees.
-fn deserialize_starkhash_251_bits<'de, D>(de: D) -> Result<StarkHash, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    struct StarkHash251;
-
-    impl<'de> serde::de::Visitor<'de> for StarkHash251 {
-        type Value = StarkHash;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("A hex string with at most 251 bits set.")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            let hash = StarkHash::from_hex_str(v).map_err(serde::de::Error::custom)?;
-
-            match hash.has_more_than_251_bits() {
-                true => Err(serde::de::Error::custom("more than 251 bits set")),
-                false => Ok(hash),
-            }
-        }
-    }
-
-    de.deserialize_str(StarkHash251)
-}
+merkletree_key_newtype!(StorageAddress);
+merkletree_key_deserialization!(StorageAddress);
 
 /// The value of a storage element for a StarkNet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]

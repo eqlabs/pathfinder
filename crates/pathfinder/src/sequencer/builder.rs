@@ -191,7 +191,7 @@ impl<'a> Request<'a, stage::Params> {
     }
 
     pub fn with_contract_address(self, address: ContractAddress) -> Self {
-        self.add_param("contractAddress", &address.0.to_hex_str())
+        self.add_param("contractAddress", &address.get().to_hex_str())
     }
 
     pub fn with_class_hash(self, class_hash: ClassHash) -> Self {
@@ -207,7 +207,7 @@ impl<'a> Request<'a, stage::Params> {
 
     pub fn with_storage_address(self, address: StorageAddress) -> Self {
         use crate::rpc::serde::starkhash_to_dec_str;
-        self.add_param("key", &starkhash_to_dec_str(&address.0))
+        self.add_param("key", &starkhash_to_dec_str(address.get()))
     }
 
     pub fn with_transaction_hash(self, hash: StarknetTransactionHash) -> Self {
