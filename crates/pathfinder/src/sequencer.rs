@@ -630,7 +630,7 @@ mod tests {
                     sequencer_address: None,
                     state_root: crate::core::GlobalRoot(StarkHash::ZERO),
                     status: Status::NotReceived,
-                    timestamp: StarknetBlockTimestamp(0),
+                    timestamp: StarknetBlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: None,

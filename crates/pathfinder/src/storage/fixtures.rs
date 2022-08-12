@@ -79,7 +79,8 @@ impl StarknetBlock {
             number: StarknetBlockNumber::new(n as u64).expect("block number out of range"),
             hash: StarknetBlockHash(hash!(n)),
             root: GlobalRoot(hash!(1, n)),
-            timestamp: StarknetBlockTimestamp(n as u64 + 1000),
+            timestamp: StarknetBlockTimestamp::new(n as u64 + 1000)
+                .expect("block timestamp out of range"),
             gas_price: GasPrice(n as u128 + 2000),
             sequencer_address: SequencerAddress(hash!(2, n)),
         }

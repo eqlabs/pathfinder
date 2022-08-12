@@ -483,7 +483,7 @@ mod tests {
             number: StarknetBlockNumber::GENESIS,
             hash: genesis_hash,
             root: global_root0,
-            timestamp: StarknetBlockTimestamp(0),
+            timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
@@ -492,7 +492,7 @@ mod tests {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: block1_hash,
             root: global_root1,
-            timestamp: StarknetBlockTimestamp(1),
+            timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(starkhash_bytes!(&[1u8])),
         };
@@ -501,7 +501,7 @@ mod tests {
             number: StarknetBlockNumber::new_or_panic(2),
             hash: latest_hash,
             root: global_root2,
-            timestamp: StarknetBlockTimestamp(2),
+            timestamp: StarknetBlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(starkhash_bytes!(&[2u8])),
         };
@@ -687,7 +687,7 @@ mod tests {
             parent_hash: latest.hash,
             sequencer_address: SequencerAddress(starkhash_bytes!(b"pending sequencer address")),
             status: crate::sequencer::reply::Status::Pending,
-            timestamp: StarknetBlockTimestamp(1234567),
+            timestamp: StarknetBlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
             transactions,
             starknet_version: Some("pending version".to_owned()),
@@ -1894,7 +1894,7 @@ mod tests {
                 number: StarknetBlockNumber::new_or_panic(3),
                 hash: StarknetBlockHash(starkhash_bytes!(b"block 3 hash")),
                 root: global_tree.apply().unwrap(),
-                timestamp: StarknetBlockTimestamp(3),
+                timestamp: StarknetBlockTimestamp::new_or_panic(3),
                 gas_price: GasPrice::from(3),
                 sequencer_address: SequencerAddress(starkhash_bytes!(&[3u8])),
             };

@@ -1233,7 +1233,7 @@ pub mod reply {
                             parent_hash: StarknetBlockHash(starkhash!("01")),
                             block_number: Some(StarknetBlockNumber::GENESIS),
                             new_root: Some(GlobalRoot(starkhash!("02"))),
-                            timestamp: StarknetBlockTimestamp(1),
+                            timestamp: StarknetBlockTimestamp::new_or_panic(1),
                             sequencer_address: SequencerAddress(starkhash!("03")),
                             transactions: Transactions::Full(vec![
                                 Transaction::Declare(DeclareTransaction {

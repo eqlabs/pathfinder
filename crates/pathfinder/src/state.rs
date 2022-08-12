@@ -229,7 +229,7 @@ mod tests {
         //         ),
         //         global_root: expected_global_root,
         //         block_number: StarknetBlockNumber(0),
-        //         block_timestamp: StarknetBlockTimestamp(0),
+        //         block_timestamp: StarknetBlockTimestamp::new_or_panic(0),
         //         eth_block_hash: EthereumBlockHash(H256::zero()),
         //         eth_block_number: EthereumBlockNumber(0),
         //         eth_log_index: EthereumLogIndex(0),

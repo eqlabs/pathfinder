@@ -245,7 +245,7 @@ pub(crate) mod test_utils {
                 number: StarknetBlockNumber::GENESIS + i as u64,
                 hash: StarknetBlockHash(StarkHash::from_hex_str(&"a".repeat(i + 3)).unwrap()),
                 root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap()),
-                timestamp: StarknetBlockTimestamp(i as u64 + 500),
+                timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
                 gas_price: GasPrice::from(i as u64),
                 sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[i as u8]).unwrap()),
             })

@@ -2059,7 +2059,7 @@ mod tests {
                 number: StarknetBlockNumber::GENESIS,
                 hash: StarknetBlockHash(starkhash!("1234")),
                 root: GlobalRoot(starkhash!("1234")),
-                timestamp: StarknetBlockTimestamp(0),
+                timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
                 sequencer_address: SequencerAddress(starkhash!("1234")),
             };

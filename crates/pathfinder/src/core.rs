@@ -255,7 +255,7 @@ impl From<StarknetBlockNumber> for StarkHash {
 
 /// The timestamp of a Starknet block.
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
-pub struct StarknetBlockTimestamp(pub u64);
+pub struct StarknetBlockTimestamp(u64);
 
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockTimestamp);
 i64_backed_newtype_new_get_partialeq!(StarknetBlockTimestamp);
