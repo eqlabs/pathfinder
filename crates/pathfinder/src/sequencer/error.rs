@@ -52,7 +52,7 @@ impl From<SequencerError> for Error {
 }
 
 /// Used for deserializing specific Starknet sequencer error data.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct StarknetError {
     pub code: StarknetErrorCode,
     pub message: String,
@@ -69,7 +69,7 @@ impl std::fmt::Display for StarknetError {
 }
 
 /// Represents starknet specific error codes reported by the sequencer.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub enum StarknetErrorCode {
     #[serde(rename = "StarknetErrorCode.BLOCK_NOT_FOUND")]

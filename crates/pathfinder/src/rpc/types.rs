@@ -3,7 +3,7 @@ use crate::core::{StarknetBlockHash, StarknetBlockNumber};
 use serde::{Deserialize, Serialize};
 
 /// Special tag used when specifying the `latest` or `pending` block.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub enum Tag {
     /// The most recent fully constructed block
@@ -32,7 +32,7 @@ impl std::fmt::Display for Tag {
 }
 
 /// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a [Tag](self::BlockHashOrTag::Tag).
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockHashOrTag {
@@ -56,7 +56,7 @@ impl std::fmt::Display for BlockHashOrTag {
 }
 
 /// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum BlockNumberOrTag {
@@ -89,7 +89,7 @@ pub mod request {
 
     /// Contains parameters passed to `starknet_call`.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct Call {
@@ -130,7 +130,7 @@ pub mod request {
     ///
     /// It might be that [`Call`] and arguments of `addInvokeTransaction` could be unified in the
     /// future when the dust has settled on the implementation.
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct ContractCall {
@@ -141,7 +141,7 @@ pub mod request {
 
     /// Contains event filter parameters passed to `starknet_getEvents`.
     #[skip_serializing_none]
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct EventFilter {
@@ -183,7 +183,7 @@ pub mod reply {
     use std::convert::From;
 
     /// L2 Block status as returned by the RPC API.
-    #[derive(Copy, Clone, Debug, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub enum BlockStatus {
@@ -215,7 +215,7 @@ pub mod reply {
 
     /// Wrapper for transaction data returned in block related queries,
     /// chosen variant depends on [crate::rpc::api::BlockResponseScope](crate::rpc::api::BlockResponseScope).
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     #[serde(untagged)]
@@ -227,7 +227,7 @@ pub mod reply {
     /// L2 Block as returned by the RPC API.
     #[serde_as]
     #[skip_serializing_none]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct Block {
@@ -241,7 +241,7 @@ pub mod reply {
         pub transactions: Transactions,
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct BlockHashAndNumber {
         #[serde(rename = "block_hash")]
@@ -315,7 +315,7 @@ pub mod reply {
     // TODO verify with Starkware how `sequencer::reply::starknet::ErrorCode` should
     // map to the values below in all JSON-RPC API methods. Also verify if
     // the mapping should be method-specific or common for all methods.
-    #[derive(Copy, Clone, Debug, PartialEq)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum ErrorCode {
         FailedToReceiveTransaction = 1,
         ContractNotFound = 20,
@@ -442,7 +442,7 @@ pub mod reply {
     /// on the `rpc-full-serde` feature because state updates are
     /// stored in the DB as compressed raw JSON bytes.
     #[skip_serializing_none]
-    #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct StateUpdate {
         /// None for `pending`
@@ -479,7 +479,7 @@ pub mod reply {
         use serde::{Deserialize, Serialize};
 
         /// L2 state diff.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(deny_unknown_fields)]
         pub struct StateDiff {
             pub storage_diffs: Vec<StorageDiff>,
@@ -522,7 +522,7 @@ pub mod reply {
         }
 
         /// L2 storage diff of a contract.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(deny_unknown_fields)]
         pub struct StorageDiff {
             pub address: ContractAddress,
@@ -540,14 +540,14 @@ pub mod reply {
         // }
 
         /// L2 state diff declared contract item.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(deny_unknown_fields)]
         pub struct DeclaredContract {
             pub class_hash: ClassHash,
         }
 
         /// L2 state diff deployed contract item.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(deny_unknown_fields)]
         pub struct DeployedContract {
             pub address: ContractAddress,
@@ -555,7 +555,7 @@ pub mod reply {
         }
 
         /// L2 state diff nonce item.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(deny_unknown_fields)]
         pub struct Nonce {
             pub contract_address: ContractAddress,
@@ -565,7 +565,7 @@ pub mod reply {
 
     /// L2 transaction as returned by the RPC API.
     ///
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(tag = "type")]
     pub enum Transaction {
@@ -588,7 +588,7 @@ pub mod reply {
     }
 
     #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonTransactionProperties {
         #[serde(rename = "transaction_hash")]
@@ -602,7 +602,7 @@ pub mod reply {
     }
 
     #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeclareTransaction {
         #[serde(flatten)]
@@ -613,7 +613,7 @@ pub mod reply {
     }
 
     #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct InvokeTransaction {
         #[serde(flatten)]
@@ -625,7 +625,7 @@ pub mod reply {
     }
 
     #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeployTransaction {
         // This part is a subset of CommonTransactionProperties
@@ -707,7 +707,7 @@ pub mod reply {
 
     /// L2 transaction receipt as returned by the RPC API.
     #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(untagged)]
     pub enum TransactionReceipt {
@@ -731,7 +731,7 @@ pub mod reply {
         }
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct InvokeTransactionReceipt {
         #[serde(flatten)]
@@ -744,7 +744,7 @@ pub mod reply {
     }
 
     #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonTransactionReceiptProperties {
         pub transaction_hash: StarknetTransactionHash,
@@ -757,14 +757,14 @@ pub mod reply {
         pub block_number: StarknetBlockNumber,
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeclareOrDeployTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct PendingInvokeTransactionReceipt {
         #[serde(flatten)]
@@ -777,7 +777,7 @@ pub mod reply {
     }
 
     #[serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonPendingTransactionReceiptProperties {
         pub transaction_hash: StarknetTransactionHash,
@@ -785,7 +785,7 @@ pub mod reply {
         pub actual_fee: Fee,
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct PendingDeclareOrDeployTransactionReceipt {
         #[serde(flatten)]
@@ -907,7 +907,7 @@ pub mod reply {
 
         /// Message sent from L2 to L1.
         #[serde_as]
-        #[derive(Clone, Debug, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
         #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
         #[serde(deny_unknown_fields)]
         pub struct MessageToL1 {
@@ -927,7 +927,7 @@ pub mod reply {
 
         /// Message sent from L1 to L2.
         #[serde_as]
-        #[derive(Clone, Debug, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
         #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
         #[serde(deny_unknown_fields)]
         pub struct MessageToL2 {
@@ -946,7 +946,7 @@ pub mod reply {
         }
 
         /// Event emitted as a part of a transaction.
-        #[derive(Clone, Debug, Serialize, PartialEq)]
+        #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
         #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
         #[serde(deny_unknown_fields)]
         pub struct Event {
@@ -967,7 +967,7 @@ pub mod reply {
     }
 
     /// Represents transaction status.
-    #[derive(Copy, Clone, Debug, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub enum TransactionStatus {
@@ -993,7 +993,7 @@ pub mod reply {
     }
 
     /// Describes Starknet's syncing status RPC reply.
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(untagged)]
     pub enum Syncing {
@@ -1022,7 +1022,7 @@ pub mod reply {
         use serde_with::serde_as;
 
         /// Represents Starknet node syncing status.
-        #[derive(Copy, Clone, Debug, PartialEq, Serialize)]
+        #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
         #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
         pub struct Status {
             #[serde(flatten, with = "prefix_starting")]
@@ -1049,7 +1049,7 @@ pub mod reply {
 
         /// Block hash and a number, for `starknet_syncing` response only.
         #[serde_as]
-        #[derive(Clone, Copy, Serialize, PartialEq)]
+        #[derive(Clone, Copy, Serialize, PartialEq, Eq)]
         #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
         pub struct NumberedBlock {
             #[serde(rename = "block_hash")]
@@ -1112,7 +1112,7 @@ pub mod reply {
     }
 
     /// Describes an emitted event returned by starknet_getEvents
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct EmittedEvent {
@@ -1140,7 +1140,7 @@ pub mod reply {
     }
 
     // Result type for starknet_getEvents
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct GetEventsResult {
@@ -1150,7 +1150,7 @@ pub mod reply {
     }
 
     // Result type for starknet_addInvokeTransaction
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionResult {
@@ -1158,7 +1158,7 @@ pub mod reply {
     }
 
     // Result type for starknet_addDeclareTransaction
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionResult {
@@ -1167,7 +1167,7 @@ pub mod reply {
     }
 
     // Result type for starknet_addDeployTransaction
-    #[derive(Clone, Debug, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct DeployTransactionResult {
@@ -1177,7 +1177,7 @@ pub mod reply {
 
     /// Return type of transaction fee estimation
     #[serde_as]
-    #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct FeeEstimate {
         /// The Ethereum gas cost of the transaction

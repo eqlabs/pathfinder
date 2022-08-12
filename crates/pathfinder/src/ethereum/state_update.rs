@@ -15,7 +15,7 @@ use crate::{
 };
 
 /// Describes the deployment of a new StarkNet contract.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeployedContract {
     pub address: ContractAddress,
     pub hash: ClassHash,
@@ -39,7 +39,7 @@ pub struct StorageUpdate {
 /// The set of state updates of a StarkNet [StateUpdate].
 ///
 /// Contains new [DeployedContracts](DeployedContract) as well as [ContractUpdates](ContractUpdate).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateUpdate {
     pub deployed_contracts: Vec<DeployedContract>,
     pub contract_updates: Vec<ContractUpdate>,

@@ -21,7 +21,7 @@ pub use forward::*;
 /// May contain one of two types of [MetaLog].
 ///
 /// Used by [BackwardLogFetcher].
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum EitherMetaLog<L, R>
 where
     L: MetaLog + PartialEq + std::fmt::Debug + Clone,

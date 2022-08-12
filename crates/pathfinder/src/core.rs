@@ -14,7 +14,7 @@ pub struct ContractAddress(
 
 /// A nonce that is associated with a particular deployed StarkNet contract
 /// distinguishing it from other contracts that use the same contract class.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ContractNonce(pub StarkHash);
 
 /// The salt of a StarkNet contract address.
@@ -28,17 +28,17 @@ pub struct ClassHash(pub StarkHash);
 
 /// A StarkNet contract's state hash. This is the value stored
 /// in the global state tree.
-#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContractStateHash(pub StarkHash);
 
 /// A commitment root of a StarkNet contract. This is the entry-point
 /// for a contract's state at a specific point in time via the contract
 /// state tree.
-#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContractRoot(pub StarkHash);
 
 // Bytecode and entry point list of a class
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContractClass {
     // A base64 encoding of the gzip-compressed JSON representation of program.
     pub program: String,
@@ -50,7 +50,7 @@ pub struct ContractClass {
 }
 
 /// Entry point of a StarkNet `call`.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EntryPoint(pub StarkHash);
 
 impl EntryPoint {
@@ -69,27 +69,27 @@ impl EntryPoint {
 ///
 /// This is a StarkHash because we use it directly for computing the
 /// class hashes.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ByteCodeOffset(pub StarkHash);
 
 /// A single parameter passed to a StarkNet `call`.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CallParam(pub StarkHash);
 
 /// A single parameter passed to a StarkNet contract constructor.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ConstructorParam(pub StarkHash);
 
 /// A single result value of a StarkNet `call`.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CallResultValue(pub StarkHash);
 
 /// A single element of a signature used to secure a StarkNet `call`.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CallSignatureElem(pub StarkHash);
 
 /// A word from a StarkNet contract bytecode.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ByteCodeWord(pub StarkHash);
 
 /// The address of a storage element for a StarkNet contract.
@@ -136,11 +136,11 @@ pub struct StorageValue(pub StarkHash);
 
 /// A commitment root of the global StarkNet state. This is the entry-point
 /// for the global state at a specific point in time via the global state tree.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct GlobalRoot(pub StarkHash);
 
 /// A StarkNet block hash.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockHash(pub StarkHash);
 
 macro_rules! i64_masquerading_as_u64_newtype_to_from_sql {
@@ -170,91 +170,91 @@ pub struct StarknetBlockNumber(pub u64);
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockNumber);
 
 /// The timestamp of a Starknet block.
-#[derive(Copy, Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockTimestamp(pub u64);
 
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockTimestamp);
 
 /// A StarkNet transaction hash.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetTransactionHash(pub StarkHash);
 
 /// A StarkNet transaction index.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetTransactionIndex(pub u64);
 
 i64_masquerading_as_u64_newtype_to_from_sql!(StarknetTransactionIndex);
 
 /// A single element of a signature used to secure a StarkNet transaction.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionSignatureElem(pub StarkHash);
 
 /// A nonce that is added to an L1 to L2 message in a StarkNet transaction.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct L1ToL2MessageNonce(pub StarkHash);
 
 /// A single element of the payload of an L1 to L2 message in a StarkNet transaction.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct L1ToL2MessagePayloadElem(pub StarkHash);
 
 /// A single element of the payload of an L2 to L1 message in a StarkNet transaction.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct L2ToL1MessagePayloadElem(pub StarkHash);
 
 /// StarkNet transaction event data.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EventData(pub StarkHash);
 
 /// StarkNet transaction event key.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize, Hash, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Hash)]
 pub struct EventKey(pub StarkHash);
 
 /// StarkNet sequencer address.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SequencerAddress(pub StarkHash);
 
 /// StarkNet fee value.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Fee(pub H128);
 
 /// StarkNet gas price.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct GasPrice(pub u128);
 
 // Starknet transaction nonce.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionNonce(pub StarkHash);
 
 /// StarkNet transaction version.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionVersion(pub H256);
 
 /// An Ethereum address.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EthereumAddress(pub H160);
 
 /// An Ethereum block hash.
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthereumBlockHash(pub H256);
 
 /// An Ethereum block number.
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthereumBlockNumber(pub u64);
 
 /// An Ethereum transaction hash.
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthereumTransactionHash(pub H256);
 
 /// An Ethereum transaction's index within a block.
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthereumTransactionIndex(pub u64);
 
 /// An Ethereum log's index within a block.
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthereumLogIndex(pub u64);
 
 /// A way of identifying a specific block.
-#[derive(Debug, Copy, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
 #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(Serialize))]
 #[serde(deny_unknown_fields)]
 pub enum BlockId {
@@ -403,7 +403,7 @@ impl From<StarknetBlockHash> for BlockId {
 }
 
 /// Ethereum network chains running Starknet.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chain {
     /// The Ethereum mainnet chain.
     Mainnet,

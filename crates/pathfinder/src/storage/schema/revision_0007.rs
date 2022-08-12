@@ -23,7 +23,7 @@ mod transaction {
     use serde_with::serde_as;
 
     /// Represents deserialized L2 transaction entry point values.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
@@ -33,7 +33,7 @@ mod transaction {
     }
 
     /// Represents execution resources for L2 transaction.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
         pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
@@ -46,7 +46,7 @@ mod transaction {
         use serde::{Deserialize, Serialize};
 
         /// Sometimes `builtin_instance_counter` JSON object is returned empty.
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(untagged)]
         #[serde(deny_unknown_fields)]
         pub enum BuiltinInstanceCounter {
@@ -54,7 +54,7 @@ mod transaction {
             Empty(EmptyBuiltinInstanceCounter),
         }
 
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(deny_unknown_fields)]
         pub struct NormalBuiltinInstanceCounter {
             bitwise_builtin: u64,
@@ -65,13 +65,13 @@ mod transaction {
             range_check_builtin: u64,
         }
 
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         pub struct EmptyBuiltinInstanceCounter {}
     }
 
     /// Represents deserialized L1 to L2 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L1ToL2Message {
         #[serde_as(as = "EthereumAddressAsHexStr")]
@@ -86,7 +86,7 @@ mod transaction {
 
     /// Represents deserialized L2 to L1 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         pub from_address: ContractAddress,
@@ -98,7 +98,7 @@ mod transaction {
 
     /// Represents deserialized L2 transaction receipt data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
         pub events: Vec<Event>,
@@ -111,7 +111,7 @@ mod transaction {
 
     /// Represents deserialized L2 transaction event data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Event {
         #[serde_as(as = "Vec<EventDataAsDecimalStr>")]
@@ -123,7 +123,7 @@ mod transaction {
 
     /// Represents deserialized object containing L2 contract address and transaction type.
     #[serde_as]
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Source {
         pub contract_address: ContractAddress,
@@ -132,7 +132,7 @@ mod transaction {
 
     /// Represents deserialized L2 transaction data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Transaction {
         #[serde_as(as = "Option<Vec<CallParamAsDecimalStr>>")]
@@ -159,7 +159,7 @@ mod transaction {
     }
 
     /// Describes L2 transaction types.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub enum Type {
         #[serde(rename = "DEPLOY")]
@@ -169,7 +169,7 @@ mod transaction {
     }
 
     /// Describes L2 transaction failure details.
-    #[derive(Clone, Debug, Deserialize, PartialEq)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Failure {
         pub code: String,

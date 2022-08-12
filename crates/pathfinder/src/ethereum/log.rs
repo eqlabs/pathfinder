@@ -14,7 +14,7 @@ use crate::{
 /// as a pair with [StateTransitionFactLog].
 ///
 /// This is emitted by the Starknet core contract.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateUpdateLog {
     pub origin: EthOrigin,
     pub global_root: GlobalRoot,
@@ -27,7 +27,7 @@ pub struct StateUpdateLog {
 /// Is always emitted as a pair with [StateUpdateLog].
 ///
 /// This is emitted by the Starknet core contract.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateTransitionFactLog {
     pub origin: EthOrigin,
     pub fact_hash: H256,
@@ -37,7 +37,7 @@ pub struct StateTransitionFactLog {
 /// a single fact. The memory pages can then be interpretted as [state update data](crate::ethereum::state_update::StateUpdate).
 ///
 /// This is emitted by the GPS contract.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemoryPagesHashesLog {
     pub origin: EthOrigin,
     pub hash: H256,
