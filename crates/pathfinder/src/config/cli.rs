@@ -15,6 +15,7 @@ const SEQ_URL_KEY: &str = "sequencer-url";
 const PYTHON_SUBPROCESSES_KEY: &str = "python-subprocesses";
 const SQLITE_WAL: &str = "sqlite-wal";
 const POLL_PENDING: &str = "poll-pending";
+const MONITOR_ADDRESS: &str = "monitor-address";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -48,6 +49,7 @@ where
     let python_subprocesses = args.value_of(PYTHON_SUBPROCESSES_KEY).map(|s| s.to_owned());
     let sqlite_wal = args.value_of(SQLITE_WAL).map(|s| s.to_owned());
     let poll_pending = args.value_of(POLL_PENDING).map(|s| s.to_owned());
+    let monitor_address = args.value_of(MONITOR_ADDRESS).map(|s| s.to_owned());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
@@ -57,7 +59,8 @@ where
         .with(ConfigOption::SequencerHttpUrl, sequencer_url)
         .with(ConfigOption::PythonSubprocesses, python_subprocesses)
         .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal)
-        .with(ConfigOption::PollPending, poll_pending);
+        .with(ConfigOption::PollPending, poll_pending)
+        .with(ConfigOption::MonitorAddress, monitor_address);
 
     Ok((config_filepath, cfg))
 }
@@ -152,6 +155,15 @@ Examples:
                 .value_name("TRUE/FALSE")
                 .env("PATHFINDER_POLL_PENDING")
         )
+        .arg(
+            Arg::new(MONITOR_ADDRESS)
+                .long(MONITOR_ADDRESS)
+                .help("Pathfinder monitoring address")
+                .long_help("The address at which pathfinder will serve monitoring related information.")
+                .takes_value(true)
+                .value_name("IP:PORT")
+                .env("PATHFINDER_MONITOR_ADDRESS")
+        )
 }
 
 #[cfg(test)]
@@ -175,6 +187,7 @@ mod tests {
         env::remove_var("PATHFINDER_PYTHON_SUBPROCESSES");
         env::remove_var("PATHFINDER_SQLITE_WAL");
         env::remove_var("PATHFINDER_POLL_PENDING");
+        env::remove_var("PATHFINDER_MONITOR_ADDRESS");
     }
 
     #[test]
@@ -369,6 +382,27 @@ mod tests {
         env::set_var("PATHFINDER_POLL_PENDING", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::PollPending), Some(value));
+    }
+
+    #[test]
+    fn monitor_address_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--monitor-address", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::MonitorAddress), Some(value));
+    }
+
+    #[test]
+    fn monitor_address_environment_variable() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_MONITOR_ADDRESS", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::MonitorAddress), Some(value));
     }
 
     #[test]

@@ -75,6 +75,21 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             None => None,
         };
 
+        let monitoring_addr = self
+            .take(ConfigOption::MonitorAddress)
+            .map(|addr| {
+                addr.parse::<SocketAddr>().map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!(
+                            "Invalid monitoring listening interface and port ({}): {}",
+                            addr, err
+                        ),
+                    )
+                })
+            })
+            .transpose()?;
+
         // Optional parameters with defaults.
         let data_directory = self
             .take(ConfigOption::DataDirectory)
@@ -158,6 +173,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             python_subprocesses,
             sqlite_wal,
             poll_pending,
+            monitoring_addr,
         })
     }
 
