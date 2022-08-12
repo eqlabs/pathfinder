@@ -49,6 +49,7 @@ tokio-retry = "0.3.0"
 toml = "0.5.8"
 tracing = "0.1.31"
 tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
+warp = "0.3.2"
 web3 = "0.18.0"
 zstd = "0.10"
 
