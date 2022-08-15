@@ -39,6 +39,8 @@
 //!
 //! This is stored as 65 bytes: [child (32), path (32), path length (1)]
 
+use std::borrow::Cow;
+
 use anyhow::Context;
 use bitvec::{order::Msb0, prelude::BitVec, view::BitView};
 use rusqlite::{named_params, OptionalExtension, Transaction};
@@ -55,13 +57,104 @@ use stark_hash::StarkHash;
 ///
 /// None of the [RcNodeStorage] functions rollback on failure. This means that if any error
 /// is encountered, the transaction should be rolled back to prevent database corruption.
-#[derive(Debug, Clone)]
-pub struct RcNodeStorage<'a> {
-    transaction: &'a Transaction<'a>,
-    table: String,
+pub struct RcNodeStorage<'tx, 'queries> {
+    transaction: &'tx Transaction<'tx>,
+    queries: Queries<'queries>,
 }
 
-impl<'a> crate::state::merkle_tree::NodeStorage for RcNodeStorage<'a> {
+impl std::fmt::Debug for RcNodeStorage<'_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // this is practically useless
+        f.debug_struct("RcNodeStorage")
+            .field("transaction", &self.transaction)
+            .finish()
+    }
+}
+
+/// Queries used by the [`RcNodeStorage`].
+///
+/// We have `static ref` for the two table names pathfinder really uses. For other tables (in
+/// tests) new queries are built at initialization.
+struct Queries<'a> {
+    create: Cow<'a, str>,
+    insert: Cow<'a, str>,
+    get: Cow<'a, str>,
+    #[cfg(test)]
+    delete_node: Cow<'a, str>,
+    #[cfg(test)]
+    set_ref_count: Cow<'a, str>,
+    increment_ref_count: Cow<'a, str>,
+    #[cfg(test)]
+    get_ref_count: Cow<'a, str>,
+}
+
+lazy_static::lazy_static! {
+    static ref GLOBAL: Queries<'static> = Queries::format("tree_global");
+    static ref CONTRACTS: Queries<'static> = Queries::format("tree_contracts");
+}
+
+impl Queries<'static> {
+    fn format(table: &str) -> Queries<'static> {
+        Queries {
+            create: format!(
+                r"CREATE TABLE IF NOT EXISTS {}(
+                hash        BLOB PRIMARY KEY,
+                data        BLOB,
+                ref_count   INTEGER
+            )",
+                table
+            )
+            .into(),
+            insert: format!(
+                // You may be tempted to increment the reference count ON CONFLICT, but that is incorrect.
+                //
+                // Reference counts only get incremented for the children of a node. So even though this node
+                // already exists, and someone is trying to insert it again, this node's reference count increment
+                // will occur when that someone inserts the new parent node.
+                "INSERT INTO {} (hash, data, ref_count) VALUES (:hash, :data, :ref_count) ON CONFLICT DO NOTHING",
+                table
+            ).into(),
+            get: format!("SELECT data FROM {} WHERE hash = :hash", table).into(),
+            #[cfg(test)]
+            delete_node: format!("DELETE FROM {} WHERE hash = :hash", table).into(),
+            #[cfg(test)]
+            set_ref_count: format!("UPDATE {} SET ref_count = :count WHERE hash = :hash", table).into(),
+            increment_ref_count: format!("UPDATE {} SET ref_count = ref_count + 1 WHERE hash = :hash", table).into(),
+            #[cfg(test)]
+            get_ref_count: format!("SELECT ref_count FROM {} WHERE hash = :hash", table).into(),
+        }
+    }
+
+    /// Re-borrow static self with a smaller lifetime.
+    ///
+    /// This is used with the `static ref` kind of `Queries`. Using `Clone` would not work here,
+    /// because of how it cannot be defined for `Cow` properly.
+    fn borrow<'a>(&'static self) -> Queries<'a> {
+        macro_rules! borrow_cow {
+            ($e:expr) => {
+                match &$e {
+                    std::borrow::Cow::Borrowed(s) => std::borrow::Cow::Borrowed(s),
+                    std::borrow::Cow::Owned(o) => std::borrow::Cow::Borrowed(&o),
+                }
+            };
+        }
+
+        Queries {
+            create: borrow_cow!(self.create),
+            insert: borrow_cow!(self.insert),
+            get: borrow_cow!(self.get),
+            #[cfg(test)]
+            delete_node: borrow_cow!(self.delete_node),
+            #[cfg(test)]
+            set_ref_count: borrow_cow!(self.set_ref_count),
+            increment_ref_count: borrow_cow!(self.increment_ref_count),
+            #[cfg(test)]
+            get_ref_count: borrow_cow!(self.get_ref_count),
+        }
+    }
+}
+
+impl<'a, 'queries> crate::state::merkle_tree::NodeStorage for RcNodeStorage<'a, 'queries> {
     fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
         self.get(key)
     }
@@ -170,7 +263,7 @@ impl PersistedNode {
     }
 }
 
-impl<'a> RcNodeStorage<'a> {
+impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     /// Opens the Sqlite table as an [RcNodeStorage]. If the table does not exist, it will
     /// be created.
     ///
@@ -181,20 +274,24 @@ impl<'a> RcNodeStorage<'a> {
     ///
     /// None of the [RcNodeStorage] functions rollback on failure. This means that if any error
     /// is encountered, the transaction should be rolled back to prevent database corruption.
-    pub fn open(table: String, transaction: &'a Transaction<'_>) -> anyhow::Result<Self> {
-        transaction.execute(
-            &format!(
-                r"CREATE TABLE IF NOT EXISTS {}(
-                    hash        BLOB PRIMARY KEY,
-                    data        BLOB,
-                    ref_count   INTEGER
-                )",
-                &table
-            ),
-            [],
-        )?;
+    pub fn open(table: &str, transaction: &'tx Transaction<'tx>) -> anyhow::Result<Self> {
+        let queries = if table == "tree_global" {
+            let q = GLOBAL.borrow();
+            // this assertion exists to prove that the reborrowing works.
+            debug_assert!(matches!(q.create, Cow::Borrowed(_)));
+            q
+        } else if table == "tree_contracts" {
+            CONTRACTS.borrow()
+        } else {
+            Queries::format(table)
+        };
 
-        Ok(Self { transaction, table })
+        transaction.execute(&queries.create, [])?;
+
+        Ok(Self {
+            transaction,
+            queries,
+        })
     }
 
     /// Inserts the node into storage, and increments the reference count of the node's
@@ -219,15 +316,7 @@ impl<'a> RcNodeStorage<'a> {
         }
 
         let count = self.transaction.execute(
-            &format!(
-                // You may be tempted to increment the reference count ON CONFLICT, but that is incorrect.
-                //
-                // Reference counts only get incremented for the children of a node. So even though this node
-                // already exists, and someone is trying to insert it again, this node's reference count increment
-                // will occur when that someone inserts the new parent node.
-                "INSERT INTO {} (hash, data, ref_count) VALUES (:hash, :data, :ref_count) ON CONFLICT DO NOTHING",
-                &self.table
-            ),
+            &self.queries.insert,
             named_params! {
                 ":hash": &hash[..],
                 ":data": &data[..written],
@@ -262,7 +351,7 @@ impl<'a> RcNodeStorage<'a> {
         let node = self
             .transaction
             .query_row(
-                &format!("SELECT data FROM {} WHERE hash = :hash", &self.table),
+                &self.queries.get,
                 named_params! {
                     ":hash": &hash[..],
                 },
@@ -297,7 +386,7 @@ impl<'a> RcNodeStorage<'a> {
         };
 
         self.transaction.execute(
-            &format!("DELETE FROM {} WHERE hash = :hash", &self.table),
+            &self.queries.delete_node,
             named_params! {
                ":hash": &hash[..],
             },
@@ -324,7 +413,7 @@ impl<'a> RcNodeStorage<'a> {
         let ref_count = self
             .transaction
             .query_row(
-                &format!("SELECT ref_count FROM {} WHERE hash = :hash", &self.table),
+                &self.queries.get_ref_count,
                 named_params! {
                     ":hash": &hash[..],
                 },
@@ -340,10 +429,7 @@ impl<'a> RcNodeStorage<'a> {
             Some(0 | 1) => self.delete_node(key)?,
             Some(count) => {
                 self.transaction.execute(
-                    &format!(
-                        "UPDATE {} SET ref_count = :count WHERE hash = :hash",
-                        &self.table
-                    ),
+                    &self.queries.set_ref_count,
                     named_params! {
                     ":count": count - 1,
                     ":hash": &hash[..]},
@@ -359,10 +445,7 @@ impl<'a> RcNodeStorage<'a> {
     pub fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
         self.transaction.execute(
-            &format!(
-                "UPDATE {} SET ref_count = ref_count + 1 WHERE hash = :hash",
-                &self.table,
-            ),
+            &self.queries.increment_ref_count,
             named_params! {
                ":hash": &hash[..],
             },
@@ -377,15 +460,12 @@ mod tests {
     use bitvec::bitvec;
 
     /// Test helper function to query a node's current reference count from the database.
-    fn get_ref_count(storage: &RcNodeStorage<'_>, key: StarkHash) -> Option<u64> {
+    fn get_ref_count(storage: &RcNodeStorage<'_, '_>, key: StarkHash) -> Option<u64> {
         let hash = key.to_be_bytes();
         storage
             .transaction
             .query_row(
-                &format!(
-                    "SELECT ref_count FROM {} WHERE hash = :hash",
-                    &storage.table
-                ),
+                &storage.queries.get_ref_count,
                 named_params! {
                    ":hash": &hash[..],
                 },
@@ -456,7 +536,7 @@ mod tests {
         fn increment() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let key = starkhash!("123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
@@ -479,7 +559,7 @@ mod tests {
         fn decrement() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let key = starkhash!("123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
@@ -505,7 +585,7 @@ mod tests {
         fn repeat_insert() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let key = starkhash!("123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
@@ -528,7 +608,7 @@ mod tests {
         fn missing() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let key = starkhash!("123abc");
             assert_eq!(uut.get(key).unwrap(), None);
@@ -538,7 +618,7 @@ mod tests {
         fn binary() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let left_child_key = starkhash!("123abc");
             let left_child = PersistedNode::Leaf;
@@ -569,7 +649,7 @@ mod tests {
         fn edge() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let child_key = starkhash!("123abc");
             let child = PersistedNode::Leaf;
@@ -593,7 +673,7 @@ mod tests {
         fn leaf() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let key = starkhash!("123abc");
             let node = PersistedNode::Leaf;
@@ -615,7 +695,7 @@ mod tests {
         fn binary() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let left_child_key = starkhash!("123abc");
             let left_child = PersistedNode::Leaf;
@@ -643,7 +723,7 @@ mod tests {
         fn edge() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let child_key = starkhash!("123abc");
             let child = PersistedNode::Leaf;
@@ -666,7 +746,7 @@ mod tests {
         fn decrement_ref_count() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
             let leaf_key = starkhash!("123abc");
             let leaf_node = PersistedNode::Leaf;

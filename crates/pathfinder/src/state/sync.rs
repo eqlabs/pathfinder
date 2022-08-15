@@ -722,7 +722,7 @@ fn update_starknet_state(
 
 fn deploy_contract(
     transaction: &Transaction<'_>,
-    global_tree: &mut GlobalStateTree<'_>,
+    global_tree: &mut GlobalStateTree<'_, '_>,
     contract: &sequencer::reply::state_update::DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.

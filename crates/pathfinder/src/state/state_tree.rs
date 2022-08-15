@@ -15,14 +15,14 @@ use crate::{
 
 /// A Binary Merkle-Patricia Tree which contains
 /// the storage state of all StarkNet contracts.
-pub struct ContractsStateTree<'a> {
-    tree: MerkleTree<RcNodeStorage<'a>>,
+pub struct ContractsStateTree<'tx, 'queries> {
+    tree: MerkleTree<RcNodeStorage<'tx, 'queries>>,
 }
 
-impl<'a> ContractsStateTree<'a> {
-    pub fn load(transaction: &'a Transaction<'_>, root: ContractRoot) -> anyhow::Result<Self> {
+impl<'tx> ContractsStateTree<'tx, '_> {
+    pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> anyhow::Result<Self> {
         // TODO: move the string into storage.
-        let tree = MerkleTree::load("tree_contracts".to_string(), transaction, root.0)?;
+        let tree = MerkleTree::load("tree_contracts", transaction, root.0)?;
 
         Ok(Self { tree })
     }
@@ -46,14 +46,14 @@ impl<'a> ContractsStateTree<'a> {
 
 /// A Binary Merkle-Patricia Tree which contains
 /// the global state of StarkNet.
-pub struct GlobalStateTree<'a> {
-    tree: MerkleTree<RcNodeStorage<'a>>,
+pub struct GlobalStateTree<'tx, 'queries> {
+    tree: MerkleTree<RcNodeStorage<'tx, 'queries>>,
 }
 
-impl<'a> GlobalStateTree<'a> {
-    pub fn load(transaction: &'a Transaction<'_>, root: GlobalRoot) -> anyhow::Result<Self> {
+impl<'tx> GlobalStateTree<'tx, '_> {
+    pub fn load(transaction: &'tx Transaction<'tx>, root: GlobalRoot) -> anyhow::Result<Self> {
         // TODO: move the string into storage.
-        let tree = MerkleTree::load("tree_global".to_string(), transaction, root.0)?;
+        let tree = MerkleTree::load("tree_global", transaction, root.0)?;
 
         Ok(Self { tree })
     }
