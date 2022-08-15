@@ -154,6 +154,92 @@ pub(super) mod starkhash {
     pub(crate) use {common_newtype, to_from_sql};
 }
 
+pub(super) mod starkhash251 {
+    macro_rules! newtype {
+        ($target:ty) => {
+            impl $target {
+                pub const fn new(hash: StarkHash) -> Option<Self> {
+                    if hash.has_more_than_251_bits() {
+                        None
+                    } else {
+                        Some(Self(hash))
+                    }
+                }
+
+                pub const fn new_or_panic(hash: StarkHash) -> Self {
+                    match Self::new(hash) {
+                        Some(key) => key,
+                        None => panic!("Too many bits, need less for MPT keys"),
+                    }
+                }
+
+                pub const fn get(&self) -> &StarkHash {
+                    &self.0
+                }
+
+                pub fn view_bits(&self) -> &bitvec::slice::BitSlice<bitvec::order::Msb0, u8> {
+                    self.0.view_bits()
+                }
+            }
+        };
+    }
+
+    // this seems a lot of code copypasted around, but it is only used by two types. if there would
+    // be a lot more types, I'd fully flesh out a separate StarkHash251 type (like the visitor is
+    // currently called), then first deserialize to it, then have a From<_> conversion to any other
+    // Starkhash251 newtype.
+    macro_rules! deserialization {
+        ($target:ty) => {
+            impl $target {
+                pub fn deserialize_value<E>(original: &str, raw: StarkHash) -> Result<Self, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Self::new(raw).ok_or_else(|| {
+                        serde::de::Error::invalid_value(
+                            serde::de::Unexpected::Str(original),
+                            &"At most 251-bit value",
+                        )
+                    })
+                }
+            }
+
+            impl<'de> serde::Deserialize<'de> for $target {
+                fn deserialize<D>(de: D) -> Result<Self, D::Error>
+                where
+                    D: serde::Deserializer<'de>,
+                {
+                    struct StarkHash251;
+
+                    impl<'de> serde::de::Visitor<'de> for StarkHash251 {
+                        type Value = $target;
+
+                        fn expecting(
+                            &self,
+                            formatter: &mut std::fmt::Formatter<'_>,
+                        ) -> std::fmt::Result {
+                            formatter.write_str("A hex string with at most 251 bits set.")
+                        }
+
+                        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                        where
+                            E: serde::de::Error,
+                        {
+                            let hash =
+                                StarkHash::from_hex_str(v).map_err(serde::de::Error::custom)?;
+
+                            <$target>::deserialize_value(v, hash)
+                        }
+                    }
+
+                    de.deserialize_str(StarkHash251)
+                }
+            }
+        };
+    }
+    pub(crate) use {deserialization, newtype};
+}
+
 pub(super) mod fmt {
 
     /// Adds a thin display implementation which uses the inner fields Display.

@@ -1988,7 +1988,7 @@ mod tests {
         #[test]
         fn event_keys_to_base64_strings() {
             let event = transaction::Event {
-                from_address: ContractAddress(starkhash!(
+                from_address: ContractAddress::new_or_panic(starkhash!(
                     "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
                 )),
                 data: vec![],
@@ -2049,7 +2049,7 @@ mod tests {
                 .map(|idx| Event {
                     data: Vec::new(),
                     keys: Vec::new(),
-                    from_address: ContractAddress(
+                    from_address: ContractAddress::new_or_panic(
                         StarkHash::from_be_slice(&idx.to_be_bytes()).unwrap(),
                     ),
                 })
@@ -2069,7 +2069,7 @@ mod tests {
                 transaction::Transaction::Invoke(transaction::InvokeTransaction {
                     calldata: vec![],
                     // Only required because event insert rejects if this is None
-                    contract_address: ContractAddress(StarkHash::ZERO),
+                    contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
                     entry_point_type: transaction::EntryPointType::External,
                     entry_point_selector: EntryPoint(StarkHash::ZERO),
                     max_fee: Fee(H128::zero()),
@@ -2079,7 +2079,7 @@ mod tests {
                 transaction::Transaction::Invoke(transaction::InvokeTransaction {
                     calldata: vec![],
                     // Only required because event insert rejects if this is None
-                    contract_address: ContractAddress(StarkHash::ZERO),
+                    contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
                     entry_point_type: transaction::EntryPointType::External,
                     entry_point_selector: EntryPoint(StarkHash::ZERO),
                     max_fee: Fee(H128::zero()),

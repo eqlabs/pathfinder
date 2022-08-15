@@ -459,7 +459,7 @@ pub mod state_update {
             use crate::starkhash;
 
             let expected = DeployedContract {
-                address: ContractAddress(starkhash!("01")),
+                address: ContractAddress::new_or_panic(starkhash!("01")),
                 class_hash: ClassHash(starkhash!("02")),
             };
 
@@ -551,7 +551,7 @@ pub mod add_transaction {
                 transaction_hash: StarknetTransactionHash(starkhash!(
                     "0296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f"
                 )),
-                address: ContractAddress(starkhash!(
+                address: ContractAddress::new_or_panic(starkhash!(
                     "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                 )),
             };

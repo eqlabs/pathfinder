@@ -442,21 +442,21 @@ pub mod test_utils {
     pub const INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(starkhash!(
         "0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
     ));
-    pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress(starkhash!(
+    pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(starkhash!(
         "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
     ));
-    pub const INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress(starkhash!(
+    pub const INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(starkhash!(
         "05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
     ));
     pub const VALID_ENTRY_POINT: EntryPoint = EntryPoint(starkhash!(
         "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
     ));
     pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
-    pub const VALID_KEY: StorageAddress = StorageAddress(starkhash!(
+    pub const VALID_KEY: StorageAddress = StorageAddress::new_or_panic(starkhash!(
         "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
     ));
     lazy_static::lazy_static! {
-        pub static ref VALID_KEY_DEC: String = crate::rpc::serde::starkhash_to_dec_str(&VALID_KEY.0);
+        pub static ref VALID_KEY_DEC: String = crate::rpc::serde::starkhash_to_dec_str(VALID_KEY.get());
     }
     pub const VALID_CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("04d2"))];
     /// Class hash for VALID_CONTRACT_ADDR
@@ -481,7 +481,7 @@ mod tests {
     impl std::fmt::Display for crate::core::ContractAddress {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let mut buf = [0u8; 2 + 64];
-            let s = self.0.as_hex_str(&mut buf);
+            let s = self.get().as_hex_str(&mut buf);
             f.write_str(s)
         }
     }
@@ -1155,7 +1155,7 @@ mod tests {
             let result = client
                 .storage(
                     VALID_CONTRACT_ADDR,
-                    StorageAddress(StarkHash::ZERO),
+                    StorageAddress::new_or_panic(StarkHash::ZERO),
                     BlockHashOrTag::Tag(Tag::Latest),
                 )
                 .await
@@ -1573,7 +1573,7 @@ mod tests {
             let error = client
                 .add_invoke_transaction(
                     Call {
-                        contract_address: ContractAddress(starkhash!(
+                        contract_address: ContractAddress::new_or_panic(starkhash!(
                             "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
                         )),
                         calldata: vec![
@@ -1624,7 +1624,7 @@ mod tests {
             client
                 .add_invoke_transaction(
                     Call {
-                        contract_address: ContractAddress(starkhash!(
+                        contract_address: ContractAddress::new_or_panic(starkhash!(
                             "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
                         )),
                         calldata: vec![
@@ -1695,7 +1695,7 @@ mod tests {
                 .add_declare_transaction(
                     contract_class,
                     // actual address dumped from a `starknet declare` call
-                    ContractAddress(starkhash!("01")),
+                    ContractAddress::new_or_panic(starkhash!("01")),
                     Fee(0u128.to_be_bytes().into()),
                     vec![],
                     TransactionNonce(StarkHash::ZERO),

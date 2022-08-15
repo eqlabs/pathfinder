@@ -60,7 +60,8 @@ impl StateUpdateParser {
         let mut deployed_contracts = Vec::new();
         while let Some(address) = deployment_data.next() {
             let address = parse_starkhash(address).context("Parsing contract address")?;
-            let address = ContractAddress(address);
+            let address =
+                ContractAddress::new(address).context("Parsed too large contract address")?;
 
             let hash = deployment_data
                 .next()
@@ -120,7 +121,7 @@ impl StateUpdateParser {
     fn parse_contract_update(&mut self) -> Result<ContractUpdate> {
         let address = self.0.next().context("Missing contract address")?;
         let address = parse_starkhash(address).context("Parsing contract address")?;
-        let address = ContractAddress(address);
+        let address = ContractAddress::new(address).context("Too large contract address")?;
 
         let num_updates = self.0.next().context("Missing number of storage updates")?;
         let num_updates = parse_usize(num_updates).context("Parsing Number of storage updates")?;
@@ -141,7 +142,7 @@ impl StateUpdateParser {
     fn parse_storage_update(&mut self) -> Result<StorageUpdate> {
         let address = self.0.next().context("Missing storage address")?;
         let address = parse_starkhash(address).context("Parsing storage address")?;
-        let address = StorageAddress(address);
+        let address = StorageAddress::new(address).context("Too large storage address")?;
         let value = self.0.next().context("Missing storage value")?;
         let value = parse_starkhash(value).context("Parsing storage value")?;
         let value = StorageValue(value);
@@ -177,7 +178,7 @@ mod tests {
 
     impl From<StorageUpdate> for Vec<U256> {
         fn from(val: StorageUpdate) -> Self {
-            let address = u256_from_starkhash(val.address.0);
+            let address = u256_from_starkhash(*val.address.get());
             let value = u256_from_starkhash(val.value.0);
             vec![address, value]
         }
@@ -186,7 +187,7 @@ mod tests {
     impl From<ContractUpdate> for Vec<U256> {
         fn from(val: ContractUpdate) -> Self {
             let mut data = vec![
-                u256_from_starkhash(val.address.0),
+                u256_from_starkhash(*val.address.get()),
                 U256::from(val.storage_updates.len()),
             ];
             data.extend(
@@ -217,7 +218,7 @@ mod tests {
     impl From<DeployedContract> for Vec<U256> {
         fn from(val: DeployedContract) -> Self {
             let mut data = vec![
-                u256_from_starkhash(val.address.0),
+                u256_from_starkhash(*val.address.get()),
                 u256_from_starkhash(val.hash.0),
                 U256::from(val.call_data.len()),
             ];
@@ -254,14 +255,14 @@ mod tests {
 
     fn contract_update() -> ContractUpdate {
         ContractUpdate {
-            address: ContractAddress(starkhash!("123456")),
+            address: ContractAddress::new_or_panic(starkhash!("123456")),
             storage_updates: vec![
                 StorageUpdate {
-                    address: StorageAddress(starkhash!("01")),
+                    address: StorageAddress::new_or_panic(starkhash!("01")),
                     value: StorageValue(starkhash!("0301")),
                 },
                 StorageUpdate {
-                    address: StorageAddress(starkhash!("02")),
+                    address: StorageAddress::new_or_panic(starkhash!("02")),
                     value: StorageValue(starkhash!("0305")),
                 },
             ],
@@ -270,7 +271,7 @@ mod tests {
 
     fn deployed_contract() -> DeployedContract {
         DeployedContract {
-            address: ContractAddress(starkhash!("045691")),
+            address: ContractAddress::new_or_panic(starkhash!("045691")),
             hash: ClassHash(starkhash!("022513")),
             call_data: vec![starkhash!("01"), starkhash!("02"), starkhash!("1230")],
         }
@@ -314,7 +315,7 @@ mod tests {
         #[test]
         fn ok() {
             let update = StorageUpdate {
-                address: StorageAddress(starkhash!("0200")),
+                address: StorageAddress::new_or_panic(starkhash!("0200")),
                 value: StorageValue(starkhash!("0300")),
             };
             let data: Vec<U256> = update.clone().into();
@@ -327,7 +328,7 @@ mod tests {
         #[test]
         fn missing_data() {
             let update = StorageUpdate {
-                address: StorageAddress(starkhash!("0200")),
+                address: StorageAddress::new_or_panic(starkhash!("0200")),
                 value: StorageValue(starkhash!("0300")),
             };
             let mut data: Vec<U256> = update.into();
@@ -356,7 +357,7 @@ mod tests {
         #[test]
         fn no_storage_updates() {
             let update = ContractUpdate {
-                address: ContractAddress(starkhash!("123456")),
+                address: ContractAddress::new_or_panic(starkhash!("123456")),
                 storage_updates: Vec::new(),
             };
 

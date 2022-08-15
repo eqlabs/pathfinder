@@ -263,7 +263,7 @@ pub(crate) mod test_utils {
                     calldata: vec![CallParam(
                         StarkHash::from_hex_str(&"0".repeat(i + 3)).unwrap(),
                     )],
-                    contract_address: ContractAddress(
+                    contract_address: ContractAddress::new_or_panic(
                         StarkHash::from_hex_str(&"1".repeat(i + 3)).unwrap(),
                     ),
                     entry_point_selector: EntryPoint(
@@ -288,7 +288,7 @@ pub(crate) mod test_utils {
                 .contains(&x) =>
             {
                 transaction::Transaction::Deploy(DeployTransaction {
-                    contract_address: ContractAddress(
+                    contract_address: ContractAddress::new_or_panic(
                         StarkHash::from_hex_str(&"5".repeat(i + 3)).unwrap(),
                     ),
                     contract_address_salt: ContractAddressSalt(
@@ -307,7 +307,7 @@ pub(crate) mod test_utils {
                 class_hash: ClassHash(StarkHash::from_hex_str(&"a".repeat(i + 3)).unwrap()),
                 max_fee: Fee(H128::zero()),
                 nonce: TransactionNonce(StarkHash::from_hex_str(&"b".repeat(i + 3)).unwrap()),
-                sender_address: ContractAddress(
+                sender_address: ContractAddress::new_or_panic(
                     StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
                 ),
                 signature: vec![TransactionSignatureElem(
@@ -323,7 +323,7 @@ pub(crate) mod test_utils {
             actual_fee: None,
             events: if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
                 vec![transaction::Event {
-                    from_address: ContractAddress(
+                    from_address: ContractAddress::new_or_panic(
                         StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
                     ),
                     data: vec![EventData(

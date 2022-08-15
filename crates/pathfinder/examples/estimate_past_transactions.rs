@@ -155,14 +155,14 @@ fn feed_work(
         let call = match tx {
             SimpleTransaction::Invoke(tx)
                 if !previously_declared_deployed_in_the_same_block
-                    .contains(&tx.contract_address.0) =>
+                    .contains(tx.contract_address.get()) =>
             {
                 tx.into()
             }
             SimpleTransaction::Invoke(SimpleInvoke {
                 contract_address, ..
             }) => {
-                tracing::debug!(contract_address=%contract_address.0, "same block deployed contract found");
+                tracing::debug!(contract_address=%contract_address.get(), "same block deployed contract found");
                 same_tx_deploy_call += 1;
                 continue;
             }
@@ -172,7 +172,7 @@ fn feed_work(
             }
             SimpleTransaction::Deploy(SimpleDeploy { contract_address }) => {
                 deploys += 1;
-                previously_declared_deployed_in_the_same_block.insert(contract_address.0);
+                previously_declared_deployed_in_the_same_block.insert(*contract_address.get());
                 continue;
             }
         };

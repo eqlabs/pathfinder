@@ -408,7 +408,7 @@ mod json {
             let contract = crate::starkhash!(
                 "0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3"
             );
-            let contract = crate::core::ContractAddress(contract);
+            let contract = crate::core::ContractAddress::new_or_panic(contract);
 
             let chain = crate::core::Chain::Goerli;
             let sequencer = crate::sequencer::Client::new(chain).unwrap();
@@ -431,7 +431,7 @@ mod json {
             use crate::starkhash;
 
             // Known contract which triggered a hash mismatch failure.
-            let address = ContractAddress(starkhash!(
+            let address = ContractAddress::new_or_panic(starkhash!(
                 "0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC"
             ));
 

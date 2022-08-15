@@ -314,7 +314,7 @@ pub(crate) fn migrate_with(
                         ":block_number": block_number,
                         ":idx": idx,
                         ":transaction_hash": transaction_hash,
-                        ":from_address": &tx.contract_address.0.as_be_bytes()[..],
+                        ":from_address": tx.contract_address,
                         ":keys": &serialized_keys,
                         ":data": &serialized_data,
                     ]
