@@ -267,8 +267,8 @@ impl<'a> RcNodeStorage<'a> {
                     ":hash": &hash[..],
                 },
                 |row| {
-                    let data: Vec<u8> = row.get("data")?;
-                    Ok(PersistedNode::deserialize(&data))
+                    let data = row.get_ref_unwrap("data").as_blob()?;
+                    Ok(PersistedNode::deserialize(data))
                 },
             )
             .optional()?;
