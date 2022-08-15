@@ -120,19 +120,19 @@ impl BinaryNode {
     ///
     /// If either childs hash is [None], then the hash cannot
     /// be calculated and it will remain [None].
-    pub fn calculate_hash(&mut self) {
+    pub(crate) fn calculate_hash(&mut self) {
         if self.hash.is_some() {
             return;
         }
 
         let left = match self.left.borrow().hash() {
             Some(hash) => hash,
-            None => return,
+            None => unreachable!("subtrees have to be commited first"),
         };
 
         let right = match self.right.borrow().hash() {
             Some(hash) => hash,
-            None => return,
+            None => unreachable!("subtrees have to be commited first"),
         };
 
         self.hash = Some(stark_hash(left, right));
@@ -216,14 +216,14 @@ impl EdgeNode {
     ///
     /// If the child's hash is [None], then the hash cannot
     /// be calculated and it will remain [None].
-    pub fn calculate_hash(&mut self) {
+    pub(crate) fn calculate_hash(&mut self) {
         if self.hash.is_some() {
             return;
         }
 
         let child = match self.child.borrow().hash() {
             Some(hash) => hash,
-            None => return,
+            None => unreachable!("subtree has to be commited before"),
         };
 
         let path = StarkHash::from_bits(&self.path).unwrap();
