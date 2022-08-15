@@ -7,7 +7,6 @@ use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
-
 /// Stores StarkNet contract information, specifically a contract's
 ///
 /// - [hash](ClassHash)

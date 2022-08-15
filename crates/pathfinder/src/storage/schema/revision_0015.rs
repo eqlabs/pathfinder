@@ -3,7 +3,7 @@ use rusqlite::{named_params, Transaction as RusqliteTransaction};
 
 use web3::types::H128;
 
-use crate::core::{Fee};
+use crate::core::Fee;
 
 // This is a copy of the sequencer reply types _without_ deny_unknown_fields
 // The point is that with the old `struct Transaction` we had some optional
