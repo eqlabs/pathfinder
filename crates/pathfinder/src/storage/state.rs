@@ -1290,11 +1290,11 @@ mod tests {
                 let mut connection = storage.connection().unwrap();
                 let tx = connection.transaction().unwrap();
 
-                let expected = Some(StarknetBlockNumber::new(22).unwrap());
+                let expected = Some(StarknetBlockNumber::new_or_panic(22));
                 RefsTable::set_l1_l2_head(&tx, expected).unwrap();
                 assert_eq!(expected, RefsTable::get_l1_l2_head(&tx).unwrap());
 
-                let expected = Some(StarknetBlockNumber::new(25).unwrap());
+                let expected = Some(StarknetBlockNumber::new_or_panic(25));
                 RefsTable::set_l1_l2_head(&tx, expected).unwrap();
                 assert_eq!(expected, RefsTable::get_l1_l2_head(&tx).unwrap());
 
@@ -2172,8 +2172,8 @@ mod tests {
 
             const BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
-                from_block: Some(StarknetBlockNumber::new(BLOCK_NUMBER as u64).unwrap()),
-                to_block: Some(StarknetBlockNumber::new(BLOCK_NUMBER as u64).unwrap()),
+                from_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
+                to_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: vec![],
                 page_size: test_utils::NUM_EVENTS,
@@ -2201,7 +2201,7 @@ mod tests {
             const UNTIL_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
                 from_block: None,
-                to_block: Some(StarknetBlockNumber::new(UNTIL_BLOCK_NUMBER as u64).unwrap()),
+                to_block: Some(StarknetBlockNumber::new_or_panic(UNTIL_BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: vec![],
                 page_size: test_utils::NUM_EVENTS,
@@ -2228,7 +2228,7 @@ mod tests {
 
             const FROM_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
-                from_block: Some(StarknetBlockNumber::new(FROM_BLOCK_NUMBER as u64).unwrap()),
+                from_block: Some(StarknetBlockNumber::new_or_panic(FROM_BLOCK_NUMBER as u64)),
                 to_block: None,
                 contract_address: None,
                 keys: vec![],

@@ -41,7 +41,7 @@ fn main() -> anyhow::Result<()> {
     for block_number in 0..latest_block_number.get() {
         let tx = db.transaction().unwrap();
         let block_id =
-            StarknetBlocksBlockId::Number(StarknetBlockNumber::new(block_number).unwrap());
+            StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(block_number));
         let block = StarknetBlocksTable::get(&tx, block_id)?.unwrap();
         let transactions_and_receipts =
             StarknetTransactionsTable::get_transaction_data_for_block(&tx, block_id)?;
