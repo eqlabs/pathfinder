@@ -1264,7 +1264,7 @@ mod tests {
         }
 
         #[test]
-        fn mulitple_identical_roots() {
+        fn multiple_identical_roots() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
             let mut uut =
