@@ -17,14 +17,14 @@
 //!
 //! Starknet defines three node types for a tree.
 //!
-//! [Leaf nodes](Node::Leaf) which represent an actual value stored.
+//! `Leaf nodes` which represent an actual value stored.
 //!
-//! [Edge nodes](Node::Edge) which connect two nodes, and __must be__ a maximal subtree (i.e. be as
+//! `Edge nodes` which connect two nodes, and __must be__ a maximal subtree (i.e. be as
 //! long as possible). This latter condition is important as it strictly defines a tree (i.e. all
 //! trees with the same leaves must have the same nodes). The path of an edge node can therefore
 //! be many bits long.
 //!
-//! [Binary nodes](Node::Binary) is a branch node with two children, left and right. This represents
+//! `Binary nodes` is a branch node with two children, left and right. This represents
 //! only a single bit on the path to a leaf.
 //!
 //! A tree storing a single key-value would consist of two nodes. The root node would be an edge node
@@ -32,7 +32,7 @@
 //!
 //! #### Implementation details
 //!
-//! We've defined an additional node type, an [Unresolved node](Node::Unresolved). This is used to
+//! We've defined an additional node type, an `Unresolved node`. This is used to
 //! represent a node who's hash is known, but has not yet been retrieved from storage (and we therefore
 //! have no further details about it).
 //!
@@ -59,7 +59,7 @@ use stark_hash::StarkHash;
 
 /// Backing storage for [`MerkleTree`].
 ///
-/// Default implementation and persistent implementation is the [`RcNodeStorage`]. Testing/future
+/// Default implementation and persistent implementation is the `RcNodeStorage`. Testing/future
 /// implementations include [`HashMap`](std::collections::HashMap) and `()` based implementations
 /// where the backing storage is not persistent, or doesn't exist at all. The nodes will still be
 /// visitable in-memory.
@@ -100,11 +100,12 @@ impl<'a> MerkleTree<RcNodeStorage<'a>> {
     /// The transaction is used for all storage interactions. The transaction
     /// should therefore be committed after all tree mutations are completed.
     ///
-    /// Uses an [RcNodeStorage] as backing storage.
+    /// Uses an `RcNodeStorage` as backing storage. Tree will be 251 max height; there's no method
+    /// currently for loading a non-251 height tree of the storage, as there is none such.
     ///
     /// ### Warning
     ///
-    /// None of the [RcNodeStorage] functions rollback on failure. This means that if any error
+    /// None of the `RcNodeStorage` functions rollback on failure. This means that if any error
     /// is encountered, the transaction should be rolled back to prevent database corruption.
     pub fn load(
         table: String,

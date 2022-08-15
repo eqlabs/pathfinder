@@ -11,8 +11,6 @@ mod schema;
 mod state;
 
 use std::path::{Path, PathBuf};
-#[cfg(test)]
-use std::sync::Mutex;
 
 pub use contract::{ContractCodeTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
@@ -107,14 +105,14 @@ impl Storage {
         Ok(conn)
     }
 
-    #[cfg(test)]
     /// Convenience function for tests to create an in-memory database.
     /// Equivalent to [Storage::migrate] with an in-memory backed database.
+    // No longer cfg(test) because needed in benchmarks
     pub fn in_memory() -> anyhow::Result<Self> {
         // Create a unique database name so that they are not shared between
         // concurrent tests. i.e. Make every in-mem Storage unique.
         lazy_static::lazy_static!(
-            static ref COUNT: Mutex<u64> = Mutex::new(0);
+            static ref COUNT: std::sync::Mutex<u64> = Default::default();
         );
         let unique_mem_db = {
             let mut count = COUNT.lock().unwrap();
