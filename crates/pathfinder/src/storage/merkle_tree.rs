@@ -214,6 +214,12 @@ impl<'a> RcNodeStorage<'a> {
 
         // Insert the node itself
         let data = node.clone().serialize();
+
+        if data.is_empty() {
+            // it's a leaf
+            return Ok(());
+        }
+
         let count = self.transaction.execute(
             &format!(
                 // You may be tempted to increment the reference count ON CONFLICT, but that is incorrect.
@@ -244,7 +250,7 @@ impl<'a> RcNodeStorage<'a> {
                     self.increment_ref_count(edge.child)
                         .context("Failed to increment child's reference count.")?;
                 }
-                PersistedNode::Leaf => {}
+                PersistedNode::Leaf => unreachable!("leaves are no longer inserted"),
             }
         }
 

@@ -263,9 +263,16 @@ fn compute_final_hash(
 /// of the index of the transaction / event within the block.
 ///
 /// The tree height is 64 in our case since our set operation takes u64 index values.
-#[derive(Default)]
 struct CommitmentTree {
     tree: MerkleTree<()>,
+}
+
+impl Default for CommitmentTree {
+    fn default() -> Self {
+        Self {
+            tree: MerkleTree::empty((), 64),
+        }
+    }
 }
 
 impl CommitmentTree {
