@@ -377,7 +377,7 @@ mod tests {
     use bitvec::bitvec;
 
     /// Test helper function to query a node's current reference count from the database.
-    fn get_ref_count(storage: &RcNodeStorage<'_>, key: StarkHash) -> u16 {
+    fn get_ref_count(storage: &RcNodeStorage<'_>, key: StarkHash) -> Option<u64> {
         let hash = key.to_be_bytes();
         storage
             .transaction
@@ -390,11 +390,12 @@ mod tests {
                    ":hash": &hash[..],
                 },
                 |row| {
-                    let ref_count: u16 = row.get("ref_count")?;
+                    let ref_count = row.get("ref_count")?;
 
                     Ok(ref_count)
                 },
             )
+            .optional()
             .unwrap()
     }
 
@@ -464,14 +465,14 @@ mod tests {
             });
 
             uut.upsert(key, node).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 0);
+            assert_eq!(get_ref_count(&uut, key), Some(0));
 
             uut.increment_ref_count(key).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 1);
+            assert_eq!(get_ref_count(&uut, key), Some(1));
 
             uut.increment_ref_count(key).unwrap();
             uut.increment_ref_count(key).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 3);
+            assert_eq!(get_ref_count(&uut, key), Some(3));
         }
 
         #[test]
@@ -487,14 +488,14 @@ mod tests {
             });
 
             uut.upsert(key, node).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 0);
+            assert_eq!(get_ref_count(&uut, key), Some(0));
 
             uut.increment_ref_count(key).unwrap();
             uut.increment_ref_count(key).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 2);
+            assert_eq!(get_ref_count(&uut, key), Some(2));
 
             uut.decrement_ref_count(key).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 1);
+            assert_eq!(get_ref_count(&uut, key), Some(1));
             // Node should get deleted once the reference count hits 0.
             uut.decrement_ref_count(key).unwrap();
             assert_eq!(uut.get(key).unwrap(), None);
@@ -515,7 +516,7 @@ mod tests {
             uut.upsert(key, node.clone()).unwrap();
             uut.upsert(key, node.clone()).unwrap();
             uut.upsert(key, node).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 0);
+            assert_eq!(get_ref_count(&uut, key), Some(0));
         }
     }
 
@@ -552,14 +553,14 @@ mod tests {
             });
 
             uut.upsert(left_child_key, left_child).unwrap();
-            assert_eq!(get_ref_count(&uut, left_child_key), 0);
+            assert_eq!(get_ref_count(&uut, left_child_key), None);
 
             uut.upsert(right_child_key, right_child).unwrap();
-            assert_eq!(get_ref_count(&uut, right_child_key), 0);
+            assert_eq!(get_ref_count(&uut, right_child_key), None);
 
             uut.upsert(parent_key, parent.clone()).unwrap();
-            assert_eq!(get_ref_count(&uut, left_child_key), 1);
-            assert_eq!(get_ref_count(&uut, right_child_key), 1);
+            assert_eq!(get_ref_count(&uut, left_child_key), None);
+            assert_eq!(get_ref_count(&uut, right_child_key), None);
 
             assert_eq!(uut.get(parent_key).unwrap(), Some(parent));
         }
@@ -580,10 +581,10 @@ mod tests {
             });
 
             uut.upsert(child_key, child).unwrap();
-            assert_eq!(get_ref_count(&uut, child_key), 0);
+            assert_eq!(get_ref_count(&uut, child_key), None);
 
             uut.upsert(parent_key, parent.clone()).unwrap();
-            assert_eq!(get_ref_count(&uut, child_key), 1);
+            assert_eq!(get_ref_count(&uut, child_key), None);
 
             assert_eq!(uut.get(parent_key).unwrap(), Some(parent));
         }
@@ -597,30 +598,18 @@ mod tests {
             let key = starkhash!("123abc");
             let node = PersistedNode::Leaf;
 
-            uut.upsert(key, node.clone()).unwrap();
-            assert_eq!(uut.get(key).unwrap(), Some(node));
+            uut.upsert(key, node).unwrap();
+            assert_eq!(
+                uut.get(key).unwrap(),
+                None,
+                "leaves should no longer be persisted"
+            );
         }
     }
 
     mod delete {
         use super::*;
         use crate::starkhash;
-
-        #[test]
-        fn leaf() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
-
-            let key = starkhash!("123abc");
-            let node = PersistedNode::Leaf;
-
-            uut.upsert(key, node.clone()).unwrap();
-            assert_eq!(uut.get(key).unwrap(), Some(node));
-
-            uut.delete_node(key).unwrap();
-            assert_eq!(uut.get(key).unwrap(), None);
-        }
 
         #[test]
         fn binary() {
@@ -694,17 +683,18 @@ mod tests {
                 child: leaf_key,
             });
 
-            uut.upsert(leaf_key, leaf_node.clone()).unwrap();
+            uut.upsert(leaf_key, leaf_node).unwrap();
             uut.upsert(parent_key_1, parent_node_1).unwrap();
             uut.upsert(parent_key_2, parent_node_2).unwrap();
 
-            assert_eq!(get_ref_count(&uut, leaf_key), 2);
+            // This test case is a bit more trickier since after removal of leaf insertions, this
+            // is a bit more trickier to test, and it is not obvious what should be the next tier
+            // edges.
+            //
+            // originally this case allowed testing that leaf lives as long as either of it's
+            // parents.
             uut.delete_node(parent_key_1).unwrap();
-
-            assert_eq!(uut.get(leaf_key).unwrap(), Some(leaf_node));
-
             uut.delete_node(parent_key_2).unwrap();
-            assert_eq!(uut.get(leaf_key).unwrap(), None);
         }
     }
 }
