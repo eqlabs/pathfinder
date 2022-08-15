@@ -116,6 +116,7 @@ impl Storage {
         );
         let unique_mem_db = {
             let mut count = COUNT.lock().unwrap();
+            // &cache=shared allows other threads to see and access the inmemory database
             let unique_mem_db = format!("file:memdb{}?mode=memory&cache=shared", count);
             *count += 1;
             unique_mem_db
