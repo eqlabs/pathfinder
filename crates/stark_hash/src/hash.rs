@@ -111,8 +111,10 @@ impl StarkHash {
         // ff uses byteorder BigEndian::read_u64_into which uses copy_nonoverlapping(..) and
         // u64::to_be(), this is essentially the same, though would like to test conclusively
 
-        // FIXME: in 1.63 ptr::copy_nonoverlapping should become available, it should make this at
-        // least more readable and no one has to wonder if all offsets are accounted for.
+        // FIXME: in 1.63 ptr::copy_nonoverlapping became available, using it with a local [u64; 4]
+        // will require the &mut in const context. using the copy_nonoverlapping should make this
+        // at least more readable and no one has to wonder if all offsets are accounted for.
+
         #[rustfmt::skip]
         let mut limbs = [
             u64::from_ne_bytes([
