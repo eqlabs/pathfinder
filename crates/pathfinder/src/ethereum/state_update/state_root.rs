@@ -170,7 +170,7 @@ mod tests {
                     log_index: EthereumLogIndex(11),
                 },
                 global_root: GlobalRoot(starkhash!("012354")),
-                block_number: StarknetBlockNumber(3),
+                block_number: StarknetBlockNumber::new_or_panic(3),
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis), chain);
@@ -200,7 +200,7 @@ mod tests {
                     log_index: EthereumLogIndex(11),
                 },
                 global_root: GlobalRoot(starkhash!("012354")),
-                block_number: StarknetBlockNumber(3),
+                block_number: StarknetBlockNumber::new_or_panic(3),
             };
 
             let mut uut = StateRootFetcher::new(Some(not_genesis), chain);

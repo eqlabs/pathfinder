@@ -245,7 +245,7 @@ impl SerializeAs<StarknetBlockNumber> for StarknetBlockNumberAsHexStr {
     where
         S: serde::Serializer,
     {
-        let bytes = source.0.to_be_bytes();
+        let bytes = source.get().to_be_bytes();
         // StarknetBlockNumber is "0x" + 16 digits at most
         let mut buf = [0u8; 2 + 16];
         let s = bytes_as_hex_str(&bytes, &mut buf);
@@ -272,9 +272,8 @@ impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexSt
                 E: serde::de::Error,
             {
                 let stripped = v.strip_prefix("0x").unwrap_or(v);
-                u64::from_str_radix(stripped, 16)
-                    .map_err(serde::de::Error::custom)
-                    .map(StarknetBlockNumber)
+                let raw = u64::from_str_radix(stripped, 16).map_err(serde::de::Error::custom)?;
+                StarknetBlockNumber::deserialize_value::<E>(raw)
             }
         }
 
@@ -620,8 +619,8 @@ mod tests {
         );
 
         impl BlockNum {
-            pub fn new(v: u64) -> Self {
-                Self(crate::core::StarknetBlockNumber(v))
+            pub const fn new_or_panic(v: u64) -> Self {
+                Self(crate::core::StarknetBlockNumber::new_or_panic(v))
             }
         }
 
@@ -631,21 +630,19 @@ mod tests {
             ["", "0x"].into_iter().for_each(|prefix| {
                 assert_eq!(
                     serde_json::from_str::<BlockNum>(&format!("\"{prefix}0\"")).unwrap(),
-                    BlockNum::new(0)
+                    BlockNum::new_or_panic(0)
                 );
                 assert_eq!(
                     serde_json::from_str::<BlockNum>(&format!("\"{prefix}123\"")).unwrap(),
-                    BlockNum::new(0x123)
+                    BlockNum::new_or_panic(0x123)
                 );
                 assert_eq!(
                     serde_json::from_str::<BlockNum>(&format!("\"{prefix}1234\"")).unwrap(),
-                    BlockNum::new(0x1234)
+                    BlockNum::new_or_panic(0x1234)
                 );
-                assert_eq!(
-                    serde_json::from_str::<BlockNum>(&format!("\"{prefix}ffffffffffffffff\""))
-                        .unwrap(),
-                    BlockNum::new(u64::MAX)
-                );
+                let e = serde_json::from_str::<BlockNum>(&format!("\"{prefix}ffffffffffffffff\""))
+                    .unwrap_err();
+                assert!(e.is_data(), "{e:?}");
             });
         }
     }

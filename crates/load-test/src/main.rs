@@ -38,7 +38,11 @@ async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
     let mut rng = rand::rngs::StdRng::from_entropy();
     let block_number: u64 = rng.gen_range(1..1800);
 
-    let block = get_block_by_number(user, StarknetBlockNumber(block_number)).await?;
+    let block = get_block_by_number(
+        user,
+        StarknetBlockNumber::new(block_number).expect("block_number out of range"),
+    )
+    .await?;
     let block_by_hash = get_block_by_hash(user, block.block_hash.unwrap()).await?;
     assert_eq!(block, block_by_hash);
 
@@ -49,7 +53,7 @@ async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
             let transaction_by_hash_and_index = get_transaction_by_block_hash_and_index(
                 user,
                 block.block_hash.unwrap(),
-                StarknetTransactionIndex(idx as u64),
+                StarknetTransactionIndex::new_or_panic(idx as u64),
             )
             .await?;
             assert_eq!(transaction, transaction_by_hash_and_index);
@@ -57,7 +61,7 @@ async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
             let transaction_by_number_and_index = get_transaction_by_block_number_and_index(
                 user,
                 block.block_number.unwrap(),
-                StarknetTransactionIndex(idx as u64),
+                StarknetTransactionIndex::new_or_panic(idx as u64),
             )
             .await?;
             assert_eq!(transaction, transaction_by_number_and_index);
@@ -70,7 +74,7 @@ async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
 }
 
 async fn task_block_by_number(user: &mut GooseUser) -> TransactionResult {
-    get_block_by_number(user, StarknetBlockNumber(1000)).await?;
+    get_block_by_number(user, StarknetBlockNumber::new_or_panic(1000)).await?;
     Ok(())
 }
 
@@ -103,7 +107,7 @@ async fn task_block_transaction_count_by_hash(user: &mut GooseUser) -> Transacti
 }
 
 async fn task_block_transaction_count_by_number(user: &mut GooseUser) -> TransactionResult {
-    get_block_transaction_count_by_number(user, StarknetBlockNumber(1000)).await?;
+    get_block_transaction_count_by_number(user, StarknetBlockNumber::new_or_panic(1000)).await?;
     Ok(())
 }
 
@@ -124,8 +128,8 @@ async fn task_transaction_by_hash(user: &mut GooseUser) -> TransactionResult {
 async fn task_transaction_by_block_number_and_index(user: &mut GooseUser) -> TransactionResult {
     get_transaction_by_block_number_and_index(
         user,
-        StarknetBlockNumber(1000),
-        StarknetTransactionIndex(3),
+        StarknetBlockNumber::new_or_panic(1000),
+        StarknetTransactionIndex::new_or_panic(3),
     )
     .await?;
     Ok(())
@@ -140,7 +144,7 @@ async fn task_transaction_by_block_hash_and_index(user: &mut GooseUser) -> Trans
             )
             .unwrap(),
         ),
-        StarknetTransactionIndex(3),
+        StarknetTransactionIndex::new_or_panic(3),
     )
     .await?;
     Ok(())
@@ -211,8 +215,8 @@ async fn task_get_events(user: &mut GooseUser) -> TransactionResult {
     let events = get_events(
         user,
         EventFilter {
-            from_block: Some(StarknetBlockNumber(1000).into()),
-            to_block: Some(StarknetBlockNumber(1100).into()),
+            from_block: Some(StarknetBlockNumber::new_or_panic(1000).into()),
+            to_block: Some(StarknetBlockNumber::new_or_panic(1100).into()),
             address: Some(ContractAddress(
                 StarkHash::from_hex_str(
                     "0x103114c4c5ac233a360d39a9217b9067be6979f3d08e1cf971fd22baf8f8713",

@@ -44,7 +44,8 @@ impl TryFrom<web3::types::Log> for StateUpdateLog {
             .into_int()
             .context("Starknet block number could not be parsed")?
             .as_u64();
-        let block_number = StarknetBlockNumber(block_number);
+        let block_number = StarknetBlockNumber::new(block_number)
+            .ok_or_else(|| anyhow::anyhow!("Starknet block number out of range"))?;
 
         Ok(Self {
             global_root,
@@ -184,7 +185,7 @@ mod tests {
                 )
                 .unwrap(),
             );
-            let sequence_number = StarknetBlockNumber(13699);
+            let sequence_number = StarknetBlockNumber::new_or_panic(13699);
 
             (
                 create_test_log(signature, data),

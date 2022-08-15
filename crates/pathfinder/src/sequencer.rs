@@ -412,7 +412,7 @@ pub mod test_utils {
     use crate::{
         core::{
             CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
-            StarknetBlockNumber, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
+            StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
         },
         rpc::types::{BlockHashOrTag, BlockNumberOrTag},
         starkhash,
@@ -452,7 +452,6 @@ pub mod test_utils {
         "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
     ));
     pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
-    pub const INVALID_TX_INDEX: StarknetTransactionIndex = StarknetTransactionIndex(u64::MAX);
     pub const VALID_KEY: StorageAddress = StorageAddress(starkhash!(
         "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
     ));
@@ -630,7 +629,7 @@ mod tests {
                     sequencer_address: None,
                     state_root: crate::core::GlobalRoot(StarkHash::ZERO),
                     status: Status::NotReceived,
-                    timestamp: StarknetBlockTimestamp(0),
+                    timestamp: StarknetBlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: None,
@@ -706,7 +705,7 @@ mod tests {
                 .await
                 .unwrap();
             let by_number = client
-                .block(StarknetBlockNumber(231579).into())
+                .block(StarknetBlockNumber::new_or_panic(231579).into())
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -792,7 +791,7 @@ mod tests {
             let expected_version = "0.9.1";
 
             let block = client
-                .block(StarknetBlockNumber(192844).into())
+                .block(StarknetBlockNumber::new_or_panic(192844).into())
                 .await
                 .unwrap();
             assert_eq!(
@@ -1445,7 +1444,7 @@ mod tests {
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update(StarknetBlockNumber(231579).into())
+                .state_update(StarknetBlockNumber::new_or_panic(231579).into())
                 .await
                 .unwrap()
                 .into();
@@ -1531,7 +1530,7 @@ mod tests {
             )]);
 
             let parsed = client
-                .state_update(StarknetBlockNumber(193137).into())
+                .state_update(StarknetBlockNumber::new_or_panic(193137).into())
                 .await
                 .expect("should had parsed with the optional declared contracts");
 

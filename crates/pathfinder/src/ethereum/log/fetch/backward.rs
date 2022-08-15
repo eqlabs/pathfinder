@@ -158,7 +158,6 @@ mod tests {
 
     use std::str::FromStr;
 
-    use stark_hash::StarkHash;
     use web3::types::H256;
 
     use crate::{
@@ -170,6 +169,7 @@ mod tests {
             log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin,
             TransactionOrigin,
         },
+        starkhash,
     };
 
     #[tokio::test]
@@ -198,13 +198,10 @@ mod tests {
                 },
                 log_index: EthereumLogIndex(17),
             },
-            global_root: GlobalRoot(
-                StarkHash::from_hex_str(
-                    "0x05EA3EB34039C870869FD7E6E51B46C10A289AA88A8887E8DA8F1009D84EA98B",
-                )
-                .unwrap(),
-            ),
-            block_number: StarknetBlockNumber(7690),
+            global_root: GlobalRoot(starkhash!(
+                "05EA3EB34039C870869FD7E6E51B46C10A289AA88A8887E8DA8F1009D84EA98B"
+            )),
+            block_number: StarknetBlockNumber::new_or_panic(7690),
         };
 
         // We use the same log type twice; this shouldn't matter and let's us check
@@ -217,13 +214,13 @@ mod tests {
 
         let transport = HttpTransport::test_transport(chain);
         let logs = fetcher.fetch(&transport).await.unwrap();
-        let mut block_number = update_log.block_number.0 - 1;
+        let mut block_number = update_log.block_number.get() - 1;
         for log in logs {
             let log = match log {
                 EitherMetaLog::Left(log) => log,
                 EitherMetaLog::Right(log) => log,
             };
-            assert_eq!(log.block_number.0, block_number, "First fetch");
+            assert_eq!(log.block_number.get(), block_number, "First fetch");
             block_number -= 1;
         }
         let logs = fetcher.fetch(&transport).await.unwrap();
@@ -232,7 +229,7 @@ mod tests {
                 EitherMetaLog::Left(log) => log,
                 EitherMetaLog::Right(log) => log,
             };
-            assert_eq!(log.block_number.0, block_number, "Second fetch");
+            assert_eq!(log.block_number.get(), block_number, "Second fetch");
             block_number -= 1;
         }
     }

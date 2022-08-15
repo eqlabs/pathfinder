@@ -474,7 +474,7 @@ impl RpcApi {
         index: StarknetTransactionIndex,
     ) -> RpcResult<Transaction> {
         let index: usize = index
-            .0
+            .get()
             .try_into()
             .map_err(|e| Error::Call(CallError::InvalidParams(anyhow::Error::new(e))))?;
 
@@ -930,7 +930,7 @@ impl RpcApi {
             StarknetBlocksTable::get_latest_number(&tx)
                 .context("Reading latest block number from database")
                 .map_err(internal_server_error)?
-                .map(|number| number.0)
+                .map(|number| number.get())
                 .ok_or_else(|| Error::from(ErrorCode::NoBlocks))
         });
 

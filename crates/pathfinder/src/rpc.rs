@@ -483,25 +483,25 @@ mod tests {
             number: StarknetBlockNumber::GENESIS,
             hash: genesis_hash,
             root: global_root0,
-            timestamp: StarknetBlockTimestamp(0),
+            timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
         let block1_hash = StarknetBlockHash(starkhash_bytes!(b"block 1"));
         let block1 = StarknetBlock {
-            number: StarknetBlockNumber(1),
+            number: StarknetBlockNumber::new_or_panic(1),
             hash: block1_hash,
             root: global_root1,
-            timestamp: StarknetBlockTimestamp(1),
+            timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(starkhash_bytes!(&[1u8])),
         };
         let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
         let block2 = StarknetBlock {
-            number: StarknetBlockNumber(2),
+            number: StarknetBlockNumber::new_or_panic(2),
             hash: latest_hash,
             root: global_root2,
-            timestamp: StarknetBlockTimestamp(2),
+            timestamp: StarknetBlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(starkhash_bytes!(&[2u8])),
         };
@@ -533,7 +533,7 @@ mod tests {
             l1_to_l2_consumed_message: None,
             l2_to_l1_messages: vec![],
             transaction_hash: txn0_hash,
-            transaction_index: StarknetTransactionIndex(0),
+            transaction_index: StarknetTransactionIndex::new_or_panic(0),
         };
         let txn1_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 1"));
         let txn2_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 2"));
@@ -663,7 +663,7 @@ mod tests {
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[0].hash(),
-                transaction_index: StarknetTransactionIndex(0),
+                transaction_index: StarknetTransactionIndex::new_or_panic(0),
             },
             Receipt {
                 actual_fee: None,
@@ -678,7 +678,7 @@ mod tests {
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[1].hash(),
-                transaction_index: StarknetTransactionIndex(1),
+                transaction_index: StarknetTransactionIndex::new_or_panic(1),
             },
         ];
 
@@ -687,7 +687,7 @@ mod tests {
             parent_hash: latest.hash,
             sequencer_address: SequencerAddress(starkhash_bytes!(b"pending sequencer address")),
             status: crate::sequencer::reply::Status::Pending,
-            timestamp: StarknetBlockTimestamp(1234567),
+            timestamp: StarknetBlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
             transactions,
             starknet_version: Some("pending version".to_owned()),
@@ -871,7 +871,10 @@ mod tests {
                     let params = rpc_params!(BlockId::Latest);
 
                     check_result(params, move |block, _| {
-                        assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
+                        assert_eq!(
+                            block.block_number,
+                            Some(StarknetBlockNumber::new_or_panic(2))
+                        );
                         assert_eq!(block.block_hash, Some(latest_hash));
                     })
                     .await;
@@ -889,7 +892,10 @@ mod tests {
                     let params = by_name([("block_id", json!("latest"))]);
 
                     check_result(params, move |block, _| {
-                        assert_eq!(block.block_number, Some(StarknetBlockNumber(2)));
+                        assert_eq!(
+                            block.block_number,
+                            Some(StarknetBlockNumber::new_or_panic(2))
+                        );
                         assert_eq!(block.block_hash, Some(latest_hash));
                     })
                     .await;
@@ -1780,7 +1786,10 @@ mod tests {
             let not_found = client(addr)
                 .request::<ContractClass>(
                     "starknet_getClassAt",
-                    rpc_params!(BlockId::Number(StarknetBlockNumber(2)), contract_address),
+                    rpc_params!(
+                        BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                        contract_address
+                    ),
                 )
                 .await
                 .unwrap_err();
@@ -1869,7 +1878,7 @@ mod tests {
             }];
             let block2 = StarknetBlocksTable::get(
                 transaction,
-                StarknetBlocksBlockId::Number(StarknetBlockNumber(2)),
+                StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(2)),
             )
             .unwrap()
             .unwrap();
@@ -1882,10 +1891,10 @@ mod tests {
                 .unwrap();
 
             let block3 = StarknetBlock {
-                number: StarknetBlockNumber(3),
+                number: StarknetBlockNumber::new_or_panic(3),
                 hash: StarknetBlockHash(starkhash_bytes!(b"block 3 hash")),
                 root: global_tree.apply().unwrap(),
-                timestamp: StarknetBlockTimestamp(3),
+                timestamp: StarknetBlockTimestamp::new_or_panic(3),
                 gas_price: GasPrice::from(3),
                 sequencer_address: SequencerAddress(starkhash_bytes!(&[3u8])),
             };
@@ -1992,7 +2001,7 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockId::Number(StarknetBlockNumber(123)));
+            let params = rpc_params!(BlockId::Number(StarknetBlockNumber::new_or_panic(123)));
             let error = client(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
@@ -2396,7 +2405,7 @@ mod tests {
             .unwrap();
         let expected = BlockHashAndNumber {
             hash: StarknetBlockHash(starkhash_bytes!(b"latest")),
-            number: StarknetBlockNumber(2),
+            number: StarknetBlockNumber::new_or_panic(2),
         };
         assert_eq!(latest, expected);
     }
@@ -2567,8 +2576,8 @@ mod tests {
 
                 const BLOCK_NUMBER: usize = 2;
                 let params = rpc_params!(EventFilter {
-                    from_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64).into()),
-                    to_block: Some(StarknetBlockNumber(BLOCK_NUMBER as u64).into()),
+                    from_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
+                    to_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
                     address: None,
                     keys: vec![],
                     page_size: test_utils::NUM_EVENTS,
@@ -2759,10 +2768,10 @@ mod tests {
                     "filter",
                     json!({
                         "fromBlock": {
-                            "block_number": expected_event.block_number.unwrap().0
+                            "block_number": expected_event.block_number.unwrap().get()
                         },
                         "toBlock": {
-                            "block_number": expected_event.block_number.unwrap().0
+                            "block_number": expected_event.block_number.unwrap().get()
                         },
                         "address": expected_event.from_address,
                         "keys": [expected_event.keys[0]],

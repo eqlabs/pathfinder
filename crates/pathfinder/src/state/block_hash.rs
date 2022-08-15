@@ -143,15 +143,17 @@ mod meta {
     }
 
     const TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: StarknetBlockNumber(47028),
-        not_verifiable_range: Some(StarknetBlockNumber(119802)..StarknetBlockNumber(148428)),
+        first_0_7_block: StarknetBlockNumber::new_or_panic(47028),
+        not_verifiable_range: Some(
+            StarknetBlockNumber::new_or_panic(119802)..StarknetBlockNumber::new_or_panic(148428),
+        ),
         fallback_sequencer_address: SequencerAddress(starkhash!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         )),
     };
 
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: StarknetBlockNumber(833),
+        first_0_7_block: StarknetBlockNumber::new_or_panic(833),
         not_verifiable_range: None,
         fallback_sequencer_address: SequencerAddress(starkhash!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
@@ -186,7 +188,7 @@ fn compute_final_hash_pre_0_7(
     let mut chain = HashChain::default();
 
     // block number
-    chain.update(StarkHash::from(block_number.0));
+    chain.update(StarkHash::from(block_number.get()));
     // global state root
     chain.update(state_root.0);
     // sequencer address: these versions used 0 as the sequencer address
@@ -229,13 +231,13 @@ fn compute_final_hash(
     let mut chain = HashChain::default();
 
     // block number
-    chain.update(StarkHash::from(block_number.0));
+    chain.update(StarkHash::from(block_number.get()));
     // global state root
     chain.update(state_root.0);
     // sequencer address
     chain.update(sequencer_address.0);
     // block timestamp
-    chain.update(StarkHash::from(timestamp.0));
+    chain.update(StarkHash::from(timestamp.get()));
     // number of transactions
     chain.update(StarkHash::from(num_transactions));
     // transaction commitment

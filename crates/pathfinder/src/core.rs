@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use stark_hash::StarkHash;
 use web3::types::{H128, H160, H256};
 
+mod macros;
+
 /// The address of a StarkNet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddress(
@@ -143,47 +145,39 @@ pub struct GlobalRoot(pub StarkHash);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockHash(pub StarkHash);
 
-macro_rules! i64_masquerading_as_u64_newtype_to_from_sql {
-    ($target:ty) => {
-        impl rusqlite::ToSql for $target {
-            fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-                // this uses i64::try_from(u64_value) thus limiting our u64 to 0..=i64::MAX
-                // TODO: it would be best to handle this check at deserialization time.
-                self.0.to_sql()
-            }
-        }
+/// A StarkNet block number.
+#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd)]
+pub struct StarknetBlockNumber(u64);
 
-        impl rusqlite::types::FromSql for $target {
-            fn column_result(
-                value: rusqlite::types::ValueRef<'_>,
-            ) -> rusqlite::types::FromSqlResult<Self> {
-                Ok(Self(value.as_i64()? as u64))
-            }
-        }
-    };
+macros::i64_backed_u64::to_from_sql!(StarknetBlockNumber);
+macros::i64_backed_u64::new_get_partialeq!(StarknetBlockNumber);
+macros::i64_backed_u64::serdes!(StarknetBlockNumber);
+
+impl From<StarknetBlockNumber> for StarkHash {
+    fn from(x: StarknetBlockNumber) -> Self {
+        StarkHash::from(x.0)
+    }
 }
 
-/// A StarkNet block number.
-#[derive(Copy, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct StarknetBlockNumber(pub u64);
-
-i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockNumber);
-
 /// The timestamp of a Starknet block.
-#[derive(Copy, Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct StarknetBlockTimestamp(pub u64);
+#[derive(Copy, Debug, Clone, PartialEq, Eq)]
+pub struct StarknetBlockTimestamp(u64);
 
-i64_masquerading_as_u64_newtype_to_from_sql!(StarknetBlockTimestamp);
+macros::i64_backed_u64::to_from_sql!(StarknetBlockTimestamp);
+macros::i64_backed_u64::new_get_partialeq!(StarknetBlockTimestamp);
+macros::i64_backed_u64::serdes!(StarknetBlockTimestamp);
 
 /// A StarkNet transaction hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetTransactionHash(pub StarkHash);
 
 /// A StarkNet transaction index.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct StarknetTransactionIndex(pub u64);
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct StarknetTransactionIndex(u64);
 
-i64_masquerading_as_u64_newtype_to_from_sql!(StarknetTransactionIndex);
+macros::i64_backed_u64::to_from_sql!(StarknetTransactionIndex);
+macros::i64_backed_u64::new_get_partialeq!(StarknetTransactionIndex);
+macros::i64_backed_u64::serdes!(StarknetTransactionIndex);
 
 /// A single element of a signature used to secure a StarkNet transaction.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -269,17 +263,10 @@ pub enum BlockId {
 }
 
 impl StarknetBlockNumber {
-    pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber(0);
+    pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(0);
     /// The maximum [StarknetBlockNumber] we can support. Restricted to `u64::MAX/2` to
     /// match Sqlite's maximum integer value.
-    #[cfg(test)]
-    pub const MAX: StarknetBlockNumber = StarknetBlockNumber(i64::MAX as u64);
-}
-
-impl std::cmp::PartialOrd for StarknetBlockNumber {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
+    pub const MAX: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(i64::MAX as u64);
 }
 
 impl std::ops::Add<u64> for StarknetBlockNumber {
@@ -434,90 +421,18 @@ impl std::fmt::Display for Chain {
     }
 }
 
-/// Common trait implementations for *[StarkHash]* newtypes, meaning tuple structs with single
-/// field.
-macro_rules! starkhash_common_newtype {
-    ($target:ty) => {
-        starkhash_to_from_sql!($target);
-        thin_starkhash_debug!($target);
-        thin_newtype_display!($target);
-    };
-
-    ($head:ty, $($tail:ty),+ $(,)?) => {
-        starkhash_common_newtype!($head);
-        starkhash_common_newtype!($($tail),+);
-    };
-}
-
-/// Adds the common ToSql and FromSql implementations for the type.
-///
-/// This avoids having to implement the traits over at `stark_hash` which would require a
-/// dependency to `rusqlite` over at `stark_hash`.
-///
-/// This allows direct use of the values as sql parameters or reading them from the rows. It should
-/// be noted that `Option<_>` must be used to when reading a nullable column, as this
-/// implementation will error at `as_blob()?`.
-macro_rules! starkhash_to_from_sql {
-    ($target:ty) => {
-        impl rusqlite::ToSql for $target {
-            fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-                use rusqlite::types::{ToSqlOutput, ValueRef};
-                Ok(ToSqlOutput::Borrowed(ValueRef::Blob(self.0.as_be_bytes())))
-            }
-        }
-
-        impl rusqlite::types::FromSql for $target {
-            fn column_result(
-                value: rusqlite::types::ValueRef<'_>,
-            ) -> rusqlite::types::FromSqlResult<Self> {
-                let blob = value.as_blob()?;
-                let sh = stark_hash::StarkHash::from_be_slice(blob)
-                    .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
-                Ok(Self(sh))
-            }
-        }
-    };
-}
-
-/// Adds a thin display implementation which skips the type name.
-macro_rules! thin_newtype_display {
-    ($target:ty) => {
-        impl std::fmt::Display for $target {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                std::fmt::Display::fmt(&self.0, f)
-            }
-        }
-    };
-}
-
-/// Adds a thin Debug implementation, which skips `X(StarkHash(debug))` as `X(debug)`.
-///
-/// The implementation uses Display of the wrapped value to produce smallest possible string, but
-/// still wraps it in a default Debug derive style `TypeName(hash)`.
-macro_rules! thin_starkhash_debug {
-    ($target:ty) => {
-        impl std::fmt::Debug for $target {
-            fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(fmt, "{}({})", stringify!($target), self.0)
-            }
-        }
-    };
-
-    ($head:ty, $($tail:ty),+ $(,)?) => {
-        thin_starkhash_debug!($head);
-        thin_starkhash_debug!($($tail),+);
-    };
-}
-
 // these types are used in sequencer tests, which require special fixed width representation
 // FIXME: it'd be better if these had normal varlen display and lenient parsing.
-thin_starkhash_debug!(ContractAddress, StarknetTransactionHash, ClassHash,);
+macros::fmt::thin_debug!(ContractAddress);
+macros::starkhash::to_from_sql!(ContractAddress);
 
-starkhash_to_from_sql!(ContractAddress);
-starkhash_to_from_sql!(StarknetTransactionHash);
-starkhash_to_from_sql!(ClassHash);
+macros::fmt::thin_debug!(StarknetTransactionHash);
+macros::starkhash::to_from_sql!(StarknetTransactionHash);
 
-starkhash_common_newtype!(
+macros::fmt::thin_debug!(ClassHash);
+macros::starkhash::to_from_sql!(ClassHash);
+
+macros::starkhash::common_newtype!(
     ContractAddressSalt,
     ContractNonce,
     ContractStateHash,
@@ -543,8 +458,8 @@ starkhash_common_newtype!(
     TransactionNonce,
 );
 
-thin_newtype_display!(StarknetBlockNumber);
-thin_newtype_display!(StarknetBlockTimestamp);
+macros::fmt::thin_display!(StarknetBlockNumber);
+macros::fmt::thin_display!(StarknetBlockTimestamp);
 
 #[cfg(test)]
 mod tests {

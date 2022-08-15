@@ -144,7 +144,7 @@ where
     // Start update sync-status process.
     let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
         // Seems a better choice for an invalid block number than 0
-        StarknetBlockNumber(u64::MAX),
+        StarknetBlockNumber::MAX,
         StarknetBlockHash(StarkHash::ZERO),
         GlobalRoot(StarkHash::ZERO),
     ));
@@ -176,8 +176,8 @@ where
         tokio::select! {
             l1_event = rx_l1.recv() => match l1_event {
                 Some(l1::Event::Update(updates)) => {
-                    let first = updates.first().map(|u| u.block_number.0);
-                    let last = updates.last().map(|u| u.block_number.0);
+                    let first = updates.first().map(|u| u.block_number.get());
+                    let last = updates.last().map(|u| u.block_number.get());
 
                     l1_update(&mut db_conn, &updates).await.with_context(|| {
                         format!("Update L1 state with blocks {:?}-{:?}", first, last)
@@ -185,13 +185,13 @@ where
 
                     match updates.as_slice() {
                         [single] => {
-                            tracing::info!("L1 sync updated to block {}", single.block_number.0);
+                            tracing::info!("L1 sync updated to block {}", single.block_number);
                         }
                         [first, .., last] => {
                             tracing::info!(
                                 "L1 sync updated with blocks {} - {}",
-                                first.block_number.0,
-                                last.block_number.0
+                                first.block_number,
+                                last.block_number
                             );
                         }
                         _ => {}
@@ -200,7 +200,7 @@ where
                 Some(l1::Event::Reorg(reorg_tail)) => {
                     l1_reorg(&mut db_conn, reorg_tail)
                         .await
-                        .with_context(|| format!("Reorg L1 state to block {}", reorg_tail.0))?;
+                        .with_context(|| format!("Reorg L1 state to block {}", reorg_tail))?;
 
                     let new_head = match reorg_tail {
                         StarknetBlockNumber::GENESIS => None,
@@ -209,7 +209,7 @@ where
 
                     match new_head {
                         Some(head) => {
-                            tracing::info!("L1 reorg occurred, new L1 head is block {}", head.0)
+                            tracing::info!("L1 reorg occurred, new L1 head is block {}", head)
                         }
                         None => tracing::info!("L1 reorg occurred, new L1 head is genesis"),
                     }
@@ -224,7 +224,7 @@ where
 
                     let _ = tx.send(update);
 
-                    tracing::trace!("Query for L1 update for block {}", block.0);
+                    tracing::trace!("Query for L1 update for block {}", block);
                 }
                 None => {
                     // L1 sync process failed; restart it.
@@ -253,7 +253,7 @@ where
                 Some(l2::Event::Update(block, state_update, timings)) => {
                     pending_data.clear().await;
 
-                    let block_number = block.block_number.0;
+                    let block_number = block.block_number;
                     let block_hash = block.block_hash;
                     let storage_updates: usize = state_update.state_diff.storage_diffs.iter().map(|(_, storage_diffs)| storage_diffs.len()).sum();
                     let update_t = std::time::Instant::now();
@@ -271,7 +271,6 @@ where
                     match &mut *state.status.write().await {
                         SyncStatus::False(_) => {}
                         SyncStatus::Status(status) => {
-                            let block_number = StarknetBlockNumber(block_number);
                             status.current = NumberedBlock::from((block_hash, block_number));
 
                             if status.highest.number <= block_number {
@@ -319,7 +318,7 @@ where
                     };
                     match new_head {
                         Some(head) => {
-                            tracing::info!("L2 reorg occurred, new L2 head is block {}", head.0)
+                            tracing::info!("L2 reorg occurred, new L2 head is block {}", head)
                         }
                         None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
                     }
@@ -1077,7 +1076,7 @@ mod tests {
             origin: ETH_ORIG.clone(),
         };
         pub static ref STATE_UPDATE_LOG1: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
-            block_number: StarknetBlockNumber(1),
+            block_number: StarknetBlockNumber::new_or_panic(1),
             global_root: GlobalRoot(*B),
             origin: ETH_ORIG.clone(),
         };
@@ -1089,20 +1088,20 @@ mod tests {
             sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
             state_root: GlobalRoot(StarkHash::ZERO),
             status: reply::Status::AcceptedOnL1,
-            timestamp: crate::core::StarknetBlockTimestamp(0),
+            timestamp: crate::core::StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: None,
         };
         pub static ref BLOCK1: reply::Block = reply::Block {
             block_hash: StarknetBlockHash(*B),
-            block_number: StarknetBlockNumber(1),
+            block_number: StarknetBlockNumber::new_or_panic(1),
             gas_price: Some(GasPrice::from(1)),
             parent_block_hash: StarknetBlockHash(*A),
             sequencer_address: Some(SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap())),
             state_root: GlobalRoot(*B),
             status: reply::Status::AcceptedOnL2,
-            timestamp: crate::core::StarknetBlockTimestamp(1),
+            timestamp: crate::core::StarknetBlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: None,
@@ -1111,15 +1110,15 @@ mod tests {
             number: StarknetBlockNumber::GENESIS,
             hash: StarknetBlockHash(*A),
             root: GlobalRoot(StarkHash::ZERO),
-            timestamp: StarknetBlockTimestamp(0),
+            timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
         pub static ref STORAGE_BLOCK1: storage::StarknetBlock = storage::StarknetBlock {
-            number: StarknetBlockNumber(1),
+            number: StarknetBlockNumber::new_or_panic(1),
             hash: StarknetBlockHash(*B),
             root: GlobalRoot(*B),
-            timestamp: StarknetBlockTimestamp(1),
+            timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap()),
         };
@@ -1214,7 +1213,7 @@ mod tests {
                 // Case 1: some L1-L2 head expected
                 Some(StarknetBlockNumber::GENESIS),
                 // Case 2: some L1-L2 head expected
-                Some(StarknetBlockNumber(1))
+                Some(StarknetBlockNumber::new_or_panic(1))
             ]
         );
     }
@@ -1238,14 +1237,17 @@ mod tests {
 
             // A simple L1 sync task
             let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
-                tx.send(l1::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
-                    .await
-                    .unwrap();
+                tx.send(l1::Event::Reorg(StarknetBlockNumber::new_or_panic(
+                    reorg_on_block,
+                )))
+                .await
+                .unwrap();
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(())
             };
 
-            RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(reorg_on_block))).unwrap();
+            RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber::new_or_panic(reorg_on_block)))
+                .unwrap();
             updates
                 .into_iter()
                 .for_each(|update| L1StateTable::upsert(&tx, &update).unwrap());
@@ -1481,14 +1483,17 @@ mod tests {
 
             // A simple L2 sync task
             let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
-                tx.send(l2::Event::Reorg(StarknetBlockNumber(reorg_on_block)))
-                    .await
-                    .unwrap();
+                tx.send(l2::Event::Reorg(StarknetBlockNumber::new_or_panic(
+                    reorg_on_block,
+                )))
+                .await
+                .unwrap();
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(())
             };
 
-            RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(reorg_on_block))).unwrap();
+            RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber::new_or_panic(reorg_on_block)))
+                .unwrap();
             updates
                 .into_iter()
                 .for_each(|block| StarknetBlocksTable::insert(&tx, &block, None).unwrap());

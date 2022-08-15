@@ -49,7 +49,7 @@ async fn main() {
     let (compressed_tx, compressed_rx) = std::sync::mpsc::sync_channel(2);
 
     let downloader = std::thread::spawn(move || {
-        use pathfinder_lib::core::{BlockId, StarknetBlockNumber};
+        use pathfinder_lib::core::BlockId;
         use pathfinder_lib::sequencer::{Client, ClientApi};
 
         let client = Client::new(chain)?;
@@ -61,8 +61,7 @@ async fn main() {
         let mut rows = query.query([])?;
 
         while let Some(row) = rows.next()? {
-            let block_num = row.get_unwrap::<_, i64>(0) as u64;
-            let block_num = StarknetBlockNumber(block_num);
+            let block_num = row.get_unwrap(0);
             let state_update = handle.block_on(client.state_update(BlockId::Number(block_num)))?;
 
             downloaded_tx.send((block_num, state_update))?;

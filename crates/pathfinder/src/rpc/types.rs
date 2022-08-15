@@ -69,7 +69,7 @@ pub enum BlockNumberOrTag {
 impl std::fmt::Display for BlockNumberOrTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BlockNumberOrTag::Number(StarknetBlockNumber(n)) => std::fmt::Display::fmt(n, f),
+            BlockNumberOrTag::Number(n) => std::fmt::Display::fmt(n, f),
             BlockNumberOrTag::Tag(t) => std::fmt::Display::fmt(t, f),
         }
     }
@@ -1061,7 +1061,7 @@ pub mod reply {
 
         impl std::fmt::Debug for NumberedBlock {
             fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(fmt, "({}, {})", self.hash.0, self.number.0)
+                write!(fmt, "({}, {})", self.hash.0, self.number.get())
             }
         }
 
@@ -1078,7 +1078,7 @@ pub mod reply {
                 use stark_hash::StarkHash;
                 NumberedBlock {
                     hash: StarknetBlockHash(StarkHash::from_hex_str(h).unwrap()),
-                    number: StarknetBlockNumber(n),
+                    number: StarknetBlockNumber::new_or_panic(n),
                 }
             }
         }
@@ -1233,7 +1233,7 @@ pub mod reply {
                             parent_hash: StarknetBlockHash(starkhash!("01")),
                             block_number: Some(StarknetBlockNumber::GENESIS),
                             new_root: Some(GlobalRoot(starkhash!("02"))),
-                            timestamp: StarknetBlockTimestamp(1),
+                            timestamp: StarknetBlockTimestamp::new_or_panic(1),
                             sequencer_address: SequencerAddress(starkhash!("03")),
                             transactions: Transactions::Full(vec![
                                 Transaction::Declare(DeclareTransaction {
@@ -1298,7 +1298,7 @@ pub mod reply {
                             status: TransactionStatus::AcceptedOnL1,
                             status_data: Some("blah".to_string()),
                             block_hash: StarknetBlockHash(starkhash!("0aaa")),
-                            block_number: StarknetBlockNumber(3),
+                            block_number: StarknetBlockNumber::new_or_panic(3),
                         }
                     }
                 }
