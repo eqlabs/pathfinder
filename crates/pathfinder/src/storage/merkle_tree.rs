@@ -286,6 +286,8 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
             Queries::format(table)
         };
 
+        // no need to prepare this, unless we get multiple tree openings in single transaction, but
+        // that should not happen outside of tests and benchmarks.
         transaction.execute(&queries.create, [])?;
 
         Ok(Self {
@@ -315,14 +317,13 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
             return Ok(());
         }
 
-        let count = self.transaction.execute(
-            &self.queries.insert,
-            named_params! {
-                ":hash": &hash[..],
-                ":data": &data[..written],
-                ":ref_count": 0
-            },
-        )?;
+        let mut stmt = self.transaction.prepare_cached(&self.queries.insert)?;
+
+        let count = stmt.execute(named_params! {
+            ":hash": &hash[..],
+            ":data": &data[..written],
+            ":ref_count": 0
+        })?;
 
         // Increment children reference counts ONLY IF the node was inserted.
         if count != 0 {
@@ -348,10 +349,10 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     pub fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
         let hash = key.to_be_bytes();
 
-        let node = self
-            .transaction
+        let mut query = self.transaction.prepare_cached(&self.queries.get)?;
+
+        let node = query
             .query_row(
-                &self.queries.get,
                 named_params! {
                     ":hash": &hash[..],
                 },
@@ -385,12 +386,11 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
             None => return Ok(()),
         };
 
-        self.transaction.execute(
-            &self.queries.delete_node,
-            named_params! {
-               ":hash": &hash[..],
-            },
-        )?;
+        let mut stmt = self.transaction.prepare_cached(&self.queries.delete_node)?;
+
+        stmt.execute(named_params! {
+           ":hash": &hash[..],
+        })?;
 
         match node {
             PersistedNode::Binary(binary) => {
@@ -410,10 +410,12 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     pub fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
-        let ref_count = self
+        let mut query = self
             .transaction
+            .prepare_cached(&self.queries.get_ref_count)?;
+
+        let ref_count = query
             .query_row(
-                &self.queries.get_ref_count,
                 named_params! {
                     ":hash": &hash[..],
                 },
@@ -444,12 +446,13 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     /// Increments the reference count of the node.
     pub fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
-        self.transaction.execute(
-            &self.queries.increment_ref_count,
-            named_params! {
-               ":hash": &hash[..],
-            },
-        )?;
+        let mut stmt = self
+            .transaction
+            .prepare_cached(&self.queries.increment_ref_count)?;
+
+        stmt.execute(named_params! {
+           ":hash": &hash[..],
+        })?;
         Ok(())
     }
 }
