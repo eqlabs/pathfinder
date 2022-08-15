@@ -24,6 +24,8 @@ struct FileConfig {
     sqlite_wal: Option<String>,
     #[serde(rename = "poll-pending")]
     poll_pending: Option<String>,
+    #[serde(rename = "monitor-address")]
+    monitor_address: Option<String>,
 }
 
 impl FileConfig {
@@ -41,6 +43,7 @@ impl FileConfig {
         .with(ConfigOption::PythonSubprocesses, self.python_subprocesses)
         .with(ConfigOption::EnableSQLiteWriteAheadLogging, self.sqlite_wal)
         .with(ConfigOption::PollPending, self.poll_pending)
+        .with(ConfigOption::MonitorAddress, self.monitor_address)
     }
 }
 
@@ -143,6 +146,14 @@ password = "{}""#,
         let toml = format!(r#"poll-pending = "{}""#, value);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::PollPending), Some(value));
+    }
+
+    #[test]
+    fn monitor_address() {
+        let value = "address".to_owned();
+        let toml = format!(r#"monitor-address = "{}""#, value);
+        let mut cfg = config_from_str(&toml).unwrap();
+        assert_eq!(cfg.take(ConfigOption::MonitorAddress), Some(value));
     }
 
     #[test]

@@ -29,6 +29,8 @@ pub enum ConfigOption {
     EnableSQLiteWriteAheadLogging,
     /// Enable pending polling.
     PollPending,
+    /// Enables and sets the monitoring endpoint
+    MonitorAddress,
 }
 
 impl Display for ConfigOption {
@@ -44,6 +46,7 @@ impl Display for ConfigOption {
                 f.write_str("Enable SQLite write-ahead logging")
             }
             ConfigOption::PollPending => f.write_str("Enable pending block polling"),
+            ConfigOption::MonitorAddress => f.write_str("Pathfinder monitoring address"),
         }
     }
 }
@@ -74,6 +77,8 @@ pub struct Configuration {
     pub sqlite_wal: bool,
     /// Enable pending polling.
     pub poll_pending: bool,
+    /// The node's monitoring address and port.
+    pub monitoring_addr: Option<SocketAddr>,
 }
 
 impl Configuration {
