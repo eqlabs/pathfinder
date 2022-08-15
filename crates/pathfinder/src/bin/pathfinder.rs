@@ -4,10 +4,10 @@ use anyhow::Context;
 use pathfinder_lib::{
     cairo, config, core,
     ethereum::transport::{EthereumTransport, HttpTransport},
-    rpc, sequencer, state,
+    monitoring, rpc, sequencer, state,
     storage::{JournalMode, Storage},
 };
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
 #[tokio::main]
@@ -28,6 +28,15 @@ async fn main() -> anyhow::Result<()> {
     );
 
     permission_check(&config.data_directory)?;
+
+    let pathfinder_ready = match config.monitoring_addr {
+        Some(monitoring_addr) => {
+            let ready = Arc::new(AtomicBool::new(false));
+            let _jh = monitoring::spawn_server(monitoring_addr, ready.clone()).await;
+            Some(ready)
+        }
+        None => None,
+    };
 
     let eth_transport =
         HttpTransport::from_config(config.ethereum).context("Creating Ethereum transport")?;
@@ -113,6 +122,11 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
     let update_handle = tokio::spawn(pathfinder_lib::update::poll_github_for_releases());
+
+    // We are now ready.
+    if let Some(ready) = pathfinder_ready {
+        ready.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 
     // Monitor our spawned process tasks.
     tokio::select! {
