@@ -103,33 +103,30 @@ pub enum PersistedNode {
 }
 
 impl PersistedNode {
-    fn serialize(self) -> Vec<u8> {
+    fn serialize(&self, buffer: &mut [u8]) -> usize {
         match self {
-            PersistedNode::Binary(binary) => binary
-                .left
-                .to_be_bytes()
-                .into_iter()
-                .chain(binary.right.to_be_bytes().into_iter())
-                .collect(),
+            PersistedNode::Binary(binary) => {
+                buffer[..32].copy_from_slice(&binary.left.to_be_bytes());
+                buffer[32..][..32].copy_from_slice(&binary.right.to_be_bytes());
+                64
+            }
             PersistedNode::Edge(edge) => {
-                let child = edge.child.to_be_bytes();
                 let length = edge.path.len() as u8;
+
+                buffer[..32].copy_from_slice(&edge.child.to_be_bytes());
 
                 // Bit path must be written in MSB format. This means that the LSB
                 // must be in the last bit position. Since we write a fixed number of
                 // bytes (32) but the path length may vary, we have to ensure we are writing
                 // to the end of the slice.
-                let mut path = [0u8; 32];
-                path.view_bits_mut::<Msb0>()[256 - edge.path.len()..]
+                buffer[32..][..32].view_bits_mut::<Msb0>()[256 - edge.path.len()..]
                     .copy_from_bitslice(&edge.path);
 
-                child
-                    .into_iter()
-                    .chain(path.into_iter())
-                    .chain(std::iter::once(length))
-                    .collect()
+                buffer[64] = length;
+
+                65
             }
-            PersistedNode::Leaf => Vec::new(),
+            PersistedNode::Leaf => 0,
         }
     }
 
@@ -212,11 +209,12 @@ impl<'a> RcNodeStorage<'a> {
     pub fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
-        // Insert the node itself
-        let data = node.clone().serialize();
+        let mut data = [0u8; 65];
 
-        if data.is_empty() {
-            // it's a leaf
+        // Insert the node itself
+        let written = node.serialize(&mut data);
+
+        if written == 0 {
             return Ok(());
         }
 
@@ -232,7 +230,7 @@ impl<'a> RcNodeStorage<'a> {
             ),
             named_params! {
                 ":hash": &hash[..],
-                ":data": &data,
+                ":data": &data[..written],
                 ":ref_count": 0
             },
         )?;
@@ -419,15 +417,17 @@ mod tests {
                                                            1,1,0,1,1,0,1,0,0,0,1,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1,1,1,1,1,0,1,
                                                            0,0,0,0,0,0,1,0,1,0,0,1,0,1,0,0,1,0,0,0,1,0,1,0,1,1,1];
 
+            let mut scratch = [0u8; 65];
+
             for i in 0..251 {
                 let path = bits251[i..].to_bitvec();
 
                 let original = PersistedNode::Edge(PersistedEdgeNode { path, child });
 
-                let serialized = original.clone().serialize();
-                let deserialized = PersistedNode::deserialize(&serialized).unwrap();
+                let written = original.serialize(&mut scratch);
+                let deserialized = PersistedNode::deserialize(&scratch[..written]).unwrap();
 
-                assert_eq!(deserialized, original);
+                assert_eq!(deserialized, original, "iteration {i}");
             }
         }
 
@@ -438,8 +438,10 @@ mod tests {
                 right: starkhash!("0abc"),
             });
 
-            let serialized = original.clone().serialize();
-            let deserialized = PersistedNode::deserialize(&serialized).unwrap();
+            let mut data = [0u8; 65];
+
+            let written = original.serialize(&mut data);
+            let deserialized = PersistedNode::deserialize(&data[..written]).unwrap();
 
             assert_eq!(deserialized, original);
         }
