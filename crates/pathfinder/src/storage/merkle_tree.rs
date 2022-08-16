@@ -318,9 +318,13 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
         // Insert the node itself
         let written = node.serialize(&mut data);
 
+        // TODO: leaves still get here from tests, but otherwise lack of such should be asserted
+        // #[cfg(test)]
         if written == 0 {
             return Ok(());
         }
+
+        // assert_ne!(written, 0, "leaf nodes are no longer persisted");
 
         let mut stmt = self.transaction.prepare_cached(&self.queries.insert)?;
 
