@@ -24,12 +24,9 @@ pub fn chunked_inserts(
     let mut hash = stark_hash::StarkHash::ZERO;
 
     for keys in keys.chunks(batch_size) {
-        let mut uut = pathfinder_lib::state::merkle_tree::MerkleTree::load(
-            String::from("tree_contracts"),
-            tx,
-            hash,
-        )
-        .unwrap();
+        let mut uut =
+            pathfinder_lib::state::merkle_tree::MerkleTree::load("tree_contracts", tx, hash)
+                .unwrap();
 
         keys.iter()
             .enumerate()
