@@ -280,15 +280,15 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     /// None of the [RcNodeStorage] functions rollback on failure. This means that if any error
     /// is encountered, the transaction should be rolled back to prevent database corruption.
     pub fn open(table: &str, transaction: &'tx Transaction<'tx>) -> anyhow::Result<Self> {
-        let queries = if table == "tree_global" {
-            let q = GLOBAL.borrow();
-            // this assertion exists to prove that the reborrowing works.
-            debug_assert!(matches!(q.create, Cow::Borrowed(_)));
-            q
-        } else if table == "tree_contracts" {
-            CONTRACTS.borrow()
-        } else {
-            Queries::format(table)
+        let queries = match table {
+            "tree_global" => {
+                let q = GLOBAL.borrow();
+                // this assertion exists to prove that the reborrowing works.
+                debug_assert!(matches!(q.create, Cow::Borrowed(_)));
+                q
+            }
+            "tree_contracts" => CONTRACTS.borrow(),
+            other => Queries::format(other),
         };
 
         // no need to prepare this, unless we get multiple tree openings in single transaction, but
