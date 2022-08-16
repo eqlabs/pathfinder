@@ -420,6 +420,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
                     ":hash": &hash[..],
                 },
                 |row| {
+                    // FIXME: u16 is not realistic for the counts
                     let ref_count: u16 = row.get("ref_count")?;
 
                     Ok(ref_count)
