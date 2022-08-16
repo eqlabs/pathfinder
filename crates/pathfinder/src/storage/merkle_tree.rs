@@ -103,33 +103,30 @@ pub enum PersistedNode {
 }
 
 impl PersistedNode {
-    fn serialize(self) -> Vec<u8> {
+    fn serialize(&self, buffer: &mut [u8]) -> usize {
         match self {
-            PersistedNode::Binary(binary) => binary
-                .left
-                .to_be_bytes()
-                .into_iter()
-                .chain(binary.right.to_be_bytes().into_iter())
-                .collect(),
+            PersistedNode::Binary(binary) => {
+                buffer[..32].copy_from_slice(&binary.left.to_be_bytes());
+                buffer[32..][..32].copy_from_slice(&binary.right.to_be_bytes());
+                64
+            }
             PersistedNode::Edge(edge) => {
-                let child = edge.child.to_be_bytes();
                 let length = edge.path.len() as u8;
+
+                buffer[..32].copy_from_slice(&edge.child.to_be_bytes());
 
                 // Bit path must be written in MSB format. This means that the LSB
                 // must be in the last bit position. Since we write a fixed number of
                 // bytes (32) but the path length may vary, we have to ensure we are writing
                 // to the end of the slice.
-                let mut path = [0u8; 32];
-                path.view_bits_mut::<Msb0>()[256 - edge.path.len()..]
+                buffer[32..][..32].view_bits_mut::<Msb0>()[256 - edge.path.len()..]
                     .copy_from_bitslice(&edge.path);
 
-                child
-                    .into_iter()
-                    .chain(path.into_iter())
-                    .chain(std::iter::once(length))
-                    .collect()
+                buffer[64] = length;
+
+                65
             }
-            PersistedNode::Leaf => Vec::new(),
+            PersistedNode::Leaf => 0,
         }
     }
 
@@ -212,8 +209,15 @@ impl<'a> RcNodeStorage<'a> {
     pub fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
+        let mut data = [0u8; 65];
+
         // Insert the node itself
-        let data = node.clone().serialize();
+        let written = node.serialize(&mut data);
+
+        if written == 0 {
+            return Ok(());
+        }
+
         let count = self.transaction.execute(
             &format!(
                 // You may be tempted to increment the reference count ON CONFLICT, but that is incorrect.
@@ -226,7 +230,7 @@ impl<'a> RcNodeStorage<'a> {
             ),
             named_params! {
                 ":hash": &hash[..],
-                ":data": &data,
+                ":data": &data[..written],
                 ":ref_count": 0
             },
         )?;
@@ -244,7 +248,7 @@ impl<'a> RcNodeStorage<'a> {
                     self.increment_ref_count(edge.child)
                         .context("Failed to increment child's reference count.")?;
                 }
-                PersistedNode::Leaf => {}
+                PersistedNode::Leaf => unreachable!("leaves are no longer inserted"),
             }
         }
 
@@ -263,8 +267,8 @@ impl<'a> RcNodeStorage<'a> {
                     ":hash": &hash[..],
                 },
                 |row| {
-                    let data: Vec<u8> = row.get("data")?;
-                    Ok(PersistedNode::deserialize(&data))
+                    let data = row.get_ref_unwrap("data").as_blob()?;
+                    Ok(PersistedNode::deserialize(data))
                 },
             )
             .optional()?;
@@ -373,7 +377,7 @@ mod tests {
     use bitvec::bitvec;
 
     /// Test helper function to query a node's current reference count from the database.
-    fn get_ref_count(storage: &RcNodeStorage<'_>, key: StarkHash) -> u16 {
+    fn get_ref_count(storage: &RcNodeStorage<'_>, key: StarkHash) -> Option<u64> {
         let hash = key.to_be_bytes();
         storage
             .transaction
@@ -386,11 +390,12 @@ mod tests {
                    ":hash": &hash[..],
                 },
                 |row| {
-                    let ref_count: u16 = row.get("ref_count")?;
+                    let ref_count = row.get("ref_count")?;
 
                     Ok(ref_count)
                 },
             )
+            .optional()
             .unwrap()
     }
 
@@ -413,15 +418,17 @@ mod tests {
                                                            1,1,0,1,1,0,1,0,0,0,1,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1,1,1,1,1,0,1,
                                                            0,0,0,0,0,0,1,0,1,0,0,1,0,1,0,0,1,0,0,0,1,0,1,0,1,1,1];
 
+            let mut scratch = [0u8; 65];
+
             for i in 0..251 {
                 let path = bits251[i..].to_bitvec();
 
                 let original = PersistedNode::Edge(PersistedEdgeNode { path, child });
 
-                let serialized = original.clone().serialize();
-                let deserialized = PersistedNode::deserialize(&serialized).unwrap();
+                let written = original.serialize(&mut scratch);
+                let deserialized = PersistedNode::deserialize(&scratch[..written]).unwrap();
 
-                assert_eq!(deserialized, original);
+                assert_eq!(deserialized, original, "iteration {i}");
             }
         }
 
@@ -432,8 +439,10 @@ mod tests {
                 right: starkhash!("0abc"),
             });
 
-            let serialized = original.clone().serialize();
-            let deserialized = PersistedNode::deserialize(&serialized).unwrap();
+            let mut data = [0u8; 65];
+
+            let written = original.serialize(&mut data);
+            let deserialized = PersistedNode::deserialize(&data[..written]).unwrap();
 
             assert_eq!(deserialized, original);
         }
@@ -456,14 +465,14 @@ mod tests {
             });
 
             uut.upsert(key, node).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 0);
+            assert_eq!(get_ref_count(&uut, key), Some(0));
 
             uut.increment_ref_count(key).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 1);
+            assert_eq!(get_ref_count(&uut, key), Some(1));
 
             uut.increment_ref_count(key).unwrap();
             uut.increment_ref_count(key).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 3);
+            assert_eq!(get_ref_count(&uut, key), Some(3));
         }
 
         #[test]
@@ -479,14 +488,14 @@ mod tests {
             });
 
             uut.upsert(key, node).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 0);
+            assert_eq!(get_ref_count(&uut, key), Some(0));
 
             uut.increment_ref_count(key).unwrap();
             uut.increment_ref_count(key).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 2);
+            assert_eq!(get_ref_count(&uut, key), Some(2));
 
             uut.decrement_ref_count(key).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 1);
+            assert_eq!(get_ref_count(&uut, key), Some(1));
             // Node should get deleted once the reference count hits 0.
             uut.decrement_ref_count(key).unwrap();
             assert_eq!(uut.get(key).unwrap(), None);
@@ -507,7 +516,7 @@ mod tests {
             uut.upsert(key, node.clone()).unwrap();
             uut.upsert(key, node.clone()).unwrap();
             uut.upsert(key, node).unwrap();
-            assert_eq!(get_ref_count(&uut, key), 0);
+            assert_eq!(get_ref_count(&uut, key), Some(0));
         }
     }
 
@@ -544,14 +553,14 @@ mod tests {
             });
 
             uut.upsert(left_child_key, left_child).unwrap();
-            assert_eq!(get_ref_count(&uut, left_child_key), 0);
+            assert_eq!(get_ref_count(&uut, left_child_key), None);
 
             uut.upsert(right_child_key, right_child).unwrap();
-            assert_eq!(get_ref_count(&uut, right_child_key), 0);
+            assert_eq!(get_ref_count(&uut, right_child_key), None);
 
             uut.upsert(parent_key, parent.clone()).unwrap();
-            assert_eq!(get_ref_count(&uut, left_child_key), 1);
-            assert_eq!(get_ref_count(&uut, right_child_key), 1);
+            assert_eq!(get_ref_count(&uut, left_child_key), None);
+            assert_eq!(get_ref_count(&uut, right_child_key), None);
 
             assert_eq!(uut.get(parent_key).unwrap(), Some(parent));
         }
@@ -572,10 +581,10 @@ mod tests {
             });
 
             uut.upsert(child_key, child).unwrap();
-            assert_eq!(get_ref_count(&uut, child_key), 0);
+            assert_eq!(get_ref_count(&uut, child_key), None);
 
             uut.upsert(parent_key, parent.clone()).unwrap();
-            assert_eq!(get_ref_count(&uut, child_key), 1);
+            assert_eq!(get_ref_count(&uut, child_key), None);
 
             assert_eq!(uut.get(parent_key).unwrap(), Some(parent));
         }
@@ -589,30 +598,18 @@ mod tests {
             let key = starkhash!("123abc");
             let node = PersistedNode::Leaf;
 
-            uut.upsert(key, node.clone()).unwrap();
-            assert_eq!(uut.get(key).unwrap(), Some(node));
+            uut.upsert(key, node).unwrap();
+            assert_eq!(
+                uut.get(key).unwrap(),
+                None,
+                "leaves should no longer be persisted"
+            );
         }
     }
 
     mod delete {
         use super::*;
         use crate::starkhash;
-
-        #[test]
-        fn leaf() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
-            let uut = RcNodeStorage::open("test".to_string(), &transaction).unwrap();
-
-            let key = starkhash!("123abc");
-            let node = PersistedNode::Leaf;
-
-            uut.upsert(key, node.clone()).unwrap();
-            assert_eq!(uut.get(key).unwrap(), Some(node));
-
-            uut.delete_node(key).unwrap();
-            assert_eq!(uut.get(key).unwrap(), None);
-        }
 
         #[test]
         fn binary() {
@@ -686,17 +683,18 @@ mod tests {
                 child: leaf_key,
             });
 
-            uut.upsert(leaf_key, leaf_node.clone()).unwrap();
+            uut.upsert(leaf_key, leaf_node).unwrap();
             uut.upsert(parent_key_1, parent_node_1).unwrap();
             uut.upsert(parent_key_2, parent_node_2).unwrap();
 
-            assert_eq!(get_ref_count(&uut, leaf_key), 2);
+            // This test case is a bit more trickier since after removal of leaf insertions, this
+            // is a bit more trickier to test, and it is not obvious what should be the next tier
+            // edges.
+            //
+            // originally this case allowed testing that leaf lives as long as either of it's
+            // parents.
             uut.delete_node(parent_key_1).unwrap();
-
-            assert_eq!(uut.get(leaf_key).unwrap(), Some(leaf_node));
-
             uut.delete_node(parent_key_2).unwrap();
-            assert_eq!(uut.get(leaf_key).unwrap(), None);
         }
     }
 }

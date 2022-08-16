@@ -89,6 +89,7 @@ pub trait NodeStorage {
 pub struct MerkleTree<T> {
     storage: T,
     root: Rc<RefCell<Node>>,
+    max_height: u8,
 }
 
 impl<'a> MerkleTree<RcNodeStorage<'a>> {
@@ -113,16 +114,7 @@ impl<'a> MerkleTree<RcNodeStorage<'a>> {
         root: StarkHash,
     ) -> anyhow::Result<Self> {
         let storage = RcNodeStorage::open(table, transaction)?;
-        Self::new(storage, root)
-    }
-}
-
-impl<T: NodeStorage + Default> Default for MerkleTree<T> {
-    /// Initializes a fresh empty MerkleTree on the defined storage implementation.
-    fn default() -> Self {
-        Self::new(Default::default(), StarkHash::ZERO).expect(
-            "Since called with ZERO as root, there should not have been a query, and therefore no error",
-        )
+        Self::new(storage, root, 251)
     }
 }
 
@@ -147,13 +139,14 @@ impl<T: NodeStorage> MerkleTree<T> {
     }
 
     /// Less visible initialization for `MerkleTree<T>` as the main entry points should be
-    /// [`MerkleTree::<RcNodeStorage>::load`] for persistent trees and [`MerkleTree::default`] for
+    /// [`MerkleTree::<RcNodeStorage>::load`] for persistent trees and [`MerkleTree::empty`] for
     /// transient ones.
-    fn new(storage: T, root: StarkHash) -> anyhow::Result<Self> {
+    fn new(storage: T, root: StarkHash, max_height: u8) -> anyhow::Result<Self> {
         let root_node = Rc::new(RefCell::new(Node::Unresolved(root)));
         let mut tree = Self {
             storage,
             root: root_node,
+            max_height,
         };
         if root != StarkHash::ZERO {
             // Resolve non-zero root node to check that it does exist.
@@ -163,6 +156,12 @@ impl<T: NodeStorage> MerkleTree<T> {
             tree.root = Rc::new(RefCell::new(root_node));
         }
         Ok(tree)
+    }
+
+    pub fn empty(storage: T, max_height: u8) -> Self {
+        Self::new(storage, StarkHash::ZERO, max_height).expect(
+            "Since called with ZERO as root, there should not have been a query, and therefore no error",
+        )
     }
 
     /// Persists all changes to storage and returns the new root hash.
@@ -193,15 +192,11 @@ impl<T: NodeStorage> MerkleTree<T> {
     fn commit_subtree(&self, node: &mut Node) -> anyhow::Result<()> {
         use Node::*;
         match node {
-            // Unresolved nodes are already persisted.
-            Unresolved(_) => {}
-            Leaf(hash) => {
-                self.storage
-                    .upsert(*hash, PersistedNode::Leaf)
-                    .context("Failed to insert leaf node")?;
-            }
-            Binary(binary) if binary.hash.is_some() => {}
-            Edge(edge) if edge.hash.is_some() => {}
+            Unresolved(_) => { /* Unresolved nodes are already persisted. */ }
+            Leaf(_) => { /* storage wouldn't persist these even if we asked. */ }
+            Binary(binary) if binary.hash.is_some() => { /* not dirty, already persisted */ }
+            Edge(edge) if edge.hash.is_some() => { /* not dirty, already persisted */ }
+
             Binary(binary) => {
                 self.commit_subtree(&mut *binary.left.borrow_mut())?;
                 self.commit_subtree(&mut *binary.right.borrow_mut())?;
@@ -216,6 +211,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                     .upsert(binary.hash.unwrap(), persisted_node)
                     .context("Failed to insert binary node")?;
             }
+
             Edge(edge) => {
                 self.commit_subtree(&mut *edge.child.borrow_mut())?;
                 // This will succeed as `commit_subtree` will set the child's hash.
@@ -518,7 +514,22 @@ impl<T: NodeStorage> MerkleTree<T> {
     ///
     /// Result will be either a [Binary](Node::Binary), [Edge](Node::Edge) or [Leaf](Node::Leaf) node.
     fn resolve(&self, hash: StarkHash, height: usize) -> anyhow::Result<Node> {
-        let node = self.storage.get(hash)?.context("Node does not exists")?;
+        if height == self.max_height as usize {
+            #[cfg(debug_assertions)]
+            {
+                assert_eq!(
+                    self.storage.get(hash)?,
+                    None,
+                    "leaf nodes should no longer exist"
+                );
+            }
+            return Ok(Node::Leaf(hash));
+        }
+
+        let node = self
+            .storage
+            .get(hash)?
+            .with_context(|| format!("Node at height {height} does not exist: {hash}"))?;
 
         let node = match node {
             PersistedNode::Binary(binary) => Node::Binary(BinaryNode {
@@ -1253,7 +1264,7 @@ mod tests {
         }
 
         #[test]
-        fn mulitple_identical_roots() {
+        fn multiple_identical_roots() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
             let mut uut =
