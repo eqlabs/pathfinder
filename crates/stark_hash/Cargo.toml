@@ -19,6 +19,7 @@ ff = { version = "0.12", default-features = false, features = [
     "derive",
     "alloc",
 ] }
+rand = "0.8"
 serde = "1.0.134"
 stark_curve = { path = "../stark_curve" }
 

@@ -55,13 +55,19 @@ zstd = "0.10"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
+criterion = "0.3"
 flate2 = "1.0.23"
 http = "0.2.6"
 jsonrpsee = { version = "0.11.0", features = ["server", "async-client"] }
 mockall = "0.11.0"
 pretty_assertions = "1.0.0"
+rand = "0.8"
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tokio = { version = "1.11.0", features = ["test-util"] }
 
 [build-dependencies]
 vergen = { version = "7", default-features = false, features = ["git"] }
+
+[[bench]]
+name = "merkle_tree"
+harness = false

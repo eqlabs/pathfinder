@@ -104,6 +104,11 @@ impl StarkHash {
         }
     }
 
+    pub fn random<R: rand::RngCore>(rng: R) -> Self {
+        use ff::Field;
+        StarkHash(FieldElement::random(rng).to_repr().0)
+    }
+
     /// Creates a [StarkHash] from big-endian bytes.
     ///
     /// Returns [OverflowError] if not less than the field modulus.
