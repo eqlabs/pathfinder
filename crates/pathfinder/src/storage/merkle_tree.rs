@@ -43,7 +43,7 @@ use std::borrow::Cow;
 
 use anyhow::Context;
 use bitvec::{order::Msb0, prelude::BitVec, view::BitView};
-use rusqlite::{named_params, OptionalExtension, Transaction};
+use rusqlite::{params, OptionalExtension, Transaction};
 
 use stark_hash::StarkHash;
 
@@ -111,17 +111,22 @@ impl Queries<'static> {
                 // Reference counts only get incremented for the children of a node. So even though this node
                 // already exists, and someone is trying to insert it again, this node's reference count increment
                 // will occur when that someone inserts the new parent node.
-                "INSERT INTO {} (hash, data, ref_count) VALUES (:hash, :data, :ref_count) ON CONFLICT DO NOTHING",
+                "INSERT INTO {} (hash, data, ref_count) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
                 table
-            ).into(),
-            get: format!("SELECT data FROM {} WHERE hash = :hash", table).into(),
+            )
+            .into(),
+            get: format!("SELECT data FROM {} WHERE hash = ?", table).into(),
             #[cfg(test)]
-            delete_node: format!("DELETE FROM {} WHERE hash = :hash", table).into(),
+            delete_node: format!("DELETE FROM {} WHERE hash = ?", table).into(),
             #[cfg(test)]
-            set_ref_count: format!("UPDATE {} SET ref_count = :count WHERE hash = :hash", table).into(),
-            increment_ref_count: format!("UPDATE {} SET ref_count = ref_count + 1 WHERE hash = :hash", table).into(),
+            set_ref_count: format!("UPDATE {} SET ref_count = ? WHERE hash = ?", table).into(),
+            increment_ref_count: format!(
+                "UPDATE {} SET ref_count = ref_count + 1 WHERE hash = ?",
+                table
+            )
+            .into(),
             #[cfg(test)]
-            get_ref_count: format!("SELECT ref_count FROM {} WHERE hash = :hash", table).into(),
+            get_ref_count: format!("SELECT ref_count FROM {} WHERE hash = ?", table).into(),
         }
     }
 
@@ -319,10 +324,10 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
 
         let mut stmt = self.transaction.prepare_cached(&self.queries.insert)?;
 
-        let count = stmt.execute(named_params! {
-            ":hash": &hash[..],
-            ":data": &data[..written],
-            ":ref_count": 0
+        let count = stmt.execute(params! {
+            &hash[..],
+            &data[..written],
+            0
         })?;
 
         // Increment children reference counts ONLY IF the node was inserted.
@@ -352,15 +357,10 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
         let mut query = self.transaction.prepare_cached(&self.queries.get)?;
 
         let node = query
-            .query_row(
-                named_params! {
-                    ":hash": &hash[..],
-                },
-                |row| {
-                    let data = row.get_ref_unwrap("data").as_blob()?;
-                    Ok(PersistedNode::deserialize(data))
-                },
-            )
+            .query_row([&hash[..]], |row| {
+                let data = row.get_ref_unwrap("data").as_blob()?;
+                Ok(PersistedNode::deserialize(data))
+            })
             .optional()?;
 
         node.transpose()
@@ -388,9 +388,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
 
         let mut stmt = self.transaction.prepare_cached(&self.queries.delete_node)?;
 
-        stmt.execute(named_params! {
-           ":hash": &hash[..],
-        })?;
+        stmt.execute([&hash[..]])?;
 
         match node {
             PersistedNode::Binary(binary) => {
@@ -415,28 +413,19 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
             .prepare_cached(&self.queries.get_ref_count)?;
 
         let ref_count = query
-            .query_row(
-                named_params! {
-                    ":hash": &hash[..],
-                },
-                |row| {
-                    // FIXME: u16 is not realistic for the counts
-                    let ref_count: u16 = row.get("ref_count")?;
+            .query_row([&hash[..]], |row| {
+                // FIXME: u16 is not realistic for the counts
+                let ref_count: u16 = row.get("ref_count")?;
 
-                    Ok(ref_count)
-                },
-            )
+                Ok(ref_count)
+            })
             .optional()?;
 
         match ref_count {
             Some(0 | 1) => self.delete_node(key)?,
             Some(count) => {
-                self.transaction.execute(
-                    &self.queries.set_ref_count,
-                    named_params! {
-                    ":count": count - 1,
-                    ":hash": &hash[..]},
-                )?;
+                self.transaction
+                    .execute(&self.queries.set_ref_count, params![count - 1, &hash[..]])?;
             }
             None => {}
         }
@@ -451,9 +440,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
             .transaction
             .prepare_cached(&self.queries.increment_ref_count)?;
 
-        stmt.execute(named_params! {
-           ":hash": &hash[..],
-        })?;
+        stmt.execute([&hash[..]])?;
         Ok(())
     }
 }
@@ -468,17 +455,11 @@ mod tests {
         let hash = key.to_be_bytes();
         storage
             .transaction
-            .query_row(
-                &storage.queries.get_ref_count,
-                named_params! {
-                   ":hash": &hash[..],
-                },
-                |row| {
-                    let ref_count = row.get("ref_count")?;
+            .query_row(&storage.queries.get_ref_count, [&hash[..]], |row| {
+                let ref_count = row.get("ref_count")?;
 
-                    Ok(ref_count)
-                },
-            )
+                Ok(ref_count)
+            })
             .optional()
             .unwrap()
     }
