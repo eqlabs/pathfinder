@@ -582,6 +582,8 @@ async fn l2_update(
     block: Block,
     state_update: StateUpdate,
 ) -> anyhow::Result<()> {
+    use crate::storage::CanonicalBlocksTable;
+
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -617,6 +619,9 @@ async fn l2_update(
         let rpc_state_update = state_update.into();
         StarknetStateUpdatesTable::insert(&transaction, block.block_hash, &rpc_state_update)
             .context("Insert state update into database")?;
+
+        CanonicalBlocksTable::insert(&transaction, block.block_number, block.block_hash)
+            .context("Inserting canonical block into database")?;
 
         // Insert the transactions.
         anyhow::ensure!(
@@ -661,6 +666,8 @@ async fn l2_reorg(
     connection: &mut Connection,
     reorg_tail: StarknetBlockNumber,
 ) -> anyhow::Result<()> {
+    use crate::storage::CanonicalBlocksTable;
+
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -668,8 +675,11 @@ async fn l2_reorg(
 
         // TODO: clean up state tree's as well...
 
+        CanonicalBlocksTable::reorg(&transaction, reorg_tail)
+            .context("Delete canonical blocks from database")?;
+
         StarknetBlocksTable::reorg(&transaction, reorg_tail)
-            .context("Delete L2 state from database")?;
+            .context("Delete L2 blocks from database")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;

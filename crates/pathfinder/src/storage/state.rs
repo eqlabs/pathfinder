@@ -1258,6 +1258,15 @@ impl CanonicalBlocksTable {
 
         Ok(())
     }
+
+    /// Removes all rows where `number >= reorg_tail`.
+    pub fn reorg(tx: &Transaction<'_>, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
+        tx.execute(
+            "DELETE FROM canonical_blocks WHERE number >= ?",
+            [reorg_tail],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
