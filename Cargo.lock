@@ -2884,7 +2884,7 @@ dependencies = [
  "ff",
  "hex",
  "pretty_assertions",
- "rand",
+ "rand_core",
  "serde",
  "serde_json",
  "stark_curve",

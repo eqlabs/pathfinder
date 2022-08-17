@@ -104,7 +104,7 @@ impl StarkHash {
         }
     }
 
-    pub fn random<R: rand::RngCore>(rng: R) -> Self {
+    pub fn random<R: rand_core::RngCore>(rng: R) -> Self {
         use ff::Field;
         StarkHash(FieldElement::random(rng).to_repr().0)
     }
