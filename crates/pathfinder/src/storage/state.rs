@@ -1241,6 +1241,24 @@ impl StarknetStateUpdatesTable {
     }
 }
 
+/// Stores the canonical StarkNet block chain.
+pub struct CanonicalBlocksTable {}
+impl CanonicalBlocksTable {
+    pub fn insert(
+        tx: &Transaction<'_>,
+        number: StarknetBlockNumber,
+        hash: StarknetBlockHash,
+    ) -> anyhow::Result<()> {
+        let rows_changed = tx.execute(
+            "INSERT INTO canonical_blocks(number, hash) values(?,?)",
+            params![number, hash],
+        )?;
+        assert_eq!(rows_changed, 1);
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
