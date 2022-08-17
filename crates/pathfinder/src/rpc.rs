@@ -368,8 +368,8 @@ mod tests {
         starkhash, starkhash_bytes,
         state::{state_tree::GlobalStateTree, PendingData, SyncState},
         storage::{
-            ContractCodeTable, ContractsTable, StarknetBlock, StarknetBlocksTable,
-            StarknetTransactionsTable, Storage,
+            CanonicalBlocksTable, ContractCodeTable, ContractsTable, StarknetBlock,
+            StarknetBlocksTable, StarknetTransactionsTable, Storage,
         },
     };
     use assert_matches::assert_matches;
@@ -508,6 +508,10 @@ mod tests {
         StarknetBlocksTable::insert(&db_txn, &block0, None).unwrap();
         StarknetBlocksTable::insert(&db_txn, &block1, None).unwrap();
         StarknetBlocksTable::insert(&db_txn, &block2, None).unwrap();
+
+        CanonicalBlocksTable::insert(&db_txn, block0.number, block0.hash).unwrap();
+        CanonicalBlocksTable::insert(&db_txn, block1.number, block1.hash).unwrap();
+        CanonicalBlocksTable::insert(&db_txn, block2.number, block2.hash).unwrap();
 
         let txn0_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too
