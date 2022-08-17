@@ -693,7 +693,8 @@ mod tests {
         .unwrap();
 
         tx.execute(
-            "insert into starknet_blocks (hash, number, timestamp, root, gas_price) values (?, 1, 1, ?, X'01')",
+            r"insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, version_id) 
+              values (?, 1, 1, ?, X'01', X'0000000000000000000000000000000000000000000000000000000000000000', X'00')",
             rusqlite::params![
                 &StarkHash::from_be_slice(&b"some blockhash somewhere"[..])
                     .unwrap()
