@@ -2147,6 +2147,7 @@ mod tests {
             let tx = connection.transaction().unwrap();
 
             StarknetBlocksTable::insert(&tx, &block, None).unwrap();
+            CanonicalBlocksTable::insert(&tx, block.number, block.hash).unwrap();
             StarknetTransactionsTable::upsert(
                 &tx,
                 block.hash,
