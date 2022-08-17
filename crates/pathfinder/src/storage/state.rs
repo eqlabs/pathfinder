@@ -508,7 +508,8 @@ impl StarknetTransactionsTable {
                 ]).context("Insert transaction data into transactions table")?;
 
             // insert events from receipt
-            StarknetEventsTable::insert_events(tx, block_number, transaction, &receipt.events)?;
+            StarknetEventsTable::insert_events(tx, block_number, transaction, &receipt.events)
+                .context("Inserting events")?;
         }
 
         Ok(())
