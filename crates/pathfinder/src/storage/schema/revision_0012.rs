@@ -15,6 +15,10 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
         "Upgrading events table schema and re-indexing events, this may take a while.",
     );
 
+    migrate_events_schema(transaction)
+}
+
+pub(super) fn migrate_events_schema(transaction: &Transaction<'_>) -> Result<(), anyhow::Error> {
     // When altering a table in a way that requires recreating it through copying and deletion
     // it is [recommended](https://www.sqlite.org/lang_altertable.html) to:
     // 1. create the new table with some temporary name
