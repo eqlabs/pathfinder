@@ -3,13 +3,29 @@ use rusqlite::Transaction;
 
 /// Primary goal of this migration is to allow for StarkNet block forks.
 ///
-/// This is achieved by re-creating the `starknet_blocks` table, shifting the PK
-/// from `number` to `hash`. This in turn requires re-creating any tables with a FK
-/// on the original `starknet_blocks` table.
-///
-/// In addition, a `canonical_blocks` table is created to track the canonical block chain
-/// now that forks are allowed in `starknet_blocks`.
+/// This is achieved by:
+/// - switching `starknet_blocks` table PK from block number to hash
+/// - adding a `canonical_blocks` table to track the canonical chain
+/// - `starknet_events` now references `canonical_blocks` instead of `starknet_blocks`
 pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
+    use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
+    let fk_config = tx
+        .db_config(SQLITE_DBCONFIG_ENABLE_FKEY)
+        .context("Reading FK configuration")?;
+    tx.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, false)
+        .context("Disabling foreign-key enforcement")?;
+
+    migrate_blocks(tx).context("Migrating starknet_blocks table")?;
+    create_canonical_chain(tx).context("Creating canonical_blocks table")?;
+    migrate_events(tx).context("Migrating starknet_events table")?;
+
+    tx.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, fk_config)
+        .context("Setting FK enforcement to pre-migration value")?;
+
+    Ok(())
+}
+
+fn migrate_blocks(tx: &Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
         r"-- Stores StarkNet block headers.
 CREATE TABLE starknet_blocks_new (
@@ -23,56 +39,29 @@ CREATE TABLE starknet_blocks_new (
 )",
         [],
     )
-    .context("Creating new starknet_blocks table")?;
-
-    tx.execute(
-        "INSERT INTO starknet_blocks_new(hash,number,root,timestamp,gas_price) SELECT hash,number,root,timestamp,gas_price FROM starknet_blocks",
-        [],
-    )
-    .context("Copying starknet_blocks data")?;
-
-    create_canonical_chain(tx).context("Creating canonical_blocks table")?;
-    migrate_state_updates(tx).context("Migrating starknet_state_updates table")?;
-    migrate_events(tx).context("Migrating starknet_events table")?;
-
-    tx.execute("DROP TABLE starknet_blocks", [])
-        .context("Dropping old starknet_blocks table")?;
-    tx.execute(
-        "ALTER TABLE starknet_blocks_new RENAME TO starknet_blocks",
-        [],
-    )
-    .context("Renaming new starknet_blocks table")?;
-
-    Ok(())
-}
-
-/// Re-creates the `starknet_state_updates_new` table, updating the `block_hash` FK to
-/// reference the new `starknet_blocks_new` table.
-fn migrate_state_updates(tx: &Transaction<'_>) -> anyhow::Result<()> {
-    tx.execute(
-        r"-- Stores StarkNet state updates. 
-CREATE TABLE starknet_state_updates_new (
-    block_hash BLOB PRIMARY KEY NOT NULL,
-    data BLOB NOT NULL,
-    FOREIGN KEY(block_hash) REFERENCES starknet_blocks_new(hash) ON DELETE CASCADE
-)",
-        [],
-    )
     .context("Creating new table")?;
 
     tx.execute(
-        "INSERT INTO starknet_state_updates_new(block_hash, data) SELECT block_hash, data FROM starknet_state_updates",
+        r"INSERT INTO starknet_blocks_new(hash,number,root,timestamp,gas_price,sequencer_address,version_id) 
+                                   SELECT hash,number,root,timestamp,gas_price,sequencer_address,version_id FROM starknet_blocks",
         [],
     )
     .context("Copying data")?;
 
-    tx.execute("DROP TABLE starknet_state_updates", [])
+    tx.execute("DROP TABLE starknet_blocks", [])
         .context("Dropping old table")?;
+
     tx.execute(
-        "ALTER TABLE starknet_state_updates_new RENAME TO starknet_state_updates",
+        "ALTER TABLE starknet_blocks_new RENAME TO starknet_blocks",
         [],
     )
-    .context("Renaming new table")?;
+    .context("Renaming table")?;
+
+    tx.execute(
+        "CREATE INDEX starknet_blocks_block_number ON starknet_blocks(number)",
+        [],
+    )
+    .context("Creating block_number index")?;
 
     Ok(())
 }
@@ -82,6 +71,7 @@ CREATE TABLE starknet_state_updates_new (
 fn migrate_events(tx: &Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
         r"CREATE TABLE starknet_events_new (
+    id INTEGER PRIMARY KEY NOT NULL,
     block_number  INTEGER NOT NULL,
     idx INTEGER NOT NULL,
     transaction_hash BLOB NOT NULL,
@@ -97,14 +87,11 @@ fn migrate_events(tx: &Transaction<'_>) -> anyhow::Result<()> {
 
     tx.execute(
         r"-- Copy rowids to be sure that starknet_events_keys still references valid rows
-INSERT INTO starknet_events_new (rowid,block_number,idx,transaction_hash,from_address,keys,data)
-    SELECT rowid,block_number,idx,transaction_hash,from_address,keys,data FROM starknet_events",
+INSERT INTO starknet_events_new (id,block_number,idx,transaction_hash,from_address,keys,data)
+    SELECT id,block_number,idx,transaction_hash,from_address,keys,data FROM starknet_events",
         [],
     )
     .context("Copying data")?;
-
-    // CREATE INDEX starknet_events_block_number ON starknet_events(block_number);
-    // CREATE INDEX starknet_events_from_address ON starknet_events(from_address);
 
     tx.execute("DROP TABLE starknet_events", [])
         .context("Dropping old table")?;
@@ -171,6 +158,7 @@ INSERT INTO starknet_events_new (rowid,block_number,idx,transaction_hash,from_ad
         [],
     )
     .context("Creating block_number index")?;
+
     tx.execute(
         "CREATE INDEX starknet_events_from_address ON starknet_events(from_address)",
         [],
@@ -187,13 +175,14 @@ fn create_canonical_chain(tx: &Transaction<'_>) -> anyhow::Result<()> {
 CREATE TABLE canonical_blocks (
     number INTEGER PRIMARY KEY NOT NULL,
     hash   BLOB    NOT NULL,
-    FOREIGN KEY(hash) REFERENCES starknet_blocks_new(hash)
+    FOREIGN KEY(hash) REFERENCES starknet_blocks(hash)
 )",
         [],
     )
     .context("Creating table")?;
+
     tx.execute(
-        "INSERT INTO canonical_blocks (number,hash) SELECT number, hash FROM starknet_blocks_new",
+        "INSERT INTO canonical_blocks (number,hash) SELECT number, hash FROM starknet_blocks",
         [],
     )
     .context("Inserting data")?;
