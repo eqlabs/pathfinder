@@ -515,14 +515,11 @@ impl<T: NodeStorage> MerkleTree<T> {
     /// Result will be either a [Binary](Node::Binary), [Edge](Node::Edge) or [Leaf](Node::Leaf) node.
     fn resolve(&self, hash: StarkHash, height: usize) -> anyhow::Result<Node> {
         if height == self.max_height as usize {
-            #[cfg(debug_assertions)]
-            {
-                assert_eq!(
-                    self.storage.get(hash)?,
-                    None,
-                    "leaf nodes should no longer exist"
-                );
-            }
+            debug_assert_eq!(
+                self.storage.get(hash)?,
+                None,
+                "leaf nodes should no longer exist"
+            );
             return Ok(Node::Leaf(hash));
         }
 
