@@ -47,6 +47,7 @@
 use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use rusqlite::Transaction;
+use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 
 use crate::state::merkle_node::{BinaryNode, Direction, EdgeNode, Node};
@@ -578,9 +579,9 @@ impl<T: NodeStorage> MerkleTree<T> {
 
     /// Traverse this tree using an iterative Depth First Search.
     #[allow(dead_code)]
-    pub fn dfs<VisitorFn>(&self, visitor_fn: &mut VisitorFn)
+    pub fn dfs<X, VisitorFn>(&self, visitor_fn: &mut VisitorFn) -> Option<X>
     where
-        VisitorFn: FnMut(&Node),
+        VisitorFn: FnMut(&Node) -> ControlFlow<X, Visit>,
     {
         use bitvec::prelude::bitvec;
 
@@ -600,9 +601,23 @@ impl<T: NodeStorage> MerkleTree<T> {
                 None => break,
                 Some(VisitedNode { node, path }) => {
                     let current_node = &*node.borrow();
+                    if !matches!(current_node, Node::Unresolved(StarkHash::ZERO)) {
+                        match visitor_fn(current_node) {
+                            ControlFlow::Continue(Visit::ContinueDeeper) => {
+                                // the default, no action, just continue deeper
+                            }
+                            ControlFlow::Continue(Visit::StopSubtree) => {
+                                // make sure we don't add any more to `visiting` on this branch
+                                continue;
+                            }
+                            ControlFlow::Break(x) => {
+                                // early exit
+                                return Some(x);
+                            }
+                        }
+                    }
                     match current_node {
                         Node::Binary(b) => {
-                            visitor_fn(current_node);
                             visiting.push(VisitedNode {
                                 node: b.right.clone(),
                                 path: {
@@ -621,7 +636,6 @@ impl<T: NodeStorage> MerkleTree<T> {
                             });
                         }
                         Node::Edge(e) => {
-                            visitor_fn(current_node);
                             visiting.push(VisitedNode {
                                 node: e.child.clone(),
                                 path: {
@@ -631,9 +645,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                                 },
                             });
                         }
-                        Node::Leaf(_) => {
-                            visitor_fn(current_node);
-                        }
+                        Node::Leaf(_) => {}
                         Node::Unresolved(hash) => {
                             // Zero means empty tree, so nothing to resolve
                             if hash != &StarkHash::ZERO {
@@ -649,7 +661,16 @@ impl<T: NodeStorage> MerkleTree<T> {
                 }
             }
         }
+
+        None
     }
+}
+
+#[derive(Default)]
+pub enum Visit {
+    #[default]
+    ContinueDeeper,
+    StopSubtree,
 }
 
 impl NodeStorage for () {
@@ -1374,11 +1395,12 @@ mod tests {
     }
 
     mod dfs {
-        use super::{BinaryNode, EdgeNode, MerkleTree, Node};
+        use super::{BinaryNode, EdgeNode, MerkleTree, Node, Visit};
         use crate::starkhash;
         use bitvec::{bitvec, prelude::Msb0};
         use stark_hash::StarkHash;
         use std::cell::RefCell;
+        use std::ops::ControlFlow;
         use std::rc::Rc;
 
         #[test]
@@ -1388,7 +1410,10 @@ mod tests {
             let uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &Node| visited.push(node.clone());
+            let mut visitor_fn = |node: &Node| {
+                visited.push(node.clone());
+                ControlFlow::Continue::<(), Visit>(Default::default())
+            };
             uut.dfs(&mut visitor_fn);
             assert!(visited.is_empty());
         }
@@ -1405,7 +1430,10 @@ mod tests {
             uut.set(key.view_bits(), value).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &Node| visited.push(node.clone());
+            let mut visitor_fn = |node: &Node| {
+                visited.push(node.clone());
+                ControlFlow::Continue::<(), Visit>(Default::default())
+            };
             uut.dfs(&mut visitor_fn);
 
             assert_eq!(
@@ -1437,7 +1465,10 @@ mod tests {
             uut.set(key_left.view_bits(), value_left).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &Node| visited.push(node.clone());
+            let mut visitor_fn = |node: &Node| {
+                visited.push(node.clone());
+                ControlFlow::Continue::<(), Visit>(Default::default())
+            };
             uut.dfs(&mut visitor_fn);
 
             let expected_3 = Node::Leaf(value_right);
@@ -1479,7 +1510,10 @@ mod tests {
             uut.set(key_b.view_bits(), value_b).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &Node| visited.push(node.clone());
+            let mut visitor_fn = |node: &Node| {
+                visited.push(node.clone());
+                ControlFlow::Continue::<(), Visit>(Default::default())
+            };
             uut.dfs(&mut visitor_fn);
 
             // 0
@@ -1554,7 +1588,9 @@ mod tests {
 
         let uut = MerkleTree::load("test", &transaction, root).unwrap();
         // this used to panic because it did find the binary on dev profile with the leaf hash
-        uut.dfs(&mut |_| {});
+        uut.dfs(&mut |_| -> ControlFlow<(), Visit> {
+            std::ops::ControlFlow::Continue(Default::default())
+        });
         assert_eq!(uut.get(&key0).unwrap(), value);
         assert_eq!(uut.get(&key1).unwrap(), value);
         assert_eq!(uut.get(&key2).unwrap(), hash_of_values);
