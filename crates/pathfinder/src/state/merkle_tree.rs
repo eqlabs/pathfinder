@@ -515,11 +515,17 @@ impl<T: NodeStorage> MerkleTree<T> {
     /// Result will be either a [Binary](Node::Binary), [Edge](Node::Edge) or [Leaf](Node::Leaf) node.
     fn resolve(&self, hash: StarkHash, height: usize) -> anyhow::Result<Node> {
         if height == self.max_height as usize {
-            debug_assert_eq!(
-                self.storage.get(hash)?,
-                None,
-                "leaf nodes should no longer exist"
-            );
+            #[cfg(debug_assertions)]
+            match self.storage.get(hash)? {
+                Some(PersistedNode::Edge(_) | PersistedNode::Binary(_)) | None => {
+                    // some cases are because of collisions, none is the common outcome
+                }
+                Some(PersistedNode::Leaf) => {
+                    // they exist in some databases, but in general we run only release builds
+                    // against real databases
+                    unreachable!("leaf nodes should no longer exist");
+                }
+            }
             return Ok(Node::Leaf(hash));
         }
 
@@ -1525,5 +1531,32 @@ mod tests {
                 ]
             );
         }
+    }
+
+    #[test]
+    fn dfs_on_leaf_to_binary_collision_tree() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let transaction = conn.transaction().unwrap();
+        let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+
+        let value = starkhash!("01");
+        let key0 = starkhash!("ee00").view_bits().to_bitvec();
+        let key1 = starkhash!("ee01").view_bits().to_bitvec();
+
+        let key2 = starkhash!("ffff").view_bits().to_bitvec();
+        let hash_of_values = stark_hash::stark_hash(value, value);
+        uut.set(&key2, hash_of_values).unwrap();
+
+        uut.set(&key0, value).unwrap();
+        uut.set(&key1, value).unwrap();
+
+        let root = uut.commit().unwrap();
+
+        let uut = MerkleTree::load("test", &transaction, root).unwrap();
+        // this used to panic because it did find the binary on dev profile with the leaf hash
+        uut.dfs(&mut |_| {});
+        assert_eq!(uut.get(&key0).unwrap(), value);
+        assert_eq!(uut.get(&key1).unwrap(), value);
+        assert_eq!(uut.get(&key2).unwrap(), hash_of_values);
     }
 }
