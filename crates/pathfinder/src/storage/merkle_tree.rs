@@ -79,8 +79,7 @@ struct Queries<'a> {
     create: Cow<'a, str>,
     /// Insert and ignore
     insert: Cow<'a, str>,
-    /// Insert and replace
-    upsert: Cow<'a, str>,
+    update: Cow<'a, str>,
     get: Cow<'a, str>,
     #[cfg(test)]
     delete_node: Cow<'a, str>,
@@ -113,11 +112,7 @@ impl Queries<'static> {
                 table
             )
             .into(),
-            upsert: format!(
-                "INSERT OR REPLACE INTO {} (hash, data, ref_count) VALUES (?, ?, ?)",
-                table
-            )
-            .into(),
+            update: format!("UPDATE {} SET data=?, ref_count=? WHERE hash=?", table).into(),
             get: format!("SELECT data FROM {} WHERE hash = ?", table).into(),
             #[cfg(test)]
             delete_node: format!("DELETE FROM {} WHERE hash = ?", table).into(),
@@ -150,7 +145,7 @@ impl Queries<'static> {
         Queries {
             create: borrow_cow!(self.create),
             insert: borrow_cow!(self.insert),
-            upsert: borrow_cow!(self.upsert),
+            update: borrow_cow!(self.update),
             get: borrow_cow!(self.get),
             #[cfg(test)]
             delete_node: borrow_cow!(self.delete_node),
@@ -352,11 +347,11 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
                         let new_count = self
                             .transaction
                             .execute(
-                                &self.queries.upsert,
+                                &self.queries.update,
                                 params! {
-                                    &hash[..],
                                     &data[..written],
-                                    0
+                                    0,
+                                    &hash[..],
                                 },
                             )
                             .context("Overwriting existing leaf node")?;
