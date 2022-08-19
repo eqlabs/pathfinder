@@ -541,7 +541,10 @@ impl<T: NodeStorage> MerkleTree<T> {
                 path: edge.path,
                 child: Rc::new(RefCell::new(Node::Unresolved(edge.child))),
             }),
-            PersistedNode::Leaf => Node::Leaf(hash),
+            PersistedNode::Leaf => anyhow::bail!(
+                "Retrieved node {hash} is a leaf at {height} out of {}",
+                self.max_height
+            ),
         };
 
         Ok(node)
