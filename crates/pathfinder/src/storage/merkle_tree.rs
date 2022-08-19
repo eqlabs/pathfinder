@@ -77,7 +77,10 @@ impl std::fmt::Debug for RcNodeStorage<'_, '_> {
 /// tests) new queries are built at initialization.
 struct Queries<'a> {
     create: Cow<'a, str>,
+    /// Insert and ignore
     insert: Cow<'a, str>,
+    /// Insert and replace
+    upsert: Cow<'a, str>,
     get: Cow<'a, str>,
     #[cfg(test)]
     delete_node: Cow<'a, str>,
@@ -106,12 +109,12 @@ impl Queries<'static> {
             )
             .into(),
             insert: format!(
-                // You may be tempted to increment the reference count ON CONFLICT, but that is incorrect.
-                //
-                // Reference counts only get incremented for the children of a node. So even though this node
-                // already exists, and someone is trying to insert it again, this node's reference count increment
-                // will occur when that someone inserts the new parent node.
-                "INSERT INTO {} (hash, data, ref_count) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+                "INSERT OR IGNORE INTO {} (hash, data, ref_count) VALUES (?, ?, ?)",
+                table
+            )
+            .into(),
+            upsert: format!(
+                "INSERT OR REPLACE INTO {} (hash, data, ref_count) VALUES (?, ?, ?)",
                 table
             )
             .into(),
@@ -147,6 +150,7 @@ impl Queries<'static> {
         Queries {
             create: borrow_cow!(self.create),
             insert: borrow_cow!(self.insert),
+            upsert: borrow_cow!(self.upsert),
             get: borrow_cow!(self.get),
             #[cfg(test)]
             delete_node: borrow_cow!(self.delete_node),
@@ -333,6 +337,42 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
             &data[..written],
             0
         })?;
+
+        let count = match count {
+            0 => {
+                let existing = self
+                    .get(key)
+                    .context("Reading existing node")?
+                    .context("Node should exist since insert failed")?;
+
+                match &existing {
+                    PersistedNode::Leaf => {
+                        // We no longer store leaf nodes, but it is possible for them to still exist in some databases.
+                        // It is therefore okay to overwrite them.
+                        let new_count = self
+                            .transaction
+                            .execute(
+                                &self.queries.upsert,
+                                params! {
+                                    &hash[..],
+                                    &data[..written],
+                                    0
+                                },
+                            )
+                            .context("Overwriting existing leaf node")?;
+
+                        anyhow::ensure!(new_count == 1, "Failed to overwrite existing leaf node");
+                        new_count
+                    }
+                    // This node is already written to the database, do nothing.
+                    other if other == &node => 0,
+                    other => {
+                        anyhow::bail!("Hash conflict! Existing: {:?}, new: {:?}", other, node);
+                    }
+                }
+            }
+            other => other,
+        };
 
         // Increment children reference counts ONLY IF the node was inserted.
         if count != 0 {
@@ -673,6 +713,43 @@ mod tests {
                 None,
                 "leaves should no longer be persisted"
             );
+        }
+
+        #[test]
+        fn conflict() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let uut = RcNodeStorage::open("test", &transaction).unwrap();
+
+            let key = starkhash!("123abc");
+            let hash = key.to_be_bytes();
+
+            // Force a leaf node into the database. Leaf nodes were represented as empty data.
+            transaction
+                .execute(
+                    "INSERT OR IGNORE INTO test (hash, data, ref_count) VALUES (?, ?, ?)",
+                    params! {
+                        &hash, [], 1
+                    },
+                )
+                .unwrap();
+
+            // It should be possible to overwrite this leaf node.
+            let node = PersistedNode::Binary(PersistedBinaryNode {
+                left: starkhash!("aaaa"),
+                right: starkhash!("bbbb"),
+            });
+            uut.upsert(key, node.clone()).unwrap();
+
+            let result = uut.get(key).unwrap().unwrap();
+            assert_eq!(result, node);
+
+            // It should not be possible to overwrite the new binary node.
+            let fail = PersistedNode::Binary(PersistedBinaryNode {
+                left: starkhash!("cccc"),
+                right: starkhash!("dddd"),
+            });
+            uut.upsert(key, fail).unwrap_err();
         }
     }
 
