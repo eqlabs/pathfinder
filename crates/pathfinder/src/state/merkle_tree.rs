@@ -577,7 +577,14 @@ impl<T: NodeStorage> MerkleTree<T> {
         Ok(())
     }
 
-    /// Traverse this tree using an iterative Depth First Search.
+    /// Visits all of the nodes in the tree in pre-order using the given visitor function.
+    ///
+    /// For each node, there will first be a visit for `Node::Unresolved(hash)` followed by visit
+    /// at the loaded node when [`Visit::ContinueDeeper`] is returned. At any time the visitor
+    /// function can also return `ControlFlow::Break` to stop the visit with the given return
+    /// value, which will be returned as `Some(value))` to the caller.
+    ///
+    /// Upon successful non-breaking visit of the tree, `None` will be returned.
     #[allow(dead_code)]
     pub fn dfs<X, VisitorFn>(&self, visitor_fn: &mut VisitorFn) -> Option<X>
     where
@@ -607,7 +614,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                                 // the default, no action, just continue deeper
                             }
                             ControlFlow::Continue(Visit::StopSubtree) => {
-                                // make sure we don't add any more to `visiting` on this branch
+                                // make sure we don't add any more to `visiting` on this subtree
                                 continue;
                             }
                             ControlFlow::Break(x) => {
@@ -666,10 +673,16 @@ impl<T: NodeStorage> MerkleTree<T> {
     }
 }
 
+/// Direction for the [`MerkleTree::dfs`] as the return value of the visitor function.
 #[derive(Default)]
 pub enum Visit {
+    /// Instructs that the visit should visit any subtrees of the current node. This is a no-op for
+    /// [`Node::Leaf`].
     #[default]
     ContinueDeeper,
+    /// Returning this value for [`Node::Binary`] or [`Node::Edge`] will ignore all of the children
+    /// of the node for the rest of the iteration. This is useful because two trees often share a
+    /// number of subtrees with earlier blocks. Returning this for [`Node::Leaf`] is a no-op.
     StopSubtree,
 }
 
