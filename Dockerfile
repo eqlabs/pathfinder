@@ -31,6 +31,7 @@ RUN mkdir crates \
 COPY Cargo.toml Cargo.lock ./
 
 COPY crates/pathfinder/Cargo.toml crates/pathfinder/build.rs crates/pathfinder/
+COPY crates/pathfinder/benches crates/pathfinder/benches
 COPY crates/stark_curve/Cargo.toml crates/stark_curve/Cargo.toml
 COPY crates/stark_hash/Cargo.toml crates/stark_hash/Cargo.toml
 COPY crates/stark_hash/benches crates/stark_hash/benches
