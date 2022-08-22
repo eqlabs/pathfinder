@@ -235,6 +235,8 @@ python-subprocesses = 2
 sqlite-wal = true
 # Whether to enable pending support.
 poll-pending = true
+# The address to host the monitoring API at. Defaults to disabled.
+monitor-address = "127.0.0.1:54321"
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
@@ -366,6 +368,21 @@ Note that:
 
 - `mainnet` requires an additional `token` parameter to submit transactions
 - `starknet_addDeployTransaction` and `starknet_addDeclareTransaction` allow an optional `abi` field
+
+## Monitoring API
+
+Pathfinder has a monitoring API which can be enabled with the `--monitor-address` configuration option.
+
+### Health
+
+`/health` provides a method to check the health status of your `pathfinder` node. It returns `OK(200)` if the node is healthy.
+
+### Readyness
+
+`pathfinder` does several things before it is ready to respond to RPC queries. In most cases this startup time is less than a second, however there are certain scenarios where this can be considerably longer. For example, applying an expensive database migration after an upgrade could take several minutes (or even longer) on testnet. Or perhaps our startup network checks fail many times due to connection issues.
+
+`/ready` provides a way of checking whether the node's JSON-RPC API is ready to be queried. It returns `SERVICE_UNAVAILABLE(503)` until all startup tasks complete, and then `Ok(200)` from then on.
+
 ## License
 
 Licensed under either of
