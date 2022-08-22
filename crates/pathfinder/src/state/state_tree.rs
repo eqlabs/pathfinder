@@ -4,14 +4,17 @@
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 
 use rusqlite::Transaction;
+use std::ops::ControlFlow;
 
 use crate::{
     core::{
         ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
     },
-    state::merkle_tree::MerkleTree,
+    state::merkle_tree::{MerkleTree, Visit},
     storage::merkle_tree::RcNodeStorage,
 };
+
+use super::merkle_node::Node;
 
 /// A Binary Merkle-Patricia Tree which contains
 /// the storage state of all StarkNet contracts.
@@ -41,6 +44,11 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     pub fn apply(self) -> anyhow::Result<ContractRoot> {
         let root = self.tree.commit()?;
         Ok(ContractRoot(root))
+    }
+
+    /// See [`MerkleTree::dfs`]
+    pub fn dfs<B, F: FnMut(&Node) -> ControlFlow<B, Visit>>(&self, f: &mut F) -> Option<B> {
+        self.tree.dfs(f)
     }
 }
 
@@ -75,5 +83,10 @@ impl<'tx> GlobalStateTree<'tx, '_> {
     pub fn apply(self) -> anyhow::Result<GlobalRoot> {
         let root = self.tree.commit()?;
         Ok(GlobalRoot(root))
+    }
+
+    /// See [`MerkleTree::dfs`]
+    pub fn dfs<B, F: FnMut(&Node) -> ControlFlow<B, Visit>>(&self, f: &mut F) -> Option<B> {
+        self.tree.dfs(f)
     }
 }
