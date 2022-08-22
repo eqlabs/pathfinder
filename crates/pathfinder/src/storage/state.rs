@@ -1100,7 +1100,7 @@ pub struct StarknetBlock {
 /// string format is followed. Semantic version strings may have been cheaper to just store
 /// in-line.
 ///
-/// Introduced in [`super::schema::revision_0014::migrate`].
+/// Introduced in `revision_0014`.
 struct StarknetVersionsTable;
 
 impl StarknetVersionsTable {
