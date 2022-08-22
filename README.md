@@ -375,13 +375,13 @@ Pathfinder has a monitoring API which can be enabled with the `--monitor-address
 
 ### Health
 
-`/health` provides a method to check the health status of your `pathfinder` node. It returns `OK(200)` if the node is healthy.
+`/health` provides a method to check the health status of your `pathfinder` node, and is commonly useful in Kubernetes docker setups. It returns a `200 OK` status if the node is healthy.
 
 ### Readyness
 
 `pathfinder` does several things before it is ready to respond to RPC queries. In most cases this startup time is less than a second, however there are certain scenarios where this can be considerably longer. For example, applying an expensive database migration after an upgrade could take several minutes (or even longer) on testnet. Or perhaps our startup network checks fail many times due to connection issues.
 
-`/ready` provides a way of checking whether the node's JSON-RPC API is ready to be queried. It returns `SERVICE_UNAVAILABLE(503)` until all startup tasks complete, and then `Ok(200)` from then on.
+`/ready` provides a way of checking whether the node's JSON-RPC API is ready to be queried. It returns a `503 Service Unavailable` status until all startup tasks complete, and then `200 OK` from then on.
 
 ## License
 
