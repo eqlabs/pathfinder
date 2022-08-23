@@ -96,9 +96,10 @@ fn migrate_events(tx: &Transaction<'_>) -> anyhow::Result<()> {
     )
     .context("Creating new table")?;
 
+    // The related FTS5 table does not need to be rebuilt as it references `starknet_events.id` which we are copying
+    // verbatim here.
     tx.execute(
-        r"-- Copy rowids to be sure that starknet_events_keys still references valid rows
-INSERT INTO starknet_events_new (id,block_number,idx,transaction_hash,from_address,keys,data)
+        r"INSERT INTO starknet_events_new (id,block_number,idx,transaction_hash,from_address,keys,data)
     SELECT id,block_number,idx,transaction_hash,from_address,keys,data FROM starknet_events",
         [],
     )
@@ -120,7 +121,7 @@ INSERT INTO starknet_events_new (id,block_number,idx,transaction_hash,from_addre
     BEGIN
         INSERT INTO starknet_events_keys(rowid, keys)
         VALUES (
-            new.rowid,
+            new.id,
             new.keys
         );
     END;",
@@ -135,7 +136,7 @@ INSERT INTO starknet_events_new (id,block_number,idx,transaction_hash,from_addre
         INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
         VALUES (
             'delete',
-            old.rowid,
+            old.id,
             old.keys
         );
     END;",
@@ -150,12 +151,12 @@ INSERT INTO starknet_events_new (id,block_number,idx,transaction_hash,from_addre
         INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys)
         VALUES (
             'delete',
-            old.rowid,
+            old.id,
             old.keys
         );
         INSERT INTO starknet_events_keys(rowid, keys)
         VALUES (
-            new.rowid,
+            new.id,
             new.keys
         );
     END;",
