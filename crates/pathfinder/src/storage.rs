@@ -15,9 +15,9 @@ use std::path::{Path, PathBuf};
 pub use contract::{ContractCodeTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 pub use state::{
-    ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId, RefsTable, StarknetBlock,
-    StarknetBlocksBlockId, StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter,
-    StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable,
+    CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
+    RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEmittedEvent,
+    StarknetEventFilter, StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable,
 };
 
 use anyhow::Context;
@@ -376,6 +376,8 @@ pub(crate) mod test_utils {
 
     /// Creates a storage instance in memory with a set of expected emitted events
     pub(crate) fn setup_test_storage() -> (Storage, Vec<StarknetEmittedEvent>) {
+        use crate::storage::CanonicalBlocksTable;
+
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
@@ -385,6 +387,7 @@ pub(crate) mod test_utils {
 
         for (i, block) in blocks.iter().enumerate() {
             StarknetBlocksTable::insert(&tx, block, None).unwrap();
+            CanonicalBlocksTable::insert(&tx, block.number, block.hash).unwrap();
             StarknetTransactionsTable::upsert(
                 &tx,
                 block.hash,

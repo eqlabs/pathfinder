@@ -508,7 +508,8 @@ impl StarknetTransactionsTable {
                 ]).context("Insert transaction data into transactions table")?;
 
             // insert events from receipt
-            StarknetEventsTable::insert_events(tx, block_number, transaction, &receipt.events)?;
+            StarknetEventsTable::insert_events(tx, block_number, transaction, &receipt.events)
+                .context("Inserting events")?;
         }
 
         Ok(())
@@ -1238,6 +1239,33 @@ impl StarknetStateUpdatesTable {
             serde_json::from_slice(&state_update).context("Deserializing state update")?;
 
         Ok(Some(state_update))
+    }
+}
+
+/// Stores the canonical StarkNet block chain.
+pub struct CanonicalBlocksTable {}
+impl CanonicalBlocksTable {
+    pub fn insert(
+        tx: &Transaction<'_>,
+        number: StarknetBlockNumber,
+        hash: StarknetBlockHash,
+    ) -> anyhow::Result<()> {
+        let rows_changed = tx.execute(
+            "INSERT INTO canonical_blocks(number, hash) values(?,?)",
+            params![number, hash],
+        )?;
+        assert_eq!(rows_changed, 1);
+
+        Ok(())
+    }
+
+    /// Removes all rows where `number >= reorg_tail`.
+    pub fn reorg(tx: &Transaction<'_>, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
+        tx.execute(
+            "DELETE FROM canonical_blocks WHERE number >= ?",
+            [reorg_tail],
+        )?;
+        Ok(())
     }
 }
 
@@ -2128,6 +2156,7 @@ mod tests {
             let tx = connection.transaction().unwrap();
 
             StarknetBlocksTable::insert(&tx, &block, None).unwrap();
+            CanonicalBlocksTable::insert(&tx, block.number, block.hash).unwrap();
             StarknetTransactionsTable::upsert(
                 &tx,
                 block.hash,
