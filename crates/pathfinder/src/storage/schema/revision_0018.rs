@@ -69,6 +69,17 @@ CREATE TABLE starknet_blocks_new (
 /// Re-creates the `starknet_events` events table, updating the `block_number` FK
 /// to reference the `canonical_blocks` table instead.
 fn migrate_events(tx: &Transaction<'_>) -> anyhow::Result<()> {
+    let row_count: usize = tx
+        .query_row("SELECT count(1) FROM starknet_events", [], |r| r.get(0))
+        .context("Count rows in starknet_events table")?;
+
+    if row_count > 0 {
+        tracing::info!(
+            %row_count,
+            "Migrating events table, this may take a while",
+        );
+    }
+
     tx.execute(
         r"CREATE TABLE starknet_events_new (
     id INTEGER PRIMARY KEY NOT NULL,
