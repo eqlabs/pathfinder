@@ -16,28 +16,28 @@ mod revision_0015;
 mod revision_0016;
 mod revision_0017;
 
-pub type MigrationFn = dyn Fn(&rusqlite::Transaction<'_>) -> anyhow::Result<()>;
+type MigrationFn = fn(&rusqlite::Transaction<'_>) -> anyhow::Result<()>;
 
 /// The full list of pathfinder migrations.
-pub fn migrations() -> Vec<Box<MigrationFn>> {
+pub fn migrations() -> &'static [MigrationFn] {
     // Don't forget to update `call.py` database version number!
-    vec![
-        Box::new(revision_0001::migrate),
-        Box::new(revision_0002::migrate),
-        Box::new(revision_0003::migrate),
-        Box::new(revision_0004::migrate),
-        Box::new(revision_0005::migrate),
-        Box::new(revision_0006::migrate),
-        Box::new(revision_0007::migrate),
-        Box::new(revision_0008::migrate),
-        Box::new(revision_0009::migrate),
-        Box::new(revision_0010::migrate),
-        Box::new(revision_0011::migrate),
-        Box::new(revision_0012::migrate),
-        Box::new(revision_0013::migrate),
-        Box::new(revision_0014::migrate),
-        Box::new(revision_0015::migrate),
-        Box::new(revision_0016::migrate),
-        Box::new(revision_0017::migrate),
+    &[
+        revision_0001::migrate,
+        revision_0002::migrate,
+        revision_0003::migrate,
+        revision_0004::migrate,
+        revision_0005::migrate,
+        revision_0006::migrate,
+        revision_0007::migrate,
+        revision_0008::migrate,
+        revision_0009::migrate,
+        revision_0010::migrate,
+        revision_0011::migrate,
+        revision_0012::migrate,
+        revision_0013::migrate,
+        revision_0014::migrate,
+        revision_0015::migrate,
+        revision_0016::migrate,
+        revision_0017::migrate,
     ]
 }

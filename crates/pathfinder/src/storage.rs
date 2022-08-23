@@ -141,27 +141,29 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
         migrations.len()
     );
 
-    // Commits a database migration as a single transaction.
-    let mut do_migration = |from, migration: Box<schema::MigrationFn>| -> anyhow::Result<()> {
-        let transaction = connection
-            .transaction()
-            .context("Create database transaction")?;
-        migration(&transaction)?;
-        transaction
-            .pragma_update(None, VERSION_KEY, from + 1)
-            .context("Failed to update the schema version number")?;
-        transaction
-            .commit()
-            .context("Commit migration transaction")?;
-
-        Ok(())
-    };
-
     // Sequentially apply each missing migration.
-    for (from_version, migration) in migrations.into_iter().skip(version).enumerate() {
-        do_migration(from_version, migration)
-            .with_context(|| format!("Failed migration from {from_version}"))?;
-    }
+    migrations
+        .iter()
+        .skip(version)
+        .enumerate()
+        .try_for_each(|(from, migration)| {
+            let mut do_migration = || -> anyhow::Result<()> {
+                let transaction = connection
+                    .transaction()
+                    .context("Create database transaction")?;
+                migration(&transaction)?;
+                transaction
+                    .pragma_update(None, VERSION_KEY, from + 1)
+                    .context("Failed to update the schema version number")?;
+                transaction
+                    .commit()
+                    .context("Commit migration transaction")?;
+
+                Ok(())
+            };
+
+            do_migration().with_context(|| format!("Migrating from {from}"))
+        })?;
 
     Ok(())
 }
