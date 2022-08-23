@@ -25,12 +25,6 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 
-/// Indicates database is non-existant.
-const DB_VERSION_EMPTY: u32 = 0;
-/// Current database version.
-///
-/// **Make sure** `EXPECTED_SCHEMA_REVISION` in `call.py` is also updated every time the value is incremented.
-const DB_VERSION_CURRENT: u32 = 17;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
@@ -137,60 +131,51 @@ impl Storage {
 fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
     enable_foreign_keys(connection).context("Failed to enable foreign key support")?;
     let version = schema_version(connection)?;
+    let migrations = schema::migrations();
 
     // Check that the database is not newer than this application knows of.
     anyhow::ensure!(
-        version <= DB_VERSION_CURRENT,
+        version <= migrations.len(),
         "Database version is newer than this application ({} > {})",
         version,
-        DB_VERSION_CURRENT
+        migrations.len()
     );
 
-    // Migrate incrementally, increasing the version by 1 at a time
-    for from_version in version..DB_VERSION_CURRENT {
-        let transaction = connection
-            .transaction()
-            .context("Create database transaction")?;
-        match from_version {
-            DB_VERSION_EMPTY => schema::revision_0001::migrate(&transaction)?,
-            1 => schema::revision_0002::migrate(&transaction).context("migrating from 1")?,
-            2 => schema::revision_0003::migrate(&transaction).context("migrating from 2")?,
-            3 => schema::revision_0004::migrate(&transaction).context("migrating from 3")?,
-            4 => schema::revision_0005::migrate(&transaction).context("migrating from 4")?,
-            5 => schema::revision_0006::migrate(&transaction).context("migrating from 5")?,
-            6 => schema::revision_0007::migrate(&transaction).context("migrating from 6")?,
-            7 => schema::revision_0008::migrate(&transaction).context("migrating from 7")?,
-            8 => schema::revision_0009::migrate(&transaction).context("migrating from 8")?,
-            9 => schema::revision_0010::migrate(&transaction).context("migrating from 9")?,
-            10 => schema::revision_0011::migrate(&transaction).context("migrating from 10")?,
-            11 => schema::revision_0012::migrate(&transaction).context("migrating from 11")?,
-            12 => schema::revision_0013::migrate(&transaction).context("migrating from 12")?,
-            13 => schema::revision_0014::migrate(&transaction).context("migrating from 13")?,
-            14 => schema::revision_0015::migrate(&transaction).context("migrating from 14")?,
-            15 => schema::revision_0016::migrate(&transaction).context("migrating from 15")?,
-            16 => schema::revision_0017::migrate(&transaction).context("migrating from 16")?,
-            _ => unreachable!("Database version constraint was already checked!"),
-        };
-        transaction
-            .pragma_update(None, VERSION_KEY, from_version + 1)
-            .context("Failed to update the schema version number")?;
-        transaction
-            .commit()
-            .context("Commit migration transaction")?;
-    }
+    // Sequentially apply each missing migration.
+    migrations
+        .iter()
+        .skip(version)
+        .enumerate()
+        .try_for_each(|(from, migration)| {
+            let mut do_migration = || -> anyhow::Result<()> {
+                let transaction = connection
+                    .transaction()
+                    .context("Create database transaction")?;
+                migration(&transaction)?;
+                transaction
+                    .pragma_update(None, VERSION_KEY, from + 1)
+                    .context("Failed to update the schema version number")?;
+                transaction
+                    .commit()
+                    .context("Commit migration transaction")?;
+
+                Ok(())
+            };
+
+            do_migration().with_context(|| format!("Migrating from {from}"))
+        })?;
 
     Ok(())
 }
-
 /// Returns the current schema version of the existing database,
-/// or [DB_VERSION_EMPTY] if database does not yet exist.
-fn schema_version(connection: &Connection) -> anyhow::Result<u32> {
+/// or `0` if database does not yet exist.
+fn schema_version(connection: &Connection) -> anyhow::Result<usize> {
     // We store the schema version in the Sqlite provided PRAGMA "user_version",
     // which stores an INTEGER and defaults to 0.
     let version = connection.query_row(
         &format!("SELECT {} FROM pragma_user_version;", VERSION_KEY),
         [],
-        |row| row.get::<_, u32>(0),
+        |row| row.get::<_, usize>(0),
     )?;
     Ok(version)
 }
@@ -428,7 +413,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
 
         let version = schema_version(&transaction).unwrap();
-        assert_eq!(version, DB_VERSION_EMPTY);
+        assert_eq!(version, 0);
     }
 
     #[test]
@@ -436,7 +421,8 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         migrate_database(&mut conn).unwrap();
         let version = schema_version(&conn).unwrap();
-        assert_eq!(version, DB_VERSION_CURRENT);
+        let expected = schema::migrations().len();
+        assert_eq!(version, expected);
     }
 
     #[test]
@@ -444,7 +430,8 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
 
         // Force the schema to a newer version
-        conn.pragma_update(None, VERSION_KEY, DB_VERSION_CURRENT + 1)
+        let current_version = schema::migrations().len();
+        conn.pragma_update(None, VERSION_KEY, current_version + 1)
             .unwrap();
 
         // Migration should fail.

@@ -1,17 +1,43 @@
-pub(crate) mod revision_0001;
-pub(crate) mod revision_0002;
-pub(crate) mod revision_0003;
-pub(crate) mod revision_0004;
-pub(crate) mod revision_0005;
-pub(crate) mod revision_0006;
-pub(crate) mod revision_0007;
-pub(crate) mod revision_0008;
-pub(crate) mod revision_0009;
-pub(crate) mod revision_0010;
-pub(crate) mod revision_0011;
-pub(crate) mod revision_0012;
-pub(crate) mod revision_0013;
-pub(crate) mod revision_0014;
-pub(crate) mod revision_0015;
-pub(crate) mod revision_0016;
-pub(crate) mod revision_0017;
+mod revision_0001;
+mod revision_0002;
+mod revision_0003;
+mod revision_0004;
+mod revision_0005;
+mod revision_0006;
+mod revision_0007;
+mod revision_0008;
+mod revision_0009;
+mod revision_0010;
+mod revision_0011;
+mod revision_0012;
+mod revision_0013;
+mod revision_0014;
+mod revision_0015;
+mod revision_0016;
+mod revision_0017;
+
+type MigrationFn = fn(&rusqlite::Transaction<'_>) -> anyhow::Result<()>;
+
+/// The full list of pathfinder migrations.
+pub fn migrations() -> &'static [MigrationFn] {
+    // Don't forget to update `call.py` database version number!
+    &[
+        revision_0001::migrate,
+        revision_0002::migrate,
+        revision_0003::migrate,
+        revision_0004::migrate,
+        revision_0005::migrate,
+        revision_0006::migrate,
+        revision_0007::migrate,
+        revision_0008::migrate,
+        revision_0009::migrate,
+        revision_0010::migrate,
+        revision_0011::migrate,
+        revision_0012::migrate,
+        revision_0013::migrate,
+        revision_0014::migrate,
+        revision_0015::migrate,
+        revision_0016::migrate,
+        revision_0017::migrate,
+    ]
+}
