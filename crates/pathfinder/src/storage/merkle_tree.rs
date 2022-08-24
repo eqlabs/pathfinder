@@ -366,7 +366,11 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
                     // This node is already written to the database, do nothing.
                     other if other == node => 0,
                     _ => {
-                        // most likely a bitflip corruption
+                        // most likely a bitflip corruption; however we could check the variant of
+                        // PersistedNode and it should match ... if the database is corrupt enough
+                        // to have different length values for (edge <-> binary) then I think
+                        // nothing will remedy that. some bug could had of course written that
+                        // distinctively wrong hash but ...
                         let new_count = self
                             .transaction
                             .execute(
