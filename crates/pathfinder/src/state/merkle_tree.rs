@@ -586,7 +586,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     ///
     /// Upon successful non-breaking visit of the tree, `None` will be returned.
     #[allow(dead_code)]
-    pub fn dfs<X, VisitorFn>(&self, visitor_fn: &mut VisitorFn) -> Option<X>
+    pub fn dfs<X, VisitorFn>(&self, visitor_fn: &mut VisitorFn) -> anyhow::Result<Option<X>>
     where
         VisitorFn: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<X, Visit>,
     {
@@ -619,7 +619,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                             }
                             ControlFlow::Break(x) => {
                                 // early exit
-                                return Some(x);
+                                return Ok(Some(x));
                             }
                         }
                     }
@@ -657,9 +657,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                             // Zero means empty tree, so nothing to resolve
                             if hash != &StarkHash::ZERO {
                                 visiting.push(VisitedNode {
-                                    node: Rc::new(RefCell::new(
-                                        self.resolve(*hash, path.len()).unwrap(),
-                                    )),
+                                    node: Rc::new(RefCell::new(self.resolve(*hash, path.len())?)),
                                     path,
                                 });
                             }
@@ -669,7 +667,7 @@ impl<T: NodeStorage> MerkleTree<T> {
             }
         }
 
-        None
+        Ok(None)
     }
 }
 
@@ -1427,7 +1425,7 @@ mod tests {
                 visited.push(node.clone());
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
-            uut.dfs(&mut visitor_fn);
+            uut.dfs(&mut visitor_fn).unwrap();
             assert!(visited.is_empty());
         }
 
@@ -1447,7 +1445,7 @@ mod tests {
                 visited.push(node.clone());
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
-            uut.dfs(&mut visitor_fn);
+            uut.dfs(&mut visitor_fn).unwrap();
 
             assert_eq!(
                 visited,
@@ -1482,7 +1480,7 @@ mod tests {
                 visited.push(node.clone());
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
-            uut.dfs(&mut visitor_fn);
+            uut.dfs(&mut visitor_fn).unwrap();
 
             let expected_3 = Node::Leaf(value_right);
             let expected_2 = Node::Leaf(value_left);
@@ -1527,7 +1525,7 @@ mod tests {
                 visited.push(node.clone());
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
-            uut.dfs(&mut visitor_fn);
+            uut.dfs(&mut visitor_fn).unwrap();
 
             // 0
             // |
@@ -1607,7 +1605,8 @@ mod tests {
                 visited.push((StarkHash::from_bits(p).unwrap(), *h));
             }
             std::ops::ControlFlow::Continue(Default::default())
-        });
+        })
+        .unwrap();
         assert_eq!(uut.get(&key0).unwrap(), value);
         assert_eq!(uut.get(&key1).unwrap(), value);
         assert_eq!(uut.get(&key2).unwrap(), hash_of_values);

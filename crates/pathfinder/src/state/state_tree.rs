@@ -51,7 +51,7 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     pub fn dfs<B, F: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
         &self,
         f: &mut F,
-    ) -> Option<B> {
+    ) -> anyhow::Result<Option<B>> {
         self.tree.dfs(f)
     }
 }
@@ -93,7 +93,7 @@ impl<'tx> GlobalStateTree<'tx, '_> {
     pub fn dfs<B, F: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
         &self,
         f: &mut F,
-    ) -> Option<B> {
+    ) -> anyhow::Result<Option<B>> {
         self.tree.dfs(f)
     }
 }
