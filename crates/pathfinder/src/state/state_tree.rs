@@ -3,6 +3,7 @@
 //!
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 
+use bitvec::{prelude::Msb0, slice::BitSlice};
 use rusqlite::Transaction;
 use std::ops::ControlFlow;
 
@@ -47,7 +48,10 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     }
 
     /// See [`MerkleTree::dfs`]
-    pub fn dfs<B, F: FnMut(&Node) -> ControlFlow<B, Visit>>(&self, f: &mut F) -> Option<B> {
+    pub fn dfs<B, F: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
+        &self,
+        f: &mut F,
+    ) -> Option<B> {
         self.tree.dfs(f)
     }
 }
@@ -86,7 +90,10 @@ impl<'tx> GlobalStateTree<'tx, '_> {
     }
 
     /// See [`MerkleTree::dfs`]
-    pub fn dfs<B, F: FnMut(&Node) -> ControlFlow<B, Visit>>(&self, f: &mut F) -> Option<B> {
+    pub fn dfs<B, F: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
+        &self,
+        f: &mut F,
+    ) -> Option<B> {
         self.tree.dfs(f)
     }
 }
