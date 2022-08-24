@@ -159,11 +159,13 @@ impl Queries<'static> {
 }
 
 impl<'a, 'queries> crate::state::merkle_tree::NodeStorage for RcNodeStorage<'a, 'queries> {
+    #[inline]
     fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
         self.get(key)
     }
 
-    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
+    #[inline]
+    fn upsert(&self, key: StarkHash, node: &PersistedNode) -> anyhow::Result<()> {
         self.upsert(key, node)
     }
 
@@ -172,6 +174,7 @@ impl<'a, 'queries> crate::state::merkle_tree::NodeStorage for RcNodeStorage<'a, 
         RcNodeStorage::decrement_ref_count(self, key)
     }
 
+    #[inline]
     fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         self.increment_ref_count(key)
     }
@@ -309,7 +312,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     ///
     /// Does not perform rollback on failure. This implies that you should rollback the [RcNodeStorage's](RcNodeStorage) transaction
     /// if this call returns an error to prevent database corruption.
-    pub fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
+    pub fn upsert(&self, key: StarkHash, node: &PersistedNode) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
         let mut data = [0u8; 65];
@@ -327,6 +330,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
 
         let mut stmt = self.transaction.prepare_cached(&self.queries.insert)?;
 
+        tracing::debug!(%key, ?node, "Inserting a non-leaf");
         let count = stmt.execute(params! {
             &hash[..],
             &data[..written],
@@ -360,9 +364,24 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
                         new_count
                     }
                     // This node is already written to the database, do nothing.
-                    other if other == &node => 0,
-                    other => {
-                        anyhow::bail!("Hash conflict! Existing: {:?}, new: {:?}", other, node);
+                    other if other == node => 0,
+                    _ => {
+                        // most likely a bitflip corruption
+                        let new_count = self
+                            .transaction
+                            .execute(
+                                &self.queries.update,
+                                params! {
+                                    &data[..written],
+                                    // FIXME: I'm pretty sure we shouldn't be setting refcount
+                                    0,
+                                    &hash[..],
+                                },
+                            )
+                            .context("Overwriting existing non-leaf")?;
+
+                        anyhow::ensure!(new_count == 1, "Failed to overwrite existing node");
+                        new_count
                     }
                 }
             }

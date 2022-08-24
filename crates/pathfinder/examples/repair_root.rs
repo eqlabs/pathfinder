@@ -115,6 +115,7 @@ fn main() {
         old_contract_root.0,
     )
     .unwrap();
+    updated.verification().confirm_written();
 
     println!("applying the partial storage diff on top of the old tree");
     state_update
@@ -151,6 +152,8 @@ fn fully_traverse(
     tx: &rusqlite::Transaction<'_>,
     root: ContractRoot,
 ) -> anyhow::Result<Option<()>> {
-    let tree = pathfinder_lib::state::state_tree::ContractsStateTree::load(&tx, root).unwrap();
+    let mut tree = pathfinder_lib::state::state_tree::ContractsStateTree::load(&tx, root).unwrap();
+    tree.verification().hash_read_nodes();
+
     tree.dfs(&mut |_: &_, _: &_| ControlFlow::Continue::<(), _>(Visit::ContinueDeeper))
 }

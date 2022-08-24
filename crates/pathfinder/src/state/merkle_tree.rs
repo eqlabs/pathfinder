@@ -71,7 +71,7 @@ pub trait NodeStorage {
     /// Insert or ignore if already exists `node` to storage under the given `key`.
     ///
     /// This does not imply incrementing the nodes ref count.
-    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()>;
+    fn upsert(&self, key: StarkHash, node: &PersistedNode) -> anyhow::Result<()>;
 
     /// Decrement previously stored `key`'s reference count. This shouldn't fail for key not found.
     #[cfg(test)]
@@ -91,6 +91,7 @@ pub struct MerkleTree<T> {
     storage: T,
     root: Rc<RefCell<Node>>,
     max_height: u8,
+    verify: VerificationMode,
 }
 
 impl<'tx, 'queries> MerkleTree<RcNodeStorage<'tx, 'queries>> {
@@ -119,7 +120,57 @@ impl<'tx, 'queries> MerkleTree<RcNodeStorage<'tx, 'queries>> {
     }
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub struct VerificationMode(u32);
+
+pub enum Verification {
+    ReadNodesHash = 1,
+    ConfirmWritten = 2,
+}
+
+impl VerificationMode {
+    pub fn is_hash_read_nodes(&self) -> bool {
+        self.0 & 1 == 1
+    }
+
+    pub fn hash_read_nodes(&mut self) {
+        self.0 |= 1;
+    }
+
+    pub fn is_confirm_written(&self) -> bool {
+        self.0 & 2 == 2
+    }
+
+    pub fn confirm_written(&mut self) {
+        self.0 |= 2;
+    }
+
+    fn verify_binary(&self, hash: &StarkHash, node: &PersistedBinaryNode) -> anyhow::Result<()> {
+        if self.is_hash_read_nodes() {
+            anyhow::ensure!(
+                hash == &BinaryNode::hash(&node.left, &node.right),
+                "Read BinaryNode at {hash} is corrupted"
+            );
+        }
+        Ok(())
+    }
+
+    fn verify_edge(&self, hash: &StarkHash, node: &PersistedEdgeNode) -> anyhow::Result<()> {
+        if self.is_hash_read_nodes() {
+            anyhow::ensure!(
+                hash == &EdgeNode::hash(&node.path, &node.child),
+                "Read EdgeNode at {hash} is corrupted"
+            );
+        }
+        Ok(())
+    }
+}
+
 impl<T: NodeStorage> MerkleTree<T> {
+    pub fn verification(&mut self) -> &mut VerificationMode {
+        &mut self.verify
+    }
+
     /// Removes one instance of the tree and its root from persistent storage.
     ///
     /// This implies decrementing the root's reference count. The root will
@@ -148,6 +199,7 @@ impl<T: NodeStorage> MerkleTree<T> {
             storage,
             root: root_node,
             max_height,
+            verify: Default::default(),
         };
         if root != StarkHash::ZERO {
             // Resolve non-zero root node to check that it does exist.
@@ -212,9 +264,18 @@ impl<T: NodeStorage> MerkleTree<T> {
                 let right = binary.right.borrow().hash().unwrap();
                 let persisted_node = PersistedNode::Binary(PersistedBinaryNode { left, right });
                 // unwrap is safe as we just set the hash.
+                let h = binary.hash.unwrap();
                 self.storage
-                    .upsert(binary.hash.unwrap(), persisted_node)
+                    .upsert(h, &persisted_node)
                     .context("Failed to insert binary node")?;
+
+                if self.verify.is_confirm_written() {
+                    anyhow::ensure!(
+                        self.storage.get(h).context("Reading back written node")?
+                            == Some(persisted_node),
+                        "Reading back written binary node at {h} failed",
+                    );
+                }
             }
 
             Edge(edge) => {
@@ -229,9 +290,18 @@ impl<T: NodeStorage> MerkleTree<T> {
                     child,
                 });
                 // unwrap is safe as we just set the hash.
+                let h = edge.hash.unwrap();
                 self.storage
-                    .upsert(edge.hash.unwrap(), persisted_node)
+                    .upsert(h, &persisted_node)
                     .context("Failed to insert edge node")?;
+
+                if self.verify.is_confirm_written() {
+                    anyhow::ensure!(
+                        self.storage.get(h).context("Reading bakc written node")?
+                            == Some(persisted_node),
+                        "Reading back written edge node at {h} failed",
+                    );
+                }
             }
         }
 
@@ -540,18 +610,26 @@ impl<T: NodeStorage> MerkleTree<T> {
             .with_context(|| format!("Node at height {height} does not exist: {hash}"))?;
 
         let node = match node {
-            PersistedNode::Binary(binary) => Node::Binary(BinaryNode {
-                hash: Some(hash),
-                height,
-                left: Rc::new(RefCell::new(Node::Unresolved(binary.left))),
-                right: Rc::new(RefCell::new(Node::Unresolved(binary.right))),
-            }),
-            PersistedNode::Edge(edge) => Node::Edge(EdgeNode {
-                hash: Some(hash),
-                height,
-                path: edge.path,
-                child: Rc::new(RefCell::new(Node::Unresolved(edge.child))),
-            }),
+            PersistedNode::Binary(binary) => {
+                self.verify.verify_binary(&hash, &binary)?;
+
+                Node::Binary(BinaryNode {
+                    hash: Some(hash),
+                    height,
+                    left: Rc::new(RefCell::new(Node::Unresolved(binary.left))),
+                    right: Rc::new(RefCell::new(Node::Unresolved(binary.right))),
+                })
+            }
+            PersistedNode::Edge(edge) => {
+                self.verify.verify_edge(&hash, &edge)?;
+
+                Node::Edge(EdgeNode {
+                    hash: Some(hash),
+                    height,
+                    path: edge.path,
+                    child: Rc::new(RefCell::new(Node::Unresolved(edge.child))),
+                })
+            }
             PersistedNode::Leaf => anyhow::bail!(
                 "Retrieved node {hash} is a leaf at {height} out of {}",
                 self.max_height
@@ -701,7 +779,7 @@ impl NodeStorage for () {
         Ok(None)
     }
 
-    fn upsert(&self, _key: StarkHash, _node: PersistedNode) -> anyhow::Result<()> {
+    fn upsert(&self, _key: StarkHash, _node: &PersistedNode) -> anyhow::Result<()> {
         Ok(())
     }
 
@@ -720,17 +798,17 @@ impl NodeStorage for std::cell::RefCell<std::collections::HashMap<StarkHash, Per
         Ok(self.borrow().get(&key).cloned())
     }
 
-    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
+    fn upsert(&self, key: StarkHash, node: &PersistedNode) -> anyhow::Result<()> {
         use std::collections::hash_map::Entry::*;
         if !matches!(node, PersistedNode::Leaf) {
             match self.borrow_mut().entry(key) {
                 Vacant(ve) => {
-                    ve.insert(node);
+                    ve.insert(node.to_owned());
                 }
                 Occupied(oe) => {
                     let existing = oe.get();
                     anyhow::ensure!(
-                        existing == &node,
+                        existing == node,
                         "trying to upsert a different node over existing? {existing:?} != {node:?}"
                     );
                 }

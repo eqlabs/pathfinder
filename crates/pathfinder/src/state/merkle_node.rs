@@ -135,7 +135,11 @@ impl BinaryNode {
             None => unreachable!("subtrees have to be commited first"),
         };
 
-        self.hash = Some(stark_hash(left, right));
+        self.hash = Some(Self::hash(&left, &right));
+    }
+
+    pub fn hash(left: &StarkHash, right: &StarkHash) -> StarkHash {
+        stark_hash(*left, *right)
     }
 }
 
@@ -226,14 +230,18 @@ impl EdgeNode {
             None => unreachable!("subtree has to be commited before"),
         };
 
-        let path = StarkHash::from_bits(&self.path).unwrap();
+        self.hash = Some(Self::hash(&self.path, &child));
+    }
+
+    pub fn hash(path: &BitSlice<Msb0, u8>, child: &StarkHash) -> StarkHash {
+        let len = u8::try_from(path.len()).expect("Edge path length overflow");
+        let path = StarkHash::from_bits(path).unwrap();
         let mut length = [0; 32];
         // Safe as len() is guaranteed to be <= 251
-        length[31] = self.path.len() as u8;
+        length[31] = len;
 
         let length = StarkHash::from_be_bytes(length).unwrap();
-        let hash = stark_hash(child, path) + length;
-        self.hash = Some(hash);
+        stark_hash(*child, path) + length
     }
 }
 

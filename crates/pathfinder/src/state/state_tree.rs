@@ -15,7 +15,7 @@ use crate::{
     storage::merkle_tree::RcNodeStorage,
 };
 
-use super::merkle_node::Node;
+use super::{merkle_node::Node, merkle_tree::VerificationMode};
 
 /// A Binary Merkle-Patricia Tree which contains
 /// the storage state of all StarkNet contracts.
@@ -53,6 +53,10 @@ impl<'tx> ContractsStateTree<'tx, '_> {
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
         self.tree.dfs(f)
+    }
+
+    pub fn verification(&mut self) -> &mut VerificationMode {
+        self.tree.verification()
     }
 }
 
@@ -95,5 +99,9 @@ impl<'tx> GlobalStateTree<'tx, '_> {
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
         self.tree.dfs(f)
+    }
+
+    pub fn verification(&mut self) -> &mut VerificationMode {
+        self.tree.verification()
     }
 }
