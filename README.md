@@ -20,7 +20,7 @@ Pathfinder is currently in alpha so expect some rough edges but it is already us
 We appreciate any feedback, especially during this alpha period.
 This includes any documentation issues, feature requests and bugs that you may encounter.
 
-For help or to submit bug reports or feature requests, please open an issue or alternatively visit the StarkNet [discord channel](https://discord.gg/kk6z28VT).
+For help or to submit bug reports or feature requests, please open an issue or alternatively visit the StarkNet [discord channel](https://discord.com/invite/QypNMzkHbc).
 
 ## Installation (from source)
 
