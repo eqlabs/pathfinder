@@ -6,8 +6,9 @@ use warp::Filter;
 pub async fn spawn_server(
     addr: impl Into<std::net::SocketAddr> + 'static,
     readiness: std::sync::Arc<AtomicBool>,
+    prometheus_handle: std::sync::Arc<DummyPrometheusHandle>,
 ) -> tokio::task::JoinHandle<()> {
-    let server = warp::serve(routes(readiness));
+    let server = warp::serve(routes(readiness, prometheus_handle));
     let server = server.bind(addr);
 
     tokio::spawn(async move { server.await })
@@ -15,8 +16,11 @@ pub async fn spawn_server(
 
 fn routes(
     readiness: std::sync::Arc<AtomicBool>,
+    prometheus_handle: std::sync::Arc<DummyPrometheusHandle>,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    health_route().or(ready_route(readiness))
+    health_route()
+        .or(ready_route(readiness))
+        .or(metrics_route(prometheus_handle))
 }
 
 /// Always returns `Ok(200)` at `/health`.
@@ -39,8 +43,30 @@ fn ready_route(
         })
 }
 
+#[derive(Debug, Clone)]
+pub struct DummyPrometheusHandle;
+
+impl DummyPrometheusHandle {
+    pub fn render(&self) -> String {
+        "TODO".to_string()
+    }
+}
+
+/// Returns Prometheus merics snapshot at `/metrics`.
+fn metrics_route(
+    handle: std::sync::Arc<DummyPrometheusHandle>,
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    warp::get()
+        .and(warp::path!("metrics"))
+        .map(move || -> std::sync::Arc<DummyPrometheusHandle> { handle.clone() })
+        .and_then(|handle: std::sync::Arc<DummyPrometheusHandle>| async move {
+            Ok::<_, std::convert::Infallible>(warp::http::Response::builder().body(handle.render()))
+        })
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::monitoring::DummyPrometheusHandle;
 
     #[tokio::test]
     async fn health() {
@@ -48,7 +74,8 @@ mod tests {
         use std::sync::Arc;
 
         let readiness = Arc::new(AtomicBool::new(false));
-        let filter = super::routes(readiness);
+        let prometheus_handle = Arc::new(DummyPrometheusHandle);
+        let filter = super::routes(readiness, prometheus_handle);
         let response = warp::test::request().path("/health").reply(&filter).await;
 
         assert_eq!(response.status(), http::StatusCode::OK);
@@ -60,12 +87,26 @@ mod tests {
         use std::sync::Arc;
 
         let readiness = Arc::new(AtomicBool::new(false));
-        let filter = super::routes(readiness.clone());
+        let prometheus_handle = Arc::new(DummyPrometheusHandle);
+        let filter = super::routes(readiness.clone(), prometheus_handle);
         let response = warp::test::request().path("/ready").reply(&filter).await;
         assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
 
         readiness.store(true, std::sync::atomic::Ordering::Relaxed);
         let response = warp::test::request().path("/ready").reply(&filter).await;
         assert_eq!(response.status(), http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn metrics() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+
+        let readiness = Arc::new(AtomicBool::new(false));
+        let prometheus_handle = Arc::new(DummyPrometheusHandle);
+        let filter = super::routes(readiness.clone(), prometheus_handle);
+        let response = warp::test::request().path("/metrics").reply(&filter).await;
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.body(), "TODO");
     }
 }

@@ -5,7 +5,8 @@ use pathfinder_lib::{
     cairo, config,
     core::{self, Chain, EthereumChain},
     ethereum::transport::{EthereumTransport, HttpTransport},
-    monitoring, rpc, sequencer, state,
+    monitoring::{self, DummyPrometheusHandle},
+    rpc, sequencer, state,
     storage::{JournalMode, Storage},
 };
 use std::sync::{atomic::AtomicBool, Arc};
@@ -33,7 +34,9 @@ async fn main() -> anyhow::Result<()> {
     let pathfinder_ready = match config.monitoring_addr {
         Some(monitoring_addr) => {
             let ready = Arc::new(AtomicBool::new(false));
-            let _jh = monitoring::spawn_server(monitoring_addr, ready.clone()).await;
+            let prometheus_handle = Arc::new(DummyPrometheusHandle);
+            let _jh =
+                monitoring::spawn_server(monitoring_addr, ready.clone(), prometheus_handle).await;
             Some(ready)
         }
         None => None,
