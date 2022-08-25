@@ -144,8 +144,8 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
     // Sequentially apply each missing migration.
     migrations
         .iter()
-        .skip(version)
         .enumerate()
+        .skip(version)
         .try_for_each(|(from, migration)| {
             let mut do_migration = || -> anyhow::Result<()> {
                 let transaction = connection
