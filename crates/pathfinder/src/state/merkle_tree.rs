@@ -1639,5 +1639,17 @@ mod tests {
         assert_eq!(uut.get(&key0).unwrap(), value);
         assert_eq!(uut.get(&key1).unwrap(), value);
         assert_eq!(uut.get(&key2).unwrap(), hash_of_values);
+
+        assert_eq!(
+            visited,
+            &[
+                (starkhash!("EE00"), starkhash!("01")),
+                (starkhash!("EE01"), starkhash!("01")),
+                (
+                    starkhash!("FFFF"),
+                    starkhash!("02EBBD6878F81E49560AE863BD4EF327A417037BF57B63A016130AD0A94C8EAC")
+                )
+            ]
+        );
     }
 }
