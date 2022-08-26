@@ -13,6 +13,7 @@ use crate::{
         ContractAddressSalt, Fee, StarknetTransactionHash, StarknetTransactionIndex,
         TransactionVersion,
     },
+    monitoring::metrics::middleware::RpcMetricsMiddleware,
     rpc::{
         api::{BlockResponseScope, RpcApi},
         serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
@@ -73,6 +74,7 @@ pub async fn run_server(
     api: RpcApi,
 ) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
     let server = HttpServerBuilder::default()
+        .set_middleware(RpcMetricsMiddleware)
         .build(addr)
         .await
         .map_err(|e| match e {

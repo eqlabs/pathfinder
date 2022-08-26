@@ -1,3 +1,5 @@
+pub mod metrics;
+
 use std::sync::atomic::AtomicBool;
 
 use warp::Filter;
