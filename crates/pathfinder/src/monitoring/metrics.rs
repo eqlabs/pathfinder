@@ -1,5 +1,6 @@
 pub mod middleware {
     use jsonrpsee::core::middleware::Middleware;
+    use metrics::increment_counter;
     use std::time::Instant;
 
     #[derive(Debug, Clone)]
@@ -12,6 +13,8 @@ pub mod middleware {
             Instant::now()
         }
 
-        fn on_call(&self, _name: &str) {}
+        fn on_call(&self, name: &str) {
+            increment_counter!(format!("{name} call count"));
+        }
     }
 }

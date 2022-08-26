@@ -31,6 +31,7 @@ hex = "0.4.3"
 hex-literal = "0.3"
 jsonrpsee = { version = "0.11.0", features = ["server"] }
 lazy_static = "1.4.0"
+metrics = "0.20.1"
 num-bigint = { version = "0.4.3", features = ["serde"] }
 r2d2 = "0.8.9"
 r2d2_sqlite = "0.20.0"
