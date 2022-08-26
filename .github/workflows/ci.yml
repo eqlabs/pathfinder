@@ -13,6 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v1
       - uses: rui314/setup-mold@v1
         with:
           mold-version: 1.4.1
@@ -27,9 +28,6 @@ jobs:
           EOF
 
           cat $HOME/.cargo/config.toml
-      - uses: Swatinem/rust-cache@v1
-        with:
-          key: "mold"
       - run: |
           cargo test --no-run --workspace --locked
           timeout 5m cargo test -p pathfinder -- --skip ethereum::
@@ -123,6 +121,7 @@ jobs:
           flake8 src/
 
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v1
       - uses: rui314/setup-mold@v1
         with:
           mold-version: 1.4.1
@@ -138,9 +137,6 @@ jobs:
 
           cat $HOME/.cargo/config.toml
 
-      - uses: Swatinem/rust-cache@v1
-        with:
-          key: "mold"
       - name: Integration (rust)
         run: |
           source py/.venv/bin/activate
@@ -154,23 +150,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-      - uses: rui314/setup-mold@v1
-        with:
-          mold-version: 1.4.1
-          make-default: false
-      - name: Enable mold
-        run: |
-          mkdir -p $HOME/.cargo
-          cat << EOF >> $HOME/.cargo/config.toml
-          [target.x86_64-unknown-linux-gnu]
-          linker = "/usr/bin/clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/mold"]
-          EOF
-
-          cat $HOME/.cargo/config.toml
       - uses: Swatinem/rust-cache@v1
-        with:
-          key: "mold"
       - run: cargo install cargo-fuzz
       - name: stark_hash
         run: cargo fuzz build
