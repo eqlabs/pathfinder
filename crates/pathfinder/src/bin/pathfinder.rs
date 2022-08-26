@@ -5,7 +5,7 @@ use pathfinder_lib::{
     cairo, config,
     core::{self, Chain, EthereumChain},
     ethereum::transport::{EthereumTransport, HttpTransport},
-    monitoring::{self, DummyPrometheusHandle},
+    monitoring::{self, metrics::middleware::RpcMetricsMiddleware, DummyPrometheusHandle},
     rpc, sequencer, state,
     storage::{JournalMode, Storage},
 };
@@ -130,9 +130,12 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         false => api,
     };
 
-    let (rpc_handle, local_addr) = rpc::run_server(config.http_rpc_addr, api)
+    let (rpc_handle, local_addr) = rpc::RpcServer::new(config.http_rpc_addr, api)
+        .set_middleware(RpcMetricsMiddleware)
+        .run()
         .await
         .context("Starting the RPC server")?;
+
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
     let update_handle = tokio::spawn(pathfinder_lib::update::poll_github_for_releases());

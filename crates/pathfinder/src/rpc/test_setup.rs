@@ -280,7 +280,7 @@ where
         use crate::core::Chain;
         use crate::rpc::{
             test_client::client,
-            {run_server, RpcApi},
+            {RpcApi, RpcServer},
         };
         use crate::sequencer::Client;
         use crate::state::SyncState;
@@ -293,10 +293,11 @@ where
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
         let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-        let (__handle, addr) = run_server(
+        let (__handle, addr) = RpcServer::new(
             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
             api,
         )
+        .run()
         .await
         .unwrap();
 
