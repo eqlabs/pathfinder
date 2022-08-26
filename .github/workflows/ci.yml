@@ -13,7 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v1
       - uses: rui314/setup-mold@v1
         with:
           mold-version: 1.4.1
@@ -28,6 +27,7 @@ jobs:
           EOF
 
           cat $HOME/.cargo/config.toml
+      - uses: Swatinem/rust-cache@v1
       - run: |
           cargo test --no-run --workspace --locked
           timeout 5m cargo test -p pathfinder -- --skip ethereum::
@@ -121,7 +121,6 @@ jobs:
           flake8 src/
 
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v1
       - uses: rui314/setup-mold@v1
         with:
           mold-version: 1.4.1
@@ -137,6 +136,7 @@ jobs:
 
           cat $HOME/.cargo/config.toml
 
+      - uses: Swatinem/rust-cache@v1
       - name: Integration (rust)
         run: |
           source py/.venv/bin/activate
