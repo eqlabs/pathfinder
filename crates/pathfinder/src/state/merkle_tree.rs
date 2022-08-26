@@ -584,6 +584,8 @@ impl<T: NodeStorage> MerkleTree<T> {
     /// function can also return `ControlFlow::Break` to stop the visit with the given return
     /// value, which will be returned as `Some(value))` to the caller.
     ///
+    /// The visitor function receives the node being visited, as well as the full path to that node.
+    ///
     /// Upon successful non-breaking visit of the tree, `None` will be returned.
     #[allow(dead_code)]
     pub fn dfs<X, VisitorFn>(&self, visitor_fn: &mut VisitorFn) -> anyhow::Result<Option<X>>
