@@ -2,13 +2,14 @@ pub mod metrics;
 
 use std::sync::atomic::AtomicBool;
 
+use metrics_exporter_prometheus::PrometheusHandle;
 use warp::Filter;
 
 /// Spawns a server which hosts a `/health` endpoint.
 pub async fn spawn_server(
     addr: impl Into<std::net::SocketAddr> + 'static,
     readiness: std::sync::Arc<AtomicBool>,
-    prometheus_handle: std::sync::Arc<DummyPrometheusHandle>,
+    prometheus_handle: std::sync::Arc<PrometheusHandle>,
 ) -> tokio::task::JoinHandle<()> {
     let server = warp::serve(routes(readiness, prometheus_handle));
     let server = server.bind(addr);
@@ -18,7 +19,7 @@ pub async fn spawn_server(
 
 fn routes(
     readiness: std::sync::Arc<AtomicBool>,
-    prometheus_handle: std::sync::Arc<DummyPrometheusHandle>,
+    prometheus_handle: std::sync::Arc<PrometheusHandle>,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     health_route()
         .or(ready_route(readiness))
@@ -45,39 +46,32 @@ fn ready_route(
         })
 }
 
-#[derive(Debug, Clone)]
-pub struct DummyPrometheusHandle;
-
-impl DummyPrometheusHandle {
-    pub fn render(&self) -> String {
-        "TODO".to_string()
-    }
-}
-
 /// Returns Prometheus merics snapshot at `/metrics`.
 fn metrics_route(
-    handle: std::sync::Arc<DummyPrometheusHandle>,
+    handle: std::sync::Arc<PrometheusHandle>,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::get()
         .and(warp::path!("metrics"))
-        .map(move || -> std::sync::Arc<DummyPrometheusHandle> { handle.clone() })
-        .and_then(|handle: std::sync::Arc<DummyPrometheusHandle>| async move {
+        .map(move || -> std::sync::Arc<PrometheusHandle> { handle.clone() })
+        .and_then(|handle: std::sync::Arc<PrometheusHandle>| async move {
             Ok::<_, std::convert::Infallible>(warp::http::Response::builder().body(handle.render()))
         })
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::monitoring::DummyPrometheusHandle;
+    use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    lazy_static::lazy_static!(
+        static ref PROMETHEUS_HANDLE: Arc<PrometheusHandle> = Arc::new(PrometheusBuilder::new().install_recorder().unwrap());
+    );
 
     #[tokio::test]
     async fn health() {
-        use std::sync::atomic::AtomicBool;
-        use std::sync::Arc;
-
         let readiness = Arc::new(AtomicBool::new(false));
-        let prometheus_handle = Arc::new(DummyPrometheusHandle);
-        let filter = super::routes(readiness, prometheus_handle);
+        let filter = super::routes(readiness, PROMETHEUS_HANDLE.clone());
         let response = warp::test::request().path("/health").reply(&filter).await;
 
         assert_eq!(response.status(), http::StatusCode::OK);
@@ -85,12 +79,8 @@ mod tests {
 
     #[tokio::test]
     async fn ready() {
-        use std::sync::atomic::AtomicBool;
-        use std::sync::Arc;
-
         let readiness = Arc::new(AtomicBool::new(false));
-        let prometheus_handle = Arc::new(DummyPrometheusHandle);
-        let filter = super::routes(readiness.clone(), prometheus_handle);
+        let filter = super::routes(readiness.clone(), PROMETHEUS_HANDLE.clone());
         let response = warp::test::request().path("/ready").reply(&filter).await;
         assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
 
@@ -101,14 +91,14 @@ mod tests {
 
     #[tokio::test]
     async fn metrics() {
-        use std::sync::atomic::AtomicBool;
-        use std::sync::Arc;
+        let handle = PROMETHEUS_HANDLE.clone();
+        let counter = metrics::register_counter!("x");
+        counter.increment(123);
 
         let readiness = Arc::new(AtomicBool::new(false));
-        let prometheus_handle = Arc::new(DummyPrometheusHandle);
-        let filter = super::routes(readiness.clone(), prometheus_handle);
+        let filter = super::routes(readiness.clone(), handle);
         let response = warp::test::request().path("/metrics").reply(&filter).await;
         assert_eq!(response.status(), http::StatusCode::OK);
-        assert_eq!(response.body(), "TODO");
+        assert_eq!(response.body(), "# TYPE x counter\nx 123\n\n");
     }
 }

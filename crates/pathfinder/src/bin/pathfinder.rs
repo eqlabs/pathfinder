@@ -1,11 +1,12 @@
 #![deny(rust_2018_idioms)]
 
 use anyhow::Context;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_lib::{
     cairo, config,
     core::{self, Chain, EthereumChain},
     ethereum::transport::{EthereumTransport, HttpTransport},
-    monitoring::{self, metrics::middleware::RpcMetricsMiddleware, DummyPrometheusHandle},
+    monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
     rpc, sequencer, state,
     storage::{JournalMode, Storage},
 };
@@ -31,10 +32,14 @@ async fn main() -> anyhow::Result<()> {
 
     permission_check(&config.data_directory)?;
 
+    let prometheus_handle = PrometheusBuilder::new()
+        .install_recorder()
+        .context("Creating Prometheus recorder")?;
+
     let pathfinder_ready = match config.monitoring_addr {
         Some(monitoring_addr) => {
             let ready = Arc::new(AtomicBool::new(false));
-            let prometheus_handle = Arc::new(DummyPrometheusHandle);
+            let prometheus_handle = Arc::new(prometheus_handle);
             let _jh =
                 monitoring::spawn_server(monitoring_addr, ready.clone(), prometheus_handle).await;
             Some(ready)

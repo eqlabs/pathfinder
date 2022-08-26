@@ -56,7 +56,7 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
     {
         use tracing::Instrument;
 
-        metrics::register_counter!(format!("{method_name} call count"));
+        metrics::register_counter!(format!("{method_name} calls total"));
 
         self.0.register_async_method(method_name, move |p, c| {
             // why info here? it's the same used in warp tracing filter for example.

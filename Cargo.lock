@@ -1099,12 +1099,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashbrown"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
+dependencies = [
+ "ahash",
+]
+
+[[package]]
 name = "hashlink"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7249a3129cbc1ffccd74857f81464a323a152173cdb134e0fd81bc803b29facf"
 dependencies = [
- "hashbrown",
+ "hashbrown 0.11.2",
 ]
 
 [[package]]
@@ -1332,7 +1341,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc633605454125dec4b66843673f01c7df2b89479b32e0ed634e43a91cff62a5"
 dependencies = [
  "autocfg",
- "hashbrown",
+ "hashbrown 0.11.2",
 ]
 
 [[package]]
@@ -1578,6 +1587,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mach"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "matchers"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1619,6 +1637,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "metrics-exporter-prometheus"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8603921e1f54ef386189335f288441af761e0fc61bcb552168d9cedfe63ebc70"
+dependencies = [
+ "hyper",
+ "indexmap",
+ "ipnet",
+ "metrics",
+ "metrics-util",
+ "parking_lot 0.12.0",
+ "portable-atomic",
+ "quanta",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "metrics-macros"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1627,6 +1664,23 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "metrics-util"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7d24dc2dbae22bff6f1f9326ffce828c9f07ef9cc1e8002e5279f845432a30a"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+ "hashbrown 0.12.3",
+ "metrics",
+ "num_cpus",
+ "parking_lot 0.12.0",
+ "portable-atomic",
+ "quanta",
+ "sketches-ddsketch",
 ]
 
 [[package]]
@@ -2041,6 +2095,7 @@ dependencies = [
  "jsonrpsee",
  "lazy_static",
  "metrics",
+ "metrics-exporter-prometheus",
  "mockall",
  "num-bigint 0.4.3",
  "pretty_assertions",
@@ -2333,9 +2388,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "292972edad6bbecc137ab84c5e36421a4a6c979ea31d3cc73540dd04315b33e1"
 dependencies = [
  "byteorder",
- "hashbrown",
+ "hashbrown 0.11.2",
  "idna",
  "psl-types",
+]
+
+[[package]]
+name = "quanta"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7e31331286705f455e56cca62e0e717158474ff02b7936c1fa596d983f4ae27"
+dependencies = [
+ "crossbeam-utils",
+ "libc",
+ "mach",
+ "once_cell",
+ "raw-cpuid",
+ "wasi",
+ "web-sys",
+ "winapi",
 ]
 
 [[package]]
@@ -2408,6 +2479,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d34f1408f55294453790c48b2f1ebbb1c5b4b7563eb1f418bcfcfdbb06ebb4e7"
 dependencies = [
  "getrandom",
+]
+
+[[package]]
+name = "raw-cpuid"
+version = "10.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6aa2540135b6a94f74c7bc90ad4b794f822026a894f3d7bcd185c100d13d4ad6"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]
@@ -2838,6 +2918,12 @@ dependencies = [
  "log",
  "termcolor",
 ]
+
+[[package]]
+name = "sketches-ddsketch"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ceb945e54128e09c43d8e4f1277851bd5044c6fc540bbaa2ad888f60b3da9ae7"
 
 [[package]]
 name = "slab"
