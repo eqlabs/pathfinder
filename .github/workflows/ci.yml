@@ -150,6 +150,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
+      - uses: rui314/setup-mold@v1
+        with:
+          mold-version: 1.4.1
+          make-default: false
+      - name: Enable mold
+        run: |
+          mkdir -p $HOME/.cargo
+          cat << EOF >> $HOME/.cargo/config.toml
+          [target.x86_64-unknown-linux-gnu]
+          linker = "/usr/bin/clang"
+          rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/mold"]
+          EOF
+
+          cat $HOME/.cargo/config.toml
       - uses: Swatinem/rust-cache@v1
       - run: cargo install cargo-fuzz
       - name: stark_hash
