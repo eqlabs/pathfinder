@@ -16,41 +16,7 @@ import json
 import pytest
 import copy
 from starkware.starknet.definitions.general_config import StarknetChainId
-
-
-# this is from 64a7f6aed9757d3d8d6c28bd972df73272b0cb0a of cairo-lang
-# with needless parts ripped out of it. updated for 0.9.0
-SIMPLIFIED_TEST_CONTRACT = """
-%lang starknet
-
-from starkware.starknet.common.syscalls import (storage_read, storage_write)
-
-@contract_interface
-namespace MyContract:
-    func increase_value(address : felt, value : felt):
-    end
-end
-
-@external
-func increase_value{syscall_ptr : felt*}(address : felt, value : felt):
-    let (prev_value) = storage_read(address=address)
-    storage_write(address, value=prev_value + 1)
-    return ()
-end
-
-@external
-func call_increase_value{syscall_ptr : felt*, range_check_ptr}(
-        contract_address : felt, address : felt, value : felt):
-    MyContract.increase_value(contract_address=contract_address, address=address, value=value)
-    return ()
-end
-
-@external
-func get_value{syscall_ptr : felt*}(address : felt) -> (res : felt):
-    let (value) = storage_read(address=address)
-    return (res=value)
-end
-"""
+import pathlib
 
 
 # This only contains the tables required for call.
@@ -153,15 +119,31 @@ def populate_test_contract_with_132_on_3(con):
         assert len(b) <= to_length
         return b"\x00" * (to_length - len(b)) + b
 
-    cur.execute(
-        "insert into contract_code (hash, definition) values (?, ?)",
-        [
-            bytes.fromhex(
-                "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
-            ),
-            compile_test_contract(),
-        ],
+    # calculate the path from this file, py/src/test_call.py
+    path = (
+        pathlib.Path(__file__)
+        .parent.joinpath(
+            "../../crates/pathfinder/fixtures/contract_definition.json.zst"
+        )
+        .resolve()
     )
+
+    with open(path, "rb") as file:
+        # this fixture is compiled from 0.7 or 0.6 test.cairo, stored for compute contract hash tests.
+        contract_definition = file.read()
+        assert type(contract_definition) == bytes
+        assert len(contract_definition) == 5208
+
+        cur.execute(
+            "insert into contract_code (hash, definition) values (?, ?)",
+            [
+                bytes.fromhex(
+                    "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+                ),
+                contract_definition,
+            ],
+        )
+
     cur.execute(
         "insert into contracts (address, hash) values (?, ?)",
         [
@@ -226,20 +208,6 @@ def populate_test_contract_with_132_on_3(con):
 
     con.commit()
     return contract_address
-
-
-def compile_test_contract():
-    from starkware.starknet.compiler.compile import compile_starknet_codes
-    import zstandard
-
-    # crates/pathfinder/fixtures/contract_definition.json.zst used to be the same, but is no longer with 0.9
-
-    raw = compile_starknet_codes(
-        [(SIMPLIFIED_TEST_CONTRACT, "-")], debug_info=False
-    ).serialize()
-    # we use 10 over at pathfinder, but for tests 1 is probably better
-    compressor = zstandard.ZstdCompressor(level=1)
-    return compressor.compress(raw)
 
 
 def default_132_on_3_scenario(con, input_jsons):
