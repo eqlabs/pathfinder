@@ -145,9 +145,9 @@ pub mod request {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct EventFilter {
-        #[serde(default, rename = "fromBlock")]
+        #[serde(default, alias = "fromBlock")]
         pub from_block: Option<crate::core::BlockId>,
-        #[serde(default, rename = "toBlock")]
+        #[serde(default, alias = "toBlock")]
         pub to_block: Option<crate::core::BlockId>,
         #[serde(default)]
         pub address: Option<ContractAddress>,
