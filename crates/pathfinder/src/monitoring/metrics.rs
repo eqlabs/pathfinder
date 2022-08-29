@@ -14,7 +14,7 @@ pub mod middleware {
         }
 
         fn on_call(&self, name: &str) {
-            increment_counter!(format!("{name} calls total"));
+            increment_counter!(format!("{name}_calls_total"));
         }
     }
 

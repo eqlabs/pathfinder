@@ -56,7 +56,7 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
     {
         use tracing::Instrument;
 
-        metrics::register_counter!(format!("{method_name} calls total"));
+        metrics::register_counter!(format!("{method_name}_calls_total"));
 
         self.0.register_async_method(method_name, move |p, c| {
             // why info here? it's the same used in warp tracing filter for example.
@@ -2498,7 +2498,7 @@ mod tests {
             fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
             fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
             fn register_counter(&self, key: &Key) -> Counter {
-                if key.name() == "starknet_chainId calls total" {
+                if key.name() == "starknet_chainId_calls_total" {
                     Counter::from_arc(self.0.clone())
                 } else {
                     Counter::noop()
