@@ -60,18 +60,16 @@ fn metrics_route(
 
 #[cfg(test)]
 mod tests {
-    use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+    use metrics_exporter_prometheus::PrometheusBuilder;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
-    lazy_static::lazy_static!(
-        static ref PROMETHEUS_HANDLE: Arc<PrometheusHandle> = Arc::new(PrometheusBuilder::new().install_recorder().unwrap());
-    );
-
     #[tokio::test]
     async fn health() {
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let handle = Arc::new(recorder.handle());
         let readiness = Arc::new(AtomicBool::new(false));
-        let filter = super::routes(readiness, PROMETHEUS_HANDLE.clone());
+        let filter = super::routes(readiness, handle);
         let response = warp::test::request().path("/health").reply(&filter).await;
 
         assert_eq!(response.status(), http::StatusCode::OK);
@@ -79,8 +77,10 @@ mod tests {
 
     #[tokio::test]
     async fn ready() {
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let handle = Arc::new(recorder.handle());
         let readiness = Arc::new(AtomicBool::new(false));
-        let filter = super::routes(readiness.clone(), PROMETHEUS_HANDLE.clone());
+        let filter = super::routes(readiness.clone(), handle);
         let response = warp::test::request().path("/ready").reply(&filter).await;
         assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
 
@@ -91,7 +91,13 @@ mod tests {
 
     #[tokio::test]
     async fn metrics() {
-        let handle = PROMETHEUS_HANDLE.clone();
+        use super::metrics::test::RecorderGuard;
+
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let handle = Arc::new(recorder.handle());
+        // Other concurrent tests could be setting their own recorders
+        let _guard = RecorderGuard::lock(recorder).unwrap();
+
         let counter = metrics::register_counter!("x");
         counter.increment(123);
 

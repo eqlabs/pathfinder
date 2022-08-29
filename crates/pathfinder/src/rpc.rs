@@ -2483,7 +2483,7 @@ mod tests {
 
     #[tokio::test]
     async fn chain_id_with_call_counter_metric() {
-        use crate::monitoring::metrics::middleware::RpcMetricsMiddleware;
+        use crate::monitoring::metrics::{middleware::RpcMetricsMiddleware, test::RecorderGuard};
         use futures::stream::StreamExt;
         use metrics::{
             Counter, CounterFn, Gauge, Histogram, Key, KeyName, Recorder, SharedString, Unit,
@@ -2522,7 +2522,9 @@ mod tests {
         }
 
         let counter = Arc::new(FakeCounterFn(AtomicU64::default()));
-        metrics::set_boxed_recorder(Box::new(FakeRecorder(counter.clone()))).unwrap();
+
+        // Other concurrent tests could be setting their own recorders
+        let _guard = RecorderGuard::lock(FakeRecorder(counter.clone())).unwrap();
 
         assert_eq!(
             [Chain::Testnet, Chain::Mainnet]
