@@ -2482,8 +2482,47 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chain_id() {
+    async fn chain_id_with_call_counter_metric() {
+        use crate::monitoring::metrics::middleware::RpcMetricsMiddleware;
         use futures::stream::StreamExt;
+        use metrics::{
+            Counter, CounterFn, Gauge, Histogram, Key, KeyName, Recorder, SharedString, Unit,
+        };
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        struct FakeRecorder(Arc<FakeCounterFn>);
+        struct FakeCounterFn(AtomicU64);
+
+        impl Recorder for FakeRecorder {
+            fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+            fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+            fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+            fn register_counter(&self, key: &Key) -> Counter {
+                if key.name() == "starknet_chainId calls total" {
+                    Counter::from_arc(self.0.clone())
+                } else {
+                    Counter::noop()
+                }
+            }
+            fn register_gauge(&self, _: &Key) -> Gauge {
+                unimplemented!()
+            }
+            fn register_histogram(&self, _: &Key) -> Histogram {
+                unimplemented!()
+            }
+        }
+
+        impl CounterFn for FakeCounterFn {
+            fn increment(&self, val: u64) {
+                self.0.fetch_add(val, Ordering::Relaxed);
+            }
+            fn absolute(&self, _: u64) {
+                unimplemented!()
+            }
+        }
+
+        let counter = Arc::new(FakeCounterFn(AtomicU64::default()));
+        metrics::set_boxed_recorder(Box::new(FakeRecorder(counter.clone()))).unwrap();
 
         assert_eq!(
             [Chain::Testnet, Chain::Mainnet]
@@ -2493,7 +2532,12 @@ mod tests {
                     let sequencer = Client::new(*set_chain).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(storage, sequencer, *set_chain, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                    let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
+                        .set_middleware(RpcMetricsMiddleware)
+                        .run()
+                        .await
+                        .unwrap();
                     let params = rpc_params!();
                     client(addr)
                         .request::<String>("starknet_chainId", params)
@@ -2508,6 +2552,8 @@ mod tests {
                 format!("0x{}", hex::encode("SN_MAIN")),
             ]
         );
+
+        assert_eq!(counter.0.load(Ordering::Relaxed), 2);
     }
 
     mod syncing {
