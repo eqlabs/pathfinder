@@ -9,7 +9,7 @@ use warp::Filter;
 pub async fn spawn_server(
     addr: impl Into<std::net::SocketAddr> + 'static,
     readiness: std::sync::Arc<AtomicBool>,
-    prometheus_handle: std::sync::Arc<PrometheusHandle>,
+    prometheus_handle: PrometheusHandle,
 ) -> tokio::task::JoinHandle<()> {
     let server = warp::serve(routes(readiness, prometheus_handle));
     let server = server.bind(addr);
@@ -19,7 +19,7 @@ pub async fn spawn_server(
 
 fn routes(
     readiness: std::sync::Arc<AtomicBool>,
-    prometheus_handle: std::sync::Arc<PrometheusHandle>,
+    prometheus_handle: PrometheusHandle,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     health_route()
         .or(ready_route(readiness))
@@ -48,12 +48,12 @@ fn ready_route(
 
 /// Returns Prometheus merics snapshot at `/metrics`.
 fn metrics_route(
-    handle: std::sync::Arc<PrometheusHandle>,
+    handle: PrometheusHandle,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::get()
         .and(warp::path!("metrics"))
-        .map(move || -> std::sync::Arc<PrometheusHandle> { handle.clone() })
-        .and_then(|handle: std::sync::Arc<PrometheusHandle>| async move {
+        .map(move || -> PrometheusHandle { handle.clone() })
+        .and_then(|handle: PrometheusHandle| async move {
             Ok::<_, std::convert::Infallible>(warp::http::Response::builder().body(handle.render()))
         })
 }
@@ -67,7 +67,7 @@ mod tests {
     #[tokio::test]
     async fn health() {
         let recorder = PrometheusBuilder::new().build_recorder();
-        let handle = Arc::new(recorder.handle());
+        let handle = recorder.handle();
         let readiness = Arc::new(AtomicBool::new(false));
         let filter = super::routes(readiness, handle);
         let response = warp::test::request().path("/health").reply(&filter).await;
@@ -78,7 +78,7 @@ mod tests {
     #[tokio::test]
     async fn ready() {
         let recorder = PrometheusBuilder::new().build_recorder();
-        let handle = Arc::new(recorder.handle());
+        let handle = recorder.handle();
         let readiness = Arc::new(AtomicBool::new(false));
         let filter = super::routes(readiness.clone(), handle);
         let response = warp::test::request().path("/ready").reply(&filter).await;
@@ -94,7 +94,7 @@ mod tests {
         use super::metrics::test::RecorderGuard;
 
         let recorder = PrometheusBuilder::new().build_recorder();
-        let handle = Arc::new(recorder.handle());
+        let handle = recorder.handle();
         // Other concurrent tests could be setting their own recorders
         let _guard = RecorderGuard::lock(recorder).unwrap();
 

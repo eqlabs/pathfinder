@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     let pathfinder_ready = match config.monitoring_addr {
         Some(monitoring_addr) => {
             let ready = Arc::new(AtomicBool::new(false));
-            let prometheus_handle = Arc::new(prometheus_handle);
+            let prometheus_handle = prometheus_handle;
             let _jh =
                 monitoring::spawn_server(monitoring_addr, ready.clone(), prometheus_handle).await;
             Some(ready)
