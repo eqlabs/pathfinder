@@ -2780,10 +2780,10 @@ mod tests {
                 let params = by_name([(
                     "filter",
                     json!({
-                        "fromBlock": {
+                        "from_block": {
                             "block_number": expected_event.block_number.unwrap().get()
                         },
-                        "toBlock": {
+                        "to_block": {
                             "block_number": expected_event.block_number.unwrap().get()
                         },
                         "address": expected_event.from_address,
