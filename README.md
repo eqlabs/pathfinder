@@ -299,6 +299,7 @@ mkdir -p $HOME/pathfinder
 docker run \
   --rm \
   -p 9545:9545 \
+  --user "$(id -u):$(id -g)" \
   -e RUST_LOG=info \
   -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
   -v $HOME/pathfinder:/usr/share/pathfinder/data \
