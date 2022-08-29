@@ -409,8 +409,6 @@ mod tests {
     };
     use web3::types::H256;
 
-    /// Helper function: wrap rpc server creation without any monitoring middleware
-
     /// Starts the HTTP-RPC server.
     pub async fn run_server(
         addr: SocketAddr,
