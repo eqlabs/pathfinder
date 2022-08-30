@@ -655,6 +655,7 @@ mod tests {
                 class_hash: ClassHash(starkhash_bytes!(b"pending class hash 1")),
                 constructor_calldata: vec![],
                 transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 1")),
+                version: TransactionVersion(H256::zero()),
             }
             .into(),
         ];
