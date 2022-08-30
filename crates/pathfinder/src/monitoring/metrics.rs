@@ -43,11 +43,9 @@ pub mod middleware {
 #[cfg(test)]
 pub mod test {
     use metrics::{Recorder, SetRecorderError};
-    use std::sync::{Arc, Mutex, MutexGuard};
+    use std::sync::{Mutex, MutexGuard};
 
-    lazy_static::lazy_static! {
-        static ref RECORDER_LOCK: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
-    }
+    static RECORDER_LOCK: Mutex<()> = Mutex::new(());
 
     /// Allows to safely set a `metrics::Recorder` for a particular test.
     /// The recorder will be removed when this guard is dropped.
