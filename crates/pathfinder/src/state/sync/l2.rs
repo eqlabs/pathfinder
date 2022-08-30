@@ -684,6 +684,7 @@ mod tests {
                         }],
                     )]),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
@@ -697,6 +698,7 @@ mod tests {
                     }],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
@@ -725,6 +727,7 @@ mod tests {
                         ),
                     ]),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
@@ -735,6 +738,7 @@ mod tests {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
@@ -745,6 +749,7 @@ mod tests {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
@@ -755,6 +760,7 @@ mod tests {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
@@ -765,6 +771,7 @@ mod tests {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
         }

@@ -734,6 +734,7 @@ mod tests {
             storage_diffs,
             deployed_contracts,
             declared_contracts: Vec::new(),
+            nonces: std::collections::HashMap::new(),
         };
 
         // The class definitions must be inserted into the database.

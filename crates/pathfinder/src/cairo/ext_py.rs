@@ -606,6 +606,7 @@ mod tests {
                 },
                 deployed_contracts: vec![],
                 declared_contracts: vec![],
+                nonces: std::collections::HashMap::new(),
             },
         });
 

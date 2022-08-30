@@ -109,6 +109,7 @@ mod tests {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: Vec::new(),
                 declared_contracts: Vec::new(),
+                nonces: std::collections::HashMap::new(),
             }
         };
 
