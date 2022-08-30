@@ -85,7 +85,7 @@ impl RpcServer {
         }
     }
 
-    pub fn set_middleware(self, middleware: RpcMetricsMiddleware) -> Self {
+    pub fn with_middleware(self, middleware: RpcMetricsMiddleware) -> Self {
         Self {
             middleware: MaybeRpcMetricsMiddleware::Middleware(middleware),
             ..self
@@ -2534,7 +2534,7 @@ mod tests {
                     let api = RpcApi::new(storage, sequencer, *set_chain, sync_state);
 
                     let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
-                        .set_middleware(RpcMetricsMiddleware)
+                        .with_middleware(RpcMetricsMiddleware)
                         .run()
                         .await
                         .unwrap();

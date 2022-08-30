@@ -136,7 +136,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     };
 
     let (rpc_handle, local_addr) = rpc::RpcServer::new(config.http_rpc_addr, api)
-        .set_middleware(RpcMetricsMiddleware)
+        .with_middleware(RpcMetricsMiddleware)
         .run()
         .await
         .context("Starting the RPC server")?;
