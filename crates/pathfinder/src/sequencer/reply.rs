@@ -276,7 +276,8 @@ pub mod transaction {
         #[serde(default)]
         pub actual_fee: Option<Fee>,
         pub events: Vec<Event>,
-        pub execution_resources: ExecutionResources,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub execution_resources: Option<ExecutionResources>,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: StarknetTransactionHash,
