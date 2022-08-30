@@ -3,12 +3,15 @@ import json
 import time
 import sqlite3
 import asyncio
-from starkware.starkware_utils.error_handling import WebFriendlyException
+
+# FIXME: when pathfinder is launched with missing dependencies, this will be
+# logged out, which is very unclear and confuses users. it would be better to
+# go through with importlib or whatever fallible way to import
 from starkware.storage.storage import Storage
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 20
-EXPECTED_CAIRO_VERSION = "0.9.1"
+EXPECTED_CAIRO_VERSION = "0.10.0"
 SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
@@ -66,6 +69,7 @@ def check_cairolang_version():
 
 
 def do_loop(connection, input_gen, output_file):
+    from starkware.starkware_utils.error_handling import WebFriendlyException
 
     required = {
         "at_block": int_hash_or_latest,
@@ -83,6 +87,8 @@ def do_loop(connection, input_gen, output_file):
         "version": int_param,
         "pending_updates": maybe_pending_updates,
         "pending_deployed": maybe_pending_deployed,
+        "pending_nonces": maybe_pending_nonces,
+        "nonce": maybe_nonce,
     }
 
     logger = Logger()
@@ -156,6 +162,7 @@ def report_failed(logger, command, e):
 
 
 def loop_inner(connection, command):
+
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
 
@@ -163,7 +170,9 @@ def loop_inner(connection, command):
     general_config = create_general_config(command["chain"])
 
     at_block = command["at_block"]
-    signature = command.get("signature", None)
+    # this will be None for v1 invoke function
+    selector = command.get("entry_point_selector", None)
+    signature = command.get("signature", [])
     max_fee = command.get("max_fee", 0)
     version = command.get("version", 0)
     gas_price = command.get("gas_price", None)
@@ -172,6 +181,13 @@ def loop_inner(connection, command):
     started_at = time.time()
     pending_updates = command.get("pending_updates", None)
     pending_deployed = command.get("pending_deployed", None)
+    pending_nonces = command.get("pending_nonces", None)
+
+    if type(selector) == str:
+        from starkware.starknet.public.abi import get_selector_from_name
+
+        # rust side will always send us starkhashes but tests are more readable with names
+        selector = get_selector_from_name(selector)
 
     fallback_to_latest = type(at_block) == bytes and (
         pending_updates is not None or pending_deployed is not None
@@ -194,33 +210,53 @@ def loop_inner(connection, command):
 
     adapter = SqliteAdapter(connection)
 
-    (result, carried_state) = asyncio.run(
-        do_call(
-            adapter,
-            general_config,
-            global_root,
-            command["contract_address"],
-            command["entry_point_selector"],
-            command["calldata"],
-            signature,
-            max_fee,
-            block_info,
-            version,
-            pending_updates,
-            pending_deployed,
+    if verb == "call":
+        result = asyncio.run(
+            do_call(
+                adapter,
+                general_config,
+                global_root,
+                command["contract_address"],
+                selector,
+                command["calldata"],
+                signature,
+                command.get("nonce", None),
+                max_fee,
+                block_info,
+                version,
+                pending_updates,
+                pending_deployed,
+                pending_nonces,
+            )
         )
-    )
+        ret = (verb, result.retdata, timings)
+    else:
+        assert verb == "estimate_fee"
+        # do everything with the inheritance scheme
+        fees = asyncio.run(
+            do_estimate_fee(
+                adapter,
+                general_config,
+                global_root,
+                command["contract_address"],
+                selector,
+                command["calldata"],
+                signature,
+                command.get("nonce", None),
+                max_fee,
+                block_info,
+                version,
+                pending_updates,
+                pending_deployed,
+                pending_nonces,
+            )
+        )
+        ret = (verb, fees, timings)
 
     timings["sql"] = {"timings": adapter.elapsed, "counts": adapter.counts}
-
     timings["call"] = time.time() - started_at
 
-    if verb == "call":
-        return (verb, result.retdata, timings)
-    else:
-        assert verb == "estimate_fee", "command should had been call or estimate_fee"
-        fees = estimate_fee_after_call(general_config, result, carried_state)
-        return (verb, fees, timings)
+    return ret
 
 
 def render(verb, vals):
@@ -339,6 +375,9 @@ def required_gas_price(s):
 def required_chain(s):
     from starkware.starknet.definitions.general_config import StarknetChainId
 
+    # this is not done through genesis block but explicitly so that we can do
+    # tests more freely
+
     if s == "MAINNET":
         return StarknetChainId.MAINNET
     else:
@@ -389,6 +428,29 @@ def maybe_pending_deployed(deployed_contracts):
             deployed_contracts,
         )
     )
+
+
+def maybe_pending_nonces(nonces):
+    if nonces is None:
+        return None
+
+    # accept a map addr => nonce
+    return dict(
+        map(
+            lambda x: (
+                int_param(x[0]),
+                int_param(x[1]),
+            ),
+            nonces.items(),
+        )
+    )
+
+
+def maybe_nonce(nonce):
+    if nonce is None:
+        return None
+
+    return int_param(nonce)
 
 
 def check_schema(connection):
@@ -593,20 +655,14 @@ class SqliteAdapter(Storage):
         return only
 
     def fetch_contract_state(self, suffix):
-        from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
-            PatriciaTree,
-        )
-        from starkware.starknet.business_logic.fact_state.contract_state_objects import (
-            ContractState,
-        )
-
         cursor = self.connection.execute(
-            "select hash, root from contract_states where state_hash = ?", [suffix]
+            "select hash, root, nonce from contract_states where state_hash = ?",
+            [suffix],
         )
 
-        only = next(cursor, [None, None])
+        only = next(cursor, [None, None, None])
 
-        [h, root] = only
+        [h, root, nonce] = only
 
         if h is None or root is None:
             # finding contract_states is a special quest.
@@ -619,12 +675,13 @@ class SqliteAdapter(Storage):
             # know that the leaf and the contract state did not exist.
             return NOT_FOUND_CONTRACT_STATE
 
-        # FIXME: this is missing the nonce
         return (
             b'{"storage_commitment_tree": {"root": "'
             + root.hex().encode("utf-8")
             + b'", "height": 251}, "contract_hash": "'
             + h.hex().encode("utf-8")
+            + b'", "nonce": "0x'
+            + nonce.hex().encode("utf-8")
             + b'"}'
         )
 
@@ -669,145 +726,153 @@ async def do_call(
     selector,
     calldata,
     signature,
+    nonce,
     max_fee,
     block_info,
     version,
     pending_updates,
     pending_deployed,
+    pending_nonces,
 ):
     """
     The actual call execution with cairo-lang.
     """
-    from starkware.starknet.business_logic.state.state import (
-        SharedState,
-        StateSelector,
-    )
     from starkware.storage.storage import FactFetchingContext
+    from starkware.starknet.business_logic.fact_state.patricia_state import (
+        PatriciaStateReader,
+    )
     from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
         PatriciaTree,
     )
-    from starkware.starkware_utils.commitment_tree.patricia_tree.nodes import (
-        EmptyNodeFact,
+    from starkware.starknet.business_logic.state.state import CachedState
+    from starkware.starknet.business_logic.fact_state.state import (
+        ExecutionResourcesManager,
     )
+    from starkware.starknet.business_logic.execution.execute_entry_point import (
+        ExecuteEntryPoint,
+    )
+
     from starkware.starknet.services.api.contract_class import EntryPointType
     from starkware.cairo.lang.vm.crypto import pedersen_hash_func
-    from starkware.starknet.testing.state import create_invoke_function
-    from starkware.starknet.storage.starknet_storage import StorageLeaf
-    from starkware.starknet.business_logic.state.objects import (
-        ContractState,
-        ContractCarriedState,
-    )
 
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
+    state_reader = PatriciaStateReader(PatriciaTree(root, 251), ffc)
+    async_state = CachedState(block_info, state_reader)
 
-    # the root tree has to always be height=251
-    shared_state = SharedState(PatriciaTree(root, 251), block_info)
+    await apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
-    # these needed to be moved to here because `test_call_on_reorgged_pending_block` provided
-    # semantics on Nones at the command level
-    pending_updates = pending_updates if pending_updates is not None else {}
-    pending_deployed = pending_deployed if pending_deployed is not None else {}
+    resource_manager = ExecutionResourcesManager.empty()
 
-    # we firstly want to load the target contract
-    contract_addresses = {contract_address}
-    # union all those contracts which have pending updates for
-    contract_addresses = contract_addresses | pending_updates.keys()
-    # exclude pending deploys, which should cause an issue reading them
-    contract_addresses = contract_addresses ^ pending_deployed.keys()
+    # I don't think this makes any sense for external calls
+    caller_address = 0
 
-    class_hashes = set()
-
-    # include called contract's class hash to be loaded, it doesn't seem to be always
-    # automatically loaded, see test `test_call_on_pending_deployed`.
-    if contract_address in pending_deployed:
-        class_hashes.add(pending_deployed[contract_address])
-
-    # FIXME: it's unknown if this is really required, but we might end up loading up a lot of classes for nothing
-    for class_hash in pending_deployed.values():
-        class_hashes.add(class_hash)
-
-    state_selector = StateSelector(contract_addresses, class_hashes)
-
-    carried_state = await shared_state.get_filled_carried_state(ffc, state_selector)
-
-    for addr, contract_hash in pending_deployed.items():
-        # using ContractState.empty will write zero to database, which we fail as intended
-        # this is essentially how to create an empty ContractState
-        # this shouldn't be an async method
-        cs = await ContractState.create(
-            contract_hash, PatriciaTree(EmptyNodeFact.EMPTY_NODE_HASH, 251)
-        )
-        ccs = ContractCarriedState.from_state(cs)
-        assert addr not in carried_state.contract_states
-        carried_state.contract_states[addr] = ccs
-
-    for addr, changes in pending_updates.items():
-        ccs = carried_state.contract_states[addr]
-        for change in changes:
-            ccs.storage_updates[change["key"]] = StorageLeaf(change["value"])
-
-    # using carried state as child_state is only required for fee estimation
-    # but doesn't seem to matter for regular call.
-    carried_state = carried_state.create_child_state_for_querying()
-
-    # what follows is an inlined state.call_raw
-    # FIXME: this needs to be restored in cairo-lang > 0.9.0 if there's an
-    # option to access the carried state
-    tx = create_invoke_function(
-        contract_address=contract_address,
-        selector=selector,
-        calldata=calldata,
-        caller_address=0,
-        max_fee=max_fee,
-        version=version,
-        signature=signature,
-        entry_point_type=EntryPointType.EXTERNAL,
-        nonce=None,
-        chain_id=general_config.chain_id.value,
-        only_query=True,
+    eep = ExecuteEntryPoint.create(
+        contract_address, calldata, selector, caller_address, EntryPointType.EXTERNAL
     )
 
-    call_info = await tx.execute(
-        state=carried_state,
-        general_config=general_config,
-        only_query=True,
+    # for testing runs it in the current asyncio event loop, just as we want it
+    call_info = await eep.execute_for_testing(
+        async_state, general_config, resource_manager
     )
 
     # return both of these as carried state is needed for the fee estimation afterwards
-    return (call_info, carried_state)
+    return call_info
 
 
-def estimate_fee_after_call(general_config, call_info, carried_state):
-    import math
-    from starkware.starknet.business_logic.utils import get_invoke_tx_total_resources
+async def do_estimate_fee(
+    adapter,
+    general_config,
+    root,
+    contract_address,
+    selector,
+    calldata,
+    signature,
+    nonce,
+    max_fee,
+    block_info,
+    version,
+    pending_updates,
+    pending_deployed,
+    pending_nonces,
+):
+    """
+    This is distinct from the call because estimating a fee requires flushing the state to count
+    the amount of writes and other resource usage. Also, call doesn't require all of the information
+    an estimate fee requires, but that is a bit in flux, as estimate_fee might need to work with
+    deploy and perhaps declare transactions as well.
+    """
 
-    # FIXME: this is now completly inlined calculate_tx_fee, fix with cairo-lang 0.9.1
-    # it has been adapted to variable names from 167b28bcd940fd25ea3816204fa882a0b0a49603
-    (l1_gas_usage, cairo_resource_usage) = get_invoke_tx_total_resources(
-        carried_state, call_info
+    from starkware.starknet.services.api.gateway.transaction import InvokeFunction
+    from starkware.starknet.services.utils.sequencer_api_utils import (
+        InternalAccountTransactionForSimulate,
+    )
+    from starkware.storage.storage import FactFetchingContext
+    from starkware.starknet.business_logic.fact_state.patricia_state import (
+        PatriciaStateReader,
+    )
+    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
+        PatriciaTree,
+    )
+    from starkware.starknet.business_logic.state.state import CachedState
+    from starkware.cairo.lang.vm.crypto import pedersen_hash_func
+
+    fun = InvokeFunction(
+        version=version,
+        max_fee=max_fee,
+        signature=signature,
+        nonce=nonce,
+        contract_address=contract_address,
+        calldata=calldata,
+        entry_point_selector=selector,
     )
 
-    cairo_resource_fee_weights = general_config.cairo_resource_fee_weights
-    cairo_resource_names = set(cairo_resource_usage.keys())
-    assert cairo_resource_names.issubset(
-        cairo_resource_fee_weights.keys()
-    ), "Cairo resource names must be contained in fee weights dict."
+    more = InternalAccountTransactionForSimulate.from_external(fun, general_config)
 
-    # Convert Cairo usage to L1 gas usage.
-    cairo_l1_gas_usage = max(
-        cairo_resource_fee_weights[key] * cairo_resource_usage.get(key, 0)
-        for key in cairo_resource_fee_weights
-    )
+    ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
+    state_reader = PatriciaStateReader(PatriciaTree(root, 251), ffc)
+    async_state = CachedState(block_info, state_reader)
 
-    total_l1_gas_usage = cairo_l1_gas_usage + l1_gas_usage
-    overall_fee = math.ceil(total_l1_gas_usage * carried_state.block_info.gas_price)
+    await apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
+    tx_info = await more.apply_state_updates(async_state, general_config)
+
+    # with 0.10 upgrade we changed to division with gas_consumed as well, since
+    # there is opposition to providing the non-multiplied scalar value from
+    # cairo-lang.
     return {
-        "gas_consumed": int(total_l1_gas_usage),
-        "gas_price": carried_state.block_info.gas_price,
-        "overall_fee": int(overall_fee),
+        "gas_consumed": tx_info.actual_fee // max(1, block_info.gas_price),
+        "gas_price": block_info.gas_price,
+        "overall_fee": tx_info.actual_fee,
     }
+
+
+async def apply_pending(state, updates, deployed, nonces):
+    updates = updates if updates is not None else {}
+    deployed = deployed if deployed is not None else {}
+    nonces = nonces if nonces is not None else {}
+
+    for addr, class_hash in deployed.items():
+        # this does a needless read for the addr
+        # could write directly to the cache
+        await state.deploy_contract(addr, class_hash)
+
+    for addr, updates in updates.items():
+        for d in updates:
+            # no reason to continue using this, we could handle it
+            key = d["key"]
+            value = d["value"]
+            # this might get an expensive check in future, doesn't need a cache
+            # FIXME: this might actually mark the value as dirty, as in caused by the current transaction
+            # and be a cause of error for estimateFee
+            await state.set_storage_at(addr, key, value)
+
+    for addr, nonce in nonces.items():
+        assert type(addr) == int
+        assert type(nonce) == int
+        # bypass the CachedState.increment_nonce which would give extra queries
+        # per each, and only single step at a time
+        state.cache._nonce_reads[addr] = nonce
 
 
 def create_general_config(chain_id):

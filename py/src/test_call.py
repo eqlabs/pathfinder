@@ -7,6 +7,7 @@ from call import (
     loop_inner,
     maybe_pending_updates,
     maybe_pending_deployed,
+    maybe_pending_nonces,
     resolve_block,
     NOT_FOUND_CONTRACT_STATE,
 )
@@ -16,7 +17,27 @@ import json
 import pytest
 import copy
 from starkware.starknet.definitions.general_config import StarknetChainId
-import pathlib
+from starkware.starkware_utils.error_handling import WebFriendlyException
+
+
+@pytest.mark.skip(
+    reason="this is not a test but utility function working around pytest"
+)
+def test_relative_path(path):
+    """
+    Returns a path from this file, py/src/test_call.py
+    """
+    import pathlib
+
+    # by default pytest doesn't set cwd which is interesting
+    current = pathlib.Path(__file__)
+
+    # this is a weird api but this seems to recover the dirname of the path
+    dirname = current.parent
+    target = dirname.joinpath(path)
+
+    # this does either a symbolic resolution or readlink alike, seems to work
+    return target.resolve()
 
 
 # This only contains the tables required for call.
@@ -42,7 +63,8 @@ def inmemory_with_tables():
         CREATE TABLE contract_states (
             state_hash BLOB PRIMARY KEY,
             hash       BLOB NOT NULL,
-            root       BLOB NOT NULL
+            root       BLOB NOT NULL,
+            nonce      BLOB NOT NULL DEFAULT X'0000000000000000000000000000000000000000000000000000000000000000'
         );
 
         CREATE TABLE contracts (
@@ -115,17 +137,8 @@ def populate_test_contract_with_132_on_3(con):
     )
     cur = con.execute("BEGIN")
 
-    def left_pad(b, to_length):
-        assert len(b) <= to_length
-        return b"\x00" * (to_length - len(b)) + b
-
-    # calculate the path from this file, py/src/test_call.py
-    path = (
-        pathlib.Path(__file__)
-        .parent.joinpath(
-            "../../crates/pathfinder/fixtures/contract_definition.json.zst"
-        )
-        .resolve()
+    path = test_relative_path(
+        "../../crates/pathfinder/fixtures/contract_definition.json.zst"
     )
 
     with open(path, "rb") as file:
@@ -208,6 +221,13 @@ def populate_test_contract_with_132_on_3(con):
 
     con.commit()
     return contract_address
+
+
+def left_pad(b, to_length):
+    # this needs to be used with the fake bytestring block hashes, as we always
+    # query them left padded
+    assert len(b) <= to_length
+    return b"\x00" * (to_length - len(b)) + b
 
 
 def default_132_on_3_scenario(con, input_jsons):
@@ -394,7 +414,7 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 1343,
+        "gas_consumed": 0,
         "gas_price": 0,
         "overall_fee": 0,
     }
@@ -416,7 +436,7 @@ def test_fee_estimate_on_positive():
     assert first == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (0x053F).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
             "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
         },
@@ -425,9 +445,9 @@ def test_fee_estimate_on_positive():
     assert second == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (0x053F).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (0x055A).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (0x3478).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (0x3584).to_bytes(32, "big").hex(),
         },
     }
 
@@ -595,7 +615,6 @@ def test_call_on_reorgged_pending_block():
     This now gives meaning to the `pending_{updates,deployed}: None` vs.
     `pending_{updates,deployed}: <default>` cases.
     """
-    from starkware.starkware_utils.error_handling import WebFriendlyException
 
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -729,7 +748,6 @@ def test_static_returned_not_found_contract_state():
     from starkware.starknet.business_logic.fact_state.contract_state_objects import (
         ContractState,
     )
-    import json
 
     dumped = (
         ContractState(b"\x00" * 32, PatriciaTree(b"\x00" * 32, 251), 0)
@@ -740,12 +758,271 @@ def test_static_returned_not_found_contract_state():
     assert dumped == NOT_FOUND_CONTRACT_STATE
 
 
+def test_maybe_pending_nonces():
+    example = {"0x123": "0x12345"}
+    expected = {291: 74565}
+    assert expected == maybe_pending_nonces(example)
+
+
+def test_nonce_with_dummy():
+    from starkware.starknet.public.abi import get_selector_from_name
+
+    con = inmemory_with_tables()
+    test_contract = populate_test_contract_with_132_on_3(con)
+
+    path = test_relative_path("../../crates/pathfinder/fixtures/dummy_account.json.zst")
+
+    cur = con.execute("BEGIN")
+
+    class_hash = "00af5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8"
+    zero = "0000000000000000000000000000000000000000000000000000000000000000"
+
+    with open(path, "rb") as file:
+        # this fixture is compiled from 0.10 cairo-lang repository; we hope
+        # that it gets the v1 invoke nonce check
+        contract_definition = file.read()
+
+        cur.execute(
+            "insert into contract_code (hash, definition) values (?, ?)",
+            [
+                bytes.fromhex(class_hash),
+                contract_definition,
+            ],
+        )
+
+    cur.executemany(
+        "insert into contract_states (state_hash, hash, root, nonce) values (?, ?, ?, ?)",
+        [
+            # first block referred to by 0x123
+            (
+                bytes.fromhex(
+                    "02c915dd92251d9c5ace97251a8a3929f4af71e0177f0202d9be44fa3b7b0ee6"
+                ),
+                bytes.fromhex(class_hash),
+                bytes.fromhex(zero),
+                bytes.fromhex(zero),
+            ),
+            # second block referred to by 0x123
+            (
+                bytes.fromhex(
+                    "03ad994dcd3372ea369e19ef5782ec08c4f31c261edf280c362f5fb6aa93931d"
+                ),
+                bytes.fromhex(class_hash),
+                bytes.fromhex(zero),
+                (1).to_bytes(32, "big"),
+            ),
+        ],
+    )
+
+    # block1.tree:
+    # # address used in tests
+    # 0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374 0x050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b 0x04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028 0x0
+    # # added for dummy tests
+    # 0x123 0x00af5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8 0x0 0x0
+    #
+    # block2.tree:
+    # # address used in tests
+    # 0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374 0x050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b 0x04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028 0x0
+    # # added for dummy tests
+    # 0x123 0x00af5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8 0x0 0x1
+
+    first_global_root = (
+        "0764f5270a4e73449b2fb9e275c86049b4fcbf56ab53208542bfbbb0b91b08be"
+    )
+    second_global_root = (
+        "021d10453b2e84f9a127815d697d9dc2cc01e4a42d6a70d19987a8425f557789"
+    )
+
+    # cannot use on conflict ignore with python3.8 from ubuntu 20.04
+    cur.executemany(
+        "insert into tree_global (hash, data) values (?, ?)",
+        [
+            (
+                bytes.fromhex(
+                    "00ce37c493172aa63687beb33a0f7649cf841220160af700ab85b045a20a0c96"
+                ),
+                bytes.fromhex(
+                    "002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5017dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374fa"
+                ),
+            ),
+            (
+                bytes.fromhex(
+                    "05d40df048370fce33a1d880280e9604e2a3904fe868106c7e978b626356194b"
+                ),
+                bytes.fromhex(
+                    "02c915dd92251d9c5ace97251a8a3929f4af71e0177f0202d9be44fa3b7b0ee60000000000000000000000000000000000000000000000000000000000000123fa"
+                ),
+            ),
+            (
+                bytes.fromhex(
+                    "06f5cc211c53a5588ab1b50a9c5b869ce62ae4697c63ffb9d53bee7d58952514"
+                ),
+                bytes.fromhex(
+                    "03ad994dcd3372ea369e19ef5782ec08c4f31c261edf280c362f5fb6aa93931d0000000000000000000000000000000000000000000000000000000000000123fa"
+                ),
+            ),
+            # this is shared between trees
+            # (bytes.fromhex("00ce37c493172aa63687beb33a0f7649cf841220160af700ab85b045a20a0c96"), bytes.fromhex("002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5017dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374fa")),
+            (
+                bytes.fromhex(first_global_root),
+                bytes.fromhex(
+                    "05d40df048370fce33a1d880280e9604e2a3904fe868106c7e978b626356194b00ce37c493172aa63687beb33a0f7649cf841220160af700ab85b045a20a0c96"
+                ),
+            ),
+            (
+                bytes.fromhex(second_global_root),
+                bytes.fromhex(
+                    "06f5cc211c53a5588ab1b50a9c5b869ce62ae4697c63ffb9d53bee7d5895251400ce37c493172aa63687beb33a0f7649cf841220160af700ab85b045a20a0c96"
+                ),
+            ),
+        ],
+    )
+
+    cur.executemany(
+        "insert into starknet_blocks (hash, number, root, timestamp, gas_price, sequencer_address, version_id) values (?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                left_pad(b"another block", 32),
+                2,
+                bytes.fromhex(first_global_root),
+                2,
+                b"\x00" * 32,
+                b"\x00" * 32,
+                None,
+            ),
+            (
+                left_pad(b"third block", 32),
+                3,
+                bytes.fromhex(second_global_root),
+                3,
+                b"\x00" * 32,
+                b"\x00" * 32,
+                None,
+            ),
+        ],
+    )
+
+    con.commit()
+
+    # not to mess with the existing tests and the populated data, create the
+    # second and third block with a new account at two different nonces
+
+    # this will be used as a basis for the other commands with the `dict(base, **updates)` signature
+    base_command = {
+        "command": "estimate_fee",
+        "at_block": b"some blockhash somewhere",
+        "contract_address": 0x123,
+        # cairo-lang asserts that this is None
+        # "entry_point_selector": "__execute__",
+        # this should be: target address, target selector, input len, input..
+        "calldata": [test_contract, get_selector_from_name("get_value"), 1, 132],
+        "gas_price": 0x1,
+        "chain": StarknetChainId.MAINNET,
+        "nonce": 0,
+        "version": 1,
+    }
+
+    commands = []
+    commands.append(
+        (
+            # on the first block there is no contract by that address
+            base_command,
+            "StarknetErrorCode.UNINITIALIZED_CONTRACT",
+        )
+    )
+    commands.append(
+        (
+            # in this block the acct contract has been deployed, so it has nonce=0
+            dict(base_command, at_block=b"another block"),
+            {"gas_consumed": 1400, "gas_price": 1, "overall_fee": 1400},
+        )
+    )
+    commands.append(
+        (
+            dict(base_command, at_block=b"another block", nonce=1),
+            "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
+        )
+    )
+    commands.append(
+        (
+            dict(base_command, at_block=b"another block", nonce=2),
+            "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
+        )
+    )
+    commands.append(
+        (
+            # in this block the stored nonce is 1
+            dict(base_command, at_block=b"third block", nonce=1),
+            {"gas_consumed": 1400, "gas_price": 1, "overall_fee": 1400},
+        )
+    )
+    commands.append(
+        (
+            dict(base_command, at_block=b"third block", nonce=2),
+            "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
+        )
+    )
+    commands.append(
+        (
+            # in this block the stored nonce is 1
+            dict(base_command, at_block=b"third block", nonce=3),
+            "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
+        )
+    )
+    commands.append(
+        (
+            # now the nonce requirement should had been advanced to 2
+            dict(
+                base_command,
+                at_block=b"third block",
+                nonce=1,
+                pending_nonces={0x123: 2},
+            ),
+            "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
+        )
+    )
+    commands.append(
+        (
+            # now the nonce requirement should had been advanced to 2
+            dict(
+                base_command,
+                at_block=b"third block",
+                nonce=2,
+                pending_nonces={0x123: 2},
+            ),
+            {"gas_consumed": 1400, "gas_price": 1, "overall_fee": 1400},
+        )
+    )
+    commands.append(
+        (
+            dict(
+                base_command,
+                at_block=b"third block",
+                nonce=3,
+                pending_nonces={0x123: 2},
+            ),
+            "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
+        )
+    )
+
+    con.execute("BEGIN")
+    nth = 1
+    for command, expected in commands:
+        try:
+            print(command)
+            (verb, output, _timings) = loop_inner(con, command)
+            assert expected == output, f"example {nth}"
+        except WebFriendlyException as e:
+            assert expected == str(e.code), f"example {nth}"
+        nth += 1
+
+
 # Rest of the test cases require a mainnet or goerli database in some path.
 
 
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
 def test_failing_mainnet_tx2():
-    con = sqlite3.connect("../../crates/pathfinder/mainnet.sqlite")
+    con = sqlite3.connect(test_relative_path("../../mainnet.sqlite"))
     con.execute("BEGIN")
 
     # this is running fee estimation on existing transaction from mainnet, on the block before
@@ -784,17 +1061,17 @@ def test_failing_mainnet_tx2():
 
     print(_timings)
 
-    # this is correct in 0.9.1
+    # this is correct in 0.10, not in 0.9.1
     assert output == {
-        "gas_consumed": 10083,
+        "gas_consumed": 10102,
         "gas_price": 21367239423,
-        "overall_fee": 215446943464081,
+        "overall_fee": 215851852651146,
     }
 
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_without_deployed():
-    con = sqlite3.connect("../../goerli.sqlite")
+    con = sqlite3.connect(test_relative_path("../../goerli.sqlite"))
     con.execute("BEGIN")
 
     # this is copypasted from the get_state_update
@@ -845,7 +1122,7 @@ def test_positive_streamed_on_early_goerli_block_without_deployed():
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_with_deployed():
-    con = sqlite3.connect("../../goerli.sqlite")
+    con = sqlite3.connect(test_relative_path("../../goerli.sqlite"))
     con.execute("BEGIN")
 
     # this is copypasted from the get_state_update
