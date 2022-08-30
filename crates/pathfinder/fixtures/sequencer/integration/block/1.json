@@ -1,0 +1,139 @@
+{
+    "block_hash": "0x34e815552e42c5eb5233b99de2d3d7fd396e575df2719bf98e7ed2794494f86",
+    "parent_block_hash": "0x3ae41b0f023e53151b0c8ab8b9caafb7005d5f41c9ab260276d5bdc49726279",
+    "block_number": 1,
+    "state_root": "074abfb3f55d3f9c3967014e1a5ec7205949130ff8912dba0565daf70299144c",
+    "status": "ACCEPTED_ON_L1",
+    "gas_price": "0x0",
+    "transactions": [
+        {
+            "version": "0x0",
+            "contract_address": "0x30b81d3f0f4e2af48e211d9914d611422430cd6fac6a9df64136a6a879c1dc5",
+            "contract_address_salt": "0x6030390b01fe79d844330de00821c68206959c389ef744b2d315e27078f0ad",
+            "class_hash": "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8",
+            "constructor_calldata": [
+                "0x782142c3526899d48e6f1ce725f56b11cb462586c9f1340e4cfbcbebdd174f2",
+                "0x7dee1fa95f31fd5ffb0ad1c3313aa51d82d66adfbb65efb982eae696c4309b7"
+            ],
+            "transaction_hash": "0x782806917e338d148960fe9d801cabdf41c197d144db73cde4a16499321e2a",
+            "type": "DEPLOY"
+        },
+        {
+            "version": "0x0",
+            "contract_address": "0x703283db9c320db759d02c5255af47be11ac2e2dca4a27bca92b407e25e063b",
+            "contract_address_salt": "0x13b7e67ff6b2e1a5aac25134cc2765ea2a1bf36a7b94c92aa3fc4690978d1c5",
+            "class_hash": "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8",
+            "constructor_calldata": [
+                "0x26a1e7e74188cbc724a793c972ad09d5aba110c4c06dfae51ae078b321e957",
+                "0x461226574f9663500fc330295cea93b295389618c9eab30c3362fa14975d54c"
+            ],
+            "transaction_hash": "0x7e845e48e9e9350f4f638ab145ab58346e767396aa84a5f9b695a27332f301b",
+            "type": "DEPLOY"
+        },
+        {
+            "version": "0x0",
+            "contract_address": "0x3cafce8a34c9796e8f71209bcfcc2903dcad24b8d924944e88466b0cafd352",
+            "contract_address_salt": "0x25c239a162c5a7ace888ca39f295aad52b75174952f4ea8f3afed13cde4490a",
+            "class_hash": "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8",
+            "constructor_calldata": [
+                "0x1a315d6be5adafdd493b45672137525190b23b7f3a0ec91feafaa6ab48b0828",
+                "0x24740a6b71ae76d658a1ec1efb6f201ba9794ebeed49ca59c0efe63f4a3cca2"
+            ],
+            "transaction_hash": "0x5b99cc55d38c5dd909eeda916a2564364577a8d348b05c00de1419e1ff318e2",
+            "type": "DEPLOY"
+        },
+        {
+            "version": "0x0",
+            "contract_address": "0x7b196a359045d4d0c10f73bdf244a9e1205a615dbb754b8df40173364288534",
+            "entry_point_selector": "0x19a35a6e95cb7a3318dbb244f20975a1cd8587cc6b5259f15f61d7beb7ee43b",
+            "entry_point_type": "EXTERNAL",
+            "calldata": [
+                "0x64ed79a8ebe97485d3357bbfdf5f6bea0d9db3b5f1feb6e80d564a179122dc6",
+                "0x4e23b03fa17cab92b1fbcf15b4f6583736b7bef4be4d87559618265095adf32"
+            ],
+            "signature": [],
+            "transaction_hash": "0x53028e485df33f22d4a6cd3a539759bce78e940314906c3057d206b57d4ce3f",
+            "max_fee": "0x0",
+            "type": "INVOKE_FUNCTION"
+        }
+    ],
+    "timestamp": 1638978017,
+    "transaction_receipts": [
+        {
+            "transaction_index": 0,
+            "transaction_hash": "0x782806917e338d148960fe9d801cabdf41c197d144db73cde4a16499321e2a",
+            "l2_to_l1_messages": [],
+            "events": [],
+            "execution_resources": {
+                "n_steps": 29,
+                "builtin_instance_counter": {
+                    "pedersen_builtin": 0,
+                    "range_check_builtin": 0,
+                    "bitwise_builtin": 0,
+                    "output_builtin": 0,
+                    "ecdsa_builtin": 0,
+                    "ec_op_builtin": 0
+                },
+                "n_memory_holes": 0
+            },
+            "actual_fee": "0x0"
+        },
+        {
+            "transaction_index": 1,
+            "transaction_hash": "0x7e845e48e9e9350f4f638ab145ab58346e767396aa84a5f9b695a27332f301b",
+            "l2_to_l1_messages": [],
+            "events": [],
+            "execution_resources": {
+                "n_steps": 29,
+                "builtin_instance_counter": {
+                    "pedersen_builtin": 0,
+                    "range_check_builtin": 0,
+                    "bitwise_builtin": 0,
+                    "output_builtin": 0,
+                    "ecdsa_builtin": 0,
+                    "ec_op_builtin": 0
+                },
+                "n_memory_holes": 0
+            },
+            "actual_fee": "0x0"
+        },
+        {
+            "transaction_index": 2,
+            "transaction_hash": "0x5b99cc55d38c5dd909eeda916a2564364577a8d348b05c00de1419e1ff318e2",
+            "l2_to_l1_messages": [],
+            "events": [],
+            "execution_resources": {
+                "n_steps": 29,
+                "builtin_instance_counter": {
+                    "pedersen_builtin": 0,
+                    "range_check_builtin": 0,
+                    "bitwise_builtin": 0,
+                    "output_builtin": 0,
+                    "ecdsa_builtin": 0,
+                    "ec_op_builtin": 0
+                },
+                "n_memory_holes": 0
+            },
+            "actual_fee": "0x0"
+        },
+        {
+            "transaction_index": 3,
+            "transaction_hash": "0x53028e485df33f22d4a6cd3a539759bce78e940314906c3057d206b57d4ce3f",
+            "l2_to_l1_messages": [],
+            "events": [],
+            "execution_resources": {
+                "n_steps": 178,
+                "builtin_instance_counter": {
+                    "pedersen_builtin": 0,
+                    "range_check_builtin": 0,
+                    "bitwise_builtin": 0,
+                    "output_builtin": 0,
+                    "ecdsa_builtin": 0,
+                    "ec_op_builtin": 0
+                },
+                "n_memory_holes": 0
+            },
+            "actual_fee": "0x0"
+        }
+    ]
+}

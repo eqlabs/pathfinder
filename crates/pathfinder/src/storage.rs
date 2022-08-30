@@ -204,6 +204,7 @@ pub(crate) mod test_utils {
         },
         sequencer::reply::transaction::{
             self, DeclareTransaction, DeployTransaction, EntryPointType, InvokeTransaction,
+            InvokeTransactionV0,
         },
         starkhash,
     };
@@ -244,7 +245,7 @@ pub(crate) mod test_utils {
     ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
         let transactions = (0..NUM_TRANSACTIONS).map(|i| match i % TRANSACTIONS_PER_BLOCK {
             x if x < INVOKE_TRANSACTIONS_PER_BLOCK => {
-                transaction::Transaction::Invoke(InvokeTransaction {
+                transaction::Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                     calldata: vec![CallParam(
                         StarkHash::from_hex_str(&"0".repeat(i + 3)).unwrap(),
                     )],
@@ -266,7 +267,7 @@ pub(crate) mod test_utils {
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str(&"4".repeat(i + 3)).unwrap(),
                     ),
-                })
+                }))
             }
             x if (INVOKE_TRANSACTIONS_PER_BLOCK
                 ..INVOKE_TRANSACTIONS_PER_BLOCK + DEPLOY_TRANSACTIONS_PER_BLOCK)

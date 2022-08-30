@@ -662,20 +662,41 @@ pub mod reply {
         fn from(txn: &sequencer::reply::transaction::Transaction) -> Self {
             match txn {
                 sequencer::reply::transaction::Transaction::Invoke(txn) => {
-                    Self::Invoke(InvokeTransaction {
-                        common: CommonTransactionProperties {
-                            hash: txn.transaction_hash,
-                            max_fee: txn.max_fee,
-                            // no `version` in invoke transactions
-                            version: TransactionVersion(Default::default()),
-                            signature: txn.signature.clone(),
-                            // no `nonce` in invoke transactions
-                            nonce: TransactionNonce(Default::default()),
-                        },
-                        contract_address: txn.contract_address,
-                        entry_point_selector: txn.entry_point_selector,
-                        calldata: txn.calldata.clone(),
-                    })
+                    match txn {
+                        sequencer::reply::transaction::InvokeTransaction::V0(txn) => {
+                            Self::Invoke(InvokeTransaction {
+                                common: CommonTransactionProperties {
+                                    hash: txn.transaction_hash,
+                                    max_fee: txn.max_fee,
+                                    // no `version` in invoke transactions
+                                    version: TransactionVersion(Default::default()),
+                                    signature: txn.signature.clone(),
+                                    // no `nonce` in invoke transactions
+                                    nonce: TransactionNonce(Default::default()),
+                                },
+                                contract_address: txn.contract_address,
+                                entry_point_selector: txn.entry_point_selector,
+                                calldata: txn.calldata.clone(),
+                            })
+                        }
+                        sequencer::reply::transaction::InvokeTransaction::V1(txn) => {
+                            // FIXME: use V1 RPC type here
+                            Self::Invoke(InvokeTransaction {
+                                common: CommonTransactionProperties {
+                                    hash: txn.transaction_hash,
+                                    max_fee: txn.max_fee,
+                                    // no `version` in invoke transactions
+                                    version: TransactionVersion(Default::default()),
+                                    signature: txn.signature.clone(),
+                                    // no `nonce` in invoke transactions
+                                    nonce: TransactionNonce(Default::default()),
+                                },
+                                contract_address: txn.contract_address,
+                                entry_point_selector: EntryPoint(StarkHash::ZERO),
+                                calldata: txn.calldata.clone(),
+                            })
+                        }
+                    }
                 }
                 sequencer::reply::transaction::Transaction::Declare(txn) => {
                     Self::Declare(DeclareTransaction {
