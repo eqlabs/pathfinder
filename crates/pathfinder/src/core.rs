@@ -198,7 +198,7 @@ pub struct GasPrice(pub u128);
 pub struct TransactionNonce(pub StarkHash);
 
 /// StarkNet transaction version.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionVersion(pub H256);
 
 /// An Ethereum address.
