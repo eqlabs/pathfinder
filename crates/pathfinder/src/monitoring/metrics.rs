@@ -1,6 +1,5 @@
 pub mod middleware {
     use jsonrpsee::core::middleware::Middleware;
-    use metrics::increment_counter;
 
     #[derive(Debug, Clone)]
     pub struct RpcMetricsMiddleware;
@@ -11,7 +10,7 @@ pub mod middleware {
         fn on_request(&self) -> Self::Instant {}
 
         fn on_call(&self, name: &str) {
-            increment_counter!(format!("{name}_calls_total"));
+            metrics::increment_counter!("rpc_method_calls_total", "method" => name.to_owned());
         }
     }
 

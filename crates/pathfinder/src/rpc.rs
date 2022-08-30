@@ -56,7 +56,7 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
     {
         use tracing::Instrument;
 
-        metrics::register_counter!(format!("{method_name}_calls_total"));
+        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
 
         self.0.register_async_method(method_name, move |p, c| {
             // why info here? it's the same used in warp tracing filter for example.
@@ -2484,7 +2484,7 @@ mod tests {
         use crate::monitoring::metrics::{middleware::RpcMetricsMiddleware, test::RecorderGuard};
         use futures::stream::StreamExt;
         use metrics::{
-            Counter, CounterFn, Gauge, Histogram, Key, KeyName, Recorder, SharedString, Unit,
+            Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
         };
         use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -2496,7 +2496,12 @@ mod tests {
             fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
             fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
             fn register_counter(&self, key: &Key) -> Counter {
-                if key.name() == "starknet_chainId_calls_total" {
+                if *key
+                    == Key::from_parts(
+                        "rpc_method_calls_total",
+                        vec![Label::new("method", "starknet_chainId")],
+                    )
+                {
                     Counter::from_arc(self.0.clone())
                 } else {
                     Counter::noop()
