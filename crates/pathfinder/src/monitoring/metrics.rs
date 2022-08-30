@@ -1,17 +1,14 @@
 pub mod middleware {
     use jsonrpsee::core::middleware::Middleware;
     use metrics::increment_counter;
-    use std::time::Instant;
 
     #[derive(Debug, Clone)]
     pub struct RpcMetricsMiddleware;
 
     impl Middleware for RpcMetricsMiddleware {
-        type Instant = Instant;
+        type Instant = ();
 
-        fn on_request(&self) -> Self::Instant {
-            Instant::now()
-        }
+        fn on_request(&self) -> Self::Instant {}
 
         fn on_call(&self, name: &str) {
             increment_counter!(format!("{name}_calls_total"));
@@ -25,11 +22,9 @@ pub mod middleware {
     }
 
     impl jsonrpsee::core::middleware::Middleware for MaybeRpcMetricsMiddleware {
-        type Instant = std::time::Instant;
+        type Instant = ();
 
-        fn on_request(&self) -> Self::Instant {
-            std::time::Instant::now()
-        }
+        fn on_request(&self) -> Self::Instant {}
 
         fn on_call(&self, name: &str) {
             match self {
