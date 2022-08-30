@@ -421,14 +421,6 @@ pub mod state_update {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
-
-        /// Optional field of declared contracts.
-        ///
-        /// Since 0.9.1.
-        ///
-        /// FIXME: drop the default after 0.9.1 is on mainnet.
-        /// FIXME: these are not yet used in any way
-        #[serde(default)]
         pub declared_contracts: Vec<ClassHash>,
     }
 
@@ -589,9 +581,9 @@ mod tests {
 
         #[test]
         fn state_update() {
-            serde_json::from_str::<StateUpdate>(fixture!("0.8.2/state_update/genesis.json"))
+            serde_json::from_str::<StateUpdate>(fixture!("0.9.1/state_update/genesis.json"))
                 .unwrap();
-            serde_json::from_str::<StateUpdate>(fixture!("0.8.2/state_update/pending.json"))
+            serde_json::from_str::<StateUpdate>(fixture!("0.9.1/state_update/pending.json"))
                 .unwrap();
         }
 
