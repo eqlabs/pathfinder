@@ -744,8 +744,14 @@ fn deploy_contract(
     global_tree
         .set(contract.address, state_hash)
         .context("Adding deployed contract to global state tree")?;
-    ContractsStateTable::upsert(transaction, state_hash, class_hash, contract_root)
-        .context("Insert constract state hash into contracts state table")?;
+    ContractsStateTable::upsert(
+        transaction,
+        state_hash,
+        class_hash,
+        contract_root,
+        crate::core::ContractNonce(StarkHash::ZERO),
+    )
+    .context("Insert constract state hash into contracts state table")?;
     ContractsTable::upsert(transaction, contract.address, class_hash)
         .context("Inserting class hash into contracts table")
 }

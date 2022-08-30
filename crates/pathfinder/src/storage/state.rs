@@ -6,10 +6,10 @@ use web3::types::H256;
 use crate::{
     consts::{GOERLI_GENESIS_HASH, MAINNET_GENESIS_HASH},
     core::{
-        Chain, ClassHash, ContractAddress, ContractRoot, ContractStateHash, EthereumBlockHash,
-        EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
-        EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
+        EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+        EthereumTransactionIndex, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
+        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
     },
     ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
     rpc::types::reply::StateUpdate,
@@ -1158,13 +1158,15 @@ impl ContractsStateTable {
         state_hash: ContractStateHash,
         hash: ClassHash,
         root: ContractRoot,
+        nonce: ContractNonce,
     ) -> anyhow::Result<()> {
         transaction.execute(
-            "INSERT OR IGNORE INTO contract_states (state_hash, hash, root) VALUES (:state_hash, :hash, :root)",
+            "INSERT OR IGNORE INTO contract_states (state_hash, hash, root, nonce) VALUES (:state_hash, :hash, :root, :nonce)",
             named_params! {
                 ":state_hash": state_hash,
                 ":hash": hash,
                 ":root": root,
+                ":nonce": nonce,
             },
         )?;
         Ok(())
@@ -1183,6 +1185,47 @@ impl ContractsStateTable {
                     ":state_hash": state_hash
                 },
                 |row| row.get("root"),
+            )
+            .optional()
+            .map_err(|e| e.into())
+    }
+
+    /// Gets the nonce associated with the given state hash, or [None]
+    /// if it does not exist.
+    pub fn get_nonce(
+        transaction: &Transaction<'_>,
+        state_hash: ContractStateHash,
+    ) -> anyhow::Result<Option<ContractNonce>> {
+        transaction
+            .query_row(
+                "SELECT nonce FROM contract_states WHERE state_hash = :state_hash",
+                named_params! {
+                    ":state_hash": state_hash
+                },
+                |row| row.get("nonce"),
+            )
+            .optional()
+            .map_err(|e| e.into())
+    }
+
+    /// Gets the root and nonce associated with the given state hash, or [None]
+    /// if it does not exist.
+    pub fn get_root_and_nonce(
+        transaction: &Transaction<'_>,
+        state_hash: ContractStateHash,
+    ) -> anyhow::Result<Option<(ContractRoot, ContractNonce)>> {
+        transaction
+            .query_row(
+                "SELECT root, nonce FROM contract_states WHERE state_hash = :state_hash",
+                named_params! {
+                    ":state_hash": state_hash
+                },
+                |row| {
+                    let root = row.get("root")?;
+                    let nonce = row.get("nonce")?;
+
+                    Ok((root, nonce))
+                },
             )
             .optional()
             .map_err(|e| e.into())
@@ -1279,7 +1322,7 @@ mod tests {
         use crate::starkhash;
 
         #[test]
-        fn get_root() {
+        fn get() {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let transaction = connection.transaction().unwrap();
@@ -1287,12 +1330,18 @@ mod tests {
             let state_hash = ContractStateHash(starkhash!("0abc"));
             let hash = ClassHash(starkhash!("0123"));
             let root = ContractRoot(starkhash!("0def"));
+            let nonce = ContractNonce(starkhash!("0456"));
 
-            ContractsStateTable::upsert(&transaction, state_hash, hash, root).unwrap();
+            ContractsStateTable::upsert(&transaction, state_hash, hash, root, nonce).unwrap();
 
             let result = ContractsStateTable::get_root(&transaction, state_hash).unwrap();
-
             assert_eq!(result, Some(root));
+
+            let result = ContractsStateTable::get_nonce(&transaction, state_hash).unwrap();
+            assert_eq!(result, Some(nonce));
+
+            let result = ContractsStateTable::get_root_and_nonce(&transaction, state_hash).unwrap();
+            assert_eq!(result, Some((root, nonce)));
         }
     }
 

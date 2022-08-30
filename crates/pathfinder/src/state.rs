@@ -74,8 +74,14 @@ pub(crate) fn update_contract_state(
         .context("Class hash is missing from contracts table")?;
     let contract_state_hash = calculate_contract_state_hash(class_hash, new_contract_root);
 
-    ContractsStateTable::upsert(db, contract_state_hash, class_hash, new_contract_root)
-        .context("Insert constract state hash into contracts state table")?;
+    ContractsStateTable::upsert(
+        db,
+        contract_state_hash,
+        class_hash,
+        new_contract_root,
+        crate::core::ContractNonce(StarkHash::ZERO),
+    )
+    .context("Insert constract state hash into contracts state table")?;
 
     Ok(contract_state_hash)
 }
