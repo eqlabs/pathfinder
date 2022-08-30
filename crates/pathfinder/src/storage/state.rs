@@ -821,7 +821,11 @@ impl StarknetEventsTable {
                 transaction::InvokeTransactionV1 {
                     transaction_hash, ..
                 },
-            )) => {
+            ))
+            | transaction::Transaction::L1Handler(transaction::L1HandlerTransaction {
+                transaction_hash,
+                ..
+            }) => {
                 let mut stmt = tx.prepare(
                     r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
                                            VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)")?;

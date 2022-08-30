@@ -306,6 +306,8 @@ pub mod transaction {
         Deploy(DeployTransaction),
         #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeTransaction),
+        #[serde(rename = "L1_HANDLER")]
+        L1Handler(L1HandlerTransaction),
     }
 
     impl Transaction {
@@ -318,6 +320,7 @@ pub mod transaction {
                     InvokeTransaction::V0(t) => t.transaction_hash,
                     InvokeTransaction::V1(t) => t.transaction_hash,
                 },
+                Transaction::L1Handler(t) => t.transaction_hash,
             }
         }
     }
@@ -445,6 +448,20 @@ pub mod transaction {
         pub transaction_hash: StarknetTransactionHash,
     }
 
+    /// Represents deserialized L2 declare transaction data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct L1HandlerTransaction {
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub nonce: TransactionNonce,
+        pub calldata: Vec<CallParam>,
+        pub transaction_hash: StarknetTransactionHash,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+    }
+
     impl From<DeclareTransaction> for Transaction {
         fn from(tx: DeclareTransaction) -> Self {
             Self::Declare(tx)
@@ -460,6 +477,12 @@ pub mod transaction {
     impl From<InvokeTransaction> for Transaction {
         fn from(tx: InvokeTransaction) -> Self {
             Self::Invoke(tx)
+        }
+    }
+
+    impl From<L1HandlerTransaction> for Transaction {
+        fn from(tx: L1HandlerTransaction) -> Self {
+            Self::L1Handler(tx)
         }
     }
 
@@ -701,12 +724,64 @@ mod tests {
         }
 
         #[test]
+        fn transactions() {
+            use super::super::transaction::Transaction;
+
+            serde_json::from_str::<Transaction>(r#"
+            {
+                "version": "0x1",
+                "contract_address": "0x5fb7f82414f88e8418bb5f973bbc8fcb660a91913da262f47ecf8e898b83b09",
+                "entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+                "entry_point_type": "EXTERNAL",
+                "nonce": "0x0",
+                "calldata": [
+                    "0x1",
+                    "0x6dec5ef1d559ba82f99e5a35cdad61bbc3c663d9f9bc3eda7660c0d2195c4f9",
+                    "0x317eb442b72a9fae758d4fb26830ed0d9f31c8e7da4dbff4e8c59ea6a158e7f",
+                    "0x0",
+                    "0x4",
+                    "0x4",
+                    "0x208fe2128403ae7268d7198149eb050f000e185502807824aeafe0ba209a402",
+                    "0x2",
+                    "0x4f25c0268650df4a937463a47c1647c1661bc18e8c00eb935495edf635a70b4",
+                    "0x219e05e77b5b719d7ea800f81e9b10d4b92ad8041dcfddbecb34c0b8e95a3a7"
+                ],
+                "signature": [
+                    "0x26affc2bfec681bb5089e77b510efc937d4f4b6131c2a24440df8293cd44b08",
+                    "0x7a04bda29e80b977d1a372ecdd1cf82f5b3381fad3e65006f0b0dfad7278fb1"
+                ],
+                "transaction_hash": "0x3c6b5dc87a4cc53a6a24bc25f79d298532ea17de1b2c912e5be5683b975b1a0",
+                "max_fee": "0x2386f26fc10000",
+                "type": "INVOKE_FUNCTION"
+            }
+            "#).unwrap();
+
+            serde_json::from_str::<Transaction>(r#"
+            {
+                "version": "0x0",
+                "contract_address": "0x73314940630fd6dcda0d772d4c972c4e0a9946bef9dabf4ef84eda8ef542b82",
+                "entry_point_selector": "0x2d757788a8d8d6f21d1cd40bce38a8222d70654214e96ff95d8086e684fbee5",
+                "nonce": "0x20",
+                "calldata": [
+                    "0xbe1259ff905cadbbaa62514388b71bdefb8aacc1",
+                    "0x5fb7f82414f88e8418bb5f973bbc8fcb660a91913da262f47ecf8e898b83b09",
+                    "0x4563918244f40000",
+                    "0x0"
+                ],
+                "transaction_hash": "0x1b85068b298ffbb0ef33acc8952b7436c359883bd736b73e204c433a3eb9691",
+                "type": "L1_HANDLER"
+            }
+            "#).unwrap();
+        }
+
+        #[test]
         fn block() {
             use super::super::MaybePendingBlock;
 
             serde_json::from_str::<MaybePendingBlock>(fixture!("block/pending.json")).unwrap();
             serde_json::from_str::<MaybePendingBlock>(fixture!("block/1.json")).unwrap();
             serde_json::from_str::<MaybePendingBlock>(fixture!("block/192844.json")).unwrap();
+            serde_json::from_str::<MaybePendingBlock>(fixture!("block/216171.json")).unwrap();
             serde_json::from_str::<MaybePendingBlock>(fixture!("block/216591.json")).unwrap();
         }
     }

@@ -370,7 +370,7 @@ where
                             use sequencer::reply::transaction::Transaction::*;
                             match tx {
                                 Declare(tx) => Some(tx.class_hash),
-                                Deploy(_) | Invoke(_) => None,
+                                Deploy(_) | Invoke(_) | L1Handler(_) => None,
                             }
                         });
                     let classes = deployed_classes

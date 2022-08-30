@@ -332,7 +332,9 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> StarkHash {
             }
             hash.finalize()
         }
-        Transaction::Declare(_) | Transaction::Deploy(_) => *HASH_OF_EMPTY_LIST,
+        Transaction::Declare(_) | Transaction::Deploy(_) | Transaction::L1Handler(_) => {
+            *HASH_OF_EMPTY_LIST
+        }
     };
 
     stark_hash(tx.hash().0, signature_hash)
