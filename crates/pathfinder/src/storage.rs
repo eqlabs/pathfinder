@@ -286,6 +286,7 @@ pub(crate) mod test_utils {
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str(&"9".repeat(i + 3)).unwrap(),
                     ),
+                    version: TransactionVersion(web3::types::H256::zero()),
                 })
             }
             _ => transaction::Transaction::Declare(DeclareTransaction {

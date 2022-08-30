@@ -693,8 +693,7 @@ pub mod reply {
                 sequencer::reply::transaction::Transaction::Deploy(txn) => {
                     Self::Deploy(DeployTransaction {
                         hash: txn.transaction_hash,
-                        // no `version` in deploy transactions
-                        version: TransactionVersion(Default::default()),
+                        version: txn.version,
                         contract_address: txn.contract_address,
                         contract_address_salt: txn.contract_address_salt,
                         class_hash: txn.class_hash,

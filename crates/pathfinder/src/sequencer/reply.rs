@@ -319,6 +319,10 @@ pub mod transaction {
         }
     }
 
+    fn default_transaction_version() -> TransactionVersion {
+        TransactionVersion(web3::types::H256::zero())
+    }
+
     /// Represents deserialized L2 declare transaction data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -348,6 +352,10 @@ pub mod transaction {
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
         pub transaction_hash: StarknetTransactionHash,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        #[serde(default = "default_transaction_version")]
+        pub version: TransactionVersion,
+    }
     }
 
     /// Represents deserialized L2 invoke transaction data.
