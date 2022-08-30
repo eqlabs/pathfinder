@@ -327,7 +327,7 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> StarkHash {
     let signature_hash = match tx {
         Transaction::Invoke(tx) => {
             let mut hash = HashChain::default();
-            for signature in &tx.signature {
+            for signature in tx.signature() {
                 hash.update(signature.0);
             }
             hash.finalize()
@@ -401,7 +401,7 @@ fn number_of_events_in_block(block: &Block) -> usize {
 mod tests {
     use crate::{
         core::{EntryPoint, Fee},
-        sequencer::reply::transaction::{EntryPointType, InvokeTransaction},
+        sequencer::reply::transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
         starkhash,
     };
 
@@ -440,7 +440,7 @@ mod tests {
     fn test_final_transaction_hash() {
         use crate::core::{ContractAddress, StarknetTransactionHash, TransactionSignatureElem};
 
-        let transaction = Transaction::Invoke(InvokeTransaction {
+        let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
             contract_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
             entry_point_type: EntryPointType::External,
@@ -451,7 +451,7 @@ mod tests {
                 TransactionSignatureElem(starkhash!("03")),
             ],
             transaction_hash: StarknetTransactionHash(starkhash!("01")),
-        });
+        }));
 
         // produced by the cairo-lang Python implementation:
         // `hex(calculate_single_tx_hash_with_signature(1, [2, 3], hash_function=pedersen_hash))`

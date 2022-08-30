@@ -359,7 +359,8 @@ mod tests {
                 state_update::StorageDiff,
                 transaction::{
                     execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                    EntryPointType, Event, ExecutionResources, InvokeTransaction, Receipt,
+                    EntryPointType, Event, ExecutionResources, InvokeTransaction,
+                    InvokeTransactionV0, Receipt,
                 },
             },
             test_utils::*,
@@ -382,6 +383,7 @@ mod tests {
         net::{Ipv4Addr, SocketAddrV4},
         sync::Arc,
     };
+    use web3::types::H256;
 
     /// Helper function: produces named rpc method args map.
     fn by_name<const N: usize>(params: [(&'_ str, serde_json::Value); N]) -> Option<ParamsSer<'_>> {
@@ -535,7 +537,7 @@ mod tests {
 
         let txn0_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too
-        let txn0 = InvokeTransaction {
+        let txn0 = InvokeTransactionV0 {
             calldata: vec![],
             contract_address: contract0_addr,
             entry_point_type: EntryPointType::External,
@@ -579,12 +581,12 @@ mod tests {
         txn4.contract_address = ContractAddress::new_or_panic(StarkHash::ZERO);
         let mut txn5 = txn4.clone();
         txn5.transaction_hash = txn5_hash;
-        let txn0 = Transaction::Invoke(txn0);
-        let txn1 = Transaction::Invoke(txn1);
-        let txn2 = Transaction::Invoke(txn2);
-        let txn3 = Transaction::Invoke(txn3);
-        let txn4 = Transaction::Invoke(txn4);
-        let txn5 = Transaction::Invoke(txn5);
+        let txn0 = Transaction::Invoke(txn0.into());
+        let txn1 = Transaction::Invoke(txn1.into());
+        let txn2 = Transaction::Invoke(txn2.into());
+        let txn3 = Transaction::Invoke(txn3.into());
+        let txn4 = Transaction::Invoke(txn4.into());
+        let txn5 = Transaction::Invoke(txn5.into());
         let mut receipt1 = receipt0.clone();
         let mut receipt2 = receipt0.clone();
         let mut receipt3 = receipt0.clone();
@@ -637,7 +639,7 @@ mod tests {
         .unwrap();
 
         let transactions: Vec<Transaction> = vec![
-            InvokeTransaction {
+            InvokeTransaction::V0(InvokeTransactionV0 {
                 calldata: vec![],
                 contract_address: ContractAddress::new_or_panic(starkhash_bytes!(
                     b"pending contract addr 0"
@@ -647,7 +649,7 @@ mod tests {
                 max_fee: Call::DEFAULT_MAX_FEE,
                 signature: vec![],
                 transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 0")),
-            }
+            })
             .into(),
             DeployTransaction {
                 contract_address: ContractAddress::new_or_panic(starkhash!("01122355")),

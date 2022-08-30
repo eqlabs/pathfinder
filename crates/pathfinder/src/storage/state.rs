@@ -812,10 +812,16 @@ impl StarknetEventsTable {
                 transaction_hash,
                 ..
             })
-            | transaction::Transaction::Invoke(transaction::InvokeTransaction {
-                transaction_hash,
-                ..
-            }) => {
+            | transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
+                transaction::InvokeTransactionV0 {
+                    transaction_hash, ..
+                },
+            ))
+            | transaction::Transaction::Invoke(transaction::InvokeTransaction::V1(
+                transaction::InvokeTransactionV1 {
+                    transaction_hash, ..
+                },
+            )) => {
                 let mut stmt = tx.prepare(
                     r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
                                            VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)")?;
@@ -2143,26 +2149,30 @@ mod tests {
 
             // Note: hashes are reverse ordered to trigger the sorting bug.
             let transactions = vec![
-                transaction::Transaction::Invoke(transaction::InvokeTransaction {
-                    calldata: vec![],
-                    // Only required because event insert rejects if this is None
-                    contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
-                    entry_point_type: transaction::EntryPointType::External,
-                    entry_point_selector: EntryPoint(StarkHash::ZERO),
-                    max_fee: Fee(H128::zero()),
-                    signature: vec![],
-                    transaction_hash: StarknetTransactionHash(starkhash!("0F")),
-                }),
-                transaction::Transaction::Invoke(transaction::InvokeTransaction {
-                    calldata: vec![],
-                    // Only required because event insert rejects if this is None
-                    contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
-                    entry_point_type: transaction::EntryPointType::External,
-                    entry_point_selector: EntryPoint(StarkHash::ZERO),
-                    max_fee: Fee(H128::zero()),
-                    signature: vec![],
-                    transaction_hash: StarknetTransactionHash(starkhash!("01")),
-                }),
+                transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
+                    transaction::InvokeTransactionV0 {
+                        calldata: vec![],
+                        // Only required because event insert rejects if this is None
+                        contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
+                        entry_point_type: transaction::EntryPointType::External,
+                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        max_fee: Fee(H128::zero()),
+                        signature: vec![],
+                        transaction_hash: StarknetTransactionHash(starkhash!("0F")),
+                    },
+                )),
+                transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
+                    transaction::InvokeTransactionV0 {
+                        calldata: vec![],
+                        // Only required because event insert rejects if this is None
+                        contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
+                        entry_point_type: transaction::EntryPointType::External,
+                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        max_fee: Fee(H128::zero()),
+                        signature: vec![],
+                        transaction_hash: StarknetTransactionHash(starkhash!("01")),
+                    },
+                )),
             ];
 
             let receipts = vec![
