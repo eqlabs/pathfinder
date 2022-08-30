@@ -714,8 +714,14 @@ fn update_starknet_state(
     }
 
     for (contract_address, updates) in &state_update.state_diff.storage_diffs {
+        let nonce = state_update
+            .state_diff
+            .nonces
+            .get(contract_address)
+            .copied();
+
         let contract_state_hash =
-            update_contract_state(*contract_address, updates, &global_tree, transaction)
+            update_contract_state(*contract_address, updates, nonce, &global_tree, transaction)
                 .context("Update contract state")?;
 
         // Update the global state tree.
@@ -737,10 +743,12 @@ fn deploy_contract(
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.
     let contract_root = ContractRoot::ZERO;
+    // The initial value of a contract nonce is ZERO.
+    let contract_nonce = crate::core::ContractNonce::ZERO;
     // sequencer::reply::state_update::Contract::contract_hash is the old (pre cairo 0.9.0)
     // name for `class_hash`.
     let class_hash = contract.class_hash;
-    let state_hash = calculate_contract_state_hash(class_hash, contract_root);
+    let state_hash = calculate_contract_state_hash(class_hash, contract_root, contract_nonce);
     global_tree
         .set(contract.address, state_hash)
         .context("Adding deployed contract to global state tree")?;
@@ -749,7 +757,7 @@ fn deploy_contract(
         state_hash,
         class_hash,
         contract_root,
-        crate::core::ContractNonce(StarkHash::ZERO),
+        contract_nonce,
     )
     .context("Insert constract state hash into contracts state table")?;
     ContractsTable::upsert(transaction, contract.address, class_hash)

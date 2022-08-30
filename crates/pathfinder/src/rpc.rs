@@ -446,33 +446,53 @@ mod tests {
         ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
 
         let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
-        let contract_state_hash =
-            update_contract_state(contract0_addr, &contract0_update, &global_tree, &db_txn)
-                .unwrap();
+        let contract_state_hash = update_contract_state(
+            contract0_addr,
+            &contract0_update,
+            None,
+            &global_tree,
+            &db_txn,
+        )
+        .unwrap();
         global_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
         let global_root0 = global_tree.apply().unwrap();
 
         let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
-        let contract_state_hash =
-            update_contract_state(contract1_addr, &contract1_update0, &global_tree, &db_txn)
-                .unwrap();
+        let contract_state_hash = update_contract_state(
+            contract1_addr,
+            &contract1_update0,
+            None,
+            &global_tree,
+            &db_txn,
+        )
+        .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let contract_state_hash =
-            update_contract_state(contract1_addr, &contract1_update1, &global_tree, &db_txn)
-                .unwrap();
+        let contract_state_hash = update_contract_state(
+            contract1_addr,
+            &contract1_update1,
+            None,
+            &global_tree,
+            &db_txn,
+        )
+        .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let global_root1 = global_tree.apply().unwrap();
 
         let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
-        let contract_state_hash =
-            update_contract_state(contract1_addr, &contract1_update2, &global_tree, &db_txn)
-                .unwrap();
+        let contract_state_hash = update_contract_state(
+            contract1_addr,
+            &contract1_update2,
+            None,
+            &global_tree,
+            &db_txn,
+        )
+        .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
@@ -776,9 +796,14 @@ mod tests {
             }
             for (contract_address, storage_diffs) in state_diff2.storage_diffs {
                 use crate::state::update_contract_state;
-                let state_hash =
-                    update_contract_state(contract_address, &storage_diffs, &global_tree, &tmp_tx)
-                        .unwrap();
+                let state_hash = update_contract_state(
+                    contract_address,
+                    &storage_diffs,
+                    None,
+                    &global_tree,
+                    &tmp_tx,
+                )
+                .unwrap();
                 global_tree.set(contract_address, state_hash).unwrap();
             }
             let pending_root = global_tree.apply().unwrap();
@@ -1897,9 +1922,14 @@ mod tests {
             .unwrap()
             .unwrap();
             let mut global_tree = GlobalStateTree::load(transaction, block2.root).unwrap();
-            let contract_state_hash =
-                update_contract_state(contract_address, &storage_diff, &global_tree, transaction)
-                    .unwrap();
+            let contract_state_hash = update_contract_state(
+                contract_address,
+                &storage_diff,
+                None,
+                &global_tree,
+                transaction,
+            )
+            .unwrap();
             global_tree
                 .set(contract_address, contract_state_hash)
                 .unwrap();
