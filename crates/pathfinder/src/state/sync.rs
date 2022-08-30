@@ -31,15 +31,12 @@ use tokio::sync::{mpsc, RwLock};
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
-    /// Latest known StarkNet version.
-    pub version: RwLock<Option<String>>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             status: RwLock::new(SyncStatus::False(false)),
-            version: RwLock::new(None),
         }
     }
 }
@@ -488,8 +485,6 @@ async fn update_sync_status_latest(
                         }
                     }
                 }
-                // Update the version.
-                *state.version.write().await = block.starknet_version;
             }
             Ok(MaybePendingBlock::Pending(_)) => {
                 tracing::error!("Latest block returned 'pending'");
