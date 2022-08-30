@@ -310,7 +310,8 @@ def test_nested_called_contract_not_found():
 
     assert output == {
         "status": "failed",
-        "exception": "StarknetErrorCode.TRANSACTION_FAILED",
+        # this used to be TRANSACTION_FAILED in the older versions
+        "exception": "StarknetErrorCode.SECURITY_ERROR",
     }
 
 
