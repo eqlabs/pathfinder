@@ -32,14 +32,12 @@ async fn main() -> anyhow::Result<()> {
 
     permission_check(&config.data_directory)?;
 
-    let prometheus_handle = PrometheusBuilder::new()
-        .install_recorder()
-        .context("Creating Prometheus recorder")?;
-
     let pathfinder_ready = match config.monitoring_addr {
         Some(monitoring_addr) => {
             let ready = Arc::new(AtomicBool::new(false));
-            let prometheus_handle = prometheus_handle;
+            let prometheus_handle = PrometheusBuilder::new()
+                .install_recorder()
+                .context("Creating Prometheus recorder")?;
             let _jh =
                 monitoring::spawn_server(monitoring_addr, ready.clone(), prometheus_handle).await;
             Some(ready)
