@@ -1016,9 +1016,6 @@ impl RpcApi {
     }
 
     /// Returns the contract's latest nonce.
-    ///
-    /// Not currently supported correctly as nonce's aren't implemented yet. In the mean time
-    /// returns "0x0" until starknet reaches 0.10 at which point it will return an error instead.
     pub async fn get_nonce(&self, contract: ContractAddress) -> RpcResult<ContractNonce> {
         let storage = self.storage.clone();
         let span = tracing::Span::current();
