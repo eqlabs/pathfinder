@@ -257,7 +257,7 @@ where
                     let block_hash = block.block_hash;
                     let storage_updates: usize = state_update.state_diff.storage_diffs.iter().map(|(_, storage_diffs)| storage_diffs.len()).sum();
                     let update_t = std::time::Instant::now();
-                    l2_update(&mut db_conn, *block, state_update)
+                    l2_update(&mut db_conn, *block, *state_update)
                         .await
                         .with_context(|| format!("Update L2 state to {}", block_number))?;
                     let block_time = last_block_start.elapsed();
@@ -1416,7 +1416,7 @@ mod tests {
         let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 Box::new(block()),
-                state_update(),
+                Box::new(state_update()),
                 timings,
             ))
             .await
