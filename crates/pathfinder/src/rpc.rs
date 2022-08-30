@@ -2113,7 +2113,7 @@ mod tests {
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
             .await
             .expect("pre-0.10.0 version should succeed");
-        assert_eq!(version, ContractNonce(StarkHash::ZERO));
+        assert_eq!(version, ContractNonce::ZERO);
 
         // Invalid contract should error.
         let invalid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));

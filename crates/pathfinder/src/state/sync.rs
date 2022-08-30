@@ -736,7 +736,7 @@ fn deploy_contract(
     contract: &sequencer::reply::state_update::DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.
-    let contract_root = ContractRoot(StarkHash::ZERO);
+    let contract_root = ContractRoot::ZERO;
     // sequencer::reply::state_update::Contract::contract_hash is the old (pre cairo 0.9.0)
     // name for `class_hash`.
     let class_hash = contract.class_hash;

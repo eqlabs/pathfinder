@@ -20,6 +20,10 @@ macros::starkhash251::deserialization!(ContractAddress);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ContractNonce(pub StarkHash);
 
+impl ContractNonce {
+    pub const ZERO: Self = Self(StarkHash::ZERO);
+}
+
 /// The salt of a StarkNet contract address.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddressSalt(pub StarkHash);
@@ -39,6 +43,10 @@ pub struct ContractStateHash(pub StarkHash);
 /// state tree.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContractRoot(pub StarkHash);
+
+impl ContractRoot {
+    pub const ZERO: Self = Self(StarkHash::ZERO);
+}
 
 // Bytecode and entry point list of a class
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

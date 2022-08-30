@@ -1050,7 +1050,7 @@ impl RpcApi {
         match version {
             // This field was only populated from version 0.9 onwards, so earlier versions don't exist.
             // This property has no confirmed specification, so we are hesistant to alaways parse it as semver.
-            Some(version) if version.starts_with("0.9.") => Ok(ContractNonce(StarkHash::ZERO)),
+            Some(version) if version.starts_with("0.9.") => Ok(ContractNonce::ZERO),
             Some(_) => Err(internal_server_error(
                 "Not supported for StarkNet versions from 0.10.0 onwards",
             )),
