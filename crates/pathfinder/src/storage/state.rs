@@ -2160,14 +2160,14 @@ mod tests {
                 transaction::Receipt {
                     actual_fee: None,
                     events: expected_events[..3].to_vec(),
-                    execution_resources: transaction::ExecutionResources {
+                    execution_resources: Some(transaction::ExecutionResources {
                         builtin_instance_counter:
                             transaction::execution_resources::BuiltinInstanceCounter::Empty(
                                 transaction::execution_resources::EmptyBuiltinInstanceCounter {},
                             ),
                         n_steps: 0,
                         n_memory_holes: 0,
-                    },
+                    }),
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[0].hash(),
@@ -2176,14 +2176,14 @@ mod tests {
                 transaction::Receipt {
                     actual_fee: None,
                     events: expected_events[3..].to_vec(),
-                    execution_resources: transaction::ExecutionResources {
+                    execution_resources: Some(transaction::ExecutionResources {
                         builtin_instance_counter:
                             transaction::execution_resources::BuiltinInstanceCounter::Empty(
                                 transaction::execution_resources::EmptyBuiltinInstanceCounter {},
                             ),
                         n_steps: 0,
                         n_memory_holes: 0,
-                    },
+                    }),
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[1].hash(),

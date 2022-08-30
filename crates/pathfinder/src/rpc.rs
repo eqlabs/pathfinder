@@ -549,13 +549,13 @@ mod tests {
         let mut receipt0 = Receipt {
             actual_fee: None,
             events: vec![],
-            execution_resources: ExecutionResources {
+            execution_resources: Some(ExecutionResources {
                 builtin_instance_counter: BuiltinInstanceCounter::Empty(
                     EmptyBuiltinInstanceCounter {},
                 ),
                 n_memory_holes: 0,
                 n_steps: 0,
-            },
+            }),
             l1_to_l2_consumed_message: None,
             l2_to_l1_messages: vec![],
             transaction_hash: txn0_hash,
@@ -682,13 +682,13 @@ mod tests {
                         keys: vec![EventKey(starkhash_bytes!(b"pending key 2"))],
                     },
                 ],
-                execution_resources: ExecutionResources {
+                execution_resources: Some(ExecutionResources {
                     builtin_instance_counter: BuiltinInstanceCounter::Empty(
                         EmptyBuiltinInstanceCounter {},
                     ),
                     n_memory_holes: 0,
                     n_steps: 0,
-                },
+                }),
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[0].hash(),
@@ -697,13 +697,13 @@ mod tests {
             Receipt {
                 actual_fee: None,
                 events: vec![],
-                execution_resources: ExecutionResources {
+                execution_resources: Some(ExecutionResources {
                     builtin_instance_counter: BuiltinInstanceCounter::Empty(
                         EmptyBuiltinInstanceCounter {},
                     ),
                     n_memory_holes: 0,
                     n_steps: 0,
-                },
+                }),
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[1].hash(),
