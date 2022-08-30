@@ -81,7 +81,7 @@ impl RpcServer {
         Self {
             addr,
             api,
-            middleware: MaybeRpcMetricsMiddleware::Noop,
+            middleware: MaybeRpcMetricsMiddleware::NoOp,
         }
     }
 

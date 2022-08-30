@@ -21,7 +21,7 @@ pub mod middleware {
     #[derive(Debug, Clone)]
     pub enum MaybeRpcMetricsMiddleware {
         Middleware(RpcMetricsMiddleware),
-        Noop,
+        NoOp,
     }
 
     impl jsonrpsee::core::middleware::Middleware for MaybeRpcMetricsMiddleware {
@@ -34,7 +34,7 @@ pub mod middleware {
         fn on_call(&self, name: &str) {
             match self {
                 MaybeRpcMetricsMiddleware::Middleware(x) => x.on_call(name),
-                MaybeRpcMetricsMiddleware::Noop => {}
+                MaybeRpcMetricsMiddleware::NoOp => {}
             }
         }
     }
