@@ -721,6 +721,7 @@ pub mod reply {
                         constructor_calldata: txn.constructor_calldata.clone(),
                     })
                 }
+                sequencer::reply::transaction::Transaction::L1Handler(_txn) => todo!(),
             }
         }
     }
@@ -852,6 +853,7 @@ pub mod reply {
                             .collect(),
                     })
                 }
+                sequencer::reply::transaction::Transaction::L1Handler(_) => todo!(),
             }
         }
 
@@ -862,9 +864,9 @@ pub mod reply {
             block_number: StarknetBlockNumber,
             transaction: &sequencer::reply::transaction::Transaction,
         ) -> Self {
+            use sequencer::reply::transaction::Transaction::*;
             match transaction {
-                sequencer::reply::transaction::Transaction::Declare(_)
-                | sequencer::reply::transaction::Transaction::Deploy(_) => {
+                Declare(_) | Deploy(_) => {
                     Self::DeclareOrDeploy(DeclareOrDeployTransactionReceipt {
                         common: CommonTransactionReceiptProperties {
                             transaction_hash: receipt.transaction_hash,
@@ -879,7 +881,7 @@ pub mod reply {
                         },
                     })
                 }
-                sequencer::reply::transaction::Transaction::Invoke(_) => {
+                Invoke(_) => {
                     Self::Invoke(InvokeTransactionReceipt {
                         common: CommonTransactionReceiptProperties {
                             transaction_hash: receipt.transaction_hash,
@@ -907,6 +909,7 @@ pub mod reply {
                             .collect(),
                     })
                 }
+                L1Handler(_) => todo!(),
             }
         }
     }

@@ -306,6 +306,8 @@ pub mod transaction {
         Deploy(DeployTransaction),
         #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeTransaction),
+        #[serde(rename = "L1_HANDLER")]
+        L1Handler(L1HandlerTransaction),
     }
 
     impl Transaction {
@@ -318,6 +320,7 @@ pub mod transaction {
                     InvokeTransaction::V0(t) => t.transaction_hash,
                     InvokeTransaction::V1(t) => t.transaction_hash,
                 },
+                Transaction::L1Handler(t) => t.transaction_hash,
             }
         }
     }
@@ -445,6 +448,20 @@ pub mod transaction {
         pub transaction_hash: StarknetTransactionHash,
     }
 
+    /// Represents deserialized L2 "L1 handler" transaction data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct L1HandlerTransaction {
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub nonce: TransactionNonce,
+        pub calldata: Vec<CallParam>,
+        pub transaction_hash: StarknetTransactionHash,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+    }
+
     impl From<DeclareTransaction> for Transaction {
         fn from(tx: DeclareTransaction) -> Self {
             Self::Declare(tx)
@@ -460,6 +477,12 @@ pub mod transaction {
     impl From<InvokeTransaction> for Transaction {
         fn from(tx: InvokeTransaction) -> Self {
             Self::Invoke(tx)
+        }
+    }
+
+    impl From<L1HandlerTransaction> for Transaction {
+        fn from(tx: L1HandlerTransaction) -> Self {
+            Self::L1Handler(tx)
         }
     }
 
@@ -673,6 +696,9 @@ mod tests {
                 .unwrap();
             // This is from integration starknet_version 0.10 and contains the new version 1 invoke transaction.
             serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/216591.json"))
+                .unwrap();
+            // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
+            serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/216171.json"))
                 .unwrap();
         }
 
