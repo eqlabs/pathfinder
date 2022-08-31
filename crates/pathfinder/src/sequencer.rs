@@ -118,6 +118,7 @@ impl Client {
         let url = match chain {
             Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
             Chain::Goerli => Url::parse("https://alpha4.starknet.io/").unwrap(),
+            Chain::Integration => Url::parse("https://external.integration.starknet.io").unwrap(),
         };
 
         Self::with_url(url)

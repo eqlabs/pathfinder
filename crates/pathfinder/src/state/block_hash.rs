@@ -164,6 +164,7 @@ mod meta {
         match chain {
             Chain::Mainnet => &MAINNET_METAINFO,
             Chain::Goerli => &TESTNET_METAINFO,
+            Chain::Integration => todo!("Block hash meta data TBD"),
         }
     }
 }

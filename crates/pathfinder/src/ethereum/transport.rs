@@ -96,7 +96,7 @@ impl HttpTransport {
         use crate::core::Chain;
         let key_prefix = match chain {
             Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
-            Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
+            Chain::Goerli | Chain::Integration => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
         };
 
         let url_key = format!("{}_URL", key_prefix);

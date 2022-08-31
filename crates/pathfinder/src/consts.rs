@@ -15,3 +15,7 @@ pub const GOERLI_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(crate::star
 pub const MAINNET_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(crate::starkhash!(
     "047C3637B57C2B079B93C61539950C17E868A28F46CDEF28F88521067F21E943"
 ));
+
+pub const INTEGRATION_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(crate::starkhash!(
+    "03ae41b0f023e53151b0c8ab8b9caafb7005d5f41c9ab260276d5bdc49726279"
+));

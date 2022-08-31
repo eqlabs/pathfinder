@@ -58,6 +58,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     let database_path = config.data_directory.join(match starknet_chain {
         Chain::Mainnet => "mainnet.sqlite",
         Chain::Goerli => "goerli.sqlite",
+        Chain::Integration => "integration.sqlite",
     });
     let journal_mode = match config.sqlite_wal {
         false => JournalMode::Rollback,
