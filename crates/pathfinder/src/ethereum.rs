@@ -136,13 +136,13 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
 #[cfg(test)]
 mod tests {
     mod chain {
-        use crate::core::Chain;
+        use crate::core::{Chain, EthereumChain};
         use crate::ethereum::transport::{EthereumTransport, HttpTransport};
 
         #[tokio::test]
         async fn goerli() {
-            let expected_chain = Chain::Goerli;
-            let transport = HttpTransport::test_transport(expected_chain);
+            let expected_chain = EthereumChain::Goerli;
+            let transport = HttpTransport::test_transport(Chain::Goerli);
             let chain = transport.chain().await.unwrap();
 
             assert_eq!(chain, expected_chain);
@@ -150,8 +150,8 @@ mod tests {
 
         #[tokio::test]
         async fn mainnet() {
-            let expected_chain = Chain::Mainnet;
-            let transport = HttpTransport::test_transport(expected_chain);
+            let expected_chain = EthereumChain::Mainnet;
+            let transport = HttpTransport::test_transport(Chain::Mainnet);
             let chain = transport.chain().await.unwrap();
 
             assert_eq!(chain, expected_chain);

@@ -369,6 +369,13 @@ impl From<StarknetBlockHash> for BlockId {
 
 /// Ethereum network chains running Starknet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EthereumChain {
+    Mainnet,
+    Goerli,
+}
+
+/// Starknet chain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chain {
     /// The Ethereum mainnet chain.
     Mainnet,

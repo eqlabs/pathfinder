@@ -919,7 +919,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn chain(&self) -> anyhow::Result<Chain> {
+        async fn chain(&self) -> anyhow::Result<crate::core::EthereumChain> {
             unimplemented!()
         }
 
