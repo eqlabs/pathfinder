@@ -171,7 +171,7 @@ Examples:
         .arg(
             Arg::new(INTEGRATION)
                 .long(INTEGRATION)
-                // .hide(true)
+                .hide(true)
                 .takes_value(false)
         )
 }
