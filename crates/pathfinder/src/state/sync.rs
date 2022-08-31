@@ -867,7 +867,7 @@ pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
     use std::time::Duration;
 
     match chain {
-        // 5 minute interval for a 30 hour block time.
+        // 5 minute interval for a 30 minute block time.
         Mainnet => Duration::from_secs(60 * 5),
         // 30 second interval for a 2 minute block time.
         Testnet | Integration => Duration::from_secs(30),
