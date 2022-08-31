@@ -385,6 +385,11 @@ Pathfinder has a monitoring API which can be enabled with the `--monitor-address
 
 `/ready` provides a way of checking whether the node's JSON-RPC API is ready to be queried. It returns a `503 Service Unavailable` status until all startup tasks complete, and then `200 OK` from then on.
 
+### Metrics
+
+`/metrics` provides a [Prometheus](https://prometheus.io/) metrics scrape endpoint. Currently only one type of metric is available:
+- `rpc_method_calls_total` counter, where the key `method` should be used to point to a particular RPC method to retrieve that method's total call count, for example: `rpc_method_calls_total{method="starknet_getStateUpdate"}`.
+
 ## License
 
 Licensed under either of
