@@ -5,10 +5,10 @@ from call import (
     int_param,
     int_hash_or_latest,
     loop_inner,
-    NoSuchContract,
     maybe_pending_updates,
     maybe_pending_deployed,
     resolve_block,
+    NOT_FOUND_CONTRACT_STATE,
 )
 import sqlite3
 import io
@@ -278,11 +278,6 @@ def test_called_contract_not_found():
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
 
-    # con.execute("delete from contract_code")
-    # con.execute("delete from contracts")
-    # con.execute("delete from contract_states")
-    # con.commit()
-
     output = default_132_on_3_scenario(
         con,
         [
@@ -290,7 +285,6 @@ def test_called_contract_not_found():
         ],
     )
 
-    # TODO: this should probably be understood to a nicer one
     assert output == {"status": "error", "kind": "NO_SUCH_CONTRACT"}
 
 
@@ -307,12 +301,7 @@ def test_nested_called_contract_not_found():
     )
 
     # the original exception message is too long
-
-    assert output == {
-        "status": "failed",
-        # this used to be TRANSACTION_FAILED in the older versions
-        "exception": "StarknetErrorCode.SECURITY_ERROR",
-    }
+    assert output == {"status": "error", "kind": "NO_SUCH_CONTRACT"}
 
 
 def test_invalid_entry_point():
@@ -606,6 +595,7 @@ def test_call_on_reorgged_pending_block():
     This now gives meaning to the `pending_{updates,deployed}: None` vs.
     `pending_{updates,deployed}: <default>` cases.
     """
+    from starkware.starkware_utils.error_handling import WebFriendlyException
 
     con = inmemory_with_tables()
     contract_address = populate_test_contract_with_132_on_3(con)
@@ -715,7 +705,7 @@ def test_call_on_reorgged_pending_block():
                     ]
                 ),
             },
-            NoSuchContract,
+            "StarknetErrorCode.UNINITIALIZED_CONTRACT",
         )
     )
 
@@ -727,8 +717,27 @@ def test_call_on_reorgged_pending_block():
         try:
             (verb, output, _timings) = loop_inner(con, command)
             assert expected == output
-        except NoSuchContract as e:
-            assert expected == type(e)
+        except WebFriendlyException as e:
+            assert expected == str(e.code)
+
+
+def test_static_returned_not_found_contract_state():
+    # this is quite silly that we need to communicate serialized default values instead of None for not found values
+    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
+        PatriciaTree,
+    )
+    from starkware.starknet.business_logic.fact_state.contract_state_objects import (
+        ContractState,
+    )
+    import json
+
+    dumped = (
+        ContractState(b"\x00" * 32, PatriciaTree(b"\x00" * 32, 251), 0)
+        .dumps(sort_keys=True)
+        .encode("utf-8")
+    )
+    # test is to make sure the static value is up to date between versions
+    assert dumped == NOT_FOUND_CONTRACT_STATE
 
 
 # Rest of the test cases require a mainnet or goerli database in some path.

@@ -11,6 +11,9 @@ EXPECTED_SCHEMA_REVISION = 20
 EXPECTED_CAIRO_VERSION = "0.9.1"
 SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
 
+# used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
+NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
+
 
 def main():
     """
@@ -111,31 +114,17 @@ def do_loop(connection, input_gen, output_file):
             out["output"] = render(verb, output)
         except NoSuchBlock:
             out = {"status": "error", "kind": "NO_SUCH_BLOCK"}
-        except NoSuchContract:
-            out = {"status": "error", "kind": "NO_SUCH_CONTRACT"}
         except UnexpectedSchemaVersion:
             out = {"status": "error", "kind": "INVALID_SCHEMA_VERSION"}
         except InvalidInput:
             out = {"status": "error", "kind": "INVALID_INPUT"}
         except WebFriendlyException as e:
-            if str(e.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
+            if str(e.code) == "StarknetErrorCode.UNINITIALIZED_CONTRACT":
+                out = {"status": "error", "kind": "NO_SUCH_CONTRACT"}
+            elif str(e.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
                 out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
             else:
-                # as of cairo-lang 0.9.1 we don't have access to all exceptions
-                # except as strings one with the longest stack traces is doing the
-                # merkle tree reads to depth until a NoSuchContract
-                stringified = str(e)
-                if "\\ncall.NoSuchContract: Could not find the contract" in stringified:
-                    # this is not turned into "status": "error", "kind": "NO_SUCH_CONTRACT" because
-                    # it's unclear if that error code is wanted for nested calls failing with this
-                    report_failed(
-                        logger,
-                        command,
-                        f"Filtered nested NoSuchContract, original report was {len(stringified)} bytes",
-                    )
-                else:
-                    report_failed(logger, command, e)
-                # this is hopefully something we can give to the user
+                report_failed(logger, command, e)
                 out = {"status": "failed", "exception": str(e.code)}
         except Exception as e:
             stringified = str(e)
@@ -478,15 +467,6 @@ class NoSuchBlock(Exception):
         super().__init__(f"Could not find the block by: {at_block}")
 
 
-class NoSuchContract(Exception):
-    def __init__(self):
-        """
-        Nothing for this class can change without making other changes, since there's a string dependency.
-        Look for `call.NoSuchContract: Could not find the contract`.
-        """
-        super().__init__("Could not find the contract")
-
-
 class UnexpectedSchemaVersion(Exception):
     def __init__(self):
         super().__init__("Schema mismatch, is this pathfinders database file?")
@@ -613,6 +593,13 @@ class SqliteAdapter(Storage):
         return only
 
     def fetch_contract_state(self, suffix):
+        from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
+            PatriciaTree,
+        )
+        from starkware.starknet.business_logic.fact_state.contract_state_objects import (
+            ContractState,
+        )
+
         cursor = self.connection.execute(
             "select hash, root from contract_states where state_hash = ?", [suffix]
         )
@@ -622,12 +609,17 @@ class SqliteAdapter(Storage):
         [h, root] = only
 
         if h is None or root is None:
-            if suffix == b"\x00" * 32:
-                # this means that they went looking for a leaf in the patricia tree
-                # but couldn't find anything which is signalled by many zeros key
-                raise NoSuchContract
-            return None
+            # finding contract_states is a special quest.
+            #
+            # we must return this because None is not handled by caller. for
+            # some reason there is opposition to stopping cairo-lang's search
+            # when they don't find a key in the patricia tree, so it ends up
+            # making what seems like full height queries and then reads
+            # "contract_state:00..00" key, for which it hopes to find this to
+            # know that the leaf and the contract state did not exist.
+            return NOT_FOUND_CONTRACT_STATE
 
+        # FIXME: this is missing the nonce
         return (
             b'{"storage_commitment_tree": {"root": "'
             + root.hex().encode("utf-8")
