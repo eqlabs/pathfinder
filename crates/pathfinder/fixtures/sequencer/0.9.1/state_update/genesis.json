@@ -144,28 +144,29 @@
         "deployed_contracts": [
             {
                 "address": "0x546ba9763d33dc59a070c0d87d94f2dcafa82c4a93b5e2bf5ae458b0013a9d3",
-                "class_hash": "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+                "class_hash": "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
             },
             {
                 "address": "0x1336fa7c870a7403aced14dda865b75f29113230ed84e3a661f7af70fe83e7b",
-                "class_hash": "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+                "class_hash": "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
             },
             {
                 "address": "0x19245f0f49d23f2379d3e3f20d1f3f46207d1c4a1d09cac8dd50e8d528aabe1",
-                "class_hash": "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+                "class_hash": "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
             },
             {
                 "address": "0x2adb4393384c09f049c06bc0070b7a2f72c9cbdcbe841fa7e109a520466cd66",
-                "class_hash": "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+                "class_hash": "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
             },
             {
                 "address": "0x2f40faa63fdd5871415b2dcfb1a5e3e1ca06435b3dda6e2ba9df3f726fd3251",
-                "class_hash": "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+                "class_hash": "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
             },
             {
                 "address": "0x377cd03f6bed2ed201e9783f50b1b823d2ff65032da69f468bba5c6634dfbfa",
-                "class_hash": "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+                "class_hash": "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
             }
-        ]
+        ],
+        "declared_contracts": []
     }
 }

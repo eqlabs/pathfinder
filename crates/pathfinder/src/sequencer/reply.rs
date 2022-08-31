@@ -408,7 +408,7 @@ pub struct StateUpdate {
 
 /// Types used when deserializing state update related data.
 pub mod state_update {
-    use crate::core::{ClassHash, ContractAddress, StorageAddress, StorageValue};
+    use crate::core::{ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue};
     use serde::Deserialize;
     use serde_with::serde_as;
     use std::collections::HashMap;
@@ -421,15 +421,10 @@ pub mod state_update {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
-
-        /// Optional field of declared contracts.
-        ///
-        /// Since 0.9.1.
-        ///
-        /// FIXME: drop the default after 0.9.1 is on mainnet.
-        /// FIXME: these are not yet used in any way
-        #[serde(default)]
         pub declared_contracts: Vec<ClassHash>,
+        /// FIXME(0.10): drop the default once 0.10 hits mainnet
+        #[serde(default)]
+        pub nonces: HashMap<ContractAddress, ContractNonce>,
     }
 
     /// L2 storage diff.
@@ -589,9 +584,15 @@ mod tests {
 
         #[test]
         fn state_update() {
-            serde_json::from_str::<StateUpdate>(fixture!("0.8.2/state_update/genesis.json"))
+            // FIXME(0.10): update these fixtures once 0.10 is on mainnet
+
+            // These fixtures do not contain nonces property (0.10 owards).
+            serde_json::from_str::<StateUpdate>(fixture!("0.9.1/state_update/genesis.json"))
                 .unwrap();
-            serde_json::from_str::<StateUpdate>(fixture!("0.8.2/state_update/pending.json"))
+            serde_json::from_str::<StateUpdate>(fixture!("0.9.1/state_update/pending.json"))
+                .unwrap();
+            // This is from integration starknet_version 0.10 and contains the new nonces field.
+            serde_json::from_str::<StateUpdate>(fixture!("integration/state_update/216572.json"))
                 .unwrap();
         }
 

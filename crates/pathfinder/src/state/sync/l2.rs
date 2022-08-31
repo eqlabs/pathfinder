@@ -29,7 +29,7 @@ pub struct Timings {
 #[derive(Debug)]
 pub enum Event {
     /// New L2 [block update](StateUpdate) found.
-    Update(Box<Block>, StateUpdate, Timings),
+    Update(Box<Block>, Box<StateUpdate>, Timings),
     /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
@@ -158,7 +158,7 @@ pub async fn sync(
         };
 
         tx_event
-            .send(Event::Update(block, state_update, timings))
+            .send(Event::Update(block, Box::new(state_update), timings))
             .await
             .context("Event channel closed")?;
     }
@@ -684,6 +684,7 @@ mod tests {
                         }],
                     )]),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
@@ -697,6 +698,7 @@ mod tests {
                     }],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
@@ -725,6 +727,7 @@ mod tests {
                         ),
                     ]),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
@@ -735,6 +738,7 @@ mod tests {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
@@ -745,6 +749,7 @@ mod tests {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
@@ -755,6 +760,7 @@ mod tests {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
             static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
@@ -765,6 +771,7 @@ mod tests {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
                     declared_contracts: Vec::new(),
+                    nonces: std::collections::HashMap::new(),
                 },
             };
         }
@@ -905,7 +912,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *STATE_UPDATE0);
+                    assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -921,7 +928,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update, *STATE_UPDATE1);
+                    assert_eq!(*state_update, *STATE_UPDATE1);
                 });
             }
 
@@ -990,7 +997,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update, *STATE_UPDATE1);
+                    assert_eq!(*state_update, *STATE_UPDATE1);
                 });
             }
         }
@@ -1107,7 +1114,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *STATE_UPDATE0);
+                    assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 // Reorg started from the genesis block
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
@@ -1127,7 +1134,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
-                    assert_eq!(state_update, *STATE_UPDATE0_V2);
+                    assert_eq!(*state_update, *STATE_UPDATE0_V2);
                 });
             }
 
@@ -1312,7 +1319,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *STATE_UPDATE0);
+                    assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -1328,11 +1335,11 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update, *STATE_UPDATE1);
+                    assert_eq!(*state_update, *STATE_UPDATE1);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
-                    assert_eq!(state_update, *STATE_UPDATE2);
+                    assert_eq!(*state_update, *STATE_UPDATE2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
@@ -1360,7 +1367,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
-                    assert_eq!(state_update, *STATE_UPDATE0_V2);
+                    assert_eq!(*state_update, *STATE_UPDATE0_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block1_v2);
@@ -1592,7 +1599,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *STATE_UPDATE0);
+                    assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -1608,15 +1615,15 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update, *STATE_UPDATE1);
+                    assert_eq!(*state_update, *STATE_UPDATE1);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
-                    assert_eq!(state_update, *STATE_UPDATE2);
+                    assert_eq!(*state_update, *STATE_UPDATE2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block3);
-                    assert_eq!(state_update, *STATE_UPDATE3);
+                    assert_eq!(*state_update, *STATE_UPDATE3);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK2_NUMBER);
@@ -1636,11 +1643,11 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block1_v2);
-                    assert_eq!(state_update, *STATE_UPDATE1_V2);
+                    assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block2_v2);
-                    assert_eq!(state_update, *STATE_UPDATE2_V2);
+                    assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
             }
 
@@ -1799,7 +1806,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *STATE_UPDATE0);
+                    assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -1815,11 +1822,11 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update, *STATE_UPDATE1);
+                    assert_eq!(*state_update, *STATE_UPDATE1);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
-                    assert_eq!(state_update, *STATE_UPDATE2);
+                    assert_eq!(*state_update, *STATE_UPDATE2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK1_NUMBER);
@@ -1831,7 +1838,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block2_v2);
-                    assert_eq!(state_update, *STATE_UPDATE2_V2);
+                    assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
             }
 
@@ -1995,7 +2002,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
-                    assert_eq!(state_update, *STATE_UPDATE0);
+                    assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
                     assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
@@ -2011,7 +2018,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
-                    assert_eq!(state_update, *STATE_UPDATE1);
+                    assert_eq!(*state_update, *STATE_UPDATE1);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
                     assert_eq!(block_number, BLOCK0_NUMBER);
@@ -2023,11 +2030,11 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block1_v2);
-                    assert_eq!(state_update, *STATE_UPDATE1_V2);
+                    assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
                     assert_eq!(*block, block2);
-                    assert_eq!(state_update, *STATE_UPDATE2);
+                    assert_eq!(*state_update, *STATE_UPDATE2);
                 });
             }
 

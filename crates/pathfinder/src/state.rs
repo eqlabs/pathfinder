@@ -3,7 +3,7 @@ use rusqlite::Transaction;
 use stark_hash::{stark_hash, StarkHash};
 
 use crate::{
-    core::{ClassHash, ContractAddress, ContractRoot, ContractStateHash},
+    core::{ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash},
     sequencer::reply::state_update::StorageDiff,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{ContractsStateTable, ContractsTable},
@@ -45,26 +45,34 @@ impl std::fmt::Debug for CompressedContract {
 pub(crate) fn update_contract_state(
     contract_address: ContractAddress,
     updates: &[StorageDiff],
+    new_nonce: Option<ContractNonce>,
     global_tree: &GlobalStateTree<'_, '_>,
     db: &Transaction<'_>,
 ) -> anyhow::Result<ContractStateHash> {
     // Update the contract state tree.
-    let contract_state_hash = global_tree
+    let state_hash = global_tree
         .get(contract_address)
         .context("Get contract state hash from global state tree")?;
-    let contract_root = ContractsStateTable::get_root(db, contract_state_hash)
-        .context("Read contract root from contracts state table")?
-        .unwrap_or(ContractRoot(StarkHash::ZERO));
+
+    // Fetch contract's previous root and nonce. Both default to ZERO if they do not exist.
+    //
+    // Contract root defaults to ZERO because that is the default merkle tree value.
+    // Contract nonce defaults to ZERO because that is its historical value before being added in 0.10.
+    let (old_root, old_nonce) = ContractsStateTable::get_root_and_nonce(db, state_hash)
+        .context("Read contract root and nonce from contracts state table")?
+        .unwrap_or((ContractRoot::ZERO, ContractNonce::ZERO));
+
+    let new_nonce = new_nonce.unwrap_or(old_nonce);
 
     // Load the contract tree and insert the updates.
     let mut contract_tree =
-        ContractsStateTree::load(db, contract_root).context("Load contract state tree")?;
+        ContractsStateTree::load(db, old_root).context("Load contract state tree")?;
     for storage_diff in updates {
         contract_tree
             .set(storage_diff.key, storage_diff.value)
             .context("Update contract storage tree")?;
     }
-    let new_contract_root = contract_tree
+    let new_root = contract_tree
         .apply()
         .context("Apply contract storage tree changes")?;
 
@@ -72,22 +80,25 @@ pub(crate) fn update_contract_state(
     let class_hash = ContractsTable::get_hash(db, contract_address)
         .context("Read class hash from contracts table")?
         .context("Class hash is missing from contracts table")?;
-    let contract_state_hash = calculate_contract_state_hash(class_hash, new_contract_root);
+    let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, new_nonce);
 
-    ContractsStateTable::upsert(db, contract_state_hash, class_hash, new_contract_root)
+    ContractsStateTable::upsert(db, contract_state_hash, class_hash, new_root, new_nonce)
         .context("Insert constract state hash into contracts state table")?;
 
     Ok(contract_state_hash)
 }
 
 /// Calculates the contract state hash from its preimage.
-fn calculate_contract_state_hash(hash: ClassHash, root: ContractRoot) -> ContractStateHash {
-    const RESERVED: StarkHash = StarkHash::ZERO;
+fn calculate_contract_state_hash(
+    hash: ClassHash,
+    root: ContractRoot,
+    nonce: ContractNonce,
+) -> ContractStateHash {
     const CONTRACT_VERSION: StarkHash = StarkHash::ZERO;
 
-    // The contract state hash is defined as H(H(H(hash, root), RESERVED), CONTRACT_VERSION)
+    // The contract state hash is defined as H(H(H(hash, root), nonce), CONTRACT_VERSION)
     let hash = stark_hash(hash.0, root.0);
-    let hash = stark_hash(hash, RESERVED);
+    let hash = stark_hash(hash, nonce.0);
     let hash = stark_hash(hash, CONTRACT_VERSION);
 
     // Compare this with the HashChain construction used in the contract_hash: the number of
@@ -98,7 +109,7 @@ fn calculate_contract_state_hash(hash: ClassHash, root: ContractRoot) -> Contrac
 #[cfg(test)]
 mod tests {
     use super::{calculate_contract_state_hash, sync};
-    use crate::core::{ClassHash, ContractRoot, ContractStateHash};
+    use crate::core::{ClassHash, ContractNonce, ContractRoot, ContractStateHash};
     use crate::starkhash;
 
     #[test]
@@ -109,11 +120,13 @@ mod tests {
         let hash = starkhash!("02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779");
         let hash = ClassHash(hash);
 
+        let nonce = ContractNonce::ZERO;
+
         let expected =
             starkhash!("07161b591c893836263a64f2a7e0d829c92f6956148a60ce5e99a3f55c7973f3");
         let expected = ContractStateHash(expected);
 
-        let result = calculate_contract_state_hash(hash, root);
+        let result = calculate_contract_state_hash(hash, root, nonce);
 
         assert_eq!(result, expected);
     }

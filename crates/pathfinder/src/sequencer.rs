@@ -1407,14 +1407,14 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
-                    response!("0.9.0/state_update/genesis.json"),
+                    response!("0.9.1/state_update/genesis.json"),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_state_update?blockHash={}",
                         GENESIS_BLOCK_HASH
                     ),
-                    response!("0.9.0/state_update/genesis.json"),
+                    response!("0.9.1/state_update/genesis.json"),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1435,23 +1435,23 @@ mod tests {
         async fn specific_block() {
             let (_jh, client) = setup([
                 (
-                    "/feeder_gateway/get_state_update?blockNumber=231579",
-                    response!("0.9.0/state_update/231579.json"),
+                    "/feeder_gateway/get_state_update?blockNumber=315700",
+                    response!("0.9.1/state_update/315700.json"),
                 ),
                 (
-                    "/feeder_gateway/get_state_update?blockHash=0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
-                    response!("0.9.0/state_update/231579.json"),
+                    "/feeder_gateway/get_state_update?blockHash=0x17e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03",
+                    response!("0.9.1/state_update/315700.json"),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update(StarknetBlockNumber::new_or_panic(231579).into())
+                .state_update(StarknetBlockNumber::new_or_panic(315700).into())
                 .await
                 .unwrap()
                 .into();
             let by_hash: OrderedStateUpdate = client
                 .state_update(
                     StarknetBlockHash(starkhash!(
-                        "040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746"
+                        "017e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03"
                     ))
                     .into(),
                 )
@@ -1508,7 +1508,7 @@ mod tests {
         async fn latest() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
-                response!("0.9.0/state_update/231579.json"),
+                response!("0.9.1/state_update/315700.json"),
             )]);
             client.state_update(BlockId::Latest).await.unwrap();
         }
@@ -1517,24 +1517,9 @@ mod tests {
         async fn pending() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                response!("0.9.0/state_update/pending.json"),
+                response!("0.9.1/state_update/pending.json"),
             )]);
             client.state_update(BlockId::Pending).await.unwrap();
-        }
-
-        #[tokio::test]
-        async fn by_number_with_declared_contracts_in_0_9_1() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_state_update?blockNumber=193137",
-                response!("integration/state_update/193137.json"),
-            )]);
-
-            let parsed = client
-                .state_update(StarknetBlockNumber::new_or_panic(193137).into())
-                .await
-                .expect("should had parsed with the optional declared contracts");
-
-            assert_ne!(parsed.state_diff.declared_contracts, &[]);
         }
     }
 

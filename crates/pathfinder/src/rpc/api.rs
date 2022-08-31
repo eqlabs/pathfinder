@@ -1016,11 +1016,7 @@ impl RpcApi {
     }
 
     /// Returns the contract's latest nonce.
-    ///
-    /// Not currently supported correctly as nonce's aren't implemented yet. In the mean time
-    /// returns "0x0" until starknet reaches 0.10 at which point it will return an error instead.
     pub async fn get_nonce(&self, contract: ContractAddress) -> RpcResult<ContractNonce> {
-        // Check that contract actually exists..
         let storage = self.storage.clone();
         let span = tracing::Span::current();
         let jh = tokio::task::spawn_blocking(move || {
@@ -1030,38 +1026,41 @@ impl RpcApi {
                 .context("Opening database connection")?;
             let tx = db.transaction().context("Creating database transaction")?;
 
-            let exists = crate::storage::ContractsTable::exists(&tx, contract)
-                .context("Reading contract from database")?;
+            // FIXME: There is considerable overlap between this and `get_storage_at` which could be refactored.
 
-            anyhow::Result::<_, anyhow::Error>::Ok(exists)
-        });
-        let exists = jh
-            .await
-            .context("Database read panic or shutting down")
-            .and_then(|x| x)
-            .map_err(internal_server_error)?;
+            // Use internal_server_error to indicate that the process of querying for a particular block failed,
+            // which is not the same as being sure that the block is not in the db.
+            let global_root = StarknetBlocksTable::get_root(&tx, StarknetBlocksBlockId::Latest)
+                .map_err(internal_server_error)?
+                .context("No global root found")
+                .map_err(internal_server_error)?;
 
-        if !exists {
-            return Err(Error::from(ErrorCode::ContractNotFound));
-        }
+            let global_state_tree = GlobalStateTree::load(&tx, global_root)
+                .context("Loading global state tree")
+                .map_err(internal_server_error)?;
 
-        // Check the latest known starknet version, and return "0" if its < 0.10.0
-        let version = { self.sync_state.version.read().await.clone() };
-        match version {
-            // This field was only populated from version 0.9 onwards, so earlier versions don't exist.
-            // This property has no confirmed specification, so we are hesistant to alaways parse it as semver.
-            Some(version) if version.starts_with("0.9.") => Ok(ContractNonce(StarkHash::ZERO)),
-            Some(_) => Err(internal_server_error(
-                "Not supported for StarkNet versions from 0.10.0 onwards",
-            )),
-            None => {
-                // The `latest` sync status has not been set which means we are still waiting for our
-                // first `sync` latest poll to complete.
-                Err(internal_server_error(
-                    "Waiting to connect to StarkNet gateway, please try again later",
-                ))
+            let state_hash = global_state_tree
+                .get(contract)
+                .context("Get contract state hash from global state tree")
+                .map_err(internal_server_error)?;
+
+            // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
+            if state_hash.0 == StarkHash::ZERO {
+                return Err(Error::from(ErrorCode::ContractNotFound));
             }
-        }
+
+            let nonce = crate::storage::ContractsStateTable::get_nonce(&tx, state_hash)
+                .context("Reading contract nonce")
+                .map_err(internal_server_error)?
+                // Since the contract does exist, the nonce should not be missing.
+                .context("Contract nonce is missing")
+                .map_err(internal_server_error)?;
+
+            Ok(nonce)
+        });
+        jh.await
+            .context("Database read panic or shutting down")
+            .map_err(internal_server_error)?
     }
 
     /// Returns an object about the sync status, or false if the node is not synching.

@@ -606,6 +606,7 @@ mod tests {
                 },
                 deployed_contracts: vec![],
                 declared_contracts: vec![],
+                nonces: std::collections::HashMap::new(),
             },
         });
 
@@ -652,11 +653,8 @@ mod tests {
         .unwrap();
 
         // this will create the table, not created by migration
-        crate::state::state_tree::ContractsStateTree::load(
-            tx,
-            crate::core::ContractRoot(StarkHash::ZERO),
-        )
-        .unwrap();
+        crate::state::state_tree::ContractsStateTree::load(tx, crate::core::ContractRoot::ZERO)
+            .unwrap();
 
         crate::state::state_tree::GlobalStateTree::load(
             tx,

@@ -396,7 +396,7 @@ mod tests {
     fn setup_storage() -> Storage {
         use crate::sequencer::reply::transaction::Transaction;
         use crate::{
-            core::StorageValue,
+            core::{ContractNonce, StorageValue},
             state::{update_contract_state, CompressedContract},
         };
         use web3::types::H128;
@@ -446,33 +446,53 @@ mod tests {
         ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
 
         let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
-        let contract_state_hash =
-            update_contract_state(contract0_addr, &contract0_update, &global_tree, &db_txn)
-                .unwrap();
+        let contract_state_hash = update_contract_state(
+            contract0_addr,
+            &contract0_update,
+            Some(ContractNonce(starkhash!("01"))),
+            &global_tree,
+            &db_txn,
+        )
+        .unwrap();
         global_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
         let global_root0 = global_tree.apply().unwrap();
 
         let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
-        let contract_state_hash =
-            update_contract_state(contract1_addr, &contract1_update0, &global_tree, &db_txn)
-                .unwrap();
+        let contract_state_hash = update_contract_state(
+            contract1_addr,
+            &contract1_update0,
+            None,
+            &global_tree,
+            &db_txn,
+        )
+        .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let contract_state_hash =
-            update_contract_state(contract1_addr, &contract1_update1, &global_tree, &db_txn)
-                .unwrap();
+        let contract_state_hash = update_contract_state(
+            contract1_addr,
+            &contract1_update1,
+            None,
+            &global_tree,
+            &db_txn,
+        )
+        .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let global_root1 = global_tree.apply().unwrap();
 
         let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
-        let contract_state_hash =
-            update_contract_state(contract1_addr, &contract1_update2, &global_tree, &db_txn)
-                .unwrap();
+        let contract_state_hash = update_contract_state(
+            contract1_addr,
+            &contract1_update2,
+            None,
+            &global_tree,
+            &db_txn,
+        )
+        .unwrap();
         global_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
@@ -734,6 +754,7 @@ mod tests {
             storage_diffs,
             deployed_contracts,
             declared_contracts: Vec::new(),
+            nonces: std::collections::HashMap::new(),
         };
 
         // The class definitions must be inserted into the database.
@@ -775,9 +796,14 @@ mod tests {
             }
             for (contract_address, storage_diffs) in state_diff2.storage_diffs {
                 use crate::state::update_contract_state;
-                let state_hash =
-                    update_contract_state(contract_address, &storage_diffs, &global_tree, &tmp_tx)
-                        .unwrap();
+                let state_hash = update_contract_state(
+                    contract_address,
+                    &storage_diffs,
+                    None,
+                    &global_tree,
+                    &tmp_tx,
+                )
+                .unwrap();
                 global_tree.set(contract_address, state_hash).unwrap();
             }
             let pending_root = global_tree.apply().unwrap();
@@ -1896,9 +1922,14 @@ mod tests {
             .unwrap()
             .unwrap();
             let mut global_tree = GlobalStateTree::load(transaction, block2.root).unwrap();
-            let contract_state_hash =
-                update_contract_state(contract_address, &storage_diff, &global_tree, transaction)
-                    .unwrap();
+            let contract_state_hash = update_contract_state(
+                contract_address,
+                &storage_diff,
+                None,
+                &global_tree,
+                transaction,
+            )
+            .unwrap();
             global_tree
                 .set(contract_address, contract_state_hash)
                 .unwrap();
@@ -2095,24 +2126,21 @@ mod tests {
         let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state.clone());
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-        // This contract is created in `setup_storage`
+        // This contract is created in `setup_storage` and has a nonce set to 0x1.
         let valid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
-
-        // With no version set yet -- this occurs when `getNonce` is called before
-        // we have received a `latest` update from the gateway at pathfinder startup.
-        // Unlikely to occur, but worth testing.
-        client(addr)
+        let nonce = client(addr)
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
             .await
-            .expect_err("unset version should error");
+            .unwrap();
+        assert_eq!(nonce, ContractNonce(starkhash!("01")));
 
-        // Nonces pre-0.10.0 have a default value of 0.
-        *sync_state.version.write().await = Some("0.9.1".to_string());
-        let version = client(addr)
+        // This contract is created in `setup_storage` and has no nonce explicitly set.
+        let valid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
+        let nonce = client(addr)
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
             .await
-            .expect("pre-0.10.0 version should succeed");
-        assert_eq!(version, ContractNonce(StarkHash::ZERO));
+            .unwrap();
+        assert_eq!(nonce, ContractNonce::ZERO);
 
         // Invalid contract should error.
         let invalid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
@@ -2122,13 +2150,6 @@ mod tests {
             .expect_err("invalid contract should error");
         let expected = crate::rpc::types::reply::ErrorCode::ContractNotFound;
         assert_eq!(expected, error);
-
-        // Versions post 0.10.0 are unsupported currently.
-        *sync_state.version.write().await = Some("0.10.0".to_string());
-        client(addr)
-            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
-            .await
-            .expect_err("post-0.10.0 version should fail");
     }
 
     // FIXME: these tests are largely defunct because they have never used ext_py, and handle

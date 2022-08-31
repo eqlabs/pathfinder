@@ -31,15 +31,12 @@ use tokio::sync::{mpsc, RwLock};
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
-    /// Latest known StarkNet version.
-    pub version: RwLock<Option<String>>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             status: RwLock::new(SyncStatus::False(false)),
-            version: RwLock::new(None),
         }
     }
 }
@@ -257,7 +254,7 @@ where
                     let block_hash = block.block_hash;
                     let storage_updates: usize = state_update.state_diff.storage_diffs.iter().map(|(_, storage_diffs)| storage_diffs.len()).sum();
                     let update_t = std::time::Instant::now();
-                    l2_update(&mut db_conn, *block, state_update)
+                    l2_update(&mut db_conn, *block, *state_update)
                         .await
                         .with_context(|| format!("Update L2 state to {}", block_number))?;
                     let block_time = last_block_start.elapsed();
@@ -488,8 +485,6 @@ async fn update_sync_status_latest(
                         }
                     }
                 }
-                // Update the version.
-                *state.version.write().await = block.starknet_version;
             }
             Ok(MaybePendingBlock::Pending(_)) => {
                 tracing::error!("Latest block returned 'pending'");
@@ -714,8 +709,14 @@ fn update_starknet_state(
     }
 
     for (contract_address, updates) in &state_update.state_diff.storage_diffs {
+        let nonce = state_update
+            .state_diff
+            .nonces
+            .get(contract_address)
+            .copied();
+
         let contract_state_hash =
-            update_contract_state(*contract_address, updates, &global_tree, transaction)
+            update_contract_state(*contract_address, updates, nonce, &global_tree, transaction)
                 .context("Update contract state")?;
 
         // Update the global state tree.
@@ -736,16 +737,24 @@ fn deploy_contract(
     contract: &sequencer::reply::state_update::DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.
-    let contract_root = ContractRoot(StarkHash::ZERO);
+    let contract_root = ContractRoot::ZERO;
+    // The initial value of a contract nonce is ZERO.
+    let contract_nonce = crate::core::ContractNonce::ZERO;
     // sequencer::reply::state_update::Contract::contract_hash is the old (pre cairo 0.9.0)
     // name for `class_hash`.
     let class_hash = contract.class_hash;
-    let state_hash = calculate_contract_state_hash(class_hash, contract_root);
+    let state_hash = calculate_contract_state_hash(class_hash, contract_root, contract_nonce);
     global_tree
         .set(contract.address, state_hash)
         .context("Adding deployed contract to global state tree")?;
-    ContractsStateTable::upsert(transaction, state_hash, class_hash, contract_root)
-        .context("Insert constract state hash into contracts state table")?;
+    ContractsStateTable::upsert(
+        transaction,
+        state_hash,
+        class_hash,
+        contract_root,
+        contract_nonce,
+    )
+    .context("Insert constract state hash into contracts state table")?;
     ContractsTable::upsert(transaction, contract.address, class_hash)
         .context("Inserting class hash into contracts table")
 }
@@ -1141,6 +1150,7 @@ mod tests {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: vec![],
                 declared_contracts: vec![],
+                nonces: std::collections::HashMap::new(),
             },
         };
     }
@@ -1415,7 +1425,7 @@ mod tests {
         let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 Box::new(block()),
-                state_update(),
+                Box::new(state_update()),
                 timings,
             ))
             .await
