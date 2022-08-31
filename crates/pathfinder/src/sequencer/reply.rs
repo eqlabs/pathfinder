@@ -456,7 +456,7 @@ pub mod transaction {
         pub transaction_hash: StarknetTransactionHash,
     }
 
-    /// Represents deserialized L2 declare transaction data.
+    /// Represents deserialized L2 "L1 handler" transaction data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
