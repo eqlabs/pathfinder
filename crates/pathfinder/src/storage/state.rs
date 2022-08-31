@@ -4,7 +4,7 @@ use stark_hash::StarkHash;
 use web3::types::H256;
 
 use crate::{
-    consts::{TESTNET_GENESIS_HASH, INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH},
+    consts::{INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH},
     core::{
         Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
         EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,

@@ -12,8 +12,7 @@ const MAINNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(13_627_224);
 /// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog] for testnet.
 const TESTNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_854_324);
 /// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog] for integration.
-/// FIXME(MIRKO) before much further.
-const INTEGRATION_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_854_324);
+const INTEGRATION_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_986_835);
 
 impl StateRootFetcher {
     pub fn new(head: Option<StateUpdateLog>, chain: Chain) -> Self {
@@ -111,6 +110,33 @@ mod tests {
             let transport = HttpTransport::test_transport(chain);
 
             let block_number = BlockNumber::Number(TESTNET_GENESIS.0.into());
+
+            let filter = FilterBuilder::default()
+                .address(vec![StateUpdateLog::contract_address(chain)])
+                .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
+                .from_block(block_number)
+                .to_block(block_number)
+                .build();
+
+            let logs = transport.logs(filter).await.unwrap();
+            let logs = logs
+                .into_iter()
+                .map(StateUpdateLog::try_from)
+                .collect::<Result<Vec<StateUpdateLog>, _>>()
+                .unwrap();
+
+            assert_eq!(
+                logs.first().unwrap().block_number,
+                StarknetBlockNumber::GENESIS
+            );
+        }
+
+        #[tokio::test]
+        async fn integration() {
+            let chain = Chain::Integration;
+            let transport = HttpTransport::test_transport(chain);
+
+            let block_number = BlockNumber::Number(INTEGRATION_GENESIS.0.into());
 
             let filter = FilterBuilder::default()
                 .address(vec![StateUpdateLog::contract_address(chain)])
