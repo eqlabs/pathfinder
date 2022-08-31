@@ -767,21 +767,21 @@ pub mod reply {
     #[serde(untagged)]
     pub enum TransactionReceipt {
         Invoke(InvokeTransactionReceipt),
-        // We can't differentiate between declare and deploy in an untagged enum: they
-        // have the same properties in the JSON.
-        DeclareOrDeploy(DeclareOrDeployTransactionReceipt),
+        // We can't differentiate between declare, deploy, and l1 handler in an untagged enum:
+        // they have the same properties in the JSON.
+        DeclareOrDeployOrL1Handler(DeclareOrDeployOrL1HandlerTransactionReceipt),
         // Pending receipts don't have status, status_data, block_hash, block_number fields
         PendingInvoke(PendingInvokeTransactionReceipt),
-        PendingDeclareOrDeploy(PendingDeclareOrDeployTransactionReceipt),
+        PendingDeclareOrDeployOrL1Handler(PendingDeclareOrDeployOrL1HandlerTransactionReceipt),
     }
 
     impl TransactionReceipt {
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
                 Self::Invoke(tx) => tx.common.transaction_hash,
-                Self::DeclareOrDeploy(tx) => tx.common.transaction_hash,
+                Self::DeclareOrDeployOrL1Handler(tx) => tx.common.transaction_hash,
                 Self::PendingInvoke(tx) => tx.common.transaction_hash,
-                Self::PendingDeclareOrDeploy(tx) => tx.common.transaction_hash,
+                Self::PendingDeclareOrDeployOrL1Handler(tx) => tx.common.transaction_hash,
             }
         }
     }
@@ -814,7 +814,7 @@ pub mod reply {
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct DeclareOrDeployTransactionReceipt {
+    pub struct DeclareOrDeployOrL1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
     }
@@ -842,7 +842,7 @@ pub mod reply {
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct PendingDeclareOrDeployTransactionReceipt {
+    pub struct PendingDeclareOrDeployOrL1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
     }
@@ -854,15 +854,18 @@ pub mod reply {
         ) -> Self {
             match transaction {
                 sequencer::reply::transaction::Transaction::Declare(_)
-                | sequencer::reply::transaction::Transaction::Deploy(_) => {
-                    Self::PendingDeclareOrDeploy(PendingDeclareOrDeployTransactionReceipt {
-                        common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: receipt.transaction_hash,
-                            actual_fee: receipt
-                                .actual_fee
-                                .unwrap_or_else(|| Fee(Default::default())),
+                | sequencer::reply::transaction::Transaction::Deploy(_)
+                | sequencer::reply::transaction::Transaction::L1Handler(_) => {
+                    Self::PendingDeclareOrDeployOrL1Handler(
+                        PendingDeclareOrDeployOrL1HandlerTransactionReceipt {
+                            common: CommonPendingTransactionReceiptProperties {
+                                transaction_hash: receipt.transaction_hash,
+                                actual_fee: receipt
+                                    .actual_fee
+                                    .unwrap_or_else(|| Fee(Default::default())),
+                            },
                         },
-                    })
+                    )
                 }
                 sequencer::reply::transaction::Transaction::Invoke(_) => {
                     Self::PendingInvoke(PendingInvokeTransactionReceipt {
@@ -887,7 +890,6 @@ pub mod reply {
                             .collect(),
                     })
                 }
-                sequencer::reply::transaction::Transaction::L1Handler(_) => todo!(),
             }
         }
 
@@ -900,8 +902,8 @@ pub mod reply {
         ) -> Self {
             use sequencer::reply::transaction::Transaction::*;
             match transaction {
-                Declare(_) | Deploy(_) => {
-                    Self::DeclareOrDeploy(DeclareOrDeployTransactionReceipt {
+                Declare(_) | Deploy(_) | L1Handler(_) => {
+                    Self::DeclareOrDeployOrL1Handler(DeclareOrDeployOrL1HandlerTransactionReceipt {
                         common: CommonTransactionReceiptProperties {
                             transaction_hash: receipt.transaction_hash,
                             actual_fee: receipt
@@ -943,7 +945,6 @@ pub mod reply {
                             .collect(),
                     })
                 }
-                L1Handler(_) => todo!(),
             }
         }
     }
@@ -1445,12 +1446,14 @@ pub mod reply {
                         ..InvokeTransactionReceipt::test_data()
                     }),
                     // Somewhat redundant, but want to exhaust the variants
-                    TransactionReceipt::DeclareOrDeploy(DeclareOrDeployTransactionReceipt {
-                        common: CommonTransactionReceiptProperties::test_data(),
-                    }),
+                    TransactionReceipt::DeclareOrDeployOrL1Handler(
+                        DeclareOrDeployOrL1HandlerTransactionReceipt {
+                            common: CommonTransactionReceiptProperties::test_data(),
+                        },
+                    ),
                     TransactionReceipt::PendingInvoke(PendingInvokeTransactionReceipt::test_data()),
-                    TransactionReceipt::PendingDeclareOrDeploy(
-                        PendingDeclareOrDeployTransactionReceipt {
+                    TransactionReceipt::PendingDeclareOrDeployOrL1Handler(
+                        PendingDeclareOrDeployOrL1HandlerTransactionReceipt {
                             common: CommonPendingTransactionReceiptProperties::test_data(),
                         },
                     ),
