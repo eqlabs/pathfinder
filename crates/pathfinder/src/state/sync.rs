@@ -242,7 +242,11 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    l1_handle = tokio::spawn(l1_sync(new_tx, transport.clone(), chain, l1_head));
+                    l1_handle = tokio::spawn({
+                        #[cfg(not(test))]
+                        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                        l1_sync(new_tx, transport.clone(), chain, l1_head)
+                    });
                     tracing::info!("L1 sync process restarted.")
                 },
             },
@@ -430,7 +434,11 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    l2_handle = tokio::spawn(l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval));
+                    l2_handle = tokio::spawn({
+                        #[cfg(not(test))]
+                        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                        l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval)
+                    });
                     tracing::info!("L2 sync process restarted.");
                 }
             }
