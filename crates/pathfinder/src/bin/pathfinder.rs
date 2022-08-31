@@ -50,12 +50,13 @@ async fn main() -> anyhow::Result<()> {
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     )?;
 
-    let starknet_chain = match ethereum_chain {
-        EthereumChain::Mainnet => Chain::Mainnet,
-        EthereumChain::Goerli => match config.integration {
-            true => Chain::Integration,
-            false => Chain::Testnet,
-        },
+    let starknet_chain = match (ethereum_chain, config.integration) {
+        (EthereumChain::Mainnet, false) => Chain::Mainnet,
+        (EthereumChain::Goerli, false) => Chain::Testnet,
+        (EthereumChain::Goerli, true) => Chain::Integration,
+        (EthereumChain::Mainnet, true) => {
+            anyhow::bail!("'--integration flag' is invalid on Ethereum mainnet");
+        }
     };
 
     let database_path = config.data_directory.join(match starknet_chain {
