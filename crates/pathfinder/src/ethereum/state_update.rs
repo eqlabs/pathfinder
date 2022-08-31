@@ -170,7 +170,7 @@ mod tests {
             block_number: StarknetBlockNumber::new_or_panic(16407),
         };
 
-        let chain = crate::core::Chain::Goerli;
+        let chain = crate::core::Chain::Testnet;
         let transport = HttpTransport::test_transport(chain);
         let update = StateUpdate::retrieve(&transport, update_log, chain)
             .await

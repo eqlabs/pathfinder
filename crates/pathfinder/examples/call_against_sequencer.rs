@@ -43,7 +43,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // non-configurable options, which might become command line options:
-    let network = pathfinder_lib::core::Chain::Goerli;
+    let network = pathfinder_lib::core::Chain::Testnet;
 
     let db_file = std::env::args()
         .nth(1)
@@ -60,7 +60,7 @@ async fn main() {
             // awaitable signal will work
             let _: Result<(), _> = stop_rx.await;
         },
-        pathfinder_lib::core::Chain::Goerli,
+        pathfinder_lib::core::Chain::Testnet,
     )
     .await
     .unwrap();

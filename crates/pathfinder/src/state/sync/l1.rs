@@ -350,7 +350,7 @@ mod tests {
                 .in_sequence(&mut seq)
                 .return_once(|| mock_output);
 
-            tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
+            tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Testnet));
 
             match rx_event.recv().await.unwrap() {
                 Event::Update(recv) => assert_eq!(recv, logs1),
@@ -389,7 +389,7 @@ mod tests {
             mock_fetcher
                 .expect_fetch_logs()
                 .return_once(move || Ok(logs));
-            let handle = tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
+            let handle = tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Testnet));
 
             // Wrap this in a timeout so we don't wait forever in case of test failure.
             tokio::time::timeout(Duration::from_secs(2), handle)
@@ -472,7 +472,7 @@ mod tests {
                     .in_sequence(&mut seq)
                     .return_once(move || mock_output);
 
-                tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
+                tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Testnet));
 
                 // Receive first log update event.
                 match rx_event.recv().await.unwrap() {
@@ -560,7 +560,7 @@ mod tests {
                     .in_sequence(&mut seq)
                     .return_once(move || mock_output);
 
-                tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
+                tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Testnet));
 
                 // Receive the first log update event.
                 match rx_event.recv().await.unwrap() {
@@ -644,7 +644,7 @@ mod tests {
                     .in_sequence(&mut seq)
                     .return_once(move || mock_output);
 
-                tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Goerli));
+                tokio::spawn(sync_impl(mock_fetcher, tx_event, Chain::Testnet));
 
                 // First log batch event.
                 match rx_event.recv().await.unwrap() {

@@ -321,7 +321,7 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
-            crate::core::Chain::Goerli,
+            crate::core::Chain::Testnet,
         )
         .await
         .unwrap();
@@ -397,7 +397,7 @@ mod tests {
                 let _ = shutdown_rx.await;
             },
             // chain doesn't matter here because we are not estimating any real transaction
-            crate::core::Chain::Goerli,
+            crate::core::Chain::Testnet,
         )
         .await
         .unwrap();
@@ -492,7 +492,7 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
-            crate::core::Chain::Goerli,
+            crate::core::Chain::Testnet,
         )
         .await
         .unwrap();
@@ -557,7 +557,7 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
-            crate::core::Chain::Goerli,
+            crate::core::Chain::Testnet,
         )
         .await
         .unwrap();

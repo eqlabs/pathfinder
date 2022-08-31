@@ -14,8 +14,8 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
         .optional()?;
 
     let (minimum_block, chain) = match genesis {
-        Some(Ok(x)) if x == crate::consts::GOERLI_GENESIS_HASH.0 => {
-            (231_579, crate::core::Chain::Goerli)
+        Some(Ok(x)) if x == crate::consts::TESTNET_GENESIS_HASH.0 => {
+            (231_579, crate::core::Chain::Testnet)
         }
         Some(Ok(x)) if x == crate::consts::MAINNET_GENESIS_HASH.0 => {
             (2700, crate::core::Chain::Mainnet)

@@ -378,7 +378,7 @@ pub enum EthereumChain {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chain {
     Mainnet,
-    Goerli,
+    Testnet,
     Integration,
 }
 
@@ -388,7 +388,7 @@ impl Chain {
             // SN_MAIN
             Chain::Mainnet => StarkHash::from_u128(0x534e5f4d41494eu128),
             // SN_GOERLI
-            Chain::Goerli => StarkHash::from_u128(0x534e5f474f45524c49u128),
+            Chain::Testnet => StarkHash::from_u128(0x534e5f474f45524c49u128),
             // SN_INTEGRATION
             Chain::Integration => StarkHash::from_u128(0x534E5F494E544547524154494F4E),
         }
@@ -399,7 +399,7 @@ impl std::fmt::Display for Chain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Chain::Mainnet => f.write_str("Mainnet"),
-            Chain::Goerli => f.write_str("Görli"),
+            Chain::Testnet => f.write_str("Görli"),
             Chain::Integration => f.write_str("Integration"),
         }
     }

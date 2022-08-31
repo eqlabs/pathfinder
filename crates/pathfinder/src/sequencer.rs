@@ -6,6 +6,7 @@ pub mod request;
 
 use self::request::{add_transaction::ContractDefinition, Call};
 use crate::{
+    consts::INTEGRATION_GENESIS_HASH,
     core::{
         BlockId, CallSignatureElem, Chain, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, Fee, StarknetTransactionHash, StorageAddress, StorageValue,
@@ -117,7 +118,7 @@ impl Client {
     pub fn new(chain: Chain) -> reqwest::Result<Self> {
         let url = match chain {
             Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
-            Chain::Goerli => Url::parse("https://alpha4.starknet.io/").unwrap(),
+            Chain::Testnet => Url::parse("https://alpha4.starknet.io/").unwrap(),
             Chain::Integration => Url::parse("https://external.integration.starknet.io").unwrap(),
         };
 
@@ -148,7 +149,7 @@ impl Client {
 
     /// Returns the [network chain](Chain) this client is operating on.
     pub async fn chain(&self) -> anyhow::Result<Chain> {
-        use crate::consts::{GOERLI_GENESIS_HASH, MAINNET_GENESIS_HASH};
+        use crate::consts::{MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH};
         use crate::core::StarknetBlockNumber;
 
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
@@ -160,8 +161,9 @@ impl Client {
             .block_hash;
 
         match genesis_hash {
-            goerli if goerli == GOERLI_GENESIS_HASH => Ok(Chain::Goerli),
+            testnet if testnet == TESTNET_GENESIS_HASH => Ok(Chain::Testnet),
             mainnet if mainnet == MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
+            integration if integration == INTEGRATION_GENESIS_HASH => Ok(Chain::Integration),
             other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),
         }
     }
@@ -564,7 +566,7 @@ mod tests {
         S2: std::string::ToString + Send + Sync + Clone + 'static,
     {
         if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
-            (None, Client::new(Chain::Goerli).unwrap())
+            (None, Client::new(Chain::Testnet).unwrap())
         } else {
             use warp::Filter;
             let opt_query_raw = warp::query::raw()
@@ -1843,7 +1845,7 @@ mod tests {
         #[derive(Copy, Clone, PartialEq, Eq)]
         /// Used by [setup_server] to determine which block to return.
         enum TargetChain {
-            Goerli,
+            Testnet,
             Mainnet,
             Invalid,
         }
@@ -1867,7 +1869,7 @@ mod tests {
             {
                 match target {
                     TargetChain::Mainnet => (None, sequencer::Client::new(Chain::Mainnet).unwrap()),
-                    TargetChain::Goerli => (None, sequencer::Client::new(Chain::Goerli).unwrap()),
+                    TargetChain::Testnet => (None, sequencer::Client::new(Chain::Testnet).unwrap()),
                     // Escaped above already
                     TargetChain::Invalid => unreachable!(),
                 }
@@ -1889,7 +1891,7 @@ mod tests {
                                 include_str!("../fixtures/sequencer/0.9.0/block/genesis.json");
 
                             let data = match target {
-                                TargetChain::Goerli => GOERLI_GENESIS.to_owned(),
+                                TargetChain::Testnet => GOERLI_GENESIS.to_owned(),
                                 // This is a bit of a cheat, but we don't currently have a mainnet fixture and I'm hesitant to introduce one
                                 // since it requires re-organising all the fixtures.
                                 TargetChain::Mainnet => GOERLI_GENESIS.replace(
@@ -1921,10 +1923,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn goerli() {
-            let (_server_handle, sequencer) = setup_server(TargetChain::Goerli);
+        async fn testnet() {
+            let (_server_handle, sequencer) = setup_server(TargetChain::Testnet);
             let chain = sequencer.chain().await.unwrap();
-            assert_eq!(chain, crate::core::Chain::Goerli);
+            assert_eq!(chain, crate::core::Chain::Testnet);
         }
 
         #[tokio::test]

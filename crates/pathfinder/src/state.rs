@@ -474,7 +474,7 @@ mod tests {
             crate::storage::JournalMode::WAL,
         )
         .unwrap();
-        let chain = crate::core::Chain::Goerli;
+        let chain = crate::core::Chain::Testnet;
         let transport = crate::ethereum::transport::HttpTransport::test_transport(chain);
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
         let state = Arc::new(sync::State::default());

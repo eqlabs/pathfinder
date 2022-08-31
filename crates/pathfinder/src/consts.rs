@@ -8,7 +8,7 @@ pub const USER_AGENT: &str = concat!(
     env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
 );
 
-pub const GOERLI_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(crate::starkhash!(
+pub const TESTNET_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(crate::starkhash!(
     "07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
 ));
 

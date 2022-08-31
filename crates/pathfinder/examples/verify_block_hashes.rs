@@ -21,7 +21,7 @@ fn main() -> anyhow::Result<()> {
     let chain_name = std::env::args().nth(1).unwrap();
     let chain = match chain_name.as_str() {
         "mainnet" => Chain::Mainnet,
-        "goerli" => Chain::Goerli,
+        "goerli" => Chain::Testnet,
         _ => panic!("Expected chain name: mainnet/goerli"),
     };
 

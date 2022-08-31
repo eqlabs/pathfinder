@@ -140,9 +140,18 @@ mod tests {
         use crate::ethereum::transport::{EthereumTransport, HttpTransport};
 
         #[tokio::test]
-        async fn goerli() {
+        async fn testnet() {
             let expected_chain = EthereumChain::Goerli;
-            let transport = HttpTransport::test_transport(Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Testnet);
+            let chain = transport.chain().await.unwrap();
+
+            assert_eq!(chain, expected_chain);
+        }
+
+        #[tokio::test]
+        async fn integration() {
+            let expected_chain = EthereumChain::Goerli;
+            let transport = HttpTransport::test_transport(Chain::Integration);
             let chain = transport.chain().await.unwrap();
 
             assert_eq!(chain, expected_chain);

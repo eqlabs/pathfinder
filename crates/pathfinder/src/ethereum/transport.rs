@@ -96,7 +96,7 @@ impl HttpTransport {
         use crate::core::Chain;
         let key_prefix = match chain {
             Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
-            Chain::Goerli | Chain::Integration => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
+            Chain::Testnet | Chain::Integration => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
         };
 
         let url_key = format!("{}_URL", key_prefix);
@@ -281,7 +281,7 @@ mod tests {
                 )
                 .build();
 
-            let transport = HttpTransport::test_transport(Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Testnet);
 
             let result = transport.logs(filter).await;
             assert_matches!(result, Ok(logs) if logs.len() == 85);
@@ -296,7 +296,7 @@ mod tests {
                 .to_block(BlockNumber::Latest)
                 .build();
 
-            let transport = HttpTransport::test_transport(Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Testnet);
 
             let result = transport.logs(filter).await;
             assert_matches!(result, Err(LogsError::QueryLimit));
@@ -310,7 +310,7 @@ mod tests {
             // Infura and Alchemy handle this differently.
             //  - Infura accepts the query as valid and simply returns logs for whatever part of the range it has.
             //  - Alchemy throws a RPC::ServerError which `HttpTransport::logs` maps to `UnknownBlock`.
-            let transport = HttpTransport::test_transport(Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Testnet);
             let latest = transport.block_number().await.unwrap();
 
             let filter = FilterBuilder::default()

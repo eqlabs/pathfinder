@@ -52,12 +52,12 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     let starknet_chain = match ethereum_chain {
         EthereumChain::Mainnet => Chain::Mainnet,
-        EthereumChain::Goerli => Chain::Goerli,
+        EthereumChain::Goerli => Chain::Testnet,
     };
 
     let database_path = config.data_directory.join(match starknet_chain {
         Chain::Mainnet => "mainnet.sqlite",
-        Chain::Goerli => "goerli.sqlite",
+        Chain::Testnet => "goerli.sqlite",
         Chain::Integration => "integration.sqlite",
     });
     let journal_mode = match config.sqlite_wal {

@@ -47,7 +47,7 @@ async fn main() {
 
     let chain = match chain {
         EthereumChain::Mainnet => Chain::Mainnet,
-        EthereumChain::Goerli => Chain::Goerli,
+        EthereumChain::Goerli => Chain::Testnet,
     };
 
     // Get the state update event at the given block.

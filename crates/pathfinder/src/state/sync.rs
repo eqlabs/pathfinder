@@ -870,7 +870,7 @@ pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
         // 5 minute interval for a 30 hour block time.
         Mainnet => Duration::from_secs(60 * 5),
         // 30 second interval for a 2 minute block time.
-        Goerli | Integration => Duration::from_secs(30),
+        Testnet | Integration => Duration::from_secs(30),
     }
 }
 
@@ -1157,7 +1157,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_update() {
-        let chain = Chain::Goerli;
+        let chain = Chain::Testnet;
         let sync_state = Arc::new(state::SyncState::default());
 
         lazy_static::lazy_static! {
@@ -1278,7 +1278,7 @@ mod tests {
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
                 FakeTransport,
-                Chain::Goerli,
+                Chain::Testnet,
                 FakeSequencer,
                 Arc::new(state::SyncState::default()),
                 l1,
@@ -1347,7 +1347,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            Chain::Goerli,
+            Chain::Testnet,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1,
@@ -1382,7 +1382,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            Chain::Goerli,
+            Chain::Testnet,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1,
@@ -1408,7 +1408,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
-        let chain = Chain::Goerli;
+        let chain = Chain::Testnet;
         let sync_state = Arc::new(state::SyncState::default());
 
         // Incoming L2 update
@@ -1524,7 +1524,7 @@ mod tests {
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
                 FakeTransport,
-                Chain::Goerli,
+                Chain::Testnet,
                 FakeSequencer,
                 Arc::new(state::SyncState::default()),
                 l1_noop,
@@ -1587,7 +1587,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            Chain::Goerli,
+            Chain::Testnet,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,
@@ -1634,7 +1634,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            Chain::Goerli,
+            Chain::Testnet,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,
@@ -1681,7 +1681,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            Chain::Goerli,
+            Chain::Testnet,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,
@@ -1709,7 +1709,7 @@ mod tests {
         let _jh = tokio::spawn(state::sync(
             storage,
             FakeTransport,
-            Chain::Goerli,
+            Chain::Testnet,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,

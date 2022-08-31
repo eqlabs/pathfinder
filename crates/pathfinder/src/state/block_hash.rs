@@ -163,7 +163,7 @@ mod meta {
     pub fn for_chain(chain: Chain) -> &'static BlockHashMetaInfo {
         match chain {
             Chain::Mainnet => &MAINNET_METAINFO,
-            Chain::Goerli => &TESTNET_METAINFO,
+            Chain::Testnet => &TESTNET_METAINFO,
             Chain::Integration => todo!("Block hash meta data TBD"),
         }
     }
@@ -504,7 +504,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
             VerifyResult::Match
         );
     }
@@ -519,7 +519,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
             VerifyResult::Match
         );
     }
@@ -535,7 +535,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash,).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, block.block_hash,).unwrap(),
             VerifyResult::Match
         );
     }
@@ -550,7 +550,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
             VerifyResult::Match
         );
     }
