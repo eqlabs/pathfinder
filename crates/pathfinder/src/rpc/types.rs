@@ -575,6 +575,8 @@ pub mod reply {
         Invoke(InvokeTransaction),
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
+        #[serde(rename = "L1_HANDLER")]
+        L1Handler(L1HandlerTransaction),
     }
 
     impl Transaction {
@@ -583,6 +585,7 @@ pub mod reply {
                 Transaction::Declare(declare) => declare.common.hash,
                 Transaction::Invoke(invoke) => invoke.common.hash,
                 Transaction::Deploy(deploy) => deploy.hash,
+                Transaction::L1Handler(l1_handler) => l1_handler.hash,
             }
         }
     }
@@ -638,6 +641,28 @@ pub mod reply {
         pub contract_address_salt: ContractAddressSalt,
         pub class_hash: ClassHash,
         pub constructor_calldata: Vec<ConstructorParam>,
+    }
+
+    /// Right now, as we still support/implement the 0.1.0 spec,
+    /// this transaction type is taken from the 0.2.0-rc1 spec
+    /// to plug the hole after the feeder gateway introduced
+    /// similar type in its api with cairo 0.10.0.
+    ///
+    /// FIXME: remove this comment when 0.2.0 spec is released and implemented
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct L1HandlerTransaction {
+        // This part is a subset of CommonTransactionProperties
+        #[serde(rename = "transaction_hash")]
+        pub hash: StarknetTransactionHash,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub nonce: TransactionNonce,
+
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub calldata: Vec<CallParam>,
     }
 
     impl TryFrom<sequencer::reply::Transaction> for Transaction {
@@ -721,7 +746,16 @@ pub mod reply {
                         constructor_calldata: txn.constructor_calldata.clone(),
                     })
                 }
-                sequencer::reply::transaction::Transaction::L1Handler(_txn) => todo!(),
+                sequencer::reply::transaction::Transaction::L1Handler(txn) => {
+                    Self::L1Handler(L1HandlerTransaction {
+                        hash: txn.transaction_hash,
+                        version: txn.version,
+                        nonce: txn.nonce,
+                        contract_address: txn.contract_address,
+                        entry_point_selector: txn.entry_point_selector,
+                        calldata: txn.calldata.clone(),
+                    })
+                }
             }
         }
     }
