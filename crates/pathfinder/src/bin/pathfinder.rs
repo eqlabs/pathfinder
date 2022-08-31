@@ -52,7 +52,10 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     let starknet_chain = match ethereum_chain {
         EthereumChain::Mainnet => Chain::Mainnet,
-        EthereumChain::Goerli => Chain::Testnet,
+        EthereumChain::Goerli => match config.integration {
+            true => Chain::Integration,
+            false => Chain::Testnet,
+        },
     };
 
     let database_path = config.data_directory.join(match starknet_chain {

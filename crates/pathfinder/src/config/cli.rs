@@ -16,6 +16,7 @@ const PYTHON_SUBPROCESSES_KEY: &str = "python-subprocesses";
 const SQLITE_WAL: &str = "sqlite-wal";
 const POLL_PENDING: &str = "poll-pending";
 const MONITOR_ADDRESS: &str = "monitor-address";
+const INTEGRATION: &str = "integration";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -50,6 +51,8 @@ where
     let sqlite_wal = args.value_of(SQLITE_WAL).map(|s| s.to_owned());
     let poll_pending = args.value_of(POLL_PENDING).map(|s| s.to_owned());
     let monitor_address = args.value_of(MONITOR_ADDRESS).map(|s| s.to_owned());
+    // Hack around our builder requiring Strings, but this arg just needs to be present.
+    let integration = args.is_present(INTEGRATION).then_some(String::new());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
@@ -60,7 +63,8 @@ where
         .with(ConfigOption::PythonSubprocesses, python_subprocesses)
         .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal)
         .with(ConfigOption::PollPending, poll_pending)
-        .with(ConfigOption::MonitorAddress, monitor_address);
+        .with(ConfigOption::MonitorAddress, monitor_address)
+        .with(ConfigOption::Integration, integration);
 
     Ok((config_filepath, cfg))
 }
@@ -163,6 +167,12 @@ Examples:
                 .takes_value(true)
                 .value_name("IP:PORT")
                 .env("PATHFINDER_MONITOR_ADDRESS")
+        )
+        .arg(
+            Arg::new(INTEGRATION)
+                .long(INTEGRATION)
+                // .hide(true)
+                .takes_value(false)
         )
 }
 
