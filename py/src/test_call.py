@@ -781,8 +781,6 @@ def test_failing_mainnet_tx2():
         "overall_fee": 215446943464081,
     }
 
-    assert output["overall_fee"] == 0xA9B3FBAC7457
-
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_without_deployed():
