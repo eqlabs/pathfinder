@@ -304,46 +304,44 @@ pub(crate) mod test_utils {
                 version: TransactionVersion(H256::zero()),
             }),
         });
-        let receipts = (0..NUM_TRANSACTIONS).map(|i| transaction::Receipt {
-            actual_fee: None,
-            events: if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
-                vec![transaction::Event {
-                    from_address: ContractAddress::new_or_panic(
-                        StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
-                    ),
-                    data: vec![EventData(
-                        StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
-                    )],
-                    keys: vec![
-                        EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
-                        EventKey(starkhash!("deadbeef")),
-                    ],
-                }]
-            } else {
-                vec![]
-            },
-            execution_resources: transaction::ExecutionResources {
-                builtin_instance_counter:
-                    transaction::execution_resources::BuiltinInstanceCounter::Empty(
-                        transaction::execution_resources::EmptyBuiltinInstanceCounter {},
-                    ),
-                n_steps: i as u64 + 987,
-                n_memory_holes: i as u64 + 1177,
-            },
-            l1_to_l2_consumed_message: None,
-            l2_to_l1_messages: Vec::new(),
-            transaction_hash: StarknetTransactionHash(
-                StarkHash::from_hex_str(&"e".repeat(i + 3)).unwrap(),
-            ),
-            transaction_index: StarknetTransactionIndex::new_or_panic(i as u64 + 2311),
+
+        let tx_receipt = transactions.enumerate().map(|(i, tx)| {
+            let receipt = transaction::Receipt {
+                actual_fee: None,
+                events: if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
+                    vec![transaction::Event {
+                        from_address: ContractAddress::new_or_panic(
+                            StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                        ),
+                        data: vec![EventData(
+                            StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
+                        )],
+                        keys: vec![
+                            EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
+                            EventKey(starkhash!("deadbeef")),
+                        ],
+                    }]
+                } else {
+                    vec![]
+                },
+                execution_resources: transaction::ExecutionResources {
+                    builtin_instance_counter:
+                        transaction::execution_resources::BuiltinInstanceCounter::Empty(
+                            transaction::execution_resources::EmptyBuiltinInstanceCounter {},
+                        ),
+                    n_steps: i as u64 + 987,
+                    n_memory_holes: i as u64 + 1177,
+                },
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: Vec::new(),
+                transaction_hash: tx.hash(),
+                transaction_index: StarknetTransactionIndex::new_or_panic(i as u64 + 2311),
+            };
+
+            (tx, receipt)
         });
 
-        transactions
-            .into_iter()
-            .zip(receipts)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap()
+        tx_receipt.collect::<Vec<_>>().try_into().unwrap()
     }
 
     /// Creates a set of emitted events from given blocks and transactions.
