@@ -442,7 +442,8 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        assert_matches::assert_matches!(migrated_tx, crate::sequencer::reply::transaction::Transaction::Invoke(invoke) => {
+        use crate::sequencer::reply::transaction::{InvokeTransaction, Transaction};
+        assert_matches::assert_matches!(migrated_tx, Transaction::Invoke(InvokeTransaction::V0(invoke)) => {
             assert_eq!(invoke.max_fee.0, H128::zero());
         });
     }

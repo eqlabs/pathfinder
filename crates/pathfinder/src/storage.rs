@@ -204,6 +204,7 @@ pub(crate) mod test_utils {
         },
         sequencer::reply::transaction::{
             self, DeclareTransaction, DeployTransaction, EntryPointType, InvokeTransaction,
+            InvokeTransactionV0,
         },
         starkhash,
     };
@@ -244,7 +245,7 @@ pub(crate) mod test_utils {
     ) -> [(transaction::Transaction, transaction::Receipt); NUM_TRANSACTIONS] {
         let transactions = (0..NUM_TRANSACTIONS).map(|i| match i % TRANSACTIONS_PER_BLOCK {
             x if x < INVOKE_TRANSACTIONS_PER_BLOCK => {
-                transaction::Transaction::Invoke(InvokeTransaction {
+                transaction::Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                     calldata: vec![CallParam(
                         StarkHash::from_hex_str(&"0".repeat(i + 3)).unwrap(),
                     )],
@@ -266,7 +267,7 @@ pub(crate) mod test_utils {
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str(&"4".repeat(i + 3)).unwrap(),
                     ),
-                })
+                }))
             }
             x if (INVOKE_TRANSACTIONS_PER_BLOCK
                 ..INVOKE_TRANSACTIONS_PER_BLOCK + DEPLOY_TRANSACTIONS_PER_BLOCK)
@@ -286,6 +287,7 @@ pub(crate) mod test_utils {
                     transaction_hash: StarknetTransactionHash(
                         StarkHash::from_hex_str(&"9".repeat(i + 3)).unwrap(),
                     ),
+                    version: TransactionVersion(web3::types::H256::zero()),
                 })
             }
             _ => transaction::Transaction::Declare(DeclareTransaction {
@@ -324,14 +326,14 @@ pub(crate) mod test_utils {
                 } else {
                     vec![]
                 },
-                execution_resources: transaction::ExecutionResources {
+                execution_resources: Some(transaction::ExecutionResources {
                     builtin_instance_counter:
                         transaction::execution_resources::BuiltinInstanceCounter::Empty(
                             transaction::execution_resources::EmptyBuiltinInstanceCounter {},
                         ),
                     n_steps: i as u64 + 987,
                     n_memory_holes: i as u64 + 1177,
-                },
+                }),
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: Vec::new(),
                 transaction_hash: tx.hash(),

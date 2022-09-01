@@ -276,7 +276,8 @@ pub mod transaction {
         #[serde(default)]
         pub actual_fee: Option<Fee>,
         pub events: Vec<Event>,
-        pub execution_resources: ExecutionResources,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub execution_resources: Option<ExecutionResources>,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: StarknetTransactionHash,
@@ -306,6 +307,8 @@ pub mod transaction {
         Deploy(DeployTransaction),
         #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeTransaction),
+        #[serde(rename = "L1_HANDLER")]
+        L1Handler(L1HandlerTransaction),
     }
 
     impl Transaction {
@@ -314,7 +317,11 @@ pub mod transaction {
             match self {
                 Transaction::Declare(t) => t.transaction_hash,
                 Transaction::Deploy(t) => t.transaction_hash,
-                Transaction::Invoke(t) => t.transaction_hash,
+                Transaction::Invoke(t) => match t {
+                    InvokeTransaction::V0(t) => t.transaction_hash,
+                    InvokeTransaction::V1(t) => t.transaction_hash,
+                },
+                Transaction::L1Handler(t) => t.transaction_hash,
             }
         }
     }
@@ -337,6 +344,10 @@ pub mod transaction {
         pub version: TransactionVersion,
     }
 
+    fn transaction_version_zero() -> TransactionVersion {
+        TransactionVersion(web3::types::H256::zero())
+    }
+
     /// Represents deserialized L2 deploy transaction data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -348,13 +359,79 @@ pub mod transaction {
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
         pub transaction_hash: StarknetTransactionHash,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        #[serde(default = "transaction_version_zero")]
+        pub version: TransactionVersion,
     }
 
-    /// Represents deserialized L2 invoke transaction data.
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[serde(tag = "version")]
+    pub enum InvokeTransaction {
+        #[serde(rename = "0x0")]
+        V0(InvokeTransactionV0),
+        #[serde(rename = "0x1")]
+        V1(InvokeTransactionV1),
+    }
+
+    impl<'de> Deserialize<'de> for InvokeTransaction {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            use serde::de;
+            use web3::types::H256;
+
+            #[serde_as]
+            #[derive(Deserialize)]
+            struct Version {
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                #[serde(default = "transaction_version_zero")]
+                pub version: TransactionVersion,
+            }
+
+            let mut v = serde_json::Value::deserialize(deserializer)?;
+            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
+            // remove "version", since v0 and v1 transactions use deny_unknown_fields
+            v.as_object_mut()
+                .expect("must be an object because deserializing version succeeded")
+                .remove("version");
+            match version.version {
+                TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
+                    InvokeTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                TransactionVersion(x) if x == H256::from_low_u64_be(1) => {
+                    // Starknet 0.10.0 still has `entry_point_selector` and `entry_point_type` because
+                    // of a bug that will be fixed in 0.10.1. We should just ignore these fields until
+                    // this gets fixed.
+                    // FIXME: 0.10.1 remove this hack
+                    let o = v
+                        .as_object_mut()
+                        .expect("must be an object because deserializing version succeeded");
+                    o.remove("entry_point_selector");
+                    o.remove("entry_point_type");
+                    Ok(Self::V1(
+                        InvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+                    ))
+                }
+                _v => Err(de::Error::custom("version must be 0 or 1")),
+            }
+        }
+    }
+
+    impl InvokeTransaction {
+        pub fn signature(&self) -> &[TransactionSignatureElem] {
+            match self {
+                Self::V0(tx) => tx.signature.as_ref(),
+                Self::V1(tx) => tx.signature.as_ref(),
+            }
+        }
+    }
+
+    /// Represents deserialized L2 invoke transaction v0 data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct InvokeTransaction {
+    pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
         pub contract_address: ContractAddress,
@@ -365,6 +442,36 @@ pub mod transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: StarknetTransactionHash,
+    }
+
+    /// Represents deserialized L2 invoke transaction v1 data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct InvokeTransactionV1 {
+        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
+        pub calldata: Vec<CallParam>,
+        pub contract_address: ContractAddress,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub transaction_hash: StarknetTransactionHash,
+    }
+
+    /// Represents deserialized L2 "L1 handler" transaction data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct L1HandlerTransaction {
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub nonce: TransactionNonce,
+        pub calldata: Vec<CallParam>,
+        pub transaction_hash: StarknetTransactionHash,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
     }
 
     impl From<DeclareTransaction> for Transaction {
@@ -384,6 +491,25 @@ pub mod transaction {
             Self::Invoke(tx)
         }
     }
+
+    impl From<L1HandlerTransaction> for Transaction {
+        fn from(tx: L1HandlerTransaction) -> Self {
+            Self::L1Handler(tx)
+        }
+    }
+
+    impl From<InvokeTransactionV0> for InvokeTransaction {
+        fn from(tx: InvokeTransactionV0) -> Self {
+            Self::V0(tx)
+        }
+    }
+
+    impl From<InvokeTransactionV1> for InvokeTransaction {
+        fn from(tx: InvokeTransactionV1) -> Self {
+            Self::V1(tx)
+        }
+    }
+
     /// Describes L2 transaction failure details.
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
@@ -579,6 +705,12 @@ mod tests {
                 .unwrap();
             serde_json::from_str::<MaybePendingBlock>(fixture!("0.8.2/block/1716.json")).unwrap();
             serde_json::from_str::<MaybePendingBlock>(fixture!("0.8.2/block/pending.json"))
+                .unwrap();
+            // This is from integration starknet_version 0.10 and contains the new version 1 invoke transaction.
+            serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/216591.json"))
+                .unwrap();
+            // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
+            serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/216171.json"))
                 .unwrap();
         }
 

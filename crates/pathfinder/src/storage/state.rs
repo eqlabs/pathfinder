@@ -2130,40 +2130,44 @@ mod tests {
 
             // Note: hashes are reverse ordered to trigger the sorting bug.
             let transactions = vec![
-                transaction::Transaction::Invoke(transaction::InvokeTransaction {
-                    calldata: vec![],
-                    // Only required because event insert rejects if this is None
-                    contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
-                    entry_point_type: transaction::EntryPointType::External,
-                    entry_point_selector: EntryPoint(StarkHash::ZERO),
-                    max_fee: Fee(H128::zero()),
-                    signature: vec![],
-                    transaction_hash: StarknetTransactionHash(starkhash!("0F")),
-                }),
-                transaction::Transaction::Invoke(transaction::InvokeTransaction {
-                    calldata: vec![],
-                    // Only required because event insert rejects if this is None
-                    contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
-                    entry_point_type: transaction::EntryPointType::External,
-                    entry_point_selector: EntryPoint(StarkHash::ZERO),
-                    max_fee: Fee(H128::zero()),
-                    signature: vec![],
-                    transaction_hash: StarknetTransactionHash(starkhash!("01")),
-                }),
+                transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
+                    transaction::InvokeTransactionV0 {
+                        calldata: vec![],
+                        // Only required because event insert rejects if this is None
+                        contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
+                        entry_point_type: transaction::EntryPointType::External,
+                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        max_fee: Fee(H128::zero()),
+                        signature: vec![],
+                        transaction_hash: StarknetTransactionHash(starkhash!("0F")),
+                    },
+                )),
+                transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
+                    transaction::InvokeTransactionV0 {
+                        calldata: vec![],
+                        // Only required because event insert rejects if this is None
+                        contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
+                        entry_point_type: transaction::EntryPointType::External,
+                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        max_fee: Fee(H128::zero()),
+                        signature: vec![],
+                        transaction_hash: StarknetTransactionHash(starkhash!("01")),
+                    },
+                )),
             ];
 
             let receipts = vec![
                 transaction::Receipt {
                     actual_fee: None,
                     events: expected_events[..3].to_vec(),
-                    execution_resources: transaction::ExecutionResources {
+                    execution_resources: Some(transaction::ExecutionResources {
                         builtin_instance_counter:
                             transaction::execution_resources::BuiltinInstanceCounter::Empty(
                                 transaction::execution_resources::EmptyBuiltinInstanceCounter {},
                             ),
                         n_steps: 0,
                         n_memory_holes: 0,
-                    },
+                    }),
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[0].hash(),
@@ -2172,14 +2176,14 @@ mod tests {
                 transaction::Receipt {
                     actual_fee: None,
                     events: expected_events[3..].to_vec(),
-                    execution_resources: transaction::ExecutionResources {
+                    execution_resources: Some(transaction::ExecutionResources {
                         builtin_instance_counter:
                             transaction::execution_resources::BuiltinInstanceCounter::Empty(
                                 transaction::execution_resources::EmptyBuiltinInstanceCounter {},
                             ),
                         n_steps: 0,
                         n_memory_holes: 0,
-                    },
+                    }),
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[1].hash(),

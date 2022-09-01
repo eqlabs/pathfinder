@@ -575,6 +575,8 @@ pub mod reply {
         Invoke(InvokeTransaction),
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
+        #[serde(rename = "L1_HANDLER")]
+        L1Handler(L1HandlerTransaction),
     }
 
     impl Transaction {
@@ -583,6 +585,7 @@ pub mod reply {
                 Transaction::Declare(declare) => declare.common.hash,
                 Transaction::Invoke(invoke) => invoke.common.hash,
                 Transaction::Deploy(deploy) => deploy.hash,
+                Transaction::L1Handler(l1_handler) => l1_handler.hash,
             }
         }
     }
@@ -640,6 +643,28 @@ pub mod reply {
         pub constructor_calldata: Vec<ConstructorParam>,
     }
 
+    /// Right now, as we still support/implement the 0.1.0 spec,
+    /// this transaction type is taken from the 0.2.0-rc1 spec
+    /// to plug the hole after the feeder gateway introduced
+    /// similar type in its api with cairo 0.10.0.
+    ///
+    /// FIXME: remove this comment when 0.2.0 spec is released and implemented
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct L1HandlerTransaction {
+        // This part is a subset of CommonTransactionProperties
+        #[serde(rename = "transaction_hash")]
+        pub hash: StarknetTransactionHash,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub nonce: TransactionNonce,
+
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub calldata: Vec<CallParam>,
+    }
+
     impl TryFrom<sequencer::reply::Transaction> for Transaction {
         type Error = anyhow::Error;
 
@@ -662,20 +687,41 @@ pub mod reply {
         fn from(txn: &sequencer::reply::transaction::Transaction) -> Self {
             match txn {
                 sequencer::reply::transaction::Transaction::Invoke(txn) => {
-                    Self::Invoke(InvokeTransaction {
-                        common: CommonTransactionProperties {
-                            hash: txn.transaction_hash,
-                            max_fee: txn.max_fee,
-                            // no `version` in invoke transactions
-                            version: TransactionVersion(Default::default()),
-                            signature: txn.signature.clone(),
-                            // no `nonce` in invoke transactions
-                            nonce: TransactionNonce(Default::default()),
-                        },
-                        contract_address: txn.contract_address,
-                        entry_point_selector: txn.entry_point_selector,
-                        calldata: txn.calldata.clone(),
-                    })
+                    match txn {
+                        sequencer::reply::transaction::InvokeTransaction::V0(txn) => {
+                            Self::Invoke(InvokeTransaction {
+                                common: CommonTransactionProperties {
+                                    hash: txn.transaction_hash,
+                                    max_fee: txn.max_fee,
+                                    // no `version` in invoke transactions
+                                    version: TransactionVersion(Default::default()),
+                                    signature: txn.signature.clone(),
+                                    // no `nonce` in invoke transactions
+                                    nonce: TransactionNonce(Default::default()),
+                                },
+                                contract_address: txn.contract_address,
+                                entry_point_selector: txn.entry_point_selector,
+                                calldata: txn.calldata.clone(),
+                            })
+                        }
+                        sequencer::reply::transaction::InvokeTransaction::V1(txn) => {
+                            // FIXME: use V1 RPC type here
+                            Self::Invoke(InvokeTransaction {
+                                common: CommonTransactionProperties {
+                                    hash: txn.transaction_hash,
+                                    max_fee: txn.max_fee,
+                                    // no `version` in invoke transactions
+                                    version: TransactionVersion(Default::default()),
+                                    signature: txn.signature.clone(),
+                                    // no `nonce` in invoke transactions
+                                    nonce: TransactionNonce(Default::default()),
+                                },
+                                contract_address: txn.contract_address,
+                                entry_point_selector: EntryPoint(StarkHash::ZERO),
+                                calldata: txn.calldata.clone(),
+                            })
+                        }
+                    }
                 }
                 sequencer::reply::transaction::Transaction::Declare(txn) => {
                     Self::Declare(DeclareTransaction {
@@ -693,12 +739,21 @@ pub mod reply {
                 sequencer::reply::transaction::Transaction::Deploy(txn) => {
                     Self::Deploy(DeployTransaction {
                         hash: txn.transaction_hash,
-                        // no `version` in deploy transactions
-                        version: TransactionVersion(Default::default()),
+                        version: txn.version,
                         contract_address: txn.contract_address,
                         contract_address_salt: txn.contract_address_salt,
                         class_hash: txn.class_hash,
                         constructor_calldata: txn.constructor_calldata.clone(),
+                    })
+                }
+                sequencer::reply::transaction::Transaction::L1Handler(txn) => {
+                    Self::L1Handler(L1HandlerTransaction {
+                        hash: txn.transaction_hash,
+                        version: txn.version,
+                        nonce: txn.nonce,
+                        contract_address: txn.contract_address,
+                        entry_point_selector: txn.entry_point_selector,
+                        calldata: txn.calldata.clone(),
                     })
                 }
             }
@@ -712,21 +767,21 @@ pub mod reply {
     #[serde(untagged)]
     pub enum TransactionReceipt {
         Invoke(InvokeTransactionReceipt),
-        // We can't differentiate between declare and deploy in an untagged enum: they
-        // have the same properties in the JSON.
-        DeclareOrDeploy(DeclareOrDeployTransactionReceipt),
+        // We can't differentiate between declare, deploy, and l1 handler in an untagged enum:
+        // they have the same properties in the JSON.
+        DeclareOrDeployOrL1Handler(DeclareOrDeployOrL1HandlerTransactionReceipt),
         // Pending receipts don't have status, status_data, block_hash, block_number fields
         PendingInvoke(PendingInvokeTransactionReceipt),
-        PendingDeclareOrDeploy(PendingDeclareOrDeployTransactionReceipt),
+        PendingDeclareOrDeployOrL1Handler(PendingDeclareOrDeployOrL1HandlerTransactionReceipt),
     }
 
     impl TransactionReceipt {
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
                 Self::Invoke(tx) => tx.common.transaction_hash,
-                Self::DeclareOrDeploy(tx) => tx.common.transaction_hash,
+                Self::DeclareOrDeployOrL1Handler(tx) => tx.common.transaction_hash,
                 Self::PendingInvoke(tx) => tx.common.transaction_hash,
-                Self::PendingDeclareOrDeploy(tx) => tx.common.transaction_hash,
+                Self::PendingDeclareOrDeployOrL1Handler(tx) => tx.common.transaction_hash,
             }
         }
     }
@@ -759,7 +814,7 @@ pub mod reply {
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct DeclareOrDeployTransactionReceipt {
+    pub struct DeclareOrDeployOrL1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
     }
@@ -787,7 +842,7 @@ pub mod reply {
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct PendingDeclareOrDeployTransactionReceipt {
+    pub struct PendingDeclareOrDeployOrL1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
     }
@@ -799,15 +854,18 @@ pub mod reply {
         ) -> Self {
             match transaction {
                 sequencer::reply::transaction::Transaction::Declare(_)
-                | sequencer::reply::transaction::Transaction::Deploy(_) => {
-                    Self::PendingDeclareOrDeploy(PendingDeclareOrDeployTransactionReceipt {
-                        common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: receipt.transaction_hash,
-                            actual_fee: receipt
-                                .actual_fee
-                                .unwrap_or_else(|| Fee(Default::default())),
+                | sequencer::reply::transaction::Transaction::Deploy(_)
+                | sequencer::reply::transaction::Transaction::L1Handler(_) => {
+                    Self::PendingDeclareOrDeployOrL1Handler(
+                        PendingDeclareOrDeployOrL1HandlerTransactionReceipt {
+                            common: CommonPendingTransactionReceiptProperties {
+                                transaction_hash: receipt.transaction_hash,
+                                actual_fee: receipt
+                                    .actual_fee
+                                    .unwrap_or_else(|| Fee(Default::default())),
+                            },
                         },
-                    })
+                    )
                 }
                 sequencer::reply::transaction::Transaction::Invoke(_) => {
                     Self::PendingInvoke(PendingInvokeTransactionReceipt {
@@ -842,10 +900,10 @@ pub mod reply {
             block_number: StarknetBlockNumber,
             transaction: &sequencer::reply::transaction::Transaction,
         ) -> Self {
+            use sequencer::reply::transaction::Transaction::*;
             match transaction {
-                sequencer::reply::transaction::Transaction::Declare(_)
-                | sequencer::reply::transaction::Transaction::Deploy(_) => {
-                    Self::DeclareOrDeploy(DeclareOrDeployTransactionReceipt {
+                Declare(_) | Deploy(_) | L1Handler(_) => {
+                    Self::DeclareOrDeployOrL1Handler(DeclareOrDeployOrL1HandlerTransactionReceipt {
                         common: CommonTransactionReceiptProperties {
                             transaction_hash: receipt.transaction_hash,
                             actual_fee: receipt
@@ -859,7 +917,7 @@ pub mod reply {
                         },
                     })
                 }
-                sequencer::reply::transaction::Transaction::Invoke(_) => {
+                Invoke(_) => {
                     Self::Invoke(InvokeTransactionReceipt {
                         common: CommonTransactionReceiptProperties {
                             transaction_hash: receipt.transaction_hash,
@@ -1388,12 +1446,14 @@ pub mod reply {
                         ..InvokeTransactionReceipt::test_data()
                     }),
                     // Somewhat redundant, but want to exhaust the variants
-                    TransactionReceipt::DeclareOrDeploy(DeclareOrDeployTransactionReceipt {
-                        common: CommonTransactionReceiptProperties::test_data(),
-                    }),
+                    TransactionReceipt::DeclareOrDeployOrL1Handler(
+                        DeclareOrDeployOrL1HandlerTransactionReceipt {
+                            common: CommonTransactionReceiptProperties::test_data(),
+                        },
+                    ),
                     TransactionReceipt::PendingInvoke(PendingInvokeTransactionReceipt::test_data()),
-                    TransactionReceipt::PendingDeclareOrDeploy(
-                        PendingDeclareOrDeployTransactionReceipt {
+                    TransactionReceipt::PendingDeclareOrDeployOrL1Handler(
+                        PendingDeclareOrDeployOrL1HandlerTransactionReceipt {
                             common: CommonPendingTransactionReceiptProperties::test_data(),
                         },
                     ),
