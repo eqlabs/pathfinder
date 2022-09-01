@@ -160,11 +160,10 @@ mod meta {
         )),
     };
 
-    /// FIXME:  This currently disables block hash verfication until we figure out where is valid.
     const INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: StarknetBlockNumber::new_or_panic(0),
+        first_0_7_block: StarknetBlockNumber::new_or_panic(110511),
         not_verifiable_range: Some(
-            StarknetBlockNumber::new_or_panic(0)..StarknetBlockNumber::new_or_panic(1000000),
+            StarknetBlockNumber::new_or_panic(0)..StarknetBlockNumber::new_or_panic(110511),
         ),
         fallback_sequencer_address: SequencerAddress(starkhash!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
