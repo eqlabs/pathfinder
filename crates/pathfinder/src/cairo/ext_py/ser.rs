@@ -40,8 +40,6 @@ pub(crate) enum UsedChain {
     Mainnet,
     #[serde(rename = "GOERLI")]
     Goerli,
-    #[serde(rename = "INTEGRATION")]
-    Integration,
 }
 
 impl From<crate::core::Chain> for UsedChain {
@@ -49,7 +47,7 @@ impl From<crate::core::Chain> for UsedChain {
         match c {
             crate::core::Chain::Mainnet => UsedChain::Mainnet,
             crate::core::Chain::Testnet => UsedChain::Goerli,
-            crate::core::Chain::Integration => UsedChain::Integration,
+            crate::core::Chain::Integration => UsedChain::Goerli,
         }
     }
 }
