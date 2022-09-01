@@ -720,12 +720,13 @@ fn update_starknet_state(
         deploy_contract(transaction, &mut global_tree, contract).context("Deploying contract")?;
     }
 
+    // Copied so we can mutate the map. This lets us remove used nonces from the list.
+    let mut nonces = state_update.state_diff.nonces.clone();
+
+    // Apply contract storage updates.
     for (contract_address, updates) in &state_update.state_diff.storage_diffs {
-        let nonce = state_update
-            .state_diff
-            .nonces
-            .get(contract_address)
-            .copied();
+        // Remove the nonce so we don't update it again in the next stage.
+        let nonce = nonces.remove(contract_address);
 
         let contract_state_hash =
             update_contract_state(*contract_address, updates, nonce, &global_tree, transaction)
@@ -734,6 +735,23 @@ fn update_starknet_state(
         // Update the global state tree.
         global_tree
             .set(*contract_address, contract_state_hash)
+            .context("Updating global state tree")?;
+    }
+
+    // Apply all remaining nonces (without storage updates).
+    for (contract_address, nonce) in nonces {
+        let contract_state_hash = update_contract_state(
+            contract_address,
+            &[],
+            Some(nonce),
+            &global_tree,
+            transaction,
+        )
+        .context("Update contract state")?;
+
+        // Update the global state tree.
+        global_tree
+            .set(contract_address, contract_state_hash)
             .context("Updating global state tree")?;
     }
 
