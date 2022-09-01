@@ -4,7 +4,7 @@ use stark_hash::StarkHash;
 use web3::types::H256;
 
 use crate::{
-    consts::{GOERLI_GENESIS_HASH, MAINNET_GENESIS_HASH},
+    consts::{INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH},
     core::{
         Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
         EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
@@ -390,8 +390,9 @@ impl StarknetBlocksTable {
 
         match genesis {
             None => Ok(None),
-            Some(hash) if hash == GOERLI_GENESIS_HASH => Ok(Some(Chain::Goerli)),
+            Some(hash) if hash == TESTNET_GENESIS_HASH => Ok(Some(Chain::Testnet)),
             Some(hash) if hash == MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
+            Some(hash) if hash == INTEGRATION_GENESIS_HASH => Ok(Some(Chain::Integration)),
             Some(hash) => Err(anyhow::anyhow!("Unknown genesis block hash {}", hash.0)),
         }
     }

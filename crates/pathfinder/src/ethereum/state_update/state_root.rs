@@ -9,14 +9,17 @@ pub struct StateRootFetcher(LogFetcher<StateUpdateLog>);
 
 /// The Mainnet Ethereum block containing the Starknet genesis [StateUpdateLog].
 const MAINNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(13_627_224);
-/// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog].
-const GOERLI_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_854_324);
+/// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog] for testnet.
+const TESTNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_854_324);
+/// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog] for integration.
+const INTEGRATION_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_986_835);
 
 impl StateRootFetcher {
     pub fn new(head: Option<StateUpdateLog>, chain: Chain) -> Self {
         let genesis = match chain {
             Chain::Mainnet => MAINNET_GENESIS,
-            Chain::Goerli => GOERLI_GENESIS,
+            Chain::Testnet => TESTNET_GENESIS,
+            Chain::Integration => INTEGRATION_GENESIS,
         };
 
         let inner = LogFetcher::<StateUpdateLog>::new(head, chain, genesis);
@@ -54,7 +57,7 @@ mod tests {
     async fn first_fetch() {
         // The first state root retrieved should be the genesis event,
         // with a sequence number of 0.
-        let chain = Chain::Goerli;
+        let chain = Chain::Testnet;
         let transport = HttpTransport::test_transport(chain);
 
         let mut uut = StateRootFetcher::new(None, chain);
@@ -101,12 +104,39 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn goerli() {
-            // Checks `GOERLI_GENESIS` contains the actual Starknet genesis StateUpdateLog
-            let chain = Chain::Goerli;
+        async fn testnet() {
+            // Checks `TESTNET_GENESIS` contains the actual Starknet genesis StateUpdateLog
+            let chain = Chain::Testnet;
             let transport = HttpTransport::test_transport(chain);
 
-            let block_number = BlockNumber::Number(GOERLI_GENESIS.0.into());
+            let block_number = BlockNumber::Number(TESTNET_GENESIS.0.into());
+
+            let filter = FilterBuilder::default()
+                .address(vec![StateUpdateLog::contract_address(chain)])
+                .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
+                .from_block(block_number)
+                .to_block(block_number)
+                .build();
+
+            let logs = transport.logs(filter).await.unwrap();
+            let logs = logs
+                .into_iter()
+                .map(StateUpdateLog::try_from)
+                .collect::<Result<Vec<StateUpdateLog>, _>>()
+                .unwrap();
+
+            assert_eq!(
+                logs.first().unwrap().block_number,
+                StarknetBlockNumber::GENESIS
+            );
+        }
+
+        #[tokio::test]
+        async fn integration() {
+            let chain = Chain::Integration;
+            let transport = HttpTransport::test_transport(chain);
+
+            let block_number = BlockNumber::Number(INTEGRATION_GENESIS.0.into());
 
             let filter = FilterBuilder::default()
                 .address(vec![StateUpdateLog::contract_address(chain)])
@@ -151,7 +181,7 @@ mod tests {
             // Seed with a incorrect update at the L1 genesis block.
             // This should get interpretted as a reorg once the correct
             // first L2 update log is found.
-            let chain = Chain::Goerli;
+            let chain = Chain::Testnet;
             let transport = HttpTransport::test_transport(chain);
 
             // Note that block_number must be 0 so that we pull all of L1 history.
@@ -182,7 +212,7 @@ mod tests {
             // Seed with an origin beyond the current L1 chain state.
             // This should be interpreted as a reorg as this update
             // won't be found.
-            let chain = Chain::Goerli;
+            let chain = Chain::Testnet;
             let transport = HttpTransport::test_transport(chain);
 
             let latest_on_chain = transport.block_number().await.unwrap();

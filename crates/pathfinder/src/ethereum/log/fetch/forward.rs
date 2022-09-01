@@ -249,7 +249,7 @@ mod tests {
 
         let genesis_block = starknet_genesis_log.origin.block.number;
 
-        let chain = crate::core::Chain::Goerli;
+        let chain = crate::core::Chain::Testnet;
         let mut root_fetcher =
             LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), chain, genesis_block);
         let transport = HttpTransport::test_transport(chain);

@@ -89,6 +89,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                 })
             })
             .transpose()?;
+        let integration = self.take(ConfigOption::Integration).is_some();
 
         // Optional parameters with defaults.
         let data_directory = self
@@ -174,6 +175,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             sqlite_wal,
             poll_pending,
             monitoring_addr,
+            integration,
         })
     }
 

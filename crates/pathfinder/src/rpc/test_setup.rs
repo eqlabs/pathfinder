@@ -290,9 +290,9 @@ where
         use std::sync::Arc;
 
         let storage = self.storage;
-        let sequencer = Client::new(Chain::Goerli).unwrap();
+        let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Goerli, sync_state);
+        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
         let (__handle, addr) = run_server(
             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
             api,

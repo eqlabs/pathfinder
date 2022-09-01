@@ -1,7 +1,6 @@
 //! Wrapper for the parts of the [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
-use crate::config::EthereumConfig;
-use crate::core::Chain;
 use crate::retry::Retry;
+use crate::{config::EthereumConfig, core::EthereumChain};
 
 use std::future::Future;
 use std::num::NonZeroU64;
@@ -36,7 +35,7 @@ pub enum LogsError {
 pub trait EthereumTransport {
     async fn block(&self, block: BlockId) -> web3::Result<Option<Block<H256>>>;
     async fn block_number(&self) -> web3::Result<u64>;
-    async fn chain(&self) -> anyhow::Result<Chain>;
+    async fn chain(&self) -> anyhow::Result<EthereumChain>;
     async fn logs(&self, filter: Filter) -> std::result::Result<Vec<Log>, LogsError>;
     async fn transaction(&self, id: TransactionId) -> web3::Result<Option<Transaction>>;
     async fn gas_price(&self) -> web3::Result<U256>;
@@ -93,10 +92,11 @@ impl HttpTransport {
     ///
     /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
     ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
-    pub fn test_transport(chain: Chain) -> Self {
+    pub fn test_transport(chain: crate::core::Chain) -> Self {
+        use crate::core::Chain;
         let key_prefix = match chain {
             Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
-            Chain::Goerli => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
+            Chain::Testnet | Chain::Integration => "PATHFINDER_ETHEREUM_HTTP_GOERLI",
         };
 
         let url_key = format!("{}_URL", key_prefix);
@@ -133,15 +133,15 @@ impl EthereumTransport for HttpTransport {
             .map(|n| n.as_u64())
     }
 
-    /// Identifies the Ethereum [Chain] behind the given Ethereum transport.
+    /// Identifies the [EthereumChain] behind the given Ethereum transport.
     ///
-    /// Will error if it's not one of the valid Starknet [Chain] variants.
+    /// Will error if it's not one of the valid Starknet [EthereumChain] variants.
     /// Internaly wraps [`Web3::chain_id()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.chain_id)
     /// into exponential retry on __all__ errors.
-    async fn chain(&self) -> anyhow::Result<Chain> {
+    async fn chain(&self) -> anyhow::Result<EthereumChain> {
         match retry(|| self.0.eth().chain_id(), log_and_always_retry).await? {
-            id if id == U256::from(1u32) => Ok(Chain::Mainnet),
-            id if id == U256::from(5u32) => Ok(Chain::Goerli),
+            id if id == U256::from(1u32) => Ok(EthereumChain::Mainnet),
+            id if id == U256::from(5u32) => Ok(EthereumChain::Goerli),
             other => anyhow::bail!("Unsupported chain ID: {}", other),
         }
     }
@@ -281,7 +281,7 @@ mod tests {
                 )
                 .build();
 
-            let transport = HttpTransport::test_transport(Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Testnet);
 
             let result = transport.logs(filter).await;
             assert_matches!(result, Ok(logs) if logs.len() == 85);
@@ -296,7 +296,7 @@ mod tests {
                 .to_block(BlockNumber::Latest)
                 .build();
 
-            let transport = HttpTransport::test_transport(Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Testnet);
 
             let result = transport.logs(filter).await;
             assert_matches!(result, Err(LogsError::QueryLimit));
@@ -310,7 +310,7 @@ mod tests {
             // Infura and Alchemy handle this differently.
             //  - Infura accepts the query as valid and simply returns logs for whatever part of the range it has.
             //  - Alchemy throws a RPC::ServerError which `HttpTransport::logs` maps to `UnknownBlock`.
-            let transport = HttpTransport::test_transport(Chain::Goerli);
+            let transport = HttpTransport::test_transport(Chain::Testnet);
             let latest = transport.block_number().await.unwrap();
 
             let filter = FilterBuilder::default()

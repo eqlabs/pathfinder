@@ -894,7 +894,7 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -977,7 +977,7 @@ mod tests {
                     tx_event,
                     mock,
                     Some((BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)),
-                    Chain::Goerli,
+                    Chain::Testnet,
                     None,
                 ));
 
@@ -1096,7 +1096,7 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1301,7 +1301,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1581,7 +1581,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1788,7 +1788,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1984,7 +1984,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -2061,7 +2061,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Goerli, None));
+                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
 
                 // Wrap this in a timeout so we don't wait forever in case of test failure.
                 // Right now closing the channel causes an error.

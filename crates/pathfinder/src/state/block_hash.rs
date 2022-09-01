@@ -160,10 +160,22 @@ mod meta {
         )),
     };
 
+    /// FIXME:  This currently disables block hash verfication until we figure out where is valid.
+    const INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
+        first_0_7_block: StarknetBlockNumber::new_or_panic(0),
+        not_verifiable_range: Some(
+            StarknetBlockNumber::new_or_panic(0)..StarknetBlockNumber::new_or_panic(1000000),
+        ),
+        fallback_sequencer_address: SequencerAddress(starkhash!(
+            "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
+        )),
+    };
+
     pub fn for_chain(chain: Chain) -> &'static BlockHashMetaInfo {
         match chain {
             Chain::Mainnet => &MAINNET_METAINFO,
-            Chain::Goerli => &TESTNET_METAINFO,
+            Chain::Testnet => &TESTNET_METAINFO,
+            Chain::Integration => &INTEGRATION_METAINFO,
         }
     }
 }
@@ -503,7 +515,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
             VerifyResult::Match
         );
     }
@@ -518,7 +530,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
             VerifyResult::Match
         );
     }
@@ -534,7 +546,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash,).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, block.block_hash,).unwrap(),
             VerifyResult::Match
         );
     }
@@ -549,7 +561,7 @@ mod tests {
         let block: Block = serde_json::from_slice(json).unwrap();
 
         assert_eq!(
-            verify_block_hash(&block, Chain::Goerli, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
             VerifyResult::Match
         );
     }

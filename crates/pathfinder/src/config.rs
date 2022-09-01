@@ -31,6 +31,8 @@ pub enum ConfigOption {
     PollPending,
     /// Enables and sets the monitoring endpoint
     MonitorAddress,
+    /// Chooses Integration network instead of testnet.
+    Integration,
 }
 
 impl Display for ConfigOption {
@@ -47,6 +49,7 @@ impl Display for ConfigOption {
             }
             ConfigOption::PollPending => f.write_str("Enable pending block polling"),
             ConfigOption::MonitorAddress => f.write_str("Pathfinder monitoring address"),
+            ConfigOption::Integration => f.write_str("Select integration network"),
         }
     }
 }
@@ -79,6 +82,8 @@ pub struct Configuration {
     pub poll_pending: bool,
     /// The node's monitoring address and port.
     pub monitoring_addr: Option<SocketAddr>,
+    /// Select integration network.
+    pub integration: bool,
 }
 
 impl Configuration {

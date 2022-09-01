@@ -2,7 +2,8 @@
 
 use anyhow::Context;
 use pathfinder_lib::{
-    cairo, config, core,
+    cairo, config,
+    core::{self, Chain, EthereumChain},
     ethereum::transport::{EthereumTransport, HttpTransport},
     monitoring, rpc, sequencer, state,
     storage::{JournalMode, Storage},
@@ -49,9 +50,19 @@ async fn main() -> anyhow::Result<()> {
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     )?;
 
-    let database_path = config.data_directory.join(match ethereum_chain {
-        core::Chain::Mainnet => "mainnet.sqlite",
-        core::Chain::Goerli => "goerli.sqlite",
+    let starknet_chain = match (ethereum_chain, config.integration) {
+        (EthereumChain::Mainnet, false) => Chain::Mainnet,
+        (EthereumChain::Goerli, false) => Chain::Testnet,
+        (EthereumChain::Goerli, true) => Chain::Integration,
+        (EthereumChain::Mainnet, true) => {
+            anyhow::bail!("'--integration flag' is invalid on Ethereum mainnet");
+        }
+    };
+
+    let database_path = config.data_directory.join(match starknet_chain {
+        Chain::Mainnet => "mainnet.sqlite",
+        Chain::Testnet => "goerli.sqlite",
+        Chain::Integration => "integration.sqlite",
     });
     let journal_mode = match config.sqlite_wal {
         false => JournalMode::Rollback,
@@ -59,20 +70,20 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     };
     let storage = Storage::migrate(database_path.clone(), journal_mode).unwrap();
     info!(location=?database_path, "Database migrated.");
-    verify_database_chain(&storage, ethereum_chain).context("Verifying database")?;
+    verify_database_chain(&storage, starknet_chain).context("Verifying database")?;
 
     let sequencer = match config.sequencer_url {
         Some(url) => {
             info!(?url, "Using custom Sequencer address");
             let client = sequencer::Client::with_url(url).unwrap();
             let sequencer_chain = client.chain().await.unwrap();
-            if sequencer_chain != ethereum_chain {
-                tracing::error!(sequencer=%sequencer_chain, ethereum=%ethereum_chain, "Sequencer and Ethereum network mismatch");
-                anyhow::bail!("Sequencer and Ethereum network mismatch. Sequencer is on {sequencer_chain} but Ethereum is on {ethereum_chain}");
+            if sequencer_chain != starknet_chain {
+                tracing::error!(sequencer=%sequencer_chain, ethereum=%starknet_chain, "Sequencer and Ethereum network mismatch");
+                anyhow::bail!("Sequencer and Ethereum network mismatch. Sequencer is on {sequencer_chain} but Ethereum is on {starknet_chain}");
             }
             client
         }
-        None => sequencer::Client::new(ethereum_chain).unwrap(),
+        None => sequencer::Client::new(starknet_chain).unwrap(),
     };
     let sync_state = Arc::new(state::SyncState::default());
     let pending_state = state::PendingData::default();
@@ -87,7 +98,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         storage.path().into(),
         config.python_subprocesses,
         futures::future::pending(),
-        ethereum_chain,
+        starknet_chain,
     )
     .await
     .context(
@@ -97,7 +108,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
         eth_transport.clone(),
-        ethereum_chain,
+        starknet_chain,
         sequencer.clone(),
         sync_state.clone(),
         state::l1::sync,
@@ -108,7 +119,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     let shared = rpc::api::Cached::new(Arc::new(eth_transport));
 
-    let api = rpc::api::RpcApi::new(storage, sequencer, ethereum_chain, sync_state)
+    let api = rpc::api::RpcApi::new(storage, sequencer, starknet_chain, sync_state)
         .with_call_handling(call_handle)
         .with_eth_gas_price(shared);
     let api = match config.poll_pending {

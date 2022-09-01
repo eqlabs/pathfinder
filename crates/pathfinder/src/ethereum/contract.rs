@@ -1,5 +1,3 @@
-// use std::str::FromStr;
-
 use web3::ethabi::{Contract, Event, Function};
 use web3::types::H160;
 
@@ -25,8 +23,8 @@ const MAINNET_ADDRESSES: ContractAddresses = ContractAddresses {
     ]),
 };
 
-/// Starknet contract addresses on L1 Goerli.
-const GOERLI_ADDRESSES: ContractAddresses = ContractAddresses {
+/// Starknet contract addresses on L1 Goerli for testnet.
+const TESTNET_ADDRESSES: ContractAddresses = ContractAddresses {
     core: H160([
         222, 41, 208, 96, 212, 89, 1, 251, 25, 237, 108, 110, 149, 158, 178, 45, 134, 38, 112, 142,
     ]),
@@ -38,11 +36,26 @@ const GOERLI_ADDRESSES: ContractAddresses = ContractAddresses {
     ]),
 };
 
-/// Returns the Starknet contract addresses for the given L1 chain.
+/// Starknet contract addresses on L1 Goerli for integration.
+const INTEGRATION_ADDRESSES: ContractAddresses = ContractAddresses {
+    core: H160([
+        213, 195, 37, 209, 131, 197, 146, 201, 73, 152, 0, 12, 94, 14, 237, 158, 102, 85, 192, 32,
+    ]),
+    gps: H160([
+        171, 67, 186, 72, 201, 237, 244, 194, 196, 187, 1, 35, 115, 72, 209, 215, 178, 142, 241,
+        104,
+    ]),
+    // FIXME: This was copied from testnet addresses as this info is not available from the gateway.
+    //        Currently not important as it is not used.
+    mempage: TESTNET_ADDRESSES.mempage,
+};
+
+/// Returns the Starknet contract addresses for the given L2 chain.
 pub fn addresses(chain: Chain) -> ContractAddresses {
     match chain {
         Chain::Mainnet => MAINNET_ADDRESSES,
-        Chain::Goerli => GOERLI_ADDRESSES,
+        Chain::Testnet => TESTNET_ADDRESSES,
+        Chain::Integration => INTEGRATION_ADDRESSES,
     }
 }
 
@@ -139,7 +152,7 @@ mod tests {
             // ABI was updated.
 
             #[tokio::test]
-            async fn goerli() {
+            async fn testnet() {
                 // Checks that Starknet's core proxy contract still points to the same
                 // core implementation contract. If this address changes, we should
                 // update the address and more importantly, the ABI.
@@ -154,11 +167,11 @@ mod tests {
                     "/resources/contracts/core_proxy.json"
                 ));
 
-                let transport = HttpTransport::test_transport(Chain::Goerli);
+                let transport = HttpTransport::test_transport(Chain::Testnet);
 
                 let core_proxy = web3::contract::Contract::from_json(
                     transport.eth(),
-                    GOERLI_ADDRESSES.core,
+                    TESTNET_ADDRESSES.core,
                     CORE_PROXY_ABI,
                 )
                 .unwrap();
@@ -215,32 +228,71 @@ mod tests {
 
                 assert_eq!(impl_addr, expect_addr);
             }
+
+            #[tokio::test]
+            async fn integration() {
+                // Checks that Starknet's core proxy contract still points to the same
+                // core implementation contract. If this address changes, we should
+                // update the address and more importantly, the ABI once it reaches testnet.
+
+                // The current address of Starknet's core contract implementation.
+                const CORE_IMPL_ADDR: &str = "0x70c8a579ad08339cca19d77d8646f4b6f0fd098a";
+                let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
+
+                // The proxy's ABI.
+                const CORE_PROXY_ABI: &[u8] = include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/resources/contracts/core_proxy.json"
+                ));
+
+                let transport = HttpTransport::test_transport(Chain::Integration);
+
+                let core_proxy = web3::contract::Contract::from_json(
+                    transport.eth(),
+                    INTEGRATION_ADDRESSES.core,
+                    CORE_PROXY_ABI,
+                )
+                .unwrap();
+
+                let impl_addr: H160 = core_proxy
+                    .query(
+                        "implementation",
+                        (),
+                        None,
+                        Options::default(),
+                        Some(BlockId::Number(BlockNumber::Latest)),
+                    )
+                    .await
+                    .unwrap();
+
+                assert_eq!(impl_addr, expect_addr);
+            }
         }
     }
 
     mod address {
         use super::*;
 
-        mod goerli {
+        mod testnet {
             use super::*;
             use pretty_assertions::assert_eq;
 
             #[test]
             fn core() {
                 let expect = H160::from_str("0xde29d060D45901Fb19ED6C6e959EB22d8626708e").unwrap();
-                assert_eq!(GOERLI_ADDRESSES.core, expect);
+                assert_eq!(TESTNET_ADDRESSES.core, expect);
             }
 
             #[test]
             fn gps() {
                 let expect = H160::from_str("0x5EF3C980Bf970FcE5BbC217835743ea9f0388f4F").unwrap();
-                assert_eq!(GOERLI_ADDRESSES.gps, expect);
+                assert_eq!(TESTNET_ADDRESSES.gps, expect);
             }
 
             #[test]
             fn mempage() {
                 let expect = H160::from_str("0x743789ff2fF82Bfb907009C9911a7dA636D34FA7").unwrap();
-                assert_eq!(GOERLI_ADDRESSES.mempage, expect);
+                assert_eq!(TESTNET_ADDRESSES.mempage, expect);
             }
         }
 
@@ -264,6 +316,29 @@ mod tests {
             fn mempage() {
                 let expect = H160::from_str("0xc662c410C0ECf747543f5bA90660f6ABeBD9C8c4").unwrap();
                 assert_eq!(MAINNET_ADDRESSES.mempage, expect);
+            }
+        }
+
+        mod integration {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[test]
+            fn core() {
+                let expect = H160::from_str("0xd5c325D183C592C94998000C5e0EED9e6655c020").unwrap();
+                assert_eq!(INTEGRATION_ADDRESSES.core, expect);
+            }
+
+            #[test]
+            fn gps() {
+                let expect = H160::from_str("0xAB43bA48c9edF4C2C4bB01237348D1D7B28ef168").unwrap();
+                assert_eq!(INTEGRATION_ADDRESSES.gps, expect);
+            }
+
+            #[test]
+            fn mempage() {
+                let expect = H160::from_str("0x743789ff2fF82Bfb907009C9911a7dA636D34FA7").unwrap();
+                assert_eq!(INTEGRATION_ADDRESSES.mempage, expect);
             }
         }
     }

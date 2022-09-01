@@ -26,7 +26,7 @@ use std::str::FromStr;
 
 use clap::Arg;
 use pathfinder_lib::{
-    core::{EthereumBlockHash, StarknetBlockNumber},
+    core::{Chain, EthereumBlockHash, EthereumChain, StarknetBlockNumber},
     ethereum::{
         log::{MetaLog, StateUpdateLog},
         state_update::StateUpdate,
@@ -44,6 +44,11 @@ async fn main() {
         .chain()
         .await
         .expect("Failed to identify Ethereum network");
+
+    let chain = match chain {
+        EthereumChain::Mainnet => Chain::Mainnet,
+        EthereumChain::Goerli => Chain::Testnet,
+    };
 
     // Get the state update event at the given block.
     let filter = FilterBuilder::default()

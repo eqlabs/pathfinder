@@ -46,7 +46,8 @@ impl From<crate::core::Chain> for UsedChain {
     fn from(c: crate::core::Chain) -> Self {
         match c {
             crate::core::Chain::Mainnet => UsedChain::Mainnet,
-            crate::core::Chain::Goerli => UsedChain::Goerli,
+            crate::core::Chain::Testnet => UsedChain::Goerli,
+            crate::core::Chain::Integration => UsedChain::Goerli,
         }
     }
 }

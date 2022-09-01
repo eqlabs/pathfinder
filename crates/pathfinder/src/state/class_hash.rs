@@ -410,7 +410,7 @@ mod json {
             );
             let contract = crate::core::ContractAddress::new_or_panic(contract);
 
-            let chain = crate::core::Chain::Goerli;
+            let chain = crate::core::Chain::Testnet;
             let sequencer = crate::sequencer::Client::new(chain).unwrap();
             let contract_definition = sequencer
                 .full_contract(contract)
@@ -438,7 +438,7 @@ mod json {
             let expected = ClassHash(starkhash!(
                 "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
             ));
-            let sequencer = sequencer::Client::new(crate::core::Chain::Goerli).unwrap();
+            let sequencer = sequencer::Client::new(crate::core::Chain::Testnet).unwrap();
 
             let contract_definition = sequencer.full_contract(address).await.unwrap();
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {

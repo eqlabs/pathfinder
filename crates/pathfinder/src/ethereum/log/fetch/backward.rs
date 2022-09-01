@@ -206,7 +206,7 @@ mod tests {
 
         // We use the same log type twice; this shouldn't matter and let's us check
         // the block number sequence.
-        let chain = crate::core::Chain::Goerli;
+        let chain = crate::core::Chain::Testnet;
         let mut fetcher = BackwardLogFetcher::<StateUpdateLog, StateUpdateLog>::new(
             EitherMetaLog::Left(update_log.clone()),
             chain,
