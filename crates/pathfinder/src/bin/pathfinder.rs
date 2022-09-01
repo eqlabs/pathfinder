@@ -1,11 +1,13 @@
 #![deny(rust_2018_idioms)]
 
 use anyhow::Context;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_lib::{
     cairo, config,
     core::{self, Chain, EthereumChain},
     ethereum::transport::{EthereumTransport, HttpTransport},
-    monitoring, rpc, sequencer, state,
+    monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
+    rpc, sequencer, state,
     storage::{JournalMode, Storage},
 };
 use std::sync::{atomic::AtomicBool, Arc};
@@ -33,7 +35,11 @@ async fn main() -> anyhow::Result<()> {
     let pathfinder_ready = match config.monitoring_addr {
         Some(monitoring_addr) => {
             let ready = Arc::new(AtomicBool::new(false));
-            let _jh = monitoring::spawn_server(monitoring_addr, ready.clone()).await;
+            let prometheus_handle = PrometheusBuilder::new()
+                .install_recorder()
+                .context("Creating Prometheus recorder")?;
+            let _jh =
+                monitoring::spawn_server(monitoring_addr, ready.clone(), prometheus_handle).await;
             Some(ready)
         }
         None => None,
@@ -127,9 +133,12 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         false => api,
     };
 
-    let (rpc_handle, local_addr) = rpc::run_server(config.http_rpc_addr, api)
+    let (rpc_handle, local_addr) = rpc::RpcServer::new(config.http_rpc_addr, api)
+        .with_middleware(RpcMetricsMiddleware)
+        .run()
         .await
         .context("Starting the RPC server")?;
+
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
     let update_handle = tokio::spawn(pathfinder_lib::update::poll_github_for_releases());

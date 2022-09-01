@@ -13,6 +13,7 @@ use crate::{
         ContractAddressSalt, Fee, StarknetTransactionHash, StarknetTransactionIndex,
         TransactionVersion,
     },
+    monitoring::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware},
     rpc::{
         api::{BlockResponseScope, RpcApi},
         serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
@@ -55,6 +56,8 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
     {
         use tracing::Instrument;
 
+        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
+
         self.0.register_async_method(method_name, move |p, c| {
             // why info here? it's the same used in warp tracing filter for example.
             let span = tracing::info_span!("rpc_method", name = method_name);
@@ -67,281 +70,302 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
     }
 }
 
-/// Starts the HTTP-RPC server.
-pub async fn run_server(
+pub struct RpcServer {
     addr: SocketAddr,
     api: RpcApi,
-) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
-    let server = HttpServerBuilder::default()
-        .build(addr)
-        .await
-        .map_err(|e| match e {
-            jsonrpsee::core::Error::Transport(_) => {
-                use std::error::Error;
+    middleware: MaybeRpcMetricsMiddleware,
+}
 
-                if let Some(inner) = e.source().and_then(|inner| inner.downcast_ref::<std::io::Error>()) {
-                    if let std::io::ErrorKind::AddrInUse = inner.kind() {
-                        return anyhow::Error::new(e)
-                        .context(format!("RPC address is already in use: {addr}.
+impl RpcServer {
+    pub fn new(addr: SocketAddr, api: RpcApi) -> Self {
+        Self {
+            addr,
+            api,
+            middleware: MaybeRpcMetricsMiddleware::NoOp,
+        }
+    }
+
+    pub fn with_middleware(self, middleware: RpcMetricsMiddleware) -> Self {
+        Self {
+            middleware: MaybeRpcMetricsMiddleware::Middleware(middleware),
+            ..self
+        }
+    }
+
+    /// Starts the HTTP-RPC server.
+    pub async fn run(self) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
+        let server = HttpServerBuilder::default()
+            .set_middleware(self.middleware)
+            .build(self.addr)
+            .await
+            .map_err(|e| match e {
+                jsonrpsee::core::Error::Transport(_) => {
+                    use std::error::Error;
+
+                    if let Some(inner) = e.source().and_then(|inner| inner.downcast_ref::<std::io::Error>()) {
+                        if let std::io::ErrorKind::AddrInUse = inner.kind() {
+                            return anyhow::Error::new(e)
+                            .context(format!("RPC address is already in use: {}.
 
 Hint: This usually means you are already running another instance of pathfinder.
 Hint: If this happens when upgrading, make sure to shut down the first one first.
-Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses."))
+Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses.", self.addr))
+                        }
                     }
+
+                    anyhow::Error::new(e)
                 }
-
-                anyhow::Error::new(e)
+                _ => anyhow::Error::new(e),
+            })?;
+        let local_addr = server.local_addr()?;
+        let mut module = RpcModuleWrapper(RpcModule::new(self.api));
+        module.register_async_method(
+            "starknet_getBlockWithTxHashes",
+            |params, context| async move {
+                #[derive(Debug, Deserialize)]
+                struct NamedArgs {
+                    block_id: BlockId,
+                }
+                let params = params.parse::<NamedArgs>()?;
+                context
+                    .get_block(params.block_id, BlockResponseScope::TransactionHashes)
+                    .await
+            },
+        )?;
+        module.register_async_method("starknet_getBlockWithTxs", |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                block_id: BlockId,
             }
-            _ => anyhow::Error::new(e),
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .get_block(params.block_id, BlockResponseScope::FullTransactions)
+                .await
         })?;
-    let local_addr = server.local_addr()?;
-    let mut module = RpcModuleWrapper(RpcModule::new(api));
-    module.register_async_method(
-        "starknet_getBlockWithTxHashes",
-        |params, context| async move {
+        module.register_async_method("starknet_getStateUpdate", |params, context| async move {
             #[derive(Debug, Deserialize)]
             struct NamedArgs {
                 block_id: BlockId,
             }
             let params = params.parse::<NamedArgs>()?;
-            context
-                .get_block(params.block_id, BlockResponseScope::TransactionHashes)
-                .await
-        },
-    )?;
-    module.register_async_method("starknet_getBlockWithTxs", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            block_id: BlockId,
-        }
-        let params = params.parse::<NamedArgs>()?;
-        context
-            .get_block(params.block_id, BlockResponseScope::FullTransactions)
-            .await
-    })?;
-    module.register_async_method("starknet_getStateUpdate", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            block_id: BlockId,
-        }
-        let params = params.parse::<NamedArgs>()?;
-        context.get_state_update(params.block_id).await
-    })?;
-    module.register_async_method("starknet_getStorageAt", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            contract_address: ContractAddress,
-            key: crate::core::StorageAddress,
-            block_id: BlockId,
-        }
-        let params = params.parse::<NamedArgs>()?;
-        context
-            .get_storage_at(params.contract_address, params.key, params.block_id)
-            .await
-    })?;
-    module.register_async_method(
-        "starknet_getTransactionByHash",
-        |params, context| async move {
+            context.get_state_update(params.block_id).await
+        })?;
+        module.register_async_method("starknet_getStorageAt", |params, context| async move {
             #[derive(Debug, Deserialize)]
             struct NamedArgs {
-                transaction_hash: StarknetTransactionHash,
+                contract_address: ContractAddress,
+                key: crate::core::StorageAddress,
+                block_id: BlockId,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .get_storage_at(params.contract_address, params.key, params.block_id)
+                .await
+        })?;
+        module.register_async_method(
+            "starknet_getTransactionByHash",
+            |params, context| async move {
+                #[derive(Debug, Deserialize)]
+                struct NamedArgs {
+                    transaction_hash: StarknetTransactionHash,
+                }
+                context
+                    .get_transaction_by_hash(params.parse::<NamedArgs>()?.transaction_hash)
+                    .await
+            },
+        )?;
+        module.register_async_method(
+            "starknet_getTransactionByBlockIdAndIndex",
+            |params, context| async move {
+                #[derive(Debug, Deserialize)]
+                struct NamedArgs {
+                    block_id: BlockId,
+                    index: StarknetTransactionIndex,
+                }
+                let params = params.parse::<NamedArgs>()?;
+                context
+                    .get_transaction_by_block_id_and_index(params.block_id, params.index)
+                    .await
+            },
+        )?;
+        module.register_async_method(
+            "starknet_getTransactionReceipt",
+            |params, context| async move {
+                #[derive(Debug, Deserialize)]
+                struct NamedArgs {
+                    transaction_hash: StarknetTransactionHash,
+                }
+                context
+                    .get_transaction_receipt(params.parse::<NamedArgs>()?.transaction_hash)
+                    .await
+            },
+        )?;
+        module.register_async_method("starknet_getClass", |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                class_hash: ClassHash,
             }
             context
-                .get_transaction_by_hash(params.parse::<NamedArgs>()?.transaction_hash)
+                .get_class(params.parse::<NamedArgs>()?.class_hash)
                 .await
-        },
-    )?;
-    module.register_async_method(
-        "starknet_getTransactionByBlockIdAndIndex",
-        |params, context| async move {
+        })?;
+        module.register_async_method("starknet_getClassHashAt", |params, context| async move {
             #[derive(Debug, Deserialize)]
             struct NamedArgs {
                 block_id: BlockId,
-                index: StarknetTransactionIndex,
+                contract_address: ContractAddress,
             }
             let params = params.parse::<NamedArgs>()?;
             context
-                .get_transaction_by_block_id_and_index(params.block_id, params.index)
+                .get_class_hash_at(params.block_id, params.contract_address)
                 .await
-        },
-    )?;
-    module.register_async_method(
-        "starknet_getTransactionReceipt",
-        |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                transaction_hash: StarknetTransactionHash,
-            }
-            context
-                .get_transaction_receipt(params.parse::<NamedArgs>()?.transaction_hash)
-                .await
-        },
-    )?;
-    module.register_async_method("starknet_getClass", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            class_hash: ClassHash,
-        }
-        context
-            .get_class(params.parse::<NamedArgs>()?.class_hash)
-            .await
-    })?;
-    module.register_async_method("starknet_getClassHashAt", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            block_id: BlockId,
-            contract_address: ContractAddress,
-        }
-        let params = params.parse::<NamedArgs>()?;
-        context
-            .get_class_hash_at(params.block_id, params.contract_address)
-            .await
-    })?;
-    module.register_async_method("starknet_getClassAt", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            block_id: BlockId,
-            contract_address: ContractAddress,
-        }
-        let params = params.parse::<NamedArgs>()?;
-        context
-            .get_class_at(params.block_id, params.contract_address)
-            .await
-    })?;
-    module.register_async_method(
-        "starknet_getBlockTransactionCount",
-        |params, context| async move {
+        })?;
+        module.register_async_method("starknet_getClassAt", |params, context| async move {
             #[derive(Debug, Deserialize)]
             struct NamedArgs {
                 block_id: BlockId,
-            }
-            context
-                .get_block_transaction_count(params.parse::<NamedArgs>()?.block_id)
-                .await
-        },
-    )?;
-    module.register_async_method("starknet_getNonce", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            contract_address: ContractAddress,
-        }
-        context
-            .get_nonce(params.parse::<NamedArgs>()?.contract_address)
-            .await
-    })?;
-    module.register_async_method("starknet_call", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            request: Call,
-            block_id: BlockId,
-        }
-        let params = params.parse::<NamedArgs>()?;
-        context.call(params.request, params.block_id).await
-    })?;
-    module.register_async_method("starknet_estimateFee", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            request: Call,
-            block_id: BlockId,
-        }
-        let params = params.parse::<NamedArgs>()?;
-        context.estimate_fee(params.request, params.block_id).await
-    })?;
-    module.register_async_method("starknet_blockNumber", |_, context| async move {
-        context.block_number().await
-    })?;
-    module.register_async_method("starknet_blockHashAndNumber", |_, context| async move {
-        context.block_hash_and_number().await
-    })?;
-    module.register_async_method("starknet_chainId", |_, context| async move {
-        context.chain_id().await
-    })?;
-    module.register_async_method("starknet_pendingTransactions", |_, context| async move {
-        context.pending_transactions().await
-    })?;
-    module.register_async_method("starknet_syncing", |_, context| async move {
-        context.syncing().await
-    })?;
-    module.register_async_method("starknet_getEvents", |params, context| async move {
-        #[derive(Debug, Deserialize)]
-        struct NamedArgs {
-            filter: EventFilter,
-        }
-        let request = params.parse::<NamedArgs>()?.filter;
-        context.get_events(request).await
-    })?;
-    module.register_async_method(
-        "starknet_addInvokeTransaction",
-        |params, context| async move {
-            #[serde_with::serde_as]
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                function_invocation: ContractCall,
-                #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
-                signature: Vec<CallSignatureElem>,
-                #[serde_as(as = "FeeAsHexStr")]
-                max_fee: Fee,
-                #[serde_as(as = "TransactionVersionAsHexStr")]
-                version: TransactionVersion,
+                contract_address: ContractAddress,
             }
             let params = params.parse::<NamedArgs>()?;
             context
-                .add_invoke_transaction(
-                    params.function_invocation,
-                    params.signature,
-                    params.max_fee,
-                    params.version,
-                )
+                .get_class_at(params.block_id, params.contract_address)
                 .await
-        },
-    )?;
-    module.register_async_method(
-        "starknet_addDeclareTransaction",
-        |params, context| async move {
-            #[serde_with::serde_as]
+        })?;
+        module.register_async_method(
+            "starknet_getBlockTransactionCount",
+            |params, context| async move {
+                #[derive(Debug, Deserialize)]
+                struct NamedArgs {
+                    block_id: BlockId,
+                }
+                context
+                    .get_block_transaction_count(params.parse::<NamedArgs>()?.block_id)
+                    .await
+            },
+        )?;
+        module.register_async_method("starknet_getNonce", |params, context| async move {
             #[derive(Debug, Deserialize)]
             struct NamedArgs {
-                contract_class: ContractDefinition,
-                #[serde_as(as = "TransactionVersionAsHexStr")]
-                version: TransactionVersion,
-                // An undocumented parameter that we forward to the sequencer API
-                // A deploy token is required to deploy contracts on Starknet mainnet only.
-                #[serde(default)]
-                token: Option<String>,
+                contract_address: ContractAddress,
             }
-            let params = params.parse::<NamedArgs>()?;
             context
-                .add_declare_transaction(params.contract_class, params.version, params.token)
+                .get_nonce(params.parse::<NamedArgs>()?.contract_address)
                 .await
-        },
-    )?;
-    module.register_async_method(
-        "starknet_addDeployTransaction",
-        |params, context| async move {
+        })?;
+        module.register_async_method("starknet_call", |params, context| async move {
             #[derive(Debug, Deserialize)]
             struct NamedArgs {
-                contract_address_salt: ContractAddressSalt,
-                constructor_calldata: Vec<ConstructorParam>,
-                contract_definition: ContractDefinition,
-                // An undocumented parameter that we forward to the sequencer API
-                // A deploy token is required to deploy contracts on Starknet mainnet only.
-                #[serde(default)]
-                token: Option<String>,
+                request: Call,
+                block_id: BlockId,
             }
             let params = params.parse::<NamedArgs>()?;
-            context
-                .add_deploy_transaction(
-                    params.contract_address_salt,
-                    params.constructor_calldata,
-                    params.contract_definition,
-                    params.token,
-                )
-                .await
-        },
-    )?;
+            context.call(params.request, params.block_id).await
+        })?;
+        module.register_async_method("starknet_estimateFee", |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                request: Call,
+                block_id: BlockId,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context.estimate_fee(params.request, params.block_id).await
+        })?;
+        module.register_async_method("starknet_blockNumber", |_, context| async move {
+            context.block_number().await
+        })?;
+        module.register_async_method("starknet_blockHashAndNumber", |_, context| async move {
+            context.block_hash_and_number().await
+        })?;
+        module.register_async_method("starknet_chainId", |_, context| async move {
+            context.chain_id().await
+        })?;
+        module.register_async_method("starknet_pendingTransactions", |_, context| async move {
+            context.pending_transactions().await
+        })?;
+        module.register_async_method("starknet_syncing", |_, context| async move {
+            context.syncing().await
+        })?;
+        module.register_async_method("starknet_getEvents", |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                filter: EventFilter,
+            }
+            let request = params.parse::<NamedArgs>()?.filter;
+            context.get_events(request).await
+        })?;
+        module.register_async_method(
+            "starknet_addInvokeTransaction",
+            |params, context| async move {
+                #[serde_with::serde_as]
+                #[derive(Debug, Deserialize)]
+                struct NamedArgs {
+                    function_invocation: ContractCall,
+                    #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
+                    signature: Vec<CallSignatureElem>,
+                    #[serde_as(as = "FeeAsHexStr")]
+                    max_fee: Fee,
+                    #[serde_as(as = "TransactionVersionAsHexStr")]
+                    version: TransactionVersion,
+                }
+                let params = params.parse::<NamedArgs>()?;
+                context
+                    .add_invoke_transaction(
+                        params.function_invocation,
+                        params.signature,
+                        params.max_fee,
+                        params.version,
+                    )
+                    .await
+            },
+        )?;
+        module.register_async_method(
+            "starknet_addDeclareTransaction",
+            |params, context| async move {
+                #[serde_with::serde_as]
+                #[derive(Debug, Deserialize)]
+                struct NamedArgs {
+                    contract_class: ContractDefinition,
+                    #[serde_as(as = "TransactionVersionAsHexStr")]
+                    version: TransactionVersion,
+                    // An undocumented parameter that we forward to the sequencer API
+                    // A deploy token is required to deploy contracts on Starknet mainnet only.
+                    #[serde(default)]
+                    token: Option<String>,
+                }
+                let params = params.parse::<NamedArgs>()?;
+                context
+                    .add_declare_transaction(params.contract_class, params.version, params.token)
+                    .await
+            },
+        )?;
+        module.register_async_method(
+            "starknet_addDeployTransaction",
+            |params, context| async move {
+                #[derive(Debug, Deserialize)]
+                struct NamedArgs {
+                    contract_address_salt: ContractAddressSalt,
+                    constructor_calldata: Vec<ConstructorParam>,
+                    contract_definition: ContractDefinition,
+                    // An undocumented parameter that we forward to the sequencer API
+                    // A deploy token is required to deploy contracts on Starknet mainnet only.
+                    #[serde(default)]
+                    token: Option<String>,
+                }
+                let params = params.parse::<NamedArgs>()?;
+                context
+                    .add_deploy_transaction(
+                        params.contract_address_salt,
+                        params.constructor_calldata,
+                        params.contract_definition,
+                        params.token,
+                    )
+                    .await
+            },
+        )?;
 
-    let module = module.into_inner();
-    Ok(server.start(module).map(|handle| (handle, local_addr))?)
+        let module = module.into_inner();
+        Ok(server.start(module).map(|handle| (handle, local_addr))?)
+    }
 }
 
 #[cfg(test)]
@@ -353,7 +377,7 @@ mod tests {
             GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
             StarknetBlockTimestamp, StorageAddress,
         },
-        rpc::{run_server, types::reply::BlockHashAndNumber},
+        rpc::types::reply::BlockHashAndNumber,
         sequencer::{
             reply::{
                 state_update::StorageDiff,
@@ -384,6 +408,14 @@ mod tests {
         sync::Arc,
     };
     use web3::types::H256;
+
+    /// Starts the HTTP-RPC server.
+    pub async fn run_server(
+        addr: SocketAddr,
+        api: RpcApi,
+    ) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
+        RpcServer::new(addr, api).run().await
+    }
 
     /// Helper function: produces named rpc method args map.
     fn by_name<const N: usize>(params: [(&'_ str, serde_json::Value); N]) -> Option<ParamsSer<'_>> {
@@ -2448,8 +2480,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chain_id() {
+    async fn chain_id_with_call_counter_metric() {
+        use crate::monitoring::metrics::{middleware::RpcMetricsMiddleware, test::RecorderGuard};
         use futures::stream::StreamExt;
+        use metrics::{
+            Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
+        };
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        struct FakeRecorder(Arc<FakeCounterFn>);
+        struct FakeCounterFn(AtomicU64);
+
+        impl Recorder for FakeRecorder {
+            fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+            fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+            fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
+            fn register_counter(&self, key: &Key) -> Counter {
+                if *key
+                    == Key::from_parts(
+                        "rpc_method_calls_total",
+                        vec![Label::new("method", "starknet_chainId")],
+                    )
+                {
+                    Counter::from_arc(self.0.clone())
+                } else {
+                    Counter::noop()
+                }
+            }
+            fn register_gauge(&self, _: &Key) -> Gauge {
+                unimplemented!()
+            }
+            fn register_histogram(&self, _: &Key) -> Histogram {
+                unimplemented!()
+            }
+        }
+
+        impl CounterFn for FakeCounterFn {
+            fn increment(&self, val: u64) {
+                self.0.fetch_add(val, Ordering::Relaxed);
+            }
+            fn absolute(&self, _: u64) {
+                unimplemented!()
+            }
+        }
+
+        let counter = Arc::new(FakeCounterFn(AtomicU64::default()));
+
+        // Other concurrent tests could be setting their own recorders
+        let _guard = RecorderGuard::lock(FakeRecorder(counter.clone())).unwrap();
 
         assert_eq!(
             [Chain::Testnet, Chain::Mainnet]
@@ -2459,7 +2537,12 @@ mod tests {
                     let sequencer = Client::new(*set_chain).unwrap();
                     let sync_state = Arc::new(SyncState::default());
                     let api = RpcApi::new(storage, sequencer, *set_chain, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                    let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
+                        .with_middleware(RpcMetricsMiddleware)
+                        .run()
+                        .await
+                        .unwrap();
                     let params = rpc_params!();
                     client(addr)
                         .request::<String>("starknet_chainId", params)
@@ -2474,6 +2557,8 @@ mod tests {
                 format!("0x{}", hex::encode("SN_MAIN")),
             ]
         );
+
+        assert_eq!(counter.0.load(Ordering::Relaxed), 2);
     }
 
     mod syncing {
