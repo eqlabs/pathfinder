@@ -168,6 +168,10 @@ where
     let mut last_block_start = std::time::Instant::now();
     let mut block_time_avg = std::time::Duration::ZERO;
     const BLOCK_TIME_WEIGHT: f32 = 0.05;
+    /// Delay before restarting L1 or L2 tasks if they fail. This delay helps prevent DoS if these
+    /// tasks are crashing.
+    #[cfg(not(test))]
+    const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
 
     loop {
         tokio::select! {
@@ -242,7 +246,11 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    l1_handle = tokio::spawn(l1_sync(new_tx, transport.clone(), chain, l1_head));
+                    l1_handle = tokio::spawn({
+                        #[cfg(not(test))]
+                        tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
+                        l1_sync(new_tx, transport.clone(), chain, l1_head)
+                    });
                     tracing::info!("L1 sync process restarted.")
                 },
             },
@@ -430,7 +438,11 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    l2_handle = tokio::spawn(l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval));
+                    l2_handle = tokio::spawn({
+                        #[cfg(not(test))]
+                        tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
+                        l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval)
+                    });
                     tracing::info!("L2 sync process restarted.");
                 }
             }
