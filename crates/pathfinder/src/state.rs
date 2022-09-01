@@ -65,16 +65,20 @@ pub(crate) fn update_contract_state(
     let new_nonce = new_nonce.unwrap_or(old_nonce);
 
     // Load the contract tree and insert the updates.
-    let mut contract_tree =
-        ContractsStateTree::load(db, old_root).context("Load contract state tree")?;
-    for storage_diff in updates {
+    let new_root = if !updates.is_empty() {
+        let mut contract_tree =
+            ContractsStateTree::load(db, old_root).context("Load contract state tree")?;
+        for storage_diff in updates {
+            contract_tree
+                .set(storage_diff.key, storage_diff.value)
+                .context("Update contract storage tree")?;
+        }
         contract_tree
-            .set(storage_diff.key, storage_diff.value)
-            .context("Update contract storage tree")?;
-    }
-    let new_root = contract_tree
-        .apply()
-        .context("Apply contract storage tree changes")?;
+            .apply()
+            .context("Apply contract storage tree changes")?
+    } else {
+        old_root
+    };
 
     // Calculate contract state hash, update global state tree and persist pre-image.
     let class_hash = ContractsTable::get_hash(db, contract_address)
