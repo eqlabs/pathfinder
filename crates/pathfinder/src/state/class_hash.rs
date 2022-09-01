@@ -313,6 +313,10 @@ mod json {
         #[serde(borrow)]
         pub builtins: Vec<Cow<'a, str>>,
 
+        // Added in Starknet 0.10, so we have to handle this not being present.
+        #[serde(borrow, skip_serializing_if = "Option::is_none")]
+        pub compiler_version: Option<Cow<'a, str>>,
+
         #[serde(borrow)]
         pub data: Vec<Cow<'a, str>>,
 
@@ -448,6 +452,23 @@ mod json {
             let (_, _, _, calculate_hash) = extract.await.unwrap().unwrap();
 
             assert_eq!(calculate_hash, expected);
+        }
+
+        #[tokio::test]
+        async fn cairo_0_10() {
+            let expected =
+                crate::starkhash!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6");
+
+            // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
+            let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x444453070729bf2db6a1f36541483c2952674e5de4bd05fcf538726b286bfa2")
+                .await
+                .unwrap();
+
+            let payload = resp.text().await.expect("response wasn't a string");
+
+            let hash = super::super::compute_class_hash(payload.as_bytes()).unwrap();
+
+            assert_eq!(hash.0, expected);
         }
     }
 
