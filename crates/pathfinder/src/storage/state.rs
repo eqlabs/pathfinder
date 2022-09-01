@@ -499,7 +499,7 @@ impl StarknetTransactionsTable {
                 .context("Compress Starknet transaction receipt")?;
 
             tx.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
-        named_params![
+                named_params![
                     ":hash": transaction.hash(),
                     ":idx": i,
                     ":block_hash": block_hash,
@@ -508,8 +508,13 @@ impl StarknetTransactionsTable {
                 ]).context("Insert transaction data into transactions table")?;
 
             // insert events from receipt
-            StarknetEventsTable::insert_events(tx, block_number, transaction, &receipt.events)
-                .context("Inserting events")?;
+            StarknetEventsTable::insert_events(
+                tx,
+                block_number,
+                receipt.transaction_hash,
+                &receipt.events,
+            )
+            .context("Inserting events")?;
         }
 
         Ok(())
@@ -795,54 +800,35 @@ impl StarknetEventsTable {
     pub fn insert_events(
         tx: &Transaction<'_>,
         block_number: StarknetBlockNumber,
-        transaction: &transaction::Transaction,
+        transaction_hash: StarknetTransactionHash,
         events: &[transaction::Event],
     ) -> anyhow::Result<()> {
-        match transaction {
-            transaction::Transaction::Declare(_) => {
-                anyhow::ensure!(
-                    events.is_empty(),
-                    "Declare transactions cannot emit events: block {}, transaction {}",
-                    block_number,
-                    transaction.hash().0
-                );
-                Ok(())
-            }
-            transaction::Transaction::Deploy(transaction::DeployTransaction {
-                transaction_hash,
-                ..
-            })
-            | transaction::Transaction::Invoke(transaction::InvokeTransaction {
-                transaction_hash,
-                ..
-            }) => {
-                let mut stmt = tx.prepare(
-                    r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
-                                           VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)")?;
+        let mut stmt = tx.prepare(
+            r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
+                                   VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)"
+        )?;
 
-                let mut keys = String::new();
-                let mut buffer = Vec::new();
+        let mut keys = String::new();
+        let mut buffer = Vec::new();
 
-                for (idx, event) in events.iter().enumerate() {
-                    keys.clear();
-                    Self::event_keys_to_base64_strings(&event.keys, &mut keys);
+        for (idx, event) in events.iter().enumerate() {
+            keys.clear();
+            Self::event_keys_to_base64_strings(&event.keys, &mut keys);
 
-                    buffer.clear();
-                    Self::encode_event_data_to_bytes(&event.data, &mut buffer);
+            buffer.clear();
+            Self::encode_event_data_to_bytes(&event.data, &mut buffer);
 
-                    stmt.execute(named_params![
-                        ":block_number": block_number,
-                        ":idx": idx,
-                        ":transaction_hash": &transaction_hash,
-                        ":from_address": &event.from_address,
-                        ":keys": &keys,
-                        ":data": &buffer,
-                    ])
-                    .context("Insert events into events table")?;
-                }
-                Ok(())
-            }
+            stmt.execute(named_params![
+                ":block_number": block_number,
+                ":idx": idx,
+                ":transaction_hash": &transaction_hash,
+                ":from_address": &event.from_address,
+                ":keys": &keys,
+                ":data": &buffer,
+            ])
+            .context("Insert events into events table")?;
         }
+        Ok(())
     }
 
     pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
