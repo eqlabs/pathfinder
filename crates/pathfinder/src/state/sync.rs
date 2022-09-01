@@ -747,7 +747,7 @@ fn update_starknet_state(
             &global_tree,
             transaction,
         )
-        .context("Update contract state")?;
+        .context("Update contract nonce")?;
 
         // Update the global state tree.
         global_tree
