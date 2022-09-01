@@ -352,9 +352,10 @@ To check if it's running well use `docker-compose logs -f`.
 
 ## JSON-RPC API
 
-Pathfinder supports version `v0.1.0` of the StarkNet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_api_openrpc.json), with the exception of `starknet_protocolVersion`. This method will be removed from the specification in its next version as its semantics and usage was questionable. We decided to not implement it.
-
-In addition, pathfinder also supports submitting transactions by passing these requests on to the StarkNet gateway. See [here](#transaction-write-api) for more details.
+Pathfinder supports version `v0.1.0` of the StarkNet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_api_openrpc.json), with the following changes:
+- The `starknet_protocolVersion` method is not implemented. This method will be removed from the specification in its next version as its semantics and usage was questionable. We decided to not implement it.
+- To be able to represent L1 handler transactions introduced in Starknet 0.10, we use the `L1_HANDLER_TXN` type from `0.2.0-rc1` of the JSON-RPC specification.
+- Pathfinder supports submitting transactions by passing these requests on to the StarkNet gateway. See [here](#transaction-write-api) for more details.
 
 When browsing the specification project, please be aware of the following pitfalls:
 - It uses git tags for release versions. The link above should take you to the version supported by pathfinder.
