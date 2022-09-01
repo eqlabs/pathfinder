@@ -388,7 +388,7 @@ Pathfinder has a monitoring API which can be enabled with the `--monitor-address
 ### Metrics
 
 `/metrics` provides a [Prometheus](https://prometheus.io/) metrics scrape endpoint. Currently only one type of metric is available:
-- `rpc_method_calls_total` counter, where the key `method` should be used to point to a particular RPC method to retrieve that method's total call count, for example: `rpc_method_calls_total{method="starknet_getStateUpdate"}`.
+- `rpc_method_calls_total` counter, where the label key `method` should be used to point to a particular RPC method to retrieve that method's total call count, for example: `rpc_method_calls_total{method="starknet_getStateUpdate"}`.
 
 ## License
 
