@@ -117,6 +117,41 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
             Ok(())
         })?;
 
+    /// Insert's a space ": " -> " : " for every tuple value in `cairo_type`. This is required by StarkNet 0.10 for
+    /// some obscure backwards compatibility reason for older contracts.
+    fn insert_space(object: &mut serde_json::Map<String, serde_json::Value>) {
+        for (k, v) in object.iter_mut() {
+            if k == "cairo_type" {
+                // Check that the value is a tuple.
+                if let Some(tuple_inner) = v
+                    .as_str()
+                    .and_then(|v| v.strip_prefix('(').and_then(|v| v.strip_suffix(')')))
+                {
+                    let new_val = format!(
+                        "({})",
+                        // FIXME: Replace this crude hack with something more intelligent.
+                        //        It is required because if we receive an already correct ` : `, we will still
+                        //        "repair" it to `  : ` which we then fix at the end.
+                        tuple_inner.replace(": ", " : ").replace("  :", " :")
+                    );
+                    *v = serde_json::Value::String(new_val);
+                }
+            } else if let Some(inner_object) = v.as_object_mut() {
+                // `cairo_type` occurs at multiple levels in the object, so we must explore deeper.
+                insert_space(inner_object);
+            }
+        }
+    }
+
+    // Handle a backwards compatibility hack which is required if compiler_version is not present.
+    // See `insert_space` for more details.
+    if contract_definition.program.compiler_version.is_none() {
+        let identifiers = contract_definition.program.identifiers.as_object_mut();
+        if let Some(identifiers) = identifiers {
+            insert_space(identifiers);
+        }
+    }
+
     let truncated_keccak = {
         let mut ser =
             serde_json::Serializer::with_formatter(KeccakWriter::default(), PythonDefaultFormatter);
@@ -461,6 +496,25 @@ mod json {
 
             // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
             let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x444453070729bf2db6a1f36541483c2952674e5de4bd05fcf538726b286bfa2")
+                .await
+                .unwrap();
+
+            let payload = resp.text().await.expect("response wasn't a string");
+
+            let hash = super::super::compute_class_hash(payload.as_bytes()).unwrap();
+
+            assert_eq!(hash.0, expected);
+        }
+
+        #[tokio::test]
+        async fn cairo_0_10_part_2() {
+            let expected = crate::starkhash!(
+                "0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f"
+            );
+
+            // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
+            // These tuple values require a space to be injected in order to achieve the correct hash.
+            let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x06f17fb7a052f3d18c1911c9d9c2fb0032bbe1ea57c58b0baca85bda9f3698be")
                 .await
                 .unwrap();
 
