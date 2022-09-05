@@ -151,26 +151,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
     ) -> std::borrow::Cow<'a, str> {
         use std::borrow::Cow::*;
         match key {
-            "cairo_type" => {
-                if let Some(tuple_inner) = value.strip_prefix('(').and_then(|v| v.strip_suffix(')'))
-                {
-                    let new_val = format!("({})", add_extra_space_before_colon(tuple_inner));
-                    Owned(new_val)
-                } else {
-                    Borrowed(value)
-                }
-            }
-            "value" => {
-                if let Some(cast_inner) = value
-                    .strip_prefix("[cast(")
-                    .and_then(|v| v.strip_suffix(")]"))
-                {
-                    let new_val = format!("[cast({})]", add_extra_space_before_colon(cast_inner));
-                    Owned(new_val)
-                } else {
-                    Borrowed(value)
-                }
-            }
+            "cairo_type" | "value" => Owned(add_extra_space_before_colon(value)),
             _ => Borrowed(value),
         }
     }
