@@ -156,6 +156,15 @@ mod tests {
                 // Checks that Starknet's core proxy contract still points to the same
                 // core implementation contract. If this address changes, we should
                 // update the address and more importantly, the ABI.
+                //
+                // ** Updating the ABI **
+                // The new ABI can be retrieved from etherscan by visiting the new contract's
+                // address and navigating to the `Contract -> Code` tab. Scrolling down will then
+                // show the contract's ABI. e.g.
+                //  https://goerli.etherscan.io/address/0x70c8a579ad08339cca19d77d8646f4b6f0fd098a#code
+                //
+                // The ABI diff should be inspected for any changes that impact us -- currently restricted to
+                // log changes as read these. In particular, any of the `XXX_EVENT` consts.
 
                 // The current address of Starknet's core contract implementation.
                 const CORE_IMPL_ADDR: &str = "0x70c8a579ad08339cca19d77d8646f4b6f0fd098a";
