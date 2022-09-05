@@ -1,8 +1,8 @@
 # reads stdin for a contract_definition json blob, writes a class hash to stdout
 # example: python py/src/compute_class_hash.py < class_definition.json
 
-from starkware.starknet.business_logic.state_objects import ContractDefinitionFact
-from starkware.starknet.services.api.contract_definition import ContractDefinition
+from starkware.starknet.business_logic.state.objects import ContractClassFact
+from starkware.starknet.services.api.contract_class import ContractClass
 from starkware.cairo.lang.vm.crypto import pedersen_hash
 
 import sys
@@ -20,7 +20,7 @@ def main():
     sys.stdin.reconfigure(encoding="utf-8")
     contents = sys.stdin.read()
 
-    cdf = ContractDefinitionFact(ContractDefinition.loads(contents))
+    cdf = ContractClassFact(ContractClass.loads(contents))
 
     print(cdf._hash(pedersen_hash).hex())
     sys.exit(0)
