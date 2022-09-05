@@ -1,14 +1,14 @@
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::core::GlobalRoot;
 use crate::sequencer;
 use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::state_update::{DeployedContract, StateDiff};
-use crate::sequencer::reply::Block;
+use crate::sequencer::reply::{Block, Status};
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
@@ -269,7 +269,13 @@ async fn download_block(
                 let block_number = block.block_number;
                 tracing::warn!(?block_number, block_hash = ?expected_block_hash, "Block hash mismatch");
             }
-            Ok(DownloadBlock::Block(block))
+            match block.status {
+                Status::AcceptedOnL1 | Status::AcceptedOnL2 => Ok(DownloadBlock::Block(block)),
+                _ => Err(anyhow!(
+                    "Rejecting block as its status is {}, and only accepted blocks are allowed",
+                    block.status
+                )),
+            }
         }
         Ok(MaybePendingBlock::Pending(_)) => anyhow::bail!("Sequencer returned `pending` block"),
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound => {
@@ -999,6 +1005,31 @@ mod tests {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
+            }
+        }
+
+        mod errors {
+            use super::*;
+            use crate::core::Chain;
+            use crate::sequencer::reply::Status;
+
+            #[tokio::test]
+            async fn invalid_block_status() {
+                let (tx_event, _rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
+
+                // Block with a non-accepted status
+                let mut block = BLOCK0.clone();
+                block.status = Status::Reverted;
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER.into(), Ok(block.into()));
+
+                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let error = jh.await.unwrap().unwrap_err();
+                assert_eq!(
+                    &error.to_string(),
+                    "Rejecting block as its status is REVERTED, and only accepted blocks are allowed"
+                );
             }
         }
 

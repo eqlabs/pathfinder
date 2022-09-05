@@ -124,6 +124,21 @@ pub enum Status {
     Aborted,
 }
 
+impl std::fmt::Display for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Status::NotReceived => write!(f, "NOT_RECEIVED"),
+            Status::Received => write!(f, "RECEIVED"),
+            Status::Pending => write!(f, "PENDING"),
+            Status::Rejected => write!(f, "REJECTED"),
+            Status::AcceptedOnL1 => write!(f, "ACCEPTED_ON_L1"),
+            Status::AcceptedOnL2 => write!(f, "ACCEPTED_ON_L2"),
+            Status::Reverted => write!(f, "REVERTED"),
+            Status::Aborted => write!(f, "ABORTED"),
+        }
+    }
+}
+
 /// Used to deserialize a reply from [ClientApi::call](crate::sequencer::ClientApi::call).
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
