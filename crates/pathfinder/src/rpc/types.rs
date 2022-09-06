@@ -693,10 +693,9 @@ pub mod reply {
                                 common: CommonTransactionProperties {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
-                                    // no `version` in invoke transactions
-                                    version: TransactionVersion(Default::default()),
+                                    version: TransactionVersion(web3::types::H256::zero()),
                                     signature: txn.signature.clone(),
-                                    // no `nonce` in invoke transactions
+                                    // no `nonce` in v0 invoke transactions
                                     nonce: TransactionNonce(Default::default()),
                                 },
                                 contract_address: txn.contract_address,
@@ -710,11 +709,11 @@ pub mod reply {
                                 common: CommonTransactionProperties {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
-                                    // no `version` in invoke transactions
-                                    version: TransactionVersion(Default::default()),
+                                    version: TransactionVersion(
+                                        web3::types::H256::from_low_u64_be(1),
+                                    ),
                                     signature: txn.signature.clone(),
-                                    // no `nonce` in invoke transactions
-                                    nonce: TransactionNonce(Default::default()),
+                                    nonce: txn.nonce,
                                 },
                                 contract_address: txn.contract_address,
                                 entry_point_selector: EntryPoint(StarkHash::ZERO),
