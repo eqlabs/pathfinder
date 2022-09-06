@@ -1,5 +1,6 @@
 //! StarkNet node JSON-RPC related modules.
 pub mod api;
+mod get_nonce;
 pub mod serde;
 #[cfg(test)]
 pub mod test_client;
@@ -15,13 +16,14 @@ use crate::{
     },
     monitoring::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware},
     rpc::{
-        api::{BlockResponseScope, RpcApi},
+        api::{internal_server_error, BlockResponseScope, RpcApi},
         serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
         types::request::{Call, ContractCall, EventFilter},
     },
     sequencer::request::add_transaction::ContractDefinition,
 };
 use ::serde::Deserialize;
+use anyhow::Context;
 use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle, RpcModule};
 
 use std::{net::SocketAddr, result::Result};
@@ -243,15 +245,8 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
                     .await
             },
         )?;
-        module.register_async_method("starknet_getNonce", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                contract_address: ContractAddress,
-            }
-            context
-                .get_nonce(params.parse::<NamedArgs>()?.contract_address)
-                .await
-        })?;
+        Self::register_method::<get_nonce::GetNonce>(&mut module)
+            .with_context(|| format!("Registering {}", get_nonce::GetNonce::NAME))?;
         module.register_async_method("starknet_call", |params, context| async move {
             #[derive(Debug, Deserialize)]
             struct NamedArgs {
@@ -366,6 +361,35 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         let module = module.into_inner();
         Ok(server.start(module).map(|handle| (handle, local_addr))?)
     }
+
+    fn register_method<T: RpcMethod>(
+        module: &mut RpcModuleWrapper<RpcApi>,
+    ) -> Result<
+        jsonrpsee::core::server::rpc_module::MethodResourcesBuilder<'_>,
+        jsonrpsee::core::Error,
+    > {
+        module.register_async_method(T::NAME, |params, context| async move {
+            let input = params.parse::<T::Input>()?;
+            match T::execute(context, input).await {
+                Ok(Ok(output)) => Ok(output),
+                Ok(Err(rpc_err)) => Err(rpc_err.into().into()),
+                Err(internal) => Err(internal_server_error(internal)),
+            }
+        })
+    }
+}
+
+#[async_trait::async_trait]
+pub trait RpcMethod {
+    const NAME: &'static str;
+    type Input: ::serde::de::DeserializeOwned + Send + Sync;
+    type Output: 'static + ::serde::Serialize + Send + Sync;
+    type Errors: Into<types::reply::ErrorCode>;
+
+    async fn execute(
+        context: std::sync::Arc<RpcApi>,
+        input: Self::Input,
+    ) -> anyhow::Result<Result<Self::Output, Self::Errors>>;
 }
 
 #[cfg(test)]
@@ -427,7 +451,7 @@ mod tests {
     }
 
     // Local test helper
-    fn setup_storage() -> Storage {
+    pub fn setup_storage() -> Storage {
         use crate::sequencer::reply::transaction::Transaction;
         use crate::{
             core::{ContractNonce, StorageValue},
@@ -2161,10 +2185,13 @@ mod tests {
         let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state.clone());
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-        // This contract is created in `setup_storage` and has a nonce set to 0x1.
+        // This contract is created in `setup_storage` and has a nonce set to 0x1 in block 0.
         let valid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
         let nonce = client(addr)
-            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
+            .request::<ContractNonce>(
+                "starknet_getNonce",
+                rpc_params!(BlockId::Latest, valid_contract),
+            )
             .await
             .unwrap();
         assert_eq!(nonce, ContractNonce(starkhash!("01")));
@@ -2172,7 +2199,10 @@ mod tests {
         // This contract is created in `setup_storage` and has no nonce explicitly set.
         let valid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
         let nonce = client(addr)
-            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
+            .request::<ContractNonce>(
+                "starknet_getNonce",
+                rpc_params!(BlockId::Latest, valid_contract),
+            )
             .await
             .unwrap();
         assert_eq!(nonce, ContractNonce::ZERO);
@@ -2180,7 +2210,10 @@ mod tests {
         // Invalid contract should error.
         let invalid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
         let error = client(addr)
-            .request::<ContractNonce>("starknet_getNonce", rpc_params!(invalid_contract))
+            .request::<ContractNonce>(
+                "starknet_getNonce",
+                rpc_params!(BlockId::Latest, invalid_contract),
+            )
             .await
             .expect_err("invalid contract should error");
         let expected = crate::rpc::types::reply::ErrorCode::ContractNotFound;

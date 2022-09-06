@@ -37,13 +37,13 @@ use super::types::reply::{
 
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
-    storage: Storage,
-    sequencer: sequencer::Client,
-    chain: Chain,
-    call_handle: Option<ext_py::Handle>,
-    shared_gas_price: Option<Cached>,
-    sync_state: Arc<SyncState>,
-    pending_data: Option<PendingData>,
+    pub storage: Storage,
+    pub sequencer: sequencer::Client,
+    pub chain: Chain,
+    pub call_handle: Option<ext_py::Handle>,
+    pub shared_gas_price: Option<Cached>,
+    pub sync_state: Arc<SyncState>,
+    pub pending_data: Option<PendingData>,
 }
 
 #[derive(Debug)]
@@ -1496,7 +1496,7 @@ impl From<EventFilterError> for jsonrpsee::core::Error {
 //
 // This error is used for all instances of operations that are not explicitly specified in the StarkNet spec.
 // See <https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json>
-fn internal_server_error(e: impl std::fmt::Display) -> jsonrpsee::core::Error {
+pub fn internal_server_error(e: impl std::fmt::Display) -> jsonrpsee::core::Error {
     Error::Call(CallError::Custom(ErrorObject::owned(
         jsonrpsee::types::error::ErrorCode::InternalError.code(),
         format!("{}: {}", jsonrpsee::types::error::INTERNAL_ERROR_MSG, e),
