@@ -8,19 +8,26 @@ pub struct GetNonceInput {
     contract_address: crate::core::ContractAddress,
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug)]
 pub enum GetNonceErrors {
     BlockNotFound,
     ContractNotFound,
+    Internal(anyhow::Error),
 }
 
-impl From<GetNonceErrors> for super::types::reply::ErrorCode {
+impl From<GetNonceErrors> for super::error::RpcError {
     fn from(e: GetNonceErrors) -> Self {
-        use super::types::reply::ErrorCode;
         match e {
-            GetNonceErrors::BlockNotFound => ErrorCode::InvalidBlockId,
-            GetNonceErrors::ContractNotFound => ErrorCode::ContractNotFound,
+            GetNonceErrors::BlockNotFound => super::error::RpcError::BlockNotFound,
+            GetNonceErrors::ContractNotFound => super::error::RpcError::ContractNotFound,
+            GetNonceErrors::Internal(internal) => super::error::RpcError::Internal(internal),
         }
+    }
+}
+
+impl From<anyhow::Error> for GetNonceErrors {
+    fn from(e: anyhow::Error) -> Self {
+        GetNonceErrors::Internal(e)
     }
 }
 
@@ -32,12 +39,12 @@ impl super::RpcMethod for GetNonce {
 
     type Output = crate::core::ContractNonce;
 
-    type Errors = GetNonceErrors;
+    type Error = GetNonceErrors;
 
     async fn execute(
         context: std::sync::Arc<super::api::RpcApi>,
         input: Self::Input,
-    ) -> anyhow::Result<Result<Self::Output, Self::Errors>> {
+    ) -> Result<Self::Output, Self::Error> {
         use crate::state::state_tree::GlobalStateTree;
         use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 
@@ -52,7 +59,7 @@ impl super::RpcMethod for GetNonce {
                             .nonces
                             .get(&input.contract_address)
                         {
-                            return Ok(Ok(*nonce));
+                            return Ok(*nonce);
                         }
                     }
                 };
@@ -66,21 +73,16 @@ impl super::RpcMethod for GetNonce {
 
         let storage = context.storage.clone();
         let span = tracing::Span::current();
-        let jh = tokio::task::spawn_blocking(move || {
+        let jh = tokio::task::spawn_blocking(move || -> Result<Self::Output, Self::Error> {
             let _g = span.enter();
             let mut db = storage
                 .connection()
                 .context("Opening database connection")?;
             let tx = db.transaction().context("Creating database transaction")?;
 
-            // Use internal_server_error to indicate that the process of querying for a particular block failed,
-            // which is not the same as being sure that the block is not in the db.
-            let global_root = match StarknetBlocksTable::get_root(&tx, block_id)
+            let global_root = StarknetBlocksTable::get_root(&tx, block_id)
                 .context("Fetching global root")?
-            {
-                Some(root) => root,
-                None => return anyhow::Ok(Err(Self::Errors::BlockNotFound)),
-            };
+                .ok_or(Self::Error::BlockNotFound)?;
 
             let global_state_tree =
                 GlobalStateTree::load(&tx, global_root).context("Loading global state tree")?;
@@ -91,18 +93,18 @@ impl super::RpcMethod for GetNonce {
 
             // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
             if state_hash.0 == stark_hash::StarkHash::ZERO {
-                return Ok(Err(Self::Errors::ContractNotFound));
+                return Err(Self::Error::ContractNotFound);
             }
 
             let nonce = crate::storage::ContractsStateTable::get_nonce(&tx, state_hash)
                 .context("Reading contract nonce")?
                 // Since the contract does exist, the nonce should not be missing.
-                .context("Contract nonce is missing")?;
+                .context("Contract nonce is missing from database")?;
 
-            Ok(Ok(nonce))
+            Ok(nonce)
         });
-        let nonce = jh.await.context("Database read panic or shutting down")??;
-        Ok(nonce)
+        let result = jh.await.context("Database read panic or shutting down")?;
+        result
     }
 }
 
@@ -185,9 +187,9 @@ mod tests {
                 contract_address: ContractAddress::new_or_panic(starkhash_bytes!(b"invalid")),
             };
 
-            let result = GetNonce::execute(context, input).await.unwrap();
+            let result = GetNonce::execute(context, input).await;
 
-            assert_eq!(result, Err(GetNonceErrors::ContractNotFound));
+            assert_matches::assert_matches!(result, Err(GetNonceErrors::ContractNotFound));
         }
 
         #[tokio::test]
@@ -206,9 +208,9 @@ mod tests {
                 contract_address: ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
             };
 
-            let result = GetNonce::execute(context, input).await.unwrap();
+            let result = GetNonce::execute(context, input).await;
 
-            assert_eq!(result, Err(GetNonceErrors::BlockNotFound));
+            assert_matches::assert_matches!(result, Err(GetNonceErrors::BlockNotFound));
         }
     }
 }

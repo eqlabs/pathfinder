@@ -1,5 +1,6 @@
 //! StarkNet node JSON-RPC related modules.
 pub mod api;
+mod error;
 mod get_nonce;
 pub mod serde;
 #[cfg(test)]
@@ -16,7 +17,7 @@ use crate::{
     },
     monitoring::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware},
     rpc::{
-        api::{internal_server_error, BlockResponseScope, RpcApi},
+        api::{BlockResponseScope, RpcApi},
         serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
         types::request::{Call, ContractCall, EventFilter},
     },
@@ -370,11 +371,10 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     > {
         module.register_async_method(T::NAME, |params, context| async move {
             let input = params.parse::<T::Input>()?;
-            match T::execute(context, input).await {
-                Ok(Ok(output)) => Ok(output),
-                Ok(Err(rpc_err)) => Err(rpc_err.into().into()),
-                Err(internal) => Err(internal_server_error(internal)),
-            }
+            T::execute(context, input).await.map_err(|e| {
+                let rpc_err: error::RpcError = e.into();
+                jsonrpsee::core::Error::from(rpc_err)
+            })
         })
     }
 }
@@ -384,12 +384,12 @@ pub trait RpcMethod {
     const NAME: &'static str;
     type Input: ::serde::de::DeserializeOwned + Send + Sync;
     type Output: 'static + ::serde::Serialize + Send + Sync;
-    type Errors: Into<types::reply::ErrorCode>;
+    type Error: Into<error::RpcError>;
 
     async fn execute(
         context: std::sync::Arc<RpcApi>,
         input: Self::Input,
-    ) -> anyhow::Result<Result<Self::Output, Self::Errors>>;
+    ) -> Result<Self::Output, Self::Error>;
 }
 
 #[cfg(test)]
