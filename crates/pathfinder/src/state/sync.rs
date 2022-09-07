@@ -438,10 +438,12 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    l2_handle = tokio::spawn({
+                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval);
+
+                    l2_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
                         tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
-                        l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval)
+                        fut.await
                     });
                     tracing::info!("L2 sync process restarted.");
                 }
