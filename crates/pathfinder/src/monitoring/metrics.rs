@@ -12,6 +12,12 @@ pub mod middleware {
         fn on_call(&self, name: &str) {
             metrics::increment_counter!("rpc_method_calls_total", "method" => name.to_owned());
         }
+
+        fn on_result(&self, name: &str, _success: bool, _started_at: Self::Instant) {
+            if !_success {
+                metrics::increment_counter!("rpc_method_calls_failed_total", "method" => name.to_owned());
+            }
+        }
     }
 
     #[derive(Debug, Clone)]
@@ -28,6 +34,13 @@ pub mod middleware {
         fn on_call(&self, name: &str) {
             match self {
                 MaybeRpcMetricsMiddleware::Middleware(x) => x.on_call(name),
+                MaybeRpcMetricsMiddleware::NoOp => {}
+            }
+        }
+
+        fn on_result(&self, name: &str, success: bool, started_at: Self::Instant) {
+            match self {
+                MaybeRpcMetricsMiddleware::Middleware(x) => x.on_result(name, success, started_at),
                 MaybeRpcMetricsMiddleware::NoOp => {}
             }
         }
