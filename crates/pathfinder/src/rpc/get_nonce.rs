@@ -8,28 +8,7 @@ pub struct GetNonceInput {
     contract_address: crate::core::ContractAddress,
 }
 
-#[derive(Debug)]
-pub enum GetNonceErrors {
-    BlockNotFound,
-    ContractNotFound,
-    Internal(anyhow::Error),
-}
-
-impl From<GetNonceErrors> for super::error::RpcError {
-    fn from(e: GetNonceErrors) -> Self {
-        match e {
-            GetNonceErrors::BlockNotFound => super::error::RpcError::BlockNotFound,
-            GetNonceErrors::ContractNotFound => super::error::RpcError::ContractNotFound,
-            GetNonceErrors::Internal(internal) => super::error::RpcError::Internal(internal),
-        }
-    }
-}
-
-impl From<anyhow::Error> for GetNonceErrors {
-    fn from(e: anyhow::Error) -> Self {
-        GetNonceErrors::Internal(e)
-    }
-}
+crate::rpc_error_subset!(GetNonceError: BlockNotFound, ContractNotFound);
 
 #[async_trait::async_trait]
 impl super::RpcMethod for GetNonce {
@@ -39,7 +18,7 @@ impl super::RpcMethod for GetNonce {
 
     type Output = crate::core::ContractNonce;
 
-    type Error = GetNonceErrors;
+    type Error = GetNonceError;
 
     async fn execute(
         context: std::sync::Arc<super::api::RpcApi>,
@@ -189,7 +168,7 @@ mod tests {
 
             let result = GetNonce::execute(context, input).await;
 
-            assert_matches::assert_matches!(result, Err(GetNonceErrors::ContractNotFound));
+            assert_matches::assert_matches!(result, Err(GetNonceError::ContractNotFound));
         }
 
         #[tokio::test]
@@ -210,7 +189,7 @@ mod tests {
 
             let result = GetNonce::execute(context, input).await;
 
-            assert_matches::assert_matches!(result, Err(GetNonceErrors::BlockNotFound));
+            assert_matches::assert_matches!(result, Err(GetNonceError::BlockNotFound));
         }
     }
 }
