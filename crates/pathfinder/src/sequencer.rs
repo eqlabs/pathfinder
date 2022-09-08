@@ -125,13 +125,6 @@ impl Client {
         Self::with_url(url)
     }
 
-    #[cfg(test)]
-    pub(crate) fn integration() -> reqwest::Result<Self> {
-        let integration_url = Url::parse("https://external.integration.starknet.io").unwrap();
-
-        Self::with_url(integration_url)
-    }
-
     /// Create a Sequencer client for the given [Url].
     pub fn with_url(url: Url) -> reqwest::Result<Self> {
         Ok(Self {

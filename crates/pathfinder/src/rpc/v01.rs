@@ -2425,7 +2425,7 @@ mod tests {
             #[tokio::test]
             async fn declare_transaction() {
                 let storage = setup_storage();
-                let sequencer = Client::integration().unwrap();
+                let sequencer = Client::new(Chain::Integration).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
@@ -2553,7 +2553,7 @@ mod tests {
             #[tokio::test]
             async fn declare_transaction() {
                 let storage = setup_storage();
-                let sequencer = Client::integration().unwrap();
+                let sequencer = Client::new(Chain::Integration).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
