@@ -172,6 +172,10 @@ async fn spawn(
     database_path: PathBuf,
     current_span: std::sync::Arc<std::sync::Mutex<tracing::Span>>,
 ) -> anyhow::Result<(Child, u32, ChildStdin, BufReader<ChildStdout>, String)> {
+    // this is done so that we avoid explicit dependency to the location of `py/` directory thus
+    // making docker image much easier to do. however it does infect (GPL-style, should such
+    // license be cairo-lang's license ever in future) our main binary due to this being very much
+    // "static linkage".
     let script_file = tempfile::NamedTempFile::new()
         .context("Failed to create temporary file for Python script")?;
     script_file
