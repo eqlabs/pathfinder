@@ -54,6 +54,8 @@ impl From<crate::core::Chain> for UsedChain {
 }
 
 /// Custom type for setting the serialization in stone, or at least same as python code.
+///
+/// In call.py this is `def maybe_pending_updates`.
 #[derive(Debug)]
 pub struct ContractUpdatesWrapper<'a>(Option<&'a HashMap<ContractAddress, Vec<StorageDiff>>>);
 
@@ -115,6 +117,8 @@ impl<'a> serde::Serialize for DiffElement<'a> {
 }
 
 /// Custom type for setting the serialization in stone, or at least same as python code.
+///
+/// In call.py this is read by `def maybe_pending_deployed`.
 #[derive(Debug)]
 pub struct DeployedContractsWrapper<'a>(Option<&'a [DeployedContract]>);
 
