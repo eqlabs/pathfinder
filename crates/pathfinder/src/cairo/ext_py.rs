@@ -343,7 +343,7 @@ mod tests {
                                 calldata: vec![crate::core::CallParam(
                                     starkhash!("84"),
                                 )],
-                                entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+                                entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
                                 signature: Default::default(),
                                 max_fee: super::Call::DEFAULT_MAX_FEE,
                                 version: super::Call::DEFAULT_VERSION,
@@ -408,7 +408,7 @@ mod tests {
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
             )),
             calldata: vec![crate::core::CallParam(starkhash!("84"))],
-            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
@@ -505,7 +505,7 @@ mod tests {
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375"
             )),
             calldata: vec![crate::core::CallParam(starkhash!("84"))],
-            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
@@ -574,7 +574,7 @@ mod tests {
         let call = super::Call {
             contract_address: target_contract,
             calldata: vec![crate::core::CallParam(storage_address)],
-            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,

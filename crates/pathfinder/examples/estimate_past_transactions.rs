@@ -358,7 +358,7 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::types::request::Call {
         pathfinder_lib::rpc::types::request::Call {
             contract_address: tx.contract_address,
             calldata: tx.calldata,
-            entry_point_selector: tx.entry_point_selector,
+            entry_point_selector: Some(tx.entry_point_selector),
             signature: tx
                 .signature
                 .into_iter()

@@ -80,8 +80,18 @@ async fn main() {
         let args = serde_json::from_str::<NamedArgs>(&buffer)
             .expect("Failed to parse json-rpc alike payload on a single line");
 
+        let sequencer_call = pathfinder_lib::sequencer::request::Call {
+            contract_address: args.request.contract_address,
+            calldata: args.request.calldata.clone(),
+            entry_point_selector: args
+                .request
+                .entry_point_selector
+                .expect("entry_point_selector is required"),
+            signature: args.request.signature.clone(),
+        };
+
         let seq = sequencer
-            .call(args.request.clone().into(), args.block_hash)
+            .call(sequencer_call, args.block_hash)
             .map_ok(|x| x.result)
             .map_err(Error::from);
 

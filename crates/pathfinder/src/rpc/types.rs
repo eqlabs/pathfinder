@@ -96,7 +96,7 @@ pub mod request {
     pub struct Call {
         pub contract_address: ContractAddress,
         pub calldata: Vec<CallParam>,
-        pub entry_point_selector: EntryPoint,
+        pub entry_point_selector: Option<EntryPoint>,
         /// EstimateFee hurry: it doesn't make any sense to use decimal numbers for one field
         #[serde(default)]
         #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]

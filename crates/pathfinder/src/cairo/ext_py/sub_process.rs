@@ -348,7 +348,7 @@ async fn process(
             command: Verb::Call,
             contract_address: &call.contract_address,
             calldata: &call.calldata,
-            entry_point_selector: &call.entry_point_selector,
+            entry_point_selector: call.entry_point_selector.as_ref(),
             at_block,
             // TODO: this might change in the future, if *later* gas price needs to be available
             // sometimes
@@ -371,7 +371,7 @@ async fn process(
             command: Verb::EstimateFee,
             contract_address: &call.contract_address,
             calldata: &call.calldata,
-            entry_point_selector: &call.entry_point_selector,
+            entry_point_selector: call.entry_point_selector.as_ref(),
             at_block,
             gas_price: gas_price.as_option(),
             signature: &call.signature,

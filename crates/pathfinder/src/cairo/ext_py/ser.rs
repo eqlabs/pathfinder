@@ -12,7 +12,7 @@ pub(crate) struct ChildCommand<'a> {
     pub command: Verb,
     pub contract_address: &'a ContractAddress,
     pub calldata: &'a [CallParam],
-    pub entry_point_selector: &'a EntryPoint,
+    pub entry_point_selector: Option<&'a EntryPoint>,
     pub at_block: &'a BlockHashNumberOrLatest,
     #[serde_as(as = "Option<&crate::rpc::serde::H256AsHexStr>")]
     pub gas_price: Option<&'a web3::types::H256>,
