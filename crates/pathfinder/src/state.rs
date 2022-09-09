@@ -98,12 +98,12 @@ fn calculate_contract_state_hash(
     root: ContractRoot,
     nonce: ContractNonce,
 ) -> ContractStateHash {
-    const CONTRACT_VERSION: StarkHash = StarkHash::ZERO;
+    const CONTRACT_STATE_HASH_VERSION: StarkHash = StarkHash::ZERO;
 
-    // The contract state hash is defined as H(H(H(hash, root), nonce), CONTRACT_VERSION)
+    // The contract state hash is defined as H(H(H(hash, root), nonce), CONTRACT_STATE_HASH_VERSION)
     let hash = stark_hash(hash.0, root.0);
     let hash = stark_hash(hash, nonce.0);
-    let hash = stark_hash(hash, CONTRACT_VERSION);
+    let hash = stark_hash(hash, CONTRACT_STATE_HASH_VERSION);
 
     // Compare this with the HashChain construction used in the contract_hash: the number of
     // elements is not hashed to this hash, and this is supposed to be different.
