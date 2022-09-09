@@ -193,6 +193,12 @@ async fn spawn(
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
 
+    // enable long python tracebacks for exceptions for faster bebugging -- this should never be
+    // done in production because some backtraces could be huge and quickly consume any log file
+    // space in addition to slowing things down.
+    #[cfg(debug_assertions)]
+    command.env("PATHFINDER_PROFILE", "dev");
+
     let mut child = command
         .spawn()
         .context("Failed to spawn the new python process; this should only happen when the session is at it's process limit on unix.")?;

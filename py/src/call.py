@@ -3,6 +3,7 @@ import json
 import time
 import sqlite3
 import asyncio
+import os
 
 # FIXME: when pathfinder is launched with missing dependencies, this will be
 # logged out, which is very unclear and confuses users. it would be better to
@@ -16,6 +17,9 @@ SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
+
+# this is set by pathfinder automatically when #[cfg(debug_assertions)]
+DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
 
 
 def main():
@@ -93,6 +97,11 @@ def do_loop(connection, input_gen, output_file):
 
     logger = Logger()
 
+    if DEV_MODE:
+        logger.warn(
+            "dev mode enabled, expect long tracebacks; do not use in production!"
+        )
+
     for line in input_gen:
         if line == "" or line.startswith("#"):
             continue
@@ -158,7 +167,13 @@ def report_failed(logger, command, e):
     logger.trace(f"{command}")
     # we cannot log errors at higher than info, which is the default level, to
     # allow opting in to these and not forcing them on everyone
-    logger.debug(str(e))
+    if DEV_MODE:
+        import traceback
+
+        strs = traceback.format_exception(type(e), e, e.__traceback__)
+        logger.debug("".join(strs))
+    else:
+        logger.debug(str(e))
 
 
 def loop_inner(connection, command):
