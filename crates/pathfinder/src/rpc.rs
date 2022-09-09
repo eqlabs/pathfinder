@@ -2225,6 +2225,7 @@ mod tests {
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 INVOKE_CONTRACT_BLOCK_ID
             );
@@ -2253,6 +2254,7 @@ mod tests {
                         signature: Default::default(),
                         max_fee: Call::DEFAULT_MAX_FEE,
                         version: Call::DEFAULT_VERSION,
+                        nonce: Call::DEFAULT_NONCE,
                     },
                     BlockId::Latest
                 );
@@ -2304,6 +2306,7 @@ mod tests {
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 BlockId::Pending
             );
@@ -2329,6 +2332,7 @@ mod tests {
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 BlockId::Latest
             );
@@ -2358,6 +2362,7 @@ mod tests {
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 BlockId::Latest
             );
@@ -2384,6 +2389,7 @@ mod tests {
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 BlockId::Latest
             );
@@ -2410,6 +2416,7 @@ mod tests {
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 PRE_DEPLOY_CONTRACT_BLOCK_ID
             );
@@ -2436,6 +2443,7 @@ mod tests {
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 INVALID_BLOCK_ID
             );

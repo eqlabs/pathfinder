@@ -347,6 +347,7 @@ mod tests {
                                 signature: Default::default(),
                                 max_fee: super::Call::DEFAULT_MAX_FEE,
                                 version: super::Call::DEFAULT_VERSION,
+                                nonce: super::Call::DEFAULT_NONCE,
                             },
                             crate::core::StarknetBlockHash(
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
@@ -411,6 +412,7 @@ mod tests {
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
+            nonce: super::Call::DEFAULT_NONCE,
         };
 
         let at_block_fee = handle
@@ -507,6 +509,7 @@ mod tests {
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
+            nonce: super::Call::DEFAULT_NONCE,
         };
 
         let result = handle
@@ -575,6 +578,7 @@ mod tests {
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
+            nonce: super::Call::DEFAULT_NONCE,
         };
 
         let res = handle

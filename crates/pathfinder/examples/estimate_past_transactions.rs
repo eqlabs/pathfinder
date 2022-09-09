@@ -368,6 +368,7 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::types::request::Call {
             version: tx
                 .version
                 .unwrap_or(pathfinder_lib::rpc::types::request::Call::DEFAULT_VERSION),
+            nonce: pathfinder_lib::rpc::types::request::Call::DEFAULT_NONCE,
         }
     }
 }
