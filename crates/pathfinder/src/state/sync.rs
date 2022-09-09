@@ -246,10 +246,12 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    l1_handle = tokio::spawn({
+                    let fut = l1_sync(new_tx, transport.clone(), chain, l1_head);
+
+                    l1_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
                         tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
-                        l1_sync(new_tx, transport.clone(), chain, l1_head)
+                        fut.await
                     });
                     tracing::info!("L1 sync process restarted.")
                 },
