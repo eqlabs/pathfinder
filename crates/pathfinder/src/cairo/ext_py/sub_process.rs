@@ -359,6 +359,7 @@ async fn process(
             chain: *chain,
             pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
             pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
+            pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
         },
         Command::EstimateFee {
             call,
@@ -380,6 +381,7 @@ async fn process(
             chain: *chain,
             pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
             pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
+            pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
         },
     };
 
