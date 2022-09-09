@@ -1,5 +1,6 @@
 //! StarkNet node JSON-RPC related modules.
 pub mod api;
+mod error;
 pub mod serde;
 #[cfg(test)]
 pub mod test_client;
