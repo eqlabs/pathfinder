@@ -433,9 +433,9 @@ mod tests {
         assert_eq!(
             at_block_fee,
             crate::rpc::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(0x53f),
+                consumed: H256::from_low_u64_be(0x55a),
                 gas_price: H256::from_low_u64_be(1),
-                fee: H256::from_low_u64_be(0x540)
+                fee: H256::from_low_u64_be(0x55a)
             }
         );
 
@@ -455,9 +455,9 @@ mod tests {
         assert_eq!(
             current_fee,
             crate::rpc::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(0x53f),
+                consumed: H256::from_low_u64_be(0x55a),
                 gas_price: H256::from_low_u64_be(10),
-                fee: H256::from_low_u64_be(0x3478)
+                fee: H256::from_low_u64_be(0x3584)
             }
         );
 
@@ -695,7 +695,7 @@ mod tests {
         .unwrap();
 
         tx.execute(
-            r"insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, version_id) 
+            r"insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, version_id)
               values (?, 1, 1, ?, X'01', X'0000000000000000000000000000000000000000000000000000000000000000', X'00')",
             rusqlite::params![
                 &StarkHash::from_be_slice(&b"some blockhash somewhere"[..])
