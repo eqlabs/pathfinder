@@ -30,6 +30,9 @@ impl From<SequencerError> for Error {
                     RpcErrorCode::InvalidTransactionHash.into()
                 }
                 StarknetErrorCode::TransactionFailed => RpcErrorCode::InvalidCallData.into(),
+                StarknetErrorCode::TransactionLimitExceeded => {
+                    Error::Call(CallError::Failed(e.into()))
+                }
                 StarknetErrorCode::EntryPointNotFound => {
                     RpcErrorCode::InvalidMessageSelector.into()
                 }
@@ -98,4 +101,7 @@ pub enum StarknetErrorCode {
     NotPermittedContract,
     #[serde(rename = "StarknetErrorCode.UNDECLARED_CLASS")]
     UndeclaredClass,
+    /// May be returned by the transaction write api.
+    #[serde(rename = "StarknetErrorCode.TRANSACTION_LIMIT_EXCEEDED")]
+    TransactionLimitExceeded,
 }
