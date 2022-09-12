@@ -134,7 +134,7 @@ Updating a `pathfinder` node from source is fairly straight forward and is a sim
 Start by updating the `pathfinder` repository to the desired version. From within your `pathfinder` folder:
 
 ```bash
-git fetch 
+git fetch
 git checkout <version-tag>
 ```
 

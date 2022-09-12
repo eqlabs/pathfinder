@@ -2,9 +2,13 @@
 
 Welcome, and thank you for your interest in contributing to Pathfinder!
 
-The easiest way to do so is to open issues for questions, bug reports and areas where documentation is lacking.
+The easiest way to do so is to open issues for questions, bug reports and areas
+where documentation is lacking.
 
-At this stage the code and documentation is still in a pretty rough shape, so finding a place to contribute actual code can be difficult. If you do feel like tackling an open issue, please do comment on the issue or open a PR. We are happy to guide you through the process.
+At this stage the code and documentation is still in a pretty rough shape, so
+finding a place to contribute actual code can be difficult. If you do feel like
+tackling an open issue, please do comment on the issue or open a PR. We are
+happy to guide you through the process.
 
 ## Pull-requests
 
