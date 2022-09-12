@@ -210,24 +210,17 @@ def populate_test_contract_with_132_on_3(con):
     cur.execute(
         """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
         [
-            left_pad(b"some blockhash somewhere", 32),
+            b"some blockhash somewhere".rjust(32, b"\x00"),
             bytes.fromhex(
                 "0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd"
             ),
-            left_pad(b"\x00", 16),
-            left_pad(b"\x00", 32),
+            b"".rjust(16, b"\x00"),
+            b"".rjust(32, b"\x00"),
         ],
     )
 
     con.commit()
     return contract_address
-
-
-def left_pad(b, to_length):
-    # this needs to be used with the fake bytestring block hashes, as we always
-    # query them left padded
-    assert len(b) <= to_length
-    return b"\x00" * (to_length - len(b)) + b
 
 
 def default_132_on_3_scenario(con, input_jsons):
@@ -902,7 +895,7 @@ def test_nonce_with_dummy():
         "insert into starknet_blocks (hash, number, root, timestamp, gas_price, sequencer_address, version_id) values (?, ?, ?, ?, ?, ?, ?)",
         [
             (
-                left_pad(b"another block", 32),
+                b"another block".rjust(32, b"\x00"),
                 2,
                 bytes.fromhex(first_global_root),
                 2,
@@ -911,7 +904,7 @@ def test_nonce_with_dummy():
                 None,
             ),
             (
-                left_pad(b"third block", 32),
+                b"third block".rjust(32, b"\x00"),
                 3,
                 bytes.fromhex(second_global_root),
                 3,
