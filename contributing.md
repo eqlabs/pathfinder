@@ -19,7 +19,7 @@ python parts under `py/` please agree to future relicensing to stay compatible
 with any future [`cairo-lang`] license by including this text in your PR:
 
 > As the author of this PR I explicitly agree to any relicensing of my
-> contributions under `py/` directory per repository's contributing.md.
+> contributions under `py/` directory as per repository's contributing.md.
 
 [`cairo-lang`]: https://github.com/starkware-libs/cairo-lang
 
