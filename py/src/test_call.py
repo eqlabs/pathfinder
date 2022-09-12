@@ -634,11 +634,13 @@ def test_call_on_reorgged_pending_block():
                 "calldata": [132],
                 "gas_price": None,
                 "chain": StarknetChainId.MAINNET,
-                "pending_updates": {
-                    contract_address: [
-                        {"key": 132, "value": 5},
-                    ]
-                },
+                "pending_updates": maybe_pending_updates(
+                    {
+                        contract_address: [
+                            {"key": 132, "value": 5},
+                        ]
+                    }
+                ),
                 "pending_deployed": maybe_pending_deployed([]),
             },
             [5],
@@ -657,11 +659,13 @@ def test_call_on_reorgged_pending_block():
                 "gas_price": None,
                 "chain": StarknetChainId.MAINNET,
                 # because the block is not found, the updates are not used
-                "pending_updates": {
-                    contract_address: [
-                        {"key": 132, "value": 5},
-                    ]
-                },
+                "pending_updates": maybe_pending_updates(
+                    {
+                        contract_address: [
+                            {"key": 132, "value": 5},
+                        ]
+                    }
+                ),
                 "pending_deployed": maybe_pending_deployed([]),
             },
             [3],
@@ -680,11 +684,13 @@ def test_call_on_reorgged_pending_block():
                 "calldata": [132],
                 "gas_price": None,
                 "chain": StarknetChainId.MAINNET,
-                "pending_updates": {
-                    1234567: [
-                        {"key": 132, "value": 5},
-                    ]
-                },
+                "pending_updates": maybe_pending_updates(
+                    {
+                        1234567: [
+                            {"key": 132, "value": 5},
+                        ]
+                    }
+                ),
                 "pending_deployed": maybe_pending_deployed(
                     [
                         {
@@ -710,11 +716,13 @@ def test_call_on_reorgged_pending_block():
                 "gas_price": None,
                 "chain": StarknetChainId.MAINNET,
                 # because the block is not found, the updates are not used
-                "pending_updates": {
-                    1234567: [
-                        {"key": 132, "value": 5},
-                    ]
-                },
+                "pending_updates": maybe_pending_updates(
+                    {
+                        1234567: [
+                            {"key": 132, "value": 5},
+                        ]
+                    }
+                ),
                 "pending_deployed": maybe_pending_deployed(
                     [
                         {
