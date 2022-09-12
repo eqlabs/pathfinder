@@ -339,6 +339,18 @@ pub mod transaction {
                 Transaction::L1Handler(t) => t.transaction_hash,
             }
         }
+
+        pub fn contract_address(&self) -> ContractAddress {
+            match self {
+                Transaction::Declare(t) => t.sender_address,
+                Transaction::Deploy(t) => t.contract_address,
+                Transaction::Invoke(t) => match t {
+                    InvokeTransaction::V0(t) => t.contract_address,
+                    InvokeTransaction::V1(t) => t.contract_address,
+                },
+                Transaction::L1Handler(t) => t.contract_address,
+            }
+        }
     }
 
     /// Represents deserialized L2 declare transaction data.
