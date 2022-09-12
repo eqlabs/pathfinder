@@ -393,10 +393,7 @@ def maybe_pending_updates(s):
     return dict(
         (
             int_param(key),
-            list(
-                {"key": int_param(val["key"]), "value": int_param(val["value"])}
-                for val in values
-            ),
+            list((int_param(val["key"]), int_param(val["value"])) for val in values),
         )
         for key, values in s.items()
     )
@@ -836,10 +833,7 @@ async def apply_pending(state, updates, deployed, nonces):
         await state.deploy_contract(addr, class_hash)
 
     for addr, updates in updates.items():
-        for d in updates:
-            # no reason to continue using this, we could handle it
-            key = d["key"]
-            value = d["value"]
+        for key, value in updates:
             # this might get an expensive check in future, doesn't need a cache
             # FIXME: this might actually mark the value as dirty, as in caused by the current transaction
             # and be a cause of error for estimateFee

@@ -768,7 +768,7 @@ def test_static_returned_not_found_contract_state():
 
 def test_maybe_pending_updates():
     example = {"0x123": [{"key": 1, "value": 2}]}
-    expected = {291: [{"key": 1, "value": 2}]}
+    expected = {291: [(1, 2)]}
     assert expected == maybe_pending_updates(example)
 
 
