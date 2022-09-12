@@ -80,12 +80,13 @@ pub mod request {
     use crate::{
         core::{
             CallParam, CallSignatureElem, ContractAddress, EntryPoint, EventKey, Fee,
-            TransactionVersion,
+            TransactionNonce, TransactionVersion,
         },
         rpc::serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
     };
     use serde::Deserialize;
     use serde_with::{serde_as, skip_serializing_none};
+    use stark_hash::StarkHash;
 
     /// Contains parameters passed to `starknet_call`.
     #[serde_as]
@@ -95,7 +96,7 @@ pub mod request {
     pub struct Call {
         pub contract_address: ContractAddress,
         pub calldata: Vec<CallParam>,
-        pub entry_point_selector: EntryPoint,
+        pub entry_point_selector: Option<EntryPoint>,
         /// EstimateFee hurry: it doesn't make any sense to use decimal numbers for one field
         #[serde(default)]
         #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
@@ -109,6 +110,8 @@ pub mod request {
         #[serde_as(as = "TransactionVersionAsHexStr")]
         #[serde(default = "call_default_version")]
         pub version: TransactionVersion,
+        #[serde(default = "call_default_nonce")]
+        pub nonce: TransactionNonce,
     }
 
     const fn call_default_max_fee() -> Fee {
@@ -119,10 +122,15 @@ pub mod request {
         Call::DEFAULT_VERSION
     }
 
+    const fn call_default_nonce() -> TransactionNonce {
+        Call::DEFAULT_NONCE
+    }
+
     impl Call {
         pub const DEFAULT_MAX_FEE: Fee = Fee(web3::types::H128::zero());
         pub const DEFAULT_VERSION: TransactionVersion =
             TransactionVersion(web3::types::H256::zero());
+        pub const DEFAULT_NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
     }
 
     /// This is what [`Call`] used to be, but is used in

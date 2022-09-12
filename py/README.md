@@ -2,8 +2,6 @@
 
 This directory will host the code to call contracts using `cairo-lang` python package, and other utilities:
 
-- src/generate_test_storage_tree.py -- generates the patricia tree for a single contract from stdin
-- src/generate_test_global_tree.py -- generates the main patricia tree from stdin
 - src/compute_contract_hash.py -- similar to `cargo run -p pathfinder --bin compute_contract_hash`
 - src/call.py -- python side of `pathfinder_lib:cairo::ext_py` in pathfinder database
 

@@ -2221,10 +2221,11 @@ mod tests {
                 Call {
                     calldata: CALL_DATA.to_vec(),
                     contract_address: VALID_CONTRACT_ADDR,
-                    entry_point_selector: VALID_ENTRY_POINT,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 INVOKE_CONTRACT_BLOCK_ID
             );
@@ -2249,10 +2250,11 @@ mod tests {
                     Call {
                         calldata: CALL_DATA.to_vec(),
                         contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: VALID_ENTRY_POINT,
+                        entry_point_selector: Some(VALID_ENTRY_POINT),
                         signature: Default::default(),
                         max_fee: Call::DEFAULT_MAX_FEE,
                         version: Call::DEFAULT_VERSION,
+                        nonce: Call::DEFAULT_NONCE,
                     },
                     BlockId::Latest
                 );
@@ -2300,10 +2302,11 @@ mod tests {
                 Call {
                     calldata: CALL_DATA.to_vec(),
                     contract_address: VALID_CONTRACT_ADDR,
-                    entry_point_selector: VALID_ENTRY_POINT,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 BlockId::Pending
             );
@@ -2325,10 +2328,11 @@ mod tests {
                 Call {
                     calldata: CALL_DATA.to_vec(),
                     contract_address: VALID_CONTRACT_ADDR,
-                    entry_point_selector: INVALID_ENTRY_POINT,
+                    entry_point_selector: Some(INVALID_ENTRY_POINT),
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 BlockId::Latest
             );
@@ -2354,10 +2358,11 @@ mod tests {
                 Call {
                     calldata: CALL_DATA.to_vec(),
                     contract_address: INVALID_CONTRACT_ADDR,
-                    entry_point_selector: VALID_ENTRY_POINT,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 BlockId::Latest
             );
@@ -2380,10 +2385,11 @@ mod tests {
                 Call {
                     calldata: vec![],
                     contract_address: VALID_CONTRACT_ADDR,
-                    entry_point_selector: VALID_ENTRY_POINT,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 BlockId::Latest
             );
@@ -2406,10 +2412,11 @@ mod tests {
                 Call {
                     calldata: CALL_DATA.to_vec(),
                     contract_address: VALID_CONTRACT_ADDR,
-                    entry_point_selector: VALID_ENTRY_POINT,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 PRE_DEPLOY_CONTRACT_BLOCK_ID
             );
@@ -2432,10 +2439,11 @@ mod tests {
                 Call {
                     calldata: CALL_DATA.to_vec(),
                     contract_address: VALID_CONTRACT_ADDR,
-                    entry_point_selector: VALID_ENTRY_POINT,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
                     signature: Default::default(),
                     max_fee: Call::DEFAULT_MAX_FEE,
                     version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
                 },
                 INVALID_BLOCK_ID
             );

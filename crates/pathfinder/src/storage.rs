@@ -6,7 +6,7 @@ mod contract;
 mod ethereum;
 #[cfg(test)]
 pub(crate) mod fixtures;
-pub(crate) mod merkle_tree;
+pub mod merkle_tree;
 mod schema;
 mod state;
 

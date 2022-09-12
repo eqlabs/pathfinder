@@ -169,7 +169,11 @@ impl<T: NodeStorage> MerkleTree<T> {
     ///
     /// Note that the root is reference counted in storage. Committing the
     /// same tree again will therefore increment the count again.
-    pub fn commit(self) -> anyhow::Result<StarkHash> {
+    pub fn commit(mut self) -> anyhow::Result<StarkHash> {
+        self.commit_mut()
+    }
+
+    pub fn commit_mut(&mut self) -> anyhow::Result<StarkHash> {
         // Go through tree, collect dirty nodes, calculate their hashes and
         // persist them. Take care to increment ref counts of child nodes. So in order
         // to do this correctly, will have to start back-to-front.
@@ -671,6 +675,10 @@ impl<T: NodeStorage> MerkleTree<T> {
 
         Ok(None)
     }
+
+    pub fn into_storage(self) -> T {
+        self.storage
+    }
 }
 
 /// Direction for the [`MerkleTree::dfs`] as the return value of the visitor function.
@@ -694,6 +702,40 @@ impl NodeStorage for () {
     }
 
     fn upsert(&self, _key: StarkHash, _node: PersistedNode) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn increment_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+impl NodeStorage for std::cell::RefCell<std::collections::HashMap<StarkHash, PersistedNode>> {
+    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
+        Ok(self.borrow().get(&key).cloned())
+    }
+
+    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
+        use std::collections::hash_map::Entry::*;
+        if !matches!(node, PersistedNode::Leaf) {
+            match self.borrow_mut().entry(key) {
+                Vacant(ve) => {
+                    ve.insert(node);
+                }
+                Occupied(oe) => {
+                    let existing = oe.get();
+                    anyhow::ensure!(
+                        existing == &node,
+                        "trying to upsert a different node over existing? {existing:?} != {node:?}"
+                    );
+                }
+            }
+        }
         Ok(())
     }
 

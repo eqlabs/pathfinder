@@ -343,10 +343,11 @@ mod tests {
                                 calldata: vec![crate::core::CallParam(
                                     starkhash!("84"),
                                 )],
-                                entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+                                entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
                                 signature: Default::default(),
                                 max_fee: super::Call::DEFAULT_MAX_FEE,
                                 version: super::Call::DEFAULT_VERSION,
+                                nonce: super::Call::DEFAULT_NONCE,
                             },
                             crate::core::StarknetBlockHash(
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
@@ -407,10 +408,11 @@ mod tests {
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
             )),
             calldata: vec![crate::core::CallParam(starkhash!("84"))],
-            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
+            nonce: super::Call::DEFAULT_NONCE,
         };
 
         let at_block_fee = handle
@@ -431,9 +433,9 @@ mod tests {
         assert_eq!(
             at_block_fee,
             crate::rpc::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(0x53f),
+                consumed: H256::from_low_u64_be(0x55a),
                 gas_price: H256::from_low_u64_be(1),
-                fee: H256::from_low_u64_be(0x540)
+                fee: H256::from_low_u64_be(0x55a)
             }
         );
 
@@ -453,9 +455,9 @@ mod tests {
         assert_eq!(
             current_fee,
             crate::rpc::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(0x53f),
+                consumed: H256::from_low_u64_be(0x55a),
                 gas_price: H256::from_low_u64_be(10),
-                fee: H256::from_low_u64_be(0x3478)
+                fee: H256::from_low_u64_be(0x3584)
             }
         );
 
@@ -503,10 +505,11 @@ mod tests {
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375"
             )),
             calldata: vec![crate::core::CallParam(starkhash!("84"))],
-            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
+            nonce: super::Call::DEFAULT_NONCE,
         };
 
         let result = handle
@@ -571,10 +574,11 @@ mod tests {
         let call = super::Call {
             contract_address: target_contract,
             calldata: vec![crate::core::CallParam(storage_address)],
-            entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+            entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
+            nonce: super::Call::DEFAULT_NONCE,
         };
 
         let res = handle
@@ -691,7 +695,7 @@ mod tests {
         .unwrap();
 
         tx.execute(
-            r"insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, version_id) 
+            r"insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, version_id)
               values (?, 1, 1, ?, X'01', X'0000000000000000000000000000000000000000000000000000000000000000', X'00')",
             rusqlite::params![
                 &StarkHash::from_be_slice(&b"some blockhash somewhere"[..])

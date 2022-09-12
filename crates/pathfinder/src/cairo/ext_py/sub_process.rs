@@ -172,6 +172,10 @@ async fn spawn(
     database_path: PathBuf,
     current_span: std::sync::Arc<std::sync::Mutex<tracing::Span>>,
 ) -> anyhow::Result<(Child, u32, ChildStdin, BufReader<ChildStdout>, String)> {
+    // this is done so that we avoid explicit dependency to the location of `py/` directory thus
+    // making docker image much easier to do. however it does infect (GPL-style, should such
+    // license be cairo-lang's license ever in future) our main binary due to this being very much
+    // "static linkage".
     let script_file = tempfile::NamedTempFile::new()
         .context("Failed to create temporary file for Python script")?;
     script_file
@@ -344,7 +348,7 @@ async fn process(
             command: Verb::Call,
             contract_address: &call.contract_address,
             calldata: &call.calldata,
-            entry_point_selector: &call.entry_point_selector,
+            entry_point_selector: call.entry_point_selector.as_ref(),
             at_block,
             // TODO: this might change in the future, if *later* gas price needs to be available
             // sometimes
@@ -355,6 +359,7 @@ async fn process(
             chain: *chain,
             pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
             pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
+            pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
         },
         Command::EstimateFee {
             call,
@@ -367,7 +372,7 @@ async fn process(
             command: Verb::EstimateFee,
             contract_address: &call.contract_address,
             calldata: &call.calldata,
-            entry_point_selector: &call.entry_point_selector,
+            entry_point_selector: call.entry_point_selector.as_ref(),
             at_block,
             gas_price: gas_price.as_option(),
             signature: &call.signature,
@@ -376,6 +381,7 @@ async fn process(
             chain: *chain,
             pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
             pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
+            pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
         },
     };
 

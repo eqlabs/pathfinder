@@ -1,6 +1,6 @@
 //! The json serializable types
 
-use crate::core::{CallParam, ContractAddress, EntryPoint};
+use crate::core::{CallParam, ContractAddress, ContractNonce, EntryPoint};
 use crate::rpc::types::BlockHashOrTag;
 use crate::sequencer::reply::state_update::{DeployedContract, StorageDiff};
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ pub(crate) struct ChildCommand<'a> {
     pub command: Verb,
     pub contract_address: &'a ContractAddress,
     pub calldata: &'a [CallParam],
-    pub entry_point_selector: &'a EntryPoint,
+    pub entry_point_selector: Option<&'a EntryPoint>,
     pub at_block: &'a BlockHashNumberOrLatest,
     #[serde_as(as = "Option<&crate::rpc::serde::H256AsHexStr>")]
     pub gas_price: Option<&'a web3::types::H256>,
@@ -23,6 +23,7 @@ pub(crate) struct ChildCommand<'a> {
     pub chain: UsedChain,
     pub pending_updates: ContractUpdatesWrapper<'a>,
     pub pending_deployed: DeployedContractsWrapper<'a>,
+    pub pending_nonces: NoncesWrapper<'a>,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -53,6 +54,8 @@ impl From<crate::core::Chain> for UsedChain {
 }
 
 /// Custom type for setting the serialization in stone, or at least same as python code.
+///
+/// In call.py this is `def maybe_pending_updates`.
 #[derive(Debug)]
 pub struct ContractUpdatesWrapper<'a>(Option<&'a HashMap<ContractAddress, Vec<StorageDiff>>>);
 
@@ -114,6 +117,8 @@ impl<'a> serde::Serialize for DiffElement<'a> {
 }
 
 /// Custom type for setting the serialization in stone, or at least same as python code.
+///
+/// In call.py this is read by `def maybe_pending_deployed`.
 #[derive(Debug)]
 pub struct DeployedContractsWrapper<'a>(Option<&'a [DeployedContract]>);
 
@@ -151,8 +156,38 @@ impl<'a> serde::Serialize for DeployedContractElement<'a> {
     {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(2))?;
+        // there is no need from python side to use this huge construction,
+        // could be just addr => hash
         map.serialize_entry("address", &self.0.address)?;
         map.serialize_entry("contract_hash", &self.0.class_hash)?;
+        map.end()
+    }
+}
+
+/// On python side these are handled by `def maybe_pending_nonces`
+#[derive(Debug)]
+pub struct NoncesWrapper<'a>(Option<&'a HashMap<ContractAddress, ContractNonce>>);
+
+impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for NoncesWrapper<'a> {
+    fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
+        let ns = u.map(|u| &u.state_diff.nonces);
+        NoncesWrapper(ns)
+    }
+}
+
+impl<'a> serde::Serialize for NoncesWrapper<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(Some(self.0.map(|x| x.len()).unwrap_or(0)))?;
+        self.0
+            .iter()
+            .flat_map(|x| x.iter())
+            .try_for_each(|(addr, nonce)| map.serialize_entry(addr, nonce))?;
+
         map.end()
     }
 }
@@ -246,7 +281,13 @@ impl TryFrom<crate::core::BlockId> for BlockHashNumberOrLatest {
 
 #[cfg(test)]
 mod tests {
-    use crate::starkhash;
+    use std::collections::HashMap;
+
+    use crate::{
+        cairo::ext_py::ser::NoncesWrapper,
+        core::{ContractAddress, ContractNonce},
+        starkhash,
+    };
 
     #[test]
     fn serialize_some_updates() {
@@ -334,6 +375,34 @@ mod tests {
 
         for (input, output) in data {
             assert_eq!(output, &serde_json::to_string(input).unwrap())
+        }
+    }
+
+    #[test]
+    fn serialize_pending_nonces() {
+        let data = [
+            // this could just as well be none or just left out
+            (None, "{}"),
+            (Some(Default::default()), "{}"),
+            (
+                {
+                    let mut map = HashMap::new();
+                    map.insert(
+                        ContractAddress::new(starkhash!("0123")).unwrap(),
+                        ContractNonce(starkhash!("01")),
+                    );
+                    // cannot have multiple in this test because ordering
+                    Some(map)
+                },
+                "{\"0x123\":\"0x1\"}",
+            ),
+        ];
+
+        for (maybe_map, expected) in data {
+            assert_eq!(
+                expected,
+                &serde_json::to_string(&NoncesWrapper(maybe_map.as_ref())).unwrap()
+            );
         }
     }
 }

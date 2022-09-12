@@ -200,7 +200,7 @@ pub enum PersistedNode {
 }
 
 impl PersistedNode {
-    fn serialize(&self, buffer: &mut [u8]) -> usize {
+    pub fn serialize(&self, buffer: &mut [u8]) -> usize {
         match self {
             PersistedNode::Binary(binary) => {
                 buffer[..32].copy_from_slice(&binary.left.to_be_bytes());
@@ -227,7 +227,7 @@ impl PersistedNode {
         }
     }
 
-    fn deserialize(bytes: &[u8]) -> anyhow::Result<PersistedNode> {
+    pub fn deserialize(bytes: &[u8]) -> anyhow::Result<PersistedNode> {
         match bytes.len() {
             0 => Ok(PersistedNode::Leaf),
             64 => {

@@ -21,23 +21,6 @@ pub struct Call {
     pub signature: Vec<CallSignatureElem>,
 }
 
-impl From<rpc::Call> for Call {
-    fn from(call: rpc::Call) -> Self {
-        Call {
-            contract_address: call.contract_address,
-            calldata: call.calldata,
-            entry_point_selector: call.entry_point_selector,
-            // For the time being the RPC API does not use signatures here and we can pass
-            // empty signature to the sequencer API safely
-            //
-            // Hopefully in the future there will be some unification, but we haven't in the past
-            // passed signature, max_fee, caller_address, etc. to the sequencer on calls, not going
-            // to start until instructed otherwise.
-            signature: vec![],
-        }
-    }
-}
-
 impl From<rpc::ContractCall> for Call {
     fn from(call: rpc::ContractCall) -> Self {
         Call {
