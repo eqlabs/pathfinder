@@ -758,6 +758,18 @@ def test_static_returned_not_found_contract_state():
     assert dumped == NOT_FOUND_CONTRACT_STATE
 
 
+def test_maybe_pending_updates():
+    example = {"0x123": [{"key": 1, "value": 2}]}
+    expected = {291: [{"key": 1, "value": 2}]}
+    assert expected == maybe_pending_updates(example)
+
+
+def test_maybe_pending_deployed():
+    example = [{"address": "0x123", "contract_hash": "0x12345"}]
+    expected = {291: bytes.fromhex("012345")}
+    assert expected == maybe_pending_deployed(example)
+
+
 def test_maybe_pending_nonces():
     example = {"0x123": "0x12345"}
     expected = {291: 74565}

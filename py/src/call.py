@@ -389,25 +389,16 @@ def maybe_pending_updates(s):
     if s is None:
         return None
 
-    # currently just using the format from sequencers get_state_update
+    # currently just accepting the format from sequencers get_state_update
     return dict(
-        map(
-            lambda x: (
-                # contract address needs to be an int
-                int_param(x[0]),
-                # many changes
-                list(
-                    map(
-                        lambda y: {
-                            "key": int_param(y["key"]),
-                            "value": int_param(y["value"]),
-                        },
-                        x[1],
-                    )
-                ),
+        (
+            int_param(key),
+            list(
+                {"key": int_param(val["key"]), "value": int_param(val["value"])}
+                for val in values
             ),
-            s.items(),
         )
+        for key, values in s.items()
     )
 
 
@@ -420,13 +411,8 @@ def maybe_pending_deployed(deployed_contracts):
     # internally we use just address => hash
 
     return dict(
-        map(
-            lambda x: (
-                int_param(x["address"]),
-                len_safe_hex(x["contract_hash"]),
-            ),
-            deployed_contracts,
-        )
+        (int_param(x["address"]), len_safe_hex(x["contract_hash"]))
+        for x in deployed_contracts
     )
 
 
@@ -435,15 +421,7 @@ def maybe_pending_nonces(nonces):
         return None
 
     # accept a map addr => nonce
-    return dict(
-        map(
-            lambda x: (
-                int_param(x[0]),
-                int_param(x[1]),
-            ),
-            nonces.items(),
-        )
-    )
+    return dict((int_param(key), int_param(value)) for key, value in nonces.items())
 
 
 def maybe_nonce(nonce):
