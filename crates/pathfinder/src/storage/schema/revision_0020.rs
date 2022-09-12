@@ -486,7 +486,6 @@ mod types {
                     // Starknet 0.10.0 still has `entry_point_selector` and `entry_point_type` because
                     // of a bug that will be fixed in 0.10.1. We should just ignore these fields until
                     // this gets fixed.
-                    // FIXME: 0.10.1 remove this hack
                     let o = v
                         .as_object_mut()
                         .expect("must be an object because deserializing version succeeded");
