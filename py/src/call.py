@@ -735,7 +735,7 @@ async def do_call(
     state_reader = PatriciaStateReader(PatriciaTree(root, 251), ffc)
     async_state = CachedState(block_info, state_reader)
 
-    await apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
+    apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
     resource_manager = ExecutionResourcesManager.empty()
 
@@ -808,7 +808,7 @@ async def do_estimate_fee(
     state_reader = PatriciaStateReader(PatriciaTree(root, 251), ffc)
     async_state = CachedState(block_info, state_reader)
 
-    await apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
+    apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
     tx_info = await more.apply_state_updates(async_state, general_config)
 
@@ -822,22 +822,21 @@ async def do_estimate_fee(
     }
 
 
-async def apply_pending(state, updates, deployed, nonces):
+def apply_pending(state, updates, deployed, nonces):
     updates = updates if updates is not None else {}
     deployed = deployed if deployed is not None else {}
     nonces = nonces if nonces is not None else {}
 
     for addr, class_hash in deployed.items():
-        # this does a needless read for the addr
-        # could write directly to the cache
-        await state.deploy_contract(addr, class_hash)
+        assert type(class_hash) == bytes
+        state.cache._class_hash_reads[addr] = class_hash
 
     for addr, updates in updates.items():
+        assert type(addr) == int
         for key, value in updates:
-            # this might get an expensive check in future, doesn't need a cache
-            # FIXME: this might actually mark the value as dirty, as in caused by the current transaction
-            # and be a cause of error for estimateFee
-            await state.set_storage_at(addr, key, value)
+            assert type(key) == int
+            assert type(value) == int
+            state.cache._storage_reads[(addr, key)] = value
 
     for addr, nonce in nonces.items():
         assert type(addr) == int
