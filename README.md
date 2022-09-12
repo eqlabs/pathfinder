@@ -134,7 +134,7 @@ Updating a `pathfinder` node from source is fairly straight forward and is a sim
 Start by updating the `pathfinder` repository to the desired version. From within your `pathfinder` folder:
 
 ```bash
-git fetch 
+git fetch
 git checkout <version-tag>
 ```
 
@@ -406,3 +406,8 @@ at your option.
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
+
+If you would like to contribute to the `py/` parts, which interface with
+[`cairo-lang`](https://github.com/starkware-libs/cairo-lang), please include a
+mention that you agree to relicense the python parts as necessary to abide with
+future `cairo-lang` license. See `contributing.md` for more information.
