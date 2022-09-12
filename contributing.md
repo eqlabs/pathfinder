@@ -10,6 +10,19 @@ finding a place to contribute actual code can be difficult. If you do feel like
 tackling an open issue, please do comment on the issue or open a PR. We are
 happy to guide you through the process.
 
+## `py/` directory
+
+The main purpose of the `py/` is to interface with [`cairo-lang`] which
+currently has a custom license. It is possible we will have to change the
+license of `py/` in future to accommodate these changes. When contributing to
+python parts under `py/` please agree to future relicensing to stay compatible
+with any future [`cairo-lang`] license by including this text in your PR:
+
+> As the author of this PR I explicitly agree to any relicensing of my
+> contributions under `py/` directory per repository's contributing.md.
+
+[`cairo-lang`]: https://github.com/starkware-libs/cairo-lang
+
 ## Pull-requests
 
 Keeping these points in mind will increase the odds of a successful PR:

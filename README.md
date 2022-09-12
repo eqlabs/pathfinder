@@ -410,4 +410,4 @@ dual licensed as above, without any additional terms or conditions.
 If you would like to contribute to the `py/` parts, which interface with
 [`cairo-lang`](https://github.com/starkware-libs/cairo-lang), please include a
 mention that you agree to relicense the python parts as necessary to abide with
-future `cairo-lang` license.:
+future `cairo-lang` license. See `contributing.md` for more information.
