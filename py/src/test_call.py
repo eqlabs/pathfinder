@@ -732,12 +732,12 @@ def test_call_on_reorgged_pending_block():
     # because they don't define any value for pending stuffs
 
     con.execute("BEGIN")
-    for command, expected in commands:
+    for nth, (command, expected) in enumerate(commands):
         try:
             (verb, output, _timings) = loop_inner(con, command)
-            assert expected == output
+            assert expected == output, f"{nth + 1}th example"
         except WebFriendlyException as e:
-            assert expected == str(e.code)
+            assert expected == str(e.code), f"{nth + 1}th example"
 
 
 def test_static_returned_not_found_contract_state():
@@ -1006,15 +1006,13 @@ def test_nonce_with_dummy():
     )
 
     con.execute("BEGIN")
-    nth = 1
-    for command, expected in commands:
+    for nth, (command, expected) in enumerate(commands):
         try:
             print(command)
             (verb, output, _timings) = loop_inner(con, command)
-            assert expected == output, f"example {nth}"
+            assert expected == output, f"{nth + 1}th example"
         except WebFriendlyException as e:
-            assert expected == str(e.code), f"example {nth}"
-        nth += 1
+            assert expected == str(e.code), f"{nth + 1}th example"
 
 
 # Rest of the test cases require a mainnet or goerli database in some path.
