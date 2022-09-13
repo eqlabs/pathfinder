@@ -78,7 +78,6 @@ def do_loop(connection, input_gen, output_file):
     required = {
         "at_block": int_hash_or_latest,
         "contract_address": int_param,
-        "entry_point_selector": string_or_int,
         "calldata": list_of_int,
         "command": required_command,
         "gas_price": required_gas_price,
@@ -93,6 +92,7 @@ def do_loop(connection, input_gen, output_file):
         "pending_deployed": maybe_pending_deployed,
         "pending_nonces": maybe_pending_nonces,
         "nonce": maybe_nonce,
+        "entry_point_selector": string_or_int,
     }
 
     logger = Logger()

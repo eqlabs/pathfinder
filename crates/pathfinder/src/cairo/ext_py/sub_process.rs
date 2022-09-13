@@ -360,6 +360,11 @@ async fn process(
             // sometimes
             gas_price: None,
             signature: &call.signature,
+            nonce: if call.version.0.is_zero() {
+                None
+            } else {
+                Some(&call.nonce)
+            },
             max_fee: &call.max_fee,
             version: &call.version,
             chain: *chain,
@@ -382,6 +387,11 @@ async fn process(
             at_block,
             gas_price: gas_price.as_option(),
             signature: &call.signature,
+            nonce: if call.version.0.is_zero() {
+                None
+            } else {
+                Some(&call.nonce)
+            },
             max_fee: &call.max_fee,
             version: &call.version,
             chain: *chain,
