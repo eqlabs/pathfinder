@@ -494,11 +494,17 @@ pub mod transaction {
     pub struct L1HandlerTransaction {
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
+        // FIXME: remove once starkware fixes their gateway bug which was missing this field.
+        #[serde(default = "l1_handler_default_nonce")]
         pub nonce: TransactionNonce,
         pub calldata: Vec<CallParam>,
         pub transaction_hash: StarknetTransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
+    }
+
+    const fn l1_handler_default_nonce() -> TransactionNonce {
+        TransactionNonce(stark_hash::StarkHash::ZERO)
     }
 
     impl From<DeclareTransaction> for Transaction {
