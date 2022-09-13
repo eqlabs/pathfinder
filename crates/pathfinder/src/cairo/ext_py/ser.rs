@@ -1,6 +1,6 @@
 //! The json serializable types
 
-use crate::core::{CallParam, ContractAddress, ContractNonce, EntryPoint};
+use crate::core::{CallParam, ContractAddress, ContractNonce, EntryPoint, TransactionNonce};
 use crate::rpc::types::BlockHashOrTag;
 use crate::sequencer::reply::state_update::{DeployedContract, StorageDiff};
 use std::collections::HashMap;
@@ -12,11 +12,14 @@ pub(crate) struct ChildCommand<'a> {
     pub command: Verb,
     pub contract_address: &'a ContractAddress,
     pub calldata: &'a [CallParam],
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub entry_point_selector: Option<&'a EntryPoint>,
     pub at_block: &'a BlockHashNumberOrLatest,
     #[serde_as(as = "Option<&crate::rpc::serde::H256AsHexStr>")]
     pub gas_price: Option<&'a web3::types::H256>,
     pub signature: &'a [crate::core::CallSignatureElem],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<&'a TransactionNonce>,
     pub max_fee: &'a crate::core::Fee,
     #[serde_as(as = "crate::rpc::serde::TransactionVersionAsHexStr")]
     pub version: &'a crate::core::TransactionVersion,

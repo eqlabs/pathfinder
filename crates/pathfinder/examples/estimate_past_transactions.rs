@@ -113,6 +113,7 @@ fn feed_work(
     let mut invokes = 0usize;
     let mut declares = 0usize;
     let mut deploys = 0usize;
+    let mut l1_handlers = 0usize;
     let mut same_tx_deploy_call = 0usize;
 
     while let Some(next) = work.next()? {
@@ -175,6 +176,10 @@ fn feed_work(
                 previously_declared_deployed_in_the_same_block.insert(*contract_address.get());
                 continue;
             }
+            SimpleTransaction::L1Handler(_) => {
+                l1_handlers += 1;
+                continue;
+            }
         };
 
         /*
@@ -213,6 +218,7 @@ fn feed_work(
         declares,
         deploys,
         same_tx_deploy_call,
+        l1_handlers,
         "completed query"
     );
     Ok(())
@@ -326,6 +332,8 @@ enum SimpleTransaction {
     Declare(SimpleDeclare),
     #[serde(rename = "INVOKE_FUNCTION")]
     Invoke(SimpleInvoke),
+    #[serde(rename = "L1_HANDLER")]
+    L1Handler(SimpleL1Handler),
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -342,7 +350,8 @@ struct SimpleInvoke {
     contract_address: pathfinder_lib::core::ContractAddress,
     #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::CallParamAsDecimalStr>")]
     pub calldata: Vec<pathfinder_lib::core::CallParam>,
-    pub entry_point_selector: pathfinder_lib::core::EntryPoint,
+    #[serde(default)]
+    pub entry_point_selector: Option<pathfinder_lib::core::EntryPoint>,
     #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::TransactionSignatureElemAsDecimalStr>")]
     #[serde(default)]
     pub signature: Vec<pathfinder_lib::core::TransactionSignatureElem>,
@@ -351,6 +360,12 @@ struct SimpleInvoke {
     #[serde(default)]
     #[serde_as(as = "Option<pathfinder_lib::rpc::serde::TransactionVersionAsHexStr>")]
     pub version: Option<pathfinder_lib::core::TransactionVersion>,
+    #[serde(default = "default_transaction_nonce")]
+    pub nonce: pathfinder_lib::core::TransactionNonce,
+}
+
+fn default_transaction_nonce() -> pathfinder_lib::core::TransactionNonce {
+    pathfinder_lib::rpc::types::request::Call::DEFAULT_NONCE
 }
 
 impl From<SimpleInvoke> for pathfinder_lib::rpc::types::request::Call {
@@ -358,7 +373,7 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::types::request::Call {
         pathfinder_lib::rpc::types::request::Call {
             contract_address: tx.contract_address,
             calldata: tx.calldata,
-            entry_point_selector: Some(tx.entry_point_selector),
+            entry_point_selector: tx.entry_point_selector,
             signature: tx
                 .signature
                 .into_iter()
@@ -368,7 +383,10 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::types::request::Call {
             version: tx
                 .version
                 .unwrap_or(pathfinder_lib::rpc::types::request::Call::DEFAULT_VERSION),
-            nonce: pathfinder_lib::rpc::types::request::Call::DEFAULT_NONCE,
+            nonce: tx.nonce,
         }
     }
 }
+
+#[derive(serde::Deserialize, Debug)]
+struct SimpleL1Handler {}
