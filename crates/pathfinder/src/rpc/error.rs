@@ -214,3 +214,37 @@ macro_rules! rpc_error_subset {
 
 #[allow(dead_code, unused_imports)]
 pub(super) use rpc_error_subset;
+
+#[cfg(test)]
+mod tests {
+    mod rpc_error_subset {
+        use super::super::{rpc_error_subset, RpcError};
+        use assert_matches::assert_matches;
+
+        #[test]
+        fn no_variant() {
+            rpc_error_subset!(EMPTY:);
+            rpc_error_subset!(EmptyNoColon);
+        }
+
+        #[test]
+        fn single_variant() {
+            rpc_error_subset!(SINGLE: ContractNotFound);
+
+            let original = RpcError::from(SINGLE::ContractNotFound);
+
+            assert_matches!(original, RpcError::ContractNotFound);
+        }
+
+        #[test]
+        fn multi_variant() {
+            rpc_error_subset!(MULTI: ContractNotFound, NoBlocks);
+
+            let contract_not_found = RpcError::from(MULTI::ContractNotFound);
+            let no_blocks = RpcError::from(MULTI::NoBlocks);
+
+            assert_matches!(contract_not_found, RpcError::ContractNotFound);
+            assert_matches!(no_blocks, RpcError::NoBlocks);
+        }
+    }
+}
