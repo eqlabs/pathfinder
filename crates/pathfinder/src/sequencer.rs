@@ -127,6 +127,8 @@ impl Client {
 
     /// Create a Sequencer client for the given [Url].
     pub fn with_url(url: Url) -> reqwest::Result<Self> {
+        Self::register_metrics();
+
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
@@ -159,6 +161,15 @@ impl Client {
             integration if integration == INTEGRATION_GENESIS_HASH => Ok(Chain::Integration),
             other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),
         }
+    }
+
+    /// Register all metrics' counters
+    fn register_metrics() {
+        builder::Request::<'_, builder::stage::Method>::METHOD_NAMES
+            .iter()
+            .for_each(|&method| {
+                metrics::register_counter!("sequencer_requests_total", "method" => method);
+            })
     }
 }
 
