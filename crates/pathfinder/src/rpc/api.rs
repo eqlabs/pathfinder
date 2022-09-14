@@ -37,13 +37,13 @@ use super::types::reply::{
 
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
-    storage: Storage,
-    sequencer: sequencer::Client,
-    chain: Chain,
-    call_handle: Option<ext_py::Handle>,
-    shared_gas_price: Option<Cached>,
-    sync_state: Arc<SyncState>,
-    pending_data: Option<PendingData>,
+    pub storage: Storage,
+    pub sequencer: sequencer::Client,
+    pub chain: Chain,
+    pub call_handle: Option<ext_py::Handle>,
+    pub shared_gas_price: Option<Cached>,
+    pub sync_state: Arc<SyncState>,
+    pub pending_data: Option<PendingData>,
 }
 
 #[derive(Debug)]
