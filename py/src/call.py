@@ -75,8 +75,11 @@ def main():
 def check_cairolang_version():
     import pkg_resources
 
-    version = pkg_resources.get_distribution("cairo-lang").version
-    return version == EXPECTED_CAIRO_VERSION
+    try:
+        version = pkg_resources.get_distribution("cairo-lang").version
+        return version == EXPECTED_CAIRO_VERSION
+    except pkg_resources.DistributionNotFound:
+        return False
 
 
 def do_loop(connection, input_gen, output_file):
