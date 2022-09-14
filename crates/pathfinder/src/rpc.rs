@@ -1,5 +1,6 @@
 //! StarkNet node JSON-RPC related modules.
 mod error;
+mod method;
 pub mod serde;
 #[cfg(test)]
 pub mod test_client;
@@ -517,7 +518,7 @@ mod tests {
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
-            None,
+            Some(ContractNonce(starkhash!("10"))),
             &global_tree,
             &db_txn,
         )
