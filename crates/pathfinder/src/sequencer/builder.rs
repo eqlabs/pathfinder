@@ -256,12 +256,25 @@ impl<'a> Request<'a, stage::Params> {
 /// Awaits future `f` and increments the:
 /// - `sequencer_requests_total` counter for `method`,
 /// - `sequencer_requests_failed_total` counter for `method` if the future returns the `Err()` variant.
+/// - `sequencer_requests_rate_limited_total` counter for `method` if the future returns the `Err()` variant,
+/// which carries the [`reqwest::StatusCode::TOO_MANY_REQUESTS`] status code
 async fn wrap_with_metrics<T>(
     method: &'static str,
     f: impl Future<Output = Result<T, SequencerError>>,
 ) -> Result<T, SequencerError> {
     metrics::increment_counter!("sequencer_requests_total", "method" => method);
     f.await.map_err(|e| {
+        match &e {
+            SequencerError::StarknetError(_) => {}
+            SequencerError::ReqwestError(e)
+                if e.is_status()
+                    && e.status().expect("error kind should be status") == reqwest::StatusCode::TOO_MANY_REQUESTS =>
+            {
+                metrics::increment_counter!("sequencer_requests_rate_limited_total", "method" => method);
+            }
+            SequencerError::ReqwestError(_) => {}
+        }
+
         metrics::increment_counter!("sequencer_requests_failed_total", "method" => method);
         e
     })
