@@ -5,10 +5,17 @@ import sqlite3
 import asyncio
 import os
 
-# FIXME: when pathfinder is launched with missing dependencies, this will be
-# logged out, which is very unclear and confuses users. it would be better to
-# go through with importlib or whatever fallible way to import
-from starkware.storage.storage import Storage
+# fallible import for exceptionless failure to start.
+#
+# this is the only starkware class imported outside, because SqliteAdapter
+# inherits this class.
+try:
+    from starkware.storage.storage import Storage
+except ModuleNotFoundError:
+
+    class Storage:
+        fake = True
+
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 20
@@ -38,7 +45,7 @@ def main():
     # stderr is only for logging, it's piped to tracing::trace one line at a time
     sys.stderr.reconfigure(encoding="utf-8")
 
-    if not check_cairolang_version():
+    if (hasattr(Storage, "fake") and Storage.fake) or not check_cairolang_version():
         print(
             "unexpected cairo-lang version: please reinstall dependencies to upgrade.",
             flush=True,
@@ -68,8 +75,11 @@ def main():
 def check_cairolang_version():
     import pkg_resources
 
-    version = pkg_resources.get_distribution("cairo-lang").version
-    return version == EXPECTED_CAIRO_VERSION
+    try:
+        version = pkg_resources.get_distribution("cairo-lang").version
+        return version == EXPECTED_CAIRO_VERSION
+    except pkg_resources.DistributionNotFound:
+        return False
 
 
 def do_loop(connection, input_gen, output_file):
