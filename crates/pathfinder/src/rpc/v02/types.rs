@@ -79,8 +79,9 @@ impl std::fmt::Display for BlockNumberOrTag {
 pub mod request {
     use crate::{
         core::{
-            CallParam, CallSignatureElem, ContractAddress, EntryPoint, EventKey, Fee,
-            TransactionNonce, TransactionVersion,
+            CallParam, CallSignatureElem, ClassHash, ConstructorParam, ContractAddress,
+            ContractAddressSalt, EntryPoint, EventKey, Fee, TransactionNonce,
+            TransactionSignatureElem, TransactionVersion,
         },
         rpc::serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
     };
@@ -166,6 +167,215 @@ pub mod request {
         // don't work together.
         pub page_size: usize,
         pub page_number: usize,
+    }
+
+    /// "Broadcasted" L2 transaction in requests the RPC API.
+    ///
+    /// "Broadcasted" transactions represent the data required to submit a new transaction.
+    /// Notably, it's missing values computed during execution of the transaction, like
+    /// transaction_hash or contract_address.
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields, tag = "type")]
+    pub enum BroadcastedTransaction {
+        #[serde(rename = "DECLARE")]
+        Declare(BroadcastedDeclareTransaction),
+        #[serde(rename = "INVOKE")]
+        Invoke(BroadcastedInvokeTransaction),
+        #[serde(rename = "DEPLOY")]
+        Deploy(BroadcastedDeployTransaction),
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedDeclareTransaction {
+        // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
+        // here in a flattened struct, but `flatten` doesn't work with
+        // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+
+        pub contract_class: ClassHash,
+        pub sender_address: ContractAddress,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedDeployTransaction {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub contract_address_salt: ContractAddressSalt,
+        pub constructor_calldata: Vec<ConstructorParam>,
+
+        /// The class of the contract that will be deployed.
+        pub contract_class: ClassHash,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(
+        any(test, feature = "rpc-full-serde"),
+        derive(serde::Serialize),
+        serde(tag = "version")
+    )]
+    pub enum BroadcastedInvokeTransaction {
+        #[cfg_attr(any(test, feature = "rpc-full-serde"), serde(rename = "0x0"))]
+        V0(BroadcastedInvokeTransactionV0),
+        #[cfg_attr(any(test, feature = "rpc-full-serde"), serde(rename = "0x1"))]
+        V1(BroadcastedInvokeTransactionV1),
+    }
+
+    impl<'de> Deserialize<'de> for BroadcastedInvokeTransaction {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            use serde::de;
+            use web3::types::H256;
+
+            const VERSION_0: H256 = H256::zero();
+            const fn transaction_version_zero() -> TransactionVersion {
+                TransactionVersion(VERSION_0)
+            }
+
+            #[serde_as]
+            #[derive(Deserialize)]
+            struct Version {
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                #[serde(default = "transaction_version_zero")]
+                pub version: TransactionVersion,
+            }
+
+            let mut v = serde_json::Value::deserialize(deserializer)?;
+            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
+            // remove "version", since v0 and v1 transactions use deny_unknown_fields
+            v.as_object_mut()
+                .expect("must be an object because deserializing version succeeded")
+                .remove("version");
+            match version.version {
+                TransactionVersion(x) if x == VERSION_0 => Ok(Self::V0(
+                    BroadcastedInvokeTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                    BroadcastedInvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                _v => Err(de::Error::custom("version must be 0 or 1")),
+            }
+        }
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedInvokeTransactionV0 {
+        // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
+        // here in a flattened struct, but `flatten` doesn't work with
+        // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub calldata: Vec<CallParam>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedInvokeTransactionV1 {
+        // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
+        // here in a flattened struct, but `flatten` doesn't work with
+        // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+
+        pub sender_address: ContractAddress,
+        pub calldata: Vec<CallParam>,
+    }
+
+    #[cfg(test)]
+    mod tests {
+        macro_rules! fixture {
+            ($file_name:literal) => {
+                include_str!(concat!("../../../fixtures/rpc/0.44.0/", $file_name))
+                    .replace(&[' ', '\n'], "")
+            };
+        }
+
+        /// The aim of these tests is to check if deserialization works correctly
+        /// **without resorting to serialization to prepare the test data**,
+        /// which in itself could contain an "opposite phase" bug that cancels out.
+        ///
+        /// Serialization is tested btw, because the fixture and the data is already available.
+        ///
+        /// These tests were added due to recurring regressions stemming from, among others:
+        /// - `serde(flatten)` and it's side-effects (for example when used in conjunction with `skip_serializing_none`),
+        /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
+        mod serde {
+            use super::super::*;
+            use crate::starkhash;
+            use pretty_assertions::assert_eq;
+
+            #[test]
+            fn broadcasted_transaction() {
+                let txs = vec![
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction {
+                        max_fee: Fee(web3::types::H128::from_low_u64_be(0x5)),
+                        version: TransactionVersion(web3::types::H256::from_low_u64_be(0x0)),
+                        signature: vec![TransactionSignatureElem(starkhash!("07"))],
+                        nonce: TransactionNonce(starkhash!("08")),
+                        contract_class: ClassHash(starkhash!("09")),
+                        sender_address: ContractAddress::new_or_panic(starkhash!("0a")),
+                    }),
+                    BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
+                        version: TransactionVersion(web3::types::H256::from_low_u64_be(0x0)),
+                        contract_address_salt: ContractAddressSalt(starkhash!("dd")),
+                        constructor_calldata: vec![ConstructorParam(starkhash!("11"))],
+                        contract_class: ClassHash(starkhash!("10")),
+                    }),
+                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
+                        BroadcastedInvokeTransactionV0 {
+                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
+                            signature: vec![TransactionSignatureElem(starkhash!("07"))],
+                            nonce: TransactionNonce(starkhash!("08")),
+                            contract_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
+                            entry_point_selector: EntryPoint(starkhash!("0e")),
+                            calldata: vec![CallParam(starkhash!("ff"))],
+                        },
+                    )),
+                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                        BroadcastedInvokeTransactionV1 {
+                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
+                            signature: vec![TransactionSignatureElem(starkhash!("07"))],
+                            nonce: TransactionNonce(starkhash!("08")),
+                            sender_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
+                            calldata: vec![CallParam(starkhash!("ff"))],
+                        },
+                    )),
+                ];
+
+                let json_fixture = fixture!("broadcasted_transactions.json");
+
+                assert_eq!(serde_json::to_string(&txs).unwrap(), json_fixture);
+                assert_eq!(
+                    serde_json::from_str::<Vec<BroadcastedTransaction>>(&json_fixture).unwrap(),
+                    txs
+                );
+            }
+        }
     }
 }
 

@@ -1,0 +1,49 @@
+[
+    {
+        "type": "DECLARE",
+        "max_fee": "0x5",
+        "version": "0x0",
+        "signature": [
+            "0x7"
+        ],
+        "nonce": "0x8",
+        "contract_class": "0x9",
+        "sender_address": "0xa"
+    },
+    {
+        "type": "DEPLOY",
+        "version": "0x0",
+        "contract_address_salt": "0xdd",
+        "constructor_calldata": [
+            "0x11"
+        ],
+        "contract_class": "0x10"
+    },
+    {
+        "type": "INVOKE",
+        "version": "0x0",
+        "max_fee": "0x6",
+        "signature": [
+            "0x7"
+        ],
+        "nonce": "0x8",
+        "contract_address": "0xaaa",
+        "entry_point_selector": "0xe",
+        "calldata": [
+            "0xff"
+        ]
+    },
+    {
+        "type": "INVOKE",
+        "version": "0x1",
+        "max_fee": "0x6",
+        "signature": [
+            "0x7"
+        ],
+        "nonce": "0x8",
+        "sender_address": "0xaaa",
+        "calldata": [
+            "0xff"
+        ]
+    }
+]
