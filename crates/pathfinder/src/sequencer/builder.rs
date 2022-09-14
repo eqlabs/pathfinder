@@ -15,6 +15,7 @@ use crate::{
     core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
     sequencer::error::SequencerError,
 };
+use futures::Future;
 
 /// A Sequencer Request builder.
 pub struct Request<'a, S: RequestState> {
@@ -252,6 +253,20 @@ impl<'a> Request<'a, stage::Params> {
     }
 }
 
+/// Awaits future `f` and increments the:
+/// - `sequencer_requests_total` counter for `method`,
+/// - `sequencer_requests_failed_total` counter for `method` if the future returns the `Err()` variant.
+async fn wrap_with_metrics<T>(
+    method: &'static str,
+    f: impl Future<Output = Result<T, SequencerError>>,
+) -> Result<T, SequencerError> {
+    metrics::increment_counter!("sequencer_requests_total", "method" => method);
+    f.await.map_err(|e| {
+        metrics::increment_counter!("sequencer_requests_failed_total", "method" => method);
+        e
+    })
+}
+
 impl<'a> Request<'a, stage::Final> {
     /// Sends the Sequencer request as a REST `GET` operation and parses the response into `T`.
     pub async fn get<T>(self) -> Result<T, SequencerError>
@@ -263,9 +278,11 @@ impl<'a> Request<'a, stage::Final> {
             client: &reqwest::Client,
             method: &'static str,
         ) -> Result<T, SequencerError> {
-            metrics::increment_counter!("sequencer_requests_total", "method" => method);
-            let response = client.get(url).send().await?;
-            parse::<T>(response).await
+            wrap_with_metrics(method, async move {
+                let response = client.get(url).send().await?;
+                parse::<T>(response).await
+            })
+            .await
         }
 
         match self.state.retry {
@@ -290,11 +307,13 @@ impl<'a> Request<'a, stage::Final> {
             client: &reqwest::Client,
             method: &'static str,
         ) -> Result<bytes::Bytes, SequencerError> {
-            metrics::increment_counter!("sequencer_requests_total", "method" => method);
-            let response = client.get(url).send().await?;
-            let response = parse_raw(response).await?;
-            let bytes = response.bytes().await?;
-            Ok(bytes)
+            wrap_with_metrics(method, async {
+                let response = client.get(url).send().await?;
+                let response = parse_raw(response).await?;
+                let bytes = response.bytes().await?;
+                Ok(bytes)
+            })
+            .await
         }
 
         match self.state.retry {
@@ -329,9 +348,11 @@ impl<'a> Request<'a, stage::Final> {
             T: serde::de::DeserializeOwned,
             J: serde::Serialize + ?Sized,
         {
-            metrics::increment_counter!("sequencer_requests_total", "method" => method);
-            let response = client.post(url).json(json).send().await?;
-            parse::<T>(response).await
+            wrap_with_metrics(method, async {
+                let response = client.post(url).json(json).send().await?;
+                parse::<T>(response).await
+            })
+            .await
         }
 
         match self.state.retry {
