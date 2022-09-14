@@ -76,6 +76,8 @@ impl From<RpcError> for jsonrpsee::core::error::Error {
 /// Note that the variants __must__ match the [RpcError] variant names and that [RpcError::Internal]
 /// is always included by default (and therefore should not be part of macro input).
 ///
+/// An `Internal` only variant can be generated using `rpc_error_subset!(<enum_name>)`.
+///
 /// ## Specifics
 /// This macro generates the following:
 ///
@@ -126,18 +128,28 @@ macro_rules! rpc_error_subset {
     // It is possible to allow for custom `#[derive()]` and other attributes. These are currently not required
     // and therefore not implemented.
 
-    // Entry-point for the macro
+    // Entry-point for empty variant (with colon suffix)
+    ($enum_name:ident:) => {
+        rpc_error_subset!($enum_name);
+    };
+    // Entry-point for empty variant (without colon suffix)
+    ($enum_name:ident) => {
+        rpc_error_subset!(@enum_def, $enum_name,);
+        rpc_error_subset!(@from_anyhow, $enum_name);
+        rpc_error_subset!(@from_def, $enum_name,);
+    };
+    // Main entry-point for the macro
     ($enum_name:ident: $($subset:tt),+) => {
         rpc_error_subset!(@enum_def, $enum_name, $($subset),+);
         rpc_error_subset!(@from_anyhow, $enum_name);
         rpc_error_subset!(@from_def, $enum_name, $($subset),+);
     };
     // Generates the enum definition, nothing tricky here.
-    (@enum_def, $enum_name:ident, $($subset:tt),+) => {
+    (@enum_def, $enum_name:ident, $($subset:tt),*) => {
         #[derive(Debug)]
         pub enum $enum_name {
-            $($subset),+,
             Internal(anyhow::Error),
+            $($subset),*
         }
     };
     // Generates From<anyhow::Error>, nothing tricky here.
@@ -175,6 +187,17 @@ macro_rules! rpc_error_subset {
             $($arms)*
             $enum_name::Internal(internal) => Self::Internal(internal),
         }
+    };
+    // Special case for single variant. This could probably be folded into one of the other
+    // cases but I struggled to do so correctly.
+    (@parse, $var:ident, $enum_name:ident, {$($arms:tt)*}, $variant:ident) => {
+        rpc_error_subset!(
+            @parse, $var, $enum_name,
+            {
+                $($arms)*
+                $enum_name::$variant => Self::$variant,
+            },
+        )
     };
     // Append this variant to arms. Continue parsing the remaining variants.
     (@parse, $var:ident, $enum_name:ident, {$($arms:tt)*}, $variant:ident, $($tail:ident),*) => {
