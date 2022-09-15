@@ -170,7 +170,9 @@ impl Client {
             .for_each(|&method| {
                 metrics::register_counter!("sequencer_requests_total", "method" => method);
                 metrics::register_counter!("sequencer_requests_failed_total", "method" => method);
-                metrics::register_counter!("sequencer_requests_rate_limited_total", "method" => method);
+                metrics::register_counter!("sequencer_requests_failed_starknet_total", "method" => method);
+                metrics::register_counter!("sequencer_requests_failed_decode_total", "method" => method);
+                metrics::register_counter!("sequencer_requests_failed_rate_limited_total", "method" => method);
             })
     }
 }

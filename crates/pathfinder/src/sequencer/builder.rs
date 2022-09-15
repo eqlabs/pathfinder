@@ -13,7 +13,7 @@
 
 use crate::{
     core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
-    sequencer::error::SequencerError,
+    sequencer::{builder::stage::MetricsMetadata, error::SequencerError},
 };
 use futures::Future;
 
@@ -52,6 +52,53 @@ pub mod stage {
     /// - [get_contract_addresses](super::Request::get_contract_addresses)
     pub struct Method;
 
+    /// Used to mark methods that touch special block tags to avoid reparsing the url.
+    #[derive(Clone, Copy, Debug)]
+    pub enum BlockTag {
+        None,
+        Latest,
+        Pending,
+    }
+
+    use crate::core::BlockId;
+
+    impl From<BlockId> for BlockTag {
+        fn from(x: BlockId) -> Self {
+            match x {
+                BlockId::Number(_) | BlockId::Hash(_) => Self::None,
+                BlockId::Latest => Self::Latest,
+                BlockId::Pending => Self::Pending,
+            }
+        }
+    }
+
+    impl BlockTag {
+        // Returns a `&'static str` representation of the tag, if it exists.
+        pub fn as_str(self) -> Option<&'static str> {
+            match self {
+                BlockTag::None => None,
+                BlockTag::Latest => Some("latest"),
+                BlockTag::Pending => Some("pending"),
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct MetricsMetadata {
+        pub method: &'static str,
+        pub tag: BlockTag,
+    }
+
+    impl MetricsMetadata {
+        /// Create new instance with tag set to [`BlockTag::None`]
+        pub fn new(method: &'static str) -> Self {
+            Self {
+                method,
+                tag: BlockTag::None,
+            }
+        }
+    }
+
     /// Specify the request parameters:
     /// - [at_block](super::Request::with_block)
     /// - [with_contract_address](super::Request::with_contract_address)
@@ -63,7 +110,7 @@ pub mod stage {
     ///
     /// and then specify the [retry behavior](super::Request::with_retry).
     pub struct Params {
-        pub method: &'static str,
+        pub meta: MetricsMetadata,
     }
 
     /// Specify the REST operation send the request:
@@ -71,7 +118,7 @@ pub mod stage {
     /// - [get_as_bytes](super::Request::get_as_bytes)
     /// - [post_with_json](super::Request::post_with_json)
     pub struct Final {
-        pub method: &'static str,
+        pub meta: MetricsMetadata,
         pub retry: super::Retry,
     }
 
@@ -189,7 +236,9 @@ impl<'a> Request<'a, stage::Method> {
         Request {
             url: self.url,
             client: self.client,
-            state: stage::Params { method },
+            state: stage::Params {
+                meta: stage::MetricsMetadata::new(method),
+            },
         }
     }
 }
@@ -200,15 +249,23 @@ impl<'a> Request<'a, stage::Params> {
         use std::borrow::Cow;
 
         let block: BlockId = block.into();
-        let (name, value) = match block {
-            BlockId::Number(number) => ("blockNumber", Cow::from(number.get().to_string())),
-            BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str()),
+        let (name, value, tag) = match block {
+            BlockId::Number(number) => (
+                "blockNumber",
+                Cow::from(number.get().to_string()),
+                stage::BlockTag::None,
+            ),
+            BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str(), stage::BlockTag::None),
             // These have to use "blockNumber", "blockHash" does not accept tags.
-            BlockId::Latest => ("blockNumber", Cow::from("latest")),
-            BlockId::Pending => ("blockNumber", Cow::from("pending")),
+            BlockId::Latest => ("blockNumber", Cow::from("latest"), stage::BlockTag::Latest),
+            BlockId::Pending => (
+                "blockNumber",
+                Cow::from("pending"),
+                stage::BlockTag::Pending,
+            ),
         };
 
-        self.add_param(name, &value)
+        self.update_tag(tag).add_param(name, &value)
     }
 
     pub fn with_contract_address(self, address: ContractAddress) -> Self {
@@ -240,42 +297,72 @@ impl<'a> Request<'a, stage::Params> {
         self
     }
 
+    pub fn update_tag(mut self, tag: stage::BlockTag) -> Self {
+        self.state.meta.tag = tag;
+        self
+    }
+
     /// Sets the request retry behavior.
     pub fn with_retry(self, retry: Retry) -> Request<'a, stage::Final> {
         Request {
             url: self.url,
             client: self.client,
             state: stage::Final {
-                method: self.state.method,
+                meta: self.state.meta,
                 retry,
             },
         }
     }
 }
 
-/// Awaits future `f` and increments the:
-/// - `sequencer_requests_total` counter for `method`,
-/// - `sequencer_requests_failed_total` counter for `method` if the future returns the `Err()` variant.
-/// - `sequencer_requests_rate_limited_total` counter for `method` if the future returns the `Err()` variant,
+/// Awaits future `f` and increments the following counters for a particular method:
+/// - `sequencer_requests_total`,
+/// - `sequencer_requests_failed_total` if the future returns the `Err()` variant.
+/// - `sequencer_requests_failed_starknet_total` if the future returns the `Err()` variant, which carries a
+/// StarkNet specific error variant
+/// - `sequencer_requests_failed_decode_total` counter for `method` if the future returns the `Err()` variant,
+/// which carries a decode error variant
+/// - `sequencer_requests_failed_rate_limited_total` if the future returns the `Err()` variant,
 /// which carries the [`reqwest::StatusCode::TOO_MANY_REQUESTS`] status code
+///
+/// All the above counters are also duplicated for the special cases of:
+/// `("get_block" | "get_state_update") AND ("latest" | "pending")`
 async fn wrap_with_metrics<T>(
-    method: &'static str,
+    meta: MetricsMetadata,
     f: impl Future<Output = Result<T, SequencerError>>,
 ) -> Result<T, SequencerError> {
-    metrics::increment_counter!("sequencer_requests_total", "method" => method);
+    /// Increments a counter and all its special flavors that record tag specific events
+    fn increment_counter(counter_name: &'static str, meta: MetricsMetadata) {
+        let method = meta.method;
+        let tag = meta.tag;
+        metrics::increment_counter!(counter_name, "method" => method);
+        if let ("get_block" | "get_state_update", Some(tag)) = (method, tag.as_str()) {
+            metrics::increment_counter!(counter_name, "method" => method, "tag" => tag)
+        }
+    }
+
+    increment_counter("sequencer_requests_total", meta);
+
     f.await.map_err(|e| {
+        increment_counter("sequencer_requests_failed_total", meta);
+
         match &e {
-            SequencerError::StarknetError(_) => {}
+            SequencerError::StarknetError(_) => {
+                increment_counter("sequencer_requests_failed_starknet_total", meta);
+            }
+            SequencerError::ReqwestError(e) if e.is_decode() => {
+                increment_counter("sequencer_requests_failed_decode_total", meta);
+            }
             SequencerError::ReqwestError(e)
                 if e.is_status()
-                    && e.status().expect("error kind should be status") == reqwest::StatusCode::TOO_MANY_REQUESTS =>
+                    && e.status().expect("error kind should be status")
+                        == reqwest::StatusCode::TOO_MANY_REQUESTS =>
             {
-                metrics::increment_counter!("sequencer_requests_rate_limited_total", "method" => method);
+                increment_counter("sequencer_requests_failed_rate_limited_total", meta);
             }
             SequencerError::ReqwestError(_) => {}
         }
 
-        metrics::increment_counter!("sequencer_requests_failed_total", "method" => method);
         e
     })
 }
@@ -289,9 +376,9 @@ impl<'a> Request<'a, stage::Final> {
         async fn send_request<T: serde::de::DeserializeOwned>(
             url: reqwest::Url,
             client: &reqwest::Client,
-            method: &'static str,
+            meta: MetricsMetadata,
         ) -> Result<T, SequencerError> {
-            wrap_with_metrics(method, async move {
+            wrap_with_metrics(meta, async move {
                 let response = client.get(url).send().await?;
                 parse::<T>(response).await
             })
@@ -299,12 +386,12 @@ impl<'a> Request<'a, stage::Final> {
         }
 
         match self.state.retry {
-            Retry::Disabled => send_request(self.url, self.client, self.state.method).await,
+            Retry::Disabled => send_request(self.url, self.client, self.state.meta).await,
             Retry::Enabled => {
                 retry0(
                     || async {
                         let clone_url = self.url.clone();
-                        send_request(clone_url, self.client, self.state.method).await
+                        send_request(clone_url, self.client, self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -318,9 +405,9 @@ impl<'a> Request<'a, stage::Final> {
         async fn get_as_bytes_inner(
             url: reqwest::Url,
             client: &reqwest::Client,
-            method: &'static str,
+            meta: MetricsMetadata,
         ) -> Result<bytes::Bytes, SequencerError> {
-            wrap_with_metrics(method, async {
+            wrap_with_metrics(meta, async {
                 let response = client.get(url).send().await?;
                 let response = parse_raw(response).await?;
                 let bytes = response.bytes().await?;
@@ -330,12 +417,12 @@ impl<'a> Request<'a, stage::Final> {
         }
 
         match self.state.retry {
-            Retry::Disabled => get_as_bytes_inner(self.url, self.client, self.state.method).await,
+            Retry::Disabled => get_as_bytes_inner(self.url, self.client, self.state.meta).await,
             Retry::Enabled => {
                 retry0(
                     || async {
                         let clone_url = self.url.clone();
-                        get_as_bytes_inner(clone_url, self.client, self.state.method).await
+                        get_as_bytes_inner(clone_url, self.client, self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -354,14 +441,14 @@ impl<'a> Request<'a, stage::Final> {
         async fn post_with_json_inner<T, J>(
             url: reqwest::Url,
             client: &reqwest::Client,
-            method: &'static str,
+            meta: MetricsMetadata,
             json: &J,
         ) -> Result<T, SequencerError>
         where
             T: serde::de::DeserializeOwned,
             J: serde::Serialize + ?Sized,
         {
-            wrap_with_metrics(method, async {
+            wrap_with_metrics(meta, async {
                 let response = client.post(url).json(json).send().await?;
                 parse::<T>(response).await
             })
@@ -370,13 +457,13 @@ impl<'a> Request<'a, stage::Final> {
 
         match self.state.retry {
             Retry::Disabled => {
-                post_with_json_inner(self.url, self.client, self.state.method, json).await
+                post_with_json_inner(self.url, self.client, self.state.meta, json).await
             }
             Retry::Enabled => {
                 retry0(
                     || async {
                         let clone_url = self.url.clone();
-                        post_with_json_inner(clone_url, self.client, self.state.method, json).await
+                        post_with_json_inner(clone_url, self.client, self.state.meta, json).await
                     },
                     retry_condition,
                 )
