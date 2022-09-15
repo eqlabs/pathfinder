@@ -1,5 +1,5 @@
 //! Sequencer related error types.
-use crate::rpc::types::reply::ErrorCode as RpcErrorCode;
+use crate::rpc::v01::types::reply::ErrorCode as RpcErrorCode;
 use jsonrpsee::{core::error::Error, types::error::CallError};
 use serde::{Deserialize, Serialize};
 

@@ -157,11 +157,12 @@ impl<'a, StorageInitIter, ParamsIter> TestWithParams<'a, StorageInitIter, Params
         'a,
         StorageInitIter,
         ParamsIter,
-        impl Copy + FnOnce(jsonrpsee::core::Error, u32, usize) -> crate::rpc::types::reply::ErrorCode,
+        impl Copy
+            + FnOnce(jsonrpsee::core::Error, u32, usize) -> crate::rpc::v01::types::reply::ErrorCode,
     > {
         self.map_err(|error, line, test_case| match &error {
             jsonrpsee::core::Error::Call(jsonrpsee::types::error::CallError::Custom(custom)) => {
-                match crate::rpc::types::reply::ErrorCode::try_from(custom.code()) {
+                match crate::rpc::v01::types::reply::ErrorCode::try_from(custom.code()) {
                     Ok(error_code) => error_code,
                     Err(_) => panic!("line {line}, test case {test_case}: {error}"),
                 }
@@ -203,7 +204,7 @@ impl<'a, StorageInitIter, ParamsIter, MapErrFn>
         let expected_cnt = expected_iter.clone().count();
         let params_cnt = self.params.clone().count();
         std::assert_eq!(params_cnt, expected_cnt,
-            "numbers of test cases from vectors differ (params: {params_cnt}, expected outputs: {expected_cnt}), line {}", self.line);
+                        "numbers of test cases from vectors differ (params: {params_cnt}, expected outputs: {expected_cnt}), line {}", self.line);
         TestWithExpected {
             method: self.method,
             line: self.line,
@@ -242,7 +243,7 @@ impl<'a, StorageInitIter, ParamsIter, MapErrFn>
         let expected_cnt = expected_iter.clone().count();
         let params_cnt = self.params.clone().count();
         std::assert_eq!(params_cnt, expected_cnt,
-            "numbers of test cases from vectors differ (params: {params_cnt}, expected outputs: {expected_cnt}), line {}", self.line);
+                        "numbers of test cases from vectors differ (params: {params_cnt}, expected outputs: {expected_cnt}), line {}", self.line);
         TestWithExpected {
             method: self.method,
             line: self.line,

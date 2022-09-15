@@ -74,7 +74,7 @@ async fn main() {
         let mut compressor = zstd::bulk::Compressor::new(10).unwrap();
 
         for (block_num, sequencer_state_update) in downloaded_rx.iter() {
-            use pathfinder_lib::rpc::types::reply::StateUpdate;
+            use pathfinder_lib::rpc::v01::types::reply::StateUpdate;
 
             // Unwrap is safe because all non-pending state updates contain a block hash
             let block_hash = sequencer_state_update.block_hash.unwrap();

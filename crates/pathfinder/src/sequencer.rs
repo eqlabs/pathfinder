@@ -12,7 +12,7 @@ use crate::{
         ContractAddressSalt, Fee, StarknetTransactionHash, StorageAddress, StorageValue,
         TransactionNonce, TransactionVersion,
     },
-    rpc::types::BlockHashOrTag,
+    rpc::v01::types::BlockHashOrTag,
     sequencer::error::SequencerError,
 };
 use reqwest::Url;
@@ -412,12 +412,12 @@ impl ClientApi for Client {
 
 #[cfg(test)]
 pub mod test_utils {
+    use crate::rpc::v01::types::{BlockHashOrTag, BlockNumberOrTag};
     use crate::{
         core::{
             CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
             StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
         },
-        rpc::types::{BlockHashOrTag, BlockNumberOrTag},
         starkhash,
     };
     use stark_hash::StarkHash;
@@ -474,10 +474,8 @@ pub mod test_utils {
 #[cfg(test)]
 mod tests {
     use super::{error::StarknetErrorCode, test_utils::*, *};
-    use crate::{
-        core::{StarknetBlockHash, StarknetBlockNumber},
-        rpc::types::Tag,
-    };
+    use crate::core::{StarknetBlockHash, StarknetBlockNumber};
+    use crate::rpc::v01::types::Tag;
     use assert_matches::assert_matches;
     use stark_hash::StarkHash;
 
@@ -716,7 +714,6 @@ mod tests {
     }
 
     mod block {
-
         use super::*;
         use pretty_assertions::assert_eq;
 
@@ -1727,27 +1724,27 @@ mod tests {
             let json: serde_json::Value = serde_json::from_slice(json).unwrap();
             let program = json["contract_definition"]["program"].as_str().unwrap();
             let entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
-                        HashMap::from([
-                            (EntryPointType::Constructor, vec![]),
-                            (
-                                EntryPointType::External,
-                                vec![
-                                    SelectorAndOffset {
-                                        offset: ByteCodeOffset(starkhash!("3a")),
-                                        selector: EntryPoint(starkhash!(
+                HashMap::from([
+                    (EntryPointType::Constructor, vec![]),
+                    (
+                        EntryPointType::External,
+                        vec![
+                            SelectorAndOffset {
+                                offset: ByteCodeOffset(starkhash!("3a")),
+                                selector: EntryPoint(starkhash!(
                                                 "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")
-                                        ),
-                                    },
-                                    SelectorAndOffset{
-                                        offset: ByteCodeOffset(starkhash!("5b")),
-                                        selector: EntryPoint(starkhash!(
+                                ),
+                            },
+                            SelectorAndOffset {
+                                offset: ByteCodeOffset(starkhash!("5b")),
+                                selector: EntryPoint(starkhash!(
                                                 "039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695"
                                         )),
-                                    },
-                                ],
-                            ),
-                            (EntryPointType::L1Handler, vec![]),
-                        ]);
+                            },
+                        ],
+                    ),
+                    (EntryPointType::L1Handler, vec![]),
+                ]);
             ContractDefinition {
                 program: program.to_owned(),
                 entry_points_by_type,

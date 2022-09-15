@@ -15,18 +15,16 @@ use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::json;
 use stark_hash::StarkHash;
 
-use pathfinder_lib::{
-    core::{
-        BlockId, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
-        StarknetTransactionIndex, StorageAddress, StorageValue,
+use pathfinder_lib::core::{
+    BlockId, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
+    StarknetTransactionIndex, StorageAddress, StorageValue,
+};
+use pathfinder_lib::rpc::v01::types::{
+    reply::{
+        Block, GetEventsResult, Transaction as StarknetTransaction,
+        TransactionReceipt as StarknetTransactionReceipt, Transactions as StarknetTransactions,
     },
-    rpc::types::{
-        reply::{
-            Block, GetEventsResult, Transaction as StarknetTransaction,
-            TransactionReceipt as StarknetTransactionReceipt, Transactions as StarknetTransactions,
-        },
-        request::EventFilter,
-    },
+    request::EventFilter,
 };
 
 //

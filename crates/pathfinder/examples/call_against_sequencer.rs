@@ -1,11 +1,9 @@
 use futures::future::TryFutureExt;
 use jsonrpsee::core::error::Error;
-use pathfinder_lib::{
-    rpc::types::{request::Call, BlockHashOrTag},
-    sequencer::ClientApi,
-};
+use pathfinder_lib::sequencer::ClientApi;
 use tokio::io::AsyncBufReadExt;
 
+use pathfinder_lib::rpc::v01::types::{request::Call, BlockHashOrTag};
 use tracing::{debug, warn};
 
 /// Tool for calling call locally while also asking sequencer for the result

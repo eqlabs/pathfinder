@@ -12,7 +12,7 @@ use crate::{
         StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
     },
     ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
-    rpc::types::reply::StateUpdate,
+    rpc::v01::types::reply::StateUpdate,
     sequencer::reply::transaction,
 };
 
@@ -192,6 +192,7 @@ impl L1StateTable {
 }
 
 pub struct RefsTable {}
+
 impl RefsTable {
     /// Returns the current L1-L2 head. This indicates the latest block for which L1 and L2 agree.
     pub fn get_l1_l2_head(tx: &Transaction<'_>) -> anyhow::Result<Option<StarknetBlockNumber>> {
@@ -212,8 +213,10 @@ impl RefsTable {
         Ok(())
     }
 }
+
 /// Stores all known [StarknetBlocks][StarknetBlock].
 pub struct StarknetBlocksTable {}
+
 impl StarknetBlocksTable {
     /// Insert a new [StarknetBlock]. Fails if the block number is not unique.
     ///
@@ -470,6 +473,7 @@ impl TryFrom<StarknetBlocksBlockId> for StarknetBlocksNumberOrLatest {
 
 /// Stores all known starknet transactions
 pub struct StarknetTransactionsTable {}
+
 impl StarknetTransactionsTable {
     /// Inserts a Starknet block's transactions and transaction receipts into the [StarknetTransactionsTable].
     ///
@@ -500,7 +504,7 @@ impl StarknetTransactionsTable {
                 .context("Compress Starknet transaction receipt")?;
 
             tx.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
-                named_params![
+                       named_params![
                     ":hash": transaction.hash(),
                     ":idx": i,
                     ":block_hash": block_hash,
@@ -769,6 +773,7 @@ pub struct PageOfEvents {
 }
 
 pub struct StarknetEventsTable {}
+
 impl StarknetEventsTable {
     pub fn encode_event_data_to_bytes(data: &[EventData], buffer: &mut Vec<u8>) {
         buffer.extend(data.iter().flat_map(|e| (*e.0.as_be_bytes()).into_iter()))
@@ -1221,6 +1226,7 @@ impl ContractsStateTable {
 
 /// Stores all known [Starknet state updates][crate::rpc::types::reply::StateUpdate].
 pub struct StarknetStateUpdatesTable {}
+
 impl StarknetStateUpdatesTable {
     /// Inserts a StarkNet state update accociated with a particular block into the [StarknetStateUpdatesTable].
     ///
@@ -1274,6 +1280,7 @@ impl StarknetStateUpdatesTable {
 
 /// Stores the canonical StarkNet block chain.
 pub struct CanonicalBlocksTable {}
+
 impl CanonicalBlocksTable {
     pub fn insert(
         tx: &Transaction<'_>,
@@ -1956,6 +1963,7 @@ mod tests {
                 );
             }
         }
+
         mod get_hash {
             use super::*;
 
@@ -2094,7 +2102,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: vec![expected_event.clone()],
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2256,7 +2264,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: expected_events.to_vec(),
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2284,7 +2292,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: expected_events.to_vec(),
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2312,7 +2320,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: expected_events.to_vec(),
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2339,7 +2347,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: vec![expected_event.clone()],
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2365,7 +2373,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: vec![expected_event.clone()],
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2390,7 +2398,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: emitted_events,
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2414,7 +2422,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: emitted_events[..10].to_vec(),
-                    is_last_page: false
+                    is_last_page: false,
                 }
             );
 
@@ -2431,7 +2439,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: emitted_events[10..20].to_vec(),
-                    is_last_page: false
+                    is_last_page: false,
                 }
             );
 
@@ -2448,7 +2456,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: emitted_events[30..40].to_vec(),
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2474,7 +2482,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: vec![],
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2536,7 +2544,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: expected_events[..2].to_vec(),
-                    is_last_page: false
+                    is_last_page: false,
                 }
             );
 
@@ -2553,7 +2561,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: expected_events[2..4].to_vec(),
-                    is_last_page: false
+                    is_last_page: false,
                 }
             );
 
@@ -2570,7 +2578,7 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: expected_events[4..].to_vec(),
-                    is_last_page: true
+                    is_last_page: true,
                 }
             );
         }
@@ -2635,7 +2643,6 @@ mod tests {
     }
 
     mod starknet_updates {
-
         use super::*;
         use crate::storage::fixtures::with_n_state_updates;
 

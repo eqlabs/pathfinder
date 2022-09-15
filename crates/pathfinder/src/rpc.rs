@@ -1,12 +1,11 @@
 //! StarkNet node JSON-RPC related modules.
-pub mod api;
 mod error;
 pub mod serde;
 #[cfg(test)]
 pub mod test_client;
 #[cfg(test)]
 pub mod test_setup;
-pub mod types;
+pub mod v01;
 
 use crate::{
     core::{
@@ -15,17 +14,15 @@ use crate::{
         TransactionVersion,
     },
     monitoring::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware},
-    rpc::{
-        api::{BlockResponseScope, RpcApi},
-        serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
-        types::request::{Call, ContractCall, EventFilter},
-    },
+    rpc::serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
     sequencer::request::add_transaction::ContractDefinition,
 };
 use ::serde::Deserialize;
 use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle, RpcModule};
 
 use std::{net::SocketAddr, result::Result};
+use v01::api::{BlockResponseScope, RpcApi};
+use v01::types::request::{Call, ContractCall, EventFilter};
 
 /// Helper wrapper for attaching spans to rpc method implementations
 struct RpcModuleWrapper<Context>(jsonrpsee::RpcModule<Context>);
@@ -106,11 +103,11 @@ impl RpcServer {
                     if let Some(inner) = e.source().and_then(|inner| inner.downcast_ref::<std::io::Error>()) {
                         if let std::io::ErrorKind::AddrInUse = inner.kind() {
                             return anyhow::Error::new(e)
-                            .context(format!("RPC address is already in use: {}.
+                                .context(format!("RPC address is already in use: {}.
 
 Hint: This usually means you are already running another instance of pathfinder.
 Hint: If this happens when upgrading, make sure to shut down the first one first.
-Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses.", self.addr))
+Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses.", self.addr));
                         }
                     }
 
@@ -416,13 +413,13 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
 #[cfg(test)]
 mod tests {
     use super::{test_client::client, *};
+    use crate::rpc::v01::types::reply::BlockHashAndNumber;
     use crate::{
         core::{
             Chain, ClassHash, ContractAddress, EntryPoint, EventData, EventKey, GasPrice,
             GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
             StarknetBlockTimestamp, StorageAddress,
         },
-        rpc::types::reply::BlockHashAndNumber,
         sequencer::{
             reply::{
                 state_update::StorageDiff,
@@ -910,7 +907,7 @@ mod tests {
 
     mod get_block {
         use super::*;
-        use crate::rpc::types::reply::{Block, Transactions};
+        use crate::rpc::v01::types::reply::{Block, Transactions};
         use crate::{
             core::{StarknetBlockHash, StarknetBlockNumber},
             sequencer::reply::PendingBlock,
@@ -1040,12 +1037,16 @@ mod tests {
                 .request::<Block>("starknet_getBlockWithTxHashes", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidBlockId, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
+                error
+            );
         }
     }
 
     mod get_state_update {
-        use crate::rpc::{test_setup::Test, types::reply::ErrorCode};
+        use crate::rpc::test_setup::Test;
+        use crate::rpc::v01::types::reply::ErrorCode;
         use crate::storage::fixtures::init::with_n_state_updates;
         use serde_json::json;
 
@@ -1088,10 +1089,8 @@ mod tests {
 
     mod get_storage_at {
         use super::*;
-        use crate::{
-            core::StorageValue,
-            rpc::types::{BlockHashOrTag, Tag},
-        };
+        use crate::core::StorageValue;
+        use crate::rpc::v01::types::{BlockHashOrTag, Tag};
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1156,7 +1155,10 @@ mod tests {
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::ContractNotFound, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::ContractNotFound,
+                error
+            );
         }
 
         #[tokio::test]
@@ -1175,7 +1177,10 @@ mod tests {
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::ContractNotFound, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::ContractNotFound,
+                error
+            );
         }
 
         #[tokio::test]
@@ -1194,7 +1199,10 @@ mod tests {
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidBlockId, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
+                error
+            );
         }
 
         #[tokio::test]
@@ -1285,7 +1293,7 @@ mod tests {
 
     mod get_transaction_by_hash {
         use super::*;
-        use crate::rpc::types::reply::Transaction;
+        use crate::rpc::v01::types::reply::Transaction;
         use pretty_assertions::assert_eq;
 
         mod accepted {
@@ -1359,7 +1367,7 @@ mod tests {
                 .await
                 .unwrap_err();
             assert_eq!(
-                crate::rpc::types::reply::ErrorCode::InvalidTransactionHash,
+                crate::rpc::v01::types::reply::ErrorCode::InvalidTransactionHash,
                 error
             );
         }
@@ -1367,7 +1375,7 @@ mod tests {
 
     mod get_transaction_by_block_id_and_index {
         use super::*;
-        use crate::rpc::types::reply::Transaction;
+        use crate::rpc::v01::types::reply::Transaction;
         use pretty_assertions::assert_eq;
 
         async fn check_result<F: Fn(&Transaction)>(params: Option<ParamsSer<'_>>, check_fn: F) {
@@ -1477,7 +1485,10 @@ mod tests {
                 .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidBlockId, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
+                error
+            );
         }
 
         #[tokio::test]
@@ -1495,7 +1506,7 @@ mod tests {
                 .await
                 .unwrap_err();
             assert_eq!(
-                crate::rpc::types::reply::ErrorCode::InvalidTransactionIndex,
+                crate::rpc::v01::types::reply::ErrorCode::InvalidTransactionIndex,
                 error
             );
         }
@@ -1503,7 +1514,7 @@ mod tests {
 
     mod get_transaction_receipt {
         use super::*;
-        use crate::rpc::types::reply::TransactionReceipt;
+        use crate::rpc::v01::types::reply::TransactionReceipt;
         use pretty_assertions::assert_eq;
 
         mod accepted {
@@ -1600,7 +1611,7 @@ mod tests {
                 .await
                 .unwrap_err();
             assert_eq!(
-                crate::rpc::types::reply::ErrorCode::InvalidTransactionHash,
+                crate::rpc::v01::types::reply::ErrorCode::InvalidTransactionHash,
                 error
             );
         }
@@ -1610,7 +1621,7 @@ mod tests {
         use super::contract_setup::setup_class_and_contract;
         use super::*;
         use crate::core::ContractClass;
-        use crate::rpc::types::reply::ErrorCode;
+        use crate::rpc::v01::types::reply::ErrorCode;
 
         mod positional_args {
             use super::*;
@@ -1693,7 +1704,7 @@ mod tests {
 
         mod positional_args {
             use super::*;
-            use crate::rpc::types::reply::ErrorCode;
+            use crate::rpc::v01::types::reply::ErrorCode;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -1805,7 +1816,7 @@ mod tests {
         use super::contract_setup::setup_class_and_contract;
         use super::*;
         use crate::core::ContractClass;
-        use crate::rpc::types::reply::ErrorCode;
+        use crate::rpc::v01::types::reply::ErrorCode;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -2115,7 +2126,10 @@ mod tests {
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidBlockId, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
+                error
+            );
         }
 
         #[tokio::test]
@@ -2130,13 +2144,16 @@ mod tests {
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidBlockId, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
+                error
+            );
         }
     }
 
     mod pending_transactions {
         use super::*;
-        use crate::rpc::types::reply::Transaction;
+        use crate::rpc::v01::types::reply::Transaction;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -2228,7 +2245,7 @@ mod tests {
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(invalid_contract))
             .await
             .expect_err("invalid contract should error");
-        let expected = crate::rpc::types::reply::ErrorCode::ContractNotFound;
+        let expected = crate::rpc::v01::types::reply::ErrorCode::ContractNotFound;
         assert_eq!(expected, error);
     }
 
@@ -2236,9 +2253,9 @@ mod tests {
     // parsing issues.
     mod call {
         use super::*;
+        use crate::rpc::v01::types::request::Call;
         use crate::{
             core::{CallParam, CallResultValue},
-            rpc::types::request::Call,
             starkhash,
         };
         use pretty_assertions::assert_eq;
@@ -2386,7 +2403,7 @@ mod tests {
                 .await
                 .unwrap_err();
             assert_eq!(
-                crate::rpc::types::reply::ErrorCode::InvalidMessageSelector,
+                crate::rpc::v01::types::reply::ErrorCode::InvalidMessageSelector,
                 error
             );
         }
@@ -2415,7 +2432,10 @@ mod tests {
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::ContractNotFound, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::ContractNotFound,
+                error
+            );
         }
 
         #[ignore = "no longer works without setting up ext_py"]
@@ -2442,7 +2462,10 @@ mod tests {
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidCallData, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidCallData,
+                error
+            );
         }
 
         #[ignore = "no longer works without setting up ext_py"]
@@ -2469,7 +2492,10 @@ mod tests {
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::ContractNotFound, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::ContractNotFound,
+                error
+            );
         }
 
         #[ignore = "no longer works without setting up ext_py"]
@@ -2496,7 +2522,10 @@ mod tests {
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
-            assert_eq!(crate::rpc::types::reply::ErrorCode::InvalidBlockId, error);
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
+                error
+            );
         }
     }
 
@@ -2615,7 +2644,7 @@ mod tests {
     }
 
     mod syncing {
-        use crate::rpc::types::reply::{syncing, Syncing};
+        use crate::rpc::v01::types::reply::{syncing, Syncing};
         use pretty_assertions::assert_eq;
 
         use super::*;
@@ -2637,7 +2666,7 @@ mod tests {
 
         #[tokio::test]
         async fn syncing() {
-            use crate::rpc::types::reply::syncing::NumberedBlock;
+            use crate::rpc::v01::types::reply::syncing::NumberedBlock;
             let expected = Syncing::Status(syncing::Status {
                 starting: NumberedBlock::from(("abbacd", 1)),
                 current: NumberedBlock::from(("abbace", 2)),
@@ -2662,7 +2691,7 @@ mod tests {
     mod events {
         use super::*;
 
-        use super::types::reply::{EmittedEvent, GetEventsResult};
+        use crate::rpc::v01::types::reply::{EmittedEvent, GetEventsResult};
         use crate::storage::test_utils;
 
         fn setup() -> (Storage, Vec<EmittedEvent>) {
@@ -2796,7 +2825,10 @@ mod tests {
                     .await
                     .unwrap_err();
 
-                assert_eq!(crate::rpc::types::reply::ErrorCode::PageSizeTooBig, error);
+                assert_eq!(
+                    crate::rpc::v01::types::reply::ErrorCode::PageSizeTooBig,
+                    error
+                );
             }
 
             #[tokio::test]
@@ -3099,7 +3131,7 @@ mod tests {
 
     mod add_transaction {
         use super::*;
-        use crate::rpc::types::reply::{
+        use crate::rpc::v01::types::reply::{
             DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult,
         };
 

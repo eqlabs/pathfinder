@@ -6,7 +6,7 @@ use crate::{
         StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
         StorageValue,
     },
-    rpc::types::reply::{
+    rpc::v01::types::reply::{
         state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
         StateUpdate,
     },

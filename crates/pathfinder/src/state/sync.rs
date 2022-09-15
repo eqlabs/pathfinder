@@ -11,7 +11,7 @@ use crate::{
         StarknetBlockNumber,
     },
     ethereum::{log::StateUpdateLog, transport::EthereumTransport},
-    rpc::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
+    rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer::{
         self,
         reply::{Block, MaybePendingBlock, PendingBlock, StateUpdate},
@@ -45,6 +45,7 @@ struct PendingInner {
     pub block: Arc<PendingBlock>,
     pub state_update: Arc<sequencer::reply::StateUpdate>,
 }
+
 #[derive(Default, Clone)]
 pub struct PendingData {
     inner: Arc<RwLock<Option<PendingInner>>>,
@@ -921,7 +922,7 @@ mod tests {
             TransactionVersion,
         },
         ethereum,
-        rpc::types::BlockHashOrTag,
+        rpc::v01::types::BlockHashOrTag,
         sequencer::{
             self,
             error::SequencerError,
@@ -1267,7 +1268,7 @@ mod tests {
                 // Case 1: some L1-L2 head expected
                 Some(StarknetBlockNumber::GENESIS),
                 // Case 2: some L1-L2 head expected
-                Some(StarknetBlockNumber::new_or_panic(1))
+                Some(StarknetBlockNumber::new_or_panic(1)),
             ]
         );
     }
@@ -1345,7 +1346,7 @@ mod tests {
                 (
                     Some(StarknetBlockNumber::GENESIS),
                     Some(StarknetBlockNumber::GENESIS)
-                )
+                ),
             ]
         );
     }
@@ -1516,7 +1517,7 @@ mod tests {
                 // Case 0: no L1-L2 head expected
                 None,
                 // Case 1: some L1-L2 head expected
-                Some(StarknetBlockNumber::GENESIS)
+                Some(StarknetBlockNumber::GENESIS),
             ]
         );
     }
@@ -1591,7 +1592,7 @@ mod tests {
                 (
                     Some(StarknetBlockNumber::GENESIS),
                     Some(StarknetBlockNumber::GENESIS)
-                )
+                ),
             ]
         );
     }
