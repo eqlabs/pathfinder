@@ -1,63 +1,126 @@
 [
     {
-        "transaction_hash": "0x0",
+        "type": "INVOKE",
+        "transaction_hash": "0xdeadbeef",
         "actual_fee": "0x1",
         "status": "ACCEPTED_ON_L1",
-        "status_data": "blah",
         "block_hash": "0xaaa",
         "block_number": 3,
         "messages_sent": [
             {
-                "to_address": "0x2",
+                "to_address": "0x55",
                 "payload": [
-                    "0x3"
+                    "0x6"
                 ]
             }
         ],
-        "l1_origin_message": {
-            "from_address": "0x4",
-            "payload": [
-                "0x5"
-            ]
-        },
         "events": [
             {
-                "from_address": "0x6",
+                "from_address": "0xe6",
                 "keys": [
-                    "0x7"
+                    "0xe7"
                 ],
                 "data": [
-                    "0x8"
+                    "0xe8"
                 ]
             }
         ]
     },
     {
-        "transaction_hash": "0x0",
+        "type": "INVOKE",
+        "transaction_hash": "0xdeadbeef",
+        "actual_fee": "0x1",
+        "status": "ACCEPTED_ON_L1",
+        "block_hash": "0xaaa",
+        "block_number": 3,
+        "messages_sent": [],
+        "events": []
+    },
+    {
+        "type": "DECLARE",
+        "transaction_hash": "0xdeaf01",
         "actual_fee": "0x1",
         "status": "ACCEPTED_ON_L1",
         "block_hash": "0xaaa",
         "block_number": 3,
         "messages_sent": [
             {
-                "to_address": "0x2",
+                "to_address": "0x55",
                 "payload": [
-                    "0x3"
+                    "0x6"
                 ]
             }
         ],
-        "events": []
+        "events": [
+            {
+                "from_address": "0xe6",
+                "keys": [
+                    "0xe7"
+                ],
+                "data": [
+                    "0xe8"
+                ]
+            }
+        ]
     },
     {
-        "transaction_hash": "0x0",
+        "type": "L1_HANDLER",
+        "transaction_hash": "0xdeaf02",
         "actual_fee": "0x1",
         "status": "ACCEPTED_ON_L1",
-        "status_data": "blah",
         "block_hash": "0xaaa",
-        "block_number": 3
+        "block_number": 3,
+        "messages_sent": [
+            {
+                "to_address": "0x55",
+                "payload": [
+                    "0x6"
+                ]
+            }
+        ],
+        "events": [
+            {
+                "from_address": "0xe6",
+                "keys": [
+                    "0xe7"
+                ],
+                "data": [
+                    "0xe8"
+                ]
+            }
+        ]
     },
     {
-        "transaction_hash": "0x1",
+        "type": "DEPLOY",
+        "transaction_hash": "0xdeaf03",
+        "actual_fee": "0x1",
+        "status": "ACCEPTED_ON_L1",
+        "block_hash": "0xaaa",
+        "block_number": 3,
+        "messages_sent": [
+            {
+                "to_address": "0x55",
+                "payload": [
+                    "0x6"
+                ]
+            }
+        ],
+        "events": [
+            {
+                "from_address": "0xe6",
+                "keys": [
+                    "0xe7"
+                ],
+                "data": [
+                    "0xe8"
+                ]
+            }
+        ],
+        "contract_address": "0xcc"
+    },
+    {
+        "type": "INVOKE",
+        "transaction_hash": "0xdeaf11",
         "actual_fee": "0x2",
         "messages_sent": [
             {
@@ -67,12 +130,6 @@
                 ]
             }
         ],
-        "l1_origin_message": {
-            "from_address": "0x77",
-            "payload": [
-                "0x7"
-            ]
-        },
         "events": [
             {
                 "from_address": "0xa6",
@@ -86,7 +143,76 @@
         ]
     },
     {
-        "transaction_hash": "0x1",
-        "actual_fee": "0x2"
+        "type": "DECLARE",
+        "transaction_hash": "0xdeaf12",
+        "actual_fee": "0x2",
+        "messages_sent": [
+            {
+                "to_address": "0x5",
+                "payload": [
+                    "0x6"
+                ]
+            }
+        ],
+        "events": [
+            {
+                "from_address": "0xa6",
+                "keys": [
+                    "0xa7"
+                ],
+                "data": [
+                    "0xa8"
+                ]
+            }
+        ]
+    },
+    {
+        "type": "L1_HANDLER",
+        "transaction_hash": "0xdeaf13",
+        "actual_fee": "0x2",
+        "messages_sent": [
+            {
+                "to_address": "0x5",
+                "payload": [
+                    "0x6"
+                ]
+            }
+        ],
+        "events": [
+            {
+                "from_address": "0xa6",
+                "keys": [
+                    "0xa7"
+                ],
+                "data": [
+                    "0xa8"
+                ]
+            }
+        ]
+    },
+    {
+        "type": "DEPLOY",
+        "transaction_hash": "0xdeaf14",
+        "actual_fee": "0x2",
+        "messages_sent": [
+            {
+                "to_address": "0x5",
+                "payload": [
+                    "0x6"
+                ]
+            }
+        ],
+        "events": [
+            {
+                "from_address": "0xa6",
+                "keys": [
+                    "0xa7"
+                ],
+                "data": [
+                    "0xa8"
+                ]
+            }
+        ],
+        "contract_address": "0xdd"
     }
 ]
