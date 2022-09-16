@@ -163,17 +163,38 @@ impl Client {
         }
     }
 
-    /// Register all metrics' counters
+    const METRIC_REQUESTS: &'static str = "sequencer_requests_total";
+    const METRIC_FAILED_REQUESTS: &'static str = "sequencer_requests_failed_total";
+    const METRIC_STARKNET_ERRORS: &'static str = "sequencer_requests_failed_starknet_total";
+    const METRIC_DECODE_ERRORS: &'static str = "sequencer_requests_failed_decode_total";
+    const METRIC_RATE_LIMITED: &'static str = "sequencer_requests_failed_rate_limited_total";
+    const METRICS: &'static [&'static str] = &[
+        Self::METRIC_REQUESTS,
+        Self::METRIC_FAILED_REQUESTS,
+        Self::METRIC_STARKNET_ERRORS,
+        Self::METRIC_DECODE_ERRORS,
+        Self::METRIC_RATE_LIMITED,
+    ];
+
     fn register_metrics() {
-        builder::Request::<'_, builder::stage::Method>::METHOD_NAMES
-            .iter()
-            .for_each(|&method| {
-                metrics::register_counter!("sequencer_requests_total", "method" => method);
-                metrics::register_counter!("sequencer_requests_failed_total", "method" => method);
-                metrics::register_counter!("sequencer_requests_failed_starknet_total", "method" => method);
-                metrics::register_counter!("sequencer_requests_failed_decode_total", "method" => method);
-                metrics::register_counter!("sequencer_requests_failed_rate_limited_total", "method" => method);
+        // We also track `get_block`, `get_state_update` wrt `latest` and `pending` blocks
+        let methods = ["get_block", "get_state_update"].into_iter();
+        let tags = ["latest", "pending"].into_iter();
+
+        // Register counters for all the methods
+        Self::METRICS.iter().for_each(|&name| {
+            builder::Request::<'_, builder::stage::Method>::METHODS
+                .iter()
+                .for_each(|&method| {
+                    metrics::register_counter!(name, "method" => method);
+                });
+
+            methods.clone().for_each(|method| {
+                tags.clone().for_each(|tag| {
+                    metrics::register_counter!(name, "method" => method, "tag" => tag);
+                })
             })
+        });
     }
 }
 

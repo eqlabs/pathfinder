@@ -13,7 +13,7 @@
 
 use crate::{
     core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
-    sequencer::{builder::stage::MetricsMetadata, error::SequencerError},
+    sequencer::error::SequencerError,
 };
 use futures::Future;
 
@@ -164,15 +164,15 @@ impl<'a> Request<'a, stage::Gateway> {
     }
 }
 
-/// Helper macros used inside [`Request<'_, stage::Method>`](self::Request::<'_, stage::Method>)
+/// Helper macros used in [`stage::Method`]
 mod request_macros {
-    /// Generates the const `METHOD_NAMES` slice. At least one item is required.
+    /// Generates the const `METHODS` slice. At least one item is required.
     macro_rules! method_names {
         () => {
             compile_error!("At least one method has to be defined");
         };
         ($($x:ident),+ $(,)?) => {
-            pub const METHOD_NAMES: &'static [&'static str] = &[$(stringify!($x)),+];
+            pub const METHODS: &'static [&'static str] = &[$(stringify!($x)),+];
         };
     }
 
@@ -196,7 +196,7 @@ mod request_macros {
         };
     }
 
-    /// Generates methods with names from the list and a const slice `METHOD_NAMES`
+    /// Generates methods with names from the list and a const slice `METHODS`
     /// which then can be used to register metrics per method.
     macro_rules! methods {
         () => {
@@ -328,11 +328,11 @@ impl<'a> Request<'a, stage::Params> {
 /// All the above counters are also duplicated for the special cases of:
 /// `("get_block" | "get_state_update") AND ("latest" | "pending")`
 async fn wrap_with_metrics<T>(
-    meta: MetricsMetadata,
+    meta: stage::MetricsMetadata,
     f: impl Future<Output = Result<T, SequencerError>>,
 ) -> Result<T, SequencerError> {
     /// Increments a counter and all its special flavors that record tag specific events
-    fn increment_counter(counter_name: &'static str, meta: MetricsMetadata) {
+    fn increment_counter(counter_name: &'static str, meta: stage::MetricsMetadata) {
         let method = meta.method;
         let tag = meta.tag;
         metrics::increment_counter!(counter_name, "method" => method);
@@ -376,7 +376,7 @@ impl<'a> Request<'a, stage::Final> {
         async fn send_request<T: serde::de::DeserializeOwned>(
             url: reqwest::Url,
             client: &reqwest::Client,
-            meta: MetricsMetadata,
+            meta: stage::MetricsMetadata,
         ) -> Result<T, SequencerError> {
             wrap_with_metrics(meta, async move {
                 let response = client.get(url).send().await?;
@@ -405,7 +405,7 @@ impl<'a> Request<'a, stage::Final> {
         async fn get_as_bytes_inner(
             url: reqwest::Url,
             client: &reqwest::Client,
-            meta: MetricsMetadata,
+            meta: stage::MetricsMetadata,
         ) -> Result<bytes::Bytes, SequencerError> {
             wrap_with_metrics(meta, async {
                 let response = client.get(url).send().await?;
@@ -441,7 +441,7 @@ impl<'a> Request<'a, stage::Final> {
         async fn post_with_json_inner<T, J>(
             url: reqwest::Url,
             client: &reqwest::Client,
-            meta: MetricsMetadata,
+            meta: stage::MetricsMetadata,
             json: &J,
         ) -> Result<T, SequencerError>
         where
