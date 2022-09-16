@@ -1,4 +1,11 @@
 //! Implementation of JSON-RPC endpoints.
+use crate::rpc::v01::types::{
+    reply::{
+        Block, BlockHashAndNumber, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate,
+        GetEventsResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
+    },
+    request::{Call, ContractCall, EventFilter},
+};
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
     core::{
@@ -7,13 +14,6 @@ use crate::{
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
         StorageValue, TransactionNonce, TransactionVersion,
-    },
-    rpc::types::{
-        reply::{
-            Block, BlockHashAndNumber, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate,
-            GetEventsResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
-        },
-        request::{Call, ContractCall, EventFilter},
     },
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
@@ -31,8 +31,8 @@ use stark_hash::StarkHash;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use super::types::reply::{
-    DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult,
+use crate::rpc::v01::types::reply::{
+    DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult, Transactions,
 };
 
 /// Implements JSON-RPC endpoints.
@@ -187,13 +187,13 @@ impl RpcApi {
         db_tx: &rusqlite::Transaction<'_>,
         block_number: StarknetBlockNumber,
         scope: BlockResponseScope,
-    ) -> RpcResult<super::types::reply::Transactions> {
+    ) -> RpcResult<Transactions> {
         let transactions_receipts =
             StarknetTransactionsTable::get_transaction_data_for_block(db_tx, block_number.into())
                 .context("Reading transactions from database")
                 .map_err(internal_server_error)?;
 
-        use super::types::reply;
+        use crate::rpc::v01::types::reply;
         match scope {
             BlockResponseScope::TransactionHashes => Ok(reply::Transactions::HashesOnly(
                 transactions_receipts
@@ -489,7 +489,7 @@ impl RpcApi {
                         .get(index)
                         .map_or(Err(ErrorCode::InvalidTransactionIndex.into()), |txn| {
                             Ok(txn.into())
-                        })
+                        });
                 }
                 // Default to latest if pending data is not available.
                 None => StarknetBlocksBlockId::Latest,
@@ -1118,14 +1118,16 @@ impl RpcApi {
             .skip(skip)
             // We need to take an extra event to determine is_last_page.
             .take(amount + 1)
-            .map(|(event, tx_hash)| crate::rpc::types::reply::EmittedEvent {
-                data: event.data.clone(),
-                keys: event.keys.clone(),
-                from_address: event.from_address,
-                block_hash: None,
-                block_number: None,
-                transaction_hash: tx_hash,
-            });
+            .map(
+                |(event, tx_hash)| crate::rpc::v01::types::reply::EmittedEvent {
+                    data: event.data.clone(),
+                    keys: event.keys.clone(),
+                    from_address: event.from_address,
+                    block_hash: None,
+                    block_number: None,
+                    transaction_hash: tx_hash,
+                },
+            );
 
         dst.extend(pending_events);
         let is_last_page = dst.len() <= (original_len + amount);

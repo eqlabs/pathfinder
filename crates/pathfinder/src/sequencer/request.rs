@@ -1,10 +1,8 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
+use crate::rpc::v01::types::request as rpc;
 use crate::{
     core::{CallParam, CallSignatureElem, ContractAddress, EntryPoint, Fee},
-    rpc::{
-        serde::{CallParamAsDecimalStr, CallSignatureElemAsDecimalStr},
-        types::request as rpc,
-    },
+    rpc::serde::{CallParamAsDecimalStr, CallSignatureElemAsDecimalStr},
 };
 use serde::Serialize;
 use std::convert::From;

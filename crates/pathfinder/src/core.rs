@@ -281,15 +281,15 @@ impl From<EthereumBlockNumber> for web3::types::BlockId {
     }
 }
 
-impl From<StarknetBlockNumber> for crate::rpc::types::BlockNumberOrTag {
+impl From<StarknetBlockNumber> for crate::rpc::v01::types::BlockNumberOrTag {
     fn from(number: StarknetBlockNumber) -> Self {
-        crate::rpc::types::BlockNumberOrTag::Number(number)
+        crate::rpc::v01::types::BlockNumberOrTag::Number(number)
     }
 }
 
-impl From<StarknetBlockHash> for crate::rpc::types::BlockHashOrTag {
+impl From<StarknetBlockHash> for crate::rpc::v01::types::BlockHashOrTag {
     fn from(hash: StarknetBlockHash) -> Self {
-        crate::rpc::types::BlockHashOrTag::Hash(hash)
+        crate::rpc::v01::types::BlockHashOrTag::Hash(hash)
     }
 }
 
@@ -329,10 +329,10 @@ impl From<u64> for GasPrice {
     }
 }
 
-impl From<crate::rpc::types::BlockNumberOrTag> for BlockId {
-    fn from(block: crate::rpc::types::BlockNumberOrTag) -> Self {
-        use crate::rpc::types::BlockNumberOrTag::*;
-        use crate::rpc::types::Tag::*;
+impl From<crate::rpc::v01::types::BlockNumberOrTag> for BlockId {
+    fn from(block: crate::rpc::v01::types::BlockNumberOrTag) -> Self {
+        use crate::rpc::v01::types::BlockNumberOrTag::*;
+        use crate::rpc::v01::types::Tag::*;
 
         match block {
             Number(number) => Self::Number(number),
@@ -342,10 +342,10 @@ impl From<crate::rpc::types::BlockNumberOrTag> for BlockId {
     }
 }
 
-impl From<crate::rpc::types::BlockHashOrTag> for BlockId {
-    fn from(block: crate::rpc::types::BlockHashOrTag) -> Self {
-        use crate::rpc::types::BlockHashOrTag::*;
-        use crate::rpc::types::Tag::*;
+impl From<crate::rpc::v01::types::BlockHashOrTag> for BlockId {
+    fn from(block: crate::rpc::v01::types::BlockHashOrTag) -> Self {
+        use crate::rpc::v01::types::BlockHashOrTag::*;
+        use crate::rpc::v01::types::Tag::*;
 
         match block {
             Hash(hash) => Self::Hash(hash),

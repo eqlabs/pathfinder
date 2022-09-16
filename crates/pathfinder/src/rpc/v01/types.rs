@@ -42,7 +42,7 @@ pub enum BlockHashOrTag {
     /// when passed as an RPC method argument, for example:
     /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
     Hash(StarknetBlockHash),
-    /// Special [Tag](crate::rpc::types::Tag) describing a block
+    /// Special [Tag](crate::rpc::v01::types::Tag) describing a block
     Tag(Tag),
 }
 
@@ -62,7 +62,7 @@ impl std::fmt::Display for BlockHashOrTag {
 pub enum BlockNumberOrTag {
     /// Number (height) of a block
     Number(StarknetBlockNumber),
-    /// Special [Tag](crate::rpc::types::Tag) describing a block
+    /// Special [Tag](crate::rpc::v01::types::Tag) describing a block
     Tag(Tag),
 }
 
@@ -134,7 +134,7 @@ pub mod request {
     }
 
     /// This is what [`Call`] used to be, but is used in
-    /// [`crate::rpc::api::RpcApi::add_invoke_transaction`] for example.
+    /// [`crate::rpc::v01::api::RpcApi::add_invoke_transaction`] for example.
     ///
     /// It might be that [`Call`] and arguments of `addInvokeTransaction` could be unified in the
     /// future when the dust has settled on the implementation.
@@ -179,16 +179,15 @@ pub mod reply {
             StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
             TransactionSignatureElem, TransactionVersion,
         },
-        rpc::{
-            api::{BlockResponseScope, RawBlock},
-            serde::{FeeAsHexStr, TransactionVersionAsHexStr},
-        },
+        rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
         sequencer,
     };
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
     use stark_hash::StarkHash;
     use std::convert::From;
+    // At the moment both reply types are the same for get_code, hence the re-export
+    use crate::rpc::v01::api::{BlockResponseScope, RawBlock};
 
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
@@ -222,7 +221,7 @@ pub mod reply {
     }
 
     /// Wrapper for transaction data returned in block related queries,
-    /// chosen variant depends on [crate::rpc::api::BlockResponseScope](crate::rpc::api::BlockResponseScope).
+    /// chosen variant depends on [crate::rpc::v01::api::BlockResponseScope](crate::rpc::v01::api::BlockResponseScope).
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
@@ -1262,7 +1261,7 @@ pub mod reply {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../fixtures/rpc/0.31.0/", $file_name))
+                include_str!(concat!("../../../fixtures/rpc/0.31.0/", $file_name))
                     .replace(&[' ', '\n'], "")
             };
         }

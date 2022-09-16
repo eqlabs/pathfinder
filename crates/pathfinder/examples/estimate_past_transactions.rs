@@ -66,7 +66,7 @@ fn main() -> Result<(), anyhow::Error> {
 
 #[derive(Debug)]
 struct Work {
-    call: pathfinder_lib::rpc::types::request::Call,
+    call: pathfinder_lib::rpc::v01::types::request::Call,
     at_block: pathfinder_lib::core::StarknetBlockHash,
     gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource,
     actual_fee: web3::types::H256,
@@ -77,7 +77,7 @@ struct Work {
 struct ReadyResult {
     actual_fee: web3::types::H256,
     result: Result<
-        pathfinder_lib::rpc::types::reply::FeeEstimate,
+        pathfinder_lib::rpc::v01::types::reply::FeeEstimate,
         pathfinder_lib::cairo::ext_py::CallFailure,
     >,
     span: tracing::Span,
@@ -98,12 +98,12 @@ fn feed_work(
 
     let tx = connection.transaction()?;
     let mut prep = tx.prepare(
-            "select b2.hash as target_block_hash, tx.hash, tx.tx, tx.receipt, b.gas_price, b2.number, b.number
+        "select b2.hash as target_block_hash, tx.hash, tx.tx, tx.receipt, b.gas_price, b2.number, b.number
                from starknet_blocks b
                join starknet_transactions tx on (b.hash = tx.block_hash)
                join starknet_blocks b2 on (b2.number = b.number - 1)
            order by b.number desc, tx.idx asc",
-        )?;
+    )?;
 
     let mut work = prep.query([])?;
 
@@ -365,12 +365,12 @@ struct SimpleInvoke {
 }
 
 fn default_transaction_nonce() -> pathfinder_lib::core::TransactionNonce {
-    pathfinder_lib::rpc::types::request::Call::DEFAULT_NONCE
+    pathfinder_lib::rpc::v01::types::request::Call::DEFAULT_NONCE
 }
 
-impl From<SimpleInvoke> for pathfinder_lib::rpc::types::request::Call {
+impl From<SimpleInvoke> for pathfinder_lib::rpc::v01::types::request::Call {
     fn from(tx: SimpleInvoke) -> Self {
-        pathfinder_lib::rpc::types::request::Call {
+        pathfinder_lib::rpc::v01::types::request::Call {
             contract_address: tx.contract_address,
             calldata: tx.calldata,
             entry_point_selector: tx.entry_point_selector,
@@ -382,7 +382,7 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::types::request::Call {
             max_fee: tx.max_fee,
             version: tx
                 .version
-                .unwrap_or(pathfinder_lib::rpc::types::request::Call::DEFAULT_VERSION),
+                .unwrap_or(pathfinder_lib::rpc::v01::types::request::Call::DEFAULT_VERSION),
             nonce: tx.nonce,
         }
     }

@@ -16,21 +16,24 @@
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
 use crate::core::CallResultValue;
-use crate::rpc::types::{reply::FeeEstimate, request::Call};
+use crate::rpc::v01::types::{reply::FeeEstimate, request::Call};
 use crate::sequencer::reply::StateUpdate;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 mod de;
+
 use de::ErrorKind;
 
 mod ser;
+
 use ser::UsedChain;
 pub use ser::{BlockHashNumberOrLatest, Pending};
 
 mod sub_process;
 
 mod service;
+
 pub use service::start;
 
 /// Handle to the python executors work queue. Cloneable and shareable.
@@ -252,7 +255,6 @@ impl From<std::io::Error> for SubprocessError {
 
 #[cfg(test)]
 mod tests {
-
     use super::sub_process::launch_python;
     use crate::starkhash;
     use stark_hash::StarkHash;
@@ -352,7 +354,7 @@ mod tests {
                             crate::core::StarknetBlockHash(
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                             ).into(),
-                            None
+                            None,
                         ).await.unwrap();
                     }
                 })
@@ -432,10 +434,10 @@ mod tests {
 
         assert_eq!(
             at_block_fee,
-            crate::rpc::types::reply::FeeEstimate {
+            crate::rpc::v01::types::reply::FeeEstimate {
                 consumed: H256::from_low_u64_be(0x55a),
                 gas_price: H256::from_low_u64_be(1),
-                fee: H256::from_low_u64_be(0x55a)
+                fee: H256::from_low_u64_be(0x55a),
             }
         );
 
@@ -454,10 +456,10 @@ mod tests {
 
         assert_eq!(
             current_fee,
-            crate::rpc::types::reply::FeeEstimate {
+            crate::rpc::v01::types::reply::FeeEstimate {
                 consumed: H256::from_low_u64_be(0x55a),
                 gas_price: H256::from_low_u64_be(10),
-                fee: H256::from_low_u64_be(0x3584)
+                fee: H256::from_low_u64_be(0x3584),
             }
         );
 
@@ -584,7 +586,7 @@ mod tests {
         let res = handle
             .call(
                 call.clone(),
-                crate::rpc::types::Tag::Latest.try_into().unwrap(),
+                crate::rpc::v01::types::Tag::Latest.try_into().unwrap(),
                 None,
             )
             .await
@@ -617,7 +619,7 @@ mod tests {
         let res = handle
             .call(
                 call,
-                crate::rpc::types::Tag::Latest.try_into().unwrap(),
+                crate::rpc::v01::types::Tag::Latest.try_into().unwrap(),
                 Some(update),
             )
             .await
@@ -667,7 +669,7 @@ mod tests {
         .unwrap();
 
         tx.execute("insert into tree_contracts (hash, data, ref_count) values (?1, ?2, 1)",
-            rusqlite::params![
+                   rusqlite::params![
                 &hex::decode("04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028").unwrap()[..],
                 &hex::decode("00000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000084fb").unwrap()[..],
             ]).unwrap();
@@ -692,7 +694,7 @@ mod tests {
                 &hex::decode("002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374fb").unwrap()[..],
             ],
         )
-        .unwrap();
+            .unwrap();
 
         tx.execute(
             r"insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, version_id)
@@ -705,7 +707,7 @@ mod tests {
                     .unwrap()[..],
             ],
         )
-        .unwrap();
+            .unwrap();
 
         if false {
             let mut stmt = tx

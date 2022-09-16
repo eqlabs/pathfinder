@@ -123,9 +123,9 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         pending_interval,
     ));
 
-    let shared = rpc::api::Cached::new(Arc::new(eth_transport));
+    let shared = rpc::v01::api::Cached::new(Arc::new(eth_transport));
 
-    let api = rpc::api::RpcApi::new(storage, sequencer, starknet_chain, sync_state)
+    let api = rpc::v01::api::RpcApi::new(storage, sequencer, starknet_chain, sync_state)
         .with_call_handling(call_handle)
         .with_eth_gas_price(shared);
     let api = match config.poll_pending {
