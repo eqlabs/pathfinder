@@ -230,7 +230,7 @@ impl From<crate::core::StarknetBlockNumber> for BlockHashNumberOrLatest {
     }
 }
 
-/// The type representing [`crate::rpc::types::Tag::Pending`] value, which cannot be accepted as
+/// The type representing [`crate::rpc::v01::types::Tag::Pending`] value, which cannot be accepted as
 /// [`BlockHashNumberOrLatest`].
 #[derive(Debug)]
 pub struct Pending;

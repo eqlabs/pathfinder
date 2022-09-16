@@ -1224,7 +1224,7 @@ impl ContractsStateTable {
     }
 }
 
-/// Stores all known [Starknet state updates][crate::rpc::types::reply::StateUpdate].
+/// Stores all known [Starknet state updates][crate::rpc::v01::types::reply::StateUpdate].
 pub struct StarknetStateUpdatesTable {}
 
 impl StarknetStateUpdatesTable {
