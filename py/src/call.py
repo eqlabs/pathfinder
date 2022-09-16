@@ -279,7 +279,7 @@ def loop_inner(connection, command):
         ret = (verb, fees, timings)
 
     timings["sql"] = {"timings": adapter.elapsed, "counts": adapter.counts}
-    timings["call"] = time.time() - started_at
+    timings["cairo-lang"] = time.time() - started_at
 
     return ret
 
