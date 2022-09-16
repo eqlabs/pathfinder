@@ -14,12 +14,6 @@
 //! support "pending", a feature needs to be added which flushes the "open" pending to a
 //! global_state, and after that, calls can be made to it's `block_hash` for which we probably need
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
-//!
-//! ## Metrics exported
-//!
-//! - `extpy_processes_launched_total` (incremented in service)
-//! - `extpy_processes_exited` (labeled, incremented in service)
-//! - `extpy_processes_failed_total` (incremented in service)
 
 use crate::core::CallResultValue;
 use crate::rpc::v01::types::{reply::FeeEstimate, request::Call};
