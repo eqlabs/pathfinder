@@ -181,17 +181,7 @@ pub async fn start(
 
 /// Returns if a new subprocess should be launched without wait
 fn on_joined_subprocess(
-    res: Result<
-        Result<
-            (
-                u32,
-                Option<std::process::ExitStatus>,
-                super::SubprocessExitReason,
-            ),
-            anyhow::Error,
-        >,
-        tokio::task::JoinError,
-    >,
+    res: Result<Result<super::SubprocessExitInfo, anyhow::Error>, tokio::task::JoinError>,
     processes_failed: &metrics::Counter,
 ) -> bool {
     match res {

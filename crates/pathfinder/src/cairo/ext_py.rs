@@ -280,6 +280,9 @@ impl From<std::io::Error> for SubprocessError {
     }
 }
 
+/// Which process, with what opaque native reason exited because of which codepath was taken.
+type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExitReason);
+
 #[cfg(test)]
 mod tests {
     use super::sub_process::launch_python;
