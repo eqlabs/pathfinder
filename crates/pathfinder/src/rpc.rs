@@ -6,6 +6,7 @@ pub mod test_client;
 #[cfg(test)]
 pub mod test_setup;
 pub mod v01;
+pub mod v02;
 
 use crate::{
     core::{
