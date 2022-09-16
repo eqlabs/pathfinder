@@ -389,6 +389,9 @@ Pathfinder has a monitoring API which can be enabled with the `--monitor-address
 
 `/metrics` provides a [Prometheus](https://prometheus.io/) metrics scrape endpoint. Currently only one type of metric is available:
 - `rpc_method_calls_total` counter, where the label key `method` should be used to point to a particular RPC method to retrieve that method's total call count, for example: `rpc_method_calls_total{method="starknet_getStateUpdate"}`.
+- `extpy_processes_launched_total` counter incremented each time python subprocess is launched
+- `extpy_processes_exited` counter with labels, incremented each time python subprocess exits normally
+- `extpy_processes_failed_total` counter, incremented each time python subprocess exits abnormally
 
 ## License
 
