@@ -2620,123 +2620,22 @@ mod tests {
 
     #[tokio::test]
     async fn per_method_metrics() {
+        use crate::monitoring::metrics::test::FakeRecorder;
         use crate::monitoring::metrics::{middleware::RpcMetricsMiddleware, test::RecorderGuard};
         use crate::rpc::v01::types::reply::Block;
         use futures::stream::StreamExt;
-        use metrics::{
-            Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
-        };
-        use std::collections::HashMap;
-        use std::sync::atomic::{AtomicU64, Ordering};
-        use std::sync::RwLock;
-
-        #[derive(Debug, Clone)]
-        struct FakeRecorderHandle {
-            counters: Arc<RwLock<HashMap<Key, Arc<FakeCounterFn>>>>,
-            methods: &'static [&'static str],
-        }
-        #[derive(Debug)]
-        struct FakeRecorder(FakeRecorderHandle);
-        #[derive(Debug, Default)]
-        struct FakeCounterFn(AtomicU64);
-
-        impl Recorder for FakeRecorder {
-            fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
-            fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
-            fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
-            /// Registers a counter if the method is on the `self::methods` list and returns it.
-            ///
-            /// # Warning
-            ///
-            /// Returns `Counter::noop()` in other cases.
-            ///
-            /// # Rationale
-            /// All tests that are executed concurrently and don't use a `RecorderGuard` of their own
-            /// will ultimately attempt at registering their own counters every time they create an instance of `RpcApi`.
-            /// This is why it really makes sense to filter out the keys that we don't care about to avoid creating
-            /// any additional lock contention. For the other keys that we do care about we should effectively
-            /// ignore consecutive attempts to re-register a counter for a given key except the first one,
-            /// which means just get the exiting counter instance asap.
-            fn register_counter(&self, key: &Key) -> Counter {
-                if self.is_key_used(key) {
-                    // Check if the counter is already registered
-                    let read_guard = self.0.counters.read().unwrap();
-                    if let Some(counter) = read_guard.get(key) {
-                        // Do nothing, it's already there
-                        return Counter::from_arc(counter.clone());
-                    }
-                    drop(read_guard);
-                    // We could still be having some contention on write >here<, but let's assume most of the time
-                    // the `read()` above does its job
-                    let mut write_guard = self.0.counters.write().unwrap();
-                    // Put it there
-                    // let counter = write_guard.entry(key.clone()).or_default();
-                    let counter = write_guard.entry(key.clone()).or_insert_with(Arc::default);
-                    Counter::from_arc(counter.clone())
-                } else {
-                    // We don't care
-                    Counter::noop()
-                }
-            }
-            fn register_gauge(&self, _: &Key) -> Gauge {
-                unimplemented!()
-            }
-            fn register_histogram(&self, _: &Key) -> Histogram {
-                unimplemented!()
-            }
-        }
-
-        impl FakeRecorder {
-            fn new(methods: &'static [&'static str]) -> Self {
-                Self(FakeRecorderHandle {
-                    counters: Arc::default(),
-                    methods,
-                })
-            }
-
-            fn is_key_used(&self, key: &Key) -> bool {
-                key.labels().into_iter().any(|label| {
-                    label.key() == "method"
-                        && self.0.methods.iter().any(|&method| method == label.value())
-                })
-            }
-        }
-
-        impl FakeRecorderHandle {
-            /// Panics on method or counter names that were not registered.
-            fn get_counter_value(
-                &self,
-                counter_name: &'static str,
-                method_name: &'static str,
-            ) -> u64 {
-                let read_guard = self.counters.read().unwrap();
-                read_guard
-                    .get(&Key::from_parts(
-                        counter_name,
-                        vec![Label::new("method", method_name)],
-                    ))
-                    .unwrap()
-                    .0
-                    .load(Ordering::Relaxed)
-            }
-        }
-
-        impl CounterFn for FakeCounterFn {
-            fn increment(&self, val: u64) {
-                self.0.fetch_add(val, Ordering::Relaxed);
-            }
-            fn absolute(&self, _: u64) {
-                unimplemented!()
-            }
-        }
 
         let recorder = FakeRecorder::new(&["starknet_getBlockWithTxHashes"]);
-        let handle = recorder.0.clone();
+        let handle = recorder.handle();
 
-        let get_all =
-            || handle.get_counter_value("rpc_method_calls_total", "starknet_getBlockWithTxHashes");
+        let get_all = || {
+            handle.get_counter_value_or_panic(
+                "rpc_method_calls_total",
+                "starknet_getBlockWithTxHashes",
+            )
+        };
         let get_failed = || {
-            handle.get_counter_value(
+            handle.get_counter_value_or_panic(
                 "rpc_method_calls_failed_total",
                 "starknet_getBlockWithTxHashes",
             )
