@@ -181,7 +181,7 @@ fn on_joined_subprocess(
 }
 
 static METRIC_LAUNCHED_PROCESSES: &str = "extpy_processes_launched_total";
-static METRIC_EXITED_PROCESSES: &str = "extpy_processes_exited";
+static METRIC_EXITED_PROCESSES: &str = "extpy_processes_exited_total";
 static METRIC_FAILED_PROCESSES: &str = "extpy_processes_failed_total";
 
 struct Metrics {
