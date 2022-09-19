@@ -733,8 +733,7 @@ checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 [[package]]
 name = "ff"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df689201f395c6b90dfe87127685f8dbfc083a5e779e613575d8bd7314300c3e"
+source = "git+https://github.com/eqlabs/ff?branch=var_time_eq#e4ce228a5da140465a620cb0a455fcb08f23fb52"
 dependencies = [
  "byteorder",
  "ff_derive",
@@ -745,8 +744,7 @@ dependencies = [
 [[package]]
 name = "ff_derive"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95dddd96655a8ef19cc0dd2cb7063fb159f1583af0dbf3c04805ebc7dcc15849"
+source = "git+https://github.com/eqlabs/ff?branch=var_time_eq#e4ce228a5da140465a620cb0a455fcb08f23fb52"
 dependencies = [
  "addchain",
  "cfg-if",
@@ -2996,9 +2994,9 @@ dependencies = [
  "assert_matches",
  "bitvec",
  "criterion",
- "ff",
  "hex",
  "pretty_assertions",
+ "rand",
  "rand_core",
  "serde",
  "serde_json",

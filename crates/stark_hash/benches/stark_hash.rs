@@ -1,4 +1,4 @@
-use ::stark_hash::{stark_hash, StarkHash};
+use ::stark_hash::{stark_hash, HashChain, StarkHash};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
@@ -10,10 +10,43 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let e0 = StarkHash::from_hex_str(e0).unwrap();
     let e1 = StarkHash::from_hex_str(e1).unwrap();
 
+    // this is useful for testing out the branch predictor
     c.bench_function("pedersen_hash", |b| {
         b.iter(|| {
             black_box(stark_hash(e0, e1));
         });
+    });
+
+    let mut rng = rand::thread_rng();
+
+    c.bench_function("random_stark_hash", |b| {
+        b.iter_batched(
+            || {
+                let a = StarkHash::random(&mut rng);
+                let b = StarkHash::random(&mut rng);
+                (a, b)
+            },
+            |(a, b)| black_box(stark_hash(a, b)),
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    c.bench_function("random_hashchain", |b| {
+        b.iter_batched_ref(
+            || {
+                std::iter::from_fn(|| Some(StarkHash::random(&mut rng)))
+                    .take(100)
+                    .collect::<Vec<_>>()
+            },
+            |input| {
+                let mut hc = HashChain::default();
+                for x in input.drain(..) {
+                    hc.update(x);
+                }
+                black_box(hc.finalize())
+            },
+            criterion::BatchSize::SmallInput,
+        );
     });
 }
 

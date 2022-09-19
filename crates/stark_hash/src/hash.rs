@@ -5,7 +5,7 @@ use std::fmt::Display;
 use stark_curve::{AffinePoint, FieldElement, FieldElementRepr, ProjectivePoint, PEDERSEN_P0};
 
 use bitvec::{field::BitField, order::Msb0, slice::BitSlice, view::BitView};
-use ff::PrimeField;
+use stark_curve::ff::PrimeField;
 
 include!(concat!(env!("OUT_DIR"), "/curve_consts.rs"));
 
@@ -105,7 +105,7 @@ impl StarkHash {
     }
 
     pub fn random<R: rand_core::RngCore>(rng: R) -> Self {
-        use ff::Field;
+        use stark_curve::ff::Field;
         StarkHash(FieldElement::random(rng).to_repr().0)
     }
 
@@ -173,7 +173,7 @@ impl StarkHash {
             if index == limbs.len() {
                 break;
             }
-            borrow = ff::derive::sbb(limbs[index], modulus[index], borrow).1;
+            borrow = stark_curve::ff::derive::sbb(limbs[index], modulus[index], borrow).1;
             index += 1;
         }
 
