@@ -787,6 +787,78 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
+        async fn with_metrics() {
+            use crate::core::BlockId;
+            use crate::monitoring::metrics::test::{FakeRecorder, RecorderGuard};
+            use futures::stream::StreamExt;
+
+            let recorder = FakeRecorder::new(&["get_block", "get_state_update"]);
+            let handle = recorder.handle();
+            let _guard = RecorderGuard::lock(recorder).unwrap();
+
+            let responses = [
+                // Any valid fixture
+                response!("0.9.0/block/231579.json"),
+                // A StarkNet error
+                StarknetErrorCode::BlockNotFound.into_response(),
+                // A decode error
+                (r#"{"not":"valid"}"#.to_owned(), 200),
+                // Rate limiting
+                ("you're being rate limited".to_owned(), 429),
+            ];
+
+            let (_jh, client) = setup_with_varied_responses([
+                (
+                    "/feeder_gateway/get_block?blockNumber=123",
+                    responses.clone(),
+                ),
+                (
+                    "/feeder_gateway/get_block?blockNumber=latest",
+                    responses.clone(),
+                ),
+                ("/feeder_gateway/get_block?blockNumber=pending", responses),
+            ]);
+            [BlockId::Number(StarknetBlockNumber::new_or_panic(123)); 4]
+                .into_iter()
+                .chain([BlockId::Latest; 4].into_iter())
+                .chain([BlockId::Pending; 4].into_iter())
+                .map(|x| client.block(x))
+                .collect::<futures::stream::FuturesUnordered<_>>()
+                .collect::<Vec<_>>()
+                .await;
+
+            assert_eq!(
+                handle.get_counter_value_or_panic("sequencer_requests_total", "get_block"),
+                12
+            );
+            assert_eq!(
+                handle.get_counter_value_or_panic("sequencer_requests_failed_total", "get_block"),
+                9
+            );
+            assert_eq!(
+                handle.get_counter_value_or_panic(
+                    "sequencer_requests_failed_starknet_total",
+                    "get_block"
+                ),
+                3
+            );
+            assert_eq!(
+                handle.get_counter_value_or_panic(
+                    "sequencer_requests_failed_decode_total",
+                    "get_block"
+                ),
+                3
+            );
+            assert_eq!(
+                handle.get_counter_value_or_panic(
+                    "sequencer_requests_failed_rate_limited_total",
+                    "get_block"
+                ),
+                3
+            );
+        }
+
+        #[tokio::test]
         async fn latest() {
             use crate::core::BlockId;
 
