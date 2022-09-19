@@ -202,10 +202,10 @@ pub mod test {
         /// - `counter_name` was not registered via [`metrics::register_counter`]
         /// - `labels` don't match the [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)-s
         /// registered via [`metrics::register_counter`]
-        pub fn get_counter_value_by_label(
+        pub fn get_counter_value_by_label<const N: usize>(
             &self,
             counter_name: &'static str,
-            labels: &'static [(&'static str, &'static str)],
+            labels: [(&'static str, &'static str); N],
         ) -> u64 {
             let read_guard = self.counters.read().unwrap();
             read_guard

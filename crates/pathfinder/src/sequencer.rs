@@ -787,142 +787,6 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn with_metrics() {
-            use crate::monitoring::metrics::test::{FakeRecorder, RecorderGuard};
-            use futures::stream::StreamExt;
-
-            let recorder = FakeRecorder::new(&["get_block", "get_state_update"]);
-            let handle = recorder.handle();
-            let _guard = RecorderGuard::lock(recorder).unwrap();
-
-            let responses = [
-                // Any valid fixture
-                response!("0.9.0/block/231579.json"),
-                // 1 StarkNet error
-                StarknetErrorCode::BlockNotFound.into_response(),
-                // 2 decode errors
-                (r#"{"not":"valid"}"#.to_owned(), 200),
-                (r#"{"not":"valid, again"}"#.to_owned(), 200),
-                // 3 of rate limiting
-                ("you're being rate limited".to_owned(), 429),
-                ("".to_owned(), 429),
-                ("".to_owned(), 429),
-            ];
-
-            let (_jh, client) = setup_with_varied_responses([
-                (
-                    "/feeder_gateway/get_block?blockNumber=123",
-                    responses.clone(),
-                ),
-                (
-                    "/feeder_gateway/get_block?blockNumber=latest",
-                    responses.clone(),
-                ),
-                ("/feeder_gateway/get_block?blockNumber=pending", responses),
-            ]);
-            [BlockId::Number(StarknetBlockNumber::new_or_panic(123)); 7]
-                .into_iter()
-                .chain([BlockId::Latest; 7].into_iter())
-                .chain([BlockId::Pending; 7].into_iter())
-                .map(|x| client.block(x))
-                .collect::<futures::stream::FuturesUnordered<_>>()
-                .collect::<Vec<_>>()
-                .await;
-
-            assert_eq!(
-                handle.get_counter_value("sequencer_requests_total", "get_block"),
-                21
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_total",
-                    &[("method", "get_block"), ("tag", "latest")]
-                ),
-                7
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_total",
-                    &[("method", "get_block"), ("tag", "pending")]
-                ),
-                7
-            );
-            assert_eq!(
-                handle.get_counter_value("sequencer_requests_failed_total", "get_block"),
-                18
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_total",
-                    &[("method", "get_block"), ("tag", "latest")]
-                ),
-                6
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_total",
-                    &[("method", "get_block"), ("tag", "pending")]
-                ),
-                6
-            );
-            assert_eq!(
-                handle.get_counter_value("sequencer_requests_failed_starknet_total", "get_block"),
-                3
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_starknet_total",
-                    &[("method", "get_block"), ("tag", "latest")]
-                ),
-                1
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_starknet_total",
-                    &[("method", "get_block"), ("tag", "pending")]
-                ),
-                1
-            );
-            assert_eq!(
-                handle.get_counter_value("sequencer_requests_failed_decode_total", "get_block"),
-                6
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_decode_total",
-                    &[("method", "get_block"), ("tag", "latest")]
-                ),
-                2
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_decode_total",
-                    &[("method", "get_block"), ("tag", "pending")]
-                ),
-                2
-            );
-            assert_eq!(
-                handle
-                    .get_counter_value("sequencer_requests_failed_rate_limited_total", "get_block"),
-                9
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_rate_limited_total",
-                    &[("method", "get_block"), ("tag", "latest")]
-                ),
-                3
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_rate_limited_total",
-                    &[("method", "get_block"), ("tag", "pending")]
-                ),
-                3
-            );
-        }
-
-        #[tokio::test]
         async fn latest() {
             use crate::core::BlockId;
 
@@ -2142,6 +2006,195 @@ mod tests {
         async fn invalid() {
             let (_server_handle, sequencer) = setup_server(TargetChain::Invalid);
             sequencer.chain().await.unwrap_err();
+        }
+    }
+
+    mod metrics {
+        use super::*;
+        use crate::core::BlockId;
+        use futures::stream::StreamExt;
+        use pretty_assertions::assert_eq;
+        use std::future::Future;
+
+        #[tokio::test]
+        async fn all_counter_types_including_tags() {
+            use super::ClientApi;
+
+            with_method(
+                "get_block",
+                |client, x| async move {
+                    let _ = client.block(x).await;
+                },
+                response!("0.9.0/block/genesis.json"),
+            )
+            .await;
+            with_method(
+                "get_state_update",
+                |client, x| async move {
+                    let _ = client.state_update(x).await;
+                },
+                response!("0.9.1/state_update/genesis.json"),
+            )
+            .await;
+        }
+
+        async fn with_method<'r, F, Fut, T>(
+            method_name: &'static str,
+            f: F,
+            response: (String, u16),
+        ) where
+            F: Fn(Client, BlockId) -> Fut,
+            Fut: Future<Output = T>,
+        {
+            use crate::monitoring::metrics::test::{FakeRecorder, RecorderGuard};
+
+            let recorder = FakeRecorder::new(&["get_block", "get_state_update"]);
+            let handle = recorder.handle();
+            let _guard = RecorderGuard::lock(recorder).unwrap();
+
+            let responses = [
+                // Any valid fixture
+                response,
+                // 1 StarkNet error
+                StarknetErrorCode::BlockNotFound.into_response(),
+                // 2 decode errors
+                (r#"{"not":"valid"}"#.to_owned(), 200),
+                (r#"{"not":"valid, again"}"#.to_owned(), 200),
+                // 3 of rate limiting
+                ("you're being rate limited".to_owned(), 429),
+                ("".to_owned(), 429),
+                ("".to_owned(), 429),
+            ];
+
+            let (_jh, client) = setup_with_varied_responses([
+                (
+                    format!("/feeder_gateway/{method_name}?blockNumber=123"),
+                    responses.clone(),
+                ),
+                (
+                    format!("/feeder_gateway/{method_name}?blockNumber=latest"),
+                    responses.clone(),
+                ),
+                (
+                    format!("/feeder_gateway/{method_name}?blockNumber=pending"),
+                    responses,
+                ),
+            ]);
+            [BlockId::Number(StarknetBlockNumber::new_or_panic(123)); 7]
+                .into_iter()
+                .chain([BlockId::Latest; 7].into_iter())
+                .chain([BlockId::Pending; 7].into_iter())
+                .map(|x| f(client.clone(), x))
+                .collect::<futures::stream::FuturesUnordered<_>>()
+                .collect::<Vec<_>>()
+                .await;
+
+            assert_eq!(
+                handle.get_counter_value("sequencer_requests_total", method_name),
+                21,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_total",
+                    [("method", method_name), ("tag", "latest")]
+                ),
+                7,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_total",
+                    [("method", method_name), ("tag", "pending")]
+                ),
+                7,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value("sequencer_requests_failed_total", method_name),
+                18,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_failed_total",
+                    [("method", method_name), ("tag", "latest")]
+                ),
+                6,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_failed_total",
+                    [("method", method_name), ("tag", "pending")]
+                ),
+                6,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value("sequencer_requests_failed_starknet_total", method_name),
+                3,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_failed_starknet_total",
+                    [("method", method_name), ("tag", "latest")]
+                ),
+                1,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_failed_starknet_total",
+                    [("method", method_name), ("tag", "pending")]
+                ),
+                1,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value("sequencer_requests_failed_decode_total", method_name),
+                6,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_failed_decode_total",
+                    [("method", method_name), ("tag", "latest")]
+                ),
+                2,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_failed_decode_total",
+                    [("method", method_name), ("tag", "pending")]
+                ),
+                2,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle
+                    .get_counter_value("sequencer_requests_failed_rate_limited_total", method_name),
+                9,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_failed_rate_limited_total",
+                    [("method", method_name), ("tag", "latest")]
+                ),
+                3,
+                "{method_name}"
+            );
+            assert_eq!(
+                handle.get_counter_value_by_label(
+                    "sequencer_requests_failed_rate_limited_total",
+                    [("method", method_name), ("tag", "pending")]
+                ),
+                3,
+                "{method_name}"
+            );
         }
     }
 }
