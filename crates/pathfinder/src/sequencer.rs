@@ -725,10 +725,12 @@ mod tests {
 
     mod block_matches_by_hash_on {
         use super::*;
+        use crate::monitoring::metrics::test::RecorderGuard;
         use crate::starkhash;
 
         #[tokio::test]
         async fn genesis() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     format!("/feeder_gateway/get_block?blockHash={}", GENESIS_BLOCK_HASH),
@@ -755,6 +757,7 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_block?blockHash=0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
@@ -784,12 +787,14 @@ mod tests {
 
     mod block {
         use super::*;
+        use crate::monitoring::metrics::test::RecorderGuard;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn latest() {
             use crate::core::BlockId;
 
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
                 response!("0.9.0/block/231579.json"),
@@ -801,6 +806,7 @@ mod tests {
         async fn pending() {
             use crate::core::BlockId;
 
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
                 response!("0.9.0/block/pending.json"),
@@ -810,6 +816,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_hash() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_block?blockHash={}", INVALID_BLOCK_HASH),
                 StarknetErrorCode::BlockNotFound.into_response(),
@@ -826,6 +833,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_number() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_block?blockNumber={}",
@@ -845,6 +853,7 @@ mod tests {
 
         #[tokio::test]
         async fn with_starknet_version_added_in_0_9_1() {
+            let _guard = RecorderGuard::lock_as_noop();
             use crate::sequencer::reply::MaybePendingBlock;
             let (_jh, client) = setup([
                 (
@@ -1433,6 +1442,7 @@ mod tests {
             },
             *,
         };
+        use crate::monitoring::metrics::test::RecorderGuard;
         use crate::{
             core::{ContractAddress, GlobalRoot},
             starkhash,
@@ -1473,6 +1483,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
@@ -1502,6 +1513,7 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=315700",
@@ -1534,9 +1546,11 @@ mod tests {
 
     mod state_update {
         use super::*;
+        use crate::monitoring::metrics::test::RecorderGuard;
 
         #[test_log::test(tokio::test)]
         async fn invalid_number() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_state_update?blockNumber={}",
@@ -1556,6 +1570,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_state_update?blockHash={}",
@@ -1575,6 +1590,7 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
                 response!("0.9.1/state_update/315700.json"),
@@ -1584,6 +1600,7 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
                 response!("0.9.1/state_update/pending.json"),
@@ -2038,11 +2055,8 @@ mod tests {
             .await;
         }
 
-        async fn with_method<'r, F, Fut, T>(
-            method_name: &'static str,
-            f: F,
-            response: (String, u16),
-        ) where
+        async fn with_method<F, Fut, T>(method_name: &'static str, f: F, response: (String, u16))
+        where
             F: Fn(Client, BlockId) -> Fut,
             Fut: Future<Output = T>,
         {
@@ -2050,7 +2064,7 @@ mod tests {
 
             let recorder = FakeRecorder::new(&["get_block", "get_state_update"]);
             let handle = recorder.handle();
-            let _guard = RecorderGuard::lock(recorder).unwrap();
+            let _guard = RecorderGuard::lock(recorder);
 
             let responses = [
                 // Any valid fixture
@@ -2089,112 +2103,55 @@ mod tests {
                 .collect::<Vec<_>>()
                 .await;
 
-            assert_eq!(
-                handle.get_counter_value("sequencer_requests_total", method_name),
-                21,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_total",
-                    [("method", method_name), ("tag", "latest")]
-                ),
-                7,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_total",
-                    [("method", method_name), ("tag", "pending")]
-                ),
-                7,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value("sequencer_requests_failed_total", method_name),
-                18,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_total",
-                    [("method", method_name), ("tag", "latest")]
-                ),
-                6,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_total",
-                    [("method", method_name), ("tag", "pending")]
-                ),
-                6,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value("sequencer_requests_failed_starknet_total", method_name),
-                3,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
+            [
+                ("sequencer_requests_total", None, 21),
+                ("sequencer_requests_total", Some("latest"), 7),
+                ("sequencer_requests_total", Some("pending"), 7),
+                ("sequencer_requests_failed_total", None, 18),
+                ("sequencer_requests_failed_total", Some("latest"), 6),
+                ("sequencer_requests_failed_total", Some("pending"), 6),
+                ("sequencer_requests_failed_starknet_total", None, 3),
+                (
                     "sequencer_requests_failed_starknet_total",
-                    [("method", method_name), ("tag", "latest")]
+                    Some("latest"),
+                    1,
                 ),
-                1,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
+                (
                     "sequencer_requests_failed_starknet_total",
-                    [("method", method_name), ("tag", "pending")]
+                    Some("pending"),
+                    1,
                 ),
-                1,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value("sequencer_requests_failed_decode_total", method_name),
-                6,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_decode_total",
-                    [("method", method_name), ("tag", "latest")]
-                ),
-                2,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
-                    "sequencer_requests_failed_decode_total",
-                    [("method", method_name), ("tag", "pending")]
-                ),
-                2,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle
-                    .get_counter_value("sequencer_requests_failed_rate_limited_total", method_name),
-                9,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
+                ("sequencer_requests_failed_decode_total", None, 6),
+                ("sequencer_requests_failed_decode_total", Some("latest"), 2),
+                ("sequencer_requests_failed_decode_total", Some("pending"), 2),
+                ("sequencer_requests_failed_rate_limited_total", None, 9),
+                (
                     "sequencer_requests_failed_rate_limited_total",
-                    [("method", method_name), ("tag", "latest")]
+                    Some("latest"),
+                    3,
                 ),
-                3,
-                "{method_name}"
-            );
-            assert_eq!(
-                handle.get_counter_value_by_label(
+                (
                     "sequencer_requests_failed_rate_limited_total",
-                    [("method", method_name), ("tag", "pending")]
+                    Some("pending"),
+                    3,
                 ),
-                3,
-                "{method_name}"
-            );
+            ]
+            .into_iter()
+            .for_each(|(counter_name, tag, expected_count)| match tag {
+                Some(tag) => assert_eq!(
+                    handle.get_counter_value_by_label(
+                        counter_name,
+                        [("method", method_name), ("tag", tag)]
+                    ),
+                    expected_count,
+                    "counter: {counter_name}, method: {method_name}, tag: {tag}"
+                ),
+                None => assert_eq!(
+                    handle.get_counter_value(counter_name, method_name),
+                    expected_count,
+                    "counter: {counter_name}, method: {method_name}"
+                ),
+            });
         }
     }
 }

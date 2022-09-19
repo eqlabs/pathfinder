@@ -1784,7 +1784,7 @@ mod tests {
         let counter = Arc::new(FakeCounterFn(AtomicU64::default()));
 
         // Other concurrent tests could be setting their own recorders
-        let _guard = RecorderGuard::lock(FakeRecorder(counter.clone())).unwrap();
+        let _guard = RecorderGuard::lock(FakeRecorder(counter.clone()));
 
         assert_eq!(
             [Chain::Testnet, Chain::Mainnet]
@@ -2638,7 +2638,7 @@ mod tests {
         };
 
         // Other concurrent tests could be setting their own recorders
-        let _guard = RecorderGuard::lock(recorder).unwrap();
+        let _guard = RecorderGuard::lock(recorder);
 
         let storage = setup_storage();
         let sequencer = Client::new(Chain::Testnet).unwrap();
