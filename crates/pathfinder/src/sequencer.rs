@@ -469,6 +469,8 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use super::{error::StarknetErrorCode, test_utils::*, *};
     use crate::core::{StarknetBlockHash, StarknetBlockNumber};
     use crate::rpc::v01::types::Tag;
@@ -509,7 +511,7 @@ mod tests {
     macro_rules! response {
         ($file_name:literal) => {
             (
-                include_str!(concat!("../fixtures/sequencer/", $file_name)),
+                include_str!(concat!("../fixtures/sequencer/", $file_name)).to_string(),
                 200,
             )
         };
@@ -601,6 +603,77 @@ mod tests {
                     .unwrap();
             (Some(server_handle), client)
         }
+    }
+
+    /// TODO
+    fn setup_with_varied_responses<S1, S2, const M: usize, const N: usize>(
+        url_paths_queries_and_response_fixtures: [(S1, [(S2, u16); M]); N],
+    ) -> (Option<tokio::task::JoinHandle<()>>, Client)
+    where
+        S1: std::convert::AsRef<str>
+            + std::fmt::Display
+            + std::fmt::Debug
+            + std::cmp::PartialEq
+            + Send
+            + Sync
+            + Clone
+            + 'static,
+        S2: std::string::ToString + Send + Sync + Clone + 'static,
+    {
+        let url_paths_queries_and_response_fixtures = url_paths_queries_and_response_fixtures
+            .into_iter()
+            .map(|x| (x.0.clone(), x.1.into_iter().collect::<VecDeque<_>>()))
+            .collect::<Vec<_>>();
+        use std::sync::{Arc, Mutex};
+
+        let url_paths_queries_and_response_fixtures =
+            Arc::new(Mutex::new(url_paths_queries_and_response_fixtures));
+
+        use warp::Filter;
+        let opt_query_raw = warp::query::raw()
+            .map(Some)
+            .or_else(|_| async { Ok::<(Option<String>,), std::convert::Infallible>((None,)) });
+        let path = warp::any().and(warp::path::full()).and(opt_query_raw).map(
+            move |full_path: warp::path::FullPath, raw_query: Option<String>| {
+                let actual_full_path_and_query = match raw_query {
+                    Some(some_raw_query) => {
+                        format!("{}?{}", full_path.as_str(), some_raw_query.as_str())
+                    }
+                    None => full_path.as_str().to_owned(),
+                };
+
+                let mut url_paths_queries_and_response_fixtures =
+                    url_paths_queries_and_response_fixtures.lock().unwrap();
+
+                match url_paths_queries_and_response_fixtures
+                    .iter_mut()
+                    .find(|x| x.0.as_ref() == actual_full_path_and_query)
+                {
+                    Some((_, responses)) => {
+                        let (body, status) = responses
+                            .pop_front()
+                            .expect("No more responses for this path!");
+                        http::response::Builder::new()
+                            .status(status)
+                            .body(body.to_string())
+                    }
+                    None => panic!(
+                        "Actual url path and query {} not found in the expected {:?}",
+                        actual_full_path_and_query,
+                        url_paths_queries_and_response_fixtures
+                            .iter()
+                            .map(|(expected_path, _)| expected_path)
+                            .collect::<Vec<_>>()
+                    ),
+                }
+            },
+        );
+
+        let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
+        let server_handle = tokio::spawn(serve_fut);
+        let client =
+            Client::with_url(reqwest::Url::parse(&format!("http://{}", addr)).unwrap()).unwrap();
+        (Some(server_handle), client)
     }
 
     #[test_log::test(tokio::test)]
