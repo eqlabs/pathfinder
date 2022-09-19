@@ -2998,6 +2998,7 @@ dependencies = [
  "criterion",
  "hex",
  "pretty_assertions",
+ "rand",
  "rand_core",
  "serde",
  "serde_json",
