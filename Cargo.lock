@@ -2996,7 +2996,6 @@ dependencies = [
  "assert_matches",
  "bitvec",
  "criterion",
- "ff",
  "hex",
  "pretty_assertions",
  "rand_core",
