@@ -182,7 +182,7 @@ pub mod test {
         /// for the `method` [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)
         /// [key](https://docs.rs/metrics/latest/metrics/struct.Label.html#method.key)
         /// registered via [`metrics::register_counter`]
-        pub fn get_counter_value_or_panic(
+        pub fn get_counter_value(
             &self,
             counter_name: &'static str,
             method_name: &'static str,

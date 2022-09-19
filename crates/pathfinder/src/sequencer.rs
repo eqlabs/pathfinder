@@ -828,32 +828,24 @@ mod tests {
                 .await;
 
             assert_eq!(
-                handle.get_counter_value_or_panic("sequencer_requests_total", "get_block"),
+                handle.get_counter_value("sequencer_requests_total", "get_block"),
                 12
             );
             assert_eq!(
-                handle.get_counter_value_or_panic("sequencer_requests_failed_total", "get_block"),
+                handle.get_counter_value("sequencer_requests_failed_total", "get_block"),
                 9
             );
             assert_eq!(
-                handle.get_counter_value_or_panic(
-                    "sequencer_requests_failed_starknet_total",
-                    "get_block"
-                ),
+                handle.get_counter_value("sequencer_requests_failed_starknet_total", "get_block"),
                 3
             );
             assert_eq!(
-                handle.get_counter_value_or_panic(
-                    "sequencer_requests_failed_decode_total",
-                    "get_block"
-                ),
+                handle.get_counter_value("sequencer_requests_failed_decode_total", "get_block"),
                 3
             );
             assert_eq!(
-                handle.get_counter_value_or_panic(
-                    "sequencer_requests_failed_rate_limited_total",
-                    "get_block"
-                ),
+                handle
+                    .get_counter_value("sequencer_requests_failed_rate_limited_total", "get_block"),
                 3
             );
         }

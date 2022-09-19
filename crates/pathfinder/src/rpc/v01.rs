@@ -2628,14 +2628,10 @@ mod tests {
         let recorder = FakeRecorder::new(&["starknet_getBlockWithTxHashes"]);
         let handle = recorder.handle();
 
-        let get_all = || {
-            handle.get_counter_value_or_panic(
-                "rpc_method_calls_total",
-                "starknet_getBlockWithTxHashes",
-            )
-        };
+        let get_all =
+            || handle.get_counter_value("rpc_method_calls_total", "starknet_getBlockWithTxHashes");
         let get_failed = || {
-            handle.get_counter_value_or_panic(
+            handle.get_counter_value(
                 "rpc_method_calls_failed_total",
                 "starknet_getBlockWithTxHashes",
             )
