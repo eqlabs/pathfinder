@@ -37,6 +37,8 @@ pub async fn start(
     let (child_shutdown_tx, _) = broadcast::channel(1);
     let command_rx: SharedReceiver<(Command, tracing::Span)> = Arc::new(Mutex::new(command_rx));
 
+    let metrics = Metrics::register();
+
     // TODO: might be better to use tokio's JoinSet?
     let mut joinhandles = futures::stream::FuturesUnordered::new();
 
@@ -58,6 +60,7 @@ pub async fn start(
             match evt {
                 SubProcessEvent::ProcessLaunched(_pid) => {
                     // good, now we can launch the other processes requested later
+                    metrics.increment_launched();
                 },
             }
         },
@@ -97,12 +100,10 @@ pub async fn start(
                         let _ = child_shutdown_tx.send(());
 
                         loop {
-                            match joinhandles.next().await {
-                                Some(Ok(_)) => {}
-                                Some(Err(error)) => {
-                                    // these should all be bugs
-                                    warn!(%error, "Joined subprocess had failed");
-                                },
+                            let next = joinhandles.next().await;
+
+                            match next {
+                                Some(res) => { on_joined_subprocess(res, &metrics); },
                                 None => break,
                             }
                         }
@@ -111,25 +112,13 @@ pub async fn start(
                     }
                     Some(evt) = status_rx.recv() => {
                         match evt {
-                            SubProcessEvent::ProcessLaunched(_) => {},
+                            SubProcessEvent::ProcessLaunched(_) => {
+                                metrics.increment_launched();
+                            },
                         }
                     },
                     Some(res) = joinhandles.next() => {
-                        let allow_spawn_right_away = match res {
-                            Ok(Ok((pid, exit_status, exit_reason))) => {
-                                info!(%pid, ?exit_status, ?exit_reason, "Subprocess exited");
-                                true
-                            },
-                            Ok(Err(error)) => {
-                                warn!(error = %error, "Subprocess failed");
-                                true
-                            },
-                            Err(join_error) => {
-                                warn!(error = %join_error, "Subprocess exited unexpectedly");
-                                false
-                            },
-                        };
-                        // println!("one of our python processes have expired: {_maybe_info:?}");
+                        let allow_spawn_right_away = on_joined_subprocess(res, &metrics);
                         // we should spawn it immediatedly if empty
                         spawn = allow_spawn_right_away && joinhandles.is_empty();
                     }
@@ -161,4 +150,85 @@ pub async fn start(
     );
 
     Ok((handle, jh))
+}
+
+/// Returns if a new subprocess should be launched without wait
+fn on_joined_subprocess(
+    res: Result<Result<super::SubprocessExitInfo, anyhow::Error>, tokio::task::JoinError>,
+    metrics: &Metrics,
+) -> bool {
+    match res {
+        Ok(Ok((pid, exit_status, exit_reason))) => {
+            info!(%pid, ?exit_status, ?exit_reason, "Subprocess exited");
+            metrics.increment_for_exit(&exit_reason);
+            // after this we can spawn right away
+            true
+        }
+        Ok(Err(error)) => {
+            warn!(error = %error, "Subprocess failed");
+            metrics.increment_failed();
+            // a bug, but it might be on the rust side, so spawn right away
+            true
+        }
+        Err(join_error) => {
+            // in shutdown the cancellation one could be raced if there'd be graceful shutdown and
+            // tokio would be shut down.
+            warn!(error = %join_error, "Subprocess exited unexpectedly");
+            // something wrong with the subprocess, don't spawn right away
+            false
+        }
+    }
+}
+
+static METRIC_LAUNCHED_PROCESSES: &str = "extpy_processes_launched_total";
+static METRIC_EXITED_PROCESSES: &str = "extpy_processes_exited_total";
+static METRIC_FAILED_PROCESSES: &str = "extpy_processes_failed_total";
+
+struct Metrics {
+    launched: metrics::Counter,
+    failed: metrics::Counter,
+}
+
+impl Metrics {
+    fn register() -> Self {
+        let launched = metrics::register_counter!(METRIC_LAUNCHED_PROCESSES);
+        metrics::describe_counter!(
+            METRIC_LAUNCHED_PROCESSES,
+            metrics::Unit::Count,
+            "number of launched python subprocesses; equals sum of exited and failed subprocesses."
+        );
+
+        // exposing the Option<ExitStatus>: opaque, exit reason counts why our code ended up reacting
+        // like this. failed variant catches all errors.
+        for reason in super::SubprocessExitReason::all_labels() {
+            metrics::register_counter!(METRIC_EXITED_PROCESSES, "reason" => reason);
+        }
+        metrics::describe_counter!(
+            METRIC_EXITED_PROCESSES,
+            metrics::Unit::Count,
+            "number of normally exited subprocesses."
+        );
+
+        let failed = metrics::register_counter!(METRIC_FAILED_PROCESSES);
+        metrics::describe_counter!(
+            METRIC_FAILED_PROCESSES,
+            metrics::Unit::Count,
+            "number of abnormally, due to bug, exited subprocesses."
+        );
+
+        Metrics { launched, failed }
+    }
+
+    fn increment_launched(&self) {
+        self.launched.increment(1);
+    }
+
+    fn increment_for_exit(&self, exit_reason: &super::SubprocessExitReason) {
+        let why = exit_reason.as_label();
+        metrics::increment_counter!(METRIC_EXITED_PROCESSES, "reason" => why);
+    }
+
+    fn increment_failed(&self) {
+        self.failed.increment(1);
+    }
 }

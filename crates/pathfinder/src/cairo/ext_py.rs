@@ -235,6 +235,27 @@ enum SubprocessExitReason {
     Shutdown,
     Death,
     Cancellation,
+    // If you add more reasons, remember to modify `all_labels`
+}
+
+impl SubprocessExitReason {
+    fn as_label(&self) -> &'static str {
+        match self {
+            SubprocessExitReason::UnrecoverableIO => "unrecoverable_io",
+            SubprocessExitReason::Shutdown => "shutdown",
+            SubprocessExitReason::Death => "subprocess_died",
+            SubprocessExitReason::Cancellation => "request_cancelled",
+        }
+    }
+
+    fn all_labels() -> impl Iterator<Item = &'static str> {
+        use SubprocessExitReason::*;
+        // this is quite the hassle maintaining this but so far we don't really have a better way
+        // in rust than to do this
+        [UnrecoverableIO, Shutdown, Death, Cancellation]
+            .into_iter()
+            .map(|x| x.as_label())
+    }
 }
 
 /// Errors which can happen during an RPC alike round with the subprocess.
@@ -252,6 +273,9 @@ impl From<std::io::Error> for SubprocessError {
         SubprocessError::IO
     }
 }
+
+/// Which process, with what opaque native reason exited because of which codepath was taken.
+type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExitReason);
 
 #[cfg(test)]
 mod tests {
