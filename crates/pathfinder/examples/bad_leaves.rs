@@ -147,7 +147,9 @@ fn main() {
     let tx = conn.transaction().unwrap();
 
     let mut stmt = tx
-        .prepare("select root, number from starknet_blocks order by number asc")
+        .prepare(
+            "select root, number from starknet_blocks where number = 306892 order by number asc",
+        )
         .unwrap();
 
     let mut rows = stmt.query([]).unwrap();
