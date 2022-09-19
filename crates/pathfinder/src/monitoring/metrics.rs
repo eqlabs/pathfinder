@@ -197,6 +197,29 @@ pub mod test {
                 .0
                 .load(Ordering::Relaxed)
         }
+
+        /// Panics in any of the following cases
+        /// - `counter_name` was not registered via [`metrics::register_counter`]
+        /// - `labels` don't match the [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)-s
+        /// registered via [`metrics::register_counter`]
+        pub fn get_counter_value_by_label(
+            &self,
+            counter_name: &'static str,
+            labels: &'static [(&'static str, &'static str)],
+        ) -> u64 {
+            let read_guard = self.counters.read().unwrap();
+            read_guard
+                .get(&Key::from_parts(
+                    counter_name,
+                    labels
+                        .iter()
+                        .map(|&(key, val)| Label::new(key, val))
+                        .collect::<Vec<_>>(),
+                ))
+                .unwrap()
+                .0
+                .load(Ordering::Relaxed)
+        }
     }
 
     impl CounterFn for FakeCounterFn {
