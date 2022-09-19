@@ -13,9 +13,11 @@
 
 use crate::{
     core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
-    sequencer::error::SequencerError,
+    sequencer::{
+        error::SequencerError,
+        metrics::{wrap_with_metrics, BlockTag, RequestMetadata},
+    },
 };
-use futures::Future;
 
 /// A Sequencer Request builder.
 pub struct Request<'a, S: RequestState> {
@@ -32,6 +34,8 @@ pub enum Retry {
 }
 
 pub mod stage {
+    use crate::sequencer::metrics::RequestMetadata;
+
     /// Provides the [builder](super::Request::builder) entry-point.
     pub struct Init;
 
@@ -52,53 +56,6 @@ pub mod stage {
     /// - [get_contract_addresses](super::Request::get_contract_addresses)
     pub struct Method;
 
-    /// Used to mark methods that touch special block tags to avoid reparsing the url.
-    #[derive(Clone, Copy, Debug)]
-    pub enum BlockTag {
-        None,
-        Latest,
-        Pending,
-    }
-
-    use crate::core::BlockId;
-
-    impl From<BlockId> for BlockTag {
-        fn from(x: BlockId) -> Self {
-            match x {
-                BlockId::Number(_) | BlockId::Hash(_) => Self::None,
-                BlockId::Latest => Self::Latest,
-                BlockId::Pending => Self::Pending,
-            }
-        }
-    }
-
-    impl BlockTag {
-        // Returns a `&'static str` representation of the tag, if it exists.
-        pub fn as_str(self) -> Option<&'static str> {
-            match self {
-                BlockTag::None => None,
-                BlockTag::Latest => Some("latest"),
-                BlockTag::Pending => Some("pending"),
-            }
-        }
-    }
-
-    #[derive(Clone, Copy, Debug)]
-    pub struct MetricsMetadata {
-        pub method: &'static str,
-        pub tag: BlockTag,
-    }
-
-    impl MetricsMetadata {
-        /// Create new instance with tag set to [`BlockTag::None`]
-        pub fn new(method: &'static str) -> Self {
-            Self {
-                method,
-                tag: BlockTag::None,
-            }
-        }
-    }
-
     /// Specify the request parameters:
     /// - [at_block](super::Request::with_block)
     /// - [with_contract_address](super::Request::with_contract_address)
@@ -110,7 +67,7 @@ pub mod stage {
     ///
     /// and then specify the [retry behavior](super::Request::with_retry).
     pub struct Params {
-        pub meta: MetricsMetadata,
+        pub meta: RequestMetadata,
     }
 
     /// Specify the REST operation send the request:
@@ -118,7 +75,7 @@ pub mod stage {
     /// - [get_as_bytes](super::Request::get_as_bytes)
     /// - [post_with_json](super::Request::post_with_json)
     pub struct Final {
-        pub meta: MetricsMetadata,
+        pub meta: RequestMetadata,
         pub retry: super::Retry,
     }
 
@@ -237,7 +194,7 @@ impl<'a> Request<'a, stage::Method> {
             url: self.url,
             client: self.client,
             state: stage::Params {
-                meta: stage::MetricsMetadata::new(method),
+                meta: RequestMetadata::new(method),
             },
         }
     }
@@ -253,16 +210,12 @@ impl<'a> Request<'a, stage::Params> {
             BlockId::Number(number) => (
                 "blockNumber",
                 Cow::from(number.get().to_string()),
-                stage::BlockTag::None,
+                BlockTag::None,
             ),
-            BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str(), stage::BlockTag::None),
+            BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str(), BlockTag::None),
             // These have to use "blockNumber", "blockHash" does not accept tags.
-            BlockId::Latest => ("blockNumber", Cow::from("latest"), stage::BlockTag::Latest),
-            BlockId::Pending => (
-                "blockNumber",
-                Cow::from("pending"),
-                stage::BlockTag::Pending,
-            ),
+            BlockId::Latest => ("blockNumber", Cow::from("latest"), BlockTag::Latest),
+            BlockId::Pending => ("blockNumber", Cow::from("pending"), BlockTag::Pending),
         };
 
         self.update_tag(tag).add_param(name, &value)
@@ -297,7 +250,7 @@ impl<'a> Request<'a, stage::Params> {
         self
     }
 
-    pub fn update_tag(mut self, tag: stage::BlockTag) -> Self {
+    pub fn update_tag(mut self, tag: BlockTag) -> Self {
         self.state.meta.tag = tag;
         self
     }
@@ -315,58 +268,6 @@ impl<'a> Request<'a, stage::Params> {
     }
 }
 
-/// Awaits future `f` and increments the following counters for a particular method:
-/// - `sequencer_requests_total`,
-/// - `sequencer_requests_failed_total` if the future returns the `Err()` variant.
-/// - `sequencer_requests_failed_starknet_total` if the future returns the `Err()` variant, which carries a
-/// StarkNet specific error variant
-/// - `sequencer_requests_failed_decode_total` counter for `method` if the future returns the `Err()` variant,
-/// which carries a decode error variant
-/// - `sequencer_requests_failed_rate_limited_total` if the future returns the `Err()` variant,
-/// which carries the [`reqwest::StatusCode::TOO_MANY_REQUESTS`] status code
-///
-/// All the above counters are also duplicated for the special cases of:
-/// `("get_block" | "get_state_update") AND ("latest" | "pending")`
-async fn wrap_with_metrics<T>(
-    meta: stage::MetricsMetadata,
-    f: impl Future<Output = Result<T, SequencerError>>,
-) -> Result<T, SequencerError> {
-    /// Increments a counter and all its special flavors that record tag specific events
-    fn increment_counter(counter_name: &'static str, meta: stage::MetricsMetadata) {
-        let method = meta.method;
-        let tag = meta.tag;
-        metrics::increment_counter!(counter_name, "method" => method);
-        if let ("get_block" | "get_state_update", Some(tag)) = (method, tag.as_str()) {
-            metrics::increment_counter!(counter_name, "method" => method, "tag" => tag)
-        }
-    }
-
-    increment_counter("sequencer_requests_total", meta);
-
-    f.await.map_err(|e| {
-        increment_counter("sequencer_requests_failed_total", meta);
-
-        match &e {
-            SequencerError::StarknetError(_) => {
-                increment_counter("sequencer_requests_failed_starknet_total", meta);
-            }
-            SequencerError::ReqwestError(e) if e.is_decode() => {
-                increment_counter("sequencer_requests_failed_decode_total", meta);
-            }
-            SequencerError::ReqwestError(e)
-                if e.is_status()
-                    && e.status().expect("error kind should be status")
-                        == reqwest::StatusCode::TOO_MANY_REQUESTS =>
-            {
-                increment_counter("sequencer_requests_failed_rate_limited_total", meta);
-            }
-            SequencerError::ReqwestError(_) => {}
-        }
-
-        e
-    })
-}
-
 impl<'a> Request<'a, stage::Final> {
     /// Sends the Sequencer request as a REST `GET` operation and parses the response into `T`.
     pub async fn get<T>(self) -> Result<T, SequencerError>
@@ -376,7 +277,7 @@ impl<'a> Request<'a, stage::Final> {
         async fn send_request<T: serde::de::DeserializeOwned>(
             url: reqwest::Url,
             client: &reqwest::Client,
-            meta: stage::MetricsMetadata,
+            meta: RequestMetadata,
         ) -> Result<T, SequencerError> {
             wrap_with_metrics(meta, async move {
                 let response = client.get(url).send().await?;
@@ -405,7 +306,7 @@ impl<'a> Request<'a, stage::Final> {
         async fn get_as_bytes_inner(
             url: reqwest::Url,
             client: &reqwest::Client,
-            meta: stage::MetricsMetadata,
+            meta: RequestMetadata,
         ) -> Result<bytes::Bytes, SequencerError> {
             wrap_with_metrics(meta, async {
                 let response = client.get(url).send().await?;
@@ -441,7 +342,7 @@ impl<'a> Request<'a, stage::Final> {
         async fn post_with_json_inner<T, J>(
             url: reqwest::Url,
             client: &reqwest::Client,
-            meta: stage::MetricsMetadata,
+            meta: RequestMetadata,
             json: &J,
         ) -> Result<T, SequencerError>
         where
