@@ -49,15 +49,13 @@ pub mod middleware {
 
 #[cfg(test)]
 pub mod test {
-    use metrics::{Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, SharedString, Unit};
-    use metrics::{Recorder, SetRecorderError};
+    use metrics::{
+        Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
+    };
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::RwLock;
-    use std::sync::{Arc, RwLockReadGuard};
-    use std::sync::{Mutex, MutexGuard, RwLockWriteGuard};
+    use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-    // static RECORDER_LOCK: Mutex<()> = Mutex::new(());
     // The flag means if the current recorder is a noop one
     static RECORDER_LOCK: RwLock<()> = RwLock::new(());
 
@@ -69,17 +67,18 @@ pub mod test {
     /// Allows to safely set a `metrics::Recorder` for a particular test.
     /// The recorder will be removed when this guard is dropped.
     /// Internal mutex protects us from inter-test recorder races.
-    // pub struct RecorderGuard<'a>(MutexGuard<'a, ()>);
     pub struct RecorderGuard<'a>(GuardType<'a>);
 
     impl<'a> RecorderGuard<'a> {
-        /// Locks the global mutex and sets the global `metrics::Recorder` for the current test.
-        /// The global recorder is cleared and the mutex is unlocked when the guard is dropped.
+        /// Use this lock in a test if you wish to test if particular metrics were recorded properly.
+        ///
+        /// Locks the global RwLock for writing and sets the global `metrics::Recorder` for the current test.
+        /// The global recorder is cleared and the write lock is unlocked when the guard is dropped.
         ///
         /// The `recorder` passed to this function will be moved onto the heap and then __leaked__
         /// but we don't really care as this is purely a testing aid.
         ///
-        /// TODO panics if...
+        /// Panics if the internal locking for write or setting the global recorder fails.
         pub fn lock<R>(recorder: R) -> Self
         where
             R: Recorder + 'static,
@@ -91,7 +90,15 @@ pub mod test {
             Self(GuardType::Exclusive(guard))
         }
 
-        /// TODO
+        /// If a particular test depends on incrementing a counter other tests
+        /// that also could be incrementing this counter concurrently need to
+        /// perform this lock to avoid interference which will result in invalid
+        /// counts in the original test.
+        ///
+        /// The internal RwLock is locked for reading which means that all tests
+        /// that lock_as_noop() concurrently don't wait on each other.
+        ///
+        /// Panics if internal locking for read fails.
         pub fn lock_as_noop() -> Self {
             let guard = RECORDER_LOCK.read().unwrap();
 
