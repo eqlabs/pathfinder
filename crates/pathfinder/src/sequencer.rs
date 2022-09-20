@@ -665,9 +665,7 @@ mod tests {
                     Some((_, responses)) => {
                         let (body, status) =
                             responses.pop_front().expect("more responses for this path");
-                        http::response::Builder::new()
-                            .status(status)
-                            .body(body.to_string())
+                        http::response::Builder::new().status(status).body(body)
                     }
                     None => panic!(
                         "Actual url path and query {} not found in the expected {:?}",
