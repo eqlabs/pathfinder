@@ -546,6 +546,8 @@ mod tests {
         }
     }
 
+    /// # Usage
+    ///
     /// Use to initialize a [sequencer::Client] test case. The function does one of the following things:
     ///
     /// 1. if `SEQUENCER_TESTS_LIVE_API` environment variable is set:
@@ -615,7 +617,19 @@ mod tests {
         }
     }
 
-    /// TODO
+    /// # Usage
+    ///
+    /// Use to initialize a [sequencer::Client] test case. The function does one of the following things:
+    /// - initializes a local mock server instance with the given expected
+    ///   url paths & queries and respective fixtures for replies
+    /// - creates a [sequencer::Client] instance which connects to the mock server
+    /// - replies for a particular path & query are consumed one at a time until exhausted
+    ///
+    /// # Panics
+    ///
+    /// Panics if replies for a particular path & query have been exhausted and the
+    /// client still attempts to query the very same path.
+    ///
     fn setup_with_varied_responses<const M: usize, const N: usize>(
         url_paths_queries_and_response_fixtures: [(String, [(String, u16); M]); N],
     ) -> (Option<tokio::task::JoinHandle<()>>, Client) {
