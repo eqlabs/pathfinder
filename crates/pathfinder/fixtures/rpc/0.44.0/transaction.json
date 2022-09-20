@@ -1,0 +1,64 @@
+[
+    {
+        "type": "DECLARE",
+        "transaction_hash": "0x4",
+        "max_fee": "0x5",
+        "version": "0x0",
+        "signature": [
+            "0x7"
+        ],
+        "nonce": "0x8",
+        "class_hash": "0x9",
+        "sender_address": "0xa"
+    },
+    {
+        "type": "INVOKE",
+        "version": "0x0",
+        "transaction_hash": "0xb",
+        "max_fee": "0x999",
+        "signature": [
+            "0x777"
+        ],
+        "nonce": "0xdd",
+        "contract_address": "0xb",
+        "entry_point_selector": "0xc",
+        "calldata": [
+            "0xd"
+        ]
+    },
+    {
+        "type": "INVOKE",
+        "version": "0x1",
+        "transaction_hash": "0xbbb",
+        "max_fee": "0x9999",
+        "signature": [
+            "0xeee"
+        ],
+        "nonce": "0xde",
+        "sender_address": "0xc",
+        "calldata": [
+            "0xddd"
+        ]
+    },
+    {
+        "type": "DEPLOY",
+        "transaction_hash": "0xe",
+        "class_hash": "0x10",
+        "version": "0x1",
+        "contract_address_salt": "0xee",
+        "constructor_calldata": [
+            "0x11"
+        ]
+    },
+    {
+        "type": "L1_HANDLER",
+        "transaction_hash": "0xf",
+        "version": "0x1",
+        "nonce": "0x8",
+        "contract_address": "0xfff",
+        "entry_point_selector": "0xf",
+        "calldata": [
+            "0xf"
+        ]
+    }
+]
