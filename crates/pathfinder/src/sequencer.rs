@@ -679,10 +679,12 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
         use crate::core::StarknetBlockTimestamp;
+        use crate::monitoring::metrics::test::RecorderGuard;
         use crate::sequencer::reply::{Block, Status};
         use std::convert::Infallible;
         use warp::Filter;
 
+        let _guard = RecorderGuard::lock_as_noop();
         let filter = warp::header::optional("user-agent").and_then(
             |user_agent: Option<String>| async move {
                 let user_agent = user_agent.expect("user-agent set");
