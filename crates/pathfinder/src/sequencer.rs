@@ -2115,6 +2115,10 @@ mod tests {
                 .collect::<Vec<_>>()
                 .await;
 
+            // IMPORTANT
+            //
+            // We're not using any crate::sequencer::metrics consts here, because this is public API
+            // and we'd like to catch if/when it changed (apparently due to a bug)
             [
                 ("sequencer_requests_total", None, None, 21),
                 ("sequencer_requests_total", Some("latest"), None, 7),

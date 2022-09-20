@@ -6,15 +6,20 @@ use super::{
 use crate::core::BlockId;
 use futures::Future;
 
+const METRIC_REQUESTS: &str = "sequencer_requests_total";
+const METRIC_FAILED_REQUESTS: &str = "sequencer_requests_failed_total";
+const METRICS: [&str; 2] = [METRIC_REQUESTS, METRIC_FAILED_REQUESTS];
+const TAG_LATEST: &str = "latest";
+const TAG_PENDING: &str = "pending";
+const TAGS: &[&str] = &[TAG_LATEST, TAG_PENDING];
+const REASON_DECODE: &str = "decode";
+const REASON_STARKNET: &str = "starknet";
+const REASON_RATE_LIMITING: &str = "rate_limiting";
+const REASONS: [&str; 3] = [REASON_DECODE, REASON_RATE_LIMITING, REASON_STARKNET];
+
 /// Register all sequencer related metrics
 pub fn register() {
-    const METRIC_REQUESTS: &str = "sequencer_requests_total";
-    const METRIC_FAILED_REQUESTS: &str = "sequencer_requests_failed_total";
-    const METRICS: &[&str] = &[METRIC_REQUESTS, METRIC_FAILED_REQUESTS];
-
-    // We also track `get_block`, `get_state_update` wrt `latest` and `pending` blocks
     let methods_with_tags = ["get_block", "get_state_update"].into_iter();
-    let tags = ["latest", "pending"].into_iter();
 
     // Requests and failed requests
     METRICS.iter().for_each(|&name| {
@@ -25,16 +30,14 @@ pub fn register() {
 
         // For methods that support block tags in metrics
         methods_with_tags.clone().for_each(|method| {
-            tags.clone().for_each(|tag| {
+            TAGS.iter().for_each(|&tag| {
                 metrics::register_counter!(name, "method" => method, "tag" => tag);
             })
         })
     });
 
-    let failure_reason = ["starknet", "decode", "rate_limiting"].into_iter();
-
     // Failed requests for specific failure reasons
-    failure_reason.for_each(|failure_reason| {
+    REASONS.iter().for_each(|&failure_reason| {
         // For all methods
         Request::<'_, Method>::METHODS.iter().for_each(|&method| {
             metrics::register_counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => failure_reason);
@@ -42,7 +45,7 @@ pub fn register() {
 
         // For methods that support block tags in metrics
         methods_with_tags.clone().for_each(|method| {
-            tags.clone().for_each(|tag| {
+            TAGS.iter().for_each(|&tag| {
                 metrics::register_counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => failure_reason);
             })
         })
@@ -72,8 +75,8 @@ impl BlockTag {
     pub fn as_str(self) -> Option<&'static str> {
         match self {
             BlockTag::None => None,
-            BlockTag::Latest => Some("latest"),
-            BlockTag::Pending => Some("pending"),
+            BlockTag::Latest => Some(TAG_LATEST),
+            BlockTag::Pending => Some(TAG_PENDING),
         }
     }
 }
@@ -128,34 +131,34 @@ pub async fn with_metrics<T>(
 
     /// Increments the `sequencer_requests_failed_total` counter for a given failure `reason`,
     /// includes block tag specific variants if they exist
-    fn increment_failed(meta: RequestMetadata, failure_reason: &'static str) {
+    fn increment_failed(meta: RequestMetadata, reason: &'static str) {
         let method = meta.method;
         let tag = meta.tag;
-        metrics::increment_counter!("sequencer_requests_failed_total", "method" => method, "reason" => failure_reason);
+        metrics::increment_counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => reason);
 
         if let ("get_block" | "get_state_update", Some(tag)) = (method, tag.as_str()) {
-            metrics::increment_counter!("sequencer_requests_failed_total", "method" => method, "tag" => tag, "reason" => failure_reason);
+            metrics::increment_counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => reason);
         }
     }
 
-    increment("sequencer_requests_total", meta);
+    increment(METRIC_REQUESTS, meta);
 
     f.await.map_err(|e| {
-        increment("sequencer_requests_failed_total", meta);
+        increment(METRIC_FAILED_REQUESTS, meta);
 
         match &e {
             SequencerError::StarknetError(_) => {
-                increment_failed(meta, "starknet");
+                increment_failed(meta, REASON_STARKNET);
             }
             SequencerError::ReqwestError(e) if e.is_decode() => {
-                increment_failed(meta, "decode");
+                increment_failed(meta, REASON_DECODE);
             }
             SequencerError::ReqwestError(e)
                 if e.is_status()
                     && e.status().expect("error kind should be status")
                         == reqwest::StatusCode::TOO_MANY_REQUESTS =>
             {
-                increment_failed(meta, "rate_limiting");
+                increment_failed(meta, REASON_RATE_LIMITING);
             }
             SequencerError::ReqwestError(_) => {}
         }
