@@ -2116,53 +2116,90 @@ mod tests {
                 .await;
 
             [
-                ("sequencer_requests_total", None, 21),
-                ("sequencer_requests_total", Some("latest"), 7),
-                ("sequencer_requests_total", Some("pending"), 7),
-                ("sequencer_requests_failed_total", None, 18),
-                ("sequencer_requests_failed_total", Some("latest"), 6),
-                ("sequencer_requests_failed_total", Some("pending"), 6),
-                ("sequencer_requests_failed_starknet_total", None, 3),
+                ("sequencer_requests_total", None, None, 21),
+                ("sequencer_requests_total", Some("latest"), None, 7),
+                ("sequencer_requests_total", Some("pending"), None, 7),
+                ("sequencer_requests_failed_total", None, None, 18),
+                ("sequencer_requests_failed_total", Some("latest"), None, 6),
+                ("sequencer_requests_failed_total", Some("pending"), None, 6),
+                ("sequencer_requests_failed_total", None, Some("starknet"), 3),
                 (
-                    "sequencer_requests_failed_starknet_total",
+                    "sequencer_requests_failed_total",
                     Some("latest"),
+                    Some("starknet"),
                     1,
                 ),
                 (
-                    "sequencer_requests_failed_starknet_total",
+                    "sequencer_requests_failed_total",
                     Some("pending"),
+                    Some("starknet"),
                     1,
                 ),
-                ("sequencer_requests_failed_decode_total", None, 6),
-                ("sequencer_requests_failed_decode_total", Some("latest"), 2),
-                ("sequencer_requests_failed_decode_total", Some("pending"), 2),
-                ("sequencer_requests_failed_rate_limited_total", None, 9),
+                ("sequencer_requests_failed_total", None, Some("decode"), 6),
                 (
-                    "sequencer_requests_failed_rate_limited_total",
+                    "sequencer_requests_failed_total",
                     Some("latest"),
+                    Some("decode"),
+                    2,
+                ),
+                (
+                    "sequencer_requests_failed_total",
+                    Some("pending"),
+                    Some("decode"),
+                    2,
+                ),
+                (
+                    "sequencer_requests_failed_total",
+                    None,
+                    Some("rate_limiting"),
+                    9,
+                ),
+                (
+                    "sequencer_requests_failed_total",
+                    Some("latest"),
+                    Some("rate_limiting"),
                     3,
                 ),
                 (
-                    "sequencer_requests_failed_rate_limited_total",
+                    "sequencer_requests_failed_total",
                     Some("pending"),
+                    Some("rate_limiting"),
                     3,
                 ),
             ]
             .into_iter()
-            .for_each(|(counter_name, tag, expected_count)| match tag {
-                Some(tag) => assert_eq!(
-                    handle.get_counter_value_by_label(
-                        counter_name,
-                        [("method", method_name), ("tag", tag)]
+            .for_each(|(counter_name, tag, failure_reason, expected_count)| {
+                match (tag, failure_reason) {
+                    (None, None) => assert_eq!(
+                        handle.get_counter_value(counter_name, method_name),
+                        expected_count,
+                        "counter: {counter_name}, method: {method_name}"
                     ),
-                    expected_count,
-                    "counter: {counter_name}, method: {method_name}, tag: {tag}"
-                ),
-                None => assert_eq!(
-                    handle.get_counter_value(counter_name, method_name),
-                    expected_count,
-                    "counter: {counter_name}, method: {method_name}"
-                ),
+                    (None, Some(reason)) => assert_eq!(
+                        handle.get_counter_value_by_label(
+                            counter_name,
+                            [("method", method_name), ("reason", reason)]
+                        ),
+                        expected_count,
+                        "counter: {counter_name}, method: {method_name}, reason: {reason}"
+                    ),
+                    (Some(tag), None) => assert_eq!(
+                        handle.get_counter_value_by_label(
+                            counter_name,
+                            [("method", method_name), ("tag", tag)]
+                        ),
+                        expected_count,
+                        "counter: {counter_name}, method: {method_name}, tag: {tag}"
+                    ),
+                    (Some(tag), Some(reason)) => assert_eq!(
+                        handle.get_counter_value_by_label(
+                            counter_name,
+                            [("method", method_name), ("tag", tag), ("reason", reason)]
+                        ),
+                        expected_count,
+                        "counter: {counter_name}, method: {method_name}, tag: {tag}, reason: {reason}"
+                    ),
+                }
             });
         }
     }
