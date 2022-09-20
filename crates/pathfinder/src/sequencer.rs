@@ -511,7 +511,7 @@ mod tests {
     macro_rules! response {
         ($file_name:literal) => {
             (
-                include_str!(concat!("../fixtures/sequencer/", $file_name)).to_string(),
+                include_str!(concat!("../fixtures/sequencer/", $file_name)),
                 200,
             )
         };
@@ -2054,7 +2054,7 @@ mod tests {
                 |client, x| async move {
                     let _ = client.block(x).await;
                 },
-                response!("0.9.0/block/genesis.json"),
+                response_owned!("0.9.0/block/genesis.json"),
             )
             .await;
             with_method(
@@ -2062,7 +2062,7 @@ mod tests {
                 |client, x| async move {
                     let _ = client.state_update(x).await;
                 },
-                response!("0.9.1/state_update/genesis.json"),
+                response_owned!("0.9.1/state_update/genesis.json"),
             )
             .await;
         }
