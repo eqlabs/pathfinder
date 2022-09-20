@@ -15,7 +15,7 @@ use crate::{
     core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
     sequencer::{
         error::SequencerError,
-        metrics::{wrap_with_metrics, BlockTag, RequestMetadata},
+        metrics::{with_metrics, BlockTag, RequestMetadata},
     },
 };
 
@@ -279,7 +279,7 @@ impl<'a> Request<'a, stage::Final> {
             client: &reqwest::Client,
             meta: RequestMetadata,
         ) -> Result<T, SequencerError> {
-            wrap_with_metrics(meta, async move {
+            with_metrics(meta, async move {
                 let response = client.get(url).send().await?;
                 parse::<T>(response).await
             })
@@ -308,7 +308,7 @@ impl<'a> Request<'a, stage::Final> {
             client: &reqwest::Client,
             meta: RequestMetadata,
         ) -> Result<bytes::Bytes, SequencerError> {
-            wrap_with_metrics(meta, async {
+            with_metrics(meta, async {
                 let response = client.get(url).send().await?;
                 let response = parse_raw(response).await?;
                 let bytes = response.bytes().await?;
@@ -349,7 +349,7 @@ impl<'a> Request<'a, stage::Final> {
             T: serde::de::DeserializeOwned,
             J: serde::Serialize + ?Sized,
         {
-            wrap_with_metrics(meta, async {
+            with_metrics(meta, async {
                 let response = client.post(url).json(json).send().await?;
                 parse::<T>(response).await
             })

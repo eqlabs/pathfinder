@@ -97,7 +97,7 @@ impl RequestMetadata {
 ///
 /// All the above counters are also duplicated for the special cases of:
 /// `("get_block" | "get_state_update") AND ("latest" | "pending")`
-pub async fn wrap_with_metrics<T>(
+pub async fn with_metrics<T>(
     meta: RequestMetadata,
     f: impl Future<Output = Result<T, SequencerError>>,
 ) -> Result<T, SequencerError> {

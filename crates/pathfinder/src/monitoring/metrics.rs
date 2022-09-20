@@ -64,9 +64,15 @@ pub mod test {
         Exclusive(RwLockWriteGuard<'a, ()>),
     }
 
-    /// Allows to safely set a `metrics::Recorder` for a particular test.
+    /// # Purpose
+    ///
+    /// Allows to safely set a [`metrics::Recorder`] for a particular test.
     /// The recorder will be removed when this guard is dropped.
     /// Internal mutex protects us from inter-test recorder races.
+    ///
+    /// # Rationale
+    ///
+    /// The [`metrics`] crate relies on the recorder being a [singleton](https://docs.rs/metrics/latest/metrics/#installing-recorders).
     pub struct RecorderGuard<'a>(GuardType<'a>);
 
     impl<'a> RecorderGuard<'a> {
