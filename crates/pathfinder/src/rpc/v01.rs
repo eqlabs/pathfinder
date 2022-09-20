@@ -1737,54 +1737,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chain_id_with_call_counter_metric() {
-        use crate::monitoring::metrics::{middleware::RpcMetricsMiddleware, test::RecorderGuard};
+    async fn chain_id() {
+        use crate::monitoring::metrics::middleware::RpcMetricsMiddleware;
         use futures::stream::StreamExt;
-        use metrics::{
-            Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
-        };
-        use std::sync::atomic::{AtomicU64, Ordering};
-
-        struct FakeRecorder(Arc<FakeCounterFn>);
-        struct FakeCounterFn(AtomicU64);
-
-        impl Recorder for FakeRecorder {
-            fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
-            fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
-            fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
-            fn register_counter(&self, key: &Key) -> Counter {
-                if *key
-                    == Key::from_parts(
-                        "rpc_method_calls_total",
-                        vec![Label::new("method", "starknet_chainId")],
-                    )
-                {
-                    Counter::from_arc(self.0.clone())
-                } else {
-                    Counter::noop()
-                }
-            }
-            fn register_gauge(&self, _: &Key) -> Gauge {
-                unimplemented!()
-            }
-            fn register_histogram(&self, _: &Key) -> Histogram {
-                unimplemented!()
-            }
-        }
-
-        impl CounterFn for FakeCounterFn {
-            fn increment(&self, val: u64) {
-                self.0.fetch_add(val, Ordering::Relaxed);
-            }
-            fn absolute(&self, _: u64) {
-                unimplemented!()
-            }
-        }
-
-        let counter = Arc::new(FakeCounterFn(AtomicU64::default()));
-
-        // Other concurrent tests could be setting their own recorders
-        let _guard = RecorderGuard::lock(FakeRecorder(counter.clone()));
 
         assert_eq!(
             [Chain::Testnet, Chain::Mainnet]
@@ -1814,8 +1769,6 @@ mod tests {
                 format!("0x{}", hex::encode("SN_MAIN")),
             ]
         );
-
-        assert_eq!(counter.0.load(Ordering::Relaxed), 2);
     }
 
     mod syncing {
