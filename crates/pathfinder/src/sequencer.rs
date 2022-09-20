@@ -616,20 +616,9 @@ mod tests {
     }
 
     /// TODO
-    fn setup_with_varied_responses<S1, S2, const M: usize, const N: usize>(
-        url_paths_queries_and_response_fixtures: [(S1, [(S2, u16); M]); N],
-    ) -> (Option<tokio::task::JoinHandle<()>>, Client)
-    where
-        S1: std::convert::AsRef<str>
-            + std::fmt::Display
-            + std::fmt::Debug
-            + std::cmp::PartialEq
-            + Send
-            + Sync
-            + Clone
-            + 'static,
-        S2: std::string::ToString + Send + Sync + Clone + 'static,
-    {
+    fn setup_with_varied_responses<const M: usize, const N: usize>(
+        url_paths_queries_and_response_fixtures: [(String, [(String, u16); M]); N],
+    ) -> (Option<tokio::task::JoinHandle<()>>, Client) {
         let url_paths_queries_and_response_fixtures = url_paths_queries_and_response_fixtures
             .into_iter()
             .map(|x| (x.0.clone(), x.1.into_iter().collect::<VecDeque<_>>()))
@@ -657,12 +646,11 @@ mod tests {
 
                 match url_paths_queries_and_response_fixtures
                     .iter_mut()
-                    .find(|x| x.0.as_ref() == actual_full_path_and_query)
+                    .find(|x| x.0 == actual_full_path_and_query)
                 {
                     Some((_, responses)) => {
-                        let (body, status) = responses
-                            .pop_front()
-                            .expect("No more responses for this path!");
+                        let (body, status) =
+                            responses.pop_front().expect("more responses for this path");
                         http::response::Builder::new()
                             .status(status)
                             .body(body.to_string())
