@@ -517,6 +517,16 @@ mod tests {
         };
     }
 
+    /// Same as [`response`] except for the body being a [`String`].
+    macro_rules! response_owned {
+        ($file_name:literal) => {
+            (
+                include_str!(concat!("../fixtures/sequencer/", $file_name)).to_owned(),
+                200,
+            )
+        };
+    }
+
     impl StarknetErrorCode {
         /// Helper funtion which allows for easy creation of a response tuple
         /// that contains a [StarknetError] for a given [StarknetErrorCode].
