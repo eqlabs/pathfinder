@@ -70,15 +70,23 @@ pub mod test {
     pub struct RecorderGuard<'a>(GuardType<'a>);
 
     impl<'a> RecorderGuard<'a> {
+        /// # Usage
+        ///
         /// Use this lock in a test if you wish to test if particular metrics were recorded properly.
+        /// This is an __exclusive__ lock, which means all other tests that use the [`RecorderGuard`]
+        /// will wait for this test to finish (this instance of the guard to be dropped).
         ///
         /// Locks the global RwLock for writing and sets the global `metrics::Recorder` for the current test.
         /// The global recorder is cleared and the write lock is unlocked when the guard is dropped.
         ///
+        /// # Caveats
+        ///
         /// The `recorder` passed to this function will be moved onto the heap and then __leaked__
         /// but we don't really care as this is purely a testing aid.
         ///
-        /// Panics if the internal locking for write or setting the global recorder fails.
+        /// # Panics
+        ///
+        /// If the internal locking for write or setting the global recorder fails.
         pub fn lock<R>(recorder: R) -> Self
         where
             R: Recorder + 'static,
@@ -90,15 +98,19 @@ pub mod test {
             Self(GuardType::Exclusive(guard))
         }
 
-        /// If a particular test depends on incrementing a counter other tests
+        /// # Usage
+        ///
+        /// If a particular test depends on incrementing a metrics counter other tests
         /// that also could be incrementing this counter concurrently need to
         /// perform this lock to avoid interference which will result in invalid
         /// counts in the original test.
         ///
         /// The internal RwLock is locked for reading which means that all tests
-        /// that lock_as_noop() concurrently don't wait on each other.
+        /// that `lock_as_noop()` concurrently don't wait for each other.
         ///
-        /// Panics if internal locking for read fails.
+        /// # Panics
+        ///
+        /// If internal locking for read fails.
         pub fn lock_as_noop() -> Self {
             let guard = RECORDER_LOCK.read().unwrap();
 
