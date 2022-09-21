@@ -37,16 +37,16 @@ pub fn register() {
     });
 
     // Failed requests for specific failure reasons
-    REASONS.iter().for_each(|&failure_reason| {
+    REASONS.iter().for_each(|&reason| {
         // For all methods
         Request::<'_, Method>::METHODS.iter().for_each(|&method| {
-            metrics::register_counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => failure_reason);
+            metrics::register_counter!(METRIC_FAILED_REQUESTS, "method" => method, "reason" => reason);
         });
 
         // For methods that support block tags in metrics
         methods_with_tags.clone().for_each(|method| {
             TAGS.iter().for_each(|&tag| {
-                metrics::register_counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => failure_reason);
+                metrics::register_counter!(METRIC_FAILED_REQUESTS, "method" => method, "tag" => tag, "reason" => reason);
             })
         })
     });
