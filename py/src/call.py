@@ -11,6 +11,7 @@ import os
 # inherits this class.
 try:
     from starkware.storage.storage import Storage
+    from cachetools import LRUCache
 except ModuleNotFoundError:
 
     class Storage:
@@ -278,7 +279,11 @@ def loop_inner(connection, command):
         )
         ret = (verb, fees, timings)
 
-    timings["sql"] = {"timings": adapter.elapsed, "counts": adapter.counts}
+    timings["sql"] = {
+        "timings": adapter.elapsed,
+        "counts": adapter.counts,
+        "cache": adapter.cache,
+    }
     timings["cairo-lang"] = time.time() - started_at
 
     return ret
@@ -587,6 +592,7 @@ class SqliteAdapter(Storage):
             "contract_state": 0,
             "contract_definition": 0,
         }
+        self.cache = {"patricia_node": {"hits": 0, "misses": 0}}
         # json cannot contain bytes, python doesn't have strip string
         self.prefix_mapping = {
             b"patricia_node": "patricia_node",
@@ -595,6 +601,7 @@ class SqliteAdapter(Storage):
             # this is just a string op
             b"starknet_storage_leaf": None,
         }
+        self.cached_patricia_nodes = LRUCache(maxsize=512)
 
     async def set_value(self, key, value):
         raise NotImplementedError("Readonly storage, this should never happen")
@@ -644,6 +651,11 @@ class SqliteAdapter(Storage):
         assert False, f"unknown prefix: {prefix}"
 
     def fetch_patricia_node(self, suffix):
+        cached = self.cached_patricia_nodes.get(suffix, None)
+        if cached is not None:
+            self.cache["patricia_node"]["hits"] += 1
+            return cached
+
         # tree_global is much smaller table than tree_contracts
         cursor = self.connection.execute(
             "select data from tree_global where hash = ?1 union select data from tree_contracts where hash = ?1",
@@ -651,6 +663,9 @@ class SqliteAdapter(Storage):
         )
 
         [only] = next(cursor, [None])
+
+        self.cached_patricia_nodes[suffix] = only
+        self.cache["patricia_node"]["misses"] += 1
 
         return only
 

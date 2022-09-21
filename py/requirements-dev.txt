@@ -24,7 +24,9 @@ bitarray==1.2.2
 black==21.12b0
     # via -r requirements-dev.in
 cachetools==5.0.0
-    # via cairo-lang
+    # via
+    #   -r requirements-dev.in
+    #   cairo-lang
 cairo-lang==0.10.0
     # via -r requirements-dev.in
 certifi==2021.10.8
