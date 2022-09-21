@@ -408,25 +408,35 @@ rpc_method_calls_failed_total{method="starknet_chainId"}
 
 #### Sequencer related counters
 
-- `sequencer_requests_total`,
-- `sequencer_requests_failed_total`,
-- `sequencer_requests_failed_starknet_total` - requests failed due to StarkNet specific errors,
-- `sequencer_requests_failed_decode_total` - requests failed due to deserialiation errors, 
-- `sequencer_requests_failed_rate_limited_total` - requests failed due to rate limiting ([HTTP 429](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429)),
+- `sequencer_requests_total`
+- `sequencer_requests_failed_total`
 
-You __must__ use the label key `method` to retrieve a counter for a particular sequencer request type, for example:
+Labels:
+- `method`, to retrieve a counter for a particular sequencer request type
+- `tag`
+    - works with: `get_block`, `get_state_update`
+    - valid values:
+        - `pending`
+        - `latest`
+- `reason`
+    - works with: `sequencer_requests_failed_total`
+    - valid values:
+        - `decode`
+        - `starknet`
+        - `rate_limiting`
+
+Valid examples:
 ```
 sequencer_requests_total{method="get_block"}
-sequencer_requests_failed_rate_limited_total{method="get_state_update"}
+sequencer_requests_total{method="get_block", tag="latest"}
+sequencer_requests_failed_total{method="get_state_update"}
+sequencer_requests_failed_total{method="get_state_update", tag="pending"}
+sequencer_requests_failed_total{method="get_state_update", tag="pending", reason="starknet"}
+sequencer_requests_failed_total{method="get_state_update", reason="rate_limiting"}
 ```
-With `get_block` and `get_state_update` you __can__ also use an additional label key `tag` with either of the values `latest` or `pending`, for example:
-```
-sequencer_requests_total{method="get_block",tag="pending"}
-sequencer_requests_failed_total{method="get_state_update",tag="latest"}
-```
-
-The rationale for `sequencer_requests_failed_decode_total` is to allow users to filter out failures which result from bugs that sometimes happen when the sequencer API is updated, which usually happens around [`cairo-lang`](https://github.com/starkware-libs/cairo-lang) updates. These bugs are resolved quickly once discovered but without a dedicated counter would result in unnatural surges in the failure rate if not accounted for.
-
+These __will not work__:
+- `sequencer_requests_total{method="get_transaction", tag="latest"}`, `tag` is not supported for that `method`
+- `sequencer_requests_total{method="get_transaction", reason="decode"}`, `reason` is only supported for failures.
 
 ## License
 
