@@ -1,6 +1,6 @@
 //! Defines [RpcError], the StarkNet JSON-RPC specification's error variants.
 //!
-//! In addition, it supplies the [rpc_error_subset!] macro which should be used
+//! In addition, it supplies the [generate_rpc_error_subset!] macro which should be used
 //! by each JSON-RPC method to trivially create its subset of [RpcError] along with the boilerplate involved.
 #![macro_use]
 
@@ -71,12 +71,12 @@ impl From<RpcError> for jsonrpsee::core::error::Error {
 ///
 /// ## Usage
 /// ```ignore
-/// rpc_error_subset!(<enum_name>: <variant a>, <variant b>, <variant N>);
+/// generate_rpc_error_subset!(<enum_name>: <variant a>, <variant b>, <variant N>);
 /// ```
 /// Note that the variants __must__ match the [RpcError] variant names and that [RpcError::Internal]
 /// is always included by default (and therefore should not be part of macro input).
 ///
-/// An `Internal` only variant can be generated using `rpc_error_subset!(<enum_name>)`.
+/// An `Internal` only variant can be generated using `generate_rpc_error_subset!(<enum_name>)`.
 ///
 /// ## Specifics
 /// This macro generates the following:
@@ -90,7 +90,7 @@ impl From<RpcError> for jsonrpsee::core::error::Error {
 /// ## Example with expansion
 /// This macro invocation:
 /// ```ignore
-/// rpc_error_subset!(MyEnum: BlockNotFound, NoBlocks);
+/// generate_rpc_error_subset!(MyEnum: BlockNotFound, NoBlocks);
 /// ```
 /// expands to:
 /// ```ignore
@@ -118,7 +118,7 @@ impl From<RpcError> for jsonrpsee::core::error::Error {
 /// }
 /// ```
 #[allow(unused_macros)]
-macro_rules! rpc_error_subset {
+macro_rules! generate_rpc_error_subset {
     // This macro uses the following advanced techniques:
     //   - tt-muncher (https://danielkeep.github.io/tlborm/book/pat-incremental-tt-munchers.html)
     //   - push-down-accumulation (https://danielkeep.github.io/tlborm/book/pat-push-down-accumulation.html)
@@ -130,19 +130,19 @@ macro_rules! rpc_error_subset {
 
     // Entry-point for empty variant (with colon suffix)
     ($enum_name:ident:) => {
-        rpc_error_subset!($enum_name);
+        generate_rpc_error_subset!($enum_name);
     };
     // Entry-point for empty variant (without colon suffix)
     ($enum_name:ident) => {
-        rpc_error_subset!(@enum_def, $enum_name,);
-        rpc_error_subset!(@from_anyhow, $enum_name);
-        rpc_error_subset!(@from_def, $enum_name,);
+        generate_rpc_error_subset!(@enum_def, $enum_name,);
+        generate_rpc_error_subset!(@from_anyhow, $enum_name);
+        generate_rpc_error_subset!(@from_def, $enum_name,);
     };
     // Main entry-point for the macro
     ($enum_name:ident: $($subset:tt),+) => {
-        rpc_error_subset!(@enum_def, $enum_name, $($subset),+);
-        rpc_error_subset!(@from_anyhow, $enum_name);
-        rpc_error_subset!(@from_def, $enum_name, $($subset),+);
+        generate_rpc_error_subset!(@enum_def, $enum_name, $($subset),+);
+        generate_rpc_error_subset!(@from_anyhow, $enum_name);
+        generate_rpc_error_subset!(@from_def, $enum_name, $($subset),+);
     };
     // Generates the enum definition, nothing tricky here.
     (@enum_def, $enum_name:ident, $($subset:tt),*) => {
@@ -177,7 +177,7 @@ macro_rules! rpc_error_subset {
     (@from_def, $enum_name:ident, $($variants:ident),*) => {
         impl From<$enum_name> for crate::rpc::error::RpcError {
             fn from(x: $enum_name) -> Self {
-                rpc_error_subset!(@parse, x, $enum_name, {}, $($variants),*)
+                generate_rpc_error_subset!(@parse, x, $enum_name, {}, $($variants),*)
             }
         }
     };
@@ -191,7 +191,7 @@ macro_rules! rpc_error_subset {
     // Special case for single variant. This could probably be folded into one of the other
     // cases but I struggled to do so correctly.
     (@parse, $var:ident, $enum_name:ident, {$($arms:tt)*}, $variant:ident) => {
-        rpc_error_subset!(
+        generate_rpc_error_subset!(
             @parse, $var, $enum_name,
             {
                 $($arms)*
@@ -201,7 +201,7 @@ macro_rules! rpc_error_subset {
     };
     // Append this variant to arms. Continue parsing the remaining variants.
     (@parse, $var:ident, $enum_name:ident, {$($arms:tt)*}, $variant:ident, $($tail:ident),*) => {
-        rpc_error_subset!(
+        generate_rpc_error_subset!(
             @parse, $var, $enum_name,
             {
                 $($arms)*
@@ -213,23 +213,23 @@ macro_rules! rpc_error_subset {
 }
 
 #[allow(dead_code, unused_imports)]
-pub(super) use rpc_error_subset;
+pub(super) use generate_rpc_error_subset;
 
 #[cfg(test)]
 mod tests {
     mod rpc_error_subset {
-        use super::super::{rpc_error_subset, RpcError};
+        use super::super::{generate_rpc_error_subset, RpcError};
         use assert_matches::assert_matches;
 
         #[test]
         fn no_variant() {
-            rpc_error_subset!(EMPTY:);
-            rpc_error_subset!(EmptyNoColon);
+            generate_rpc_error_subset!(EMPTY:);
+            generate_rpc_error_subset!(EmptyNoColon);
         }
 
         #[test]
         fn single_variant() {
-            rpc_error_subset!(SINGLE: ContractNotFound);
+            generate_rpc_error_subset!(SINGLE: ContractNotFound);
 
             let original = RpcError::from(SINGLE::ContractNotFound);
 
@@ -238,7 +238,7 @@ mod tests {
 
         #[test]
         fn multi_variant() {
-            rpc_error_subset!(MULTI: ContractNotFound, NoBlocks);
+            generate_rpc_error_subset!(MULTI: ContractNotFound, NoBlocks);
 
             let contract_not_found = RpcError::from(MULTI::ContractNotFound);
             let no_blocks = RpcError::from(MULTI::NoBlocks);
