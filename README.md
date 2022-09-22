@@ -406,10 +406,10 @@ rpc_method_calls_failed_total{method="starknet_chainId"}
 - `extpy_processes_exited_total` with labels, incremented each time python subprocess exits normally
 - `extpy_processes_failed_total` incremented each time python subprocess exits abnormally
 
-#### Sequencer related counters
+#### Feeder Gateway and Gateway related counters
 
-- `sequencer_requests_total`
-- `sequencer_requests_failed_total`
+- `gateway_requests_total`
+- `gateway_requests_failed_total`
 
 Labels:
 - `method`, to retrieve a counter for a particular sequencer request type
@@ -419,7 +419,7 @@ Labels:
         - `pending`
         - `latest`
 - `reason`
-    - works with: `sequencer_requests_failed_total`
+    - works with: `gateway_requests_failed_total`
     - valid values:
         - `decode`
         - `starknet`
@@ -427,16 +427,16 @@ Labels:
 
 Valid examples:
 ```
-sequencer_requests_total{method="get_block"}
-sequencer_requests_total{method="get_block", tag="latest"}
-sequencer_requests_failed_total{method="get_state_update"}
-sequencer_requests_failed_total{method="get_state_update", tag="pending"}
-sequencer_requests_failed_total{method="get_state_update", tag="pending", reason="starknet"}
-sequencer_requests_failed_total{method="get_state_update", reason="rate_limiting"}
+gateway_requests_total{method="get_block"}
+gateway_requests_total{method="get_block", tag="latest"}
+gateway_requests_failed_total{method="get_state_update"}
+gateway_requests_failed_total{method="get_state_update", tag="pending"}
+gateway_requests_failed_total{method="get_state_update", tag="pending", reason="starknet"}
+gateway_requests_failed_total{method="get_state_update", reason="rate_limiting"}
 ```
 These __will not work__:
-- `sequencer_requests_total{method="get_transaction", tag="latest"}`, `tag` is not supported for that `method`
-- `sequencer_requests_total{method="get_transaction", reason="decode"}`, `reason` is only supported for failures.
+- `gateway_requests_total{method="get_transaction", tag="latest"}`, `tag` is not supported for that `method`
+- `gateway_requests_total{method="get_transaction", reason="decode"}`, `reason` is only supported for failures.
 
 ## License
 

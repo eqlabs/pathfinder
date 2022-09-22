@@ -6,8 +6,8 @@ use super::{
 use crate::core::BlockId;
 use futures::Future;
 
-const METRIC_REQUESTS: &str = "sequencer_requests_total";
-const METRIC_FAILED_REQUESTS: &str = "sequencer_requests_failed_total";
+const METRIC_REQUESTS: &str = "gateway_requests_total";
+const METRIC_FAILED_REQUESTS: &str = "gateway_requests_failed_total";
 const METRICS: [&str; 2] = [METRIC_REQUESTS, METRIC_FAILED_REQUESTS];
 const TAG_LATEST: &str = "latest";
 const TAG_PENDING: &str = "pending";
@@ -101,15 +101,15 @@ impl RequestMetadata {
 /// # Usage
 ///
 ///  Awaits future `f` and increments the following counters for a particular method:
-/// - `sequencer_requests_total`,
-/// - `sequencer_requests_failed_total` if the future returns the `Err()` variant.
+/// - `gateway_requests_total`,
+/// - `gateway_requests_failed_total` if the future returns the `Err()` variant.
 ///
 /// # Additional counter labels
 ///
 /// 1. All the above counters are also duplicated for the special cases of:
 /// `("get_block" | "get_state_update") AND ("latest" | "pending")`.
 ///
-/// 2. `sequencer_requests_failed_total` is also duplicated for the specific failure reasons:
+/// 2. `gateway_requests_failed_total` is also duplicated for the specific failure reasons:
 /// - `starknet`, if the future returns an `Err()` variant, which carries a StarkNet specific error variant
 /// - `decode`, if the future returns an `Err()` variant, which carries a decode error variant
 /// - `rate_limiting` if the future returns an `Err()` variant,
@@ -129,7 +129,7 @@ pub async fn with_metrics<T>(
         }
     }
 
-    /// Increments the `sequencer_requests_failed_total` counter for a given failure `reason`,
+    /// Increments the `gateway_requests_failed_total` counter for a given failure `reason`,
     /// includes block tag specific variants if they exist
     fn increment_failed(meta: RequestMetadata, reason: &'static str) {
         let method = meta.method;
