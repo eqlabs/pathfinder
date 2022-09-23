@@ -164,6 +164,11 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
     )?;
     register_method(
         module,
+        "starknet_getTransactionByBlockIdAndIndex",
+        method::get_transaction_by_block_id_and_index::get_transaction_by_block_id_and_index,
+    )?;
+    register_method(
+        module,
         "starknet_getTransactionReceipt",
         method::get_transaction_receipt::get_transaction_receipt,
     )?;
