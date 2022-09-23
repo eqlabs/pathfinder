@@ -1406,14 +1406,6 @@ mod tests {
             .unwrap();
         assert_eq!(nonce, ContractNonce(starkhash!("01")));
 
-        // This contract is created in `setup_storage` and has no nonce explicitly set.
-        let valid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
-        let nonce = client(addr)
-            .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
-            .await
-            .unwrap();
-        assert_eq!(nonce, ContractNonce::ZERO);
-
         // Invalid contract should error.
         let invalid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
         let error = client(addr)
