@@ -13,8 +13,8 @@ pub mod middleware {
             metrics::increment_counter!("rpc_method_calls_total", "method" => name.to_owned());
         }
 
-        fn on_result(&self, name: &str, _success: bool, _started_at: Self::Instant) {
-            if !_success {
+        fn on_result(&self, name: &str, success: bool, _started_at: Self::Instant) {
+            if !success {
                 metrics::increment_counter!("rpc_method_calls_failed_total", "method" => name.to_owned());
             }
         }
