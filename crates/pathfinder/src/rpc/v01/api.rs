@@ -337,7 +337,7 @@ impl RpcApi {
                             .and_then(|storage| {
                                 storage
                                     .iter()
-                                    .find_map(|update| (update.key == key).then(|| update.value))
+                                    .find_map(|update| (update.key == key).then_some(update.value))
                             });
 
                         match pending_value {
