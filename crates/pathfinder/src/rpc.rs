@@ -365,6 +365,48 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
 
         Ok(())
     }
+
+    /// Registers a JSON-RPC method with the [RpcModule<RpcApi>](jsonrpsee::RpcModule).
+    ///
+    /// An example signature for `method` is:
+    /// ```ignore
+    /// async fn method(context: Arc<RpcApi>) -> Result<Ouput, Error>
+    /// ```
+    #[allow(dead_code)]
+    fn register_method_with_no_input<Output, Error, MethodFuture, Method>(
+        module: &mut jsonrpsee::RpcModule<RpcApi>,
+        method_name: &'static str,
+        method: Method,
+    ) -> anyhow::Result<()>
+    where
+        Output: 'static + ::serde::Serialize + Send + Sync,
+        Error: Into<error::RpcError>,
+        MethodFuture: std::future::Future<Output = Result<Output, Error>> + Send,
+        Method: (Fn(std::sync::Arc<RpcApi>) -> MethodFuture) + Copy + Send + Sync + 'static,
+    {
+        use anyhow::Context;
+        use tracing::Instrument;
+
+        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
+
+        let method_callback = move |_params, context| {
+            // why info here? it's the same used in warp tracing filter for example.
+            let span = tracing::info_span!("rpc_method", name = method_name);
+            async move {
+                method(context).await.map_err(|err| {
+                    let rpc_err: error::RpcError = err.into();
+                    jsonrpsee::core::Error::from(rpc_err)
+                })
+            }
+            .instrument(span)
+        };
+
+        module
+            .register_async_method(method_name, method_callback)
+            .with_context(|| format!("Registering {method_name}"))?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
