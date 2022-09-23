@@ -1,6 +1,7 @@
 //! StarkNet L2 sequencer client.
 mod builder;
 pub mod error;
+mod metrics;
 pub mod reply;
 pub mod request;
 
@@ -125,15 +126,10 @@ impl Client {
         Self::with_url(url)
     }
 
-    #[cfg(test)]
-    pub(crate) fn integration() -> reqwest::Result<Self> {
-        let integration_url = Url::parse("https://external.integration.starknet.io").unwrap();
-
-        Self::with_url(integration_url)
-    }
-
     /// Create a Sequencer client for the given [Url].
     pub fn with_url(url: Url) -> reqwest::Result<Self> {
+        metrics::register();
+
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
@@ -473,6 +469,8 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use super::{error::StarknetErrorCode, test_utils::*, *};
     use crate::core::{StarknetBlockHash, StarknetBlockNumber};
     use crate::rpc::v01::types::Tag;
@@ -519,6 +517,16 @@ mod tests {
         };
     }
 
+    /// Same as [`response`] except for the body being a [`String`].
+    macro_rules! response_owned {
+        ($file_name:literal) => {
+            (
+                include_str!(concat!("../fixtures/sequencer/", $file_name)).to_owned(),
+                200,
+            )
+        };
+    }
+
     impl StarknetErrorCode {
         /// Helper funtion which allows for easy creation of a response tuple
         /// that contains a [StarknetError] for a given [StarknetErrorCode].
@@ -538,6 +546,8 @@ mod tests {
         }
     }
 
+    /// # Usage
+    ///
     /// Use to initialize a [sequencer::Client] test case. The function does one of the following things:
     ///
     /// 1. if `SEQUENCER_TESTS_LIVE_API` environment variable is set:
@@ -607,13 +617,84 @@ mod tests {
         }
     }
 
+    /// # Usage
+    ///
+    /// Use to initialize a [sequencer::Client] test case. The function does one of the following things:
+    /// - initializes a local mock server instance with the given expected
+    ///   url paths & queries and respective fixtures for replies
+    /// - creates a [sequencer::Client] instance which connects to the mock server
+    /// - replies for a particular path & query are consumed one at a time until exhausted
+    ///
+    /// # Panics
+    ///
+    /// Panics if replies for a particular path & query have been exhausted and the
+    /// client still attempts to query the very same path.
+    ///
+    fn setup_with_varied_responses<const M: usize, const N: usize>(
+        url_paths_queries_and_response_fixtures: [(String, [(String, u16); M]); N],
+    ) -> (Option<tokio::task::JoinHandle<()>>, Client) {
+        let url_paths_queries_and_response_fixtures = url_paths_queries_and_response_fixtures
+            .into_iter()
+            .map(|x| (x.0.clone(), x.1.into_iter().collect::<VecDeque<_>>()))
+            .collect::<Vec<_>>();
+        use std::sync::{Arc, Mutex};
+
+        let url_paths_queries_and_response_fixtures =
+            Arc::new(Mutex::new(url_paths_queries_and_response_fixtures));
+
+        use warp::Filter;
+        let opt_query_raw = warp::query::raw()
+            .map(Some)
+            .or_else(|_| async { Ok::<(Option<String>,), std::convert::Infallible>((None,)) });
+        let path = warp::any().and(warp::path::full()).and(opt_query_raw).map(
+            move |full_path: warp::path::FullPath, raw_query: Option<String>| {
+                let actual_full_path_and_query = match raw_query {
+                    Some(some_raw_query) => {
+                        format!("{}?{}", full_path.as_str(), some_raw_query.as_str())
+                    }
+                    None => full_path.as_str().to_owned(),
+                };
+
+                let mut url_paths_queries_and_response_fixtures =
+                    url_paths_queries_and_response_fixtures.lock().unwrap();
+
+                match url_paths_queries_and_response_fixtures
+                    .iter_mut()
+                    .find(|x| x.0 == actual_full_path_and_query)
+                {
+                    Some((_, responses)) => {
+                        let (body, status) =
+                            responses.pop_front().expect("more responses for this path");
+                        http::response::Builder::new().status(status).body(body)
+                    }
+                    None => panic!(
+                        "Actual url path and query {} not found in the expected {:?}",
+                        actual_full_path_and_query,
+                        url_paths_queries_and_response_fixtures
+                            .iter()
+                            .map(|(expected_path, _)| expected_path)
+                            .collect::<Vec<_>>()
+                    ),
+                }
+            },
+        );
+
+        let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
+        let server_handle = tokio::spawn(serve_fut);
+        let client =
+            Client::with_url(reqwest::Url::parse(&format!("http://{}", addr)).unwrap()).unwrap();
+        (Some(server_handle), client)
+    }
+
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
         use crate::core::StarknetBlockTimestamp;
+        use crate::monitoring::metrics::test::RecorderGuard;
         use crate::sequencer::reply::{Block, Status};
         use std::convert::Infallible;
         use warp::Filter;
 
+        let _guard = RecorderGuard::lock_as_noop();
         let filter = warp::header::optional("user-agent").and_then(
             |user_agent: Option<String>| async move {
                 let user_agent = user_agent.expect("user-agent set");
@@ -656,10 +737,12 @@ mod tests {
 
     mod block_matches_by_hash_on {
         use super::*;
+        use crate::monitoring::metrics::test::RecorderGuard;
         use crate::starkhash;
 
         #[tokio::test]
         async fn genesis() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     format!("/feeder_gateway/get_block?blockHash={}", GENESIS_BLOCK_HASH),
@@ -686,6 +769,7 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_block?blockHash=0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
@@ -715,12 +799,14 @@ mod tests {
 
     mod block {
         use super::*;
+        use crate::monitoring::metrics::test::RecorderGuard;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn latest() {
             use crate::core::BlockId;
 
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
                 response!("0.9.0/block/231579.json"),
@@ -732,6 +818,7 @@ mod tests {
         async fn pending() {
             use crate::core::BlockId;
 
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
                 response!("0.9.0/block/pending.json"),
@@ -741,6 +828,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_hash() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_block?blockHash={}", INVALID_BLOCK_HASH),
                 StarknetErrorCode::BlockNotFound.into_response(),
@@ -757,6 +845,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_number() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_block?blockNumber={}",
@@ -776,6 +865,7 @@ mod tests {
 
         #[tokio::test]
         async fn with_starknet_version_added_in_0_9_1() {
+            let _guard = RecorderGuard::lock_as_noop();
             use crate::sequencer::reply::MaybePendingBlock;
             let (_jh, client) = setup([
                 (
@@ -1364,6 +1454,7 @@ mod tests {
             },
             *,
         };
+        use crate::monitoring::metrics::test::RecorderGuard;
         use crate::{
             core::{ContractAddress, GlobalRoot},
             starkhash,
@@ -1404,6 +1495,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
@@ -1433,6 +1525,7 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=315700",
@@ -1465,9 +1558,11 @@ mod tests {
 
     mod state_update {
         use super::*;
+        use crate::monitoring::metrics::test::RecorderGuard;
 
         #[test_log::test(tokio::test)]
         async fn invalid_number() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_state_update?blockNumber={}",
@@ -1487,6 +1582,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_state_update?blockHash={}",
@@ -1506,6 +1602,7 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
                 response!("0.9.1/state_update/315700.json"),
@@ -1515,6 +1612,7 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
+            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
                 response!("0.9.1/state_update/pending.json"),
@@ -1937,6 +2035,176 @@ mod tests {
         async fn invalid() {
             let (_server_handle, sequencer) = setup_server(TargetChain::Invalid);
             sequencer.chain().await.unwrap_err();
+        }
+    }
+
+    mod metrics {
+        use super::*;
+        use crate::core::BlockId;
+        use futures::stream::StreamExt;
+        use pretty_assertions::assert_eq;
+        use std::future::Future;
+
+        #[tokio::test]
+        async fn all_counter_types_including_tags() {
+            use super::ClientApi;
+
+            with_method(
+                "get_block",
+                |client, x| async move {
+                    let _ = client.block(x).await;
+                },
+                response_owned!("0.9.0/block/genesis.json"),
+            )
+            .await;
+            with_method(
+                "get_state_update",
+                |client, x| async move {
+                    let _ = client.state_update(x).await;
+                },
+                response_owned!("0.9.1/state_update/genesis.json"),
+            )
+            .await;
+        }
+
+        async fn with_method<F, Fut, T>(method_name: &'static str, f: F, response: (String, u16))
+        where
+            F: Fn(Client, BlockId) -> Fut,
+            Fut: Future<Output = T>,
+        {
+            use crate::monitoring::metrics::test::{FakeRecorder, RecorderGuard};
+
+            let recorder = FakeRecorder::new(&["get_block", "get_state_update"]);
+            let handle = recorder.handle();
+            let _guard = RecorderGuard::lock(recorder);
+
+            let responses = [
+                // Any valid fixture
+                response,
+                // 1 StarkNet error
+                StarknetErrorCode::BlockNotFound.into_response(),
+                // 2 decode errors
+                (r#"{"not":"valid"}"#.to_owned(), 200),
+                (r#"{"not":"valid, again"}"#.to_owned(), 200),
+                // 3 of rate limiting
+                ("you're being rate limited".to_owned(), 429),
+                ("".to_owned(), 429),
+                ("".to_owned(), 429),
+            ];
+
+            let (_jh, client) = setup_with_varied_responses([
+                (
+                    format!("/feeder_gateway/{method_name}?blockNumber=123"),
+                    responses.clone(),
+                ),
+                (
+                    format!("/feeder_gateway/{method_name}?blockNumber=latest"),
+                    responses.clone(),
+                ),
+                (
+                    format!("/feeder_gateway/{method_name}?blockNumber=pending"),
+                    responses,
+                ),
+            ]);
+            [BlockId::Number(StarknetBlockNumber::new_or_panic(123)); 7]
+                .into_iter()
+                .chain([BlockId::Latest; 7].into_iter())
+                .chain([BlockId::Pending; 7].into_iter())
+                .map(|x| f(client.clone(), x))
+                .collect::<futures::stream::FuturesUnordered<_>>()
+                .collect::<Vec<_>>()
+                .await;
+
+            // IMPORTANT
+            //
+            // We're not using any crate::sequencer::metrics consts here, because this is public API
+            // and we'd like to catch if/when it changed (apparently due to a bug)
+            [
+                ("gateway_requests_total", None, None, 21),
+                ("gateway_requests_total", Some("latest"), None, 7),
+                ("gateway_requests_total", Some("pending"), None, 7),
+                ("gateway_requests_failed_total", None, None, 18),
+                ("gateway_requests_failed_total", Some("latest"), None, 6),
+                ("gateway_requests_failed_total", Some("pending"), None, 6),
+                ("gateway_requests_failed_total", None, Some("starknet"), 3),
+                (
+                    "gateway_requests_failed_total",
+                    Some("latest"),
+                    Some("starknet"),
+                    1,
+                ),
+                (
+                    "gateway_requests_failed_total",
+                    Some("pending"),
+                    Some("starknet"),
+                    1,
+                ),
+                ("gateway_requests_failed_total", None, Some("decode"), 6),
+                (
+                    "gateway_requests_failed_total",
+                    Some("latest"),
+                    Some("decode"),
+                    2,
+                ),
+                (
+                    "gateway_requests_failed_total",
+                    Some("pending"),
+                    Some("decode"),
+                    2,
+                ),
+                (
+                    "gateway_requests_failed_total",
+                    None,
+                    Some("rate_limiting"),
+                    9,
+                ),
+                (
+                    "gateway_requests_failed_total",
+                    Some("latest"),
+                    Some("rate_limiting"),
+                    3,
+                ),
+                (
+                    "gateway_requests_failed_total",
+                    Some("pending"),
+                    Some("rate_limiting"),
+                    3,
+                ),
+            ]
+            .into_iter()
+            .for_each(|(counter_name, tag, failure_reason, expected_count)| {
+                match (tag, failure_reason) {
+                    (None, None) => assert_eq!(
+                        handle.get_counter_value(counter_name, method_name),
+                        expected_count,
+                        "counter: {counter_name}, method: {method_name}"
+                    ),
+                    (None, Some(reason)) => assert_eq!(
+                        handle.get_counter_value_by_label(
+                            counter_name,
+                            [("method", method_name), ("reason", reason)]
+                        ),
+                        expected_count,
+                        "counter: {counter_name}, method: {method_name}, reason: {reason}"
+                    ),
+                    (Some(tag), None) => assert_eq!(
+                        handle.get_counter_value_by_label(
+                            counter_name,
+                            [("method", method_name), ("tag", tag)]
+                        ),
+                        expected_count,
+                        "counter: {counter_name}, method: {method_name}, tag: {tag}"
+                    ),
+                    (Some(tag), Some(reason)) => assert_eq!(
+                        handle.get_counter_value_by_label(
+                            counter_name,
+                            [("method", method_name), ("tag", tag), ("reason", reason)]
+                        ),
+                        expected_count,
+                        "counter: {counter_name}, method: {method_name}, tag: {tag}, reason: {reason}"
+                    ),
+                }
+            });
         }
     }
 }

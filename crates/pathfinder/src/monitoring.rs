@@ -96,7 +96,7 @@ mod tests {
         let recorder = PrometheusBuilder::new().build_recorder();
         let handle = recorder.handle();
         // Other concurrent tests could be setting their own recorders
-        let _guard = RecorderGuard::lock(recorder).unwrap();
+        let _guard = RecorderGuard::lock(recorder);
 
         let counter = metrics::register_counter!("x");
         counter.increment(123);

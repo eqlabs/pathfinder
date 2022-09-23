@@ -387,11 +387,56 @@ Pathfinder has a monitoring API which can be enabled with the `--monitor-address
 
 ### Metrics
 
-`/metrics` provides a [Prometheus](https://prometheus.io/) metrics scrape endpoint. Currently only one type of metric is available:
-- `rpc_method_calls_total` counter, where the label key `method` should be used to point to a particular RPC method to retrieve that method's total call count, for example: `rpc_method_calls_total{method="starknet_getStateUpdate"}`.
-- `extpy_processes_launched_total` counter incremented each time python subprocess is launched
-- `extpy_processes_exited_total` counter with labels, incremented each time python subprocess exits normally
-- `extpy_processes_failed_total` counter, incremented each time python subprocess exits abnormally
+`/metrics` provides a [Prometheus](https://prometheus.io/) metrics scrape endpoint. Currently the following metrics are available:
+
+#### RPC related counters
+
+- `rpc_method_calls_total`,
+- `rpc_method_calls_failed_total`,
+
+You __must__ use the label key `method` to retrieve a counter for a particular RPC method, for example:
+```
+rpc_method_calls_total{method="starknet_getStateUpdate"}
+rpc_method_calls_failed_total{method="starknet_chainId"}
+```
+
+#### Python subprocess related counters
+
+- `extpy_processes_launched_total` incremented each time python subprocess is launched
+- `extpy_processes_exited_total` with labels, incremented each time python subprocess exits normally
+- `extpy_processes_failed_total` incremented each time python subprocess exits abnormally
+
+#### Feeder Gateway and Gateway related counters
+
+- `gateway_requests_total`
+- `gateway_requests_failed_total`
+
+Labels:
+- `method`, to retrieve a counter for a particular sequencer request type
+- `tag`
+    - works with: `get_block`, `get_state_update`
+    - valid values:
+        - `pending`
+        - `latest`
+- `reason`
+    - works with: `gateway_requests_failed_total`
+    - valid values:
+        - `decode`
+        - `starknet`
+        - `rate_limiting`
+
+Valid examples:
+```
+gateway_requests_total{method="get_block"}
+gateway_requests_total{method="get_block", tag="latest"}
+gateway_requests_failed_total{method="get_state_update"}
+gateway_requests_failed_total{method="get_state_update", tag="pending"}
+gateway_requests_failed_total{method="get_state_update", tag="pending", reason="starknet"}
+gateway_requests_failed_total{method="get_state_update", reason="rate_limiting"}
+```
+These __will not work__:
+- `gateway_requests_total{method="get_transaction", tag="latest"}`, `tag` is not supported for that `method`
+- `gateway_requests_total{method="get_transaction", reason="decode"}`, `reason` is only supported for failures.
 
 ## License
 

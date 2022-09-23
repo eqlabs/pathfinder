@@ -13,7 +13,10 @@
 
 use crate::{
     core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
-    sequencer::error::SequencerError,
+    sequencer::{
+        error::SequencerError,
+        metrics::{with_metrics, BlockTag, RequestMetadata},
+    },
 };
 
 /// A Sequencer Request builder.
@@ -31,6 +34,8 @@ pub enum Retry {
 }
 
 pub mod stage {
+    use crate::sequencer::metrics::RequestMetadata;
+
     /// Provides the [builder](super::Request::builder) entry-point.
     pub struct Init;
 
@@ -61,13 +66,16 @@ pub mod stage {
     /// - [add_param](super::Request::add_param) (allows adding custom (name, value) parameter)
     ///
     /// and then specify the [retry behavior](super::Request::with_retry).
-    pub struct Params;
+    pub struct Params {
+        pub meta: RequestMetadata,
+    }
 
     /// Specify the REST operation send the request:
     /// - [get](super::Request::get)
     /// - [get_as_bytes](super::Request::get_as_bytes)
     /// - [post_with_json](super::Request::post_with_json)
     pub struct Final {
+        pub meta: RequestMetadata,
         pub retry: super::Retry,
     }
 
@@ -113,53 +121,70 @@ impl<'a> Request<'a, stage::Gateway> {
     }
 }
 
+/// Helper macros used in [`stage::Method`]
+mod request_macros {
+    /// Generates the const `METHODS` slice. At least one item is required.
+    macro_rules! method_names {
+        () => {
+            compile_error!("At least one method has to be defined");
+        };
+        ($($x:ident),+ $(,)?) => {
+            pub const METHODS: &'static [&'static str] = &[$(stringify!($x)),+];
+        };
+    }
+
+    /// Generates methods with names from the list.
+    ///
+    /// Each generated method delegates the call to `with_method`.
+    macro_rules! method_defs {
+        ($($x:ident),+ $(,)?) => {
+            $(request_macros::method!($x);)+
+        };
+    }
+
+    /// Generates one method with `name`.
+    ///
+    /// The generated method delegates the call to `with_method`.
+    macro_rules! method {
+        ($name:ident) => {
+            pub fn $name(self) -> Request<'a, stage::Params> {
+                self.with_method(stringify!($name))
+            }
+        };
+    }
+
+    /// Generates methods with names from the list and a const slice `METHODS`
+    /// which then can be used to register metrics per method.
+    macro_rules! methods {
+        () => {
+            method_names!();
+        };
+        ($($x:ident),+ $(,)?) => {
+            request_macros::method_names!($($x),+);
+            $(request_macros::method_defs!($x);)+
+        };
+    }
+
+    pub(super) use {method, method_defs, method_names, methods};
+}
+
 impl<'a> Request<'a, stage::Method> {
-    pub fn add_transaction(self) -> Request<'a, stage::Params> {
-        self.with_method("add_transaction")
-    }
-
-    pub fn call_contract(self) -> Request<'a, stage::Params> {
-        self.with_method("call_contract")
-    }
-
-    pub fn get_block(self) -> Request<'a, stage::Params> {
-        self.with_method("get_block")
-    }
-
-    pub fn get_full_contract(self) -> Request<'a, stage::Params> {
-        self.with_method("get_full_contract")
-    }
-
-    pub fn get_class_by_hash(self) -> Request<'a, stage::Params> {
-        self.with_method("get_class_by_hash")
-    }
-
-    pub fn get_class_hash_at(self) -> Request<'a, stage::Params> {
-        self.with_method("get_class_hash_at")
-    }
-
-    pub fn get_storage_at(self) -> Request<'a, stage::Params> {
-        self.with_method("get_storage_at")
-    }
-
-    pub fn get_transaction(self) -> Request<'a, stage::Params> {
-        self.with_method("get_transaction")
-    }
-
-    pub fn get_transaction_status(self) -> Request<'a, stage::Params> {
-        self.with_method("get_transaction_status")
-    }
-
-    pub fn get_state_update(self) -> Request<'a, stage::Params> {
-        self.with_method("get_state_update")
-    }
-
-    pub fn get_contract_addresses(self) -> Request<'a, stage::Params> {
-        self.with_method("get_contract_addresses")
-    }
+    request_macros::methods!(
+        add_transaction,
+        call_contract,
+        get_block,
+        get_full_contract,
+        get_class_by_hash,
+        get_class_hash_at,
+        get_storage_at,
+        get_transaction,
+        get_transaction_status,
+        get_state_update,
+        get_contract_addresses
+    );
 
     /// Appends the given method to the request url.
-    fn with_method(mut self, method: &str) -> Request<'a, stage::Params> {
+    fn with_method(mut self, method: &'static str) -> Request<'a, stage::Params> {
         self.url
             .path_segments_mut()
             .expect("Base URL is valid")
@@ -168,7 +193,9 @@ impl<'a> Request<'a, stage::Method> {
         Request {
             url: self.url,
             client: self.client,
-            state: stage::Params,
+            state: stage::Params {
+                meta: RequestMetadata::new(method),
+            },
         }
     }
 }
@@ -179,15 +206,19 @@ impl<'a> Request<'a, stage::Params> {
         use std::borrow::Cow;
 
         let block: BlockId = block.into();
-        let (name, value) = match block {
-            BlockId::Number(number) => ("blockNumber", Cow::from(number.get().to_string())),
-            BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str()),
+        let (name, value, tag) = match block {
+            BlockId::Number(number) => (
+                "blockNumber",
+                Cow::from(number.get().to_string()),
+                BlockTag::None,
+            ),
+            BlockId::Hash(hash) => ("blockHash", hash.0.to_hex_str(), BlockTag::None),
             // These have to use "blockNumber", "blockHash" does not accept tags.
-            BlockId::Latest => ("blockNumber", Cow::from("latest")),
-            BlockId::Pending => ("blockNumber", Cow::from("pending")),
+            BlockId::Latest => ("blockNumber", Cow::from("latest"), BlockTag::Latest),
+            BlockId::Pending => ("blockNumber", Cow::from("pending"), BlockTag::Pending),
         };
 
-        self.add_param(name, &value)
+        self.update_tag(tag).add_param(name, &value)
     }
 
     pub fn with_contract_address(self, address: ContractAddress) -> Self {
@@ -219,12 +250,20 @@ impl<'a> Request<'a, stage::Params> {
         self
     }
 
+    pub fn update_tag(mut self, tag: BlockTag) -> Self {
+        self.state.meta.tag = tag;
+        self
+    }
+
     /// Sets the request retry behavior.
     pub fn with_retry(self, retry: Retry) -> Request<'a, stage::Final> {
         Request {
             url: self.url,
             client: self.client,
-            state: stage::Final { retry },
+            state: stage::Final {
+                meta: self.state.meta,
+                retry,
+            },
         }
     }
 }
@@ -238,18 +277,22 @@ impl<'a> Request<'a, stage::Final> {
         async fn send_request<T: serde::de::DeserializeOwned>(
             url: reqwest::Url,
             client: &reqwest::Client,
+            meta: RequestMetadata,
         ) -> Result<T, SequencerError> {
-            let response = client.get(url).send().await?;
-            parse::<T>(response).await
+            with_metrics(meta, async move {
+                let response = client.get(url).send().await?;
+                parse::<T>(response).await
+            })
+            .await
         }
 
         match self.state.retry {
-            Retry::Disabled => send_request(self.url, self.client).await,
+            Retry::Disabled => send_request(self.url, self.client, self.state.meta).await,
             Retry::Enabled => {
                 retry0(
                     || async {
                         let clone_url = self.url.clone();
-                        send_request(clone_url, self.client).await
+                        send_request(clone_url, self.client, self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -263,20 +306,24 @@ impl<'a> Request<'a, stage::Final> {
         async fn get_as_bytes_inner(
             url: reqwest::Url,
             client: &reqwest::Client,
+            meta: RequestMetadata,
         ) -> Result<bytes::Bytes, SequencerError> {
-            let response = client.get(url).send().await?;
-            let response = parse_raw(response).await?;
-            let bytes = response.bytes().await?;
-            Ok(bytes)
+            with_metrics(meta, async {
+                let response = client.get(url).send().await?;
+                let response = parse_raw(response).await?;
+                let bytes = response.bytes().await?;
+                Ok(bytes)
+            })
+            .await
         }
 
         match self.state.retry {
-            Retry::Disabled => get_as_bytes_inner(self.url, self.client).await,
+            Retry::Disabled => get_as_bytes_inner(self.url, self.client, self.state.meta).await,
             Retry::Enabled => {
                 retry0(
                     || async {
                         let clone_url = self.url.clone();
-                        get_as_bytes_inner(clone_url, self.client).await
+                        get_as_bytes_inner(clone_url, self.client, self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -295,23 +342,29 @@ impl<'a> Request<'a, stage::Final> {
         async fn post_with_json_inner<T, J>(
             url: reqwest::Url,
             client: &reqwest::Client,
+            meta: RequestMetadata,
             json: &J,
         ) -> Result<T, SequencerError>
         where
             T: serde::de::DeserializeOwned,
             J: serde::Serialize + ?Sized,
         {
-            let response = client.post(url).json(json).send().await?;
-            parse::<T>(response).await
+            with_metrics(meta, async {
+                let response = client.post(url).json(json).send().await?;
+                parse::<T>(response).await
+            })
+            .await
         }
 
         match self.state.retry {
-            Retry::Disabled => post_with_json_inner(self.url, self.client, json).await,
+            Retry::Disabled => {
+                post_with_json_inner(self.url, self.client, self.state.meta, json).await
+            }
             Retry::Enabled => {
                 retry0(
                     || async {
                         let clone_url = self.url.clone();
-                        post_with_json_inner(clone_url, self.client, json).await
+                        post_with_json_inner(clone_url, self.client, self.state.meta, json).await
                     },
                     retry_condition,
                 )

@@ -36,6 +36,7 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
         use tracing::Instrument;
 
         metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
+        metrics::register_counter!("rpc_method_calls_failed_total", "method" => method_name);
 
         self.0.register_async_method(method_name, move |p, c| {
             // why info here? it's the same used in warp tracing filter for example.
@@ -1736,54 +1737,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chain_id_with_call_counter_metric() {
-        use crate::monitoring::metrics::{middleware::RpcMetricsMiddleware, test::RecorderGuard};
+    async fn chain_id() {
+        use crate::monitoring::metrics::middleware::RpcMetricsMiddleware;
         use futures::stream::StreamExt;
-        use metrics::{
-            Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
-        };
-        use std::sync::atomic::{AtomicU64, Ordering};
-
-        struct FakeRecorder(Arc<FakeCounterFn>);
-        struct FakeCounterFn(AtomicU64);
-
-        impl Recorder for FakeRecorder {
-            fn describe_counter(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
-            fn describe_gauge(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
-            fn describe_histogram(&self, _: KeyName, _: Option<Unit>, _: SharedString) {}
-            fn register_counter(&self, key: &Key) -> Counter {
-                if *key
-                    == Key::from_parts(
-                        "rpc_method_calls_total",
-                        vec![Label::new("method", "starknet_chainId")],
-                    )
-                {
-                    Counter::from_arc(self.0.clone())
-                } else {
-                    Counter::noop()
-                }
-            }
-            fn register_gauge(&self, _: &Key) -> Gauge {
-                unimplemented!()
-            }
-            fn register_histogram(&self, _: &Key) -> Histogram {
-                unimplemented!()
-            }
-        }
-
-        impl CounterFn for FakeCounterFn {
-            fn increment(&self, val: u64) {
-                self.0.fetch_add(val, Ordering::Relaxed);
-            }
-            fn absolute(&self, _: u64) {
-                unimplemented!()
-            }
-        }
-
-        let counter = Arc::new(FakeCounterFn(AtomicU64::default()));
-
-        // Other concurrent tests could be setting their own recorders
-        let _guard = RecorderGuard::lock(FakeRecorder(counter.clone())).unwrap();
 
         assert_eq!(
             [Chain::Testnet, Chain::Mainnet]
@@ -1813,8 +1769,6 @@ mod tests {
                 format!("0x{}", hex::encode("SN_MAIN")),
             ]
         );
-
-        assert_eq!(counter.0.load(Ordering::Relaxed), 2);
     }
 
     mod syncing {
@@ -2424,7 +2378,7 @@ mod tests {
             #[tokio::test]
             async fn declare_transaction() {
                 let storage = setup_storage();
-                let sequencer = Client::integration().unwrap();
+                let sequencer = Client::new(Chain::Integration).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
@@ -2552,7 +2506,7 @@ mod tests {
             #[tokio::test]
             async fn declare_transaction() {
                 let storage = setup_storage();
-                let sequencer = Client::integration().unwrap();
+                let sequencer = Client::new(Chain::Integration).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
@@ -2615,5 +2569,63 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[tokio::test]
+    async fn per_method_metrics() {
+        use crate::monitoring::metrics::test::FakeRecorder;
+        use crate::monitoring::metrics::{middleware::RpcMetricsMiddleware, test::RecorderGuard};
+        use crate::rpc::v01::types::reply::Block;
+        use futures::stream::StreamExt;
+
+        let recorder = FakeRecorder::new(&["starknet_getBlockWithTxHashes"]);
+        let handle = recorder.handle();
+
+        let get_all =
+            || handle.get_counter_value("rpc_method_calls_total", "starknet_getBlockWithTxHashes");
+        let get_failed = || {
+            handle.get_counter_value(
+                "rpc_method_calls_failed_total",
+                "starknet_getBlockWithTxHashes",
+            )
+        };
+
+        // Other concurrent tests could be setting their own recorders
+        let _guard = RecorderGuard::lock(recorder);
+
+        let storage = setup_storage();
+        let sequencer = Client::new(Chain::Testnet).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+        let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
+            .with_middleware(RpcMetricsMiddleware)
+            .run()
+            .await
+            .unwrap();
+
+        assert_eq!(get_all(), 0);
+        assert_eq!(get_failed(), 0);
+
+        // Two successes and a failure
+        [
+            StarknetBlockNumber::GENESIS,
+            StarknetBlockNumber::GENESIS + 1,
+            StarknetBlockNumber::MAX,
+        ]
+        .into_iter()
+        .map(|block_number| async move {
+            let _ = client(addr)
+                .request::<Block>(
+                    "starknet_getBlockWithTxHashes",
+                    rpc_params!(BlockId::Number(block_number)),
+                )
+                .await;
+        })
+        .collect::<futures::stream::FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+
+        assert_eq!(get_all(), 3);
+        assert_eq!(get_failed(), 1);
     }
 }

@@ -827,7 +827,7 @@ async fn download_verify_and_insert_missing_classes<
     let missing = classes
         .into_iter()
         .zip(exists.into_iter())
-        .filter_map(|(class, exist)| (!exist).then(|| class));
+        .filter_map(|(class, exist)| (!exist).then_some(class));
 
     // For each missing, download, verify and insert definition.
     for class_hash in missing {
