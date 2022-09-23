@@ -153,7 +153,9 @@ fn process_transaction(
     let contract_address = *transaction.contract_address().get();
 
     // remove transfer events
-    receipt.events.retain(|e| !is_transfer_event(contract_address, e));
+    receipt
+        .events
+        .retain(|e| !is_transfer_event(contract_address, e));
 
     if num_events != receipt.events.len() {
         update_database(tx, compressor, transaction_hash, block_number, receipt)?;
