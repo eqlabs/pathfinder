@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::state::SyncState;
+use crate::{core::Chain, state::SyncState};
 use crate::{state::PendingData, storage::Storage};
 
 pub mod method;
@@ -11,13 +11,15 @@ pub struct RpcContext {
     pub storage: Storage,
     pub pending_data: Option<PendingData>,
     pub sync_status: Arc<SyncState>,
+    pub chain: Chain,
 }
 
 impl RpcContext {
-    pub fn new(storage: Storage, sync_status: Arc<SyncState>) -> Self {
+    pub fn new(storage: Storage, sync_status: Arc<SyncState>, chain: Chain) -> Self {
         Self {
             storage,
             sync_status,
+            chain,
             pending_data: None,
         }
     }
@@ -26,7 +28,7 @@ impl RpcContext {
     pub fn for_tests() -> Arc<Self> {
         let storage = super::tests::setup_storage();
         let sync_state = Arc::new(SyncState::default());
-        Arc::new(Self::new(storage, sync_state))
+        Arc::new(Self::new(storage, sync_state, Chain::Testnet))
     }
 
     pub fn with_pending_data(self, pending_data: PendingData) -> Self {
