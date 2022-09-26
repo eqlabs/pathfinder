@@ -74,11 +74,11 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
                 _ => anyhow::Error::new(e),
             })?;
         let local_addr = server.local_addr()?;
-        let mut module = v01::RpcModuleWrapper::new(RpcModule::new(self.api));
-        Self::register_v01_methods(&mut module)?;
-        let module = module.into_inner();
+        let mut module_v01 = v01::RpcModuleWrapper::new(RpcModule::new(self.api));
+        Self::register_v01_methods(&mut module_v01)?;
+        let module_v01 = module_v01.into_inner();
         Ok(server
-            .start_with_paths([(vec!["/", "/rpc/v01"], module)])
+            .start_with_paths([(vec!["/", "/rpc/v01"], module_v01)])
             .map(|handle| (handle, local_addr))?)
     }
 
