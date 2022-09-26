@@ -714,9 +714,9 @@ dependencies = [
 
 [[package]]
 name = "event-listener"
-version = "2.5.2"
+version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77f3309417938f28bf8228fcff79a4a37103981e3e186d2ccd19c74b38f4eb71"
+checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "fallible-iterator"
@@ -1414,8 +1414,7 @@ dependencies = [
 [[package]]
 name = "jsonrpsee"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d02a921aa22006ed979c2e1c407fd21302ac6049e5b544634ec5ec41516363d"
+source = "git+https://github.com/eqlabs/jsonrpsee?branch=start_with_paths#4202b967a5d625e846800a3b91233181c53564c5"
 dependencies = [
  "jsonrpsee-core",
  "jsonrpsee-http-server",
@@ -1426,8 +1425,7 @@ dependencies = [
 [[package]]
 name = "jsonrpsee-core"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8066473754794e7784c61808d25d60dfb68e1025a625792a6a1bc680d1ab700a"
+source = "git+https://github.com/eqlabs/jsonrpsee?branch=start_with_paths#4202b967a5d625e846800a3b91233181c53564c5"
 dependencies = [
  "anyhow",
  "arrayvec 0.7.2",
@@ -1453,8 +1451,7 @@ dependencies = [
 [[package]]
 name = "jsonrpsee-http-server"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee81d83b686966d6ba3b79f21bc71beedad9ec7e31c201fccff31ef0dd212e17"
+source = "git+https://github.com/eqlabs/jsonrpsee?branch=start_with_paths#4202b967a5d625e846800a3b91233181c53564c5"
 dependencies = [
  "futures-channel",
  "futures-util",
@@ -1472,8 +1469,7 @@ dependencies = [
 [[package]]
 name = "jsonrpsee-types"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd42e08ae7f0de7b00319f723f7b06e2d461ab69bfa615a611fab5dec00b192e"
+source = "git+https://github.com/eqlabs/jsonrpsee?branch=start_with_paths#4202b967a5d625e846800a3b91233181c53564c5"
 dependencies = [
  "anyhow",
  "beef",
@@ -1486,8 +1482,7 @@ dependencies = [
 [[package]]
 name = "jsonrpsee-ws-server"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c87cb45124f148b8c6a977dcd86e38b1d95f6fdfa0e6f9e1ce94aa8c03ebab4b"
+source = "git+https://github.com/eqlabs/jsonrpsee?branch=start_with_paths#4202b967a5d625e846800a3b91233181c53564c5"
 dependencies = [
  "futures-channel",
  "futures-util",
