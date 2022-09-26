@@ -66,14 +66,13 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             })?;
         let local_addr = server.local_addr()?;
 
-        let storage = self.api.storage.clone();
-        let sync_state = self.api.sync_state.clone();
+        let context_v02 = (&self.api).into();
 
         let mut module_v01 = v01::RpcModuleWrapper::new(RpcModule::new(self.api));
         v01::register_all_methods(&mut module_v01)?;
         let module_v01: Methods = module_v01.into_inner().into();
 
-        let mut module_v02 = RpcModule::new(v02::RpcContext::new(storage, sync_state));
+        let mut module_v02 = RpcModule::new(context_v02);
         v02::register_all_methods(&mut module_v02)?;
         let module_v02 = module_v02.into();
 

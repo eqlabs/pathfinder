@@ -49,6 +49,20 @@ impl RpcContext {
     }
 }
 
+// FIXME
+// We could as well extract rpc version agnostic context to be fed into both v01::RpcApi and v02::RpcContext.
+// Rework once all v0.2 methods are implemented.
+impl From<&super::v01::api::RpcApi> for RpcContext {
+    fn from(v01: &super::v01::api::RpcApi) -> Self {
+        Self {
+            storage: v01.storage.clone(),
+            pending_data: v01.pending_data.clone(),
+            sync_status: v01.sync_state.clone(),
+            chain: v01.chain,
+        }
+    }
+}
+
 /// Registers a JSON-RPC method with the [RpcModule<RpcContext>](jsonrpsee::RpcModule).
 ///
 /// An example signature for `method` is:
