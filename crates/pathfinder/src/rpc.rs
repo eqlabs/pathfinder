@@ -75,6 +75,106 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             })?;
         let local_addr = server.local_addr()?;
         let mut module = v01::RpcModuleWrapper::new(RpcModule::new(self.api));
+        Self::register_v01_methods(&mut module)?;
+        let module = module.into_inner();
+        Ok(server
+            .start_with_paths([(vec!["/", "/rpc/v01"], module)])
+            .map(|handle| (handle, local_addr))?)
+    }
+
+    /// Registers a JSON-RPC method with the [RpcModule<RpcApi>](jsonrpsee::RpcModule).
+    ///
+    /// An example signature for `method` is:
+    /// ```ignore
+    /// async fn method(context: Arc<RpcApi>, input: Input) -> Result<Ouput, Error>
+    /// ```
+    #[allow(dead_code)]
+    fn register_method<Input, Output, Error, MethodFuture, Method>(
+        module: &mut jsonrpsee::RpcModule<RpcContext>,
+        method_name: &'static str,
+        method: Method,
+    ) -> anyhow::Result<()>
+    where
+        Input: ::serde::de::DeserializeOwned + Send + Sync,
+        Output: 'static + ::serde::Serialize + Send + Sync,
+        Error: Into<error::RpcError>,
+        MethodFuture: std::future::Future<Output = Result<Output, Error>> + Send,
+        Method: (Fn(RpcContext, Input) -> MethodFuture) + Copy + Send + Sync + 'static,
+    {
+        use anyhow::Context;
+        use jsonrpsee::types::Params;
+        use std::sync::Arc;
+        use tracing::Instrument;
+
+        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
+
+        let method_callback = move |params: Params<'static>, context: Arc<RpcContext>| {
+            // why info here? it's the same used in warp tracing filter for example.
+            let span = tracing::info_span!("rpc_method", name = method_name);
+            async move {
+                let input = params.parse::<Input>()?;
+                method((*context).clone(), input).await.map_err(|err| {
+                    let rpc_err: error::RpcError = err.into();
+                    jsonrpsee::core::Error::from(rpc_err)
+                })
+            }
+            .instrument(span)
+        };
+
+        module
+            .register_async_method(method_name, method_callback)
+            .with_context(|| format!("Registering {method_name}"))?;
+
+        Ok(())
+    }
+
+    /// Registers a JSON-RPC method with the [RpcModule<RpcApi>](jsonrpsee::RpcModule).
+    ///
+    /// An example signature for `method` is:
+    /// ```ignore
+    /// async fn method(context: Arc<RpcApi>) -> Result<Ouput, Error>
+    /// ```
+    #[allow(dead_code)]
+    fn register_method_with_no_input<Output, Error, MethodFuture, Method>(
+        module: &mut jsonrpsee::RpcModule<RpcContext>,
+        method_name: &'static str,
+        method: Method,
+    ) -> anyhow::Result<()>
+    where
+        Output: 'static + ::serde::Serialize + Send + Sync,
+        Error: Into<error::RpcError>,
+        MethodFuture: std::future::Future<Output = Result<Output, Error>> + Send,
+        Method: (Fn(RpcContext) -> MethodFuture) + Copy + Send + Sync + 'static,
+    {
+        use anyhow::Context;
+        use std::sync::Arc;
+        use tracing::Instrument;
+
+        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
+
+        let method_callback = move |_params, context: Arc<RpcContext>| {
+            // why info here? it's the same used in warp tracing filter for example.
+            let span = tracing::info_span!("rpc_method", name = method_name);
+            async move {
+                method((*context).clone()).await.map_err(|err| {
+                    let rpc_err: error::RpcError = err.into();
+                    jsonrpsee::core::Error::from(rpc_err)
+                })
+            }
+            .instrument(span)
+        };
+
+        module
+            .register_async_method(method_name, method_callback)
+            .with_context(|| format!("Registering {method_name}"))?;
+
+        Ok(())
+    }
+
+    // Registers all methods for the v0.1 API
+    fn register_v01_methods(
+        module: &mut v01::RpcModuleWrapper<RpcApi>,
+    ) -> Result<(), jsonrpsee::core::Error> {
         module.register_async_method(
             "starknet_getBlockWithTxHashes",
             |params, context| async move {
@@ -318,99 +418,6 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
                     .await
             },
         )?;
-
-        let module = module.into_inner();
-        Ok(server
-            .start_with_paths([(vec!["/", "/rpc/v01"], module)])
-            .map(|handle| (handle, local_addr))?)
-    }
-
-    /// Registers a JSON-RPC method with the [RpcModule<RpcContext>](jsonrpsee::RpcModule).
-    ///
-    /// An example signature for `method` is:
-    /// ```ignore
-    /// async fn method(context: RpcContext, input: Input) -> Result<Ouput, Error>
-    /// ```
-    #[allow(dead_code)]
-    fn register_method<Input, Output, Error, MethodFuture, Method>(
-        module: &mut jsonrpsee::RpcModule<RpcContext>,
-        method_name: &'static str,
-        method: Method,
-    ) -> anyhow::Result<()>
-    where
-        Input: ::serde::de::DeserializeOwned + Send + Sync,
-        Output: 'static + ::serde::Serialize + Send + Sync,
-        Error: Into<error::RpcError>,
-        MethodFuture: std::future::Future<Output = Result<Output, Error>> + Send,
-        Method: (Fn(RpcContext, Input) -> MethodFuture) + Copy + Send + Sync + 'static,
-    {
-        use anyhow::Context;
-        use jsonrpsee::types::Params;
-        use std::sync::Arc;
-        use tracing::Instrument;
-
-        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
-
-        let method_callback = move |params: Params<'static>, context: Arc<RpcContext>| {
-            // why info here? it's the same used in warp tracing filter for example.
-            let span = tracing::info_span!("rpc_method", name = method_name);
-            async move {
-                let input = params.parse::<Input>()?;
-                method((*context).clone(), input).await.map_err(|err| {
-                    let rpc_err: error::RpcError = err.into();
-                    jsonrpsee::core::Error::from(rpc_err)
-                })
-            }
-            .instrument(span)
-        };
-
-        module
-            .register_async_method(method_name, method_callback)
-            .with_context(|| format!("Registering {method_name}"))?;
-
-        Ok(())
-    }
-
-    /// Registers a JSON-RPC method with the [RpcModule<RpcContext>](jsonrpsee::RpcModule).
-    ///
-    /// An example signature for `method` is:
-    /// ```ignore
-    /// async fn method(context: RpcContext) -> Result<Ouput, Error>
-    /// ```
-    #[allow(dead_code)]
-    fn register_method_with_no_input<Output, Error, MethodFuture, Method>(
-        module: &mut jsonrpsee::RpcModule<RpcContext>,
-        method_name: &'static str,
-        method: Method,
-    ) -> anyhow::Result<()>
-    where
-        Output: 'static + ::serde::Serialize + Send + Sync,
-        Error: Into<error::RpcError>,
-        MethodFuture: std::future::Future<Output = Result<Output, Error>> + Send,
-        Method: (Fn(RpcContext) -> MethodFuture) + Copy + Send + Sync + 'static,
-    {
-        use anyhow::Context;
-        use std::sync::Arc;
-        use tracing::Instrument;
-
-        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
-
-        let method_callback = move |_params, context: Arc<RpcContext>| {
-            // why info here? it's the same used in warp tracing filter for example.
-            let span = tracing::info_span!("rpc_method", name = method_name);
-            async move {
-                method((*context).clone()).await.map_err(|err| {
-                    let rpc_err: error::RpcError = err.into();
-                    jsonrpsee::core::Error::from(rpc_err)
-                })
-            }
-            .instrument(span)
-        };
-
-        module
-            .register_async_method(method_name, method_callback)
-            .with_context(|| format!("Registering {method_name}"))?;
-
         Ok(())
     }
 }
