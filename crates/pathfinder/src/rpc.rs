@@ -320,7 +320,9 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         )?;
 
         let module = module.into_inner();
-        Ok(server.start(module).map(|handle| (handle, local_addr))?)
+        Ok(server
+            .start_with_paths([(vec!["/", "/rpc/v01"], module)])
+            .map(|handle| (handle, local_addr))?)
     }
 
     /// Registers a JSON-RPC method with the [RpcModule<RpcContext>](jsonrpsee::RpcModule).
