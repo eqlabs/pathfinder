@@ -14,7 +14,7 @@ crate::rpc::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHash
 
 #[allow(dead_code)]
 pub async fn get_transaction_by_hash(
-    context: std::sync::Arc<RpcContext>,
+    context: RpcContext,
     input: GetTransactionByHashInput,
 ) -> Result<Transaction, GetTransactionByHashError> {
     if let Some(pending) = &context.pending_data {

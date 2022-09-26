@@ -8,7 +8,7 @@ use serde::Serialize;
 crate::rpc::error::generate_rpc_error_subset!(SyncingError);
 
 #[allow(dead_code)]
-pub async fn syncing(context: std::sync::Arc<RpcContext>) -> Result<SyncingOuput, SyncingError> {
+pub async fn syncing(context: RpcContext) -> Result<SyncingOuput, SyncingError> {
     // Scoped so I don't have to think too hard about mutex guard drop semantics.
     let value = { context.sync_status.status.read().await.clone() };
 

@@ -25,10 +25,10 @@ impl RpcContext {
     }
 
     #[cfg(test)]
-    pub fn for_tests() -> Arc<Self> {
+    pub fn for_tests() -> Self {
         let storage = super::tests::setup_storage();
         let sync_state = Arc::new(SyncState::default());
-        Arc::new(Self::new(storage, sync_state, Chain::Testnet))
+        Self::new(storage, sync_state, Chain::Testnet)
     }
 
     pub fn with_pending_data(self, pending_data: PendingData) -> Self {
@@ -39,13 +39,11 @@ impl RpcContext {
     }
 
     #[cfg(test)]
-    pub async fn for_tests_with_pending() -> Arc<Self> {
+    pub async fn for_tests_with_pending() -> Self {
         // This is a bit silly with the arc in and out, but since its for tests the ergonomics of
         // having Arc also constructed is nice.
         let context = Self::for_tests();
         let pending_data = super::tests::create_pending_data(context.storage.clone()).await;
-        let context = (*context).clone().with_pending_data(pending_data);
-
-        Arc::new(context)
+        context.with_pending_data(pending_data)
     }
 }
