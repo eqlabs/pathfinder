@@ -55,7 +55,6 @@ impl RpcContext {
 /// ```ignore
 /// async fn method(context: Arc<RpcContext>, input: Input) -> Result<Ouput, Error>
 /// ```
-#[allow(dead_code)]
 fn register_method<Input, Output, Error, MethodFuture, Method>(
     module: &mut jsonrpsee::RpcModule<RpcContext>,
     method_name: &'static str,
@@ -100,7 +99,6 @@ where
 /// ```ignore
 /// async fn method(context: Arc<RpcContext>) -> Result<Ouput, Error>
 /// ```
-#[allow(dead_code)]
 fn register_method_with_no_input<Output, Error, MethodFuture, Method>(
     module: &mut jsonrpsee::RpcModule<RpcContext>,
     method_name: &'static str,
@@ -132,6 +130,19 @@ where
     module
         .register_async_method(method_name, method_callback)
         .with_context(|| format!("Registering {method_name}"))?;
+
+    Ok(())
+}
+
+// Registers all methods for the v0.2 API
+pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> anyhow::Result<()> {
+    register_method(module, "starknet_getNonce", method::get_nonce::get_nonce)?;
+    register_method(
+        module,
+        "starknet_getTransactionByHash",
+        method::get_transaction_by_hash::get_transaction_by_hash,
+    )?;
+    register_method_with_no_input(module, "starknet_syncing", method::syncing::syncing)?;
 
     Ok(())
 }

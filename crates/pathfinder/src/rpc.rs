@@ -9,7 +9,10 @@ pub mod v01;
 pub mod v02;
 
 use crate::monitoring::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware};
-use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle, RpcModule};
+use jsonrpsee::{
+    core::server::rpc_module::Methods,
+    http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
+};
 
 use std::{net::SocketAddr, result::Result};
 use v01::api::RpcApi;
@@ -62,11 +65,23 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
                 _ => anyhow::Error::new(e),
             })?;
         let local_addr = server.local_addr()?;
+
+        let storage = self.api.storage.clone();
+        let sync_state = self.api.sync_state.clone();
+
         let mut module_v01 = v01::RpcModuleWrapper::new(RpcModule::new(self.api));
         v01::register_all_methods(&mut module_v01)?;
-        let module_v01 = module_v01.into_inner();
+        let module_v01: Methods = module_v01.into_inner().into();
+
+        let mut module_v02 = RpcModule::new(v02::RpcContext::new(storage, sync_state));
+        v02::register_all_methods(&mut module_v02)?;
+        let module_v02 = module_v02.into();
+
         Ok(server
-            .start_with_paths([(vec!["/", "/rpc/v01"], module_v01)])
+            .start_with_paths([
+                (vec!["/", "/rpc/v01"], module_v01),
+                (vec!["/rpc/v02"], module_v02),
+            ])
             .map(|handle| (handle, local_addr))?)
     }
 }
