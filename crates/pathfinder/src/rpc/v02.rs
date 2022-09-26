@@ -150,6 +150,7 @@ where
 
 // Registers all methods for the v0.2 API
 pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> anyhow::Result<()> {
+    register_method_with_no_input(module, "starknet_chainId", method::chain_id::chain_id)?;
     register_method(module, "starknet_getNonce", method::get_nonce::get_nonce)?;
     register_method(
         module,
