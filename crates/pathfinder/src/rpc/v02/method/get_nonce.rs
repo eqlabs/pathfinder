@@ -15,7 +15,7 @@ crate::rpc::error::generate_rpc_error_subset!(GetNonceError: BlockNotFound, Cont
 
 #[allow(dead_code)]
 pub async fn get_nonce(
-    context: std::sync::Arc<RpcContext>,
+    context: RpcContext,
     input: GetNonceInput,
 ) -> Result<ContractNonce, GetNonceError> {
     use crate::state::state_tree::GlobalStateTree;

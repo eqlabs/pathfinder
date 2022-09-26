@@ -3,7 +3,7 @@ use crate::rpc::v02::RpcContext;
 crate::rpc::error::generate_rpc_error_subset!(ChainIdError);
 
 #[allow(dead_code)]
-pub async fn chain_id(context: std::sync::Arc<RpcContext>) -> Result<String, ChainIdError> {
+pub async fn chain_id(context: RpcContext) -> Result<String, ChainIdError> {
     Ok(context.chain.starknet_chain_id().to_hex_str().into_owned())
 }
 
@@ -16,20 +16,20 @@ mod tests {
 
     #[tokio::test]
     async fn mainnet() {
-        let mut context = (*RpcContext::for_tests()).clone();
+        let mut context = RpcContext::for_tests();
         context.chain = Chain::Mainnet;
 
-        let result = chain_id(std::sync::Arc::new(context)).await.unwrap();
+        let result = chain_id(context).await.unwrap();
         let expected = format!("0x{}", hex::encode("SN_MAIN"));
         assert_eq!(result, expected);
     }
 
     #[tokio::test]
     async fn testnet() {
-        let mut context = (*RpcContext::for_tests()).clone();
+        let mut context = RpcContext::for_tests();
         context.chain = Chain::Testnet;
 
-        let result = chain_id(std::sync::Arc::new(context)).await.unwrap();
+        let result = chain_id(context).await.unwrap();
         let expected = format!("0x{}", hex::encode("SN_GOERLI"));
         assert_eq!(result, expected);
     }
