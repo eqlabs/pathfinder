@@ -11,6 +11,7 @@ mod schema;
 mod state;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub use contract::{ContractCodeTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
@@ -49,7 +50,7 @@ pub struct Storage(Inner);
 
 #[derive(Clone)]
 struct Inner {
-    database_path: PathBuf,
+    database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
 }
 
@@ -84,7 +85,7 @@ impl Storage {
         migrate_database(&mut conn).context("Migrate database")?;
 
         let inner = Inner {
-            database_path,
+            database_path: Arc::new(database_path),
             pool,
         };
 
