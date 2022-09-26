@@ -1,5 +1,13 @@
 # Running a node on AWS
 
+TL;DR copy/paste (require prior aws cli configuration):
+
+```bash
+docker context create ecs starknet-ecs
+docker context use starknet-ecs
+docker compose --project-name starknet-nodes -f docker-compose.yml -f docker-compose.aws.yml up
+```
+
 ## AWS Setup
 
 If you don't have yet AWS credentials, you can follow these steps. Otherwise, just check the required [policy.json](./policy.json) against your user one and proceed to the next step.
@@ -21,11 +29,12 @@ We use the docker ecs context to deploy an AWS Cloudformation stack:
   - for example, `docker context create ecs pathfinder-deployer`
   - use the above created profile
 - `docker context use <context name>`
-- execute `docker compose --project-name <chose a name visible in aws console> -f docker-compose.yml up`
-  - for example, `docker compose --project-name starknet-nodes -f docker-compose.yml up`
+  - or pass the `--context <context name>` to every following commands
+- execute `docker compose --project-name <chose a name visible in aws console> -f docker-compose.yml -f docker-compose.aws.yml up`
+  - for example, `docker compose --project-name starknet-nodes -f docker-compose.yml -f docker-compose.aws.yml up`
   - ignore the `WARNING services.scale: unsupported attribute`
 
-The created enpoint can be found in the ECS Cluster page:
+The created enpoints can be found in the ECS Cluster page:
 
 - Cluster > Services > Networking > DNS names
 

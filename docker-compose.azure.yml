@@ -1,0 +1,13 @@
+version: "3"
+
+volumes:
+  goerli-data:
+    driver: azure_file
+    driver_opts:
+      share_name: goerli-data
+      storage_account_name: starknetnodes
+  mainnet-data:
+    driver: azure_file
+    driver_opts:
+      share_name: mainnet-data
+      storage_account_name: starknetnodes

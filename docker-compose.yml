@@ -22,10 +22,4 @@ services:
       - 9546:9546
 volumes:
   goerli-data:
-    driver_opts:
-      uid: 0
-      gid: 0
   mainnet-data:
-    driver_opts:
-      uid: 0
-      gid: 0
