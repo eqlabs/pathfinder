@@ -1,13 +1,31 @@
 version: "3"
 services:
-  starknet-node:
+  starknet-goerli:
     image: eqlabs/pathfinder:latest
-    restart: unless-stopped
     environment:
       - RUST_LOG=info
-    env_file:
-      - pathfinder-var.env
+      - PATHFINDER_ETHEREUM_API_URL=${PATHFINDER_ETHEREUM_API_URL_GOERLI}
+      - PATHFINDER_HTTP_RPC_ADDRESS=0.0.0.0:9545
     volumes:
-      - ./pathfinder:/usr/share/pathfinder/data
+      - goerli-data:/usr/share/pathfinder/data
     ports:
       - 9545:9545
+  starknet-mainnet:
+    image: eqlabs/pathfinder:latest
+    environment:
+      - RUST_LOG=info
+      - PATHFINDER_ETHEREUM_API_URL=${PATHFINDER_ETHEREUM_API_URL_MAINNET}
+      - PATHFINDER_HTTP_RPC_ADDRESS=0.0.0.0:9546
+    volumes:
+      - mainnet-data:/usr/share/pathfinder/data
+    ports:
+      - 9546:9546
+volumes:
+  goerli-data:
+    driver_opts:
+      uid: 0
+      gid: 0
+  mainnet-data:
+    driver_opts:
+      uid: 0
+      gid: 0

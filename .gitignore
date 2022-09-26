@@ -16,3 +16,4 @@
 
 # pathfinder variables env file
 pathfinder-var.env
+.env

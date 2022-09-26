@@ -24,7 +24,7 @@ For help or to submit bug reports or feature requests, please open an issue or a
 
 ## Installation (from source)
 
-If you'd like to just run the node, please consider skipping ahead to [docker instructions](#running-with-docker).
+If you'd like to just run and deploy a node, please consider skipping ahead to [docker instructions](#running-with-docker).
 The following are instructions on how to build from source.
 
 ### Prerequisites
@@ -285,32 +285,60 @@ If the Ethereum endpoint is on mainnet, then it will be StarkNet Mainnet.
 
 ## Running with Docker
 
-The `pathfinder` node can be run in the provided Docker image.
-Docker image is the easiest way which does not involve a lot of python setup.
 The following assumes you have [docker installed](https://docs.docker.com/get-docker/) and ready to go.
 
-The example uses `$HOME/pathfinder` as the volume directory where persistent files used by `pathfinder` will be stored.
-It is easiest to create the volume directory as the user who is running the docker command.
-If the directory gets created by docker upon startup, it might be unusable for creating files.
+### Docker compose
+
+The [docker-compose.yml](./docker-compose.yml) file embeds everything to run or deploy goerli and mainnet nodes in one command.
+It uses env variables defined in the `.env` that you need to create from the `example.env` and populate with Ethereum RPC endpoints.
 
 ```bash
-# ensure the directory has been created before invoking docker
-mkdir -p $HOME/pathfinder
-docker run \
-  --rm \
-  -p 9545:9545 \
-  --user "$(id -u):$(id -g)" \
-  -e RUST_LOG=info \
-  -e PATHFINDER_ETHEREUM_API_URL="https://goerli.infura.io/v3/<project-id>" \
-  -v $HOME/pathfinder:/usr/share/pathfinder/data \
-  eqlabs/pathfinder
+cp example.env .env
+# replace the value(s) of PATHFINDER_ETHEREUM_API_URL by the HTTP URL(s) pointing to your Ethereum node's endpoint
 ```
+
+By default, `docker compose up` will run both a mainnet and a goerli node. If you want to run only one service, you can specify it after the `up`:
+
+```bash
+docker compose up # run both mainnet and goerli
+docker compose up starknet-mainnet # run mainnet only
+docker compose up starknet-goerli # run goerli only
+```
+
+To check if it's running well use `docker-compose logs -f`.
+
+The mainnet node runs on port 9546 while the goerli one runs on port 9545. You can check this by calling the `starknet_chainId` method:
+
+```bash
+curl '0.0.0.0:9545' \
+  -H 'content-type: application/json' \
+  --data-raw '{"method":"starknet_chainId","jsonrpc":"2.0","params":[],"id":0}' \
+  --compressed
+# {"jsonrpc":"2.0","result":"0x534e5f474f45524c49","id":0}
+echo 0x534e5f474f45524c49 | xxd -rp
+# SN_GOERLI
+curl '0.0.0.0:9546' \
+  -H 'content-type: application/json' \
+  --data-raw '{"method":"starknet_chainId","jsonrpc":"2.0","params":[],"id":0}' \
+  --compressed
+# {"jsonrpc":"2.0","result":"0x534e5f4d41494e","id":0}
+echo 0x534e5f4d41494e | xxd -rp
+# SN_MAIN
+```
+
+### Cloud deployment
+
+Docker has built-in integrations with [AWS](https://docs.docker.com/cloud/ecs-integration/) and [Azure](https://docs.docker.com/cloud/aci-integration/) using `docker context`.
+
+More details are given in the dedicated pages:
+
+- for AWS: [docs/aws/README.md](./docs/aws/README.md)
 
 ### Updating the docker image
 
 When pathfinder detects there has been a new release, it will log a message similar to:
 
-```
+```bash
 WARN New pathfinder release available! Please consider updating your node! release=0.1.8-alpha
 ```
 
@@ -334,21 +362,6 @@ You can build the image by running:
 ```bash
 docker build -t pathfinder .
 ```
-
-### Docker compose
-
-Create the folder `pathfinder` where your `docker-compose.yaml is
-
-```bash
-mkdir -p pathfinder
-
-# replace the value by of PATHFINDER_ETHEREUM_API_URL by the HTTP(s) URL pointing to your Ethereum node's endpoint
-cp example.pathfinder-var.env pathfinder-var.env
-
-docker-compose up -d
-```
-
-To check if it's running well use `docker-compose logs -f`.
 
 ## JSON-RPC API
 
