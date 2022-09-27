@@ -215,6 +215,11 @@ impl TransactionVersion {
             u128::from_be_bytes(lower.try_into().expect("slice should be the right length"));
         lower == 0
     }
+
+    pub const ZERO: Self = Self(H256::zero());
+    pub const ONE: Self = Self(H256(hex_literal::hex!(
+        "0000000000000000000000000000000000000000000000000000000000000001"
+    )));
 }
 
 /// An Ethereum address.

@@ -1,4 +1,5 @@
 pub(super) mod chain_id;
+pub(super) mod estimate_fee;
 pub(super) mod get_class_hash_at;
 pub(super) mod get_nonce;
 pub(super) mod get_state_update;
