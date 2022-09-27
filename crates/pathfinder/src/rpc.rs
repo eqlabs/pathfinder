@@ -78,8 +78,8 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
 
         Ok(server
             .start_with_paths([
-                (vec!["/", "/rpc/v01"], module_v01),
-                (vec!["/rpc/v02"], module_v02),
+                (vec!["/", "/rpc/v0.1"], module_v01),
+                (vec!["/rpc/v0.2"], module_v02),
             ])
             .map(|handle| (handle, local_addr))?)
     }
