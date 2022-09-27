@@ -501,6 +501,21 @@ pub mod reply {
         }
     }
 
+    /// L2 Block status as returned by the RPC API.
+    #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(deny_unknown_fields)]
+    pub enum BlockStatus {
+        #[serde(rename = "PENDING")]
+        Pending,
+        #[serde(rename = "ACCEPTED_ON_L2")]
+        AcceptedOnL2,
+        #[serde(rename = "ACCEPTED_ON_L1")]
+        AcceptedOnL1,
+        #[serde(rename = "REJECTED")]
+        Rejected,
+    }
+
     #[cfg(test)]
     mod tests {
         macro_rules! fixture {
