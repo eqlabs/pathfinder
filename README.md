@@ -333,6 +333,8 @@ Docker has built-in integrations with [AWS](https://docs.docker.com/cloud/ecs-in
 More details are given in the dedicated pages:
 
 - for AWS: [docs/aws/README.md](./docs/aws/README.md)
+- for Azure: [docs/azure/README.md](./docs/azure/README.md)
+- for GCP: [docs/gcp/README.md](./docs/gcp/README.md)
 
 ### Updating the docker image
 

@@ -8,7 +8,7 @@ docker context create aci starknet-aci
 docker context use starknet-aci
 docker volume create goerli-data --storage-account starknetnodes
 docker volume create mainnet-data --storage-account starknetnodes
-docker compose --project-name starknet-nodes -f docker-compose.yml -f docker-compose.azure.yml up
+docker compose --project-name starknet-nodes -f docker-compose.yml -f docs/azure/docker-compose.azure.yml up
 ```
 
 ## Azure Setup
@@ -31,7 +31,7 @@ We use the docker aci context to deploy an AWS Cloudformation stack:
 - create volumes:
   - `docker volume create goerli-data --storage-account <storage account name>`
   - `docker volume create mainnet-data --storage-account <storage account name>`
-- execute `docker compose --project-name <chose a name project name> -f docker-compose.yml -f docker-compose.azure.yml up`
+- execute `docker compose --project-name <chose a name project name> -f docker-compose.yml -f docs/azure/docker-compose.azure.yml up`
 
 You can then retrieve the node urls using :
 

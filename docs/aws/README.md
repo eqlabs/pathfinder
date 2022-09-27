@@ -5,7 +5,7 @@ TL;DR copy/paste (require prior aws cli configuration):
 ```bash
 docker context create ecs starknet-ecs
 docker context use starknet-ecs
-docker compose --project-name starknet-nodes -f docker-compose.yml -f docker-compose.aws.yml up
+docker compose --project-name starknet-nodes -f docker-compose.yml -f docs/aws/docker-compose.aws.yml up
 ```
 
 ## AWS Setup
@@ -30,8 +30,8 @@ We use the docker ecs context to deploy an AWS Cloudformation stack:
   - use the above created profile
 - `docker context use <context name>`
   - or pass the `--context <context name>` to every following commands
-- execute `docker compose --project-name <chose a name visible in aws console> -f docker-compose.yml -f docker-compose.aws.yml up`
-  - for example, `docker compose --project-name starknet-nodes -f docker-compose.yml -f docker-compose.aws.yml up`
+- execute `docker compose --project-name <chose a name visible in aws console> -f docker-compose.yml -f docs/aws/docker-compose.aws.yml up`
+  - for example, `docker compose --project-name starknet-nodes -f docker-compose.yml -f docs/aws/docker-compose.aws.yml up`
   - ignore the `WARNING services.scale: unsupported attribute`
 
 The created enpoints can be found in the ECS Cluster page:
