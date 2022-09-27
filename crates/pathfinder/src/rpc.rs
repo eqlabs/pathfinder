@@ -8,23 +8,14 @@ pub mod test_setup;
 pub mod v01;
 pub mod v02;
 
-use crate::rpc::v02::RpcContext;
-use crate::{
-    core::{
-        BlockId, CallSignatureElem, ClassHash, ConstructorParam, ContractAddress,
-        ContractAddressSalt, Fee, StarknetTransactionHash, StarknetTransactionIndex,
-        TransactionVersion,
-    },
-    monitoring::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware},
-    rpc::serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
-    sequencer::request::add_transaction::ContractDefinition,
+use crate::monitoring::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware};
+use jsonrpsee::{
+    core::server::rpc_module::Methods,
+    http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
 };
-use ::serde::Deserialize;
-use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle, RpcModule};
 
 use std::{net::SocketAddr, result::Result};
-use v01::api::{BlockResponseScope, RpcApi};
-use v01::types::request::{Call, ContractCall, EventFilter};
+use v01::api::RpcApi;
 
 pub struct RpcServer {
     addr: SocketAddr,
@@ -74,342 +65,23 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
                 _ => anyhow::Error::new(e),
             })?;
         let local_addr = server.local_addr()?;
-        let mut module = v01::RpcModuleWrapper::new(RpcModule::new(self.api));
-        module.register_async_method(
-            "starknet_getBlockWithTxHashes",
-            |params, context| async move {
-                #[derive(Debug, Deserialize)]
-                struct NamedArgs {
-                    block_id: BlockId,
-                }
-                let params = params.parse::<NamedArgs>()?;
-                context
-                    .get_block(params.block_id, BlockResponseScope::TransactionHashes)
-                    .await
-            },
-        )?;
-        module.register_async_method("starknet_getBlockWithTxs", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                block_id: BlockId,
-            }
-            let params = params.parse::<NamedArgs>()?;
-            context
-                .get_block(params.block_id, BlockResponseScope::FullTransactions)
-                .await
-        })?;
-        module.register_async_method("starknet_getStateUpdate", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                block_id: BlockId,
-            }
-            let params = params.parse::<NamedArgs>()?;
-            context.get_state_update(params.block_id).await
-        })?;
-        module.register_async_method("starknet_getStorageAt", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                contract_address: ContractAddress,
-                key: crate::core::StorageAddress,
-                block_id: BlockId,
-            }
-            let params = params.parse::<NamedArgs>()?;
-            context
-                .get_storage_at(params.contract_address, params.key, params.block_id)
-                .await
-        })?;
-        module.register_async_method(
-            "starknet_getTransactionByHash",
-            |params, context| async move {
-                #[derive(Debug, Deserialize)]
-                struct NamedArgs {
-                    transaction_hash: StarknetTransactionHash,
-                }
-                context
-                    .get_transaction_by_hash(params.parse::<NamedArgs>()?.transaction_hash)
-                    .await
-            },
-        )?;
-        module.register_async_method(
-            "starknet_getTransactionByBlockIdAndIndex",
-            |params, context| async move {
-                #[derive(Debug, Deserialize)]
-                struct NamedArgs {
-                    block_id: BlockId,
-                    index: StarknetTransactionIndex,
-                }
-                let params = params.parse::<NamedArgs>()?;
-                context
-                    .get_transaction_by_block_id_and_index(params.block_id, params.index)
-                    .await
-            },
-        )?;
-        module.register_async_method(
-            "starknet_getTransactionReceipt",
-            |params, context| async move {
-                #[derive(Debug, Deserialize)]
-                struct NamedArgs {
-                    transaction_hash: StarknetTransactionHash,
-                }
-                context
-                    .get_transaction_receipt(params.parse::<NamedArgs>()?.transaction_hash)
-                    .await
-            },
-        )?;
-        module.register_async_method("starknet_getClass", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                class_hash: ClassHash,
-            }
-            context
-                .get_class(params.parse::<NamedArgs>()?.class_hash)
-                .await
-        })?;
-        module.register_async_method("starknet_getClassHashAt", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                block_id: BlockId,
-                contract_address: ContractAddress,
-            }
-            let params = params.parse::<NamedArgs>()?;
-            context
-                .get_class_hash_at(params.block_id, params.contract_address)
-                .await
-        })?;
-        module.register_async_method("starknet_getClassAt", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                block_id: BlockId,
-                contract_address: ContractAddress,
-            }
-            let params = params.parse::<NamedArgs>()?;
-            context
-                .get_class_at(params.block_id, params.contract_address)
-                .await
-        })?;
-        module.register_async_method(
-            "starknet_getBlockTransactionCount",
-            |params, context| async move {
-                #[derive(Debug, Deserialize)]
-                struct NamedArgs {
-                    block_id: BlockId,
-                }
-                context
-                    .get_block_transaction_count(params.parse::<NamedArgs>()?.block_id)
-                    .await
-            },
-        )?;
-        module.register_async_method("starknet_getNonce", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                contract_address: ContractAddress,
-            }
-            context
-                .get_nonce(params.parse::<NamedArgs>()?.contract_address)
-                .await
-        })?;
-        module.register_async_method("starknet_call", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                request: Call,
-                block_id: BlockId,
-            }
-            let params = params.parse::<NamedArgs>()?;
-            context.call(params.request, params.block_id).await
-        })?;
-        module.register_async_method("starknet_estimateFee", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                request: Call,
-                block_id: BlockId,
-            }
-            let params = params.parse::<NamedArgs>()?;
-            context.estimate_fee(params.request, params.block_id).await
-        })?;
-        module.register_async_method("starknet_blockNumber", |_, context| async move {
-            context.block_number().await
-        })?;
-        module.register_async_method("starknet_blockHashAndNumber", |_, context| async move {
-            context.block_hash_and_number().await
-        })?;
-        module.register_async_method("starknet_chainId", |_, context| async move {
-            context.chain_id().await
-        })?;
-        module.register_async_method("starknet_pendingTransactions", |_, context| async move {
-            context.pending_transactions().await
-        })?;
-        module.register_async_method("starknet_syncing", |_, context| async move {
-            context.syncing().await
-        })?;
-        module.register_async_method("starknet_getEvents", |params, context| async move {
-            #[derive(Debug, Deserialize)]
-            struct NamedArgs {
-                filter: EventFilter,
-            }
-            let request = params.parse::<NamedArgs>()?.filter;
-            context.get_events(request).await
-        })?;
-        module.register_async_method(
-            "starknet_addInvokeTransaction",
-            |params, context| async move {
-                #[serde_with::serde_as]
-                #[derive(Debug, Deserialize)]
-                struct NamedArgs {
-                    function_invocation: ContractCall,
-                    #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
-                    signature: Vec<CallSignatureElem>,
-                    #[serde_as(as = "FeeAsHexStr")]
-                    max_fee: Fee,
-                    #[serde_as(as = "TransactionVersionAsHexStr")]
-                    version: TransactionVersion,
-                }
-                let params = params.parse::<NamedArgs>()?;
-                context
-                    .add_invoke_transaction(
-                        params.function_invocation,
-                        params.signature,
-                        params.max_fee,
-                        params.version,
-                    )
-                    .await
-            },
-        )?;
-        module.register_async_method(
-            "starknet_addDeclareTransaction",
-            |params, context| async move {
-                #[serde_with::serde_as]
-                #[derive(Debug, Deserialize)]
-                struct NamedArgs {
-                    contract_class: ContractDefinition,
-                    #[serde_as(as = "TransactionVersionAsHexStr")]
-                    version: TransactionVersion,
-                    // An undocumented parameter that we forward to the sequencer API
-                    // A deploy token is required to deploy contracts on Starknet mainnet only.
-                    #[serde(default)]
-                    token: Option<String>,
-                }
-                let params = params.parse::<NamedArgs>()?;
-                context
-                    .add_declare_transaction(params.contract_class, params.version, params.token)
-                    .await
-            },
-        )?;
-        module.register_async_method(
-            "starknet_addDeployTransaction",
-            |params, context| async move {
-                #[derive(Debug, Deserialize)]
-                struct NamedArgs {
-                    contract_address_salt: ContractAddressSalt,
-                    constructor_calldata: Vec<ConstructorParam>,
-                    contract_definition: ContractDefinition,
-                    // An undocumented parameter that we forward to the sequencer API
-                    // A deploy token is required to deploy contracts on Starknet mainnet only.
-                    #[serde(default)]
-                    token: Option<String>,
-                }
-                let params = params.parse::<NamedArgs>()?;
-                context
-                    .add_deploy_transaction(
-                        params.contract_address_salt,
-                        params.constructor_calldata,
-                        params.contract_definition,
-                        params.token,
-                    )
-                    .await
-            },
-        )?;
 
-        let module = module.into_inner();
-        Ok(server.start(module).map(|handle| (handle, local_addr))?)
-    }
+        let context_v02 = (&self.api).into();
 
-    /// Registers a JSON-RPC method with the [RpcModule<RpcContext>](jsonrpsee::RpcModule).
-    ///
-    /// An example signature for `method` is:
-    /// ```ignore
-    /// async fn method(context: RpcContext, input: Input) -> Result<Ouput, Error>
-    /// ```
-    #[allow(dead_code)]
-    fn register_method<Input, Output, Error, MethodFuture, Method>(
-        module: &mut jsonrpsee::RpcModule<RpcContext>,
-        method_name: &'static str,
-        method: Method,
-    ) -> anyhow::Result<()>
-    where
-        Input: ::serde::de::DeserializeOwned + Send + Sync,
-        Output: 'static + ::serde::Serialize + Send + Sync,
-        Error: Into<error::RpcError>,
-        MethodFuture: std::future::Future<Output = Result<Output, Error>> + Send,
-        Method: (Fn(RpcContext, Input) -> MethodFuture) + Copy + Send + Sync + 'static,
-    {
-        use anyhow::Context;
-        use jsonrpsee::types::Params;
-        use std::sync::Arc;
-        use tracing::Instrument;
+        let mut module_v01 = v01::RpcModuleWrapper::new(RpcModule::new(self.api));
+        v01::register_all_methods(&mut module_v01)?;
+        let module_v01: Methods = module_v01.into_inner().into();
 
-        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
+        let mut module_v02 = RpcModule::new(context_v02);
+        v02::register_all_methods(&mut module_v02)?;
+        let module_v02 = module_v02.into();
 
-        let method_callback = move |params: Params<'static>, context: Arc<RpcContext>| {
-            // why info here? it's the same used in warp tracing filter for example.
-            let span = tracing::info_span!("rpc_method", name = method_name);
-            async move {
-                let input = params.parse::<Input>()?;
-                method((*context).clone(), input).await.map_err(|err| {
-                    let rpc_err: error::RpcError = err.into();
-                    jsonrpsee::core::Error::from(rpc_err)
-                })
-            }
-            .instrument(span)
-        };
-
-        module
-            .register_async_method(method_name, method_callback)
-            .with_context(|| format!("Registering {method_name}"))?;
-
-        Ok(())
-    }
-
-    /// Registers a JSON-RPC method with the [RpcModule<RpcContext>](jsonrpsee::RpcModule).
-    ///
-    /// An example signature for `method` is:
-    /// ```ignore
-    /// async fn method(context: RpcContext) -> Result<Ouput, Error>
-    /// ```
-    #[allow(dead_code)]
-    fn register_method_with_no_input<Output, Error, MethodFuture, Method>(
-        module: &mut jsonrpsee::RpcModule<RpcContext>,
-        method_name: &'static str,
-        method: Method,
-    ) -> anyhow::Result<()>
-    where
-        Output: 'static + ::serde::Serialize + Send + Sync,
-        Error: Into<error::RpcError>,
-        MethodFuture: std::future::Future<Output = Result<Output, Error>> + Send,
-        Method: (Fn(RpcContext) -> MethodFuture) + Copy + Send + Sync + 'static,
-    {
-        use anyhow::Context;
-        use std::sync::Arc;
-        use tracing::Instrument;
-
-        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
-
-        let method_callback = move |_params, context: Arc<RpcContext>| {
-            // why info here? it's the same used in warp tracing filter for example.
-            let span = tracing::info_span!("rpc_method", name = method_name);
-            async move {
-                method((*context).clone()).await.map_err(|err| {
-                    let rpc_err: error::RpcError = err.into();
-                    jsonrpsee::core::Error::from(rpc_err)
-                })
-            }
-            .instrument(span)
-        };
-
-        module
-            .register_async_method(method_name, method_callback)
-            .with_context(|| format!("Registering {method_name}"))?;
-
-        Ok(())
+        Ok(server
+            .start_with_paths([
+                (vec!["/", "/rpc/v0.1"], module_v01),
+                (vec!["/rpc/v0.2"], module_v02),
+            ])
+            .map(|handle| (handle, local_addr))?)
     }
 }
 

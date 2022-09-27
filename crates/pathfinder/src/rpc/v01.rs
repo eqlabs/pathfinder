@@ -1,3 +1,5 @@
+use self::api::RpcApi;
+
 pub mod api;
 pub mod types;
 
@@ -48,6 +50,270 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
     pub fn into_inner(self) -> jsonrpsee::RpcModule<Context> {
         self.0
     }
+}
+
+// Registers all methods for the v0.1 API
+pub fn register_all_methods(
+    module: &mut RpcModuleWrapper<RpcApi>,
+) -> Result<(), jsonrpsee::core::Error> {
+    use crate::{
+        core::{
+            BlockId, CallSignatureElem, ClassHash, ConstructorParam, ContractAddress,
+            ContractAddressSalt, Fee, StarknetTransactionHash, StarknetTransactionIndex,
+            TransactionVersion,
+        },
+        rpc::serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
+        sequencer::request::add_transaction::ContractDefinition,
+    };
+    use ::serde::Deserialize;
+
+    use api::BlockResponseScope;
+    use types::request::{Call, ContractCall, EventFilter};
+
+    module.register_async_method(
+        "starknet_getBlockWithTxHashes",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                block_id: BlockId,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .get_block(params.block_id, BlockResponseScope::TransactionHashes)
+                .await
+        },
+    )?;
+    module.register_async_method("starknet_getBlockWithTxs", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            block_id: BlockId,
+        }
+        let params = params.parse::<NamedArgs>()?;
+        context
+            .get_block(params.block_id, BlockResponseScope::FullTransactions)
+            .await
+    })?;
+    module.register_async_method("starknet_getStateUpdate", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            block_id: BlockId,
+        }
+        let params = params.parse::<NamedArgs>()?;
+        context.get_state_update(params.block_id).await
+    })?;
+    module.register_async_method("starknet_getStorageAt", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            contract_address: ContractAddress,
+            key: crate::core::StorageAddress,
+            block_id: BlockId,
+        }
+        let params = params.parse::<NamedArgs>()?;
+        context
+            .get_storage_at(params.contract_address, params.key, params.block_id)
+            .await
+    })?;
+    module.register_async_method(
+        "starknet_getTransactionByHash",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                transaction_hash: StarknetTransactionHash,
+            }
+            context
+                .get_transaction_by_hash(params.parse::<NamedArgs>()?.transaction_hash)
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_getTransactionByBlockIdAndIndex",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                block_id: BlockId,
+                index: StarknetTransactionIndex,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .get_transaction_by_block_id_and_index(params.block_id, params.index)
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_getTransactionReceipt",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                transaction_hash: StarknetTransactionHash,
+            }
+            context
+                .get_transaction_receipt(params.parse::<NamedArgs>()?.transaction_hash)
+                .await
+        },
+    )?;
+    module.register_async_method("starknet_getClass", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            class_hash: ClassHash,
+        }
+        context
+            .get_class(params.parse::<NamedArgs>()?.class_hash)
+            .await
+    })?;
+    module.register_async_method("starknet_getClassHashAt", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            block_id: BlockId,
+            contract_address: ContractAddress,
+        }
+        let params = params.parse::<NamedArgs>()?;
+        context
+            .get_class_hash_at(params.block_id, params.contract_address)
+            .await
+    })?;
+    module.register_async_method("starknet_getClassAt", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            block_id: BlockId,
+            contract_address: ContractAddress,
+        }
+        let params = params.parse::<NamedArgs>()?;
+        context
+            .get_class_at(params.block_id, params.contract_address)
+            .await
+    })?;
+    module.register_async_method(
+        "starknet_getBlockTransactionCount",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                block_id: BlockId,
+            }
+            context
+                .get_block_transaction_count(params.parse::<NamedArgs>()?.block_id)
+                .await
+        },
+    )?;
+    module.register_async_method("starknet_getNonce", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            contract_address: ContractAddress,
+        }
+        context
+            .get_nonce(params.parse::<NamedArgs>()?.contract_address)
+            .await
+    })?;
+    module.register_async_method("starknet_call", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            request: Call,
+            block_id: BlockId,
+        }
+        let params = params.parse::<NamedArgs>()?;
+        context.call(params.request, params.block_id).await
+    })?;
+    module.register_async_method("starknet_estimateFee", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            request: Call,
+            block_id: BlockId,
+        }
+        let params = params.parse::<NamedArgs>()?;
+        context.estimate_fee(params.request, params.block_id).await
+    })?;
+    module.register_async_method("starknet_blockNumber", |_, context| async move {
+        context.block_number().await
+    })?;
+    module.register_async_method("starknet_blockHashAndNumber", |_, context| async move {
+        context.block_hash_and_number().await
+    })?;
+    module.register_async_method("starknet_chainId", |_, context| async move {
+        context.chain_id().await
+    })?;
+    module.register_async_method("starknet_pendingTransactions", |_, context| async move {
+        context.pending_transactions().await
+    })?;
+    module.register_async_method("starknet_syncing", |_, context| async move {
+        context.syncing().await
+    })?;
+    module.register_async_method("starknet_getEvents", |params, context| async move {
+        #[derive(Debug, Deserialize)]
+        struct NamedArgs {
+            filter: EventFilter,
+        }
+        let request = params.parse::<NamedArgs>()?.filter;
+        context.get_events(request).await
+    })?;
+    module.register_async_method(
+        "starknet_addInvokeTransaction",
+        |params, context| async move {
+            #[serde_with::serde_as]
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                function_invocation: ContractCall,
+                #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
+                signature: Vec<CallSignatureElem>,
+                #[serde_as(as = "FeeAsHexStr")]
+                max_fee: Fee,
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                version: TransactionVersion,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .add_invoke_transaction(
+                    params.function_invocation,
+                    params.signature,
+                    params.max_fee,
+                    params.version,
+                )
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_addDeclareTransaction",
+        |params, context| async move {
+            #[serde_with::serde_as]
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                contract_class: ContractDefinition,
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                version: TransactionVersion,
+                // An undocumented parameter that we forward to the sequencer API
+                // A deploy token is required to deploy contracts on Starknet mainnet only.
+                #[serde(default)]
+                token: Option<String>,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .add_declare_transaction(params.contract_class, params.version, params.token)
+                .await
+        },
+    )?;
+    module.register_async_method(
+        "starknet_addDeployTransaction",
+        |params, context| async move {
+            #[derive(Debug, Deserialize)]
+            struct NamedArgs {
+                contract_address_salt: ContractAddressSalt,
+                constructor_calldata: Vec<ConstructorParam>,
+                contract_definition: ContractDefinition,
+                // An undocumented parameter that we forward to the sequencer API
+                // A deploy token is required to deploy contracts on Starknet mainnet only.
+                #[serde(default)]
+                token: Option<String>,
+            }
+            let params = params.parse::<NamedArgs>()?;
+            context
+                .add_deploy_transaction(
+                    params.contract_address_salt,
+                    params.constructor_calldata,
+                    params.contract_definition,
+                    params.token,
+                )
+                .await
+        },
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
