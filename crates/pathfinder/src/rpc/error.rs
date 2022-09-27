@@ -207,7 +207,7 @@ macro_rules! generate_rpc_error_subset {
                 $($arms)*
                 $enum_name::$variant => Self::$variant,
             },
-            $($tail),*,
+            $($tail),*
         )
     };
 }
@@ -238,13 +238,15 @@ mod tests {
 
         #[test]
         fn multi_variant() {
-            generate_rpc_error_subset!(MULTI: ContractNotFound, NoBlocks);
+            generate_rpc_error_subset!(MULTI: ContractNotFound, NoBlocks, ContractError);
 
             let contract_not_found = RpcError::from(MULTI::ContractNotFound);
             let no_blocks = RpcError::from(MULTI::NoBlocks);
+            let contract_error = RpcError::from(MULTI::ContractError);
 
             assert_matches!(contract_not_found, RpcError::ContractNotFound);
             assert_matches!(no_blocks, RpcError::NoBlocks);
+            assert_matches!(contract_error, RpcError::ContractError);
         }
     }
 }
