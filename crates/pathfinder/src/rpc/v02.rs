@@ -157,6 +157,11 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         "starknet_getTransactionByHash",
         method::get_transaction_by_hash::get_transaction_by_hash,
     )?;
+    register_method(
+        module,
+        "starknet_getTransactionReceipt",
+        method::get_transaction_receipt::get_transaction_receipt,
+    )?;
     register_method_with_no_input(module, "starknet_syncing", method::syncing::syncing)?;
 
     Ok(())
