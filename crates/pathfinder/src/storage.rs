@@ -50,6 +50,7 @@ pub struct Storage(Inner);
 
 #[derive(Clone)]
 struct Inner {
+    /// Uses [`Arc`] to allow _shallow_ [Storage] cloning
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
 }
