@@ -32,9 +32,9 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     }
 
     #[allow(dead_code)]
-    pub fn get(&self, address: StorageAddress) -> anyhow::Result<StorageValue> {
+    pub fn get(&self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
         let value = self.tree.get(address.view_bits())?;
-        Ok(StorageValue(value))
+        Ok(value.map(StorageValue))
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
@@ -70,9 +70,9 @@ impl<'tx> GlobalStateTree<'tx, '_> {
         Ok(Self { tree })
     }
 
-    pub fn get(&self, address: ContractAddress) -> anyhow::Result<ContractStateHash> {
+    pub fn get(&self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
         let value = self.tree.get(address.view_bits())?;
-        Ok(ContractStateHash(value))
+        Ok(value.map(ContractStateHash))
     }
 
     pub fn set(

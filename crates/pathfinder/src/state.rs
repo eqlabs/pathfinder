@@ -52,7 +52,8 @@ pub(crate) fn update_contract_state(
     // Update the contract state tree.
     let state_hash = global_tree
         .get(contract_address)
-        .context("Get contract state hash from global state tree")?;
+        .context("Get contract state hash from global state tree")?
+        .unwrap_or(ContractStateHash(StarkHash::ZERO));
 
     // Fetch contract's previous root and nonce. Both default to ZERO if they do not exist.
     //

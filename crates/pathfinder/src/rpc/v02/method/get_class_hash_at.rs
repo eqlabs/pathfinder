@@ -50,15 +50,10 @@ pub async fn get_class_hash_at(
             .ok_or(GetClassHashAtError::BlockNotFound)?;
 
         let tree = GlobalStateTree::load(&tx, global_root).context("Loading global state tree")?;
-        let state_hash = match tree
+        let state_hash = tree
             .get(input.contract_address)
             .context("Fetching contract leaf in global tree")?
-        {
-            zero if zero.0 == stark_hash::StarkHash::ZERO => {
-                return Err(GetClassHashAtError::ContractNotFound)
-            }
-            non_zero => non_zero,
-        };
+            .ok_or(GetClassHashAtError::ContractNotFound)?;
 
         read_class_hash(&tx, state_hash)
             .context("Reading class hash from state table")?
