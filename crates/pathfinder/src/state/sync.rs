@@ -635,6 +635,23 @@ async fn l2_update(
         CanonicalBlocksTable::insert(&transaction, block.block_number, block.block_hash)
             .context("Inserting canonical block into database")?;
 
+        for class in rpc_state_update.state_diff.declared_contracts {
+            ContractCodeTable::update_declared_on_if_null(
+                &transaction,
+                class.class_hash,
+                block.block_hash,
+            )
+            .with_context(|| format!("Setting declared_on for class={:?}", class.class_hash))?;
+        }
+        for class in rpc_state_update.state_diff.deployed_contracts {
+            ContractCodeTable::update_declared_on_if_null(
+                &transaction,
+                class.class_hash,
+                block.block_hash,
+            )
+            .with_context(|| format!("Setting declared_on for class={:?}", class.class_hash))?;
+        }
+
         // Insert the transactions.
         anyhow::ensure!(
             block.transactions.len() == block.transaction_receipts.len(),

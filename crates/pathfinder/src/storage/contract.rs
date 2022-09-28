@@ -1,3 +1,4 @@
+use crate::core::StarknetBlockHash;
 use crate::{
     core::{ClassHash, ContractAddress, ContractClass},
     state::{class_hash::extract_program_and_entry_points_by_type, CompressedContract},
@@ -67,6 +68,23 @@ impl ContractCodeTable {
             },
         )?;
         Ok(())
+    }
+
+    pub fn update_declared_on_if_null(
+        transaction: &Transaction<'_>,
+        class: ClassHash,
+        block: StarknetBlockHash,
+    ) -> anyhow::Result<bool> {
+        let rows_changed = transaction.execute(
+            "UPDATE contract_code SET declared_on=? WHERE hash=? AND declared_on IS NULL",
+            rusqlite::params![block, class],
+        )?;
+
+        match rows_changed {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => unreachable!("Should modify at most one row"),
+        }
     }
 
     pub fn get_class(
