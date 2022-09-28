@@ -123,7 +123,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         pending_interval,
     ));
 
-    let shared = rpc::v01::api::Cached::new(Arc::new(eth_transport));
+    let shared = rpc::gas_price::Cached::new(Arc::new(eth_transport));
 
     let api = rpc::v01::api::RpcApi::new(storage, sequencer, starknet_chain, sync_state)
         .with_call_handling(call_handle)
