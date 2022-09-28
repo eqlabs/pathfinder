@@ -728,10 +728,10 @@ impl RpcApi {
             None => return Ok(false),
         };
         let global_state_tree =
-            GlobalStateTree::load(tx, global_root).context("Global state tree")?;
+            GlobalStateTree::load(tx, global_root).context("Loading global state tree")?;
         let contract_state_hash = global_state_tree
             .get(contract_address)
-            .context("Contract ")?;
+            .context("Fetching contract leaf in global tree")?;
         Ok(contract_state_hash.0 != StarkHash::ZERO)
     }
 
