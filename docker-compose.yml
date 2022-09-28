@@ -10,6 +10,13 @@ services:
       - goerli-data:/usr/share/pathfinder/data
     ports:
       - 9545:9545
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        curl https://pathfinder-starknet-node-backup.s3.eu-west-3.amazonaws.com/goerli/goerli.sqlite --output /usr/share/pathfinder/data/goerli.sqlite
+        pathfinder
+
   starknet-mainnet:
     image: eqlabs/pathfinder:latest
     environment:
@@ -20,6 +27,13 @@ services:
       - mainnet-data:/usr/share/pathfinder/data
     ports:
       - 9546:9546
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        curl https://pathfinder-starknet-node-backup.s3.eu-west-3.amazonaws.com/mainnet/mainnet.sqlite --output /usr/share/pathfinder/data/mainnet.sqlite
+        pathfinder
+
 volumes:
   goerli-data:
   mainnet-data:
