@@ -195,16 +195,21 @@ impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use crate::starkhash;
+    use crate::{
+        core::{
+            CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
+            TransactionNonce, TransactionSignatureElem,
+        },
+        storage::JournalMode,
+    };
+
     use super::*;
 
     mod parsing {
         use super::*;
-
-        use crate::core::{
-            CallParam, ContractAddress, EntryPoint, Fee, StarknetBlockHash, TransactionNonce,
-            TransactionSignatureElem,
-        };
-        use crate::starkhash;
 
         fn test_invoke_txn() -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
@@ -279,6 +284,134 @@ mod tests {
                 block_id: BlockId::Hash(StarknetBlockHash(starkhash!("0abcde"))),
             };
             assert_eq!(input, expected);
+        }
+    }
+
+    // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
+    mod ext_py {
+        use crate::rpc::v02::types::request::BroadcastedInvokeTransactionV0;
+        use crate::starkhash_bytes;
+
+        use super::*;
+
+        // Mainnet block number 5
+        const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+            "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
+        )));
+
+        // Data from transaction 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
+        fn valid_mainnet_invoke_v0() -> BroadcastedInvokeTransactionV0 {
+            BroadcastedInvokeTransactionV0 {
+                max_fee: Fee(Default::default()),
+                signature: vec![],
+                nonce: TransactionNonce(Default::default()),
+                contract_address: ContractAddress::new_or_panic(starkhash!(
+                    "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
+                )),
+                entry_point_selector: EntryPoint(starkhash!(
+                    "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
+                )),
+                calldata: vec![
+                    CallParam(starkhash!(
+                        "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"
+                    )),
+                    CallParam(starkhash!(
+                        "0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
+                    )),
+                ],
+            }
+        }
+
+        fn valid_broadcasted_transaction() -> BroadcastedTransaction {
+            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
+                valid_mainnet_invoke_v0(),
+            ))
+        }
+
+        async fn test_context_with_call_handling() -> (RpcContext, tokio::task::JoinHandle<()>) {
+            let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            database_path.push("fixtures/mainnet.sqlite");
+            let storage =
+                crate::storage::Storage::migrate(database_path.clone(), JournalMode::WAL).unwrap();
+            let sync_state = Arc::new(crate::state::SyncState::default());
+            let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
+                storage.path().into(),
+                std::num::NonZeroUsize::try_from(2).unwrap(),
+                futures::future::pending(),
+                Chain::Mainnet,
+            )
+            .await
+            .unwrap();
+
+            let context = RpcContext::new(storage, sync_state, Chain::Mainnet);
+            (context.with_call_handling(call_handle), cairo_handle)
+        }
+
+        #[tokio::test]
+        async fn no_such_block() {
+            let (context, _join_handle) = test_context_with_call_handling().await;
+
+            let input = EstimateFeeInput {
+                request: valid_broadcasted_transaction(),
+                block_id: BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"nonexistent"))),
+            };
+            let error = estimate_fee(context, input).await;
+            assert_matches::assert_matches!(error, Err(EstimateFeeError::BlockNotFound));
+        }
+
+        #[tokio::test]
+        async fn no_such_contract() {
+            let (context, _join_handle) = test_context_with_call_handling().await;
+
+            let mainnet_invoke = valid_mainnet_invoke_v0();
+            let input = EstimateFeeInput {
+                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
+                    BroadcastedInvokeTransactionV0 {
+                        contract_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
+                        ..mainnet_invoke
+                    },
+                )),
+                block_id: BLOCK_5,
+            };
+            let error = estimate_fee(context, input).await;
+            assert_matches::assert_matches!(error, Err(EstimateFeeError::ContractNotFound));
+        }
+
+        #[tokio::test]
+        async fn invalid_message_selector() {
+            let (context, _join_handle) = test_context_with_call_handling().await;
+
+            let mainnet_invoke = valid_mainnet_invoke_v0();
+            let input = EstimateFeeInput {
+                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
+                    BroadcastedInvokeTransactionV0 {
+                        entry_point_selector: EntryPoint(Default::default()),
+                        ..mainnet_invoke
+                    },
+                )),
+                block_id: BLOCK_5,
+            };
+            let error = estimate_fee(context, input).await;
+            assert_matches::assert_matches!(error, Err(EstimateFeeError::InvalidMessageSelector));
+        }
+
+        #[tokio::test]
+        async fn success() {
+            let (context, _join_handle) = test_context_with_call_handling().await;
+
+            let input = EstimateFeeInput {
+                request: valid_broadcasted_transaction(),
+                block_id: BLOCK_5,
+            };
+            let result = estimate_fee(context, input).await.unwrap();
+            assert_eq!(
+                result,
+                FeeEstimate {
+                    gas_consumed: Default::default(),
+                    gas_price: Default::default(),
+                    overall_fee: Default::default()
+                }
+            );
         }
     }
 }
