@@ -19,7 +19,7 @@ except ModuleNotFoundError:
 
 
 # used from tests, and the query which asserts that the schema is of expected version.
-EXPECTED_SCHEMA_REVISION = 20
+EXPECTED_SCHEMA_REVISION = 21
 EXPECTED_CAIRO_VERSION = "0.10.0"
 SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
 
