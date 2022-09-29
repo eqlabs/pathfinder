@@ -30,6 +30,7 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 hex = "0.4.3"
 hex-literal = "0.3"
 jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", rev = "45c94a271d92294eda2a2c7d26477044a5983a25", default-features = false, features = [
+    "jsonrpsee-types",
     "server",
 ] }
 lazy_static = "1.4.0"
@@ -63,8 +64,9 @@ criterion = "0.3"
 flate2 = "1.0.23"
 http = "0.2.6"
 jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", rev = "45c94a271d92294eda2a2c7d26477044a5983a25", default-features = false, features = [
-    "server",
+    "jsonrpsee-types",
     "async-client",
+    "server",
 ] }
 mockall = "0.11.0"
 pretty_assertions = "1.0.0"
