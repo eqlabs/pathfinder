@@ -287,6 +287,22 @@ If the Ethereum endpoint is on mainnet, then it will be StarkNet Mainnet.
 
 The following assumes you have [docker installed](https://docs.docker.com/get-docker/) and ready to go.
 
+The provided docker image embeds everything to run a node directly without any other installation. For example:
+
+```sh
+mkdir -p $HOME/pathfinder
+docker run \
+  --rm \
+  -p 9545:9545 \
+  --user "$(id -u):$(id -g)" \
+  -e RUST_LOG=info \
+  -e PATHFINDER_ETHEREUM_API_URL="<https://goerli.infura.io/v3/><project-id>" \
+  -v $HOME/pathfinder:/usr/share/pathfinder/data \
+  eqlabs/pathfinder
+```
+
+will run a Goerli node (see `PATHFINDER_ETHEREUM_API_URL` endpoint) on port `9545`, binding local folder `$HOME/pathfinder` to the node's sqlite db directory.
+
 ### Docker compose
 
 The [docker-compose.yml](./docker-compose.yml) file embeds everything to run or deploy goerli and mainnet nodes in one command.
@@ -340,7 +356,7 @@ More details are given in the dedicated pages:
 
 When pathfinder detects there has been a new release, it will log a message similar to:
 
-```bash
+```log
 WARN New pathfinder release available! Please consider updating your node! release=0.1.8-alpha
 ```
 

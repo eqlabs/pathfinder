@@ -1,5 +1,32 @@
 # Running a node on GCP
 
+TL;DR copy/paste (require a GCP project) to run a mainnet node:
+
+```bash
+gcloud config set project <unique project id>
+gcloud config set compute/region europe-west1
+gcloud config set compute/zone europe-west1-b
+gcloud compute firewall-rules create starknet-node --allow tcp:9545 --target-tags starknet-mainnet,starknet-goerli
+export $(xargs <.env)
+gcloud compute instances create-with-container starknet-mainnet \
+  --container-image=eqlabs/pathfinder:latest \
+  --container-restart-policy on-failure \
+  --container-env PATHFINDER_ETHEREUM_API_URL=${PATHFINDER_ETHEREUM_API_URL_MAINNET} \
+  --create-disk name=mainnet-data \
+  --container-mount-disk mount-path="/usr/share/pathfinder/data",name=mainnet-data \
+  --tags starknet-mainnet
+gcloud compute ssh starknet-mainnet
+```
+
+And once on the remote machine:
+
+```bash
+sudo lsblk
+sudo chmod a+w /mnt/disks/gce-containers-mounts/gce-persistent-disks/mainnet-data
+curl https://pathfinder-starknet-node-backup.s3.eu-west-3.amazonaws.com/mainnet/mainnet.sqlite \
+  --output /mnt/disks/gce-containers-mounts/gce-persistent-disks/mainnet-data/mainnet.sqlite
+```
+
 ## GCP Setup
 
 We use the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) to deploy the nodes.
@@ -51,14 +78,21 @@ Then, log into the host machine using ssh to update the disk permission (beware 
 
 ```bash
 gcloud compute ssh starknet-mainnet
-$ sudo lsblk
-$ sudo chmod a+w /mnt/disks/gce-containers-mounts/gce-persistent-disks/mainnet-data
+```
+
+Once on the container:
+
+```bash
+sudo lsblk
+sudo chmod a+w /mnt/disks/gce-containers-mounts/gce-persistent-disks/mainnet-data
+curl https://pathfinder-starknet-node-backup.s3.eu-west-3.amazonaws.com/mainnet/mainnet.sqlite \
+  --output /mnt/disks/gce-containers-mounts/gce-persistent-disks/mainnet-data/mainnet.sqlite
 ```
 
 Once connected to the host, you can also see that your node is running:
 
 ```bash
-$ docker ps
+docker ps
 ```
 
 And perform all the usual actions (`docker logs`, `docker attach`, `docker inspect`, etc.).

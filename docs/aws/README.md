@@ -21,7 +21,7 @@ If you don't have yet AWS credentials, you can follow these steps. Otherwise, ju
   - `aws configure --profile <chose a profile name>`
     - for example `aws configure --profile pathfinder-deployer`
 
-## Deployement
+## Deployment
 
 We use the docker ecs context to deploy an AWS Cloudformation stack:
 
