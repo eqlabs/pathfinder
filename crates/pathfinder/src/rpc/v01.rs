@@ -905,150 +905,142 @@ mod tests {
         }
     }
 
-    #[cfg(fixme)]
-    mod fixme {
+    mod get_transaction_by_block_id_and_index {
+        use super::*;
+        use crate::{core::StarknetTransactionHash, rpc::v01::types::reply::Transaction};
+        use pretty_assertions::assert_eq;
 
-        mod get_transaction_by_block_id_and_index {
+        async fn check_result<F: Fn(&Transaction)>(params: serde_json::Value, check_fn: F) {
+            let storage = setup_storage();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            let txn = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
+                .await
+                .unwrap();
+
+            check_fn(&txn);
+        }
+
+        #[tokio::test]
+        async fn genesis_by_hash() {
+            let params = json!([{ "block_hash": starkhash_bytes!(b"genesis") }, 0]);
+            check_result(params, move |txn| {
+                assert_eq!(
+                    txn.hash(),
+                    StarknetTransactionHash(starkhash_bytes!(b"txn 0"))
+                )
+            })
+            .await;
+        }
+
+        #[tokio::test]
+        async fn genesis_by_number() {
+            let params = json!([{ "block_number": 0 }, 0]);
+            check_result(params, move |txn| {
+                assert_eq!(
+                    txn.hash(),
+                    StarknetTransactionHash(starkhash_bytes!(b"txn 0"))
+                )
+            })
+            .await;
+        }
+
+        mod latest {
             use super::*;
-            use crate::{core::StarknetTransactionHash, rpc::v01::types::reply::Transaction};
             use pretty_assertions::assert_eq;
 
-            async fn check_result<F: Fn(&Transaction)>(
-                params: (), /*FIXME Option<ParamsSer<'_>>*/
-                check_fn: F,
-            ) {
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                let txn = client(addr)
-                    .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
-                    .await
-                    .unwrap();
-
-                check_fn(&txn);
-            }
-
             #[tokio::test]
-            async fn genesis_by_hash() {
-                let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
-                let genesis_id = BlockId::Hash(genesis_hash);
-                let params = rpc_params!(genesis_id, 0);
+            async fn positional_args() {
+                let params = json!(["latest", 0]);
                 check_result(params, move |txn| {
                     assert_eq!(
                         txn.hash(),
-                        StarknetTransactionHash(starkhash_bytes!(b"txn 0"))
-                    )
+                        StarknetTransactionHash(starkhash_bytes!(b"txn 3"))
+                    );
                 })
                 .await;
             }
 
             #[tokio::test]
-            async fn genesis_by_number() {
-                let genesis_id = BlockId::Number(StarknetBlockNumber::GENESIS);
-                let params = rpc_params!(genesis_id, 0);
+            async fn named_args() {
+                let params = json!({"block_id": "latest", "index": 0});
                 check_result(params, move |txn| {
                     assert_eq!(
                         txn.hash(),
-                        StarknetTransactionHash(starkhash_bytes!(b"txn 0"))
-                    )
+                        StarknetTransactionHash(starkhash_bytes!(b"txn 3"))
+                    );
                 })
                 .await;
-            }
-
-            mod latest {
-                use super::*;
-                use pretty_assertions::assert_eq;
-
-                #[tokio::test]
-                async fn positional_args() {
-                    let params = rpc_params!(BlockId::Latest, 0);
-                    check_result(params, move |txn| {
-                        assert_eq!(
-                            txn.hash(),
-                            StarknetTransactionHash(starkhash_bytes!(b"txn 3"))
-                        );
-                    })
-                    .await;
-                }
-
-                #[tokio::test]
-                async fn named_args() {
-                    let params = by_name([("block_id", json!("latest")), ("index", json!(0))]);
-                    check_result(params, move |txn| {
-                        assert_eq!(
-                            txn.hash(),
-                            StarknetTransactionHash(starkhash_bytes!(b"txn 3"))
-                        );
-                    })
-                    .await;
-                }
-            }
-
-            #[tokio::test]
-            async fn pending() {
-                let storage = setup_storage();
-                let pending_data = create_pending_data(storage.clone()).await;
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
-                    .with_pending_data(pending_data.clone());
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                const TX_IDX: usize = 1;
-                let expected = pending_data.block().await.unwrap();
-                assert!(TX_IDX <= expected.transactions.len());
-                let expected: Transaction = expected.transactions.get(TX_IDX).unwrap().into();
-
-                let params = rpc_params!(BlockId::Pending, TX_IDX);
-                let transaction = client(addr)
-                    .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
-                    .await
-                    .unwrap();
-
-                assert_eq!(transaction, expected);
-            }
-
-            #[tokio::test]
-            async fn invalid_block() {
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)), 0);
-                let error = client(addr)
-                    .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
-                    .await
-                    .unwrap_err();
-                assert_eq!(
-                    crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
-                    error
-                );
-            }
-
-            #[tokio::test]
-            async fn invalid_transaction_index() {
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
-                let genesis_id = BlockId::Hash(genesis_hash);
-                let params = rpc_params!(genesis_id, 123);
-                let error = client(addr)
-                    .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
-                    .await
-                    .unwrap_err();
-                assert_eq!(
-                    crate::rpc::v01::types::reply::ErrorCode::InvalidTransactionIndex,
-                    error
-                );
             }
         }
+
+        #[tokio::test]
+        async fn pending() {
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                .with_pending_data(pending_data.clone());
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            const TX_IDX: usize = 1;
+            let expected = pending_data.block().await.unwrap();
+            assert!(TX_IDX <= expected.transactions.len());
+            let expected: Transaction = expected.transactions.get(TX_IDX).unwrap().into();
+
+            let params = json!(["pending", TX_IDX]);
+            let transaction = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
+                .await
+                .unwrap();
+
+            assert_eq!(transaction, expected);
+        }
+
+        #[tokio::test]
+        async fn invalid_block() {
+            let storage = setup_storage();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([{"block_hash": "0x0"}, 0]);
+            let error = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
+                error
+            );
+        }
+
+        #[tokio::test]
+        async fn invalid_transaction_index() {
+            let storage = setup_storage();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([{ "block_hash": starkhash_bytes!(b"genesis") }, 123]);
+            let error = client(addr)
+                .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidTransactionIndex,
+                error
+            );
+        }
+    }
+
+    #[cfg(fixme)]
+    mod fixme {
 
         mod get_transaction_receipt {
             use super::*;
