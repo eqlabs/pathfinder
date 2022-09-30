@@ -1726,36 +1726,37 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn get_nonce() {
+        use crate::core::ContractNonce;
+
+        let storage = setup_storage();
+        let sequencer = Client::new(Chain::Testnet).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state.clone());
+        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+        // This contract is created in `setup_storage` and has a nonce set to 0x1.
+        let nonce = client(addr)
+            .request::<ContractNonce>(
+                "starknet_getNonce",
+                json!([starkhash_bytes!(b"contract 0")]),
+            )
+            .await
+            .unwrap();
+        assert_eq!(nonce, ContractNonce(starkhash!("01")));
+
+        // Invalid contract should error.
+        let error = client(addr)
+            .request::<ContractNonce>("starknet_getNonce", json!(["0x0"]))
+            .await
+            .expect_err("invalid contract should error");
+        let expected = crate::rpc::v01::types::reply::ErrorCode::ContractNotFound;
+        assert_eq!(expected, error);
+    }
+
     #[cfg(fixme)]
     mod fixme2 {
-
-        #[tokio::test]
-        async fn get_nonce() {
-            use crate::core::ContractNonce;
-
-            let storage = setup_storage();
-            let sequencer = Client::new(Chain::Testnet).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state.clone());
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-            // This contract is created in `setup_storage` and has a nonce set to 0x1.
-            let valid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
-            let nonce = client(addr)
-                .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
-                .await
-                .unwrap();
-            assert_eq!(nonce, ContractNonce(starkhash!("01")));
-
-            // Invalid contract should error.
-            let invalid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
-            let error = client(addr)
-                .request::<ContractNonce>("starknet_getNonce", rpc_params!(invalid_contract))
-                .await
-                .expect_err("invalid contract should error");
-            let expected = crate::rpc::v01::types::reply::ErrorCode::ContractNotFound;
-            assert_eq!(expected, error);
-        }
 
         // FIXME: these tests are largely defunct because they have never used ext_py, and handle
         // parsing issues.
