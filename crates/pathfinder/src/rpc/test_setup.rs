@@ -93,7 +93,45 @@ impl<'a, StorageInitIter> TestWithStorage<'a, StorageInitIter> {
         }
     }
 
-    /// FIXME
+    /// # Usage
+    ///
+    /// Initialize test setup with a single json array.
+    /// Each item in the json array corresponds to a separate test case.
+    /// Each test case can either be a:
+    /// - json array, to represent **positional args**,
+    /// - or a json object, to represent **named args**.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// with_params_json(json!([
+    ///     ["a single", "positional test case"]
+    /// ]))
+    /// with_params_json(json!([
+    ///     {"arg0": "a single",
+    ///      "arg1": "named test case"}
+    /// ]))
+    /// with_params_json(json!([
+    ///     ["1st", "positional test case"],
+    ///     ["2nd", "positional", "test case"]
+    /// ]))
+    /// with_params_json(json!([
+    ///     {"arg0": "1st",
+    ///      "arg1": "named test case"},
+    ///     {"arg0": "2nd",
+    ///      "arg1": "named test",
+    ///      "arg2": "case"}
+    /// ]))
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the outer most json type is not an array.
+    ///
+    /// # Rationale
+    ///
+    /// Useful for handling test cases where consecutive param sets
+    /// contain vastly different variants.
     pub fn with_params_json(
         self,
         params: serde_json::Value,
