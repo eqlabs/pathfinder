@@ -1755,40 +1755,66 @@ mod tests {
         assert_eq!(expected, error);
     }
 
-    #[cfg(fixme)]
-    mod fixme2 {
+    // FIXME: these tests are largely defunct because they have never used ext_py, and handle
+    // parsing issues.
+    mod call {
+        use super::*;
+        use crate::rpc::v01::types::request::Call;
+        use crate::{
+            core::{CallParam, CallResultValue},
+            starkhash,
+        };
+        use pretty_assertions::assert_eq;
 
-        // FIXME: these tests are largely defunct because they have never used ext_py, and handle
-        // parsing issues.
-        mod call {
+        const INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+            "03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"
+        )));
+        const PRE_DEPLOY_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+            "05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"
+        )));
+        const INVALID_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+            "06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
+        )));
+        const CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("1234"))];
+
+        #[ignore = "no longer works without setting up ext_py"]
+        #[tokio::test]
+        async fn latest_invoked_block() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([
+                Call {
+                    calldata: CALL_DATA.to_vec(),
+                    contract_address: VALID_CONTRACT_ADDR,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
+                },
+                INVOKE_CONTRACT_BLOCK_ID
+            ]);
+            client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
+                .await
+                .unwrap();
+        }
+
+        mod latest_block {
             use super::*;
-            use crate::rpc::v01::types::request::Call;
-            use crate::{
-                core::{CallParam, CallResultValue},
-                starkhash,
-            };
-            use pretty_assertions::assert_eq;
-
-            const INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
-                "03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"
-            )));
-            const PRE_DEPLOY_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(
-                starkhash!("05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"),
-            ));
-            const INVALID_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
-                "06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
-            )));
-            const CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("1234"))];
 
             #[ignore = "no longer works without setting up ext_py"]
             #[tokio::test]
-            async fn latest_invoked_block() {
+            async fn positional_args() {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(
+                let params = json!([
                     Call {
                         calldata: CALL_DATA.to_vec(),
                         contract_address: VALID_CONTRACT_ADDR,
@@ -1798,89 +1824,8 @@ mod tests {
                         version: Call::DEFAULT_VERSION,
                         nonce: Call::DEFAULT_NONCE,
                     },
-                    INVOKE_CONTRACT_BLOCK_ID
-                );
-                client(addr)
-                    .request::<Vec<CallResultValue>>("starknet_call", params)
-                    .await
-                    .unwrap();
-            }
-
-            mod latest_block {
-                use super::*;
-
-                #[ignore = "no longer works without setting up ext_py"]
-                #[tokio::test]
-                async fn positional_args() {
-                    let storage = Storage::in_memory().unwrap();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                    let params = rpc_params!(
-                        Call {
-                            calldata: CALL_DATA.to_vec(),
-                            contract_address: VALID_CONTRACT_ADDR,
-                            entry_point_selector: Some(VALID_ENTRY_POINT),
-                            signature: Default::default(),
-                            max_fee: Call::DEFAULT_MAX_FEE,
-                            version: Call::DEFAULT_VERSION,
-                            nonce: Call::DEFAULT_NONCE,
-                        },
-                        BlockId::Latest
-                    );
-                    client(addr)
-                        .request::<Vec<CallResultValue>>("starknet_call", params)
-                        .await
-                        .unwrap();
-                }
-
-                #[ignore = "no longer works without setting up ext_py"]
-                #[tokio::test]
-                async fn named_args() {
-                    let storage = Storage::in_memory().unwrap();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                    let params = by_name([
-                        (
-                            "request",
-                            json!({
-                                "calldata": &CALL_DATA,
-                                "contract_address": VALID_CONTRACT_ADDR,
-                                "entry_point_selector": VALID_ENTRY_POINT,
-                            }),
-                        ),
-                        ("block_id", json!("latest")),
-                    ]);
-                    client(addr)
-                        .request::<Vec<CallResultValue>>("starknet_call", params)
-                        .await
-                        .unwrap();
-                }
-            }
-
-            #[ignore = "no longer works without setting up ext_py"]
-            #[tokio::test]
-            async fn pending_block() {
-                let storage = Storage::in_memory().unwrap();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(
-                    Call {
-                        calldata: CALL_DATA.to_vec(),
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: Some(VALID_ENTRY_POINT),
-                        signature: Default::default(),
-                        max_fee: Call::DEFAULT_MAX_FEE,
-                        version: Call::DEFAULT_VERSION,
-                        nonce: Call::DEFAULT_NONCE,
-                    },
-                    BlockId::Pending
-                );
+                    BlockId::Latest
+                ]);
                 client(addr)
                     .request::<Vec<CallResultValue>>("starknet_call", params)
                     .await
@@ -1889,154 +1834,207 @@ mod tests {
 
             #[ignore = "no longer works without setting up ext_py"]
             #[tokio::test]
-            async fn invalid_entry_point() {
+            async fn named_args() {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(
-                    Call {
-                        calldata: CALL_DATA.to_vec(),
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: Some(INVALID_ENTRY_POINT),
-                        signature: Default::default(),
-                        max_fee: Call::DEFAULT_MAX_FEE,
-                        version: Call::DEFAULT_VERSION,
-                        nonce: Call::DEFAULT_NONCE,
+                let params = json!({
+                    "request":
+                    {
+                        "calldata": &CALL_DATA,
+                        "contract_address": VALID_CONTRACT_ADDR,
+                        "entry_point_selector": VALID_ENTRY_POINT,
                     },
-                    BlockId::Latest
-                );
-                let error = client(addr)
+                    "block_id": "latest",
+                });
+                client(addr)
                     .request::<Vec<CallResultValue>>("starknet_call", params)
                     .await
-                    .unwrap_err();
-                assert_eq!(
-                    crate::rpc::v01::types::reply::ErrorCode::InvalidMessageSelector,
-                    error
-                );
-            }
-
-            #[ignore = "no longer works without setting up ext_py"]
-            #[tokio::test]
-            async fn invalid_contract_address() {
-                let storage = Storage::in_memory().unwrap();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(
-                    Call {
-                        calldata: CALL_DATA.to_vec(),
-                        contract_address: INVALID_CONTRACT_ADDR,
-                        entry_point_selector: Some(VALID_ENTRY_POINT),
-                        signature: Default::default(),
-                        max_fee: Call::DEFAULT_MAX_FEE,
-                        version: Call::DEFAULT_VERSION,
-                        nonce: Call::DEFAULT_NONCE,
-                    },
-                    BlockId::Latest
-                );
-                let error = client(addr)
-                    .request::<Vec<CallResultValue>>("starknet_call", params)
-                    .await
-                    .unwrap_err();
-                assert_eq!(
-                    crate::rpc::v01::types::reply::ErrorCode::ContractNotFound,
-                    error
-                );
-            }
-
-            #[ignore = "no longer works without setting up ext_py"]
-            #[tokio::test]
-            async fn invalid_call_data() {
-                let storage = Storage::in_memory().unwrap();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(
-                    Call {
-                        calldata: vec![],
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: Some(VALID_ENTRY_POINT),
-                        signature: Default::default(),
-                        max_fee: Call::DEFAULT_MAX_FEE,
-                        version: Call::DEFAULT_VERSION,
-                        nonce: Call::DEFAULT_NONCE,
-                    },
-                    BlockId::Latest
-                );
-                let error = client(addr)
-                    .request::<Vec<CallResultValue>>("starknet_call", params)
-                    .await
-                    .unwrap_err();
-                assert_eq!(
-                    crate::rpc::v01::types::reply::ErrorCode::InvalidCallData,
-                    error
-                );
-            }
-
-            #[ignore = "no longer works without setting up ext_py"]
-            #[tokio::test]
-            async fn uninitialized_contract() {
-                let storage = Storage::in_memory().unwrap();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(
-                    Call {
-                        calldata: CALL_DATA.to_vec(),
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: Some(VALID_ENTRY_POINT),
-                        signature: Default::default(),
-                        max_fee: Call::DEFAULT_MAX_FEE,
-                        version: Call::DEFAULT_VERSION,
-                        nonce: Call::DEFAULT_NONCE,
-                    },
-                    PRE_DEPLOY_CONTRACT_BLOCK_ID
-                );
-                let error = client(addr)
-                    .request::<Vec<CallResultValue>>("starknet_call", params)
-                    .await
-                    .unwrap_err();
-                assert_eq!(
-                    crate::rpc::v01::types::reply::ErrorCode::ContractNotFound,
-                    error
-                );
-            }
-
-            #[ignore = "no longer works without setting up ext_py"]
-            #[tokio::test]
-            async fn invalid_block_hash() {
-                let storage = Storage::in_memory().unwrap();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(
-                    Call {
-                        calldata: CALL_DATA.to_vec(),
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: Some(VALID_ENTRY_POINT),
-                        signature: Default::default(),
-                        max_fee: Call::DEFAULT_MAX_FEE,
-                        version: Call::DEFAULT_VERSION,
-                        nonce: Call::DEFAULT_NONCE,
-                    },
-                    INVALID_BLOCK_ID
-                );
-                let error = client(addr)
-                    .request::<Vec<CallResultValue>>("starknet_call", params)
-                    .await
-                    .unwrap_err();
-                assert_eq!(
-                    crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
-                    error
-                );
+                    .unwrap();
             }
         }
+
+        #[ignore = "no longer works without setting up ext_py"]
+        #[tokio::test]
+        async fn pending_block() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([
+                Call {
+                    calldata: CALL_DATA.to_vec(),
+                    contract_address: VALID_CONTRACT_ADDR,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
+                },
+                "pending"
+            ]);
+            client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
+                .await
+                .unwrap();
+        }
+
+        #[ignore = "no longer works without setting up ext_py"]
+        #[tokio::test]
+        async fn invalid_entry_point() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([
+                Call {
+                    calldata: CALL_DATA.to_vec(),
+                    contract_address: VALID_CONTRACT_ADDR,
+                    entry_point_selector: Some(INVALID_ENTRY_POINT),
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
+                },
+                "latest"
+            ]);
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidMessageSelector,
+                error
+            );
+        }
+
+        #[ignore = "no longer works without setting up ext_py"]
+        #[tokio::test]
+        async fn invalid_contract_address() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([
+                Call {
+                    calldata: CALL_DATA.to_vec(),
+                    contract_address: INVALID_CONTRACT_ADDR,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
+                },
+                "latest"
+            ]);
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::ContractNotFound,
+                error
+            );
+        }
+
+        #[ignore = "no longer works without setting up ext_py"]
+        #[tokio::test]
+        async fn invalid_call_data() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([
+                Call {
+                    calldata: vec![],
+                    contract_address: VALID_CONTRACT_ADDR,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
+                },
+                "latest"
+            ]);
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidCallData,
+                error
+            );
+        }
+
+        #[ignore = "no longer works without setting up ext_py"]
+        #[tokio::test]
+        async fn uninitialized_contract() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([
+                Call {
+                    calldata: CALL_DATA.to_vec(),
+                    contract_address: VALID_CONTRACT_ADDR,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
+                },
+                PRE_DEPLOY_CONTRACT_BLOCK_ID
+            ]);
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::ContractNotFound,
+                error
+            );
+        }
+
+        #[ignore = "no longer works without setting up ext_py"]
+        #[tokio::test]
+        async fn invalid_block_hash() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([
+                Call {
+                    calldata: CALL_DATA.to_vec(),
+                    contract_address: VALID_CONTRACT_ADDR,
+                    entry_point_selector: Some(VALID_ENTRY_POINT),
+                    signature: Default::default(),
+                    max_fee: Call::DEFAULT_MAX_FEE,
+                    version: Call::DEFAULT_VERSION,
+                    nonce: Call::DEFAULT_NONCE,
+                },
+                INVALID_BLOCK_ID
+            ]);
+            let error = client(addr)
+                .request::<Vec<CallResultValue>>("starknet_call", params)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
+                error
+            );
+        }
+    }
+
+    #[cfg(fixme)]
+    mod fixme2 {
 
         #[tokio::test]
         async fn block_number() {
