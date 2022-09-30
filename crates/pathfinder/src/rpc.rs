@@ -4,9 +4,8 @@ pub mod gas_price;
 pub mod serde;
 #[cfg(test)]
 pub mod test_client;
-// FIXME
-// #[cfg(test)]
-// pub mod test_setup;
+#[cfg(test)]
+pub mod test_setup;
 pub mod v01;
 pub mod v02;
 

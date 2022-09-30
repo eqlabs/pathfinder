@@ -563,51 +563,53 @@ mod tests {
         }
     }
 
+    mod get_state_update {
+        use crate::rpc::test_setup::Test;
+        use crate::rpc::v01::types::reply::ErrorCode;
+        use crate::storage::fixtures::init::with_n_state_updates;
+        use serde_json::json;
+
+        #[tokio::test]
+        async fn happy_path_and_starkware_errors() {
+            Test::new("starknet_getStateUpdate", line!())
+                .with_storage(|tx| with_n_state_updates(tx, 3))
+                .with_params_json(json!([
+                    [{"block_hash":"0x0"}],
+                    [{"block_hash":"0x1"}],
+                    [{"block_number":0}],
+                    [{"block_number":1}],
+                    ["latest"],
+                    {"block_id": "latest"},
+                    {"block_id": {"block_hash":"0xdead"}},
+                    {"block_id": {"block_number":9999}}
+                ]))
+                .map_err_to_starkware_error_code()
+                .map_expected(|in_storage| {
+                    let in_storage = in_storage.collect::<Vec<_>>();
+                    vec![
+                        Ok(in_storage[0].clone()),
+                        Ok(in_storage[1].clone()),
+                        Ok(in_storage[0].clone()),
+                        Ok(in_storage[1].clone()),
+                        Ok(in_storage[2].clone()),
+                        Ok(in_storage[2].clone()),
+                        Err(ErrorCode::InvalidBlockId),
+                        Err(ErrorCode::InvalidBlockId),
+                    ]
+                })
+                .run()
+                .await;
+        }
+
+        #[tokio::test]
+        #[ignore = "implement after local pending is merged into master"]
+        async fn pending() {
+            todo!()
+        }
+    }
+
     #[cfg(fixme)]
     mod fixme {
-
-        mod get_state_update {
-            use crate::rpc::test_setup::Test;
-            use crate::rpc::v01::types::reply::ErrorCode;
-            use crate::storage::fixtures::init::with_n_state_updates;
-            use serde_json::json;
-
-            #[tokio::test]
-            async fn happy_path_and_starkware_errors() {
-                Test::new("starknet_getStateUpdate", line!())
-                    .with_storage(|tx| with_n_state_updates(tx, 3))
-                    .with_params_json(json!([
-                        {"block_hash":"0x0"},
-                        {"block_hash":"0x1"},
-                        {"block_number":0},
-                        {"block_number":1},
-                        "latest",
-                        {"block_hash":"0xdead"},
-                        {"block_number":9999}
-                    ]))
-                    .map_err_to_starkware_error_code()
-                    .map_expected(|in_storage| {
-                        let in_storage = in_storage.collect::<Vec<_>>();
-                        vec![
-                            Ok(in_storage[0].clone()),
-                            Ok(in_storage[1].clone()),
-                            Ok(in_storage[0].clone()),
-                            Ok(in_storage[1].clone()),
-                            Ok(in_storage[2].clone()),
-                            Err(ErrorCode::InvalidBlockId),
-                            Err(ErrorCode::InvalidBlockId),
-                        ]
-                    })
-                    .run()
-                    .await;
-            }
-
-            #[tokio::test]
-            #[ignore = "implement after local pending is merged into master"]
-            async fn pending() {
-                todo!()
-            }
-        }
 
         mod get_storage_at {
             use super::*;

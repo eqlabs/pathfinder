@@ -93,20 +93,17 @@ impl<'a, StorageInitIter> TestWithStorage<'a, StorageInitIter> {
         }
     }
 
-    /// Initialize test setup with a single json array.
-    /// Each item in the json array corresponds to a separate test case.
-    /// **Any other json type will be automatically wrapped in a json
-    /// array and treated as a single test case.**
-    ///
-    /// Useful for handling test cases where consecutive param sets
-    /// contain vastly different variants.
+    /// FIXME
     pub fn with_params_json(
         self,
         params: serde_json::Value,
     ) -> TestWithParams<'a, StorageInitIter, impl Clone + Iterator<Item = serde_json::Value>> {
         let params = match params {
             serde_json::Value::Array(v) => v,
-            _ => vec![params],
+            _ => panic!(
+                "The outer most json type has to be an array that contains parameter sets,
+            either positional or named."
+            ),
         };
 
         TestWithParams {
@@ -286,7 +283,6 @@ where
         use crate::sequencer::Client;
         use crate::state::SyncState;
         use futures::stream::StreamExt;
-        use jsonrpsee::rpc_params;
         use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
         use std::sync::Arc;
 
@@ -308,8 +304,12 @@ where
         let client = client(addr);
 
         let actual_results = params_iter
-            .map(|params| {
-                let params = rpc_params!(params);
+            .enumerate()
+            .map(|(i, params)| {
+                let params = serde_json::to_value(params).expect(&format!(
+                    "failed to serialize input params: line {}, test case {i}",
+                    self.line
+                ));
                 client.request::<ExpectedOk>(self.method, params)
             })
             .collect::<futures::stream::FuturesOrdered<_>>()
