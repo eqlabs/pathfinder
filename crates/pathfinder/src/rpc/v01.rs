@@ -2033,75 +2033,75 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn block_number() {
+        let storage = setup_storage();
+        let sequencer = Client::new(Chain::Testnet).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+        let number = client(addr)
+            .request::<u64>("starknet_blockNumber", json!([]))
+            .await
+            .unwrap();
+        assert_eq!(number, 2);
+    }
+
+    #[tokio::test]
+    async fn block_hash_and_number() {
+        let storage = setup_storage();
+        let sequencer = Client::new(Chain::Testnet).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+        let latest = client(addr)
+            .request::<BlockHashAndNumber>("starknet_blockHashAndNumber", json!([]))
+            .await
+            .unwrap();
+        let expected = BlockHashAndNumber {
+            hash: StarknetBlockHash(starkhash_bytes!(b"latest")),
+            number: StarknetBlockNumber::new_or_panic(2),
+        };
+        assert_eq!(latest, expected);
+    }
+
+    #[tokio::test]
+    async fn chain_id() {
+        use crate::monitoring::metrics::middleware::RpcMetricsMiddleware;
+        use futures::stream::StreamExt;
+
+        assert_eq!(
+            [Chain::Testnet, Chain::Mainnet]
+                .iter()
+                .map(|set_chain| async {
+                    let storage = Storage::in_memory().unwrap();
+                    let sequencer = Client::new(*set_chain).unwrap();
+                    let sync_state = Arc::new(SyncState::default());
+                    let api = RpcApi::new(storage, sequencer, *set_chain, sync_state);
+
+                    let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
+                        .with_middleware(RpcMetricsMiddleware)
+                        .run()
+                        .await
+                        .unwrap();
+                    let params = json!([]);
+                    client(addr)
+                        .request::<String>("starknet_chainId", params)
+                        .await
+                        .unwrap()
+                })
+                .collect::<futures::stream::FuturesOrdered<_>>()
+                .collect::<Vec<_>>()
+                .await,
+            vec![
+                format!("0x{}", hex::encode("SN_GOERLI")),
+                format!("0x{}", hex::encode("SN_MAIN")),
+            ]
+        );
+    }
+
     #[cfg(fixme)]
     mod fixme2 {
-
-        #[tokio::test]
-        async fn block_number() {
-            let storage = setup_storage();
-            let sequencer = Client::new(Chain::Testnet).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let number = client(addr)
-                .request::<u64>("starknet_blockNumber", rpc_params!())
-                .await
-                .unwrap();
-            assert_eq!(number, 2);
-        }
-
-        #[tokio::test]
-        async fn block_hash_and_number() {
-            let storage = setup_storage();
-            let sequencer = Client::new(Chain::Testnet).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let latest = client(addr)
-                .request::<BlockHashAndNumber>("starknet_blockHashAndNumber", rpc_params!())
-                .await
-                .unwrap();
-            let expected = BlockHashAndNumber {
-                hash: StarknetBlockHash(starkhash_bytes!(b"latest")),
-                number: StarknetBlockNumber::new_or_panic(2),
-            };
-            assert_eq!(latest, expected);
-        }
-
-        #[tokio::test]
-        async fn chain_id() {
-            use crate::monitoring::metrics::middleware::RpcMetricsMiddleware;
-            use futures::stream::StreamExt;
-
-            assert_eq!(
-                [Chain::Testnet, Chain::Mainnet]
-                    .iter()
-                    .map(|set_chain| async {
-                        let storage = Storage::in_memory().unwrap();
-                        let sequencer = Client::new(*set_chain).unwrap();
-                        let sync_state = Arc::new(SyncState::default());
-                        let api = RpcApi::new(storage, sequencer, *set_chain, sync_state);
-
-                        let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
-                            .with_middleware(RpcMetricsMiddleware)
-                            .run()
-                            .await
-                            .unwrap();
-                        let params = rpc_params!();
-                        client(addr)
-                            .request::<String>("starknet_chainId", params)
-                            .await
-                            .unwrap()
-                    })
-                    .collect::<futures::stream::FuturesOrdered<_>>()
-                    .collect::<Vec<_>>()
-                    .await,
-                vec![
-                    format!("0x{}", hex::encode("SN_GOERLI")),
-                    format!("0x{}", hex::encode("SN_MAIN")),
-                ]
-            );
-        }
 
         mod syncing {
             use crate::rpc::v01::types::reply::{syncing, Syncing};
