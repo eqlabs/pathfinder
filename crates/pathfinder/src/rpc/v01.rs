@@ -2100,53 +2100,53 @@ mod tests {
         );
     }
 
+    mod syncing {
+        use crate::rpc::v01::types::reply::{syncing, Syncing};
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+
+        #[tokio::test]
+        async fn not_syncing() {
+            let storage = setup_storage();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let syncing = client(addr)
+                .request::<Syncing>("starknet_syncing", json!([]))
+                .await
+                .unwrap();
+
+            assert_eq!(syncing, Syncing::False(false));
+        }
+
+        #[tokio::test]
+        async fn syncing() {
+            use crate::rpc::v01::types::reply::syncing::NumberedBlock;
+            let expected = Syncing::Status(syncing::Status {
+                starting: NumberedBlock::from(("abbacd", 1)),
+                current: NumberedBlock::from(("abbace", 2)),
+                highest: NumberedBlock::from(("abbacf", 3)),
+            });
+
+            let storage = setup_storage();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            *sync_state.status.write().await = expected.clone();
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let syncing = client(addr)
+                .request::<Syncing>("starknet_syncing", json!([]))
+                .await
+                .unwrap();
+
+            assert_eq!(syncing, expected);
+        }
+    }
+
     #[cfg(fixme)]
     mod fixme2 {
-
-        mod syncing {
-            use crate::rpc::v01::types::reply::{syncing, Syncing};
-            use pretty_assertions::assert_eq;
-
-            use super::*;
-
-            #[tokio::test]
-            async fn not_syncing() {
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let syncing = client(addr)
-                    .request::<Syncing>("starknet_syncing", rpc_params!())
-                    .await
-                    .unwrap();
-
-                assert_eq!(syncing, Syncing::False(false));
-            }
-
-            #[tokio::test]
-            async fn syncing() {
-                use crate::rpc::v01::types::reply::syncing::NumberedBlock;
-                let expected = Syncing::Status(syncing::Status {
-                    starting: NumberedBlock::from(("abbacd", 1)),
-                    current: NumberedBlock::from(("abbace", 2)),
-                    highest: NumberedBlock::from(("abbacf", 3)),
-                });
-
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                *sync_state.status.write().await = expected.clone();
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let syncing = client(addr)
-                    .request::<Syncing>("starknet_syncing", rpc_params!())
-                    .await
-                    .unwrap();
-
-                assert_eq!(syncing, expected);
-            }
-        }
 
         mod events {
             use super::*;
