@@ -159,6 +159,11 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
     register_method(module, "starknet_getNonce", method::get_nonce::get_nonce)?;
     register_method(
         module,
+        "starknet_getStateUpdate",
+        method::get_state_update::get_state_update,
+    )?;
+    register_method(
+        module,
         "starknet_getTransactionByHash",
         method::get_transaction_by_hash::get_transaction_by_hash,
     )?;
