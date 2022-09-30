@@ -199,17 +199,18 @@ pub struct TransactionVersion(pub H256);
 
 impl TransactionVersion {
     /// Checks if version is zero, handling QUERY_VERSION_BASE.
+    pub fn is_zero(&self) -> bool {
+        self.without_query_version() == 0
+    }
+
+    /// Returns the transaction versin without QUERY_VERSION_BASE.
     ///
     /// QUERY_VERSION_BASE (2**128) is a large constant that gets
     /// added to the real version to make sure transactions constructed for
     /// call or estimateFee cannot be submitted for inclusion on the chain.
-    /// When checking if the transaction version is zero we should check
-    /// only the lower 128 bits of the value.
-    pub fn is_zero(&self) -> bool {
+    pub fn without_query_version(&self) -> u128 {
         let lower = &self.0.as_bytes()[16..];
-        let lower =
-            u128::from_be_bytes(lower.try_into().expect("slice should be the right length"));
-        lower == 0
+        u128::from_be_bytes(lower.try_into().expect("slice should be the right length"))
     }
 
     pub const ZERO: Self = Self(H256::zero());
