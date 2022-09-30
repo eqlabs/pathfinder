@@ -2599,14 +2599,39 @@ mod tests {
         }
     }
 
-    #[cfg(fixme)]
-    mod fixme2 {
+    mod add_transaction {
+        use super::*;
+        use crate::rpc::v01::types::reply::{
+            DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult,
+        };
 
-        mod add_transaction {
-            use super::*;
-            use crate::rpc::v01::types::reply::{
-                DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult,
+        lazy_static::lazy_static! {
+            pub static ref CONTRACT_DEFINITION_JSON: serde_json::Value = {
+                let json = include_bytes!("../../resources/deploy_transaction.json");
+                let mut json: serde_json::Value = serde_json::from_slice(json).unwrap();
+                json["contract_definition"].take()
             };
+        }
+
+        mod positional_args {
+            use std::collections::HashMap;
+
+            use super::*;
+            use crate::{
+                core::{
+                    ByteCodeOffset, CallParam, ClassHash, ConstructorParam, ContractAddressSalt,
+                    EntryPoint, Fee, TransactionSignatureElem, TransactionVersion,
+                },
+                rpc::v01::types::request::ContractCall,
+                sequencer::request::{
+                    add_transaction::ContractDefinition,
+                    contract::{EntryPointType, SelectorAndOffset},
+                },
+                starkhash,
+            };
+
+            use pretty_assertions::assert_eq;
+            use web3::types::H256;
 
             lazy_static::lazy_static! {
                 pub static ref CALL: ContractCall = ContractCall {
@@ -2661,399 +2686,342 @@ mod tests {
                 };
             }
 
-            mod positional_args {
-                use std::collections::HashMap;
-
-                use super::*;
-                use crate::{
-                    core::{
-                        ByteCodeOffset, CallParam, CallSignatureElem, ClassHash, ConstructorParam,
-                        ContractAddressSalt, EntryPoint, Fee, TransactionVersion,
-                    },
-                    rpc::v01::types::request::ContractCall,
-                    sequencer::request::{
-                        add_transaction::ContractDefinition,
-                        contract::{EntryPointType, SelectorAndOffset},
-                    },
-                    starkhash,
-                };
-
-                use pretty_assertions::assert_eq;
-                use web3::types::H256;
-
-                #[tokio::test]
-                async fn invoke_transaction_v1() {
-                    use crate::core::TransactionNonce;
-
-                    let storage = setup_storage();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let call = ContractCall {
-                        contract_address: ContractAddress::new_or_panic(starkhash!(
-                            "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
-                        )),
-                        calldata: vec![
-                            CallParam(starkhash!("01")),
-                            CallParam(starkhash!(
-                                "01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"
-                            )),
-                            CallParam(starkhash!(
-                                "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-                            )),
-                            CallParam(starkhash!("00")),
-                            CallParam(starkhash!("01")),
-                            CallParam(starkhash!("01")),
-                            CallParam(starkhash!("01")),
-                        ],
-                        entry_point_selector: None,
-                    };
-                    let signature = vec![
-                        TransactionSignatureElem(starkhash!(
-                            "07ccc81b438581c9360120e0ba0ef52c7d031bdf20a4c2bc3820391b29a8945f"
-                        )),
-                        TransactionSignatureElem(starkhash!(
-                            "02c11c60d11daaa0043eccdc824bb44f87bc7eb2e9c2437e1654876ab8fa7cad"
-                        )),
-                    ];
-                    let max_fee = Fee(web3::types::H128::from_low_u64_be(0x630a0aff77));
-                    let nonce = TransactionNonce(starkhash!("02"));
-
-                    let params =
-                        rpc_params!(call, signature, max_fee, TransactionVersion::ONE, nonce);
-                    let rpc_result = client(addr)
-                        .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
-                        .await
-                        .unwrap();
-
-                    assert_eq!(
-                        rpc_result,
-                        InvokeTransactionResult {
-                            transaction_hash: StarknetTransactionHash(starkhash!(
-                                "040397a2e590c9707d73cc63ec54683c2d155b65d2e990d6f53d48a395eb3997"
-                            ))
-                        }
-                    );
-                }
-
-                #[tokio::test]
-                async fn declare_transaction() {
-                    let storage = setup_storage();
-                    let sequencer = Client::new(Chain::Integration).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    #[tokio::test]
-                    async fn invoke_transaction() {
-                        let storage = setup_storage();
-                        let sequencer = Client::new(Chain::Testnet).unwrap();
-                        let sync_state = Arc::new(SyncState::default());
-                        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                        let params = rpc_params!(
-                            CALL.clone(),
-                            SIGNATURE.clone(),
-                            *MAX_FEE,
-                            *TRANSACTION_VERSION
-                        );
-                        let rpc_result = client(addr)
-                            .request::<InvokeTransactionResult>(
-                                "starknet_addInvokeTransaction",
-                                params,
-                            )
-                            .await
-                            .unwrap();
-
-                        assert_eq!(
-                            rpc_result,
-                            InvokeTransactionResult {
-                                transaction_hash: StarknetTransactionHash(starkhash!(
-                                "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
-                            ))
-                            }
-                        );
-                    }
-
-                    #[tokio::test]
-                    async fn declare_transaction() {
-                        let storage = setup_storage();
-                        let sequencer = Client::new(Chain::Integration).unwrap();
-                        let sync_state = Arc::new(SyncState::default());
-                        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                        let contract_class = CONTRACT_DEFINITION.clone();
-
-                        let params = rpc_params!(contract_class, *TRANSACTION_VERSION);
-
-                        let rpc_result = client(addr)
-                            .request::<DeclareTransactionResult>(
-                                "starknet_addDeclareTransaction",
-                                params,
-                            )
-                            .await
-                            .unwrap();
-
-                        assert_eq!(
-                            rpc_result,
-                            DeclareTransactionResult {
-                                transaction_hash: StarknetTransactionHash(starkhash!(
-                                "077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
-                            )),
-                                class_hash: ClassHash(starkhash!(
-                                "0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
-                            )),
-                            }
-                        );
-                    }
-
-                    #[tokio::test]
-                    async fn deploy_transaction() {
-                        let storage = setup_storage();
-                        let sequencer = Client::new(Chain::Testnet).unwrap();
-                        let sync_state = Arc::new(SyncState::default());
-                        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                        let contract_definition = CONTRACT_DEFINITION.clone();
-                        let contract_address_salt = ContractAddressSalt(starkhash!(
-                            "05864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"
-                        ));
-                        let constructor_calldata: Vec<ConstructorParam> = vec![];
-
-                        let params = rpc_params!(
-                            contract_address_salt,
-                            constructor_calldata,
-                            contract_definition
-                        );
-
-                        let rpc_result = client(addr)
-                            .request::<DeployTransactionResult>(
-                                "starknet_addDeployTransaction",
-                                params,
-                            )
-                            .await
-                            .unwrap();
-
-                        assert_eq!(
-                            rpc_result,
-                            DeployTransactionResult {
-                                transaction_hash: StarknetTransactionHash(starkhash!(
-                                "057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
-                            )),
-                                contract_address: ContractAddress::new_or_panic(starkhash!(
-                                "03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
-                            )),
-                            }
-                        );
-                    }
-                }
-
-                mod named_args {
-                    use crate::{core::ClassHash, starkhash};
-
-                    use super::*;
-
-                    use pretty_assertions::assert_eq;
-
-                    #[tokio::test]
-                    async fn invoke_transaction() {
-                        let storage = setup_storage();
-                        let sequencer = Client::new(Chain::Testnet).unwrap();
-                        let sync_state = Arc::new(SyncState::default());
-                        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                        let params = by_name([
-                    (
-                        "function_invocation",
-                        json!({
-                            "contract_address": "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
-                            "calldata": [
-                                "1",
-                                "0x677BB1CDC050E8D63855E8743AB6E09179138DEF390676CC03C484DAF112BA1",
-                                "0x362398BEC32BC0EBB411203221A35A0301193A96F317EBE5E40BE9F60D15320",
-                                "0",
-                                "1",
-                                "1",
-                                "0x2B",
-                                "0"
-                            ],
-                            "entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
-                        }),
-                    ),
-                    (
-                        "signature",
-                        json!([
-                            "3557065757165699682249469970267166698995647077461960906176449260016084767701",
-                            "3202126414680946801789588986259466145787792017299869598314522555275920413944"
-                        ]),
-                    ),
-                    ("max_fee", json!("0x4f388496839")),
-                    ("version", json!("0x0")),
-                ]);
-
-                        let rpc_result = client(addr)
-                            .request::<InvokeTransactionResult>(
-                                "starknet_addInvokeTransaction",
-                                params,
-                            )
-                            .await
-                            .unwrap();
-
-                        assert_eq!(
-                            rpc_result,
-                            InvokeTransactionResult {
-                                transaction_hash: StarknetTransactionHash(starkhash!(
-                                "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
-                            ))
-                            }
-                        );
-                    }
-
-                    #[tokio::test]
-                    async fn declare_transaction() {
-                        let storage = setup_storage();
-                        let sequencer = Client::new(Chain::Integration).unwrap();
-                        let sync_state = Arc::new(SyncState::default());
-                        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                        let params = by_name([
-                            ("contract_class", CONTRACT_DEFINITION_JSON.clone()),
-                            ("version", json!("0x0")),
-                        ]);
-
-                        let rpc_result = client(addr)
-                            .request::<DeclareTransactionResult>(
-                                "starknet_addDeclareTransaction",
-                                params,
-                            )
-                            .await
-                            .unwrap();
-
-                        assert_eq!(
-                            rpc_result,
-                            DeclareTransactionResult {
-                                transaction_hash: StarknetTransactionHash(starkhash!(
-                                "077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
-                            )),
-                                class_hash: ClassHash(starkhash!(
-                                "0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
-                            )),
-                            }
-                        );
-                    }
-
-                    #[tokio::test]
-                    async fn deploy_transaction() {
-                        let storage = setup_storage();
-                        let sequencer = Client::new(Chain::Testnet).unwrap();
-                        let sync_state = Arc::new(SyncState::default());
-                        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                        let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                        let params = by_name([
-                            (
-                                "contract_address_salt",
-                                json!(
-                                "0x5864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"
-                            ),
-                            ),
-                            ("constructor_calldata", json!([])),
-                            ("contract_definition", CONTRACT_DEFINITION_JSON.clone()),
-                        ]);
-
-                        let rpc_result = client(addr)
-                            .request::<DeployTransactionResult>(
-                                "starknet_addDeployTransaction",
-                                params,
-                            )
-                            .await
-                            .unwrap();
-
-                        assert_eq!(
-                            rpc_result,
-                            DeployTransactionResult {
-                                transaction_hash: StarknetTransactionHash(starkhash!(
-                                "057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
-                            )),
-                                contract_address: ContractAddress::new_or_panic(starkhash!(
-                                "03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
-                            )),
-                            }
-                        );
-                    }
-                }
-            }
-
             #[tokio::test]
-            async fn per_method_metrics() {
-                use crate::monitoring::metrics::test::FakeRecorder;
-                use crate::monitoring::metrics::{
-                    middleware::RpcMetricsMiddleware, test::RecorderGuard,
-                };
-                use crate::rpc::v01::types::reply::Block;
-                use futures::stream::StreamExt;
-
-                let recorder = FakeRecorder::new(&["starknet_getBlockWithTxHashes"]);
-                let handle = recorder.handle();
-
-                let get_all = || {
-                    handle.get_counter_value(
-                        "rpc_method_calls_total",
-                        "starknet_getBlockWithTxHashes",
-                    )
-                };
-                let get_failed = || {
-                    handle.get_counter_value(
-                        "rpc_method_calls_failed_total",
-                        "starknet_getBlockWithTxHashes",
-                    )
-                };
-
-                // Other concurrent tests could be setting their own recorders
-                let _guard = RecorderGuard::lock(recorder);
+            async fn invoke_transaction_v1() {
+                use crate::core::TransactionNonce;
 
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
-                    .with_middleware(RpcMetricsMiddleware)
-                    .run()
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let call = ContractCall {
+                    contract_address: ContractAddress::new_or_panic(starkhash!(
+                        "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
+                    )),
+                    calldata: vec![
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!(
+                            "01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"
+                        )),
+                        CallParam(starkhash!(
+                            "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+                        )),
+                        CallParam(starkhash!("00")),
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!("01")),
+                    ],
+                    entry_point_selector: None,
+                };
+                let signature = vec![
+                    TransactionSignatureElem(starkhash!(
+                        "07ccc81b438581c9360120e0ba0ef52c7d031bdf20a4c2bc3820391b29a8945f"
+                    )),
+                    TransactionSignatureElem(starkhash!(
+                        "02c11c60d11daaa0043eccdc824bb44f87bc7eb2e9c2437e1654876ab8fa7cad"
+                    )),
+                ];
+                let max_fee = Fee(web3::types::H128::from_low_u64_be(0x630a0aff77));
+                let nonce = TransactionNonce(starkhash!("02"));
+
+                let params = json!([call, signature, max_fee, TransactionVersion::ONE, nonce]);
+                let rpc_result = client(addr)
+                    .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
                     .await
                     .unwrap();
 
-                assert_eq!(get_all(), 0);
-                assert_eq!(get_failed(), 0);
-
-                // Two successes and a failure
-                [
-                    StarknetBlockNumber::GENESIS,
-                    StarknetBlockNumber::GENESIS + 1,
-                    StarknetBlockNumber::MAX,
-                ]
-                .into_iter()
-                .map(|block_number| async move {
-                    let _ = client(addr)
-                        .request::<Block>(
-                            "starknet_getBlockWithTxHashes",
-                            rpc_params!(BlockId::Number(block_number)),
-                        )
-                        .await;
-                })
-                .collect::<futures::stream::FuturesUnordered<_>>()
-                .collect::<Vec<_>>()
-                .await;
-
-                assert_eq!(get_all(), 3);
-                assert_eq!(get_failed(), 1);
+                assert_eq!(
+                    rpc_result,
+                    InvokeTransactionResult {
+                        transaction_hash: StarknetTransactionHash(starkhash!(
+                            "040397a2e590c9707d73cc63ec54683c2d155b65d2e990d6f53d48a395eb3997"
+                        ))
+                    }
+                );
             }
+
+            #[tokio::test]
+            async fn invoke_transaction() {
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = json!([
+                    CALL.clone(),
+                    SIGNATURE.clone(),
+                    *MAX_FEE,
+                    *TRANSACTION_VERSION
+                ]);
+                let rpc_result = client(addr)
+                    .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    InvokeTransactionResult {
+                        transaction_hash: StarknetTransactionHash(starkhash!(
+                            "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
+                        ))
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn declare_transaction() {
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Integration).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let contract_class = CONTRACT_DEFINITION.clone();
+
+                let params = json!([contract_class, *TRANSACTION_VERSION]);
+
+                let rpc_result = client(addr)
+                    .request::<DeclareTransactionResult>("starknet_addDeclareTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    DeclareTransactionResult {
+                        transaction_hash: StarknetTransactionHash(starkhash!(
+                            "077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
+                        )),
+                        class_hash: ClassHash(starkhash!(
+                            "0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
+                        )),
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn deploy_transaction() {
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let contract_definition = CONTRACT_DEFINITION.clone();
+                let contract_address_salt = ContractAddressSalt(starkhash!(
+                    "05864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"
+                ));
+                let constructor_calldata: Vec<ConstructorParam> = vec![];
+
+                let params = json!([
+                    contract_address_salt,
+                    constructor_calldata,
+                    contract_definition
+                ]);
+
+                let rpc_result = client(addr)
+                    .request::<DeployTransactionResult>("starknet_addDeployTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    DeployTransactionResult {
+                        transaction_hash: StarknetTransactionHash(starkhash!(
+                            "057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
+                        )),
+                        contract_address: ContractAddress::new_or_panic(starkhash!(
+                            "03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
+                        )),
+                    }
+                );
+            }
+        }
+
+        mod named_args {
+            use crate::{core::ClassHash, starkhash};
+
+            use super::*;
+
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn invoke_transaction() {
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = json!({
+                    "function_invocation":
+                    {
+                        "contract_address": "0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                        "calldata": [
+                            "1",
+                            "0x677BB1CDC050E8D63855E8743AB6E09179138DEF390676CC03C484DAF112BA1",
+                            "0x362398BEC32BC0EBB411203221A35A0301193A96F317EBE5E40BE9F60D15320",
+                            "0",
+                            "1",
+                            "1",
+                            "0x2B",
+                            "0"
+                        ],
+                        "entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
+                    },
+                    "signature":
+                    [
+                        "3557065757165699682249469970267166698995647077461960906176449260016084767701",
+                        "3202126414680946801789588986259466145787792017299869598314522555275920413944"
+                    ],
+                    "max_fee": "0x4f388496839",
+                    "version": "0x0"
+                });
+
+                let rpc_result = client(addr)
+                    .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    InvokeTransactionResult {
+                        transaction_hash: StarknetTransactionHash(starkhash!(
+                            "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
+                        ))
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn declare_transaction() {
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Integration).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = json!({
+                    "contract_class": CONTRACT_DEFINITION_JSON.clone(),
+                    "version": "0x0"
+                });
+
+                let rpc_result = client(addr)
+                    .request::<DeclareTransactionResult>("starknet_addDeclareTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    DeclareTransactionResult {
+                        transaction_hash: StarknetTransactionHash(starkhash!(
+                            "077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
+                        )),
+                        class_hash: ClassHash(starkhash!(
+                            "0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
+                        )),
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn deploy_transaction() {
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = json!({
+                    "contract_address_salt": "0x5864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d",
+                    "constructor_calldata": [],
+                    "contract_definition": CONTRACT_DEFINITION_JSON.clone()
+                });
+
+                let rpc_result = client(addr)
+                    .request::<DeployTransactionResult>("starknet_addDeployTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    DeployTransactionResult {
+                        transaction_hash: StarknetTransactionHash(starkhash!(
+                            "057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
+                        )),
+                        contract_address: ContractAddress::new_or_panic(starkhash!(
+                            "03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
+                        )),
+                    }
+                );
+            }
+        }
+    }
+
+    #[cfg(fixme)]
+    mod fixme2 {
+
+        #[tokio::test]
+        async fn per_method_metrics() {
+            use crate::monitoring::metrics::test::FakeRecorder;
+            use crate::monitoring::metrics::{
+                middleware::RpcMetricsMiddleware, test::RecorderGuard,
+            };
+            use crate::rpc::v01::types::reply::Block;
+            use futures::stream::StreamExt;
+
+            let recorder = FakeRecorder::new(&["starknet_getBlockWithTxHashes"]);
+            let handle = recorder.handle();
+
+            let get_all = || {
+                handle.get_counter_value("rpc_method_calls_total", "starknet_getBlockWithTxHashes")
+            };
+            let get_failed = || {
+                handle.get_counter_value(
+                    "rpc_method_calls_failed_total",
+                    "starknet_getBlockWithTxHashes",
+                )
+            };
+
+            // Other concurrent tests could be setting their own recorders
+            let _guard = RecorderGuard::lock(recorder);
+
+            let storage = setup_storage();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
+                .with_middleware(RpcMetricsMiddleware)
+                .run()
+                .await
+                .unwrap();
+
+            assert_eq!(get_all(), 0);
+            assert_eq!(get_failed(), 0);
+
+            // Two successes and a failure
+            [
+                StarknetBlockNumber::GENESIS,
+                StarknetBlockNumber::GENESIS + 1,
+                StarknetBlockNumber::MAX,
+            ]
+            .into_iter()
+            .map(|block_number| async move {
+                let _ = client(addr)
+                    .request::<Block>(
+                        "starknet_getBlockWithTxHashes",
+                        rpc_params!(BlockId::Number(block_number)),
+                    )
+                    .await;
+            })
+            .collect::<futures::stream::FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
+
+            assert_eq!(get_all(), 3);
+            assert_eq!(get_failed(), 1);
         }
     }
 }
