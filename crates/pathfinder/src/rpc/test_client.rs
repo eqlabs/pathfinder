@@ -4,11 +4,11 @@ use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
-use jsonrpsee::core::{traits::ToRpcParams, Error};
+use jsonrpsee::core::Error;
 use jsonrpsee::types::error::CallError;
-use jsonrpsee::types::{ErrorResponse, Id, Params, RequestSer, Response};
+use jsonrpsee::types::{ErrorResponse, Id, RequestSer, Response};
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 /// Create an RPC [`TestClient`] with a timeout of 120 seconds.
 pub fn client(addr: SocketAddr) -> TestClient {

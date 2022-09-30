@@ -115,11 +115,10 @@ mod tests {
             StarknetBlocksTable, StarknetTransactionsTable, Storage,
         },
     };
-    use jsonrpsee::{server::ServerHandle, types::Params};
 
+    use jsonrpsee::server::ServerHandle;
     use stark_hash::StarkHash;
     use std::{
-        collections::BTreeMap,
         net::{Ipv4Addr, SocketAddr, SocketAddrV4},
         sync::Arc,
     };

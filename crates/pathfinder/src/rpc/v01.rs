@@ -345,36 +345,26 @@ pub fn register_all_methods(
 
 #[cfg(test)]
 mod tests {
-    use crate::rpc::v01::types::reply::BlockHashAndNumber;
-    use crate::rpc::RpcServer;
-    use crate::sequencer::reply::PendingBlock;
-    use crate::{
-        core::BlockId,
-        rpc::{
-            test_client::client,
-            tests::{create_pending_data, run_server, setup_storage, LOCALHOST},
-            v01::{
-                api::RpcApi,
-                types::reply::{Block, Transactions},
-            },
-        },
+    use crate::core::{
+        BlockId, Chain, ClassHash, ContractAddress, EventKey, GasPrice, SequencerAddress,
+        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        StorageAddress,
     };
-    use crate::{
-        core::{
-            Chain, ClassHash, ContractAddress, EventKey, GasPrice, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress,
+    use crate::rpc::{
+        test_client::client,
+        tests::{create_pending_data, run_server, setup_storage, LOCALHOST},
+        v01::{
+            api::RpcApi,
+            types::reply::{Block, BlockHashAndNumber, Transactions},
         },
-        sequencer::{test_utils::*, Client},
-        starkhash, starkhash_bytes,
-        state::{state_tree::GlobalStateTree, PendingData, SyncState},
-        storage::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage},
+        RpcServer,
     };
+    use crate::sequencer::{reply::PendingBlock, test_utils::*, Client};
+    use crate::state::{state_tree::GlobalStateTree, PendingData, SyncState};
+    use crate::storage::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage};
+    use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
-    use jsonrpsee::core::params::ArrayParams;
-    use jsonrpsee::core::traits::ToRpcParams;
     use jsonrpsee::core::RpcResult;
-    use jsonrpsee::types::Params;
     use serde_json::json;
     use stark_hash::StarkHash;
     use std::sync::Arc;
