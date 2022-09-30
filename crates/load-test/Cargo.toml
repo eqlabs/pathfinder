@@ -7,10 +7,10 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-goose = "0.16.3"
+goose = { git = "https://github.com/eqlabs/goose", branch = "update_tokio" }
 pathfinder = { path = "../pathfinder", features = ["rpc-full-serde"] }
 rand = "0.8.5"
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
 stark_hash = { path = "../stark_hash" }
-tokio = "1.11.0"
+tokio = "1.21.2"
