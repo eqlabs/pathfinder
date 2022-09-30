@@ -346,9 +346,6 @@ mod tests {
         storage::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage},
     };
     use assert_matches::assert_matches;
-    use jsonrpsee::core::params::ArrayParams;
-    use jsonrpsee::core::traits::ToRpcParams;
-    use jsonrpsee::types::Params;
     use serde_json::json;
     use stark_hash::StarkHash;
     use std::sync::Arc;

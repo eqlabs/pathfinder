@@ -344,10 +344,12 @@ where
         let actual_results = params_iter
             .enumerate()
             .map(|(i, params)| {
-                let params = serde_json::to_value(params).expect(&format!(
-                    "failed to serialize input params: line {}, test case {i}",
-                    self.line
-                ));
+                let params = serde_json::to_value(params).unwrap_or_else(|_| {
+                    panic!(
+                        "failed to serialize input params: line {}, test case {i}",
+                        self.line
+                    )
+                });
                 client.request::<ExpectedOk>(self.method, params)
             })
             .collect::<futures::stream::FuturesOrdered<_>>()
