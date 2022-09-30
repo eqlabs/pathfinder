@@ -2145,481 +2145,462 @@ mod tests {
         }
     }
 
-    #[cfg(fixme)]
-    mod fixme2 {
+    mod events {
+        use super::*;
 
-        mod events {
+        use crate::rpc::v01::types::reply::{EmittedEvent, GetEventsResult};
+        use crate::storage::test_utils;
+
+        fn setup() -> (Storage, Vec<EmittedEvent>) {
+            let (storage, events) = test_utils::setup_test_storage();
+            let events = events.into_iter().map(EmittedEvent::from).collect();
+            (storage, events)
+        }
+
+        mod positional_args {
             use super::*;
+            use crate::{rpc::v01::types::request::EventFilter, starkhash};
 
-            use crate::rpc::v01::types::reply::{EmittedEvent, GetEventsResult};
-            use crate::storage::test_utils;
+            use pretty_assertions::assert_eq;
 
-            fn setup() -> (Storage, Vec<EmittedEvent>) {
-                let (storage, events) = test_utils::setup_test_storage();
-                let events = events.into_iter().map(EmittedEvent::from).collect();
-                (storage, events)
-            }
+            #[tokio::test]
+            async fn get_events_with_empty_filter() {
+                let (storage, events) = setup();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-            mod positional_args {
-                use super::*;
-                use crate::{rpc::v01::types::request::EventFilter, starkhash};
+                let params = json!([EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: vec![],
+                    page_size: test_utils::NUM_EVENTS,
+                    page_number: 0,
+                }]);
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
 
-                use pretty_assertions::assert_eq;
-
-                #[tokio::test]
-                async fn get_events_with_empty_filter() {
-                    let (storage, events) = setup();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let params = rpc_params!(EventFilter {
-                        from_block: None,
-                        to_block: None,
-                        address: None,
-                        keys: vec![],
-                        page_size: test_utils::NUM_EVENTS,
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events,
                         page_number: 0,
-                    });
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-
-                    assert_eq!(
-                        rpc_result,
-                        GetEventsResult {
-                            events,
-                            page_number: 0,
-                            is_last_page: true,
-                        }
-                    );
-                }
-
-                #[tokio::test]
-                async fn get_events_with_fully_specified_filter() {
-                    let (storage, events) = setup();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let expected_event = &events[1];
-                    let params = rpc_params!(EventFilter {
-                        from_block: Some(expected_event.block_number.unwrap().into()),
-                        to_block: Some(expected_event.block_number.unwrap().into()),
-                        address: Some(expected_event.from_address),
-                        // we're using a key which is present in _all_ events
-                        keys: vec![EventKey(starkhash!("deadbeef"))],
-                        page_size: test_utils::NUM_EVENTS,
-                        page_number: 0,
-                    });
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-
-                    assert_eq!(
-                        rpc_result,
-                        GetEventsResult {
-                            events: vec![expected_event.clone()],
-                            page_number: 0,
-                            is_last_page: true,
-                        }
-                    );
-                }
-
-                #[tokio::test]
-                async fn get_events_by_block() {
-                    let (storage, events) = setup();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    const BLOCK_NUMBER: usize = 2;
-                    let params = rpc_params!(EventFilter {
-                        from_block: Some(
-                            StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()
-                        ),
-                        to_block: Some(
-                            StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()
-                        ),
-                        address: None,
-                        keys: vec![],
-                        page_size: test_utils::NUM_EVENTS,
-                        page_number: 0,
-                    });
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-
-                    let expected_events = &events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
-                        ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
-                    assert_eq!(
-                        rpc_result,
-                        GetEventsResult {
-                            events: expected_events.to_vec(),
-                            page_number: 0,
-                            is_last_page: true,
-                        }
-                    );
-                }
-
-                #[tokio::test]
-                async fn get_events_with_invalid_page_size() {
-                    let (storage, _events) = setup();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let params = rpc_params!(EventFilter {
-                        from_block: None,
-                        to_block: None,
-                        address: None,
-                        keys: vec![],
-                        page_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
-                        page_number: 0,
-                    });
-                    let error = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap_err();
-
-                    assert_eq!(
-                        crate::rpc::v01::types::reply::ErrorCode::PageSizeTooBig,
-                        error
-                    );
-                }
-
-                #[tokio::test]
-                async fn get_events_by_key_with_paging() {
-                    let (storage, events) = setup();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let expected_events = &events[27..32];
-                    let keys_for_expected_events: Vec<_> =
-                        expected_events.iter().map(|e| e.keys[0]).collect();
-
-                    let params = rpc_params!(EventFilter {
-                        from_block: None,
-                        to_block: None,
-                        address: None,
-                        keys: keys_for_expected_events.clone(),
-                        page_size: 2,
-                        page_number: 0,
-                    });
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        rpc_result,
-                        GetEventsResult {
-                            events: expected_events[..2].to_vec(),
-                            page_number: 0,
-                            is_last_page: false,
-                        }
-                    );
-
-                    let params = rpc_params!(EventFilter {
-                        from_block: None,
-                        to_block: None,
-                        address: None,
-                        keys: keys_for_expected_events.clone(),
-                        page_size: 2,
-                        page_number: 1,
-                    });
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        rpc_result,
-                        GetEventsResult {
-                            events: expected_events[2..4].to_vec(),
-                            page_number: 1,
-                            is_last_page: false,
-                        }
-                    );
-
-                    let params = rpc_params!(EventFilter {
-                        from_block: None,
-                        to_block: None,
-                        address: None,
-                        keys: keys_for_expected_events.clone(),
-                        page_size: 2,
-                        page_number: 2,
-                    });
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        rpc_result,
-                        GetEventsResult {
-                            events: expected_events[4..].to_vec(),
-                            page_number: 2,
-                            is_last_page: true,
-                        }
-                    );
-
-                    // nonexistent page
-                    let params = rpc_params!(EventFilter {
-                        from_block: None,
-                        to_block: None,
-                        address: None,
-                        keys: keys_for_expected_events.clone(),
-                        page_size: 2,
-                        page_number: 3,
-                    });
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        rpc_result,
-                        GetEventsResult {
-                            events: vec![],
-                            page_number: 3,
-                            is_last_page: true,
-                        }
-                    );
-                }
-            }
-
-            mod named_args {
-                use super::*;
-
-                use pretty_assertions::assert_eq;
-
-                #[tokio::test]
-                async fn get_events_with_empty_filter() {
-                    let (storage, events) = setup();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let params = by_name([(
-                        "filter",
-                        json!({"page_size": test_utils::NUM_EVENTS, "page_number": 0}),
-                    )]);
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-
-                    assert_eq!(
-                        rpc_result,
-                        GetEventsResult {
-                            events,
-                            page_number: 0,
-                            is_last_page: true,
-                        }
-                    );
-                }
-
-                #[tokio::test]
-                async fn get_events_with_fully_specified_filter() {
-                    let (storage, events) = setup();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let expected_event = &events[1];
-                    let params = by_name([(
-                        "filter",
-                        json!({
-                            "from_block": {
-                                "block_number": expected_event.block_number.unwrap().get()
-                            },
-                            "to_block": {
-                                "block_number": expected_event.block_number.unwrap().get()
-                            },
-                            "address": expected_event.from_address,
-                            "keys": [expected_event.keys[0]],
-                            "page_size": super::test_utils::NUM_EVENTS,
-                            "page_number": 0,
-                        }),
-                    )]);
-
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-
-                    assert_eq!(
-                        rpc_result,
-                        GetEventsResult {
-                            events: vec![expected_event.clone()],
-                            page_number: 0,
-                            is_last_page: true,
-                        }
-                    );
-                }
-            }
-
-            mod pending {
-                use crate::rpc::v01::types::request::EventFilter;
-
-                use super::*;
-
-                use pretty_assertions::assert_eq;
-
-                #[tokio::test]
-                async fn backward_range() {
-                    let storage = setup_storage();
-                    let pending_data = create_pending_data(storage.clone()).await;
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
-                        .with_pending_data(pending_data);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let params = rpc_params!(EventFilter {
-                        from_block: Some(BlockId::Pending),
-                        to_block: Some(BlockId::Latest),
-                        address: None,
-                        keys: vec![],
-                        page_size: 100,
-                        page_number: 0,
-                    });
-                    let rpc_result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", params)
-                        .await
-                        .unwrap();
-                    assert!(rpc_result.events.is_empty());
-                }
-
-                #[tokio::test]
-                async fn all_events() {
-                    let storage = setup_storage();
-                    let pending_data = create_pending_data(storage.clone()).await;
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
-                        .with_pending_data(pending_data);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let mut filter = EventFilter {
-                        from_block: None,
-                        to_block: Some(BlockId::Latest),
-                        address: None,
-                        keys: vec![],
-                        page_size: 1024,
-                        page_number: 0,
-                    };
-
-                    let events = client(addr)
-                        .request::<GetEventsResult>(
-                            "starknet_getEvents",
-                            rpc_params!(filter.clone()),
-                        )
-                        .await
-                        .unwrap();
-
-                    filter.from_block = Some(BlockId::Pending);
-                    filter.to_block = Some(BlockId::Pending);
-                    let pending_events = client(addr)
-                        .request::<GetEventsResult>(
-                            "starknet_getEvents",
-                            rpc_params!(filter.clone()),
-                        )
-                        .await
-                        .unwrap();
-
-                    filter.from_block = None;
-                    let all_events = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter))
-                        .await
-                        .unwrap();
-
-                    let expected = events
-                        .events
-                        .into_iter()
-                        .chain(pending_events.events.into_iter())
-                        .collect::<Vec<_>>();
-
-                    assert_eq!(all_events.events, expected);
-                    assert!(all_events.is_last_page);
-                }
-
-                #[tokio::test]
-                async fn paging() {
-                    let storage = setup_storage();
-                    let pending_data = create_pending_data(storage.clone()).await;
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
-                        .with_pending_data(pending_data);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let mut filter = EventFilter {
-                        from_block: None,
-                        to_block: Some(BlockId::Pending),
-                        address: None,
-                        keys: vec![],
-                        page_size: 1024,
-                        page_number: 0,
-                    };
-
-                    let all = client(addr)
-                        .request::<GetEventsResult>(
-                            "starknet_getEvents",
-                            rpc_params!(filter.clone()),
-                        )
-                        .await
-                        .unwrap()
-                        .events;
-
-                    filter.page_size = 2;
-                    let mut last_pages = Vec::new();
-                    let chunks = all.chunks(filter.page_size);
-                    let num_chunks = chunks.len();
-                    for (idx, chunk) in chunks.enumerate() {
-                        filter.page_number = idx;
-                        let result = client(addr)
-                            .request::<GetEventsResult>(
-                                "starknet_getEvents",
-                                rpc_params!(filter.clone()),
-                            )
-                            .await
-                            .unwrap();
-                        assert_eq!(result.page_number, idx);
-                        assert_eq!(result.events, chunk);
-
-                        last_pages.push(result.is_last_page);
+                        is_last_page: true,
                     }
+                );
+            }
 
-                    let mut expected = vec![false; last_pages.len() - 1];
-                    expected.push(true);
-                    assert_eq!(last_pages, expected);
+            #[tokio::test]
+            async fn get_events_with_fully_specified_filter() {
+                let (storage, events) = setup();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-                    // nonexistent page
-                    filter.page_number = num_chunks;
-                    let result = client(addr)
-                        .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter))
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        result,
-                        GetEventsResult {
-                            events: vec![],
-                            page_number: num_chunks,
-                            is_last_page: true,
-                        }
-                    );
-                }
+                let expected_event = &events[1];
+                let params = json!([EventFilter {
+                    from_block: Some(expected_event.block_number.unwrap().into()),
+                    to_block: Some(expected_event.block_number.unwrap().into()),
+                    address: Some(expected_event.from_address),
+                    // we're using a key which is present in _all_ events
+                    keys: vec![EventKey(starkhash!("deadbeef"))],
+                    page_size: test_utils::NUM_EVENTS,
+                    page_number: 0,
+                }]);
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: vec![expected_event.clone()],
+                        page_number: 0,
+                        is_last_page: true,
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn get_events_by_block() {
+                let (storage, events) = setup();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                const BLOCK_NUMBER: usize = 2;
+                let params = json!([EventFilter {
+                    from_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
+                    to_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
+                    address: None,
+                    keys: vec![],
+                    page_size: test_utils::NUM_EVENTS,
+                    page_number: 0,
+                }]);
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                let expected_events = &events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
+                    ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: expected_events.to_vec(),
+                        page_number: 0,
+                        is_last_page: true,
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn get_events_with_invalid_page_size() {
+                let (storage, _events) = setup();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = json!([EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: vec![],
+                    page_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                    page_number: 0,
+                }]);
+                let error = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap_err();
+
+                assert_eq!(
+                    crate::rpc::v01::types::reply::ErrorCode::PageSizeTooBig,
+                    error
+                );
+            }
+
+            #[tokio::test]
+            async fn get_events_by_key_with_paging() {
+                let (storage, events) = setup();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let expected_events = &events[27..32];
+                let keys_for_expected_events: Vec<_> =
+                    expected_events.iter().map(|e| e.keys[0]).collect();
+
+                let params = json!([EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: keys_for_expected_events.clone(),
+                    page_size: 2,
+                    page_number: 0,
+                }]);
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: expected_events[..2].to_vec(),
+                        page_number: 0,
+                        is_last_page: false,
+                    }
+                );
+
+                let params = json!([EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: keys_for_expected_events.clone(),
+                    page_size: 2,
+                    page_number: 1,
+                }]);
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: expected_events[2..4].to_vec(),
+                        page_number: 1,
+                        is_last_page: false,
+                    }
+                );
+
+                let params = json!([EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: keys_for_expected_events.clone(),
+                    page_size: 2,
+                    page_number: 2,
+                }]);
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: expected_events[4..].to_vec(),
+                        page_number: 2,
+                        is_last_page: true,
+                    }
+                );
+
+                // nonexistent page
+                let params = json!([EventFilter {
+                    from_block: None,
+                    to_block: None,
+                    address: None,
+                    keys: keys_for_expected_events.clone(),
+                    page_size: 2,
+                    page_number: 3,
+                }]);
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: vec![],
+                        page_number: 3,
+                        is_last_page: true,
+                    }
+                );
             }
         }
+
+        mod named_args {
+            use super::*;
+
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn get_events_with_empty_filter() {
+                let (storage, events) = setup();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params =
+                    json!({"filter": {"page_size": test_utils::NUM_EVENTS, "page_number": 0}});
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events,
+                        page_number: 0,
+                        is_last_page: true,
+                    }
+                );
+            }
+
+            #[tokio::test]
+            async fn get_events_with_fully_specified_filter() {
+                let (storage, events) = setup();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let expected_event = &events[1];
+                let params = json!({
+                    "filter": {
+                        "from_block": {
+                            "block_number": expected_event.block_number.unwrap().get()
+                        },
+                        "to_block": {
+                            "block_number": expected_event.block_number.unwrap().get()
+                        },
+                        "address": expected_event.from_address,
+                        "keys": [expected_event.keys[0]],
+                        "page_size": super::test_utils::NUM_EVENTS,
+                        "page_number": 0,
+                    },
+                });
+
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: vec![expected_event.clone()],
+                        page_number: 0,
+                        is_last_page: true,
+                    }
+                );
+            }
+        }
+
+        mod pending {
+            use crate::rpc::v01::types::request::EventFilter;
+
+            use super::*;
+
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn backward_range() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                    .with_pending_data(pending_data);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = json!([EventFilter {
+                    from_block: Some(BlockId::Pending),
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    page_size: 100,
+                    page_number: 0,
+                }]);
+                let rpc_result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+                assert!(rpc_result.events.is_empty());
+            }
+
+            #[tokio::test]
+            async fn all_events() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                    .with_pending_data(pending_data);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let mut filter = EventFilter {
+                    from_block: None,
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    page_size: 1024,
+                    page_number: 0,
+                };
+
+                let events = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", json!([filter.clone()]))
+                    .await
+                    .unwrap();
+
+                filter.from_block = Some(BlockId::Pending);
+                filter.to_block = Some(BlockId::Pending);
+                let pending_events = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", json!([filter.clone()]))
+                    .await
+                    .unwrap();
+
+                filter.from_block = None;
+                let all_events = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", json!([filter]))
+                    .await
+                    .unwrap();
+
+                let expected = events
+                    .events
+                    .into_iter()
+                    .chain(pending_events.events.into_iter())
+                    .collect::<Vec<_>>();
+
+                assert_eq!(all_events.events, expected);
+                assert!(all_events.is_last_page);
+            }
+
+            #[tokio::test]
+            async fn paging() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                    .with_pending_data(pending_data);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let mut filter = EventFilter {
+                    from_block: None,
+                    to_block: Some(BlockId::Pending),
+                    address: None,
+                    keys: vec![],
+                    page_size: 1024,
+                    page_number: 0,
+                };
+
+                let all = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", json!([filter.clone()]))
+                    .await
+                    .unwrap()
+                    .events;
+
+                filter.page_size = 2;
+                let mut last_pages = Vec::new();
+                let chunks = all.chunks(filter.page_size);
+                let num_chunks = chunks.len();
+                for (idx, chunk) in chunks.enumerate() {
+                    filter.page_number = idx;
+                    let result = client(addr)
+                        .request::<GetEventsResult>("starknet_getEvents", json!([filter.clone()]))
+                        .await
+                        .unwrap();
+                    assert_eq!(result.page_number, idx);
+                    assert_eq!(result.events, chunk);
+
+                    last_pages.push(result.is_last_page);
+                }
+
+                let mut expected = vec![false; last_pages.len() - 1];
+                expected.push(true);
+                assert_eq!(last_pages, expected);
+
+                // nonexistent page
+                filter.page_number = num_chunks;
+                let result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", json!([filter]))
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    result,
+                    GetEventsResult {
+                        events: vec![],
+                        page_number: num_chunks,
+                        is_last_page: true,
+                    }
+                );
+            }
+        }
+    }
+
+    #[cfg(fixme)]
+    mod fixme2 {
 
         mod add_transaction {
             use super::*;
