@@ -1334,238 +1334,233 @@ mod tests {
         }
     }
 
-    #[cfg(fixme)]
-    mod fixme2 {
+    mod get_class_at {
+        use super::contract_setup::setup_class_and_contract;
+        use super::*;
+        use crate::core::ContractClass;
+        use crate::rpc::v01::types::reply::ErrorCode;
+        use pretty_assertions::assert_eq;
 
-        mod get_class_at {
-            use super::contract_setup::setup_class_and_contract;
-            use super::*;
-            use crate::core::ContractClass;
-            use crate::rpc::v01::types::reply::ErrorCode;
-            use pretty_assertions::assert_eq;
+        #[tokio::test]
+        async fn invalid_contract_address() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!(["latest", "0x0"]);
+            let error = client(addr)
+                .request::<ContractClass>("starknet_getClassAt", params)
+                .await
+                .unwrap_err();
+            assert_eq!(ErrorCode::ContractNotFound, error);
+        }
 
-            #[tokio::test]
-            async fn invalid_contract_address() {
-                let storage = Storage::in_memory().unwrap();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let params = rpc_params!(BlockId::Latest, INVALID_CONTRACT_ADDR);
-                let error = client(addr)
-                    .request::<ContractClass>("starknet_getClassAt", params)
-                    .await
-                    .unwrap_err();
-                assert_eq!(ErrorCode::ContractNotFound, error);
-            }
+        #[tokio::test]
+        async fn returns_not_found_if_we_dont_know_about_the_contract() {
+            let storage = Storage::in_memory().unwrap();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-            #[tokio::test]
-            async fn returns_not_found_if_we_dont_know_about_the_contract() {
-                let storage = Storage::in_memory().unwrap();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                let not_found = client(addr)
-                    .request::<ContractClass>(
-                        "starknet_getClassAt",
-                        rpc_params!(
-                            BlockId::Latest,
-                            "0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc"
-                        ),
-                    )
-                    .await
-                    .unwrap_err();
-
-                assert_eq!(ErrorCode::ContractNotFound, not_found);
-            }
-
-            #[tokio::test]
-            async fn returns_program_and_entry_points_for_known_class() {
-                use crate::core::ContractClass;
-                use futures::stream::TryStreamExt;
-
-                let storage = setup_storage();
-                let mut conn = storage.connection().unwrap();
-                let transaction = conn.transaction().unwrap();
-                let (contract_address, _class_hash, program, entry_points) =
-                    setup_class_and_contract(&transaction).unwrap();
-                transaction.commit().unwrap();
-
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                let client = client(addr);
-
-                // both parameters, these used to be separate tests
-                let rets = [
-                    rpc_params!(BlockId::Latest, contract_address),
-                    by_name([
-                        ("block_id", json!("latest")),
-                        ("contract_address", json!(contract_address)),
+            let not_found = client(addr)
+                .request::<ContractClass>(
+                    "starknet_getClassAt",
+                    json!([
+                        "latest",
+                        "0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc"
                     ]),
-                ]
-                .into_iter()
-                .map(|arg| client.request::<ContractClass>("starknet_getClassAt", arg))
-                .collect::<futures::stream::FuturesOrdered<_>>()
-                .try_collect::<Vec<_>>()
+                )
+                .await
+                .unwrap_err();
+
+            assert_eq!(ErrorCode::ContractNotFound, not_found);
+        }
+
+        #[tokio::test]
+        async fn returns_program_and_entry_points_for_known_class() {
+            use crate::core::ContractClass;
+            use futures::stream::TryStreamExt;
+
+            let storage = setup_storage();
+            let mut conn = storage.connection().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let (contract_address, _class_hash, program, entry_points) =
+                setup_class_and_contract(&transaction).unwrap();
+            transaction.commit().unwrap();
+
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            let client = client(addr);
+
+            // both parameters, these used to be separate tests
+            let rets = [
+                json!(["latest", contract_address]),
+                json!({
+                    "block_id": "latest",
+                    "contract_address": contract_address
+                }),
+            ]
+            .into_iter()
+            .map(|arg| client.request::<ContractClass>("starknet_getClassAt", arg))
+            .collect::<futures::stream::FuturesOrdered<_>>()
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+
+            assert_eq!(rets.len(), 2);
+
+            assert_eq!(rets[0], rets[1]);
+            assert_eq!(rets[0].entry_points_by_type, entry_points);
+            assert_eq!(rets[0].program, program);
+        }
+
+        #[tokio::test]
+        async fn returns_not_found_for_existing_contract_that_is_not_yet_deployed() {
+            use crate::core::ContractClass;
+
+            let storage = setup_storage();
+            let mut conn = storage.connection().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let (contract_address, _class_hash, _program, _entry_points) =
+                setup_class_and_contract(&transaction).unwrap();
+            transaction.commit().unwrap();
+
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            let not_found = client(addr)
+                .request::<ContractClass>(
+                    "starknet_getClassAt",
+                    json!([{"block_number": 2}, contract_address]),
+                )
+                .await
+                .unwrap_err();
+
+            assert_eq!(ErrorCode::ContractNotFound, not_found);
+        }
+
+        #[tokio::test]
+        async fn pending() {
+            let storage = setup_storage();
+            let pending_data = create_pending_data(storage.clone()).await;
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                .with_pending_data(pending_data.clone());
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+            let contract = pending_data.state_update().await.unwrap();
+            let contract = contract.state_diff.deployed_contracts.first().unwrap();
+
+            let params = json!(["pending", contract.address]);
+            client(addr)
+                .request::<ContractClass>("starknet_getClassAt", params)
                 .await
                 .unwrap();
-
-                assert_eq!(rets.len(), 2);
-
-                assert_eq!(rets[0], rets[1]);
-                assert_eq!(rets[0].entry_points_by_type, entry_points);
-                assert_eq!(rets[0].program, program);
-            }
-
-            #[tokio::test]
-            async fn returns_not_found_for_existing_contract_that_is_not_yet_deployed() {
-                use crate::core::ContractClass;
-
-                let storage = setup_storage();
-                let mut conn = storage.connection().unwrap();
-                let transaction = conn.transaction().unwrap();
-                let (contract_address, _class_hash, _program, _entry_points) =
-                    setup_class_and_contract(&transaction).unwrap();
-                transaction.commit().unwrap();
-
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                let not_found = client(addr)
-                    .request::<ContractClass>(
-                        "starknet_getClassAt",
-                        rpc_params!(
-                            BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
-                            contract_address
-                        ),
-                    )
-                    .await
-                    .unwrap_err();
-
-                assert_eq!(ErrorCode::ContractNotFound, not_found);
-            }
-
-            #[tokio::test]
-            async fn pending() {
-                let storage = setup_storage();
-                let pending_data = create_pending_data(storage.clone()).await;
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
-                    .with_pending_data(pending_data.clone());
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                let contract = pending_data.state_update().await.unwrap();
-                let contract = contract.state_diff.deployed_contracts.first().unwrap();
-
-                let params = rpc_params!(BlockId::Pending, contract.address);
-                client(addr)
-                    .request::<ContractClass>("starknet_getClassAt", params)
-                    .await
-                    .unwrap();
-            }
         }
+    }
 
-        mod contract_setup {
-            use crate::{
-                core::StorageValue, sequencer::reply::state_update::StorageDiff, starkhash,
-                state::update_contract_state, storage::StarknetBlocksBlockId,
+    mod contract_setup {
+        use crate::{
+            core::StorageValue, sequencer::reply::state_update::StorageDiff, starkhash,
+            state::update_contract_state, storage::StarknetBlocksBlockId,
+        };
+
+        use super::*;
+        use anyhow::Context;
+        use bytes::Bytes;
+        use flate2::{write::GzEncoder, Compression};
+        use pretty_assertions::assert_eq;
+
+        pub fn setup_class_and_contract(
+            transaction: &rusqlite::Transaction<'_>,
+        ) -> anyhow::Result<(ContractAddress, ClassHash, String, serde_json::Value)> {
+            let contract_definition = include_bytes!("../../fixtures/contract_definition.json.zst");
+            let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition))?;
+            let contract_definition = Bytes::from(buffer);
+
+            let contract_address = ContractAddress::new_or_panic(starkhash!(
+                "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
+            ));
+            let expected_hash =
+                starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
+
+            let (abi, bytecode, hash) =
+                crate::state::class_hash::extract_abi_code_hash(&*contract_definition)?;
+
+            assert_eq!(hash.0, expected_hash);
+
+            let (program, entry_points) =
+                crate::state::class_hash::extract_program_and_entry_points_by_type(
+                    &*contract_definition,
+                )?;
+
+            crate::storage::ContractCodeTable::insert(
+                transaction,
+                hash,
+                &abi,
+                &bytecode,
+                &contract_definition,
+            )
+            .context("Deploy testing contract")?;
+
+            crate::storage::ContractsTable::upsert(transaction, contract_address, hash)?;
+
+            let mut compressor = GzEncoder::new(Vec::new(), Compression::fast());
+            serde_json::to_writer(&mut compressor, &program)?;
+            let program = compressor.finish()?;
+
+            let program = base64::encode(program);
+
+            // insert a new block whose state includes the contract
+            let storage_addr = StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr"));
+            let storage_diff = vec![StorageDiff {
+                key: storage_addr,
+                value: StorageValue(starkhash_bytes!(b"storage_value")),
+            }];
+            let block2 = StarknetBlocksTable::get(
+                transaction,
+                StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+            )
+            .unwrap()
+            .unwrap();
+            let mut global_tree = GlobalStateTree::load(transaction, block2.root).unwrap();
+            let contract_state_hash = update_contract_state(
+                contract_address,
+                &storage_diff,
+                None,
+                &global_tree,
+                transaction,
+            )
+            .unwrap();
+            global_tree
+                .set(contract_address, contract_state_hash)
+                .unwrap();
+
+            let block3 = StarknetBlock {
+                number: StarknetBlockNumber::new_or_panic(3),
+                hash: StarknetBlockHash(starkhash_bytes!(b"block 3 hash")),
+                root: global_tree.apply().unwrap(),
+                timestamp: StarknetBlockTimestamp::new_or_panic(3),
+                gas_price: GasPrice::from(3),
+                sequencer_address: SequencerAddress(starkhash_bytes!(&[3u8])),
             };
 
-            use super::*;
-            use anyhow::Context;
-            use bytes::Bytes;
-            use flate2::{write::GzEncoder, Compression};
-            use pretty_assertions::assert_eq;
+            StarknetBlocksTable::insert(transaction, &block3, None).unwrap();
 
-            pub fn setup_class_and_contract(
-                transaction: &rusqlite::Transaction<'_>,
-            ) -> anyhow::Result<(ContractAddress, ClassHash, String, serde_json::Value)>
-            {
-                let contract_definition =
-                    include_bytes!("../../fixtures/contract_definition.json.zst");
-                let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition))?;
-                let contract_definition = Bytes::from(buffer);
-
-                let contract_address = ContractAddress::new_or_panic(starkhash!(
-                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                ));
-                let expected_hash =
-                    starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
-
-                let (abi, bytecode, hash) =
-                    crate::state::class_hash::extract_abi_code_hash(&*contract_definition)?;
-
-                assert_eq!(hash.0, expected_hash);
-
-                let (program, entry_points) =
-                    crate::state::class_hash::extract_program_and_entry_points_by_type(
-                        &*contract_definition,
-                    )?;
-
-                crate::storage::ContractCodeTable::insert(
-                    transaction,
-                    hash,
-                    &abi,
-                    &bytecode,
-                    &contract_definition,
-                )
-                .context("Deploy testing contract")?;
-
-                crate::storage::ContractsTable::upsert(transaction, contract_address, hash)?;
-
-                let mut compressor = GzEncoder::new(Vec::new(), Compression::fast());
-                serde_json::to_writer(&mut compressor, &program)?;
-                let program = compressor.finish()?;
-
-                let program = base64::encode(program);
-
-                // insert a new block whose state includes the contract
-                let storage_addr = StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr"));
-                let storage_diff = vec![StorageDiff {
-                    key: storage_addr,
-                    value: StorageValue(starkhash_bytes!(b"storage_value")),
-                }];
-                let block2 = StarknetBlocksTable::get(
-                    transaction,
-                    StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(2)),
-                )
-                .unwrap()
-                .unwrap();
-                let mut global_tree = GlobalStateTree::load(transaction, block2.root).unwrap();
-                let contract_state_hash = update_contract_state(
-                    contract_address,
-                    &storage_diff,
-                    None,
-                    &global_tree,
-                    transaction,
-                )
-                .unwrap();
-                global_tree
-                    .set(contract_address, contract_state_hash)
-                    .unwrap();
-
-                let block3 = StarknetBlock {
-                    number: StarknetBlockNumber::new_or_panic(3),
-                    hash: StarknetBlockHash(starkhash_bytes!(b"block 3 hash")),
-                    root: global_tree.apply().unwrap(),
-                    timestamp: StarknetBlockTimestamp::new_or_panic(3),
-                    gas_price: GasPrice::from(3),
-                    sequencer_address: SequencerAddress(starkhash_bytes!(&[3u8])),
-                };
-
-                StarknetBlocksTable::insert(transaction, &block3, None).unwrap();
-
-                Ok((contract_address, hash, program, entry_points))
-            }
+            Ok((contract_address, hash, program, entry_points))
         }
+    }
+
+    #[cfg(fixme)]
+    mod fixme2 {
 
         mod get_block_transaction_count {
             use super::*;
