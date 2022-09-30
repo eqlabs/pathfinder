@@ -1227,119 +1227,115 @@ mod tests {
                 }
             }
         }
+    }
 
-        mod get_class_hash_at {
+    mod get_class_hash_at {
+        use super::*;
+
+        mod positional_args {
             use super::*;
+            use crate::rpc::v01::types::reply::ErrorCode;
+            use pretty_assertions::assert_eq;
 
-            mod positional_args {
-                use super::*;
-                use crate::rpc::v01::types::reply::ErrorCode;
-                use pretty_assertions::assert_eq;
-
-                #[tokio::test]
-                async fn returns_contract_not_found_for_nonexistent_contract() {
-                    let storage = Storage::in_memory().unwrap();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                    let params = rpc_params!(BlockId::Latest, INVALID_CONTRACT_ADDR);
-                    let error = client(addr)
-                        .request::<ClassHash>("starknet_getClassHashAt", params)
-                        .await
-                        .unwrap_err();
-                    assert_eq!(ErrorCode::ContractNotFound, error);
-                }
-
-                #[tokio::test]
-                async fn returns_class_hash_for_existing_contract() {
-                    let storage = setup_storage();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let contract_address =
-                        ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
-                    let params = rpc_params!(BlockId::Latest, contract_address);
-                    let class_hash = client(addr)
-                        .request::<ClassHash>("starknet_getClassHashAt", params)
-                        .await
-                        .unwrap();
-                    let expected_class_hash = ClassHash(starkhash_bytes!(b"class 1 hash"));
-                    assert_eq!(class_hash, expected_class_hash);
-                }
-
-                #[tokio::test]
-                async fn returns_not_found_for_existing_contract_that_is_not_yet_deployed() {
-                    let storage = setup_storage();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let contract_address =
-                        ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
-                    let params = rpc_params!(
-                        BlockId::Number(StarknetBlockNumber::GENESIS),
-                        contract_address
-                    );
-                    let error = client(addr)
-                        .request::<ClassHash>("starknet_getClassHashAt", params)
-                        .await
-                        .unwrap_err();
-                    assert_eq!(ErrorCode::ContractNotFound, error);
-                }
-
-                #[tokio::test]
-                async fn pending() {
-                    let storage = setup_storage();
-                    let pending_data = create_pending_data(storage.clone()).await;
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
-                        .with_pending_data(pending_data.clone());
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let contract = pending_data.state_update().await.unwrap();
-                    let contract = contract.state_diff.deployed_contracts.first().unwrap();
-
-                    let params = rpc_params!(BlockId::Pending, contract.address);
-                    let class_hash = client(addr)
-                        .request::<ClassHash>("starknet_getClassHashAt", params)
-                        .await
-                        .unwrap();
-                    assert_eq!(class_hash, contract.class_hash);
-                }
+            #[tokio::test]
+            async fn returns_contract_not_found_for_nonexistent_contract() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = json!(["latest", "0x0"]);
+                let error = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap_err();
+                assert_eq!(ErrorCode::ContractNotFound, error);
             }
 
-            mod named_args {
-                use super::*;
-                use pretty_assertions::assert_eq;
+            #[tokio::test]
+            async fn returns_class_hash_for_existing_contract() {
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-                #[tokio::test]
-                async fn returns_class_hash_for_existing_contract() {
-                    let storage = setup_storage();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = json!(["latest", starkhash_bytes!(b"contract 1")]);
+                let class_hash = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap();
+                let expected_class_hash = ClassHash(starkhash_bytes!(b"class 1 hash"));
+                assert_eq!(class_hash, expected_class_hash);
+            }
 
-                    let contract_address =
-                        ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
-                    let params = by_name([
-                        ("block_id", json!("latest")),
-                        ("contract_address", json!(contract_address)),
-                    ]);
-                    let class_hash = client(addr)
-                        .request::<ClassHash>("starknet_getClassHashAt", params)
-                        .await
-                        .unwrap();
-                    let expected_class_hash = ClassHash(starkhash_bytes!(b"class 1 hash"));
-                    assert_eq!(class_hash, expected_class_hash);
-                }
+            #[tokio::test]
+            async fn returns_not_found_for_existing_contract_that_is_not_yet_deployed() {
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let contract_address =
+                    ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
+                let params = json!([{"block_number": 0}, contract_address]);
+                let error = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap_err();
+                assert_eq!(ErrorCode::ContractNotFound, error);
+            }
+
+            #[tokio::test]
+            async fn pending() {
+                let storage = setup_storage();
+                let pending_data = create_pending_data(storage.clone()).await;
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                    .with_pending_data(pending_data.clone());
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let contract = pending_data.state_update().await.unwrap();
+                let contract = contract.state_diff.deployed_contracts.first().unwrap();
+
+                let params = json!(["pending", contract.address]);
+                let class_hash = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap();
+                assert_eq!(class_hash, contract.class_hash);
             }
         }
+
+        mod named_args {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_class_hash_for_existing_contract() {
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = json!({
+                    "block_id": "latest",
+                    "contract_address": starkhash_bytes!(b"contract 1")});
+                let class_hash = client(addr)
+                    .request::<ClassHash>("starknet_getClassHashAt", params)
+                    .await
+                    .unwrap();
+                let expected_class_hash = ClassHash(starkhash_bytes!(b"class 1 hash"));
+                assert_eq!(class_hash, expected_class_hash);
+            }
+        }
+    }
+
+    #[cfg(fixme)]
+    mod fixme2 {
 
         mod get_class_at {
             use super::contract_setup::setup_class_and_contract;
