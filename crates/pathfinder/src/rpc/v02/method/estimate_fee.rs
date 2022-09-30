@@ -206,6 +206,7 @@ mod tests {
         fn test_invoke_txn() -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                 crate::rpc::v02::types::request::BroadcastedInvokeTransactionV0 {
+                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
                     signature: vec![TransactionSignatureElem(starkhash!("07"))],
                     nonce: TransactionNonce(starkhash!("08")),
@@ -223,7 +224,7 @@ mod tests {
             let positional = r#"[
                 {
                     "type": "INVOKE",
-                    "version": "0x0",
+                    "version": "0x100000000000000000000000000000000",
                     "max_fee": "0x6",
                     "signature": [
                         "0x7"
@@ -254,7 +255,7 @@ mod tests {
             let named_args = r#"{
                 "request": {
                     "type": "INVOKE",
-                    "version": "0x0",
+                    "version": "0x100000000000000000000000000000000",
                     "max_fee": "0x6",
                     "signature": [
                         "0x7"
@@ -294,6 +295,7 @@ mod tests {
         // Data from transaction 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
         fn valid_mainnet_invoke_v0() -> BroadcastedInvokeTransactionV0 {
             BroadcastedInvokeTransactionV0 {
+                version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                 max_fee: Fee(Default::default()),
                 signature: vec![],
                 nonce: TransactionNonce(Default::default()),

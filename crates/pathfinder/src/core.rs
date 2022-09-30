@@ -217,6 +217,12 @@ impl TransactionVersion {
     pub const ONE: Self = Self(H256(hex_literal::hex!(
         "0000000000000000000000000000000000000000000000000000000000000001"
     )));
+    pub const ZERO_WITH_QUERY_VERSION: Self = Self(H256(hex_literal::hex!(
+        "0000000000000000000000000000000100000000000000000000000000000000"
+    )));
+    pub const ONE_WITH_QUERY_VERSION: Self = Self(H256(hex_literal::hex!(
+        "0000000000000000000000000000000100000000000000000000000000000001"
+    )));
 }
 
 /// An Ethereum address.
