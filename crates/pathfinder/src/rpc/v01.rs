@@ -716,6 +716,25 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn non_existent_key_gives_zero_value() {
+            let storage = setup_storage();
+            let sequencer = Client::new(Chain::Testnet).unwrap();
+            let sync_state = Arc::new(SyncState::default());
+            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+            let params = json!([
+                starkhash_bytes!(b"contract 1"),
+                starkhash_bytes!(b"nonexistent"),
+                "latest"
+            ]);
+            let value = client(addr)
+                .request::<StorageValue>("starknet_getStorageAt", params)
+                .await
+                .unwrap();
+            assert_eq!(value.0, StarkHash::ZERO);
+        }
+
+        #[tokio::test]
         async fn deployment_block() {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
