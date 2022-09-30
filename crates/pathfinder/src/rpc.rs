@@ -4,8 +4,9 @@ pub mod gas_price;
 pub mod serde;
 #[cfg(test)]
 pub mod test_client;
-#[cfg(test)]
-pub mod test_setup;
+// FIXME
+// #[cfg(test)]
+// pub mod test_setup;
 pub mod v01;
 pub mod v02;
 
@@ -115,7 +116,7 @@ mod tests {
             StarknetBlocksTable, StarknetTransactionsTable, Storage,
         },
     };
-    use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
+    use jsonrpsee::{server::ServerHandle, types::Params};
 
     use stark_hash::StarkHash;
     use std::{
@@ -129,15 +130,8 @@ mod tests {
     pub async fn run_server(
         addr: SocketAddr,
         api: super::v01::api::RpcApi,
-    ) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
+    ) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
         RpcServer::new(addr, api).run().await
-    }
-
-    /// Helper function: produces named rpc method args map.
-    pub fn by_name<const N: usize>(
-        params: [(&'_ str, serde_json::Value); N],
-    ) -> Option<ParamsSer<'_>> {
-        Some(BTreeMap::from(params).into())
     }
 
     lazy_static::lazy_static! {
