@@ -30,6 +30,19 @@ jobs:
       - uses: Swatinem/rust-cache@v1
         with:
           key: "mold"
+      - uses: actions/setup-python@v4
+        id: setup_python
+        with:
+          python-version: '3.8'
+          cache: 'pip'
+          cache-dependency-path: 'py/requirements-dev.txt'
+      # Workaround for setup-python issue #330 (https://github.com/actions/setup-python/issues/330)
+      - uses: actions/cache@v3
+        id: python_cache
+        with:
+          path: ${{ env.pythonLocation }}/**/site-packages
+          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements-dev.txt') }}
+      - run: pip install -r py/requirements-dev.txt
       - run: |
           cargo test --no-run --workspace --locked
           timeout 5m cargo test -p pathfinder -- --skip ethereum::

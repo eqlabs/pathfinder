@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use super::error::RpcError;
+use crate::cairo::ext_py;
+use crate::rpc::gas_price;
 use crate::{core::Chain, state::SyncState};
 use crate::{state::PendingData, storage::Storage};
 
@@ -13,6 +15,8 @@ pub struct RpcContext {
     pub pending_data: Option<PendingData>,
     pub sync_status: Arc<SyncState>,
     pub chain: Chain,
+    pub call_handle: Option<ext_py::Handle>,
+    pub eth_gas_price: Option<gas_price::Cached>,
 }
 
 impl RpcContext {
@@ -22,6 +26,8 @@ impl RpcContext {
             sync_status,
             chain,
             pending_data: None,
+            call_handle: None,
+            eth_gas_price: None,
         }
     }
 
@@ -47,6 +53,20 @@ impl RpcContext {
         let pending_data = super::tests::create_pending_data(context.storage.clone()).await;
         context.with_pending_data(pending_data)
     }
+
+    pub fn with_call_handling(self, call_handle: ext_py::Handle) -> Self {
+        Self {
+            call_handle: Some(call_handle),
+            ..self
+        }
+    }
+
+    pub fn with_eth_gas_price(self, gas_price: gas_price::Cached) -> Self {
+        Self {
+            eth_gas_price: Some(gas_price),
+            ..self
+        }
+    }
 }
 
 // FIXME
@@ -59,6 +79,8 @@ impl From<&super::v01::api::RpcApi> for RpcContext {
             pending_data: v01.pending_data.clone(),
             sync_status: v01.sync_state.clone(),
             chain: v01.chain,
+            call_handle: v01.call_handle.clone(),
+            eth_gas_price: v01.shared_gas_price.clone(),
         }
     }
 }
@@ -155,6 +177,11 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         module,
         "starknet_getClassHashAt",
         method::get_class_hash_at::get_class_hash_at,
+    )?;
+    register_method(
+        module,
+        "starknet_estimateFee",
+        method::estimate_fee::estimate_fee,
     )?;
     register_method(module, "starknet_getNonce", method::get_nonce::get_nonce)?;
     register_method(
