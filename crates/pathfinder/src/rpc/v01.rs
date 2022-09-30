@@ -2960,68 +2960,61 @@ mod tests {
         }
     }
 
-    #[cfg(fixme)]
-    mod fixme2 {
+    #[tokio::test]
+    async fn per_method_metrics() {
+        use crate::monitoring::metrics::test::FakeRecorder;
+        use crate::monitoring::metrics::{middleware::RpcMetricsMiddleware, test::RecorderGuard};
+        use crate::rpc::v01::types::reply::Block;
+        use futures::stream::StreamExt;
 
-        #[tokio::test]
-        async fn per_method_metrics() {
-            use crate::monitoring::metrics::test::FakeRecorder;
-            use crate::monitoring::metrics::{
-                middleware::RpcMetricsMiddleware, test::RecorderGuard,
-            };
-            use crate::rpc::v01::types::reply::Block;
-            use futures::stream::StreamExt;
+        let recorder = FakeRecorder::new(&["starknet_getBlockWithTxHashes"]);
+        let handle = recorder.handle();
 
-            let recorder = FakeRecorder::new(&["starknet_getBlockWithTxHashes"]);
-            let handle = recorder.handle();
+        let get_all =
+            || handle.get_counter_value("rpc_method_calls_total", "starknet_getBlockWithTxHashes");
+        let get_failed = || {
+            handle.get_counter_value(
+                "rpc_method_calls_failed_total",
+                "starknet_getBlockWithTxHashes",
+            )
+        };
 
-            let get_all = || {
-                handle.get_counter_value("rpc_method_calls_total", "starknet_getBlockWithTxHashes")
-            };
-            let get_failed = || {
-                handle.get_counter_value(
-                    "rpc_method_calls_failed_total",
+        // Other concurrent tests could be setting their own recorders
+        let _guard = RecorderGuard::lock(recorder);
+
+        let storage = setup_storage();
+        let sequencer = Client::new(Chain::Testnet).unwrap();
+        let sync_state = Arc::new(SyncState::default());
+        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+        let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
+            .with_middleware(RpcMetricsMiddleware)
+            .run()
+            .await
+            .unwrap();
+
+        assert_eq!(get_all(), 0);
+        assert_eq!(get_failed(), 0);
+
+        // Two successes and a failure
+        [
+            StarknetBlockNumber::GENESIS,
+            StarknetBlockNumber::GENESIS + 1,
+            StarknetBlockNumber::MAX,
+        ]
+        .into_iter()
+        .map(|block_number| async move {
+            let _ = client(addr)
+                .request::<Block>(
                     "starknet_getBlockWithTxHashes",
+                    json!([{ "block_number": block_number }]),
                 )
-            };
+                .await;
+        })
+        .collect::<futures::stream::FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
 
-            // Other concurrent tests could be setting their own recorders
-            let _guard = RecorderGuard::lock(recorder);
-
-            let storage = setup_storage();
-            let sequencer = Client::new(Chain::Testnet).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-            let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
-                .with_middleware(RpcMetricsMiddleware)
-                .run()
-                .await
-                .unwrap();
-
-            assert_eq!(get_all(), 0);
-            assert_eq!(get_failed(), 0);
-
-            // Two successes and a failure
-            [
-                StarknetBlockNumber::GENESIS,
-                StarknetBlockNumber::GENESIS + 1,
-                StarknetBlockNumber::MAX,
-            ]
-            .into_iter()
-            .map(|block_number| async move {
-                let _ = client(addr)
-                    .request::<Block>(
-                        "starknet_getBlockWithTxHashes",
-                        rpc_params!(BlockId::Number(block_number)),
-                    )
-                    .await;
-            })
-            .collect::<futures::stream::FuturesUnordered<_>>()
-            .collect::<Vec<_>>()
-            .await;
-
-            assert_eq!(get_all(), 3);
-            assert_eq!(get_failed(), 1);
-        }
+        assert_eq!(get_all(), 3);
+        assert_eq!(get_failed(), 1);
     }
 }
