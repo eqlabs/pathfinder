@@ -4,10 +4,11 @@ use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
-use jsonrpsee::core::Error;
+use jsonrpsee::core::{traits::ToRpcParams, Error};
 use jsonrpsee::types::error::CallError;
-use jsonrpsee::types::{ErrorResponse, Id, ParamsSer, RequestSer, Response};
+use jsonrpsee::types::{ErrorResponse, Id, Params, RequestSer, Response};
 use serde::de::DeserializeOwned;
+use serde_json::{json, Value};
 
 /// Create an RPC [`TestClient`] with a timeout of 120 seconds.
 pub fn client(addr: SocketAddr) -> TestClient {
@@ -66,7 +67,19 @@ pub struct TestClient {
 }
 
 impl TestClient {
-    /// Perform a request towards the server.
+    /// Perform a request towards the server. For example:
+    /// ```
+    /// use serde_json::json;
+    /// let latest = client
+    ///     .request::<Block>("starknet_getBlock", json!(["latest"]))
+    ///     .await;
+    /// let genesis = client
+    ///     .request::<Block>(
+    ///         "starknet_getBlock",
+    ///         json!({"block_id": {"block_number": 0}}),
+    ///     )
+    ///     .await;
+    /// ```
     ///
     /// The difference from [`jsonrpsee::http_client::HttpClient::request`] is that
     /// this method reports the core reason for response `R` serde error,
@@ -74,11 +87,29 @@ impl TestClient {
     pub async fn request<'a, R>(
         &self,
         method: &'a str,
-        params: Option<ParamsSer<'a>>,
+        params: serde_json::Value,
     ) -> Result<R, Error>
     where
         R: DeserializeOwned,
     {
+        let params = match params {
+            Value::Array(_) | Value::Object(_) => {
+                Some(serde_json::value::to_raw_value(&params).expect("JSON array or object"))
+            }
+            other => {
+                let variant_name = match other {
+                    Value::Null => "serde_json::Value::Null",
+                    Value::Bool(_) => "serde_json::Value::Bool",
+                    Value::Number(_) => "serde_json::Value::Number",
+                    Value::String(_) => "serde_json::Value::String",
+                    Value::Array(_) | Value::Object(_) => unreachable!(),
+                };
+                return Err(Error::Custom(format!(
+                    "Invalid params type {variant_name}, accepted types: serde_json::Value::{{String,Array}}"
+                )));
+            }
+        };
+
         let id = Id::Number(
             self.current_id
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
