@@ -9,11 +9,11 @@ use crate::rpc::v01::types::{
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
     core::{
-        BlockId, CallResultValue, CallSignatureElem, Chain, ClassHash, ConstructorParam,
-        ContractAddress, ContractAddressSalt, ContractClass, ContractNonce, Fee, GasPrice,
-        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
-        StorageValue, TransactionNonce, TransactionVersion,
+        BlockId, CallResultValue, Chain, ClassHash, ConstructorParam, ContractAddress,
+        ContractAddressSalt, ContractClass, ContractNonce, Fee, GasPrice, GlobalRoot,
+        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
     },
     rpc::gas_price,
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
@@ -1304,7 +1304,7 @@ impl RpcApi {
     pub async fn add_invoke_transaction(
         &self,
         call: ContractCall,
-        signature: Vec<CallSignatureElem>,
+        signature: Vec<TransactionSignatureElem>,
         max_fee: Fee,
         version: TransactionVersion,
     ) -> RpcResult<InvokeTransactionResult> {

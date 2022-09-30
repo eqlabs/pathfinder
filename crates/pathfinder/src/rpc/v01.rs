@@ -58,11 +58,13 @@ pub fn register_all_methods(
 ) -> Result<(), jsonrpsee::core::Error> {
     use crate::{
         core::{
-            BlockId, CallSignatureElem, ClassHash, ConstructorParam, ContractAddress,
-            ContractAddressSalt, Fee, StarknetTransactionHash, StarknetTransactionIndex,
+            BlockId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+            StarknetTransactionHash, StarknetTransactionIndex, TransactionSignatureElem,
             TransactionVersion,
         },
-        rpc::serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
+        rpc::serde::{
+            FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+        },
         sequencer::request::add_transaction::ContractDefinition,
     };
     use ::serde::Deserialize;
@@ -251,8 +253,8 @@ pub fn register_all_methods(
             #[derive(Debug, Deserialize)]
             struct NamedArgs {
                 function_invocation: ContractCall,
-                #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
-                signature: Vec<CallSignatureElem>,
+                #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+                signature: Vec<TransactionSignatureElem>,
                 #[serde_as(as = "FeeAsHexStr")]
                 max_fee: Fee,
                 #[serde_as(as = "TransactionVersionAsHexStr")]
@@ -2537,8 +2539,8 @@ mod tests {
             use super::*;
             use crate::{
                 core::{
-                    ByteCodeOffset, CallParam, CallSignatureElem, ClassHash, ConstructorParam,
-                    ContractAddressSalt, EntryPoint, Fee, TransactionVersion,
+                    ByteCodeOffset, CallParam, ClassHash, ConstructorParam, ContractAddressSalt,
+                    EntryPoint, Fee, TransactionSignatureElem, TransactionVersion,
                 },
                 rpc::v01::types::request::ContractCall,
                 sequencer::request::{
@@ -2568,9 +2570,9 @@ mod tests {
                     ],
                     entry_point_selector: EntryPoint(starkhash!("015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"))
                 };
-                pub static ref SIGNATURE: Vec<CallSignatureElem> = vec![
-                    CallSignatureElem(starkhash!("07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5")),
-                    CallSignatureElem(starkhash!("071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8")),
+                pub static ref SIGNATURE: Vec<TransactionSignatureElem> = vec![
+                    TransactionSignatureElem(starkhash!("07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5")),
+                    TransactionSignatureElem(starkhash!("071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8")),
                 ];
                 pub static ref MAX_FEE: Fee = Fee(5444010076217u128.to_be_bytes().into());
                 pub static ref TRANSACTION_VERSION: TransactionVersion = TransactionVersion(H256::zero());

@@ -1,8 +1,8 @@
 //! Utilities used for serializing/deserializing sequencer REST API related data.
 
 use crate::core::{
-    CallParam, CallSignatureElem, ConstructorParam, EthereumAddress, EventData, EventKey, Fee,
-    GasPrice, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
+    CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, Fee, GasPrice,
+    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
     TransactionSignatureElem, TransactionVersion,
 };
 use num_bigint::BigUint;
@@ -18,13 +18,6 @@ serde_conv!(
     CallParam,
     |serialize_me: &CallParam| starkhash_to_dec_str(&serialize_me.0),
     |s: &str| starkhash_from_dec_str(s).map(CallParam)
-);
-
-serde_conv!(
-    pub CallSignatureElemAsDecimalStr,
-    CallSignatureElem,
-    |serialize_me: &CallSignatureElem| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(CallSignatureElem)
 );
 
 serde_conv!(

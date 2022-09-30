@@ -95,10 +95,6 @@ pub struct ConstructorParam(pub StarkHash);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CallResultValue(pub StarkHash);
 
-/// A single element of a signature used to secure a StarkNet `call`.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct CallSignatureElem(pub StarkHash);
-
 /// A word from a StarkNet contract bytecode.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ByteCodeWord(pub StarkHash);
@@ -447,7 +443,6 @@ macros::starkhash::common_newtype!(
     CallParam,
     ConstructorParam,
     CallResultValue,
-    CallSignatureElem,
     ByteCodeWord,
     StorageAddress,
     StorageValue,
