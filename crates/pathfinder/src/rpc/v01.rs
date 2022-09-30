@@ -1143,88 +1143,84 @@ mod tests {
         }
     }
 
-    #[cfg(fixme)]
-    mod fixme {
+    mod get_class {
+        use super::contract_setup::setup_class_and_contract;
+        use super::*;
+        use crate::core::ContractClass;
+        use crate::rpc::v01::types::reply::ErrorCode;
 
-        mod get_class {
-            use super::contract_setup::setup_class_and_contract;
+        mod positional_args {
             use super::*;
-            use crate::core::ContractClass;
-            use crate::rpc::v01::types::reply::ErrorCode;
+            use pretty_assertions::assert_eq;
 
-            mod positional_args {
-                use super::*;
-                use pretty_assertions::assert_eq;
-
-                #[tokio::test]
-                async fn returns_invalid_contract_class_hash_for_nonexistent_class() {
-                    let storage = Storage::in_memory().unwrap();
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                    let params = rpc_params!(INVALID_CLASS_HASH);
-                    let error = client(addr)
-                        .request::<ContractClass>("starknet_getClass", params)
-                        .await
-                        .unwrap_err();
-                    assert_eq!(ErrorCode::InvalidContractClassHash, error);
-                }
-
-                #[tokio::test]
-                async fn returns_program_and_entry_points_for_known_class() {
-                    let storage = setup_storage();
-
-                    let mut conn = storage.connection().unwrap();
-                    let transaction = conn.transaction().unwrap();
-                    let (_contract_address, class_hash, program, entry_points) =
-                        setup_class_and_contract(&transaction).unwrap();
-                    transaction.commit().unwrap();
-
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                    let params = rpc_params!(class_hash);
-                    let class = client(addr)
-                        .request::<ContractClass>("starknet_getClass", params)
-                        .await
-                        .unwrap();
-
-                    assert_eq!(class.entry_points_by_type, entry_points);
-                    assert_eq!(class.program, program);
-                }
+            #[tokio::test]
+            async fn returns_invalid_contract_class_hash_for_nonexistent_class() {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = json!(["0x0"]);
+                let error = client(addr)
+                    .request::<ContractClass>("starknet_getClass", params)
+                    .await
+                    .unwrap_err();
+                assert_eq!(ErrorCode::InvalidContractClassHash, error);
             }
 
-            mod named_args {
-                use super::*;
-                use pretty_assertions::assert_eq;
+            #[tokio::test]
+            async fn returns_program_and_entry_points_for_known_class() {
+                let storage = setup_storage();
 
-                #[tokio::test]
-                async fn returns_program_and_entry_points_for_known_class() {
-                    let storage = setup_storage();
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (_contract_address, class_hash, program, entry_points) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
 
-                    let mut conn = storage.connection().unwrap();
-                    let transaction = conn.transaction().unwrap();
-                    let (_contract_address, class_hash, program, entry_points) =
-                        setup_class_and_contract(&transaction).unwrap();
-                    transaction.commit().unwrap();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-                    let sequencer = Client::new(Chain::Testnet).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                    let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+                let params = json!([class_hash]);
+                let class = client(addr)
+                    .request::<ContractClass>("starknet_getClass", params)
+                    .await
+                    .unwrap();
 
-                    let params = by_name([("class_hash", json!(class_hash))]);
-                    let class = client(addr)
-                        .request::<ContractClass>("starknet_getClass", params)
-                        .await
-                        .unwrap();
+                assert_eq!(class.entry_points_by_type, entry_points);
+                assert_eq!(class.program, program);
+            }
+        }
 
-                    assert_eq!(class.entry_points_by_type, entry_points);
-                    assert_eq!(class.program, program);
-                }
+        mod named_args {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn returns_program_and_entry_points_for_known_class() {
+                let storage = setup_storage();
+
+                let mut conn = storage.connection().unwrap();
+                let transaction = conn.transaction().unwrap();
+                let (_contract_address, class_hash, program, entry_points) =
+                    setup_class_and_contract(&transaction).unwrap();
+                transaction.commit().unwrap();
+
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let params = json!({ "class_hash": class_hash });
+                let class = client(addr)
+                    .request::<ContractClass>("starknet_getClass", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(class.entry_points_by_type, entry_points);
+                assert_eq!(class.program, program);
             }
         }
     }
