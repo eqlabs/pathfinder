@@ -76,7 +76,7 @@ RUN find ${PY_PATH} -type d -a -name test -exec rm -rf '{}' + \
 # compatible with the Rust builder we've built the pathfinder executable in.
 FROM python:3.8-slim-bullseye AS runner
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp10 tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp10 tini curl && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pathfinder --no-create-home pathfinder
 
 COPY --from=rust-builder /usr/src/pathfinder/target/release/pathfinder /usr/local/bin/pathfinder
