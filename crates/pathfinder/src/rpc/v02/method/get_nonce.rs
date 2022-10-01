@@ -52,12 +52,8 @@ pub async fn get_nonce(
 
         let state_hash = global_state_tree
             .get(input.contract_address)
-            .context("Get contract state hash from global state tree")?;
-
-        // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
-        if state_hash.0 == stark_hash::StarkHash::ZERO {
-            return Err(GetNonceError::ContractNotFound);
-        }
+            .context("Get contract state hash from global state tree")?
+            .ok_or(GetNonceError::ContractNotFound)?;
 
         let nonce = crate::storage::ContractsStateTable::get_nonce(&tx, state_hash)
             .context("Reading contract nonce")?

@@ -64,6 +64,10 @@ impl std::fmt::Display for OverflowError {
 impl StarkHash {
     pub const ZERO: StarkHash = StarkHash([0u8; 32]);
 
+    pub fn is_zero(&self) -> bool {
+        self == &StarkHash::ZERO
+    }
+
     /// Returns the big-endian representation of this [StarkHash].
     pub const fn to_be_bytes(self) -> [u8; 32] {
         self.0

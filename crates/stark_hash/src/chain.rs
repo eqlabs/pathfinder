@@ -7,18 +7,10 @@ use crate::{stark_hash, StarkHash};
 /// second value is the number of values hashed together in this chain. For other values, the
 /// accumulator is on each update replaced with the `H(hash, value)` and the number of count
 /// incremented by one.
+#[derive(Default)]
 pub struct HashChain {
     hash: StarkHash,
     count: usize,
-}
-
-impl Default for HashChain {
-    fn default() -> Self {
-        HashChain {
-            hash: StarkHash::ZERO,
-            count: 0,
-        }
-    }
 }
 
 impl HashChain {

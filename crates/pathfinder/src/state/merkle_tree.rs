@@ -452,15 +452,15 @@ impl<T: NodeStorage> MerkleTree<T> {
     }
 
     /// Returns the value stored at key, or [StarkHash::ZERO] if it does not exist.
-    pub fn get(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<StarkHash> {
-        let val = match self.traverse(key)?.last() {
-            Some(node) => match &*node.borrow() {
-                Node::Leaf(value) => *value,
-                _ => StarkHash::ZERO,
-            },
-            None => StarkHash::ZERO,
-        };
-        Ok(val)
+    pub fn get(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Option<StarkHash>> {
+        let result = self
+            .traverse(key)?
+            .last()
+            .and_then(|node| match &*node.borrow() {
+                Node::Leaf(value) if !value.is_zero() => Some(*value),
+                _ => None,
+            });
+        Ok(result)
     }
 
     /// Traverses from the current root towards the destination [Leaf](Node::Leaf) node.
@@ -762,7 +762,7 @@ mod tests {
         let uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
 
         let key = starkhash!("99cadc82").view_bits().to_bitvec();
-        assert_eq!(uut.get(&key).unwrap(), StarkHash::ZERO);
+        assert_eq!(uut.get(&key).unwrap(), None);
     }
 
     #[test]
@@ -795,9 +795,9 @@ mod tests {
             uut.set(&key1, val1).unwrap();
             uut.set(&key2, val2).unwrap();
 
-            assert_eq!(uut.get(&key0).unwrap(), val0);
-            assert_eq!(uut.get(&key1).unwrap(), val1);
-            assert_eq!(uut.get(&key2).unwrap(), val2);
+            assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+            assert_eq!(uut.get(&key1).unwrap(), Some(val1));
+            assert_eq!(uut.get(&key2).unwrap(), Some(val2));
         }
 
         #[test]
@@ -813,7 +813,7 @@ mod tests {
             uut.set(&key, old_value).unwrap();
             uut.set(&key, new_value).unwrap();
 
-            assert_eq!(uut.get(&key).unwrap(), new_value);
+            assert_eq!(uut.get(&key).unwrap(), Some(new_value));
         }
     }
 
@@ -1047,7 +1047,7 @@ mod tests {
             uut.set(&key, value).unwrap();
             uut.delete_leaf(&key).unwrap();
 
-            assert_eq!(uut.get(&key).unwrap(), StarkHash::ZERO);
+            assert_eq!(uut.get(&key).unwrap(), None);
             assert_eq!(*uut.root.borrow(), Node::Unresolved(StarkHash::ZERO));
         }
 
@@ -1071,9 +1071,9 @@ mod tests {
 
             uut.delete_leaf(&key1).unwrap();
 
-            assert_eq!(uut.get(&key0).unwrap(), val0);
-            assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
-            assert_eq!(uut.get(&key2).unwrap(), val2);
+            assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+            assert_eq!(uut.get(&key1).unwrap(), None);
+            assert_eq!(uut.get(&key2).unwrap(), Some(val2));
         }
     }
 
@@ -1102,9 +1102,9 @@ mod tests {
 
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            assert_eq!(uut.get(&key0).unwrap(), val0);
-            assert_eq!(uut.get(&key1).unwrap(), val1);
-            assert_eq!(uut.get(&key2).unwrap(), val2);
+            assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+            assert_eq!(uut.get(&key1).unwrap(), Some(val1));
+            assert_eq!(uut.get(&key2).unwrap(), Some(val2));
         }
 
         #[test]
@@ -1187,19 +1187,19 @@ mod tests {
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test", &transaction, root0).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), None);
+                assert_eq!(uut.get(&key2).unwrap(), None);
 
                 let uut = MerkleTree::load("test", &transaction, root1).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), val1);
-                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), Some(val1));
+                assert_eq!(uut.get(&key2).unwrap(), None);
 
                 let uut = MerkleTree::load("test", &transaction, root2).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), val1);
-                assert_eq!(uut.get(&key2).unwrap(), val2);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), Some(val1));
+                assert_eq!(uut.get(&key2).unwrap(), Some(val2));
             }
 
             #[test]
@@ -1231,16 +1231,16 @@ mod tests {
                 uut.delete().unwrap();
 
                 let uut = MerkleTree::load("test", &transaction, root0).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), None);
+                assert_eq!(uut.get(&key2).unwrap(), None);
 
                 MerkleTree::load("test", &transaction, root1).unwrap_err();
 
                 let uut = MerkleTree::load("test", &transaction, root2).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), val1);
-                assert_eq!(uut.get(&key2).unwrap(), val2);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), Some(val1));
+                assert_eq!(uut.get(&key2).unwrap(), Some(val2));
             }
         }
 
@@ -1273,19 +1273,19 @@ mod tests {
                 let root2 = uut.commit().unwrap();
 
                 let uut = MerkleTree::load("test", &transaction, root0).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), None);
+                assert_eq!(uut.get(&key2).unwrap(), None);
 
                 let uut = MerkleTree::load("test", &transaction, root1).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), val1);
-                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), Some(val1));
+                assert_eq!(uut.get(&key2).unwrap(), None);
 
                 let uut = MerkleTree::load("test", &transaction, root2).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(&key2).unwrap(), val2);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), None);
+                assert_eq!(uut.get(&key2).unwrap(), Some(val2));
             }
 
             #[test]
@@ -1317,16 +1317,16 @@ mod tests {
                 uut.delete().unwrap();
 
                 let uut = MerkleTree::load("test", &transaction, root0).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(&key2).unwrap(), StarkHash::ZERO);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), None);
+                assert_eq!(uut.get(&key2).unwrap(), None);
 
                 MerkleTree::load("test", &transaction, root1).unwrap_err();
 
                 let uut = MerkleTree::load("test", &transaction, root2).unwrap();
-                assert_eq!(uut.get(&key0).unwrap(), val0);
-                assert_eq!(uut.get(&key1).unwrap(), StarkHash::ZERO);
-                assert_eq!(uut.get(&key2).unwrap(), val2);
+                assert_eq!(uut.get(&key0).unwrap(), Some(val0));
+                assert_eq!(uut.get(&key1).unwrap(), None);
+                assert_eq!(uut.get(&key2).unwrap(), Some(val2));
             }
         }
 
@@ -1355,13 +1355,13 @@ mod tests {
             uut.delete().unwrap();
 
             let uut = MerkleTree::load("test", &transaction, root0).unwrap();
-            assert_eq!(uut.get(&key).unwrap(), val);
+            assert_eq!(uut.get(&key).unwrap(), Some(val));
 
             let uut = MerkleTree::load("test", &transaction, root0).unwrap();
             uut.delete().unwrap();
 
             let uut = MerkleTree::load("test", &transaction, root0).unwrap();
-            assert_eq!(uut.get(&key).unwrap(), val);
+            assert_eq!(uut.get(&key).unwrap(), Some(val));
 
             let uut = MerkleTree::load("test", &transaction, root0).unwrap();
             uut.delete().unwrap();
@@ -1680,9 +1680,9 @@ mod tests {
             std::ops::ControlFlow::Continue(Default::default())
         })
         .unwrap();
-        assert_eq!(uut.get(&key0).unwrap(), value);
-        assert_eq!(uut.get(&key1).unwrap(), value);
-        assert_eq!(uut.get(&key2).unwrap(), hash_of_values);
+        assert_eq!(uut.get(&key0).unwrap(), Some(value));
+        assert_eq!(uut.get(&key1).unwrap(), Some(value));
+        assert_eq!(uut.get(&key2).unwrap(), Some(hash_of_values));
 
         assert_eq!(
             visited,

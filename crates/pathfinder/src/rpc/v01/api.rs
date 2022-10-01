@@ -382,12 +382,8 @@ impl RpcApi {
             let contract_state_hash = global_state_tree
                 .get(contract_address)
                 .context("Get contract state hash from global state tree")
-                .map_err(internal_server_error)?;
-
-            // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
-            if contract_state_hash.0 == StarkHash::ZERO {
-                return Err(Error::from(ErrorCode::ContractNotFound));
-            }
+                .map_err(internal_server_error)?
+                .ok_or_else(|| Error::from(ErrorCode::ContractNotFound))?;
 
             let contract_state_root = ContractsStateTable::get_root(&tx, contract_state_hash)
                 .context("Get contract state root")
@@ -408,7 +404,8 @@ impl RpcApi {
             let storage_val = contract_state_tree
                 .get(key)
                 .context("Get value from contract state tree")
-                .map_err(internal_server_error)?;
+                .map_err(internal_server_error)?
+                .unwrap_or(StorageValue(StarkHash::ZERO));
 
             Ok(storage_val)
         });
@@ -733,7 +730,7 @@ impl RpcApi {
         let contract_state_hash = global_state_tree
             .get(contract_address)
             .context("Fetching contract leaf in global tree")?;
-        Ok(contract_state_hash.0 != StarkHash::ZERO)
+        Ok(contract_state_hash.is_some())
     }
 
     /// Get the class of a specific contract.
@@ -1043,12 +1040,8 @@ impl RpcApi {
             let state_hash = global_state_tree
                 .get(contract)
                 .context("Get contract state hash from global state tree")
-                .map_err(internal_server_error)?;
-
-            // There is a dedicated error code for a non-existent contract in the RPC API spec, so use it.
-            if state_hash.0 == StarkHash::ZERO {
-                return Err(Error::from(ErrorCode::ContractNotFound));
-            }
+                .map_err(internal_server_error)?
+                .ok_or_else(|| Error::from(ErrorCode::ContractNotFound))?;
 
             let nonce = crate::storage::ContractsStateTable::get_nonce(&tx, state_hash)
                 .context("Reading contract nonce")
