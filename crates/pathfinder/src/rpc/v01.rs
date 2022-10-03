@@ -59,8 +59,8 @@ pub fn register_all_methods(
     use crate::{
         core::{
             BlockId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
-            StarknetTransactionHash, StarknetTransactionIndex, TransactionSignatureElem,
-            TransactionVersion,
+            StarknetTransactionHash, StarknetTransactionIndex, TransactionNonce,
+            TransactionSignatureElem, TransactionVersion,
         },
         rpc::serde::{
             FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
@@ -68,6 +68,7 @@ pub fn register_all_methods(
         sequencer::request::add_transaction::ContractDefinition,
     };
     use ::serde::Deserialize;
+    use stark_hash::StarkHash;
 
     use api::BlockResponseScope;
     use types::request::{Call, ContractCall, EventFilter};
@@ -259,14 +260,17 @@ pub fn register_all_methods(
                 max_fee: Fee,
                 #[serde_as(as = "TransactionVersionAsHexStr")]
                 version: TransactionVersion,
+                #[serde(default)]
+                nonce: Option<TransactionNonce>,
             }
             let params = params.parse::<NamedArgs>()?;
             context
                 .add_invoke_transaction(
-                    params.function_invocation,
-                    params.signature,
-                    params.max_fee,
                     params.version,
+                    params.max_fee,
+                    params.signature,
+                    params.nonce,
+                    params.function_invocation,
                 )
                 .await
         },
@@ -286,8 +290,24 @@ pub fn register_all_methods(
                 token: Option<String>,
             }
             let params = params.parse::<NamedArgs>()?;
+
+            // These are required on the sequencer-side but missing from the v0.1.0 RPC request
+            const MAX_FEE: Fee = Fee(web3::types::H128::zero());
+            const NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
+            // actual address dumped from a `starknet declare` call
+            const SENDER_ADDRESS: ContractAddress =
+                ContractAddress::new_or_panic(crate::starkhash!("01"));
+
             context
-                .add_declare_transaction(params.contract_class, params.version, params.token)
+                .add_declare_transaction(
+                    params.version,
+                    MAX_FEE,
+                    vec![],
+                    NONCE,
+                    params.contract_class,
+                    SENDER_ADDRESS,
+                    params.token,
+                )
                 .await
         },
     )?;
@@ -305,8 +325,13 @@ pub fn register_all_methods(
                 token: Option<String>,
             }
             let params = params.parse::<NamedArgs>()?;
+
+            // Required on the sequencer-side but missing from the v0.1.0 RPC request
+            const VERSION: TransactionVersion = TransactionVersion::ZERO;
+
             context
                 .add_deploy_transaction(
+                    VERSION,
                     params.contract_address_salt,
                     params.constructor_calldata,
                     params.contract_definition,
@@ -2568,7 +2593,7 @@ mod tests {
                         CallParam(starkhash!("2b")),
                         CallParam(starkhash!("00")),
                     ],
-                    entry_point_selector: EntryPoint(starkhash!("015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"))
+                    entry_point_selector: Some(EntryPoint(starkhash!("015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad")))
                 };
                 pub static ref SIGNATURE: Vec<TransactionSignatureElem> = vec![
                     TransactionSignatureElem(starkhash!("07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5")),

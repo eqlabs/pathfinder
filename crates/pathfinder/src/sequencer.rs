@@ -9,9 +9,9 @@ use self::request::add_transaction::ContractDefinition;
 use crate::{
     consts::INTEGRATION_GENESIS_HASH,
     core::{
-        BlockId, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
-        StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
+        BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
+        ContractAddressSalt, EntryPoint, Fee, StarknetTransactionHash, StorageAddress,
+        StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     },
     rpc::v01::types::BlockHashOrTag,
     sequencer::error::SequencerError,
@@ -57,27 +57,33 @@ pub trait ClientApi {
 
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
 
+    #[allow(clippy::too_many_arguments)]
     async fn add_invoke_transaction(
         &self,
-        function_invocation: Call,
-        max_fee: Fee,
         version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: Option<TransactionNonce>,
+        contract_address: ContractAddress,
+        entry_point_selector: Option<EntryPoint>,
+        calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError>;
 
     #[allow(clippy::too_many_arguments)]
     async fn add_declare_transaction(
         &self,
-        contract_definition: ContractDefinition,
-        sender_address: ContractAddress,
+        version: TransactionVersion,
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
         nonce: TransactionNonce,
-        version: TransactionVersion,
+        contract_definition: ContractDefinition,
+        sender_address: ContractAddress,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError>;
 
     async fn add_deploy_transaction(
         &self,
+        version: TransactionVersion,
         contract_address_salt: ContractAddressSalt,
         constructor_calldata: Vec<ConstructorParam>,
         contract_definition: ContractDefinition,
@@ -289,18 +295,23 @@ impl ClientApi for Client {
     #[tracing::instrument(skip(self))]
     async fn add_invoke_transaction(
         &self,
-        call: Call,
-        max_fee: Fee,
         version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: Option<TransactionNonce>,
+        contract_address: ContractAddress,
+        entry_point_selector: Option<EntryPoint>,
+        calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         let req = request::add_transaction::AddTransaction::Invoke(
             request::add_transaction::InvokeFunction {
-                contract_address: call.contract_address,
-                entry_point_selector: call.entry_point_selector,
-                calldata: call.calldata,
+                contract_address,
+                entry_point_selector,
+                calldata,
                 max_fee,
                 version,
-                signature: call.signature,
+                signature,
+                nonce,
             },
         );
 
@@ -320,12 +331,12 @@ impl ClientApi for Client {
     #[tracing::instrument(skip(self))]
     async fn add_declare_transaction(
         &self,
-        contract_definition: ContractDefinition,
-        sender_address: ContractAddress,
+        version: TransactionVersion,
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
         nonce: TransactionNonce,
-        version: TransactionVersion,
+        contract_definition: ContractDefinition,
+        sender_address: ContractAddress,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
         let req =
@@ -356,6 +367,7 @@ impl ClientApi for Client {
     #[tracing::instrument(skip(self, contract_definition))]
     async fn add_deploy_transaction(
         &self,
+        version: TransactionVersion,
         contract_address_salt: ContractAddressSalt,
         constructor_calldata: Vec<ConstructorParam>,
         contract_definition: ContractDefinition,
@@ -363,6 +375,7 @@ impl ClientApi for Client {
     ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
         let req =
             request::add_transaction::AddTransaction::Deploy(request::add_transaction::Deploy {
+                version,
                 contract_address_salt,
                 contract_definition,
                 constructor_calldata,
@@ -1424,8 +1437,6 @@ mod tests {
             starkhash,
         };
 
-        use web3::types::H256;
-
         #[tokio::test]
         async fn invalid_entry_point_selector() {
             // test with values dumped from `starknet invoke` for a test contract,
@@ -1436,36 +1447,35 @@ mod tests {
             )]);
             let error = client
                 .add_invoke_transaction(
-                    Call {
-                        contract_address: ContractAddress::new_or_panic(starkhash!(
-                            "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
-                        )),
-                        calldata: vec![
-                            CallParam(starkhash!("01")),
-                            CallParam(starkhash!(
-                                "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-                            )),
-                            CallParam(starkhash!(
-                                "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-                            )),
-                            CallParam(StarkHash::ZERO),
-                            CallParam(starkhash!("01")),
-                            CallParam(starkhash!("01")),
-                            CallParam(starkhash!("2b")),
-                            CallParam(StarkHash::ZERO),
-                        ],
-                        entry_point_selector: EntryPoint(StarkHash::ZERO),
-                        signature: vec![
-                            TransactionSignatureElem(starkhash!(
-                                "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
-                            )),
-                            TransactionSignatureElem(starkhash!(
-                                "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                            )),
-                        ],
-                    },
+                    TransactionVersion::ZERO,
                     Fee(5444010076217u128.to_be_bytes().into()),
-                    TransactionVersion(H256::zero()),
+                    vec![
+                        TransactionSignatureElem(starkhash!(
+                            "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                        )),
+                        TransactionSignatureElem(starkhash!(
+                            "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                        )),
+                    ],
+                    None,
+                    ContractAddress::new_or_panic(starkhash!(
+                        "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
+                    )),
+                    Some(EntryPoint(StarkHash::ZERO)),
+                    vec![
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!(
+                            "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                        )),
+                        CallParam(starkhash!(
+                            "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+                        )),
+                        CallParam(StarkHash::ZERO),
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!("2b")),
+                        CallParam(StarkHash::ZERO),
+                    ],
                 )
                 .await
                 .unwrap_err();
@@ -1487,38 +1497,37 @@ mod tests {
             // test with values dumped from `starknet invoke` for a test contract
             client
                 .add_invoke_transaction(
-                    Call {
-                        contract_address: ContractAddress::new_or_panic(starkhash!(
-                            "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
-                        )),
-                        calldata: vec![
-                            CallParam(starkhash!("01")),
-                            CallParam(starkhash!(
-                                "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-                            )),
-                            CallParam(starkhash!(
-                                "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-                            )),
-                            CallParam(StarkHash::ZERO),
-                            CallParam(starkhash!("01")),
-                            CallParam(starkhash!("01")),
-                            CallParam(starkhash!("2b")),
-                            CallParam(StarkHash::ZERO),
-                        ],
-                        entry_point_selector: EntryPoint(starkhash!(
-                            "015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
-                        )),
-                        signature: vec![
-                            TransactionSignatureElem(starkhash!(
-                                "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
-                            )),
-                            TransactionSignatureElem(starkhash!(
-                                "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                            )),
-                        ],
-                    },
+                    TransactionVersion::ZERO,
                     Fee(5444010076217u128.to_be_bytes().into()),
-                    TransactionVersion(H256::zero()),
+                    vec![
+                        TransactionSignatureElem(starkhash!(
+                            "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                        )),
+                        TransactionSignatureElem(starkhash!(
+                            "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                        )),
+                    ],
+                    None,
+                    ContractAddress::new_or_panic(starkhash!(
+                        "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
+                    )),
+                    Some(EntryPoint(starkhash!(
+                        "015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
+                    ))),
+                    vec![
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!(
+                            "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                        )),
+                        CallParam(starkhash!(
+                            "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+                        )),
+                        CallParam(StarkHash::ZERO),
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!("2b")),
+                        CallParam(StarkHash::ZERO),
+                    ],
                 )
                 .await
                 .unwrap();
@@ -1557,13 +1566,13 @@ mod tests {
 
             client
                 .add_declare_transaction(
-                    contract_class,
-                    // actual address dumped from a `starknet declare` call
-                    ContractAddress::new_or_panic(starkhash!("01")),
+                    TransactionVersion::ZERO,
                     Fee(0u128.to_be_bytes().into()),
                     vec![],
                     TransactionNonce(StarkHash::ZERO),
-                    TransactionVersion(H256::zero()),
+                    contract_class,
+                    // actual address dumped from a `starknet declare` call
+                    ContractAddress::new_or_panic(starkhash!("01")),
                     None,
                 )
                 .await
@@ -1584,6 +1593,7 @@ mod tests {
             )]);
             client
                 .add_deploy_transaction(
+                    TransactionVersion::ZERO,
                     ContractAddressSalt(starkhash!(
                         "05864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"
                     )),
@@ -1672,6 +1682,7 @@ mod tests {
 
                 client
                     .add_deploy_transaction(
+                        TransactionVersion::ZERO,
                         ContractAddressSalt(StarkHash::ZERO),
                         vec![],
                         ContractDefinition {
@@ -1694,6 +1705,7 @@ mod tests {
 
                 let err = client
                     .add_deploy_transaction(
+                        TransactionVersion::ZERO,
                         ContractAddressSalt(StarkHash::ZERO),
                         vec![],
                         ContractDefinition {

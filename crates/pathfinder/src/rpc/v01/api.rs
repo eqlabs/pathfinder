@@ -1303,17 +1303,23 @@ impl RpcApi {
     /// interface to the sequencer.
     pub async fn add_invoke_transaction(
         &self,
-        call: ContractCall,
-        signature: Vec<TransactionSignatureElem>,
-        max_fee: Fee,
         version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: Option<TransactionNonce>,
+        call: ContractCall,
     ) -> RpcResult<InvokeTransactionResult> {
-        let mut call: sequencer::request::Call = call.into();
-        call.signature = signature;
-
         let result = self
             .sequencer
-            .add_invoke_transaction(call, max_fee, version)
+            .add_invoke_transaction(
+                version,
+                max_fee,
+                signature,
+                nonce,
+                call.contract_address,
+                call.entry_point_selector,
+                call.calldata,
+            )
             .await?;
         Ok(InvokeTransactionResult {
             transaction_hash: result.transaction_hash,
@@ -1328,22 +1334,27 @@ impl RpcApi {
     ///
     /// This method just forwards the request received over the JSON-RPC
     /// interface to the sequencer.
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_declare_transaction(
         &self,
-        contract_class: ContractDefinition,
         version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: TransactionNonce,
+        contract_class: ContractDefinition,
+        sender_address: ContractAddress,
         token: Option<String>,
     ) -> RpcResult<DeclareTransactionResult> {
         let result = self
             .sequencer
             .add_declare_transaction(
+                version,
+                max_fee,
+                signature,
+                nonce,
                 contract_class,
                 // actual address dumped from a `starknet declare` call
-                ContractAddress::new_or_panic(crate::starkhash!("01")),
-                Fee(0u128.to_be_bytes().into()),
-                vec![],
-                TransactionNonce(StarkHash::ZERO),
-                version,
+                sender_address,
                 token,
             )
             .await?;
@@ -1359,6 +1370,7 @@ impl RpcApi {
     /// interface to the sequencer.
     pub async fn add_deploy_transaction(
         &self,
+        version: TransactionVersion,
         contract_address_salt: ContractAddressSalt,
         constructor_calldata: Vec<ConstructorParam>,
         contract_definition: ContractDefinition,
@@ -1367,6 +1379,7 @@ impl RpcApi {
         let result = self
             .sequencer
             .add_deploy_transaction(
+                version,
                 contract_address_salt,
                 constructor_calldata,
                 contract_definition,

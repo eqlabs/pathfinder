@@ -931,10 +931,10 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+            EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
+            EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice, GlobalRoot,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
             StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
             TransactionSignatureElem, TransactionVersion,
         },
@@ -1061,21 +1061,25 @@ mod tests {
 
         async fn add_invoke_transaction(
             &self,
-            _: crate::sequencer::request::Call,
-            _: Fee,
             _: TransactionVersion,
+            _: Fee,
+            _: Vec<TransactionSignatureElem>,
+            _: Option<TransactionNonce>,
+            _: ContractAddress,
+            _: Option<EntryPoint>,
+            _: Vec<CallParam>,
         ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
             unimplemented!()
         }
 
         async fn add_declare_transaction(
             &self,
-            _: ContractDefinition,
-            _: ContractAddress,
+            _: TransactionVersion,
             _: Fee,
             _: Vec<TransactionSignatureElem>,
             _: TransactionNonce,
-            _: TransactionVersion,
+            _: ContractDefinition,
+            _: ContractAddress,
             _: Option<String>,
         ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
             unimplemented!()
@@ -1083,6 +1087,7 @@ mod tests {
 
         async fn add_deploy_transaction(
             &self,
+            _: TransactionVersion,
             _: ContractAddressSalt,
             _: Vec<ConstructorParam>,
             _: ContractDefinition,

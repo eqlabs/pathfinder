@@ -146,7 +146,8 @@ pub mod request {
     pub struct ContractCall {
         pub contract_address: ContractAddress,
         pub calldata: Vec<CallParam>,
-        pub entry_point_selector: EntryPoint,
+        #[serde(default)]
+        pub entry_point_selector: Option<EntryPoint>,
     }
 
     /// Contains event filter parameters passed to `starknet_getEvents`.
