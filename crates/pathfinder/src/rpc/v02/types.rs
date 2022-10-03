@@ -66,12 +66,10 @@ pub mod request {
     #[cfg_attr(
         any(test, feature = "rpc-full-serde"),
         derive(serde::Serialize),
-        serde(tag = "version")
+        serde(untagged)
     )]
     pub enum BroadcastedInvokeTransaction {
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), serde(rename = "0x0"))]
         V0(BroadcastedInvokeTransactionV0),
-        #[cfg_attr(any(test, feature = "rpc-full-serde"), serde(rename = "0x1"))]
         V1(BroadcastedInvokeTransactionV1),
     }
 
@@ -81,12 +79,6 @@ pub mod request {
             D: serde::Deserializer<'de>,
         {
             use serde::de;
-            use web3::types::H256;
-
-            const VERSION_0: H256 = H256::zero();
-            const fn transaction_version_zero() -> TransactionVersion {
-                TransactionVersion(VERSION_0)
-            }
 
             #[serde_as]
             #[derive(Deserialize)]
@@ -96,29 +88,32 @@ pub mod request {
                 pub version: TransactionVersion,
             }
 
-            let mut v = serde_json::Value::deserialize(deserializer)?;
+            let v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
-            // remove "version", since v0 and v1 transactions use deny_unknown_fields
-            v.as_object_mut()
-                .expect("must be an object because deserializing version succeeded")
-                .remove("version");
-            match version.version {
-                TransactionVersion(x) if x == VERSION_0 => Ok(Self::V0(
+            match version.version.without_query_version() {
+                0 => Ok(Self::V0(
                     BroadcastedInvokeTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                1 => Ok(Self::V1(
                     BroadcastedInvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _v => Err(de::Error::custom("version must be 0 or 1")),
+                _ => Err(de::Error::custom("version must be 0 or 1")),
             }
         }
     }
 
+    const fn transaction_version_zero() -> TransactionVersion {
+        TransactionVersion(web3::types::H256::zero())
+    }
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedInvokeTransactionV0 {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        #[serde(default = "transaction_version_zero")]
+        pub version: TransactionVersion,
+
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
@@ -137,6 +132,10 @@ pub mod request {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedInvokeTransactionV1 {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        #[serde(default = "transaction_version_zero")]
+        pub version: TransactionVersion,
+
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
@@ -191,6 +190,7 @@ pub mod request {
                     }),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                         BroadcastedInvokeTransactionV0 {
+                            version: TransactionVersion(web3::types::H256::zero()),
                             max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(starkhash!("07"))],
                             nonce: TransactionNonce(starkhash!("08")),
@@ -201,6 +201,19 @@ pub mod request {
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
+                            version: TransactionVersion(web3::types::H256::from_low_u64_be(1)),
+                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
+                            signature: vec![TransactionSignatureElem(starkhash!("07"))],
+                            nonce: TransactionNonce(starkhash!("08")),
+                            sender_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
+                            calldata: vec![CallParam(starkhash!("ff"))],
+                        },
+                    )),
+                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                        BroadcastedInvokeTransactionV1 {
+                            version: TransactionVersion(web3::types::H256(hex_literal::hex!(
+                                "0000000000000000000000000000000100000000000000000000000000000001"
+                            ))),
                             max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(starkhash!("07"))],
                             nonce: TransactionNonce(starkhash!("08")),
