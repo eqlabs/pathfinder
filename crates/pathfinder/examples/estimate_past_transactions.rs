@@ -374,11 +374,7 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::v01::types::request::Call {
             contract_address: tx.contract_address,
             calldata: tx.calldata,
             entry_point_selector: tx.entry_point_selector,
-            signature: tx
-                .signature
-                .into_iter()
-                .map(|x| pathfinder_lib::core::CallSignatureElem(x.0))
-                .collect(),
+            signature: tx.signature,
             max_fee: tx.max_fee,
             version: tx
                 .version

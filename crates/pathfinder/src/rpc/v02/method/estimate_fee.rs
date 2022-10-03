@@ -54,11 +54,7 @@ impl TryInto<crate::rpc::v01::types::request::Call> for BroadcastedTransaction {
                     contract_address: tx.contract_address,
                     calldata: tx.calldata,
                     entry_point_selector: Some(tx.entry_point_selector),
-                    signature: tx
-                        .signature
-                        .into_iter()
-                        .map(|x| crate::core::CallSignatureElem(x.0))
-                        .collect(),
+                    signature: tx.signature,
                     max_fee: tx.max_fee,
                     version: TransactionVersion::ZERO,
                     nonce: tx.nonce,
@@ -69,11 +65,7 @@ impl TryInto<crate::rpc::v01::types::request::Call> for BroadcastedTransaction {
                     contract_address: tx.sender_address,
                     calldata: tx.calldata,
                     entry_point_selector: None,
-                    signature: tx
-                        .signature
-                        .into_iter()
-                        .map(|x| crate::core::CallSignatureElem(x.0))
-                        .collect(),
+                    signature: tx.signature,
                     max_fee: tx.max_fee,
                     version: TransactionVersion::ONE,
                     nonce: tx.nonce,

@@ -1,8 +1,8 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
 use crate::rpc::v01::types::request as rpc;
 use crate::{
-    core::{CallParam, CallSignatureElem, ContractAddress, EntryPoint, Fee},
-    rpc::serde::{CallParamAsDecimalStr, CallSignatureElemAsDecimalStr},
+    core::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem},
+    rpc::serde::{CallParamAsDecimalStr, TransactionSignatureElemAsDecimalStr},
 };
 use serde::Serialize;
 use std::convert::From;
@@ -15,8 +15,8 @@ pub struct Call {
     #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
     pub calldata: Vec<CallParam>,
     pub entry_point_selector: EntryPoint,
-    #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
-    pub signature: Vec<CallSignatureElem>,
+    #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+    pub signature: Vec<TransactionSignatureElem>,
 }
 
 impl From<rpc::ContractCall> for Call {
@@ -74,14 +74,14 @@ pub mod add_transaction {
         ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
     };
     use crate::rpc::serde::{
-        CallParamAsDecimalStr, CallSignatureElemAsDecimalStr, ConstructorParamAsDecimalStr,
-        FeeAsHexStr, TransactionVersionAsHexStr,
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
+        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
 
     use serde_with::serde_as;
 
     use super::contract::{EntryPointType, SelectorAndOffset};
-    use super::{CallParam, CallSignatureElem, ContractAddress, EntryPoint, Fee};
+    use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
 
     /// Definition of a contract.
     ///
@@ -122,8 +122,8 @@ pub mod add_transaction {
         /// and offsets it with 2**128 (QUERY_VERSION_BASE in constants.py) for calls
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
-        #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
-        pub signature: Vec<CallSignatureElem>,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        pub signature: Vec<TransactionSignatureElem>,
     }
 
     /// Declare transaction details.
@@ -134,8 +134,8 @@ pub mod add_transaction {
         pub sender_address: ContractAddress,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
-        #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
-        pub signature: Vec<CallSignatureElem>,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
         /// Transaction version
         /// starknet.py just sets it to 0.

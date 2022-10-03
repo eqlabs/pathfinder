@@ -9,9 +9,9 @@ use self::request::{add_transaction::ContractDefinition, Call};
 use crate::{
     consts::INTEGRATION_GENESIS_HASH,
     core::{
-        BlockId, CallSignatureElem, Chain, ClassHash, ConstructorParam, ContractAddress,
-        ContractAddressSalt, Fee, StarknetTransactionHash, StorageAddress, StorageValue,
-        TransactionNonce, TransactionVersion,
+        BlockId, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     },
     rpc::v01::types::BlockHashOrTag,
     sequencer::error::SequencerError,
@@ -76,7 +76,7 @@ pub trait ClientApi {
         contract_definition: ContractDefinition,
         sender_address: ContractAddress,
         max_fee: Fee,
-        signature: Vec<CallSignatureElem>,
+        signature: Vec<TransactionSignatureElem>,
         nonce: TransactionNonce,
         version: TransactionVersion,
         token: Option<String>,
@@ -345,7 +345,7 @@ impl ClientApi for Client {
         contract_definition: ContractDefinition,
         sender_address: ContractAddress,
         max_fee: Fee,
-        signature: Vec<CallSignatureElem>,
+        signature: Vec<TransactionSignatureElem>,
         nonce: TransactionNonce,
         version: TransactionVersion,
         token: Option<String>,
@@ -1638,7 +1638,7 @@ mod tests {
 
         use super::*;
         use crate::{
-            core::{ByteCodeOffset, CallParam, CallSignatureElem, EntryPoint},
+            core::{ByteCodeOffset, CallParam, EntryPoint},
             sequencer::request::contract::{EntryPointType, SelectorAndOffset},
             starkhash,
         };
@@ -1675,10 +1675,10 @@ mod tests {
                         ],
                         entry_point_selector: EntryPoint(StarkHash::ZERO),
                         signature: vec![
-                            CallSignatureElem(starkhash!(
+                            TransactionSignatureElem(starkhash!(
                                 "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
                             )),
-                            CallSignatureElem(starkhash!(
+                            TransactionSignatureElem(starkhash!(
                                 "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                             )),
                         ],
@@ -1728,10 +1728,10 @@ mod tests {
                             "015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
                         )),
                         signature: vec![
-                            CallSignatureElem(starkhash!(
+                            TransactionSignatureElem(starkhash!(
                                 "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
                             )),
-                            CallSignatureElem(starkhash!(
+                            TransactionSignatureElem(starkhash!(
                                 "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                             )),
                         ],

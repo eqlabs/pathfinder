@@ -931,12 +931,12 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         core::{
-            CallSignatureElem, Chain, ClassHash, ConstructorParam, ContractAddress,
-            ContractAddressSalt, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice, GlobalRoot,
-            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, Fee, GasPrice, GlobalRoot, SequencerAddress,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
             StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
-            TransactionVersion,
+            TransactionSignatureElem, TransactionVersion,
         },
         ethereum,
         rpc::v01::types::BlockHashOrTag,
@@ -1084,7 +1084,7 @@ mod tests {
             _: ContractDefinition,
             _: ContractAddress,
             _: Fee,
-            _: Vec<CallSignatureElem>,
+            _: Vec<TransactionSignatureElem>,
             _: TransactionNonce,
             _: TransactionVersion,
             _: Option<String>,

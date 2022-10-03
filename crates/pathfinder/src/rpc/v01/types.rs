@@ -79,10 +79,12 @@ impl std::fmt::Display for BlockNumberOrTag {
 pub mod request {
     use crate::{
         core::{
-            CallParam, CallSignatureElem, ContractAddress, EntryPoint, EventKey, Fee,
-            TransactionNonce, TransactionVersion,
+            CallParam, ContractAddress, EntryPoint, EventKey, Fee, TransactionNonce,
+            TransactionSignatureElem, TransactionVersion,
         },
-        rpc::serde::{CallSignatureElemAsDecimalStr, FeeAsHexStr, TransactionVersionAsHexStr},
+        rpc::serde::{
+            FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+        },
     };
     use serde::Deserialize;
     use serde_with::{serde_as, skip_serializing_none};
@@ -99,8 +101,8 @@ pub mod request {
         pub entry_point_selector: Option<EntryPoint>,
         /// EstimateFee hurry: it doesn't make any sense to use decimal numbers for one field
         #[serde(default)]
-        #[serde_as(as = "Vec<CallSignatureElemAsDecimalStr>")]
-        pub signature: Vec<CallSignatureElem>,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        pub signature: Vec<TransactionSignatureElem>,
         /// EstimateFee hurry: max fee is needed if there's a signature
         #[serde_as(as = "FeeAsHexStr")]
         #[serde(default = "call_default_max_fee")]
