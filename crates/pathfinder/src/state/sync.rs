@@ -941,10 +941,7 @@ mod tests {
         ethereum,
         rpc::v01::types::BlockHashOrTag,
         sequencer::{
-            self,
-            error::SequencerError,
-            reply,
-            request::{self, add_transaction::ContractDefinition},
+            self, error::SequencerError, reply, request::add_transaction::ContractDefinition,
         },
         state::{self, sync::PendingData},
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
@@ -1012,14 +1009,6 @@ mod tests {
                 }
                 _ => unimplemented!(),
             }
-        }
-
-        async fn call(
-            &self,
-            _: request::Call,
-            _: BlockHashOrTag,
-        ) -> Result<reply::Call, SequencerError> {
-            unimplemented!()
         }
 
         async fn full_contract(&self, _: ContractAddress) -> Result<bytes::Bytes, SequencerError> {

@@ -5,7 +5,7 @@ mod metrics;
 pub mod reply;
 pub mod request;
 
-use self::request::{add_transaction::ContractDefinition, Call};
+use self::request::add_transaction::ContractDefinition;
 use crate::{
     consts::INTEGRATION_GENESIS_HASH,
     core::{
@@ -23,12 +23,6 @@ use std::{fmt::Debug, result::Result, time::Duration};
 #[async_trait::async_trait]
 pub trait ClientApi {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError>;
-
-    async fn call(
-        &self,
-        payload: request::Call,
-        block_hash: BlockHashOrTag,
-    ) -> Result<reply::Call, SequencerError>;
 
     async fn full_contract(
         &self,
@@ -175,22 +169,6 @@ impl ClientApi for Client {
             .with_block(block)
             .with_retry(Self::RETRY)
             .get()
-            .await
-    }
-
-    /// Performs a `call` on contract's function. Call result is not stored in L2, as opposed to `invoke`.
-    #[tracing::instrument(skip(self))]
-    async fn call(
-        &self,
-        payload: request::Call,
-        block_hash: BlockHashOrTag,
-    ) -> Result<reply::Call, SequencerError> {
-        self.request()
-            .feeder_gateway()
-            .call_contract()
-            .with_block(block_hash)
-            .with_retry(Self::RETRY)
-            .post_with_json(&payload)
             .await
     }
 
@@ -901,203 +879,6 @@ mod tests {
                 }
                 MaybePendingBlock::Block(_) => panic!("should not had been a ready block"),
             }
-        }
-    }
-
-    mod call {
-        use super::*;
-        use pretty_assertions::assert_eq;
-
-        #[tokio::test]
-        async fn invalid_entry_point() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/call_contract?blockNumber=latest",
-                StarknetErrorCode::EntryPointNotFound.into_response(),
-            )]);
-            let error = client
-                .call(
-                    request::Call {
-                        calldata: VALID_CALL_DATA.to_vec(),
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: INVALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::EntryPointNotFound)
-            );
-        }
-
-        #[tokio::test]
-        async fn invalid_contract_address() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/call_contract?blockNumber=latest",
-                StarknetErrorCode::UninitializedContract.into_response(),
-            )]);
-            let error = client
-                .call(
-                    request::Call {
-                        calldata: VALID_CALL_DATA.to_vec(),
-                        contract_address: INVALID_CONTRACT_ADDR,
-                        entry_point_selector: VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
-            );
-        }
-
-        #[tokio::test]
-        async fn invalid_call_data() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/call_contract?blockHash={}",
-                    INVOKE_CONTRACT_BLOCK_HASH
-                ),
-                StarknetErrorCode::TransactionFailed.into_response(),
-            )]);
-            let error = client
-                .call(
-                    request::Call {
-                        calldata: vec![],
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    INVOKE_CONTRACT_BLOCK_HASH,
-                )
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::TransactionFailed)
-            );
-        }
-
-        #[tokio::test]
-        async fn uninitialized_contract() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/call_contract?blockHash={}",
-                    GENESIS_BLOCK_HASH
-                ),
-                StarknetErrorCode::UninitializedContract.into_response(),
-            )]);
-            let error = client
-                .call(
-                    request::Call {
-                        calldata: vec![],
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    GENESIS_BLOCK_HASH,
-                )
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
-            );
-        }
-
-        #[tokio::test]
-        async fn invalid_block_hash() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/call_contract?blockHash={}",
-                    INVALID_BLOCK_HASH
-                ),
-                StarknetErrorCode::BlockNotFound.into_response(),
-            )]);
-            let error = client
-                .call(
-                    request::Call {
-                        calldata: VALID_CALL_DATA.to_vec(),
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    INVALID_BLOCK_HASH,
-                )
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
-            );
-        }
-
-        #[tokio::test]
-        async fn latest_invoke_block() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/call_contract?blockHash={}",
-                    INVOKE_CONTRACT_BLOCK_HASH
-                ),
-                (r#"{"result":[]}"#, 200),
-            )]);
-            client
-                .call(
-                    request::Call {
-                        calldata: VALID_CALL_DATA.to_vec(),
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    INVOKE_CONTRACT_BLOCK_HASH,
-                )
-                .await
-                .unwrap();
-        }
-
-        #[tokio::test]
-        async fn latest_block() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/call_contract?blockNumber=latest",
-                (r#"{"result":[]}"#, 200),
-            )]);
-            client
-                .call(
-                    request::Call {
-                        calldata: VALID_CALL_DATA.to_vec(),
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap();
-        }
-
-        #[tokio::test]
-        async fn pending_block() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/call_contract?blockNumber=pending",
-                (r#"{"result":[]}"#, 200),
-            )]);
-            client
-                .call(
-                    request::Call {
-                        calldata: VALID_CALL_DATA.to_vec(),
-                        contract_address: VALID_CONTRACT_ADDR,
-                        entry_point_selector: VALID_ENTRY_POINT,
-                        signature: vec![],
-                    },
-                    BlockHashOrTag::Tag(Tag::Pending),
-                )
-                .await
-                .unwrap();
         }
     }
 

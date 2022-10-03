@@ -44,7 +44,6 @@ pub mod stage {
 
     /// Select the Sequencer API method to call:
     /// - [add_transaction](super::Request::add_transaction)
-    /// - [call_contract](super::Request::call_contract)
     /// - [get_block](super::Request::get_block)
     /// - [get_full_contract](super::Request::get_full_contract)
     /// - [get_class_by_hash](super::Request::get_class_by_hash)
@@ -171,7 +170,6 @@ mod request_macros {
 impl<'a> Request<'a, stage::Method> {
     request_macros::methods!(
         add_transaction,
-        call_contract,
         get_block,
         get_full_contract,
         get_class_by_hash,
