@@ -1,8 +1,8 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use crate::{
     core::{
-        CallResultValue, EthereumAddress, GasPrice, GlobalRoot, SequencerAddress,
-        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        EthereumAddress, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp,
     },
     rpc::serde::{EthereumAddressAsHexStr, GasPriceAsHexStr},
 };
@@ -137,13 +137,6 @@ impl std::fmt::Display for Status {
             Status::Aborted => write!(f, "ABORTED"),
         }
     }
-}
-
-/// Used to deserialize a reply from [ClientApi::call](crate::sequencer::ClientApi::call).
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Call {
-    pub result: Vec<CallResultValue>,
 }
 
 /// Types used when deserializing L2 call related data.

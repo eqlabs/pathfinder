@@ -43,5 +43,6 @@
             "L1_HANDLER": []
         }
     },
-    "type": "DEPLOY"
+    "type": "DEPLOY",
+    "version": "0x0"
 }

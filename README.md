@@ -369,7 +369,11 @@ Pathfinder also support's submitting StarkNet transaction's to the StarkNet gate
 Note that:
 
 - `mainnet` requires an additional `token` parameter to submit transactions
-- `starknet_addDeployTransaction` and `starknet_addDeclareTransaction` allow an optional `abi` field
+- `starknet_addInvokeTransaction` allows an optional `nonce` parameter to support version 1 invoke
+  transactions. To keep compatibility with existing clients using positional parameters the `nonce`
+  parameter is the last in the list.
+- `starknet_addDeployTransaction` and `starknet_addDeclareTransaction` allow an optional `abi` property
+  within the contract definition JSON object.
 
 ## Monitoring API
 
