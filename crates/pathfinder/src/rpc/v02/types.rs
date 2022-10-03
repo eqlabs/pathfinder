@@ -1,5 +1,8 @@
 //! Common data structures used by the JSON-RPC API methods.
 
+mod class;
+pub use class::*;
+
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use crate::{
