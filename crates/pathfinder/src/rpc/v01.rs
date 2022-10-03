@@ -2661,6 +2661,62 @@ mod tests {
             }
 
             #[tokio::test]
+            async fn invoke_transaction_v1() {
+                use crate::core::TransactionNonce;
+
+                let storage = setup_storage();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                let call = ContractCall {
+                    contract_address: ContractAddress::new_or_panic(starkhash!(
+                        "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
+                    )),
+                    calldata: vec![
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!(
+                            "01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"
+                        )),
+                        CallParam(starkhash!(
+                            "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
+                        )),
+                        CallParam(starkhash!("00")),
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!("01")),
+                        CallParam(starkhash!("01")),
+                    ],
+                    entry_point_selector: None,
+                };
+                let signature = vec![
+                    TransactionSignatureElem(starkhash!(
+                        "07ccc81b438581c9360120e0ba0ef52c7d031bdf20a4c2bc3820391b29a8945f"
+                    )),
+                    TransactionSignatureElem(starkhash!(
+                        "02c11c60d11daaa0043eccdc824bb44f87bc7eb2e9c2437e1654876ab8fa7cad"
+                    )),
+                ];
+                let max_fee = Fee(web3::types::H128::from_low_u64_be(0x630a0aff77));
+                let nonce = TransactionNonce(starkhash!("02"));
+
+                let params = rpc_params!(call, signature, max_fee, TransactionVersion::ONE, nonce);
+                let rpc_result = client(addr)
+                    .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    rpc_result,
+                    InvokeTransactionResult {
+                        transaction_hash: StarknetTransactionHash(starkhash!(
+                            "040397a2e590c9707d73cc63ec54683c2d155b65d2e990d6f53d48a395eb3997"
+                        ))
+                    }
+                );
+            }
+
+            #[tokio::test]
             async fn declare_transaction() {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Integration).unwrap();
