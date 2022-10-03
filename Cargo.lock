@@ -1086,7 +1086,7 @@ dependencies = [
 [[package]]
 name = "goose"
 version = "0.16.4"
-source = "git+https://github.com/eqlabs/goose?branch=update_tokio#a179ceb57aef60b304f1585155b8ce83d8542bf4"
+source = "git+https://github.com/eqlabs/goose?branch=update_tokio#0ce8ab094e4259008631374598872c9b8fc5536e"
 dependencies = [
  "async-trait",
  "chrono",
