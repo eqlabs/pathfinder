@@ -77,6 +77,7 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         v02::register_all_methods(&mut _module_v02)?;
         let _module_v02: Methods = _module_v02.into();
 
+        // FIXME
         // Ok(server
         //     .start_with_paths([
         //         (vec!["/", "/rpc/v0.1"], module_v01),
