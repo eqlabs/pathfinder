@@ -8,6 +8,7 @@ pub mod test_client;
 pub mod test_setup;
 pub mod v01;
 pub mod v02;
+pub mod versioning;
 
 use crate::monitoring::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware};
 use jsonrpsee::{
@@ -42,8 +43,12 @@ impl RpcServer {
 
     /// Starts the HTTP-RPC server.
     pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
+        let _service_builder = tower::ServiceBuilder::new().layer(versioning::RpcVersioningLayer);
+
         let server = ServerBuilder::default()
             .set_logger(self.middleware)
+            // FIXME internal method naming does not contain the version prefix yet
+            //.set_middleware(service_builder)
             .build(self.addr)
             .await
             .map_err(|e| match e {
