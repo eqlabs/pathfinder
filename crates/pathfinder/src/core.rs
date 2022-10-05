@@ -193,6 +193,10 @@ pub struct GasPrice(pub u128);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionNonce(pub StarkHash);
 
+impl TransactionNonce {
+    pub const ZERO: Self = Self(StarkHash::ZERO);
+}
+
 /// StarkNet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionVersion(pub H256);
