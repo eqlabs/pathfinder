@@ -221,6 +221,16 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         "starknet_getBlockTransactionCount",
         method::get_block_transaction_count::get_block_transaction_count,
     )?;
+    register_method_with_no_input(
+        module,
+        "starknet_blockHashAndNumber",
+        method::block_hash_and_number::block_hash_and_number,
+    )?;
+    register_method_with_no_input(
+        module,
+        "starknet_blockNumber",
+        method::block_hash_and_number::block_number,
+    )?;
 
     Ok(())
 }
