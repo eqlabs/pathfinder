@@ -243,5 +243,11 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         method::block_hash_and_number::block_number,
     )?;
 
+    register_method(
+        module,
+        "starknet_addInvokeTransaction",
+        method::add_invoke_transaction::add_invoke_transaction,
+    )?;
+
     Ok(())
 }
