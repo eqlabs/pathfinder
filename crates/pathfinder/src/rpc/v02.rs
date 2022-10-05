@@ -205,6 +205,11 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         method::get_transaction_receipt::get_transaction_receipt,
     )?;
     register_method_with_no_input(module, "starknet_syncing", method::syncing::syncing)?;
+    register_method(
+        module,
+        "starknet_getBlockTransactionCount",
+        method::get_block_transaction_count::get_block_transaction_count,
+    )?;
 
     Ok(())
 }
