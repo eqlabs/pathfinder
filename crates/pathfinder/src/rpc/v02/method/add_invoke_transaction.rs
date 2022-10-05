@@ -28,7 +28,10 @@ pub async fn add_invoke_transaction(
                 v0.version,
                 v0.max_fee,
                 v0.signature,
-                Some(v0.nonce),
+                // Nonce is part of the RPC specification for V0 but this
+                // is a bug in the spec. The gateway won't accept it, so
+                // we null it out.
+                None,
                 v0.contract_address,
                 Some(v0.entry_point_selector),
                 v0.calldata,
@@ -81,7 +84,7 @@ mod tests {
                     "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                 )),
             ],
-            nonce: TransactionNonce::ZERO,
+            nonce: None,
             contract_address: ContractAddress::new_or_panic(starkhash!(
                 "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
             )),
