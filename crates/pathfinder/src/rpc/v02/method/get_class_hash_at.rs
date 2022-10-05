@@ -128,13 +128,13 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let positional = r#"{
+            let named = r#"{
                 "block_id": { "block_hash": "0xabcde" },
                 "contract_address": "0x12345"
             }"#;
-            let positional = Params::new(Some(positional));
+            let named = Params::new(Some(named));
 
-            let input = positional.parse::<GetClassHashAtInput>().unwrap();
+            let input = named.parse::<GetClassHashAtInput>().unwrap();
             let expected = GetClassHashAtInput {
                 block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
                 contract_address: ContractAddress::new_or_panic(starkhash!("012345")),

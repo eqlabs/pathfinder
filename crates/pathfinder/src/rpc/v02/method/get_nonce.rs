@@ -112,13 +112,13 @@ mod tests {
         fn named_args() {
             use jsonrpsee::types::Params;
 
-            let positional = r#"{
+            let named = r#"{
                 "block_id": { "block_hash": "0xabcde" },
                 "contract_address": "0x12345"
             }"#;
-            let positional = Params::new(Some(positional));
+            let named = Params::new(Some(named));
 
-            let input = positional.parse::<GetNonceInput>().unwrap();
+            let input = named.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
                 block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
                 contract_address: ContractAddress::new_or_panic(starkhash!("012345")),
