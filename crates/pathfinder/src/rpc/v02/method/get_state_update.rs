@@ -407,7 +407,10 @@ mod tests {
         tx.commit().unwrap();
 
         let sync_state = std::sync::Arc::new(crate::state::SyncState::default());
-        let context = RpcContext::new(storage, sync_state, crate::core::Chain::Testnet);
+        let chain = crate::core::Chain::Testnet;
+        let sequencer = crate::sequencer::Client::new(chain).unwrap();
+
+        let context = RpcContext::new(storage, sync_state, chain, sequencer);
 
         let state_updates = state_updates.into_iter().map(Into::into).collect();
 

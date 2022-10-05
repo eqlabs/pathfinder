@@ -337,7 +337,10 @@ mod tests {
             .await
             .unwrap();
 
-            let context = RpcContext::new(storage, sync_state, Chain::Mainnet);
+            let chain = Chain::Mainnet;
+            let sequencer = crate::sequencer::Client::new(chain).unwrap();
+
+            let context = RpcContext::new(storage, sync_state, chain, sequencer);
             (context.with_call_handling(call_handle), cairo_handle)
         }
 
