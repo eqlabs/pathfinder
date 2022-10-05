@@ -9,4 +9,5 @@ pub(super) mod get_state_update;
 pub(super) mod get_transaction_by_block_id_and_index;
 pub(super) mod get_transaction_by_hash;
 pub(super) mod get_transaction_receipt;
+pub(super) mod pending_transactions;
 pub(super) mod syncing;
