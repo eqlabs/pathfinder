@@ -121,8 +121,12 @@ struct StructAbiEntry {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 struct StructMember {
-    #[serde(flatten)]
-    parameter: TypedParameter,
+    // Serde does not support deny_unknown_fields + flatten, so we
+    // flatten TypedParameter manually here.
+    #[serde(rename = "name")]
+    typed_parameter_name: String,
+    #[serde(rename = "type")]
+    typed_parameter_type: String,
     offset: u64,
 }
 
