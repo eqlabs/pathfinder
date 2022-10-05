@@ -45,7 +45,8 @@ impl From<SequencerError> for Error {
                 | StarknetErrorCode::MalformedRequest
                 | StarknetErrorCode::UnsupportedSelectorForFee
                 | StarknetErrorCode::OutOfRangeBlockHash
-                | StarknetErrorCode::NotPermittedContract => {
+                | StarknetErrorCode::NotPermittedContract
+                | StarknetErrorCode::InvalidTransactionNonce => {
                     Error::Call(CallError::Failed(e.into()))
                 }
                 StarknetErrorCode::UndeclaredClass => RpcErrorCode::InvalidContractClassHash.into(),
@@ -104,4 +105,6 @@ pub enum StarknetErrorCode {
     /// May be returned by the transaction write api.
     #[serde(rename = "StarknetErrorCode.TRANSACTION_LIMIT_EXCEEDED")]
     TransactionLimitExceeded,
+    #[serde(rename = "StarknetErrorCode.INVALID_TRANSACTION_NONCE")]
+    InvalidTransactionNonce,
 }
