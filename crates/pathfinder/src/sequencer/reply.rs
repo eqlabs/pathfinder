@@ -672,6 +672,15 @@ pub mod add_transaction {
         pub address: ContractAddress,
     }
 
+    /// API response for a DEPLOY ACCOUNT transaction
+    #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeployAccountResponse {
+        pub code: String, // TRANSACTION_RECEIVED
+        pub transaction_hash: StarknetTransactionHash,
+        pub address: ContractAddress,
+    }
+
     #[cfg(test)]
     mod serde_test {
         use crate::starkhash;

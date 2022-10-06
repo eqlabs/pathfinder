@@ -1095,6 +1095,19 @@ mod tests {
         ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
             unimplemented!()
         }
+
+        async fn add_deploy_account(
+            &self,
+            _: TransactionVersion,
+            _: Fee,
+            _: Vec<TransactionSignatureElem>,
+            _: TransactionNonce,
+            _: ContractAddressSalt,
+            _: ClassHash,
+            _: Vec<CallParam>,
+        ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
+            unimplemented!()
+        }
     }
 
     async fn l1_noop(
