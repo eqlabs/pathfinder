@@ -1,3 +1,4 @@
+pub(super) mod block_hash_and_number;
 pub(super) mod chain_id;
 pub(super) mod estimate_fee;
 pub(super) mod get_block_transaction_count;
