@@ -184,6 +184,16 @@ where
 // Registers all methods for the v0.2 API
 pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> anyhow::Result<()> {
     register_method_with_no_input(module, "starknet_chainId", method::chain_id::chain_id)?;
+    register_method(
+        module,
+        "starknet_getBlockWithTxHashes",
+        method::get_block::get_block_with_transaction_hashes,
+    )?;
+    register_method(
+        module,
+        "starknet_getBlockWithTxs",
+        method::get_block::get_block_with_transactions,
+    )?;
     register_method(module, "starknet_getClass", method::get_class::get_class)?;
     register_method(
         module,
