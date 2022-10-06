@@ -1,5 +1,11 @@
-use crate::core::BlockId;
+use anyhow::Context;
+use stark_hash::StarkHash;
+
+use crate::core::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use crate::rpc::v02::RpcContext;
+use crate::storage::{
+    RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable,
+};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetBlockInput {
@@ -36,11 +42,121 @@ pub async fn get_block_with_transactions(
 
 /// Get block information given the block id
 async fn get_block(
-    _context: RpcContext,
-    _block_id: BlockId,
-    _scope: types::BlockResponseScope,
+    context: RpcContext,
+    block_id: BlockId,
+    scope: types::BlockResponseScope,
 ) -> Result<types::Block, GetBlockError> {
-    todo!()
+    let block_id = match block_id {
+        BlockId::Pending => todo!(),
+        BlockId::Hash(hash) => hash.into(),
+        BlockId::Number(number) => number.into(),
+        BlockId::Latest => StarknetBlocksBlockId::Latest,
+    };
+
+    let storage = context.storage.clone();
+    let span = tracing::Span::current();
+
+    tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+        let mut connection = storage
+            .connection()
+            .context("Opening database connection")?;
+
+        let transaction = connection
+            .transaction()
+            .context("Creating database transaction")?;
+
+        // Need to get the block status. This also tests that the block hash is valid.
+        let block = get_raw_block(&transaction, block_id)?;
+
+        let transactions = get_block_transactions(&transaction, block.number, scope)?;
+
+        Result::<types::Block, GetBlockError>::Ok(types::Block::from_raw(block, transactions))
+    })
+    .await
+    .context("Database read panic or shutting down")?
+}
+
+/// Fetches a [RawBlock] from storage.
+fn get_raw_block(
+    transaction: &rusqlite::Transaction<'_>,
+    block_id: StarknetBlocksBlockId,
+) -> Result<types::RawBlock, GetBlockError> {
+    let block = StarknetBlocksTable::get(transaction, block_id)
+        .context("Read block from database")?
+        .ok_or(GetBlockError::BlockNotFound)?;
+
+    let block_status = get_block_status(transaction, block.number)?;
+
+    let (parent_hash, parent_root) = match block.number {
+        StarknetBlockNumber::GENESIS => (
+            StarknetBlockHash(StarkHash::ZERO),
+            GlobalRoot(StarkHash::ZERO),
+        ),
+        other => {
+            let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
+                .context("Read parent block from database")?
+                .context("Parent block missing")?;
+
+            (parent_block.hash, parent_block.root)
+        }
+    };
+
+    let block = types::RawBlock {
+        number: block.number,
+        hash: block.hash,
+        root: block.root,
+        parent_hash,
+        parent_root,
+        timestamp: block.timestamp,
+        status: block_status,
+        gas_price: block.gas_price,
+        sequencer: block.sequencer_address,
+    };
+
+    Ok(block)
+}
+
+/// Determines block status based on the current L1-L2 stored in the DB.
+fn get_block_status(
+    db_tx: &rusqlite::Transaction<'_>,
+    block_number: StarknetBlockNumber,
+) -> Result<types::BlockStatus, GetBlockError> {
+    // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
+    let l1_l2_head =
+        RefsTable::get_l1_l2_head(db_tx).context("Read latest L1 head from database")?;
+    let block_status = match l1_l2_head {
+        Some(number) if number >= block_number => types::BlockStatus::AcceptedOnL1,
+        _ => types::BlockStatus::AcceptedOnL2,
+    };
+
+    Ok(block_status)
+}
+
+/// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
+fn get_block_transactions(
+    db_tx: &rusqlite::Transaction<'_>,
+    block_number: StarknetBlockNumber,
+    scope: types::BlockResponseScope,
+) -> Result<types::Transactions, GetBlockError> {
+    let transactions_receipts =
+        StarknetTransactionsTable::get_transaction_data_for_block(db_tx, block_number.into())
+            .context("Reading transactions from database")?;
+
+    match scope {
+        types::BlockResponseScope::TransactionHashes => Ok(types::Transactions::HashesOnly(
+            transactions_receipts
+                .into_iter()
+                .map(|(t, _)| t.hash())
+                .collect(),
+        )),
+        types::BlockResponseScope::FullTransactions => Ok(types::Transactions::Full(
+            transactions_receipts
+                .into_iter()
+                .map(|(t, _)| t.into())
+                .collect(),
+        )),
+    }
 }
 
 mod types {
