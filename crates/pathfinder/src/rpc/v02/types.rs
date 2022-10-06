@@ -123,7 +123,10 @@ pub mod request {
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         pub signature: Vec<TransactionSignatureElem>,
-        pub nonce: TransactionNonce,
+        // This is a mistake in RPC specification v0.2. This field should not exist,
+        // but since it is part of the spec we make it optional and then don't pass it
+        // on to the gateway in the write API.
+        pub nonce: Option<TransactionNonce>,
 
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
@@ -196,7 +199,7 @@ pub mod request {
                             version: TransactionVersion(web3::types::H256::zero()),
                             max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(starkhash!("07"))],
-                            nonce: TransactionNonce(starkhash!("08")),
+                            nonce: Some(TransactionNonce(starkhash!("08"))),
                             contract_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
                             entry_point_selector: EntryPoint(starkhash!("0e")),
                             calldata: vec![CallParam(starkhash!("ff"))],

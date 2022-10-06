@@ -9,6 +9,8 @@ use crate::{state::PendingData, storage::Storage};
 pub mod method;
 pub mod types;
 
+type SequencerClient = crate::sequencer::Client;
+
 #[derive(Clone)]
 pub struct RpcContext {
     pub storage: Storage,
@@ -17,10 +19,16 @@ pub struct RpcContext {
     pub chain: Chain,
     pub call_handle: Option<ext_py::Handle>,
     pub eth_gas_price: Option<gas_price::Cached>,
+    pub sequencer: SequencerClient,
 }
 
 impl RpcContext {
-    pub fn new(storage: Storage, sync_status: Arc<SyncState>, chain: Chain) -> Self {
+    pub fn new(
+        storage: Storage,
+        sync_status: Arc<SyncState>,
+        chain: Chain,
+        sequencer: SequencerClient,
+    ) -> Self {
         Self {
             storage,
             sync_status,
@@ -28,6 +36,7 @@ impl RpcContext {
             pending_data: None,
             call_handle: None,
             eth_gas_price: None,
+            sequencer,
         }
     }
 
@@ -35,7 +44,8 @@ impl RpcContext {
     pub fn for_tests() -> Self {
         let storage = super::tests::setup_storage();
         let sync_state = Arc::new(SyncState::default());
-        Self::new(storage, sync_state, Chain::Testnet)
+        let sequencer = SequencerClient::new(Chain::Testnet).unwrap();
+        Self::new(storage, sync_state, Chain::Testnet, sequencer)
     }
 
     pub fn with_pending_data(self, pending_data: PendingData) -> Self {
@@ -81,6 +91,7 @@ impl From<&super::v01::api::RpcApi> for RpcContext {
             chain: v01.chain,
             call_handle: v01.call_handle.clone(),
             eth_gas_price: v01.shared_gas_price.clone(),
+            sequencer: v01.sequencer.clone(),
         }
     }
 }
@@ -230,6 +241,12 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         module,
         "starknet_blockNumber",
         method::block_hash_and_number::block_number,
+    )?;
+
+    register_method(
+        module,
+        "starknet_addInvokeTransaction",
+        method::add_invoke_transaction::add_invoke_transaction,
     )?;
 
     Ok(())

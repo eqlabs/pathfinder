@@ -3,6 +3,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde_with::serde_as;
 
+use crate::core::TransactionNonce;
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
     core::{BlockId, TransactionVersion},
@@ -57,7 +58,8 @@ impl TryInto<crate::rpc::v01::types::request::Call> for BroadcastedTransaction {
                     signature: tx.signature,
                     max_fee: tx.max_fee,
                     version: TransactionVersion::ZERO,
-                    nonce: tx.nonce,
+                    // nonce is present in V0 invoke, but is there in error.
+                    nonce: TransactionNonce::ZERO,
                 })
             }
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
@@ -209,7 +211,7 @@ mod tests {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
                     signature: vec![TransactionSignatureElem(starkhash!("07"))],
-                    nonce: TransactionNonce(starkhash!("08")),
+                    nonce: Some(TransactionNonce(starkhash!("08"))),
                     contract_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
                     entry_point_selector: EntryPoint(starkhash!("0e")),
                     calldata: vec![CallParam(starkhash!("ff"))],
@@ -298,7 +300,7 @@ mod tests {
                 version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                 max_fee: Fee(Default::default()),
                 signature: vec![],
-                nonce: TransactionNonce(Default::default()),
+                nonce: Some(TransactionNonce(Default::default())),
                 contract_address: ContractAddress::new_or_panic(starkhash!(
                     "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
                 )),
@@ -337,7 +339,10 @@ mod tests {
             .await
             .unwrap();
 
-            let context = RpcContext::new(storage, sync_state, Chain::Mainnet);
+            let chain = Chain::Mainnet;
+            let sequencer = crate::sequencer::Client::new(chain).unwrap();
+
+            let context = RpcContext::new(storage, sync_state, chain, sequencer);
             (context.with_call_handling(call_handle), cairo_handle)
         }
 
