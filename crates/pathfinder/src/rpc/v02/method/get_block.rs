@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use stark_hash::StarkHash;
 
 use crate::core::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
@@ -47,7 +47,22 @@ async fn get_block(
     scope: types::BlockResponseScope,
 ) -> Result<types::Block, GetBlockError> {
     let block_id = match block_id {
-        BlockId::Pending => todo!(),
+        BlockId::Pending => {
+            match context
+                .pending_data
+                .ok_or(anyhow!("Pending data not supported in this configuration"))?
+                .block()
+                .await
+            {
+                Some(block) => {
+                    return Ok(types::Block::from_sequencer_scoped(
+                        block.as_ref().clone().into(),
+                        scope,
+                    ))
+                }
+                None => StarknetBlocksBlockId::Latest,
+            }
+        }
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
         BlockId::Latest => StarknetBlocksBlockId::Latest,
