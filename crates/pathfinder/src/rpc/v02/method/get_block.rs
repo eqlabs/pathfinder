@@ -15,7 +15,7 @@ pub struct GetBlockInput {
 crate::rpc::error::generate_rpc_error_subset!(GetBlockError: BlockNotFound);
 
 /// Get block information with transaction hashes given the block id
-pub async fn get_block_with_transaction_hashes(
+pub async fn get_block_with_tx_hashes(
     context: RpcContext,
     input: GetBlockInput,
 ) -> Result<types::Block, GetBlockError> {
@@ -28,7 +28,7 @@ pub async fn get_block_with_transaction_hashes(
 }
 
 /// Get block information with full transactions given the block id
-pub async fn get_block_with_transactions(
+pub async fn get_block_with_txs(
     context: RpcContext,
     input: GetBlockInput,
 ) -> Result<types::Block, GetBlockError> {

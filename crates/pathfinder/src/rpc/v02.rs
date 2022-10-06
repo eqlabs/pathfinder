@@ -187,12 +187,12 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
     register_method(
         module,
         "starknet_getBlockWithTxHashes",
-        method::get_block::get_block_with_transaction_hashes,
+        method::get_block::get_block_with_tx_hashes,
     )?;
     register_method(
         module,
         "starknet_getBlockWithTxs",
-        method::get_block::get_block_with_transactions,
+        method::get_block::get_block_with_txs,
     )?;
     register_method(module, "starknet_getClass", method::get_class::get_class)?;
     register_method(
