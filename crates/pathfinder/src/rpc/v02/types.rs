@@ -1,14 +1,14 @@
 //! Common data structures used by the JSON-RPC API methods.
 
-mod class;
+pub(crate) mod class;
 pub use class::*;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use crate::{
         core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, Fee,
+            TransactionNonce, TransactionSignatureElem, TransactionVersion,
         },
         rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
     };
@@ -47,7 +47,7 @@ pub mod request {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
 
-        pub contract_class: ClassHash,
+        pub contract_class: super::ContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -62,7 +62,7 @@ pub mod request {
         pub constructor_calldata: Vec<ConstructorParam>,
 
         /// The class of the contract that will be deployed.
-        pub contract_class: ClassHash,
+        pub contract_class: super::ContractClass,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -174,25 +174,37 @@ pub mod request {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use crate::starkhash;
+            use crate::{
+                rpc::v02::types::{ContractClass, ContractEntryPoints},
+                starkhash,
+            };
             use pretty_assertions::assert_eq;
 
             #[test]
             fn broadcasted_transaction() {
+                let contract_class = ContractClass {
+                    program: "program".to_owned(),
+                    entry_points_by_type: ContractEntryPoints {
+                        constructor: vec![],
+                        external: vec![],
+                        l1_handler: vec![],
+                    },
+                    abi: None,
+                };
                 let txs = vec![
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction {
                         max_fee: Fee(web3::types::H128::from_low_u64_be(0x5)),
                         version: TransactionVersion(web3::types::H256::from_low_u64_be(0x0)),
                         signature: vec![TransactionSignatureElem(starkhash!("07"))],
                         nonce: TransactionNonce(starkhash!("08")),
-                        contract_class: ClassHash(starkhash!("09")),
+                        contract_class: contract_class.clone(),
                         sender_address: ContractAddress::new_or_panic(starkhash!("0a")),
                     }),
                     BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
                         version: TransactionVersion(web3::types::H256::from_low_u64_be(0x0)),
                         contract_address_salt: ContractAddressSalt(starkhash!("dd")),
                         constructor_calldata: vec![ConstructorParam(starkhash!("11"))],
-                        contract_class: ClassHash(starkhash!("10")),
+                        contract_class,
                     }),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                         BroadcastedInvokeTransactionV0 {

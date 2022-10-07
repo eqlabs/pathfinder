@@ -49,58 +49,58 @@ impl ContractClass {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ContractClass {
-    program: String,
-    entry_points_by_type: ContractEntryPoints,
-    abi: Option<Vec<ContractAbiEntry>>,
+    pub program: String,
+    pub entry_points_by_type: ContractEntryPoints,
+    pub abi: Option<Vec<ContractAbiEntry>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[serde(deny_unknown_fields)]
-struct ContractEntryPoints {
-    constructor: Vec<ContractEntryPoint>,
-    external: Vec<ContractEntryPoint>,
-    l1_handler: Vec<ContractEntryPoint>,
+pub struct ContractEntryPoints {
+    pub constructor: Vec<ContractEntryPoint>,
+    pub external: Vec<ContractEntryPoint>,
+    pub l1_handler: Vec<ContractEntryPoint>,
 }
 
 #[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct ContractEntryPoint {
+pub struct ContractEntryPoint {
     #[serde_as(as = "U64AsHexStr")]
-    offset: u64,
-    selector: StarkHash,
+    pub offset: u64,
+    pub selector: StarkHash,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
-enum ContractAbiEntry {
+pub enum ContractAbiEntry {
     Function(FunctionAbiEntry),
     Event(EventAbiEntry),
     Struct(StructAbiEntry),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 #[serde(deny_unknown_fields)]
-enum StructAbiType {
+pub enum StructAbiType {
     Struct,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 #[serde(deny_unknown_fields)]
-enum EventAbiType {
+pub enum EventAbiType {
     Event,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[serde(deny_unknown_fields)]
-enum FunctionAbiType {
+pub enum FunctionAbiType {
     Function,
     L1Handler,
     // This is missing from the v0.2 RPC specification and will be added in the
@@ -109,18 +109,18 @@ enum FunctionAbiType {
     Constructor,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct StructAbiEntry {
+pub struct StructAbiEntry {
     r#type: StructAbiType,
     name: String,
     size: u64,
     members: Vec<StructMember>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct StructMember {
+pub struct StructMember {
     // Serde does not support deny_unknown_fields + flatten, so we
     // flatten TypedParameter manually here.
     #[serde(rename = "name")]
@@ -130,9 +130,9 @@ struct StructMember {
     offset: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct EventAbiEntry {
+pub struct EventAbiEntry {
     r#type: EventAbiType,
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -155,9 +155,9 @@ struct EventAbiEntry {
     _outputs: Option<Vec<TypedParameter>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct FunctionAbiEntry {
+pub struct FunctionAbiEntry {
     r#type: FunctionAbiType,
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -174,9 +174,9 @@ struct FunctionAbiEntry {
     _state_mutability: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct TypedParameter {
+pub struct TypedParameter {
     name: String,
     r#type: String,
 }
