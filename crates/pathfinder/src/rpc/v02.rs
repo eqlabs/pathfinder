@@ -43,10 +43,16 @@ impl RpcContext {
 
     #[cfg(test)]
     pub fn for_tests() -> Self {
+        Self::for_tests_on(Chain::Testnet)
+    }
+
+    #[cfg(test)]
+    pub fn for_tests_on(chain: Chain) -> Self {
+        assert_ne!(chain, Chain::Mainnet, "Testing on MainNet?");
         let storage = super::tests::setup_storage();
         let sync_state = Arc::new(SyncState::default());
-        let sequencer = SequencerClient::new(Chain::Testnet).unwrap();
-        Self::new(storage, sync_state, Chain::Testnet, sequencer)
+        let sequencer = SequencerClient::new(chain).unwrap();
+        Self::new(storage, sync_state, chain, sequencer)
     }
 
     pub fn with_pending_data(self, pending_data: PendingData) -> Self {
@@ -274,6 +280,11 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         module,
         "starknet_addDeployTransaction",
         method::add_deploy_transaction::add_deploy_transaction,
+    )?;
+    register_method(
+        module,
+        "starknet_addDeployAccountTransaction",
+        method::add_deploy_account_transaction::add_deploy_account_transaction,
     )?;
 
     Ok(())
