@@ -1,40 +1,50 @@
 //! The json serializable types
 
-use crate::core::{CallParam, ContractAddress, ContractNonce, EntryPoint, TransactionNonce};
+use crate::core::{
+    CallParam, ContractAddress, ContractNonce, EntryPoint, TransactionNonce,
+    TransactionSignatureElem,
+};
 use crate::rpc::v01::types::BlockHashOrTag;
 use crate::sequencer::reply::state_update::{DeployedContract, StorageDiff};
 use std::collections::HashMap;
 
-/// The command we send to the python loop.
+/// The command we send to the Python loop.
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug)]
-pub(crate) struct ChildCommand<'a> {
-    pub command: Verb,
-    pub contract_address: &'a ContractAddress,
-    pub calldata: &'a [CallParam],
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub entry_point_selector: Option<&'a EntryPoint>,
+#[serde(tag = "verb", rename_all = "SCREAMING_SNAKE_CASE")]
+pub(crate) enum ChildCommand<'a> {
+    Call {
+        #[serde(flatten)]
+        common: CommonProperties<'a>,
+
+        contract_address: &'a ContractAddress,
+        calldata: &'a [CallParam],
+        max_fee: &'a crate::core::Fee,
+        signature: &'a [TransactionSignatureElem],
+        nonce: Option<&'a TransactionNonce>,
+        entry_point_selector: Option<&'a EntryPoint>,
+    },
+    EstimateFee {
+        #[serde(flatten)]
+        common: CommonProperties<'a>,
+
+        // zero means use the gas price from the block.
+        #[serde_as(as = "&crate::rpc::serde::H256AsHexStr")]
+        gas_price: &'a web3::types::H256,
+        transaction: &'a crate::sequencer::request::add_transaction::AddTransaction,
+    },
+}
+
+#[serde_with::serde_as]
+#[derive(serde::Serialize, Debug)]
+pub(crate) struct CommonProperties<'a> {
     pub at_block: &'a BlockHashNumberOrLatest,
-    #[serde_as(as = "Option<&crate::rpc::serde::H256AsHexStr>")]
-    pub gas_price: Option<&'a web3::types::H256>,
-    pub signature: &'a [crate::core::TransactionSignatureElem],
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nonce: Option<&'a TransactionNonce>,
-    pub max_fee: &'a crate::core::Fee,
-    #[serde_as(as = "crate::rpc::serde::TransactionVersionAsHexStr")]
-    pub version: &'a crate::core::TransactionVersion,
     pub chain: UsedChain,
+
+    // Pending state
     pub pending_updates: ContractUpdatesWrapper<'a>,
     pub pending_deployed: DeployedContractsWrapper<'a>,
     pub pending_nonces: NoncesWrapper<'a>,
-}
-
-#[derive(serde::Serialize, Debug)]
-pub(crate) enum Verb {
-    #[serde(rename = "call")]
-    Call,
-    #[serde(rename = "estimate_fee")]
-    EstimateFee,
 }
 
 /// Private version of [`crate::core::Chain`] for serialization.
