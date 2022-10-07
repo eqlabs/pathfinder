@@ -6,6 +6,7 @@ use crate::rpc::gas_price;
 use crate::{core::Chain, state::SyncState};
 use crate::{state::PendingData, storage::Storage};
 
+mod common;
 pub mod method;
 pub mod types;
 

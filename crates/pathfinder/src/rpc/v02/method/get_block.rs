@@ -3,10 +3,9 @@ use serde::Deserialize;
 use stark_hash::StarkHash;
 
 use crate::core::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use crate::rpc::v02::common::get_block_status;
 use crate::rpc::v02::RpcContext;
-use crate::storage::{
-    RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable,
-};
+use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Copy, Clone))]
@@ -134,22 +133,6 @@ fn get_raw_block(
     Ok(block)
 }
 
-/// Determines block status based on the current L1-L2 stored in the DB.
-fn get_block_status(
-    db_tx: &rusqlite::Transaction<'_>,
-    block_number: StarknetBlockNumber,
-) -> Result<types::BlockStatus, GetBlockError> {
-    // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
-    let l1_l2_head =
-        RefsTable::get_l1_l2_head(db_tx).context("Read latest L1 head from database")?;
-    let block_status = match l1_l2_head {
-        Some(number) if number >= block_number => types::BlockStatus::AcceptedOnL1,
-        _ => types::BlockStatus::AcceptedOnL2,
-    };
-
-    Ok(block_status)
-}
-
 /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
 fn get_block_transactions(
     db_tx: &rusqlite::Transaction<'_>,
@@ -181,48 +164,17 @@ mod types {
         GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash,
     };
-    use crate::rpc::v02::types::reply::Transaction;
+    use crate::rpc::v02::types::reply::{BlockStatus, Transaction};
     use crate::sequencer;
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
     use stark_hash::StarkHash;
-    use std::convert::From;
 
     /// Determines the type of response to block related queries.
     #[derive(Copy, Clone, Debug)]
     pub enum BlockResponseScope {
         TransactionHashes,
         FullTransactions,
-    }
-
-    /// L2 Block status as returned by the RPC API.
-    #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub enum BlockStatus {
-        #[serde(rename = "PENDING")]
-        Pending,
-        #[serde(rename = "ACCEPTED_ON_L2")]
-        AcceptedOnL2,
-        #[serde(rename = "ACCEPTED_ON_L1")]
-        AcceptedOnL1,
-        #[serde(rename = "REJECTED")]
-        Rejected,
-    }
-
-    impl From<sequencer::reply::Status> for BlockStatus {
-        fn from(status: sequencer::reply::Status) -> Self {
-            match status {
-                // TODO verify this mapping with Starkware
-                sequencer::reply::Status::AcceptedOnL1 => BlockStatus::AcceptedOnL1,
-                sequencer::reply::Status::AcceptedOnL2 => BlockStatus::AcceptedOnL2,
-                sequencer::reply::Status::NotReceived => BlockStatus::Rejected,
-                sequencer::reply::Status::Pending => BlockStatus::Pending,
-                sequencer::reply::Status::Received => BlockStatus::Pending,
-                sequencer::reply::Status::Rejected => BlockStatus::Rejected,
-                sequencer::reply::Status::Reverted => BlockStatus::Rejected,
-                sequencer::reply::Status::Aborted => BlockStatus::Rejected,
-            }
-        }
     }
 
     /// Wrapper for transaction data returned in block related queries,
