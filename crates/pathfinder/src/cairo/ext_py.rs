@@ -17,7 +17,9 @@
 
 use crate::core::CallResultValue;
 use crate::rpc::v01::types::{reply::FeeEstimate, request::Call};
+use crate::rpc::v02::types::request::{BroadcastedInvokeTransaction, BroadcastedTransaction};
 use crate::sequencer::reply::StateUpdate;
+use crate::sequencer::request::add_transaction;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -81,7 +83,7 @@ impl Handle {
     /// Returns the fee as a three components.
     pub async fn estimate_fee(
         &self,
-        call: Call,
+        transaction: BroadcastedTransaction,
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
         diffs: Option<Arc<StateUpdate>>,
@@ -91,10 +93,40 @@ impl Handle {
 
         let continued_span = tracing::info_span!("ext_py_est_fee", pid = Empty);
 
+        let transaction = match transaction {
+            BroadcastedTransaction::Declare(_) | BroadcastedTransaction::Deploy(_) => {
+                return Err(CallFailure::Internal(
+                    "Only invoke transactions are supported",
+                ))
+            }
+            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
+                add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    nonce: None,
+                    contract_address: tx.contract_address,
+                    entry_point_selector: Some(tx.entry_point_selector),
+                    calldata: tx.calldata,
+                })
+            }
+            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
+                add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    nonce: Some(tx.nonce),
+                    contract_address: tx.sender_address,
+                    entry_point_selector: None,
+                    calldata: tx.calldata,
+                })
+            }
+        };
+
         self.command_tx
             .send((
                 Command::EstimateFee {
-                    call,
+                    transaction,
                     at_block,
                     gas_price,
                     chain: self.chain,
@@ -186,7 +218,7 @@ enum Command {
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
-        call: Call,
+        transaction: add_transaction::AddTransaction,
         at_block: BlockHashNumberOrLatest,
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
@@ -280,7 +312,12 @@ type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExit
 #[cfg(test)]
 mod tests {
     use super::sub_process::launch_python;
-    use crate::starkhash;
+    use crate::{
+        rpc::v02::types::request::{
+            BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV0, BroadcastedTransaction,
+        },
+        starkhash,
+    };
     use stark_hash::StarkHash;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
@@ -426,21 +463,23 @@ mod tests {
         .await
         .unwrap();
 
-        let call = super::Call {
-            contract_address: crate::core::ContractAddress::new_or_panic(starkhash!(
-                "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-            )),
-            calldata: vec![crate::core::CallParam(starkhash!("84"))],
-            entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
-            signature: Default::default(),
-            max_fee: super::Call::DEFAULT_MAX_FEE,
-            version: super::Call::DEFAULT_VERSION,
-            nonce: super::Call::DEFAULT_NONCE,
-        };
+        let transaction = BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
+            BroadcastedInvokeTransactionV0 {
+                version: crate::core::TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                max_fee: super::Call::DEFAULT_MAX_FEE,
+                signature: Default::default(),
+                nonce: None,
+                contract_address: crate::core::ContractAddress::new_or_panic(starkhash!(
+                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
+                )),
+                entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
+                calldata: vec![crate::core::CallParam(starkhash!("84"))],
+            },
+        ));
 
         let at_block_fee = handle
             .estimate_fee(
-                call.clone(),
+                transaction.clone(),
                 crate::core::StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                 )
@@ -464,7 +503,7 @@ mod tests {
 
         let current_fee = handle
             .estimate_fee(
-                call,
+                transaction,
                 crate::core::StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                 )

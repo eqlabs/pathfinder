@@ -110,10 +110,8 @@ pub async fn estimate_fee(
     let (when, pending_update) =
         base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
-    let call: crate::rpc::v01::types::request::Call = input.request.try_into()?;
-
     let result = handle
-        .estimate_fee(call, when, gas_price, pending_update)
+        .estimate_fee(input.request, when, gas_price, pending_update)
         .await?;
 
     Ok(result.into())
@@ -395,7 +393,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn success() {
+        async fn successful_invoke_v0() {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {

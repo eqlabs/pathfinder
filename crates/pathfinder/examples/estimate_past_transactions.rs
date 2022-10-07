@@ -66,7 +66,7 @@ fn main() -> Result<(), anyhow::Error> {
 
 #[derive(Debug)]
 struct Work {
-    call: pathfinder_lib::rpc::v01::types::request::Call,
+    transaction: pathfinder_lib::rpc::v02::types::request::BroadcastedTransaction,
     at_block: pathfinder_lib::core::StarknetBlockHash,
     gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource,
     actual_fee: web3::types::H256,
@@ -153,7 +153,7 @@ fn feed_work(
             format!("deserialize tx out of {tx_hash} {tx}")
         })?;
 
-        let call = match tx {
+        let transaction = match tx {
             SimpleTransaction::Invoke(tx)
                 if !previously_declared_deployed_in_the_same_block
                     .contains(tx.contract_address.get()) =>
@@ -198,7 +198,7 @@ fn feed_work(
 
         sender
             .blocking_send(Work {
-                call,
+                transaction,
                 at_block: pathfinder_lib::core::StarknetBlockHash(target_hash),
                 // use the b.gas_price to get as close as possible
                 gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource::Current(
@@ -240,9 +240,9 @@ async fn estimate(
         tokio::select! {
             next_work = rx.recv(), if rx_open => {
                 match next_work {
-                    Some(Work {call, at_block, gas_price, actual_fee, span}) => {
+                    Some(Work {transaction, at_block, gas_price, actual_fee, span}) => {
                         let outer = span.clone();
-                        let fut = handle.estimate_fee(call, at_block.into(), gas_price, None);
+                        let fut = handle.estimate_fee(transaction, at_block.into(), gas_price, None);
                         waiting.push(async move {
                             ReadyResult {
                                 actual_fee,
@@ -368,18 +368,53 @@ fn default_transaction_nonce() -> pathfinder_lib::core::TransactionNonce {
     pathfinder_lib::rpc::v01::types::request::Call::DEFAULT_NONCE
 }
 
-impl From<SimpleInvoke> for pathfinder_lib::rpc::v01::types::request::Call {
+impl From<SimpleInvoke> for pathfinder_lib::rpc::v02::types::request::BroadcastedTransaction {
     fn from(tx: SimpleInvoke) -> Self {
-        pathfinder_lib::rpc::v01::types::request::Call {
-            contract_address: tx.contract_address,
-            calldata: tx.calldata,
-            entry_point_selector: tx.entry_point_selector,
-            signature: tx.signature,
-            max_fee: tx.max_fee,
-            version: tx
-                .version
-                .unwrap_or(pathfinder_lib::rpc::v01::types::request::Call::DEFAULT_VERSION),
-            nonce: tx.nonce,
+        use pathfinder_lib::rpc::v02::types::request::*;
+
+        match tx.version {
+            Some(version) => match version.without_query_version() {
+                0 => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
+                    BroadcastedInvokeTransactionV0 {
+                        version,
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: None,
+                        contract_address: tx.contract_address,
+                        entry_point_selector: tx
+                            .entry_point_selector
+                            .unwrap_or(pathfinder_lib::core::EntryPoint(StarkHash::ZERO)),
+                        calldata: tx.calldata,
+                    },
+                )),
+                1 => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                    BroadcastedInvokeTransactionV1 {
+                        version,
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: tx.nonce,
+                        sender_address: tx.contract_address,
+                        calldata: tx.calldata,
+                    },
+                )),
+                _ => panic!(
+                    "Unsupported transaction version in transaction {:?}",
+                    tx.version
+                ),
+            },
+            None => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
+                BroadcastedInvokeTransactionV0 {
+                    version: pathfinder_lib::core::TransactionVersion::ZERO,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    nonce: None,
+                    contract_address: tx.contract_address,
+                    entry_point_selector: tx
+                        .entry_point_selector
+                        .unwrap_or(pathfinder_lib::core::EntryPoint(StarkHash::ZERO)),
+                    calldata: tx.calldata,
+                },
+            )),
         }
     }
 }
