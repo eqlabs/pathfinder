@@ -93,7 +93,8 @@ impl<'a> serde::Serialize for ContractUpdatesWrapper<'a> {
             }
             map.end()
         } else {
-            serializer.serialize_none()
+            let map = serializer.serialize_map(Some(0))?;
+            map.end()
         }
     }
 }
@@ -155,7 +156,8 @@ impl<'a> serde::Serialize for DeployedContractsWrapper<'a> {
             }
             seq.end()
         } else {
-            serializer.serialize_none()
+            let seq = serializer.serialize_seq(Some(0))?;
+            seq.end()
         }
     }
 }
@@ -335,7 +337,7 @@ mod tests {
     fn serialize_none_updates() {
         use super::ContractUpdatesWrapper;
 
-        let expected = "null";
+        let expected = "{}";
         let s = serde_json::to_string(&ContractUpdatesWrapper(None)).unwrap();
         assert_eq!(expected, s);
     }
@@ -369,7 +371,7 @@ mod tests {
     fn serialize_none_deployed_contracts() {
         use super::DeployedContractsWrapper;
 
-        let expected = r#"null"#;
+        let expected = r#"[]"#;
         let s = serde_json::to_string(&DeployedContractsWrapper(None)).unwrap();
         assert_eq!(expected, s);
     }
