@@ -178,11 +178,12 @@ pub enum GasPriceSource {
 }
 
 impl GasPriceSource {
-    /// Convert to an option of H256, for serialization.
-    fn as_option(&self) -> Option<&web3::types::H256> {
+    const GAS_PRICE_ZERO: web3::types::H256 = web3::types::H256::zero();
+    /// Convert to `&H256`, for use in serialization.
+    fn as_price(&self) -> &web3::types::H256 {
         match self {
-            GasPriceSource::PastBlock => None,
-            GasPriceSource::Current(price) => Some(price),
+            GasPriceSource::PastBlock => &Self::GAS_PRICE_ZERO,
+            GasPriceSource::Current(price) => price,
         }
     }
 }

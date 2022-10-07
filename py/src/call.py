@@ -515,7 +515,7 @@ def resolve_block(connection, at_block, forced_gas_price):
 
     gas_price = int.from_bytes(gas_price, "big")
 
-    if forced_gas_price is not None:
+    if forced_gas_price != 0:
         # allow caller to override any; see rust side's GasPriceSource for more rationale
         gas_price = forced_gas_price
 
