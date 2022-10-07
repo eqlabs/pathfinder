@@ -3,12 +3,11 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde_with::serde_as;
 
-use crate::core::TransactionNonce;
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
-    core::{BlockId, TransactionVersion},
+    core::BlockId,
     rpc::v02::types::request::BroadcastedTransaction,
-    rpc::v02::{types::request::BroadcastedInvokeTransaction, RpcContext},
+    rpc::v02::RpcContext,
     state::PendingData,
 };
 
@@ -36,43 +35,6 @@ impl From<crate::cairo::ext_py::CallFailure> for EstimateFeeError {
             ExecutionFailed(e) => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
             // Intentionally hide the message under Internal
             Internal(_) | Shutdown => Self::Internal(anyhow::anyhow!("Internal error")),
-        }
-    }
-}
-
-impl TryInto<crate::rpc::v01::types::request::Call> for BroadcastedTransaction {
-    type Error = EstimateFeeError;
-
-    fn try_into(self) -> Result<crate::rpc::v01::types::request::Call, Self::Error> {
-        match self {
-            BroadcastedTransaction::Declare(_) | BroadcastedTransaction::Deploy(_) => {
-                Err(EstimateFeeError::Internal(anyhow::anyhow!(
-                    "Internal error: Only invoke transactions are supported."
-                )))
-            }
-            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
-                Ok(crate::rpc::v01::types::request::Call {
-                    contract_address: tx.contract_address,
-                    calldata: tx.calldata,
-                    entry_point_selector: Some(tx.entry_point_selector),
-                    signature: tx.signature,
-                    max_fee: tx.max_fee,
-                    version: TransactionVersion::ZERO,
-                    // nonce is present in V0 invoke, but is there in error.
-                    nonce: TransactionNonce::ZERO,
-                })
-            }
-            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
-                Ok(crate::rpc::v01::types::request::Call {
-                    contract_address: tx.sender_address,
-                    calldata: tx.calldata,
-                    entry_point_selector: None,
-                    signature: tx.signature,
-                    max_fee: tx.max_fee,
-                    version: TransactionVersion::ONE,
-                    nonce: tx.nonce,
-                })
-            }
         }
     }
 }
@@ -193,8 +155,9 @@ mod tests {
     use crate::{
         core::{
             CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
-            TransactionNonce, TransactionSignatureElem,
+            TransactionNonce, TransactionSignatureElem, TransactionVersion,
         },
+        rpc::v02::types::request::BroadcastedInvokeTransaction,
         storage::JournalMode,
     };
 
@@ -282,7 +245,10 @@ mod tests {
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
     mod ext_py {
-        use crate::rpc::v02::types::request::BroadcastedInvokeTransactionV0;
+        use crate::rpc::v02::types::request::{
+            BroadcastedDeclareTransaction, BroadcastedInvokeTransactionV0,
+        };
+        use crate::rpc::v02::types::ContractClass;
         use crate::starkhash_bytes;
 
         use super::*;
@@ -398,6 +364,45 @@ mod tests {
 
             let input = EstimateFeeInput {
                 request: valid_broadcasted_transaction(),
+                block_id: BLOCK_5,
+            };
+            let result = estimate_fee(context, input).await.unwrap();
+            assert_eq!(
+                result,
+                FeeEstimate {
+                    gas_consumed: Default::default(),
+                    gas_price: Default::default(),
+                    overall_fee: Default::default()
+                }
+            );
+        }
+
+        lazy_static::lazy_static! {
+            pub static ref CONTRACT_CLASS: ContractClass = {
+                let compressed_json = include_bytes!("../../../../fixtures/contract_definition.json.zst");
+                let json = zstd::decode_all(std::io::Cursor::new(compressed_json)).unwrap();
+                ContractClass::from_definition_bytes(&json).unwrap()
+            };
+        }
+
+        #[test_log::test(tokio::test)]
+        async fn successful_declare() {
+            let (context, _join_handle) = test_context_with_call_handling().await;
+
+            let declare_transaction =
+                BroadcastedTransaction::Declare(BroadcastedDeclareTransaction {
+                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                    max_fee: Fee(Default::default()),
+                    signature: vec![],
+                    nonce: TransactionNonce(Default::default()),
+                    contract_class: CONTRACT_CLASS.clone(),
+                    sender_address: ContractAddress::new_or_panic(starkhash!(
+                        "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
+                    )),
+                });
+
+            let input = EstimateFeeInput {
+                request: declare_transaction,
                 block_id: BLOCK_5,
             };
             let result = estimate_fee(context, input).await.unwrap();
