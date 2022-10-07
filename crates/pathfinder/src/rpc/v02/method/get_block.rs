@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context};
+use serde::Deserialize;
 use stark_hash::StarkHash;
 
 use crate::core::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
@@ -7,7 +8,8 @@ use crate::storage::{
     RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable,
 };
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[cfg_attr(test, derive(Copy, Clone))]
 pub struct GetBlockInput {
     block_id: BlockId,
 }
@@ -92,7 +94,7 @@ async fn get_block(
     .context("Database read panic or shutting down")?
 }
 
-/// Fetches a [RawBlock] from storage.
+/// Fetches a [RawBlock](types::RawBlock) from storage.
 fn get_raw_block(
     transaction: &rusqlite::Transaction<'_>,
     block_id: StarknetBlocksBlockId,
@@ -330,6 +332,7 @@ mod tests {
     use super::*;
     use crate::core::{StarknetBlockHash, StarknetBlockNumber};
     use crate::starkhash;
+    use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
 
     #[test]
@@ -359,5 +362,101 @@ mod tests {
                 "test case {i}: {input}"
             );
         });
+    }
+
+    type TestCaseHandler = Box<dyn Fn(usize, &Result<types::Block, GetBlockError>)>;
+
+    /// Execute a single test case and check its outcome for both: `get_block_with_[txs|tx_hashes]`
+    async fn check(test_case_idx: usize, test_case: &(RpcContext, BlockId, TestCaseHandler)) {
+        let (context, block_id, f) = test_case;
+        let result = get_block_with_txs(
+            context.clone(),
+            GetBlockInput {
+                block_id: block_id.clone(),
+            },
+        )
+        .await;
+        f(test_case_idx, &result);
+        let _ = result.map(|block| assert_matches!(block.transactions, types::Transactions::Full(_) => {}, "test case {test_case_idx}: {block_id:?}"));
+
+        let result = get_block_with_tx_hashes(
+            context.clone(),
+            GetBlockInput {
+                block_id: block_id.clone(),
+            },
+        )
+        .await;
+        f(test_case_idx, &result);
+        let _ = result.map(|block| assert_matches!(block.transactions, types::Transactions::HashesOnly(_) => {}, "test case {test_case_idx}: {block_id:?}"));
+    }
+
+    /// Common assertion type for most of the test cases
+    fn assert_hash(expected: &'static [u8]) -> TestCaseHandler {
+        Box::new(|i: usize, result| {
+            assert_matches!(result, Ok(block) => assert_eq!(
+                block.block_hash,
+                Some(StarknetBlockHash(crate::starkhash_bytes!(expected))),
+                "test case {i}"
+            ));
+        })
+    }
+
+    #[tokio::test]
+    async fn happy_paths_and_major_errors() {
+        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx_with_pending_empty =
+            RpcContext::for_tests().with_pending_data(crate::state::PendingData::default());
+        let ctx_with_pending_disabled = RpcContext::for_tests();
+
+        let cases: &[(RpcContext, BlockId, TestCaseHandler)] = &[
+            // Pending - happy paths
+            (
+                ctx.clone(),
+                BlockId::Pending,
+                Box::new(|i, result| {
+                    assert_matches!(result, Ok(block) => assert_eq!(
+                        block.parent_hash,
+                        StarknetBlockHash(crate::starkhash_bytes!(b"latest")),
+                        "test case {i}"
+                    ))
+                }),
+            ),
+            (
+                ctx_with_pending_empty.clone(),
+                BlockId::Pending,
+                assert_hash(b"latest"),
+            ),
+            // Other block ids - happy paths
+            (ctx.clone(), BlockId::Latest, assert_hash(b"latest")),
+            (
+                ctx.clone(),
+                BlockId::Number(StarknetBlockNumber::GENESIS),
+                assert_hash(b"genesis"),
+            ),
+            (
+                ctx.clone(),
+                BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"genesis"))),
+                assert_hash(b"genesis"),
+            ),
+            // Errors
+            (
+                ctx,
+                BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"non-existent"))),
+                Box::new(|i, result| {
+                    assert_matches!(result, Err(GetBlockError::BlockNotFound), "test case {i}")
+                }),
+            ),
+            (
+                ctx_with_pending_disabled,
+                BlockId::Pending,
+                Box::new(|i, result| {
+                    assert_matches!(result, Err(GetBlockError::Internal(_)), "test case {i}")
+                }),
+            ),
+        ];
+
+        for (i, test_case) in cases.iter().enumerate() {
+            check(i, test_case).await;
+        }
     }
 }
