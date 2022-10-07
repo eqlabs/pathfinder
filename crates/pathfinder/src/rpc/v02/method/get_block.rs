@@ -52,7 +52,7 @@ async fn get_block(
         BlockId::Pending => {
             match context
                 .pending_data
-                .ok_or(anyhow!("Pending data not supported in this configuration"))?
+                .ok_or_else(|| anyhow!("Pending data not supported in this configuration"))?
                 .block()
                 .await
             {
@@ -372,7 +372,7 @@ mod tests {
         let result = get_block_with_txs(
             context.clone(),
             GetBlockInput {
-                block_id: block_id.clone(),
+                block_id: *block_id,
             },
         )
         .await;
@@ -382,7 +382,7 @@ mod tests {
         let result = get_block_with_tx_hashes(
             context.clone(),
             GetBlockInput {
-                block_id: block_id.clone(),
+                block_id: *block_id,
             },
         )
         .await;
