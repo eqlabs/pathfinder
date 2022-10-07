@@ -195,7 +195,7 @@ fn verify_database_chain(storage: &Storage, expected: core::Chain) -> anyhow::Re
 
     anyhow::ensure!(
         db_chain == expected,
-        "Database ({}) does not much the expected network ({})",
+        "Database ({}) does not match the expected network ({})",
         db_chain,
         expected
     );
