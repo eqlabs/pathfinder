@@ -64,9 +64,10 @@ pub async fn get_storage_at(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        // Use internal_server_error to indicate that the process of querying for a particular block failed,
+        // Use internal error to indicate that the process of querying for a particular block failed,
         // which is not the same as being sure that the block is not in the db.
-        let global_root = StarknetBlocksTable::get_root(&tx, block_id)?
+        let global_root = StarknetBlocksTable::get_root(&tx, block_id)
+            .context("Get global root for block")?
             // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
             // by using a dedicated error code from the RPC API spec
             .ok_or_else(|| GetStorageAtError::BlockNotFound)?;
