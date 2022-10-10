@@ -9,9 +9,9 @@ use crate::storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksT
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStorageAtInput {
-    contract_address: ContractAddress,
-    key: StorageAddress,
-    block_id: BlockId,
+    pub contract_address: ContractAddress,
+    pub key: StorageAddress,
+    pub block_id: BlockId,
 }
 
 crate::rpc::error::generate_rpc_error_subset!(GetStorageAtError: ContractNotFound, BlockNotFound);
@@ -100,4 +100,38 @@ pub async fn get_storage_at(
     });
 
     jh.await.context("Database read panic or shutting down")?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::{ContractAddress, StorageAddress};
+    use crate::starkhash;
+    use jsonrpsee::types::Params;
+
+    /// # Important
+    ///
+    /// `BlockId` parsing is tested in [`get_block`][crate::rpc::v02::method::get_block::tests::parsing]
+    /// and is not repeated here.
+    #[test]
+    fn parsing() {
+        let expected = GetStorageAtInput {
+            contract_address: ContractAddress::new_or_panic(starkhash!("01")),
+            key: StorageAddress::new_or_panic(starkhash!("02")),
+            block_id: BlockId::Latest,
+        };
+
+        [
+            r#"["1", "2", "latest"]"#,
+            r#"{"contract_address": "0x1", "key": "0x2", "block_id": "latest"}"#,
+        ]
+        .into_iter()
+        .enumerate()
+        .for_each(|(i, input)| {
+            let actual = Params::new(Some(input))
+                .parse::<GetStorageAtInput>()
+                .unwrap_or_else(|error| panic!("test case {i}: {input}, {error}"));
+            assert_eq!(actual, expected, "test case {i}: {input}");
+        });
+    }
 }
