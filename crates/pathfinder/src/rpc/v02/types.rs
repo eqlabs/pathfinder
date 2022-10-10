@@ -535,6 +535,22 @@ pub mod reply {
         Rejected,
     }
 
+    impl From<sequencer::reply::Status> for BlockStatus {
+        fn from(status: sequencer::reply::Status) -> Self {
+            match status {
+                // TODO verify this mapping with Starkware
+                sequencer::reply::Status::AcceptedOnL1 => BlockStatus::AcceptedOnL1,
+                sequencer::reply::Status::AcceptedOnL2 => BlockStatus::AcceptedOnL2,
+                sequencer::reply::Status::NotReceived => BlockStatus::Rejected,
+                sequencer::reply::Status::Pending => BlockStatus::Pending,
+                sequencer::reply::Status::Received => BlockStatus::Pending,
+                sequencer::reply::Status::Rejected => BlockStatus::Rejected,
+                sequencer::reply::Status::Reverted => BlockStatus::Rejected,
+                sequencer::reply::Status::Aborted => BlockStatus::Rejected,
+            }
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         macro_rules! fixture {
