@@ -128,9 +128,6 @@ class Call(Command):
 
     contract_address: int = field(metadata=fields.contract_address_metadata)
     calldata: List[int] = field(metadata=fields.call_data_as_hex_metadata)
-    max_fee: int = field(metadata=fields.fee_metadata)
-    signature: List[int] = field(metadata=fields.signature_metadata)
-    nonce: Optional[int] = field(metadata=fields.optional_nonce_metadata)
     entry_point_selector: Optional[int] = field(
         default=None, metadata=fields.optional_entry_point_selector_metadata
     )
@@ -375,11 +372,7 @@ def loop_inner(connection, command: Command):
                 command.contract_address,
                 command.entry_point_selector,
                 command.calldata,
-                command.signature,
-                command.nonce,
-                command.max_fee,
                 block_info,
-                0,
                 pending_updates,
                 pending_deployed,
                 pending_nonces,
@@ -723,11 +716,7 @@ async def do_call(
     contract_address,
     selector,
     calldata,
-    signature,
-    nonce,
-    max_fee,
     block_info,
-    version,
     pending_updates,
     pending_deployed,
     pending_nonces,
