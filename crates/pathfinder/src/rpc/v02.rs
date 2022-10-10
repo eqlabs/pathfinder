@@ -224,6 +224,11 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
     )?;
     register_method(
         module,
+        "starknet_getStorageAt",
+        method::get_storage_at::get_storage_at,
+    )?;
+    register_method(
+        module,
         "starknet_getTransactionByHash",
         method::get_transaction_by_hash::get_transaction_by_hash,
     )?;
