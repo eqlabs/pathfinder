@@ -316,10 +316,6 @@ impl RpcApi {
     }
 
     /// Get the value of the storage at the given address and key.
-    ///
-    /// We are using overflowing type for `key` to be able to correctly report `INVALID_STORAGE_KEY` as per
-    /// [StarkNet RPC spec](https://github.com/starkware-libs/starknet-specs/blob/master/api/starknet_api_openrpc.json),
-    /// otherwise we would report [-32602](https://www.jsonrpc.org/specification#error_object).
     pub async fn get_storage_at(
         &self,
         contract_address: ContractAddress,
@@ -405,8 +401,6 @@ impl RpcApi {
                 .context("Load contract state tree")
                 .map_err(internal_server_error)?;
 
-            // ContractsStateTree::get() will return zero if the value is still not found (and we know the key is valid),
-            // which is consistent with the specification.
             let storage_val = contract_state_tree
                 .get(key)
                 .context("Get value from contract state tree")
