@@ -87,7 +87,7 @@ async fn get_block(
 
         let transactions = get_block_transactions(&transaction, block.number, scope)?;
 
-        Result::<types::Block, GetBlockError>::Ok(types::Block::from_raw(block, transactions))
+        Ok(types::Block::from_raw(block, transactions))
     })
     .await
     .context("Database read panic or shutting down")?
