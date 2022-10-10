@@ -307,7 +307,7 @@ mod tests {
         .for_each(|(i, (input, expected))| {
             let actual = Params::new(Some(input))
                 .parse::<GetBlockInput>()
-                .unwrap_or_else(|_| panic!("test case {i}: {input}"));
+                .unwrap_or_else(|error| panic!("test case {i}: {input}, {error}"));
             assert_eq!(
                 actual,
                 GetBlockInput { block_id: expected },
