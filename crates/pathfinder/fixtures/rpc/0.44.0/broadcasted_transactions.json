@@ -7,7 +7,15 @@
             "0x7"
         ],
         "nonce": "0x8",
-        "contract_class": "0x9",
+        "contract_class": {
+            "program": "program",
+            "entry_points_by_type": {
+                "CONSTRUCTOR": [],
+                "EXTERNAL": [],
+                "L1_HANDLER": []
+            },
+            "abi": null
+        },
         "sender_address": "0xa"
     },
     {
@@ -17,7 +25,15 @@
         "constructor_calldata": [
             "0x11"
         ],
-        "contract_class": "0x10"
+        "contract_class": {
+            "program": "program",
+            "entry_points_by_type": {
+                "CONSTRUCTOR": [],
+                "EXTERNAL": [],
+                "L1_HANDLER": []
+            },
+            "abi": null
+        }
     },
     {
         "type": "INVOKE",
