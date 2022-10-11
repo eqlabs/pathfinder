@@ -70,7 +70,7 @@ pub async fn get_storage_at(
             .context("Get global root for block")?
             // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
             // by using a dedicated error code from the RPC API spec
-            .ok_or_else(|| GetStorageAtError::BlockNotFound)?;
+            .ok_or(GetStorageAtError::BlockNotFound)?;
 
         let global_state_tree =
             GlobalStateTree::load(&tx, global_root).context("Global state tree")?;
@@ -78,7 +78,7 @@ pub async fn get_storage_at(
         let contract_state_hash = global_state_tree
             .get(input.contract_address)
             .context("Get contract state hash from global state tree")?
-            .ok_or_else(|| GetStorageAtError::ContractNotFound)?;
+            .ok_or(GetStorageAtError::ContractNotFound)?;
 
         let contract_state_root = ContractsStateTable::get_root(&tx, contract_state_hash)
             .context("Get contract state root")?
@@ -106,8 +106,9 @@ pub async fn get_storage_at(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{ContractAddress, StorageAddress};
-    use crate::starkhash;
+    use crate::core::{ContractAddress, StarknetBlockHash, StorageAddress};
+    use crate::{starkhash, starkhash_bytes};
+    use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
 
     /// # Important
@@ -134,5 +135,58 @@ mod tests {
                 .unwrap_or_else(|error| panic!("test case {i}: {input}, {error}"));
             assert_eq!(actual, expected, "test case {i}: {input}");
         });
+    }
+
+    type TestCaseHandler = Box<dyn Fn(usize, &Result<StorageValue, GetStorageAtError>)>;
+
+    /// Execute a single test case and check its outcome for `get_storage_at`
+    async fn check(
+        test_case_idx: usize,
+        test_case: &(
+            RpcContext,
+            ContractAddress,
+            StorageAddress,
+            BlockId,
+            TestCaseHandler,
+        ),
+    ) {
+        let (context, contract_address, key, block_id, f) = test_case;
+        let result = get_storage_at(
+            context.clone(),
+            GetStorageAtInput {
+                contract_address: *contract_address,
+                key: *key,
+                block_id: *block_id,
+            },
+        )
+        .await;
+        f(test_case_idx, &result);
+    }
+
+    /// Common assertion type for most of the happy paths
+    fn assert_value(expected: &'static [u8]) -> TestCaseHandler {
+        Box::new(|i: usize, result| {
+            assert_matches!(result, Ok(value) => assert_eq!(
+                *value,
+                StorageValue(crate::starkhash_bytes!(expected)),
+                "test case {i}"
+            ), "test case {i}");
+        })
+    }
+
+    impl PartialEq for GetStorageAtError {
+        fn eq(&self, other: &Self) -> bool {
+            match (self, other) {
+                (Self::Internal(l), Self::Internal(r)) => l.to_string() == r.to_string(),
+                _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            }
+        }
+    }
+
+    /// Common assertion type for most of the error paths
+    fn assert_error(expected: GetStorageAtError) -> TestCaseHandler {
+        Box::new(move |i: usize, result| {
+            assert_matches!(result, Err(error) => assert_eq!(*error, expected, "test case {i}"), "test case {i}");
+        })
     }
 }
