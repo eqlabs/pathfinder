@@ -48,9 +48,8 @@ impl From<SequencerError> for Error {
                 | StarknetErrorCode::NotPermittedContract
                 | StarknetErrorCode::InvalidTransactionNonce
                 | StarknetErrorCode::OutOfRangeFee
-                | StarknetErrorCode::InvalidTransactionVersion => {
-                    Error::Call(CallError::Failed(e.into()))
-                }
+                | StarknetErrorCode::InvalidTransactionVersion
+                | StarknetErrorCode::InvalidProgram => Error::Call(CallError::Failed(e.into())),
                 StarknetErrorCode::UndeclaredClass => RpcErrorCode::InvalidContractClassHash.into(),
             },
         }
@@ -113,4 +112,6 @@ pub enum StarknetErrorCode {
     OutOfRangeFee,
     #[serde(rename = "StarknetErrorCode.INVALID_TRANSACTION_VERSION")]
     InvalidTransactionVersion,
+    #[serde(rename = "StarknetErrorCode.INVALID_PROGRAM")]
+    InvalidProgram,
 }
