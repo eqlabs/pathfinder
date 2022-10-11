@@ -276,7 +276,8 @@ def do_loop(connection, input_gen, output_file):
             out = {"status": "error", "kind": "NO_SUCH_BLOCK"}
         except UnexpectedSchemaVersion:
             out = {"status": "error", "kind": "INVALID_SCHEMA_VERSION"}
-        except marshmallow.exceptions.MarshmallowError:
+        except marshmallow.exceptions.MarshmallowError as exc:
+            logger.error(f"Failed to parse command: {exc}")
             out = {"status": "error", "kind": "INVALID_INPUT"}
         except WebFriendlyException as exc:
             if str(exc.code) == "StarknetErrorCode.UNINITIALIZED_CONTRACT":
