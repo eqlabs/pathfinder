@@ -257,11 +257,11 @@ pub(crate) mod test_utils {
                     entry_point_selector: EntryPoint(
                         StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
                     ),
-                    entry_point_type: if i & 1 == 0 {
+                    entry_point_type: Some(if i & 1 == 0 {
                         EntryPointType::External
                     } else {
                         EntryPointType::L1Handler
-                    },
+                    }),
                     max_fee: Fee(H128::zero()),
                     signature: vec![TransactionSignatureElem(
                         StarkHash::from_hex_str(&"3".repeat(i + 3)).unwrap(),

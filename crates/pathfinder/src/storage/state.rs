@@ -2143,7 +2143,7 @@ mod tests {
                         calldata: vec![],
                         // Only required because event insert rejects if this is None
                         contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
-                        entry_point_type: transaction::EntryPointType::External,
+                        entry_point_type: Some(transaction::EntryPointType::External),
                         entry_point_selector: EntryPoint(StarkHash::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],
@@ -2155,7 +2155,7 @@ mod tests {
                         calldata: vec![],
                         // Only required because event insert rejects if this is None
                         contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
-                        entry_point_type: transaction::EntryPointType::External,
+                        entry_point_type: Some(transaction::EntryPointType::External),
                         entry_point_selector: EntryPoint(StarkHash::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],

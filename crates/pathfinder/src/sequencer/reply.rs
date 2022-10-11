@@ -456,7 +456,8 @@ pub mod transaction {
         pub calldata: Vec<CallParam>,
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
-        pub entry_point_type: EntryPointType,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub entry_point_type: Option<EntryPointType>,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
