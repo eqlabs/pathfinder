@@ -353,6 +353,22 @@ mod tests {
         })
     }
 
+    impl PartialEq for GetBlockError {
+        fn eq(&self, other: &Self) -> bool {
+            match (self, other) {
+                (Self::Internal(l), Self::Internal(r)) => l.to_string() == r.to_string(),
+                _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            }
+        }
+    }
+
+    /// Common assertion type for most of the error paths
+    fn assert_error(expected: GetBlockError) -> TestCaseHandler {
+        Box::new(move |i: usize, result| {
+            assert_matches!(result, Err(error) => assert_eq!(*error, expected, "test case {i}"), "test case {i}");
+        })
+    }
+
     #[tokio::test]
     async fn happy_paths_and_major_errors() {
         let ctx = RpcContext::for_tests_with_pending().await;
@@ -370,11 +386,11 @@ mod tests {
                         block.parent_hash,
                         StarknetBlockHash(crate::starkhash_bytes!(b"latest")),
                         "test case {i}"
-                    ))
+                    ), "test case {i}")
                 }),
             ),
             (
-                ctx_with_pending_empty.clone(),
+                ctx_with_pending_empty,
                 BlockId::Pending,
                 assert_hash(b"latest"),
             ),
@@ -394,16 +410,14 @@ mod tests {
             (
                 ctx,
                 BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"non-existent"))),
-                Box::new(|i, result| {
-                    assert_matches!(result, Err(GetBlockError::BlockNotFound), "test case {i}")
-                }),
+                assert_error(GetBlockError::BlockNotFound),
             ),
             (
                 ctx_with_pending_disabled,
                 BlockId::Pending,
-                Box::new(|i, result| {
-                    assert_matches!(result, Err(GetBlockError::Internal(_)), "test case {i}")
-                }),
+                assert_error(GetBlockError::Internal(anyhow!(
+                    "Pending data not supported in this configuration"
+                ))),
             ),
         ];
 
