@@ -28,8 +28,7 @@ impl ContractClass {
 
         let program = json_obj
             .get_mut("program")
-            .context("program property is missing")?
-            .to_string();
+            .context("program property is missing")?;
 
         // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.
         let mut gzip_encoder =

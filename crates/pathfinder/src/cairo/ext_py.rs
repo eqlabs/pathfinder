@@ -94,10 +94,22 @@ impl Handle {
         let continued_span = tracing::info_span!("ext_py_est_fee", pid = Empty);
 
         let transaction = match transaction {
-            BroadcastedTransaction::Declare(_) | BroadcastedTransaction::Deploy(_) => {
+            BroadcastedTransaction::Deploy(_) => {
                 return Err(CallFailure::Internal(
                     "Only invoke transactions are supported",
                 ))
+            }
+            BroadcastedTransaction::Declare(tx) => {
+                add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    contract_class: tx.contract_class.try_into().map_err(|_| {
+                        CallFailure::Internal("contract class serialization failure")
+                    })?,
+                    sender_address: tx.sender_address,
+                    nonce: tx.nonce,
+                })
             }
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
                 add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {

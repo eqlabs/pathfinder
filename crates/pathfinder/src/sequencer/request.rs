@@ -4,6 +4,8 @@ use crate::core::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignat
 pub mod contract {
     use std::fmt;
 
+    use stark_hash::StarkHash;
+
     use crate::core::{ByteCodeOffset, EntryPoint};
 
     #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Hash, Eq)]
@@ -34,6 +36,15 @@ pub mod contract {
         pub selector: EntryPoint,
         pub offset: ByteCodeOffset,
     }
+
+    impl From<crate::rpc::v02::types::class::ContractEntryPoint> for SelectorAndOffset {
+        fn from(entry_point: crate::rpc::v02::types::class::ContractEntryPoint) -> Self {
+            Self {
+                selector: EntryPoint(entry_point.selector),
+                offset: ByteCodeOffset(StarkHash::from_u64(entry_point.offset)),
+            }
+        }
+    }
 }
 
 pub mod add_transaction {
@@ -63,6 +74,49 @@ pub mod add_transaction {
         pub program: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
         pub abi: Option<serde_json::Value>,
+    }
+
+    impl TryFrom<crate::rpc::v02::types::ContractClass> for ContractDefinition {
+        type Error = serde_json::Error;
+
+        fn try_from(c: crate::rpc::v02::types::ContractClass) -> Result<Self, Self::Error> {
+            let abi = match c.abi {
+                Some(abi) => Some(serde_json::to_value(abi)?),
+                None => None,
+            };
+            let mut entry_points: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
+                Default::default();
+            entry_points.insert(
+                EntryPointType::Constructor,
+                c.entry_points_by_type
+                    .constructor
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+            );
+            entry_points.insert(
+                EntryPointType::External,
+                c.entry_points_by_type
+                    .external
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+            );
+            entry_points.insert(
+                EntryPointType::L1Handler,
+                c.entry_points_by_type
+                    .l1_handler
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+            );
+
+            Ok(Self {
+                program: c.program,
+                entry_points_by_type: entry_points,
+                abi,
+            })
+        }
     }
 
     /// Contract deployment transaction details.
