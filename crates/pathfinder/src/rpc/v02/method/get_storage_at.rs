@@ -189,4 +189,108 @@ mod tests {
             assert_matches!(result, Err(error) => assert_eq!(*error, expected, "test case {i}"), "test case {i}");
         })
     }
+
+    #[tokio::test]
+    async fn happy_paths_and_major_errors() {
+        let ctx = RpcContext::for_tests_with_pending().await;
+        let ctx_with_pending_empty =
+            RpcContext::for_tests().with_pending_data(crate::state::PendingData::default());
+        let ctx_with_pending_disabled = RpcContext::for_tests();
+
+        let pending_contract0 =
+            ContractAddress::new_or_panic(starkhash_bytes!(b"pending contract 1 address"));
+        let pending_key0 = StorageAddress::new_or_panic(starkhash_bytes!(b"pending storage key 0"));
+        let contract1 = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
+        let key0 = StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0"));
+        let deployment_block = BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"block 1")));
+        let non_existent_key = StorageAddress::new_or_panic(starkhash_bytes!(b"non-existent"));
+
+        let non_existent_contract =
+            ContractAddress::new_or_panic(starkhash_bytes!(b"non-existent"));
+        let pre_deploy_block = BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"genesis")));
+        let non_existent_block =
+            BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"non-existent")));
+
+        let cases: &[(
+            RpcContext,
+            ContractAddress,
+            StorageAddress,
+            BlockId,
+            TestCaseHandler,
+        )] = &[
+            // Pending - happy paths
+            (
+                ctx.clone(),
+                pending_contract0,
+                pending_key0,
+                BlockId::Pending,
+                assert_value(b"pending storage value 0"),
+            ),
+            (
+                ctx_with_pending_empty,
+                contract1,
+                key0,
+                BlockId::Pending,
+                // Pending data is absent, fallback to the latest block
+                assert_value(b"storage value 2"),
+            ),
+            // Other block ids - happy paths
+            (
+                ctx.clone(),
+                contract1,
+                key0,
+                deployment_block,
+                assert_value(b"storage value 1"),
+            ),
+            (
+                ctx.clone(),
+                contract1,
+                key0,
+                BlockId::Latest,
+                assert_value(b"storage value 2"),
+            ),
+            (
+                ctx.clone(),
+                contract1,
+                non_existent_key,
+                BlockId::Latest,
+                assert_value(&[0]),
+            ),
+            // Errors
+            (
+                ctx.clone(),
+                non_existent_contract,
+                key0,
+                BlockId::Latest,
+                assert_error(GetStorageAtError::ContractNotFound),
+            ),
+            (
+                ctx.clone(),
+                contract1,
+                key0,
+                non_existent_block,
+                assert_error(GetStorageAtError::BlockNotFound),
+            ),
+            (
+                ctx.clone(),
+                contract1,
+                key0,
+                pre_deploy_block,
+                assert_error(GetStorageAtError::ContractNotFound),
+            ),
+            (
+                ctx_with_pending_disabled,
+                pending_contract0,
+                pending_key0,
+                BlockId::Pending,
+                assert_error(GetStorageAtError::Internal(anyhow!(
+                    "Pending data not supported in this configuration"
+                ))),
+            ),
+        ];
+
+        for (i, test_case) in cases.iter().enumerate() {
+            check(i, test_case).await;
+        }
+    }
 }
