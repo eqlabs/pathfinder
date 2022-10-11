@@ -2,7 +2,7 @@
 
 use super::{
     de::{ChildResponse, OutputValue, RefinedChildResponse, Status},
-    ser::{ChildCommand, Verb},
+    ser::{ChildCommand, CommonProperties},
     CallFailure, Command, SharedReceiver, SubProcessEvent, SubprocessError, SubprocessExitReason,
 };
 use anyhow::Context;
@@ -350,54 +350,42 @@ async fn process(
             chain,
             diffs: maybe_diffs,
             ..
-        } => ChildCommand {
-            command: Verb::Call,
+        } => ChildCommand::Call {
+            common: CommonProperties {
+                at_block,
+                chain: *chain,
+                pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
+            },
             contract_address: &call.contract_address,
             calldata: &call.calldata,
-            entry_point_selector: call.entry_point_selector.as_ref(),
-            at_block,
-            // TODO: this might change in the future, if *later* gas price needs to be available
-            // sometimes
-            gas_price: None,
+            max_fee: &call.max_fee,
             signature: &call.signature,
             nonce: if call.version.is_zero() {
                 None
             } else {
                 Some(&call.nonce)
             },
-            max_fee: &call.max_fee,
-            version: &call.version,
-            chain: *chain,
-            pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
-            pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
-            pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
+            entry_point_selector: call.entry_point_selector.as_ref(),
         },
         Command::EstimateFee {
-            call,
+            transaction,
             at_block,
             gas_price,
             chain,
             diffs: maybe_diffs,
             ..
-        } => ChildCommand {
-            command: Verb::EstimateFee,
-            contract_address: &call.contract_address,
-            calldata: &call.calldata,
-            entry_point_selector: call.entry_point_selector.as_ref(),
-            at_block,
-            gas_price: gas_price.as_option(),
-            signature: &call.signature,
-            nonce: if call.version.is_zero() {
-                None
-            } else {
-                Some(&call.nonce)
+        } => ChildCommand::EstimateFee {
+            common: CommonProperties {
+                at_block,
+                chain: *chain,
+                pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
             },
-            max_fee: &call.max_fee,
-            version: &call.version,
-            chain: *chain,
-            pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
-            pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
-            pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
+            gas_price: gas_price.as_price(),
+            transaction,
         },
     };
 

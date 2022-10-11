@@ -1,33 +1,187 @@
-import sys
-import json
-import time
-import sqlite3
 import asyncio
+import json
 import os
+import re
+import sqlite3
+import sys
+import time
+from abc import abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import ClassVar, Dict, List, Optional, Type
 
-# fallible import for exceptionless failure to start.
-#
-# this is the only starkware class imported outside, because SqliteAdapter
-# inherits this class.
+# import non-standard modules and detect if Python environment is not properly set up
 try:
-    from starkware.storage.storage import Storage
+    import marshmallow.exceptions
+    import marshmallow_dataclass
+    import marshmallow_oneofschema
     from cachetools import LRUCache
+    from marshmallow import Schema
+    from marshmallow import fields as mfields
+    from services.everest.definitions import fields as everest_fields
+    from starkware.starknet.definitions import fields
+    from starkware.starknet.definitions.general_config import StarknetChainId
+    from starkware.starknet.services.api.gateway.transaction import (
+        Transaction,
+    )
+    from starkware.storage.storage import Storage
 except ModuleNotFoundError:
-
-    class Storage:
-        fake = True
+    print(
+        "missing cairo-lang module: please reinstall dependencies to upgrade.",
+    )
+    sys.exit(1)
 
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 21
 EXPECTED_CAIRO_VERSION = "0.10.0"
-SUPPORTED_COMMANDS = frozenset(["call", "estimate_fee"])
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
 
 # this is set by pathfinder automatically when #[cfg(debug_assertions)]
 DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
+
+
+class Verb(Enum):
+    CALL = 0
+    ESTIMATE_FEE = 1
+
+
+class Chain(Enum):
+    MAINNET = StarknetChainId.MAINNET
+    GOERLI = StarknetChainId.TESTNET
+
+
+felt_metadata = dict(
+    marshmallow_field=everest_fields.FeltField.get_marshmallow_field(required=True)
+)
+
+
+@marshmallow_dataclass.dataclass(frozen=True)
+class StorageDiff:
+    key: int = field(metadata=felt_metadata)
+    value: int = field(metadata=felt_metadata)
+
+
+class_hash_metadata = dict(
+    marshmallow_field=fields.ClassHashIntField.get_marshmallow_field(required=True)
+)
+
+
+@marshmallow_dataclass.dataclass(frozen=True)
+class DeployedContract:
+    address: int = field(metadata=fields.contract_address_metadata)
+    contract_hash: int = field(metadata=class_hash_metadata)
+
+
+pending_updates_metadata = dict(
+    marshmallow_field=mfields.Dict(
+        keys=fields.L2AddressField.get_marshmallow_field(),
+        values=mfields.List(mfields.Nested(StorageDiff.Schema())),
+        required=True,
+    )
+)
+
+pending_deployed_metadata = dict(
+    marshmallow_field=mfields.List(
+        mfields.Nested(DeployedContract.Schema()), required=True
+    )
+)
+
+pending_nonces_metadata = dict(
+    marshmallow_field=mfields.Dict(
+        keys=fields.L2AddressField.get_marshmallow_field(),
+        values=fields.NonceField.get_marshmallow_field(),
+        required=True,
+    )
+)
+
+
+@dataclass(frozen=True)
+class Command:
+    at_block: str
+    chain: Chain
+
+    @property
+    @classmethod
+    @abstractmethod
+    def verb(cls) -> Verb:
+        """
+        Returns the verb
+        """
+
+    @abstractmethod
+    def has_pending_data(self):
+        pass
+
+
+@marshmallow_dataclass.dataclass(frozen=True)
+class Call(Command):
+    verb: ClassVar[Verb] = Verb.CALL
+
+    pending_updates: Dict[int, List[StorageDiff]] = field(
+        metadata=pending_updates_metadata
+    )
+    pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
+    pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
+
+    contract_address: int = field(metadata=fields.contract_address_metadata)
+    calldata: List[int] = field(metadata=fields.call_data_as_hex_metadata)
+    max_fee: int = field(metadata=fields.fee_metadata)
+    signature: List[int] = field(metadata=fields.signature_metadata)
+    nonce: Optional[int] = field(metadata=fields.optional_nonce_metadata)
+    entry_point_selector: Optional[int] = field(
+        default=None, metadata=fields.optional_entry_point_selector_metadata
+    )
+
+    gas_price: int = 0
+
+    def has_pending_data(self):
+        return (
+            len(self.pending_updates) > 0
+            or len(self.pending_deployed) > 0
+            or len(self.pending_nonces) > 0
+        )
+
+
+@marshmallow_dataclass.dataclass(frozen=True)
+class EstimateFee(Command):
+    verb: ClassVar[Verb] = Verb.ESTIMATE_FEE
+
+    pending_updates: Dict[int, List[StorageDiff]] = field(
+        metadata=pending_updates_metadata
+    )
+    pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
+    pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
+
+    # zero means to use the gas price from the current block.
+    gas_price: int = field(metadata=fields.gas_price_metadata)
+
+    transaction: Transaction
+
+    def has_pending_data(self):
+        return (
+            len(self.pending_updates) > 0
+            or len(self.pending_deployed) > 0
+            or len(self.pending_nonces) > 0
+        )
+
+
+class CommandSchema(marshmallow_oneofschema.OneOfSchema):
+    type_field = "verb"
+    type_schemas: Dict[str, Type[Schema]] = {
+        Verb.CALL.name: Call.Schema,
+        Verb.ESTIMATE_FEE.name: EstimateFee.Schema,
+    }
+
+    at_block = mfields.Str()
+
+    def get_obj_type(self, obj):
+        return obj.verb.name
+
+
+Command.Schema = CommandSchema
 
 
 def main():
@@ -46,7 +200,7 @@ def main():
     # stderr is only for logging, it's piped to tracing::trace one line at a time
     sys.stderr.reconfigure(encoding="utf-8")
 
-    if (hasattr(Storage, "fake") and Storage.fake) or not check_cairolang_version():
+    if not check_cairolang_version():
         print(
             "unexpected cairo-lang version: please reinstall dependencies to upgrade.",
             flush=True,
@@ -86,26 +240,6 @@ def check_cairolang_version():
 def do_loop(connection, input_gen, output_file):
     from starkware.starkware_utils.error_handling import WebFriendlyException
 
-    required = {
-        "at_block": int_hash_or_latest,
-        "contract_address": int_param,
-        "calldata": list_of_int,
-        "command": required_command,
-        "gas_price": required_gas_price,
-        "chain": required_chain,
-    }
-
-    optional = {
-        "signature": list_of_int,
-        "max_fee": int_param,
-        "version": int_param,
-        "pending_updates": maybe_pending_updates,
-        "pending_deployed": maybe_pending_deployed,
-        "pending_nonces": maybe_pending_nonces,
-        "nonce": maybe_nonce,
-        "entry_point_selector": string_or_int,
-    }
-
     logger = Logger()
 
     if DEV_MODE:
@@ -126,7 +260,7 @@ def do_loop(connection, input_gen, output_file):
         timings = {}
 
         try:
-            command = parse_command(json.loads(line), required, optional)
+            command = Command.Schema().loads(line)
 
             parsed_at = time.time()
 
@@ -142,22 +276,22 @@ def do_loop(connection, input_gen, output_file):
             out = {"status": "error", "kind": "NO_SUCH_BLOCK"}
         except UnexpectedSchemaVersion:
             out = {"status": "error", "kind": "INVALID_SCHEMA_VERSION"}
-        except InvalidInput:
+        except marshmallow.exceptions.MarshmallowError:
             out = {"status": "error", "kind": "INVALID_INPUT"}
-        except WebFriendlyException as e:
-            if str(e.code) == "StarknetErrorCode.UNINITIALIZED_CONTRACT":
+        except WebFriendlyException as exc:
+            if str(exc.code) == "StarknetErrorCode.UNINITIALIZED_CONTRACT":
                 out = {"status": "error", "kind": "NO_SUCH_CONTRACT"}
-            elif str(e.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
+            elif str(exc.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
                 out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
             else:
-                report_failed(logger, command, e)
-                out = {"status": "failed", "exception": str(e.code)}
-        except Exception as e:
-            stringified = str(e)
+                report_failed(logger, command, exc)
+                out = {"status": "failed", "exception": str(exc.code)}
+        except Exception as exc:
+            stringified = str(exc)
 
             if len(stringified) > 200:
                 stringified = stringified[:197] + "..."
-            report_failed(logger, command, e)
+            report_failed(logger, command, exc)
             out = {"status": "failed", "exception": stringified}
         finally:
             connection.rollback()
@@ -187,47 +321,42 @@ def report_failed(logger, command, e):
         logger.debug(str(e))
 
 
-def loop_inner(connection, command):
+def loop_inner(connection, command: Command):
 
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
 
-    verb = command["command"]
-    general_config = create_general_config(command["chain"])
+    general_config = create_general_config(command.chain.value)
 
-    at_block = command["at_block"]
-    # this will be None for v1 invoke function
-    selector = command.get("entry_point_selector", None)
-    signature = command.get("signature", [])
-    max_fee = command.get("max_fee", 0)
-    version = command.get("version", 0)
-    gas_price = command.get("gas_price", None)
+    at_block = int_hash_or_latest(command.at_block)
 
     timings = {}
     started_at = time.time()
-    pending_updates = command.get("pending_updates", None)
-    pending_deployed = command.get("pending_deployed", None)
-    pending_nonces = command.get("pending_nonces", None)
 
-    if type(selector) == str:
-        from starkware.starknet.public.abi import get_selector_from_name
+    # When calling or estimating the fee on a pending block, rust side will
+    # always execute it on a specific block (pending's parent block). If that
+    # block is not found, we should default to the latest block IFF there are
+    # pending updates or deploys or nonces.
+    fallback_to_latest = isinstance(at_block, bytes) and command.has_pending_data()
 
-        # rust side will always send us starkhashes but tests are more readable with names
-        selector = get_selector_from_name(selector)
-
-    fallback_to_latest = type(at_block) == bytes and (
-        pending_updates is not None or pending_deployed is not None
-    )
+    pending_updates = command.pending_updates
+    pending_deployed = command.pending_deployed
+    pending_nonces = command.pending_nonces
 
     # the later parts will have access to gas_price through this block_info
     try:
-        (block_info, global_root) = resolve_block(connection, at_block, gas_price)
+        (block_info, global_root) = resolve_block(
+            connection, at_block, command.gas_price
+        )
     except NoSuchBlock:
         if fallback_to_latest:
-            pending_updates = None
-            pending_deployed = None
+            pending_updates = {}
+            pending_deployed = []
+            pending_nonces = {}
 
-            (block_info, global_root) = resolve_block(connection, "latest", gas_price)
+            (block_info, global_root) = resolve_block(
+                connection, "latest", command.gas_price
+            )
         else:
             raise
 
@@ -236,48 +365,41 @@ def loop_inner(connection, command):
 
     adapter = SqliteAdapter(connection)
 
-    if verb == "call":
+    if isinstance(command, Call):
         result = asyncio.run(
             do_call(
                 adapter,
                 general_config,
                 global_root,
-                command["contract_address"],
-                selector,
-                command["calldata"],
-                signature,
-                command.get("nonce", None),
-                max_fee,
+                command.contract_address,
+                command.entry_point_selector,
+                command.calldata,
+                command.signature,
+                command.nonce,
+                command.max_fee,
                 block_info,
-                version,
+                0,
                 pending_updates,
                 pending_deployed,
                 pending_nonces,
             )
         )
-        ret = (verb, result.retdata, timings)
+        ret = (command.verb, result.retdata, timings)
     else:
-        assert verb == "estimate_fee"
-        # do everything with the inheritance scheme
+        assert isinstance(command, EstimateFee)
         fees = asyncio.run(
             do_estimate_fee(
                 adapter,
                 general_config,
                 global_root,
-                command["contract_address"],
-                selector,
-                command["calldata"],
-                signature,
-                command.get("nonce", None),
-                max_fee,
                 block_info,
-                version,
+                command.transaction,
                 pending_updates,
                 pending_deployed,
                 pending_nonces,
             )
         )
-        ret = (verb, fees, timings)
+        ret = (command.verb, fees, timings)
 
     timings["sql"] = {
         "timings": adapter.elapsed,
@@ -293,10 +415,10 @@ def render(verb, vals):
     def prefixed_hex(x):
         return f"0x{x.to_bytes(32, 'big').hex()}"
 
-    if verb == "call":
+    if verb == Verb.CALL:
         return list(map(prefixed_hex, vals))
     else:
-        assert verb == "estimate_fee"
+        assert verb == Verb.ESTIMATE_FEE
         return {
             "gas_consumed": prefixed_hex(vals["gas_consumed"]),
             "gas_price": prefixed_hex(vals["gas_price"]),
@@ -304,158 +426,22 @@ def render(verb, vals):
         }
 
 
-def parse_command(command, required, optional):
-    # it would be nice to use marshmallow but before we can lock with
-    # cairo-lang we cannot really add common dependencies
-    missing = required.keys() - command.keys()
-    assert len(missing) == 0, f"missing keys from command: {missing}"
-
-    extra = set()
-
-    converted = dict()
-
-    for k, v in command.items():
-        conv = required.get(k, None)
-        if conv is None:
-            conv = optional.get(k, None)
-        if conv is None:
-            extra += k
-            continue
-
-        try:
-            converted[k] = conv(v)
-        except Exception:
-            raise InvalidInput(k)
-
-    assert len(extra) == 0, f"extra keys from command: {extra}"
-
-    return converted
-
-
-def int_hash_or_latest(s):
-    if type(s) == int:
-        return s
+def int_hash_or_latest(s: str):
     if s == "latest":
         return s
     if s == "pending":
         # this is allowed in the rpc api but pathfinder doesn't create the blocks
         # this should had never come to us
         raise NoSuchBlock(s)
-    assert s[0:2] == "0x"
-    return len_safe_hex(s)
 
+    if re.match("^0x[0-9a-f]+$", s) is not None:
+        # block hash as bytes
+        return int(s, 16).to_bytes(length=32, byteorder="big")
+    if re.match("^[0-9]+$", s) is not None:
+        # block number
+        return int(s)
 
-def int_param(s):
-    if type(s) == int:
-        return s
-    if s.startswith("0x"):
-        return int.from_bytes(len_safe_hex(s), "big")
-    return int(s, 10)
-
-
-def len_safe_hex(s):
-    """
-    Over at the RPC side which pathfinder supports, sometimes hex without
-    leading zeros is needed, so they could come over to python as well.
-    bytes.fromhex doesn't support odd length hex, it gives a non-hex character
-    error.
-    """
-    if s.startswith("0x"):
-        s = s[2:]
-    if len(s) % 2 == 1:
-        s = "0" + s
-    return bytes.fromhex(s)
-
-
-def string_or_int(s):
-    if type(s) == int:
-        return s
-
-    if type(s) == str:
-        if s.startswith("0x"):
-            return int_param(s)
-        # not sure if this should be supported but strings get ran through the
-        # truncated keccak
-        return s
-
-    raise TypeError(f"expected string or int, not {type(s)}")
-
-
-def list_of_int(s):
-    assert type(s) == list, f"Expected list, got {type(s)}"
-    return list(map(int_param, s))
-
-
-def required_command(s):
-    assert s in SUPPORTED_COMMANDS
-    return s
-
-
-def required_gas_price(s):
-    if s is None:
-        # this means, use the block gas price
-        return None
-    elif type(s) == str:
-        return int.from_bytes(len_safe_hex(s), "big")
-    else:
-        assert type(s) == int, "expected gas_price to be an int"
-        return s
-
-
-def required_chain(s):
-    from starkware.starknet.definitions.general_config import StarknetChainId
-
-    # this is not done through genesis block but explicitly so that we can do
-    # tests more freely
-
-    if s == "MAINNET":
-        return StarknetChainId.MAINNET
-    else:
-        assert s == "GOERLI"
-        return StarknetChainId.TESTNET
-
-
-def maybe_pending_updates(s):
-    if s is None:
-        return None
-
-    # currently just accepting the format from sequencers get_state_update
-    return dict(
-        (
-            int_param(key),
-            list((int_param(val["key"]), int_param(val["value"])) for val in values),
-        )
-        for key, values in s.items()
-    )
-
-
-def maybe_pending_deployed(deployed_contracts):
-    if deployed_contracts is None:
-        return None
-
-    # this accepts the form used in the sequencer state update
-    # which is "prop": [ { "address": "0x...", "contract_hash": "0x..." }, ... ]
-    # internally we use just address => hash
-
-    return dict(
-        (int_param(x["address"]), len_safe_hex(x["contract_hash"]))
-        for x in deployed_contracts
-    )
-
-
-def maybe_pending_nonces(nonces):
-    if nonces is None:
-        return None
-
-    # accept a map addr => nonce
-    return dict((int_param(key), int_param(value)) for key, value in nonces.items())
-
-
-def maybe_nonce(nonce):
-    if nonce is None:
-        return None
-
-    return int_param(nonce)
+    raise ValueError(f"Invalid block id value: {s}")
 
 
 def check_schema(connection):
@@ -467,7 +453,7 @@ def check_schema(connection):
     return version == EXPECTED_SCHEMA_REVISION
 
 
-def resolve_block(connection, at_block, forced_gas_price):
+def resolve_block(connection, at_block, forced_gas_price: int):
     """
     forced_gas_price is the gas price we must use for this blockinfo, if None,
     the one from starknet_blocks will be used. this allows the caller to select
@@ -482,13 +468,13 @@ def resolve_block(connection, at_block, forced_gas_price):
         cursor = connection.execute(
             "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
         )
-    elif type(at_block) == int:
+    elif isinstance(at_block, int):
         cursor = connection.execute(
             "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
             [at_block],
         )
     else:
-        assert type(at_block) == bytes, f"expected bytes, got {type(at_block)}"
+        assert isinstance(at_block, bytes), f"expected bytes, got {type(at_block)}"
         if len(at_block) < 32:
             # left pad it, as the fields in db are fixed length for this occasion
             at_block = b"\x00" * (32 - len(at_block)) + at_block
@@ -509,13 +495,13 @@ def resolve_block(connection, at_block, forced_gas_price):
                 starknet_version,
             )
         ] = cursor
-    except ValueError:
+    except ValueError as exc:
         # zero rows, or wrong number of columns (unlikely)
-        raise NoSuchBlock(at_block)
+        raise NoSuchBlock(at_block) from exc
 
     gas_price = int.from_bytes(gas_price, "big")
 
-    if forced_gas_price is not None:
+    if forced_gas_price != 0:
         # allow caller to override any; see rust side's GasPriceSource for more rationale
         gas_price = forced_gas_price
 
@@ -537,11 +523,6 @@ class NoSuchBlock(Exception):
 class UnexpectedSchemaVersion(Exception):
     def __init__(self):
         super().__init__("Schema mismatch, is this pathfinders database file?")
-
-
-class InvalidInput(Exception):
-    def __init__(self, key):
-        super().__init__(f"Invalid input for key: {key}")
 
 
 class Logger:
@@ -702,6 +683,7 @@ class SqliteAdapter(Storage):
 
     def fetch_contract_definition(self, suffix):
         import itertools
+
         import zstandard
 
         # assert False, "we must rebuild the full json out of our columns"
@@ -752,23 +734,22 @@ async def do_call(
     """
     The actual call execution with cairo-lang.
     """
-    from starkware.storage.storage import FactFetchingContext
-    from starkware.starknet.business_logic.fact_state.patricia_state import (
-        PatriciaStateReader,
-    )
-    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
-        PatriciaTree,
-    )
-    from starkware.starknet.business_logic.state.state import CachedState
-    from starkware.starknet.business_logic.fact_state.state import (
-        ExecutionResourcesManager,
-    )
+    from starkware.cairo.lang.vm.crypto import pedersen_hash_func
     from starkware.starknet.business_logic.execution.execute_entry_point import (
         ExecuteEntryPoint,
     )
-
+    from starkware.starknet.business_logic.fact_state.patricia_state import (
+        PatriciaStateReader,
+    )
+    from starkware.starknet.business_logic.fact_state.state import (
+        ExecutionResourcesManager,
+    )
+    from starkware.starknet.business_logic.state.state import CachedState
     from starkware.starknet.services.api.contract_class import EntryPointType
-    from starkware.cairo.lang.vm.crypto import pedersen_hash_func
+    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
+        PatriciaTree,
+    )
+    from starkware.storage.storage import FactFetchingContext
 
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
@@ -799,14 +780,8 @@ async def do_estimate_fee(
     adapter,
     general_config,
     root,
-    contract_address,
-    selector,
-    calldata,
-    signature,
-    nonce,
-    max_fee,
     block_info,
-    version,
+    transaction,
     pending_updates,
     pending_deployed,
     pending_nonces,
@@ -818,31 +793,22 @@ async def do_estimate_fee(
     deploy and perhaps declare transactions as well.
     """
 
-    from starkware.starknet.services.api.gateway.transaction import InvokeFunction
-    from starkware.starknet.services.utils.sequencer_api_utils import (
-        InternalAccountTransactionForSimulate,
-    )
-    from starkware.storage.storage import FactFetchingContext
+    from starkware.cairo.lang.vm.crypto import pedersen_hash_func
     from starkware.starknet.business_logic.fact_state.patricia_state import (
         PatriciaStateReader,
+    )
+    from starkware.starknet.business_logic.state.state import CachedState
+    from starkware.starknet.services.utils.sequencer_api_utils import (
+        InternalAccountTransactionForSimulate,
     )
     from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
         PatriciaTree,
     )
-    from starkware.starknet.business_logic.state.state import CachedState
-    from starkware.cairo.lang.vm.crypto import pedersen_hash_func
+    from starkware.storage.storage import FactFetchingContext
 
-    fun = InvokeFunction(
-        version=version,
-        max_fee=max_fee,
-        signature=signature,
-        nonce=nonce,
-        contract_address=contract_address,
-        calldata=calldata,
-        entry_point_selector=selector,
+    more = InternalAccountTransactionForSimulate.from_external(
+        transaction, general_config
     )
-
-    more = InternalAccountTransactionForSimulate.from_external(fun, general_config)
 
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
     state_reader = PatriciaStateReader(PatriciaTree(root, 251), ffc)
@@ -862,25 +828,22 @@ async def do_estimate_fee(
     }
 
 
-def apply_pending(state, updates, deployed, nonces):
-    updates = updates if updates is not None else {}
-    deployed = deployed if deployed is not None else {}
-    nonces = nonces if nonces is not None else {}
-
-    for addr, class_hash in deployed.items():
-        assert type(class_hash) == bytes
-        state.cache._class_hash_reads[addr] = class_hash
+def apply_pending(
+    state,
+    updates: Dict[int, List[StorageDiff]],
+    deployed: List[DeployedContract],
+    nonces: Dict[int, int],
+):
+    for deployed_contract in deployed:
+        state.cache._class_hash_reads[
+            deployed_contract.address
+        ] = deployed_contract.contract_hash.to_bytes(length=32, byteorder="big")
 
     for addr, updates in updates.items():
-        assert type(addr) == int
-        for key, value in updates:
-            assert type(key) == int
-            assert type(value) == int
-            state.cache._storage_reads[(addr, key)] = value
+        for update in updates:
+            state.cache._storage_reads[(addr, update.key)] = update.value
 
     for addr, nonce in nonces.items():
-        assert type(addr) == int
-        assert type(nonce) == int
         # bypass the CachedState.increment_nonce which would give extra queries
         # per each, and only single step at a time
         state.cache._nonce_reads[addr] = nonce
@@ -890,18 +853,18 @@ def create_general_config(chain_id):
     """
     Separate fn because it's tricky to get a new instance with actual configuration
     """
-    from starkware.starknet.definitions.general_config import (
-        StarknetGeneralConfig,
-        N_STEPS_RESOURCE,
-        StarknetOsConfig,
-    )
     from starkware.cairo.lang.builtins.all_builtins import (
+        BITWISE_BUILTIN,
+        EC_OP_BUILTIN,
+        ECDSA_BUILTIN,
+        OUTPUT_BUILTIN,
         PEDERSEN_BUILTIN,
         RANGE_CHECK_BUILTIN,
-        ECDSA_BUILTIN,
-        BITWISE_BUILTIN,
-        OUTPUT_BUILTIN,
-        EC_OP_BUILTIN,
+    )
+    from starkware.starknet.definitions.general_config import (
+        N_STEPS_RESOURCE,
+        StarknetGeneralConfig,
+        StarknetOsConfig,
     )
 
     # given on 2022-06-07

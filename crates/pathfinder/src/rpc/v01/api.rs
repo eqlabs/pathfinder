@@ -1,10 +1,16 @@
 //! Implementation of JSON-RPC endpoints.
-use crate::rpc::v01::types::{
-    reply::{
-        Block, BlockHashAndNumber, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate,
-        GetEventsResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
+use crate::rpc::{
+    v01::types::{
+        reply::{
+            Block, BlockHashAndNumber, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate,
+            GetEventsResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
+        },
+        request::{Call, ContractCall, EventFilter},
     },
-    request::{Call, ContractCall, EventFilter},
+    v02::types::request::{
+        BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV0,
+        BroadcastedInvokeTransactionV1, BroadcastedTransaction,
+    },
 };
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
@@ -1401,6 +1407,35 @@ impl RpcApi {
             .as_ref()
             .ok_or_else(|| internal_server_error("Unsupported configuration"))?;
 
+        let transaction = match request.version.without_query_version() {
+            0 => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
+                BroadcastedInvokeTransactionV0 {
+                    version: request.version,
+                    max_fee: request.max_fee,
+                    signature: request.signature,
+                    nonce: None,
+                    contract_address: request.contract_address,
+                    entry_point_selector: request.entry_point_selector.ok_or_else(|| {
+                        internal_server_error(
+                            "Entry point selector is required for version 0 invoke transaction",
+                        )
+                    })?,
+                    calldata: request.calldata,
+                },
+            )),
+            1 => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                BroadcastedInvokeTransactionV1 {
+                    version: request.version,
+                    max_fee: request.max_fee,
+                    signature: request.signature,
+                    nonce: request.nonce,
+                    sender_address: request.contract_address,
+                    calldata: request.calldata,
+                },
+            )),
+            _ => return Err(internal_server_error("Unsupported transaction version")),
+        };
+
         // discussed during estimateFee work: when user is requesting using block_hash use the
         // gasPrice from the starknet_blocks::gas_price column, otherwise (tags) get the latest
         // eth_gasPrice.
@@ -1425,7 +1460,7 @@ impl RpcApi {
         let (when, pending_update) = self.base_block_and_pending_for_call(block_id).await?;
 
         Ok(handle
-            .estimate_fee(request, when, gas_price, pending_update)
+            .estimate_fee(transaction, when, gas_price, pending_update)
             .await?)
     }
 
