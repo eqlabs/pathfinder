@@ -560,52 +560,6 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn key_is_field_modulus() {
-            use std::str::FromStr;
-
-            let storage = setup_storage();
-            let sequencer = Client::new(Chain::Testnet).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(
-                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
-                web3::types::H256::from_str(
-                    "0x0800000000000011000000000000000000000000000000000000000000000001"
-                )
-                .unwrap(),
-                BlockId::Latest
-            );
-            client(addr)
-                .request::<StorageValue>("starknet_getStorageAt", params)
-                .await
-                .unwrap_err();
-        }
-
-        #[tokio::test]
-        async fn key_is_less_than_modulus_but_252_bits() {
-            use std::str::FromStr;
-
-            let storage = setup_storage();
-            let sequencer = Client::new(Chain::Testnet).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(
-                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
-                web3::types::H256::from_str(
-                    "0x0800000000000000000000000000000000000000000000000000000000000000"
-                )
-                .unwrap(),
-                BlockId::Latest
-            );
-            client(addr)
-                .request::<StorageValue>("starknet_getStorageAt", params)
-                .await
-                .unwrap_err();
-        }
-
-        #[tokio::test]
         async fn non_existent_contract_address() {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
