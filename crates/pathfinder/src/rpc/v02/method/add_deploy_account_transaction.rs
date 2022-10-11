@@ -18,7 +18,7 @@ const fn transaction_version_zero() -> TransactionVersion {
 #[serde_as]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct AddDeployAccountTransactionInput {
+pub struct DeployAccountTransaction {
     // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
     #[serde_as(as = "TransactionVersionAsHexStr")]
     #[serde(default = "transaction_version_zero")]
@@ -34,6 +34,11 @@ pub struct AddDeployAccountTransactionInput {
     pub class_hash: ClassHash,
 }
 
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+pub struct AddDeployAccountTransactionInput {
+    deploy_account_transaction: DeployAccountTransaction,
+}
+
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddDeployAccountTransactionOutput {
     transaction_hash: StarknetTransactionHash,
@@ -46,19 +51,20 @@ pub async fn add_deploy_account_transaction(
     context: RpcContext,
     input: AddDeployAccountTransactionInput,
 ) -> Result<AddDeployAccountTransactionOutput, AddDeployAccountTransactionError> {
+    let tx = input.deploy_account_transaction;
     let response = context
         .sequencer
         .add_deploy_account(
-            input.version,
-            input.max_fee,
-            input.signature,
-            input.nonce,
-            input.contract_address_salt,
-            input.class_hash,
-            input.constructor_calldata,
+            tx.version,
+            tx.max_fee,
+            tx.signature,
+            tx.nonce,
+            tx.contract_address_salt,
+            tx.class_hash,
+            tx.constructor_calldata,
         )
         .await
-        .context("Senging Deplpy Account Transaction to the gateway")?;
+        .context("Sending Deploy Account Transaction to the gateway")?;
 
     Ok(AddDeployAccountTransactionOutput {
         transaction_hash: response.transaction_hash,
@@ -73,10 +79,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_deploy_account_transaction() {
-        // Fall-back to RpcContext::for_tests() once 0.10.1 hits TestNet.
+        // FIXME(0.10.1) Return to `RpcContext::for_tests()` once 0.10.1 hits TestNet.
         let context = RpcContext::for_tests_on(Chain::Integration);
 
-        let input = AddDeployAccountTransactionInput {
+        let deploy_account_transaction = DeployAccountTransaction {
             version: TransactionVersion::ONE,
             max_fee: Fee([
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b, 0xf3, 0x91, 0x37,
@@ -102,6 +108,10 @@ mod tests {
             class_hash: ClassHash(starkhash!(
                 "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
             )),
+        };
+
+        let input = AddDeployAccountTransactionInput {
+            deploy_account_transaction,
         };
 
         let expected = AddDeployAccountTransactionOutput {
