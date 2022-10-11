@@ -22,7 +22,7 @@ try:
     from starkware.starknet.definitions import fields
     from starkware.starknet.definitions.general_config import StarknetChainId
     from starkware.starknet.services.api.gateway.transaction import (
-        Transaction,
+        AccountTransaction,
     )
     from starkware.storage.storage import Storage
 except ModuleNotFoundError:
@@ -158,7 +158,7 @@ class EstimateFee(Command):
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
-    transaction: Transaction
+    transaction: AccountTransaction
 
     def has_pending_data(self):
         return (
@@ -781,7 +781,7 @@ async def do_estimate_fee(
     general_config,
     root,
     block_info,
-    transaction,
+    transaction: AccountTransaction,
     pending_updates,
     pending_deployed,
     pending_nonces,
