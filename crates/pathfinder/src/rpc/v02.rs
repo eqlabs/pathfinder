@@ -264,6 +264,11 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         "starknet_addInvokeTransaction",
         method::add_invoke_transaction::add_invoke_transaction,
     )?;
+    register_method(
+        module,
+        "starknet_addDeclareTransaction",
+        method::add_declare_transaction::add_declare_transaction,
+    )?;
 
     Ok(())
 }

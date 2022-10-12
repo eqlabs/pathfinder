@@ -31,6 +31,8 @@ pub enum RpcError {
     InvalidContinuationToken,
     #[error("Contract error")]
     ContractError,
+    #[error("Invalid contract class")]
+    InvalidContractClass,
     #[error(transparent)]
     Internal(anyhow::Error),
 }
@@ -50,6 +52,7 @@ impl RpcError {
             RpcError::NoBlocks => 32,
             RpcError::InvalidContinuationToken => 33,
             RpcError::ContractError => 40,
+            RpcError::InvalidContractClass => 50,
             RpcError::Internal(_) => jsonrpsee::types::error::ErrorCode::InternalError.code(),
         }
     }
