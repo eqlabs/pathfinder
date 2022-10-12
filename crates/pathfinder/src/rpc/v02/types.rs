@@ -302,6 +302,8 @@ pub mod reply {
         Invoke(InvokeTransaction),
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(DeployAccountTransaction),
         #[serde(rename = "L1_HANDLER")]
         L1Handler(L1HandlerTransaction),
     }
@@ -313,6 +315,7 @@ pub mod reply {
                 Transaction::Invoke(InvokeTransaction::V0(invoke)) => invoke.common.hash,
                 Transaction::Invoke(InvokeTransaction::V1(invoke)) => invoke.common.hash,
                 Transaction::Deploy(deploy) => deploy.hash,
+                Transaction::DeployAccount(deploy_account) => deploy_account.common.hash,
                 Transaction::L1Handler(l1_handler) => l1_handler.hash,
             }
         }
@@ -342,6 +345,19 @@ pub mod reply {
         // DECLARE_TXN
         pub class_hash: ClassHash,
         pub sender_address: ContractAddress,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeployAccountTransaction {
+        #[serde(flatten)]
+        pub common: CommonTransactionProperties,
+
+        // DEPLOY_ACCOUNT_TXN_PROPERTIES
+        pub contract_address_salt: ContractAddressSalt,
+        pub constructor_calldata: Vec<CallParam>,
+        pub class_hash: ClassHash,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -537,6 +553,21 @@ pub mod reply {
                         version: txn.version,
                         contract_address_salt: txn.contract_address_salt,
                         constructor_calldata: txn.constructor_calldata.clone(),
+                    })
+                }
+                sequencer::reply::transaction::Transaction::DeployAccount(txn) => {
+                    Self::DeployAccount(DeployAccountTransaction {
+                        common: CommonTransactionProperties {
+                            // TODO FIXME what is the transaction hash?
+                            hash: StarknetTransactionHash(stark_hash::StarkHash::ZERO),
+                            max_fee: txn.max_fee,
+                            version: txn.version,
+                            signature: txn.signature.clone(),
+                            nonce: txn.nonce,
+                        },
+                        contract_address_salt: txn.contract_address_salt,
+                        constructor_calldata: txn.constructor_calldata.clone(),
+                        class_hash: txn.class_hash,
                     })
                 }
                 sequencer::reply::transaction::Transaction::L1Handler(txn) => {

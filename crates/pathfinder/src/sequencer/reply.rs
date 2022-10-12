@@ -313,6 +313,8 @@ pub mod transaction {
         Declare(DeclareTransaction),
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(DeployAccountTransaction),
         #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeTransaction),
         #[serde(rename = "L1_HANDLER")]
@@ -325,6 +327,10 @@ pub mod transaction {
             match self {
                 Transaction::Declare(t) => t.transaction_hash,
                 Transaction::Deploy(t) => t.transaction_hash,
+                Transaction::DeployAccount(_) => {
+                    // TODO FIXME not sure what to return here
+                    StarknetTransactionHash(stark_hash::StarkHash::ZERO)
+                }
                 Transaction::Invoke(t) => match t {
                     InvokeTransaction::V0(t) => t.transaction_hash,
                     InvokeTransaction::V1(t) => t.transaction_hash,
@@ -337,6 +343,10 @@ pub mod transaction {
             match self {
                 Transaction::Declare(t) => t.sender_address,
                 Transaction::Deploy(t) => t.contract_address,
+                Transaction::DeployAccount(_) => {
+                    // TODO FIXME not sure what to return here
+                    ContractAddress::new_or_panic(stark_hash::StarkHash::ZERO)
+                }
                 Transaction::Invoke(t) => match t {
                     InvokeTransaction::V0(t) => t.contract_address,
                     InvokeTransaction::V1(t) => t.contract_address,
@@ -382,6 +392,24 @@ pub mod transaction {
         #[serde_as(as = "TransactionVersionAsHexStr")]
         #[serde(default = "transaction_version_zero")]
         pub version: TransactionVersion,
+    }
+
+    /// Represents deserialized L2 deploy account transaction data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeployAccountTransaction {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub class_hash: ClassHash,
+        pub contract_address_salt: ContractAddressSalt,
+        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
+        pub constructor_calldata: Vec<CallParam>,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
