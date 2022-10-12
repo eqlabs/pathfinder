@@ -14,6 +14,7 @@ crate::rpc::error::generate_rpc_error_subset!(
 );
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[cfg_attr(test, derive(Clone))]
 pub struct GetEventsInput {
     filter: EventFilter,
 }
@@ -586,5 +587,98 @@ mod tests {
                 is_last_page: true,
             }
         );
+    }
+
+    mod pending {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn backward_range() {
+            let context = RpcContext::for_tests_with_pending().await;
+
+            let input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: Some(BlockId::Pending),
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    page_size: 100,
+                    page_number: 0,
+                },
+            };
+            let result = get_events(context, input).await.unwrap();
+            assert!(result.events.is_empty());
+        }
+
+        #[tokio::test]
+        async fn all_events() {
+            let context = RpcContext::for_tests_with_pending().await;
+
+            let mut input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: None,
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    page_size: 1024,
+                    page_number: 0,
+                },
+            };
+
+            let events = get_events(context.clone(), input.clone()).await.unwrap();
+
+            input.filter.from_block = Some(BlockId::Pending);
+            input.filter.to_block = Some(BlockId::Pending);
+            let pending_events = get_events(context.clone(), input.clone()).await.unwrap();
+
+            input.filter.from_block = None;
+            let all_events = get_events(context, input.clone()).await.unwrap();
+
+            let expected = events
+                .events
+                .into_iter()
+                .chain(pending_events.events.into_iter())
+                .collect::<Vec<_>>();
+
+            assert_eq!(all_events.events, expected);
+            assert!(all_events.is_last_page);
+        }
+
+        #[tokio::test]
+        async fn paging() {
+            let context = RpcContext::for_tests_with_pending().await;
+
+            let mut input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: None,
+                    to_block: Some(BlockId::Pending),
+                    address: None,
+                    keys: vec![],
+                    page_size: 1024,
+                    page_number: 0,
+                },
+            };
+
+            let all = get_events(context.clone(), input.clone())
+                .await
+                .unwrap()
+                .events;
+
+            input.filter.page_size = 2;
+            let mut last_pages = Vec::new();
+            for (idx, chunk) in all.chunks(input.filter.page_size).enumerate() {
+                input.filter.page_number = idx;
+                let result = get_events(context.clone(), input.clone()).await.unwrap();
+                assert_eq!(result.page_number, idx);
+                assert_eq!(result.events, chunk);
+
+                last_pages.push(result.is_last_page);
+            }
+
+            let mut expected = vec![false; last_pages.len() - 1];
+            expected.push(true);
+            assert_eq!(last_pages, expected);
+        }
     }
 }
