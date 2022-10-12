@@ -213,6 +213,7 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         "starknet_getClassHashAt",
         method::get_class_hash_at::get_class_hash_at,
     )?;
+    register_method(module, "starknet_getEvents", method::get_events::get_events)?;
     register_method(
         module,
         "starknet_estimateFee",
