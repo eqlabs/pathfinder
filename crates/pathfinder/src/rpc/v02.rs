@@ -55,6 +55,11 @@ impl RpcContext {
         Self::new(storage, sync_state, chain, sequencer)
     }
 
+    #[cfg(test)]
+    pub fn with_storage(self, storage: Storage) -> Self {
+        Self { storage, ..self }
+    }
+
     pub fn with_pending_data(self, pending_data: PendingData) -> Self {
         Self {
             pending_data: Some(pending_data),

@@ -326,9 +326,14 @@ mod types {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        types::{EmittedEvent, GetEventsResult},
+        *,
+    };
     use crate::starkhash;
+    use crate::storage::test_utils;
     use jsonrpsee::types::Params;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn parsing() {
@@ -373,5 +378,39 @@ mod tests {
                 "test case {i}: {input}"
             );
         });
+    }
+
+    fn setup() -> (RpcContext, Vec<EmittedEvent>) {
+        let (storage, events) = test_utils::setup_test_storage();
+        let events = events.into_iter().map(EmittedEvent::from).collect();
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        (context, events)
+    }
+
+    #[tokio::test]
+    async fn get_events_with_empty_filter() {
+        let (context, events) = setup();
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys: vec![],
+                page_size: test_utils::NUM_EVENTS,
+                page_number: 0,
+            },
+        };
+        let result = get_events(context, input).await.unwrap();
+
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events,
+                page_number: 0,
+                is_last_page: true,
+            }
+        );
     }
 }
