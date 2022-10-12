@@ -441,4 +441,33 @@ mod tests {
             }
         );
     }
+
+    #[tokio::test]
+    async fn get_events_by_block() {
+        let (context, events) = setup();
+
+        const BLOCK_NUMBER: usize = 2;
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
+                to_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
+                address: None,
+                keys: vec![],
+                page_size: test_utils::NUM_EVENTS,
+                page_number: 0,
+            },
+        };
+        let result = get_events(context, input).await.unwrap();
+
+        let expected_events = &events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
+            ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events: expected_events.to_vec(),
+                page_number: 0,
+                is_last_page: true,
+            }
+        );
+    }
 }
