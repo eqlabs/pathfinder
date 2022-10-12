@@ -413,4 +413,32 @@ mod tests {
             }
         );
     }
+
+    #[tokio::test]
+    async fn get_events_with_fully_specified_filter() {
+        let (context, events) = setup();
+
+        let expected_event = &events[1];
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: Some(expected_event.block_number.unwrap().into()),
+                to_block: Some(expected_event.block_number.unwrap().into()),
+                address: Some(expected_event.from_address),
+                // we're using a key which is present in _all_ events
+                keys: vec![EventKey(starkhash!("deadbeef"))],
+                page_size: test_utils::NUM_EVENTS,
+                page_number: 0,
+            },
+        };
+        let result = get_events(context, input).await.unwrap();
+
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events: vec![expected_event.clone()],
+                page_number: 0,
+                is_last_page: true,
+            }
+        );
+    }
 }
