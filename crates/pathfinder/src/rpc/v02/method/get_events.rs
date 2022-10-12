@@ -1,15 +1,11 @@
-use crate::core::{BlockId, ContractAddress, StarknetBlockNumber};
+use crate::core::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use crate::rpc::v02::RpcContext;
 use crate::state::PendingData;
 use crate::storage::EventFilterError;
 use crate::storage::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
+use serde::Deserialize;
 use tokio::task::JoinHandle;
-// FIXME
-use crate::rpc::v01::types::{
-    reply::{EmittedEvent, GetEventsResult},
-    request::EventFilter,
-};
 
 crate::rpc::error::generate_rpc_error_subset!(
     GetEventsError: BlockNotFound,
@@ -22,11 +18,33 @@ pub struct GetEventsInput {
     filter: EventFilter,
 }
 
+/// Contains event filter parameters passed to `starknet_getEvents`.
+#[serde_with::skip_serializing_none]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+// FIXME - needed?
+#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+#[serde(deny_unknown_fields)]
+pub struct EventFilter {
+    #[serde(default, alias = "fromBlock")]
+    pub from_block: Option<crate::core::BlockId>,
+    #[serde(default, alias = "toBlock")]
+    pub to_block: Option<crate::core::BlockId>,
+    #[serde(default)]
+    pub address: Option<ContractAddress>,
+    #[serde(default)]
+    pub keys: Vec<EventKey>,
+
+    // These are inlined here because serde flatten and deny_unknown_fields
+    // don't work together.
+    pub page_size: usize,
+    pub page_number: usize,
+}
+
 /// Returns events matching the specified filter
 pub async fn get_events(
     context: RpcContext,
     input: GetEventsInput,
-) -> Result<GetEventsResult, GetEventsError> {
+) -> Result<types::GetEventsResult, GetEventsError> {
     // The [Block::Pending] in ranges makes things quite complicated. This implementation splits
     // the ranges into the following buckets:
     //
@@ -53,7 +71,7 @@ pub async fn get_events(
     // Handle the trivial (1) and (2) cases.
     match (request.from_block, request.to_block) {
         (Some(Pending), non_pending) if non_pending != Some(Pending) => {
-            return Ok(GetEventsResult {
+            return Ok(types::GetEventsResult {
                 events: Vec::new(),
                 // Or should this always be zero? Hard to say.. its a dumb request.
                 page_number: request.page_number,
@@ -71,7 +89,7 @@ pub async fn get_events(
                 request.keys.into_iter().collect(),
             )
             .await;
-            return Ok(GetEventsResult {
+            return Ok(types::GetEventsResult {
                 events,
                 page_number: request.page_number,
                 is_last_page,
@@ -153,7 +171,7 @@ pub async fn get_events(
         };
 
         Ok((
-            GetEventsResult {
+            types::GetEventsResult {
                 events: page.events.into_iter().map(|e| e.into()).collect(),
                 page_number: filter.page_number,
                 is_last_page: page.is_last_page,
@@ -196,11 +214,11 @@ pub async fn get_events(
 /// true if this was the last pending data i.e. `is_last_page`.
 async fn append_pending_events(
     pending_data: &Option<PendingData>,
-    dst: &mut Vec<EmittedEvent>,
+    dst: &mut Vec<types::EmittedEvent>,
     skip: usize,
     amount: usize,
     address: Option<ContractAddress>,
-    keys: std::collections::HashSet<crate::core::EventKey>,
+    keys: std::collections::HashSet<EventKey>,
 ) -> bool {
     let pending_block = match pending_data.as_ref() {
         Some(data) => match data.block().await {
@@ -240,16 +258,14 @@ async fn append_pending_events(
         .skip(skip)
         // We need to take an extra event to determine is_last_page.
         .take(amount + 1)
-        .map(
-            |(event, tx_hash)| crate::rpc::v01::types::reply::EmittedEvent {
-                data: event.data.clone(),
-                keys: event.keys.clone(),
-                from_address: event.from_address,
-                block_hash: None,
-                block_number: None,
-                transaction_hash: tx_hash,
-            },
-        );
+        .map(|(event, tx_hash)| types::EmittedEvent {
+            data: event.data.clone(),
+            keys: event.keys.clone(),
+            from_address: event.from_address,
+            block_hash: None,
+            block_number: None,
+            transaction_hash: tx_hash,
+        });
 
     dst.extend(pending_events);
     let is_last_page = dst.len() <= (original_len + amount);
@@ -258,4 +274,52 @@ async fn append_pending_events(
     }
 
     is_last_page
+}
+
+mod types {
+    use crate::core::{
+        ContractAddress, EventData, EventKey, StarknetBlockHash, StarknetBlockNumber,
+        StarknetTransactionHash,
+    };
+    use serde::Serialize;
+
+    /// Describes an emitted event returned by starknet_getEvents
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    // FIXME - needed?
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct EmittedEvent {
+        pub data: Vec<EventData>,
+        pub keys: Vec<EventKey>,
+        pub from_address: ContractAddress,
+        /// [None] for pending events.
+        pub block_hash: Option<StarknetBlockHash>,
+        /// [None] for pending events.
+        pub block_number: Option<StarknetBlockNumber>,
+        pub transaction_hash: StarknetTransactionHash,
+    }
+
+    impl From<crate::storage::StarknetEmittedEvent> for EmittedEvent {
+        fn from(event: crate::storage::StarknetEmittedEvent) -> Self {
+            Self {
+                data: event.data,
+                keys: event.keys,
+                from_address: event.from_address,
+                block_hash: Some(event.block_hash),
+                block_number: Some(event.block_number),
+                transaction_hash: event.transaction_hash,
+            }
+        }
+    }
+
+    // Result type for starknet_getEvents
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    // FIXME - needed?
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct GetEventsResult {
+        pub events: Vec<EmittedEvent>,
+        pub page_number: usize,
+        pub is_last_page: bool,
+    }
 }
