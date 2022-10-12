@@ -1,9 +1,6 @@
 //! The json serializable types
 
-use crate::core::{
-    CallParam, ContractAddress, ContractNonce, EntryPoint, TransactionNonce,
-    TransactionSignatureElem,
-};
+use crate::core::{CallParam, ContractAddress, ContractNonce, EntryPoint};
 use crate::rpc::v01::types::BlockHashOrTag;
 use crate::sequencer::reply::state_update::{DeployedContract, StorageDiff};
 use std::collections::HashMap;
@@ -19,9 +16,6 @@ pub(crate) enum ChildCommand<'a> {
 
         contract_address: &'a ContractAddress,
         calldata: &'a [CallParam],
-        max_fee: &'a crate::core::Fee,
-        signature: &'a [TransactionSignatureElem],
-        nonce: Option<&'a TransactionNonce>,
         entry_point_selector: Option<&'a EntryPoint>,
     },
     EstimateFee {

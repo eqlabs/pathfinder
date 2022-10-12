@@ -92,9 +92,6 @@ def test_command_parsing_call():
         "pending_nonces":{},
         "contract_address":"0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
         "calldata":["0x84"],
-        "max_fee":"0x00000000000000000000000000000000",
-        "signature":[],
-        "nonce":null,
         "entry_point_selector":"0x26813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0"
     }"""
     command = Command.Schema().loads(input)
@@ -110,9 +107,6 @@ def test_command_parsing_call():
         pending_nonces={},
         contract_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
         calldata=[0x84],
-        max_fee=0,
-        signature=[],
-        nonce=None,
         entry_point_selector=0x26813D396FDB198E9EAD934E4F7A592A8B88A059E45AB0EB6EE53494E8D45B0,
     )
     assert command.has_pending_data()
@@ -346,7 +340,7 @@ def test_success():
     contract_address = hex(populate_test_contract_with_132_on_3(con))
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "signature": [], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
+    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
 
     output = default_132_on_3_scenario(
         con,
@@ -377,9 +371,6 @@ def test_positive_directly():
         contract_address=contract_address,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[132],
-        max_fee=0,
-        signature=[],
-        nonce=None,
         pending_updates={},
         pending_deployed=[],
         pending_nonces={},
@@ -397,7 +388,7 @@ def test_called_contract_not_found():
     contract_address = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "signature": [], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
+    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
 
     output = default_132_on_3_scenario(
         con,
@@ -414,7 +405,7 @@ def test_nested_called_contract_not_found():
     contract_address = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("call_increase_value"))
 
-    common_command_data = '"signature": [], "gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}'
+    common_command_data = '"gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}'
 
     output = default_132_on_3_scenario(
         con,
@@ -433,7 +424,7 @@ def test_invalid_entry_point():
     contract_address = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("call_increase_value2"))
 
-    common_command_data = '"signature": [], "gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}'
+    common_command_data = '"gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}'
     output = default_132_on_3_scenario(
         con,
         [
@@ -453,7 +444,7 @@ def test_invalid_schema_version():
     contract_address = hex(populate_test_contract_with_132_on_3(con))
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "signature": [], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
+    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
 
     con.execute("pragma user_version = 0")
     con.commit()
@@ -473,7 +464,7 @@ def test_no_such_block():
     contract_address = hex(populate_test_contract_with_132_on_3(con))
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "signature": [], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
+    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
 
     con.execute("delete from starknet_blocks")
     con.commit()
@@ -675,9 +666,6 @@ def test_call_on_pending_updated():
         contract_address=contract_address,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[132],
-        max_fee=0,
-        signature=[],
-        nonce=None,
         pending_updates={contract_address: [call.StorageDiff(key=0x84, value=0x99)]},
         pending_deployed=[],
         pending_nonces={},
@@ -705,9 +693,6 @@ def test_call_on_pending_deployed():
         contract_address=contract_address,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[5],
-        max_fee=0,
-        signature=[],
-        nonce=None,
         pending_updates={contract_address: [call.StorageDiff(key=0x5, value=0x65)]},
         pending_deployed=[
             call.DeployedContract(address=contract_address, contract_hash=contract_hash)
@@ -744,9 +729,6 @@ def test_call_on_pending_deployed_through_existing():
             # increment by
             4,
         ],
-        max_fee=0,
-        signature=[],
-        nonce=None,
         pending_updates={contract_address: [call.StorageDiff(key=0x5, value=0x65)]},
         pending_deployed=[
             call.DeployedContract(address=contract_address, contract_hash=contract_hash)
@@ -792,9 +774,6 @@ def test_call_on_reorgged_pending_block():
                 contract_address=contract_address,
                 entry_point_selector=get_selector_from_name("get_value"),
                 calldata=[132],
-                max_fee=0,
-                signature=[],
-                nonce=None,
                 pending_updates={
                     contract_address: [call.StorageDiff(key=132, value=5)]
                 },
@@ -811,9 +790,6 @@ def test_call_on_reorgged_pending_block():
                 contract_address=contract_address,
                 entry_point_selector=get_selector_from_name("get_value"),
                 calldata=[132],
-                max_fee=0,
-                signature=[],
-                nonce=None,
                 # because the block is not found, the updates are not used
                 pending_updates={
                     contract_address: [call.StorageDiff(key=132, value=5)]
@@ -831,9 +807,6 @@ def test_call_on_reorgged_pending_block():
                 contract_address=1234567,
                 entry_point_selector=get_selector_from_name("get_value"),
                 calldata=[132],
-                max_fee=0,
-                signature=[],
-                nonce=None,
                 pending_updates={1234567: [call.StorageDiff(key=132, value=5)]},
                 pending_deployed=[
                     call.DeployedContract(
@@ -853,9 +826,6 @@ def test_call_on_reorgged_pending_block():
                 contract_address=1234567,
                 entry_point_selector=get_selector_from_name("get_value"),
                 calldata=[132],
-                max_fee=0,
-                signature=[],
-                nonce=None,
                 # because the block is not found, the updates are not used
                 pending_updates={1234567: [call.StorageDiff(key=132, value=5)]},
                 pending_deployed=[
@@ -1227,9 +1197,6 @@ def test_positive_streamed_on_early_goerli_block_without_deployed():
         contract_address=0x543E54F26AE33686F57DA2CEEBED98B340C3A78E9390931BD84FB711D5CAABC,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[5],
-        max_fee=0,
-        signature=[],
-        nonce=None,
         # this is from the corresponding state update for block 6
         pending_updates={
             0x7C38021EB1F890C5D572125302FE4A0D2F79D38B018D68A9FCD102145D4E451: [
@@ -1303,9 +1270,6 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
         contract_address=0x543E54F26AE33686F57DA2CEEBED98B340C3A78E9390931BD84FB711D5CAABC,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[5],
-        max_fee=0,
-        signature=[],
-        nonce=None,
         pending_updates=pending_updates,
         pending_deployed=pending_deployed,
         pending_nonces={},
@@ -1335,9 +1299,6 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
         contract_address=pending_deployed[0].address,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[5],
-        max_fee=0,
-        signature=[],
-        nonce=None,
         pending_updates=pending_updates,
         pending_deployed=pending_deployed,
         pending_nonces={},

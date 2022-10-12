@@ -360,13 +360,6 @@ async fn process(
             },
             contract_address: &call.contract_address,
             calldata: &call.calldata,
-            max_fee: &call.max_fee,
-            signature: &call.signature,
-            nonce: if call.version.is_zero() {
-                None
-            } else {
-                Some(&call.nonce)
-            },
             entry_point_selector: call.entry_point_selector.as_ref(),
         },
         Command::EstimateFee {
