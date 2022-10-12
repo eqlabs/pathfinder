@@ -26,9 +26,9 @@ pub struct GetEventsInput {
 #[serde(deny_unknown_fields)]
 pub struct EventFilter {
     #[serde(default, alias = "fromBlock")]
-    pub from_block: Option<crate::core::BlockId>,
+    pub from_block: Option<BlockId>,
     #[serde(default, alias = "toBlock")]
-    pub to_block: Option<crate::core::BlockId>,
+    pub to_block: Option<BlockId>,
     #[serde(default)]
     pub address: Option<ContractAddress>,
     #[serde(default)]
@@ -321,5 +321,57 @@ mod types {
         pub events: Vec<EmittedEvent>,
         pub page_number: usize,
         pub is_last_page: bool,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::starkhash;
+    use jsonrpsee::types::Params;
+
+    #[test]
+    fn parsing() {
+        let optional_present = EventFilter {
+            from_block: Some(BlockId::Number(StarknetBlockNumber::new_or_panic(0))),
+            to_block: Some(BlockId::Latest),
+            address: Some(ContractAddress::new_or_panic(starkhash!("01"))),
+            keys: vec![EventKey(starkhash!("02"))],
+            page_size: 3,
+            page_number: 4,
+        };
+        let optional_absent = EventFilter {
+            from_block: None,
+            to_block: None,
+            address: None,
+            keys: vec![],
+            page_size: 5,
+            page_number: 6,
+        };
+
+        [
+            (
+                r#"[{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"page_size":3,"page_number":4}]"#,
+                optional_present.clone(),
+            ),
+            (
+                r#"{"filter":{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"page_size":3,"page_number":4}}"#,
+                optional_present
+            ),
+            (r#"[{"page_size":5,"page_number":6}]"#, optional_absent.clone()),
+            (r#"{"filter":{"page_size":5,"page_number":6}}"#, optional_absent),
+        ]
+        .into_iter()
+        .enumerate()
+        .for_each(|(i, (input, expected))| {
+            let actual = Params::new(Some(input))
+                .parse::<GetEventsInput>()
+                .unwrap_or_else(|error| panic!("test case {i}: {input}, {error}"));
+            assert_eq!(
+                actual,
+                GetEventsInput { filter: expected },
+                "test case {i}: {input}"
+            );
+        });
     }
 }
