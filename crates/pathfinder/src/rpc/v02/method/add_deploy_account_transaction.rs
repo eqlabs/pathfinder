@@ -1,42 +1,21 @@
 use anyhow::Context;
-use serde_with::serde_as;
 
-use crate::rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr};
 use crate::{
-    core::{
-        CallParam, ClassHash, ContractAddress, ContractAddressSalt, Fee, StarknetTransactionHash,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
-    },
-    rpc::v02::RpcContext,
+    core::{ContractAddress, StarknetTransactionHash},
+    rpc::v02::{types::request::BroadcastedDeployAccountTransaction, RpcContext},
     sequencer::ClientApi,
 };
 
-const fn transaction_version_zero() -> TransactionVersion {
-    TransactionVersion(web3::types::H256::zero())
+#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum Transaction {
+    #[serde(rename = "DEPLOY_ACCOUNT")]
+    DeployAccount(BroadcastedDeployAccountTransaction),
 }
 
-#[serde_as]
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct DeployAccountTransaction {
-    // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
-    #[serde_as(as = "TransactionVersionAsHexStr")]
-    #[serde(default = "transaction_version_zero")]
-    pub version: TransactionVersion,
-    #[serde_as(as = "FeeAsHexStr")]
-    pub max_fee: Fee,
-    pub signature: Vec<TransactionSignatureElem>,
-    pub nonce: TransactionNonce,
-
-    // Fields from DEPLOY_ACCOUNT_TXN_PROPERTIES
-    pub contract_address_salt: ContractAddressSalt,
-    pub constructor_calldata: Vec<CallParam>,
-    pub class_hash: ClassHash,
-}
-
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 pub struct AddDeployAccountTransactionInput {
-    deploy_account_transaction: DeployAccountTransaction,
+    deploy_account_transaction: Transaction,
 }
 
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
@@ -51,7 +30,7 @@ pub async fn add_deploy_account_transaction(
     context: RpcContext,
     input: AddDeployAccountTransactionInput,
 ) -> Result<AddDeployAccountTransactionOutput, AddDeployAccountTransactionError> {
-    let tx = input.deploy_account_transaction;
+    let Transaction::DeployAccount(tx) = input.deploy_account_transaction;
     let response = context
         .sequencer
         .add_deploy_account(
@@ -75,40 +54,47 @@ pub async fn add_deploy_account_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{core::Chain, starkhash};
+    use crate::{
+        core::{
+            CallParam, Chain, ClassHash, ContractAddressSalt, Fee, TransactionNonce,
+            TransactionSignatureElem, TransactionVersion,
+        },
+        starkhash,
+    };
 
     #[tokio::test]
     async fn test_add_deploy_account_transaction() {
         // FIXME(0.10.1) Return to `RpcContext::for_tests()` once 0.10.1 hits TestNet.
         let context = RpcContext::for_tests_on(Chain::Integration);
 
-        let deploy_account_transaction = DeployAccountTransaction {
-            version: TransactionVersion::ONE,
-            max_fee: Fee([
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b, 0xf3, 0x91, 0x37,
-                0x78, 0x13,
-            ]
-            .into()),
-            signature: vec![
-                TransactionSignatureElem(starkhash!(
-                    "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
-                )),
-                TransactionSignatureElem(starkhash!(
-                    "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                )),
-            ],
-            nonce: TransactionNonce::ZERO,
+        let deploy_account_transaction =
+            Transaction::DeployAccount(BroadcastedDeployAccountTransaction {
+                version: TransactionVersion::ONE,
+                max_fee: Fee([
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b, 0xf3, 0x91,
+                    0x37, 0x78, 0x13,
+                ]
+                .into()),
+                signature: vec![
+                    TransactionSignatureElem(starkhash!(
+                        "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                    )),
+                    TransactionSignatureElem(starkhash!(
+                        "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                    )),
+                ],
+                nonce: TransactionNonce::ZERO,
 
-            contract_address_salt: ContractAddressSalt(starkhash!(
-                "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
-            )),
-            constructor_calldata: vec![CallParam(starkhash!(
-                "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-            ))],
-            class_hash: ClassHash(starkhash!(
-                "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
-            )),
-        };
+                contract_address_salt: ContractAddressSalt(starkhash!(
+                    "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
+                )),
+                constructor_calldata: vec![CallParam(starkhash!(
+                    "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                ))],
+                class_hash: ClassHash(starkhash!(
+                    "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
+                )),
+            });
 
         let input = AddDeployAccountTransactionInput {
             deploy_account_transaction,

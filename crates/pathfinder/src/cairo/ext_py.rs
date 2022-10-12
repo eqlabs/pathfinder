@@ -99,6 +99,17 @@ impl Handle {
                     "Only invoke transactions are supported",
                 ))
             }
+            BroadcastedTransaction::DeployAccount(tx) => {
+                add_transaction::AddTransaction::DeployAccount(add_transaction::DeployAccount {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    nonce: tx.nonce,
+                    class_hash: tx.class_hash,
+                    contract_address_salt: tx.contract_address_salt,
+                    constructor_calldata: tx.constructor_calldata,
+                })
+            }
             BroadcastedTransaction::Declare(tx) => {
                 add_transaction::AddTransaction::Declare(add_transaction::Declare {
                     version: tx.version,

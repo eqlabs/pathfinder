@@ -7,8 +7,8 @@ pub use class::*;
 pub mod request {
     use crate::{
         core::{
-            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, Fee,
-            TransactionNonce, TransactionSignatureElem, TransactionVersion,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+            EntryPoint, Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
         },
         rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
     };
@@ -30,6 +30,8 @@ pub mod request {
         Invoke(BroadcastedInvokeTransaction),
         #[serde(rename = "DEPLOY")]
         Deploy(BroadcastedDeployTransaction),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(BroadcastedDeployAccountTransaction),
     }
 
     #[serde_as]
@@ -63,6 +65,25 @@ pub mod request {
 
         /// The class of the contract that will be deployed.
         pub contract_class: super::ContractClass,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedDeployAccountTransaction {
+        // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+
+        // Fields from DEPLOY_ACCOUNT_TXN_PROPERTIES
+        pub contract_address_salt: ContractAddressSalt,
+        pub constructor_calldata: Vec<CallParam>,
+        pub class_hash: ClassHash,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
