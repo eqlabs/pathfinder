@@ -498,4 +498,93 @@ mod tests {
 
         assert_eq!(GetEventsError::PageSizeTooBig, error);
     }
+
+    #[tokio::test]
+    async fn get_events_by_key_with_paging() {
+        let (context, events) = setup();
+
+        let expected_events = &events[27..32];
+        let keys_for_expected_events: Vec<_> = expected_events.iter().map(|e| e.keys[0]).collect();
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys: keys_for_expected_events.clone(),
+                page_size: 2,
+                page_number: 0,
+            },
+        };
+        let result = get_events(context.clone(), input).await.unwrap();
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events: expected_events[..2].to_vec(),
+                page_number: 0,
+                is_last_page: false,
+            }
+        );
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys: keys_for_expected_events.clone(),
+                page_size: 2,
+                page_number: 1,
+            },
+        };
+        let result = get_events(context.clone(), input).await.unwrap();
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events: expected_events[2..4].to_vec(),
+                page_number: 1,
+                is_last_page: false,
+            }
+        );
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys: keys_for_expected_events.clone(),
+                page_size: 2,
+                page_number: 2,
+            },
+        };
+        let result = get_events(context.clone(), input).await.unwrap();
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events: expected_events[4..].to_vec(),
+                page_number: 2,
+                is_last_page: true,
+            }
+        );
+
+        // nonexistent page
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys: keys_for_expected_events.clone(),
+                page_size: 2,
+                page_number: 3,
+            },
+        };
+        let result = get_events(context, input).await.unwrap();
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events: vec![],
+                page_number: 3,
+                is_last_page: true,
+            }
+        );
+    }
 }
