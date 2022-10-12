@@ -173,6 +173,13 @@ impl EthereumTransport for HttpTransport {
                         LogsError::QueryLimit
                     }
                     Error::Rpc(err)
+                        if err.code.code() == InvalidParams.code()
+                            && err.message.starts_with("query returned more than") =>
+                    {
+                        // Handle Infura query limit error response.
+                        LogsError::QueryLimit
+                    }
+                    Error::Rpc(err)
                         if err.code.code() == InvalidInput.code()
                             && err.message == ALCHEMY_UNKNOWN_BLOCK_ERR =>
                     {
