@@ -62,43 +62,80 @@ mod tests {
         starkhash,
     };
 
+    const INPUT_JSON: &str = r#"{
+        "max_fee": "0xbf391377813",
+        "version": "0x1",
+        "constructor_calldata": [
+            "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+        ],
+        "signature": [
+            "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5",
+            "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+        ],
+        "nonce": "0x0",
+        "class_hash": "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d",
+        "contract_address_salt": "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8",
+        "type": "DEPLOY_ACCOUNT"
+    }"#;
+
+    #[tokio::test]
+    async fn test_parse_input_named() {
+        let json = format!("{{\"deploy_account_transaction\":{}}}", INPUT_JSON);
+        let input: AddDeployAccountTransactionInput =
+            serde_json::from_str(&json).expect("parse named input");
+
+        assert_eq!(input, get_input());
+    }
+
+    #[tokio::test]
+    async fn test_parse_input_positional() {
+        let json = format!("[{}]", INPUT_JSON);
+        let input: AddDeployAccountTransactionInput =
+            serde_json::from_str(&json).expect("parse positional input");
+
+        assert_eq!(input, get_input());
+    }
+
+    fn get_input() -> AddDeployAccountTransactionInput {
+        AddDeployAccountTransactionInput {
+            deploy_account_transaction: Transaction::DeployAccount(
+                BroadcastedDeployAccountTransaction {
+                    version: TransactionVersion::ONE,
+                    max_fee: Fee([
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b, 0xf3,
+                        0x91, 0x37, 0x78, 0x13,
+                    ]
+                    .into()),
+                    signature: vec![
+                        TransactionSignatureElem(starkhash!(
+                            "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                        )),
+                        TransactionSignatureElem(starkhash!(
+                            "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                        )),
+                    ],
+                    nonce: TransactionNonce::ZERO,
+
+                    contract_address_salt: ContractAddressSalt(starkhash!(
+                        "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
+                    )),
+                    constructor_calldata: vec![CallParam(starkhash!(
+                        "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                    ))],
+                    class_hash: ClassHash(starkhash!(
+                        "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
+                    )),
+                },
+            ),
+        }
+    }
+
     #[tokio::test]
     async fn test_add_deploy_account_transaction() {
         // FIXME(0.10.1) Return to `RpcContext::for_tests()` once 0.10.1 hits TestNet.
         let context = RpcContext::for_tests_on(Chain::Integration);
 
-        let deploy_account_transaction =
-            Transaction::DeployAccount(BroadcastedDeployAccountTransaction {
-                version: TransactionVersion::ONE,
-                max_fee: Fee([
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b, 0xf3, 0x91,
-                    0x37, 0x78, 0x13,
-                ]
-                .into()),
-                signature: vec![
-                    TransactionSignatureElem(starkhash!(
-                        "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
-                    )),
-                    TransactionSignatureElem(starkhash!(
-                        "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                    )),
-                ],
-                nonce: TransactionNonce::ZERO,
-
-                contract_address_salt: ContractAddressSalt(starkhash!(
-                    "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
-                )),
-                constructor_calldata: vec![CallParam(starkhash!(
-                    "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-                ))],
-                class_hash: ClassHash(starkhash!(
-                    "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
-                )),
-            });
-
-        let input = AddDeployAccountTransactionInput {
-            deploy_account_transaction,
-        };
+        let input = get_input();
 
         let expected = AddDeployAccountTransactionOutput {
             transaction_hash: StarknetTransactionHash(starkhash!(
