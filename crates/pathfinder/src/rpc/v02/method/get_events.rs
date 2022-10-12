@@ -388,6 +388,15 @@ mod tests {
         (context, events)
     }
 
+    impl PartialEq for GetEventsError {
+        fn eq(&self, other: &Self) -> bool {
+            match (self, other) {
+                (Self::Internal(l), Self::Internal(r)) => l.to_string() == r.to_string(),
+                _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            }
+        }
+    }
+
     #[tokio::test]
     async fn get_events_with_empty_filter() {
         let (context, events) = setup();
@@ -469,5 +478,24 @@ mod tests {
                 is_last_page: true,
             }
         );
+    }
+
+    #[tokio::test]
+    async fn get_events_with_invalid_page_size() {
+        let (context, _) = setup();
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys: vec![],
+                page_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                page_number: 0,
+            },
+        };
+        let error = get_events(context, input).await.unwrap_err();
+
+        assert_eq!(GetEventsError::PageSizeTooBig, error);
     }
 }
