@@ -22,8 +22,6 @@ pub struct GetEventsInput {
 /// Contains event filter parameters passed to `starknet_getEvents`.
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-// FIXME - needed?
-#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
 #[serde(deny_unknown_fields)]
 pub struct EventFilter {
     #[serde(default, alias = "fromBlock")]
@@ -286,8 +284,6 @@ mod types {
 
     /// Describes an emitted event returned by starknet_getEvents
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    // FIXME - needed?
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct EmittedEvent {
         pub data: Vec<EventData>,
@@ -315,8 +311,6 @@ mod types {
 
     // Result type for starknet_getEvents
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    // FIXME - needed?
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct GetEventsResult {
         pub events: Vec<EmittedEvent>,
