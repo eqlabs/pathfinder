@@ -98,7 +98,6 @@ pub async fn get_events(
 
             check_continuation_token_validity(reqest_continuation_token, &events)?;
 
-            // FIXME refactor after tests pass
             let continuation_token = if is_last_page {
                 None
             } else {
@@ -234,7 +233,6 @@ pub async fn get_events(
         )
         .await;
 
-        // FIXME refactor after tests pass
         events.continuation_token = if is_last_page {
             None
         } else {
