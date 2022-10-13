@@ -29,6 +29,10 @@ pub enum Transaction {
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct AddDeclareTransactionInput {
     declare_transaction: Transaction,
+    // An undocumented parameter that we forward to the sequencer API
+    // A deploy token is required to deploy contracts on Starknet mainnet only.
+    #[serde(default)]
+    token: Option<String>,
 }
 
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
@@ -56,7 +60,7 @@ pub async fn add_declare_transaction(
             tx.nonce,
             contract_definition,
             tx.sender_address,
-            None,
+            input.token,
         )
         .await?;
 
@@ -129,6 +133,7 @@ mod tests {
             let input = positional.parse::<AddDeclareTransactionInput>().unwrap();
             let expected = AddDeclareTransactionInput {
                 declare_transaction: test_declare_txn(),
+                token: None,
             };
             assert_eq!(input, expected);
         }
@@ -147,7 +152,8 @@ mod tests {
                         "nonce": "0x0",
                         "contract_class": {},
                         "sender_address": "0x1"
-                    }}
+                    }},
+                    "token": "token"
                 }}"#,
                 CONTRACT_CLASS_JSON.clone()
             );
@@ -156,6 +162,7 @@ mod tests {
             let input = named.parse::<AddDeclareTransactionInput>().unwrap();
             let expected = AddDeclareTransactionInput {
                 declare_transaction: test_declare_txn(),
+                token: Some("token".to_owned()),
             };
             assert_eq!(input, expected);
         }
@@ -181,6 +188,7 @@ mod tests {
 
         let input = AddDeclareTransactionInput {
             declare_transaction,
+            token: None,
         };
         let error = add_declare_transaction(context, input).await.unwrap_err();
         assert_matches::assert_matches!(error, AddDeclareTransactionError::InvalidContractClass);
@@ -201,6 +209,7 @@ mod tests {
 
         let input = AddDeclareTransactionInput {
             declare_transaction,
+            token: None,
         };
         let result = add_declare_transaction(context, input).await.unwrap();
         assert_eq!(
