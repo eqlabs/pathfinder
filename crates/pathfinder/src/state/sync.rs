@@ -381,7 +381,7 @@ where
                             use sequencer::reply::transaction::Transaction::*;
                             match tx {
                                 Declare(tx) => Some(tx.class_hash),
-                                Deploy(_) | Invoke(_) | L1Handler(_) => None,
+                                Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
                             }
                         });
                     let classes = deployed_classes
@@ -1093,6 +1093,19 @@ mod tests {
             _: ContractDefinition,
             _: Option<String>,
         ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn add_deploy_account(
+            &self,
+            _: TransactionVersion,
+            _: Fee,
+            _: Vec<TransactionSignatureElem>,
+            _: TransactionNonce,
+            _: ContractAddressSalt,
+            _: ClassHash,
+            _: Vec<CallParam>,
+        ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
             unimplemented!()
         }
     }

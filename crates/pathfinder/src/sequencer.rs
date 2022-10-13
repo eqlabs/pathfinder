@@ -89,6 +89,18 @@ pub trait ClientApi {
         contract_definition: ContractDefinition,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeployResponse, SequencerError>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn add_deploy_account(
+        &self,
+        version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: TransactionNonce,
+        contract_address_salt: ContractAddressSalt,
+        class_hash: ClassHash,
+        calldata: Vec<CallParam>,
+    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError>;
 }
 
 /// StarkNet sequencer client using REST API.
@@ -391,6 +403,42 @@ impl ClientApi for Client {
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
             .with_optional_token(token.as_deref())
+            .with_retry(builder::Retry::Disabled)
+            .post_with_json(&req)
+            .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn add_deploy_account(
+        &self,
+        version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: TransactionNonce,
+        contract_address_salt: ContractAddressSalt,
+        class_hash: ClassHash,
+        calldata: Vec<CallParam>,
+    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
+        let req = request::add_transaction::AddTransaction::DeployAccount(
+            request::add_transaction::DeployAccount {
+                version,
+                max_fee,
+                signature,
+                nonce,
+                class_hash,
+                contract_address_salt,
+                constructor_calldata: calldata,
+            },
+        );
+
+        // Note that we don't do retries here.
+        // This method is used to proxy an add transaction operation from the JSON-RPC
+        // API to the sequencer. Retries should be implemented in the JSON-RPC
+        // client instead.
+
+        self.request()
+            .gateway()
+            .add_transaction()
             .with_retry(builder::Retry::Disabled)
             .post_with_json(&req)
             .await
@@ -1605,6 +1653,52 @@ mod tests {
                 )
                 .await
                 .unwrap();
+        }
+
+        #[tokio::test]
+        async fn test_deploy_account() {
+            let (_jh, client) = setup([(
+                "/gateway/add_transaction",
+                response!("0.10.1/add_transaction/deploy_account_response.json"),
+            )]);
+
+            let json = include_str!(
+                "../fixtures/sequencer/0.10.1/add_transaction/deploy_account_request.json"
+            );
+            let req: request::add_transaction::AddTransaction =
+                serde_json::from_str(json).expect("Request parsed from JSON");
+            let req = match req {
+                request::add_transaction::AddTransaction::DeployAccount(deploy_account) => {
+                    Some(deploy_account)
+                }
+                _ => None,
+            };
+            let req = req.expect("Request matched as DEPLOY_ACCOUNT");
+
+            let res = client
+                .add_deploy_account(
+                    req.version,
+                    req.max_fee,
+                    req.signature,
+                    req.nonce,
+                    req.contract_address_salt,
+                    req.class_hash,
+                    req.constructor_calldata,
+                )
+                .await
+                .expect("DEPLOY_ACCOUNT response");
+
+            let expected = reply::add_transaction::DeployAccountResponse {
+                code: "TRANSACTION_RECEIVED".to_string(),
+                transaction_hash: StarknetTransactionHash(crate::starkhash!(
+                    "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
+                )),
+                address: crate::core::ContractAddress::new_or_panic(crate::starkhash!(
+                    "04e574ea2abd76d3105b3d29de28af0c5a28b889aa465903080167f6b48b1acc"
+                )),
+            };
+
+            assert_eq!(res, expected);
         }
 
         /// Return a contract definition that was dumped from a `starknet deploy`.

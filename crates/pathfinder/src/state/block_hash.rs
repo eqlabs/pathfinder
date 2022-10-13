@@ -343,9 +343,10 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> StarkHash {
             }
             hash.finalize()
         }
-        Transaction::Declare(_) | Transaction::Deploy(_) | Transaction::L1Handler(_) => {
-            *HASH_OF_EMPTY_LIST
-        }
+        Transaction::Declare(_)
+        | Transaction::Deploy(_)
+        | Transaction::DeployAccount(_)
+        | Transaction::L1Handler(_) => *HASH_OF_EMPTY_LIST,
     };
 
     stark_hash(tx.hash().0, signature_hash)
@@ -456,7 +457,7 @@ mod tests {
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
             contract_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
-            entry_point_type: EntryPointType::External,
+            entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(starkhash!("0e")),
             max_fee: Fee(0u128.to_be_bytes().into()),
             signature: vec![

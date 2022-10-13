@@ -119,6 +119,8 @@ mod types {
         L1Handler(L1HandlerTransactionReceipt),
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransactionReceipt),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(DeployAccountTransactionReceipt),
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -152,6 +154,15 @@ mod types {
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeployTransactionReceipt {
+        #[serde(flatten)]
+        pub common: CommonTransactionReceiptProperties,
+
+        pub contract_address: ContractAddress,
+    }
+
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeployAccountTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
 
@@ -196,6 +207,10 @@ mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
+                DeployAccount(tx) => Self::DeployAccount(DeployAccountTransactionReceipt {
+                    common,
+                    contract_address: tx.contract_address,
+                }),
                 Invoke(_) => Self::Invoke(InvokeTransactionReceipt { common }),
                 L1Handler(_) => Self::L1Handler(L1HandlerTransactionReceipt { common }),
             }
@@ -216,6 +231,8 @@ mod types {
         Declare(PendingDeclareTransactionReceipt),
         #[serde(rename = "DEPLOY")]
         Deploy(PendingDeployTransactionReceipt),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(PendingDeployAccountTransactionReceipt),
         #[serde(rename = "L1_HANDLER")]
         L1Handler(PendingL1HandlerTransactionReceipt),
     }
@@ -255,6 +272,15 @@ mod types {
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct PendingDeployAccountTransactionReceipt {
+        #[serde(flatten)]
+        pub common: CommonPendingTransactionReceiptProperties,
+
+        pub contract_address: ContractAddress,
+    }
+
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct PendingL1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
@@ -282,6 +308,10 @@ mod types {
             match transaction {
                 Declare(_) => Self::Declare(PendingDeclareTransactionReceipt { common }),
                 Deploy(tx) => Self::Deploy(PendingDeployTransactionReceipt {
+                    common,
+                    contract_address: tx.contract_address,
+                }),
+                DeployAccount(tx) => Self::DeployAccount(PendingDeployAccountTransactionReceipt {
                     common,
                     contract_address: tx.contract_address,
                 }),

@@ -180,7 +180,7 @@ async fn declare_classes(
             use crate::sequencer::reply::transaction::Transaction::*;
             match tx {
                 Declare(tx) => Some(tx.class_hash),
-                Deploy(_) | Invoke(_) | L1Handler(_) => None,
+                Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
             }
         })
         // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.

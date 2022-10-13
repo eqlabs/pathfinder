@@ -313,6 +313,8 @@ pub mod transaction {
         Declare(DeclareTransaction),
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(DeployAccountTransaction),
         #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeTransaction),
         #[serde(rename = "L1_HANDLER")]
@@ -325,6 +327,7 @@ pub mod transaction {
             match self {
                 Transaction::Declare(t) => t.transaction_hash,
                 Transaction::Deploy(t) => t.transaction_hash,
+                Transaction::DeployAccount(t) => t.transaction_hash,
                 Transaction::Invoke(t) => match t {
                     InvokeTransaction::V0(t) => t.transaction_hash,
                     InvokeTransaction::V1(t) => t.transaction_hash,
@@ -337,6 +340,7 @@ pub mod transaction {
             match self {
                 Transaction::Declare(t) => t.sender_address,
                 Transaction::Deploy(t) => t.contract_address,
+                Transaction::DeployAccount(t) => t.contract_address,
                 Transaction::Invoke(t) => match t {
                     InvokeTransaction::V0(t) => t.contract_address,
                     InvokeTransaction::V1(t) => t.contract_address,
@@ -382,6 +386,26 @@ pub mod transaction {
         #[serde_as(as = "TransactionVersionAsHexStr")]
         #[serde(default = "transaction_version_zero")]
         pub version: TransactionVersion,
+    }
+
+    /// Represents deserialized L2 deploy account transaction data.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeployAccountTransaction {
+        pub contract_address: ContractAddress,
+        pub transaction_hash: StarknetTransactionHash,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+        pub contract_address_salt: ContractAddressSalt,
+        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
+        pub constructor_calldata: Vec<CallParam>,
+        pub class_hash: ClassHash,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -456,7 +480,8 @@ pub mod transaction {
         pub calldata: Vec<CallParam>,
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
-        pub entry_point_type: EntryPointType,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub entry_point_type: Option<EntryPointType>,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
@@ -672,6 +697,15 @@ pub mod add_transaction {
         pub address: ContractAddress,
     }
 
+    /// API response for a DEPLOY ACCOUNT transaction
+    #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeployAccountResponse {
+        pub code: String, // TRANSACTION_RECEIVED
+        pub transaction_hash: StarknetTransactionHash,
+        pub address: ContractAddress,
+    }
+
     #[cfg(test)]
     mod serde_test {
         use crate::starkhash;
@@ -737,6 +771,9 @@ mod tests {
                 .unwrap();
             // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
             serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/216171.json"))
+                .unwrap();
+            // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
+            serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/228457.json"))
                 .unwrap();
         }
 

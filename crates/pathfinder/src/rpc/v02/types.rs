@@ -7,8 +7,8 @@ pub use class::*;
 pub mod request {
     use crate::{
         core::{
-            CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, Fee,
-            TransactionNonce, TransactionSignatureElem, TransactionVersion,
+            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+            EntryPoint, Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
         },
         rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
     };
@@ -30,6 +30,8 @@ pub mod request {
         Invoke(BroadcastedInvokeTransaction),
         #[serde(rename = "DEPLOY")]
         Deploy(BroadcastedDeployTransaction),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(BroadcastedDeployAccountTransaction),
     }
 
     #[serde_as]
@@ -63,6 +65,25 @@ pub mod request {
 
         /// The class of the contract that will be deployed.
         pub contract_class: super::ContractClass,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedDeployAccountTransaction {
+        // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+
+        // Fields from DEPLOY_ACCOUNT_TXN_PROPERTIES
+        pub contract_address_salt: ContractAddressSalt,
+        pub constructor_calldata: Vec<CallParam>,
+        pub class_hash: ClassHash,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -281,6 +302,8 @@ pub mod reply {
         Invoke(InvokeTransaction),
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(DeployAccountTransaction),
         #[serde(rename = "L1_HANDLER")]
         L1Handler(L1HandlerTransaction),
     }
@@ -292,6 +315,7 @@ pub mod reply {
                 Transaction::Invoke(InvokeTransaction::V0(invoke)) => invoke.common.hash,
                 Transaction::Invoke(InvokeTransaction::V1(invoke)) => invoke.common.hash,
                 Transaction::Deploy(deploy) => deploy.hash,
+                Transaction::DeployAccount(deploy_account) => deploy_account.common.hash,
                 Transaction::L1Handler(l1_handler) => l1_handler.hash,
             }
         }
@@ -321,6 +345,19 @@ pub mod reply {
         // DECLARE_TXN
         pub class_hash: ClassHash,
         pub sender_address: ContractAddress,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeployAccountTransaction {
+        #[serde(flatten)]
+        pub common: CommonTransactionProperties,
+
+        // DEPLOY_ACCOUNT_TXN
+        pub contract_address_salt: ContractAddressSalt,
+        pub constructor_calldata: Vec<CallParam>,
+        pub class_hash: ClassHash,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -516,6 +553,20 @@ pub mod reply {
                         version: txn.version,
                         contract_address_salt: txn.contract_address_salt,
                         constructor_calldata: txn.constructor_calldata.clone(),
+                    })
+                }
+                sequencer::reply::transaction::Transaction::DeployAccount(txn) => {
+                    Self::DeployAccount(DeployAccountTransaction {
+                        common: CommonTransactionProperties {
+                            hash: txn.transaction_hash,
+                            max_fee: txn.max_fee,
+                            version: txn.version,
+                            signature: txn.signature.clone(),
+                            nonce: txn.nonce,
+                        },
+                        contract_address_salt: txn.contract_address_salt,
+                        constructor_calldata: txn.constructor_calldata.clone(),
+                        class_hash: txn.class_hash,
                     })
                 }
                 sequencer::reply::transaction::Transaction::L1Handler(txn) => {

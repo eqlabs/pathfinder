@@ -51,7 +51,7 @@ pub mod add_transaction {
     use std::collections::HashMap;
 
     use crate::core::{
-        ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
+        ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
     };
     use crate::rpc::serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
@@ -133,6 +133,26 @@ pub mod add_transaction {
         pub constructor_calldata: Vec<ConstructorParam>,
     }
 
+    /// Account deployment transaction details.
+    #[serde_as]
+    #[derive(Debug, serde::Deserialize, serde::Serialize)]
+    pub struct DeployAccount {
+        // Transaction properties
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+
+        pub class_hash: ClassHash,
+        pub contract_address_salt: ContractAddressSalt,
+        #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
+        pub constructor_calldata: Vec<CallParam>,
+    }
+
     /// Invoke contract transaction details.
     #[serde_as]
     #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -186,6 +206,8 @@ pub mod add_transaction {
         Deploy(Deploy),
         #[serde(rename = "DECLARE")]
         Declare(Declare),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(DeployAccount),
     }
 
     #[cfg(test)]

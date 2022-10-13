@@ -585,6 +585,8 @@ pub mod reply {
         Invoke(InvokeTransaction),
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
+        #[serde(rename = "DEPLOY_ACCOUNT")]
+        DeployAccount(DeployAccountTransaction),
         #[serde(rename = "L1_HANDLER")]
         L1Handler(L1HandlerTransaction),
     }
@@ -595,6 +597,7 @@ pub mod reply {
                 Transaction::Declare(declare) => declare.common.hash,
                 Transaction::Invoke(invoke) => invoke.common.hash,
                 Transaction::Deploy(deploy) => deploy.hash,
+                Transaction::DeployAccount(deploy_account) => deploy_account.common.hash,
                 Transaction::L1Handler(l1_handler) => l1_handler.hash,
             }
         }
@@ -623,6 +626,19 @@ pub mod reply {
 
         pub class_hash: ClassHash,
         pub sender_address: ContractAddress,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeployAccountTransaction {
+        #[serde(flatten)]
+        pub common: CommonTransactionProperties,
+
+        // DEPLOY_ACCOUNT_TXN_PROPERTIES
+        pub contract_address_salt: ContractAddressSalt,
+        pub constructor_calldata: Vec<CallParam>,
+        pub class_hash: ClassHash,
     }
 
     #[serde_as]
@@ -755,6 +771,20 @@ pub mod reply {
                         constructor_calldata: txn.constructor_calldata.clone(),
                     })
                 }
+                sequencer::reply::transaction::Transaction::DeployAccount(txn) => {
+                    Self::DeployAccount(DeployAccountTransaction {
+                        common: CommonTransactionProperties {
+                            hash: txn.transaction_hash,
+                            max_fee: txn.max_fee,
+                            version: txn.version,
+                            signature: txn.signature.clone(),
+                            nonce: txn.nonce,
+                        },
+                        contract_address_salt: txn.contract_address_salt,
+                        constructor_calldata: txn.constructor_calldata.clone(),
+                        class_hash: txn.class_hash,
+                    })
+                }
                 sequencer::reply::transaction::Transaction::L1Handler(txn) => {
                     Self::L1Handler(L1HandlerTransaction {
                         hash: txn.transaction_hash,
@@ -864,6 +894,7 @@ pub mod reply {
             match transaction {
                 sequencer::reply::transaction::Transaction::Declare(_)
                 | sequencer::reply::transaction::Transaction::Deploy(_)
+                | sequencer::reply::transaction::Transaction::DeployAccount(_)
                 | sequencer::reply::transaction::Transaction::L1Handler(_) => {
                     Self::PendingDeclareOrDeployOrL1Handler(
                         PendingDeclareOrDeployOrL1HandlerTransactionReceipt {
@@ -911,7 +942,7 @@ pub mod reply {
         ) -> Self {
             use sequencer::reply::transaction::Transaction::*;
             match transaction {
-                Declare(_) | Deploy(_) | L1Handler(_) => {
+                Declare(_) | Deploy(_) | DeployAccount(_) | L1Handler(_) => {
                     Self::DeclareOrDeployOrL1Handler(DeclareOrDeployOrL1HandlerTransactionReceipt {
                         common: CommonTransactionReceiptProperties {
                             transaction_hash: receipt.transaction_hash,

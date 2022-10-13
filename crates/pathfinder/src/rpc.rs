@@ -288,7 +288,7 @@ mod tests {
         let txn0 = InvokeTransactionV0 {
             calldata: vec![],
             contract_address: contract0_addr,
-            entry_point_type: EntryPointType::External,
+            entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(StarkHash::ZERO),
             max_fee: crate::core::Fee(H128::zero()),
             signature: vec![],
@@ -393,7 +393,7 @@ mod tests {
                     b"pending contract addr 0"
                 )),
                 entry_point_selector: EntryPoint(starkhash_bytes!(b"entry point 0")),
-                entry_point_type: EntryPointType::External,
+                entry_point_type: Some(EntryPointType::External),
                 max_fee: crate::rpc::v01::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
                 transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 0")),
