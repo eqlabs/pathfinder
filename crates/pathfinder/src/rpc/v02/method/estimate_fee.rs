@@ -245,8 +245,10 @@ mod tests {
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
     mod ext_py {
+        use crate::core::ContractAddressSalt;
         use crate::rpc::v02::types::request::{
-            BroadcastedDeclareTransaction, BroadcastedInvokeTransactionV0,
+            BroadcastedDeclareTransaction, BroadcastedDeployTransaction,
+            BroadcastedInvokeTransactionV0,
         };
         use crate::rpc::v02::types::ContractClass;
         use crate::starkhash_bytes;
@@ -403,6 +405,34 @@ mod tests {
 
             let input = EstimateFeeInput {
                 request: declare_transaction,
+                block_id: BLOCK_5,
+            };
+            let result = estimate_fee(context, input).await.unwrap();
+            assert_eq!(
+                result,
+                FeeEstimate {
+                    gas_consumed: Default::default(),
+                    gas_price: Default::default(),
+                    overall_fee: Default::default()
+                }
+            );
+        }
+
+        // The cairo-lang Python implementation does not support estimating deploy transactions.
+        // According to Starkware these transactions are subsidized so the fee should be zero.
+        #[test_log::test(tokio::test)]
+        async fn deploy_returns_zero() {
+            let (context, _join_handle) = test_context_with_call_handling().await;
+
+            let deploy_transaction = BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
+                version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                contract_address_salt: ContractAddressSalt(starkhash!("deadbeef")),
+                constructor_calldata: vec![],
+                contract_class: CONTRACT_CLASS.clone(),
+            });
+
+            let input = EstimateFeeInput {
+                request: deploy_transaction,
                 block_id: BLOCK_5,
             };
             let result = estimate_fee(context, input).await.unwrap();
