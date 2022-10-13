@@ -95,9 +95,12 @@ impl Handle {
 
         let transaction = match transaction {
             BroadcastedTransaction::Deploy(_) => {
-                return Err(CallFailure::Internal(
-                    "Only invoke transactions are supported",
-                ))
+                const ZERO: web3::types::H256 = web3::types::H256::zero();
+                return Ok(FeeEstimate {
+                    consumed: ZERO,
+                    gas_price: ZERO,
+                    fee: ZERO,
+                });
             }
             BroadcastedTransaction::DeployAccount(tx) => {
                 // TODO(0.10.1) Cairo upgrade is required for estimate_fee to support DEPLOY_ACCOUNT
