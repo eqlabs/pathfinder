@@ -354,7 +354,7 @@ pub mod reply {
         #[serde(flatten)]
         pub common: CommonTransactionProperties,
 
-        // DEPLOY_ACCOUNT_TXN_PROPERTIES
+        // DEPLOY_ACCOUNT_TXN
         pub contract_address_salt: ContractAddressSalt,
         pub constructor_calldata: Vec<CallParam>,
         pub class_hash: ClassHash,
@@ -558,8 +558,7 @@ pub mod reply {
                 sequencer::reply::transaction::Transaction::DeployAccount(txn) => {
                     Self::DeployAccount(DeployAccountTransaction {
                         common: CommonTransactionProperties {
-                            // TODO FIXME what is the transaction hash?
-                            hash: StarknetTransactionHash(stark_hash::StarkHash::ZERO),
+                            hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
                             version: txn.version,
                             signature: txn.signature.clone(),

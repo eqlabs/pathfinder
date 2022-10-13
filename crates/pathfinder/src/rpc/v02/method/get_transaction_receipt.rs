@@ -207,10 +207,9 @@ mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                DeployAccount(_) => Self::DeployAccount(DeployAccountTransactionReceipt {
+                DeployAccount(tx) => Self::DeployAccount(DeployAccountTransactionReceipt {
                     common,
-                    // TODO FIXME what is the contract address for DEPLOY_ACCOUNT transaction?
-                    contract_address: ContractAddress::new_or_panic(stark_hash::StarkHash::ZERO),
+                    contract_address: tx.contract_address,
                 }),
                 Invoke(_) => Self::Invoke(InvokeTransactionReceipt { common }),
                 L1Handler(_) => Self::L1Handler(L1HandlerTransactionReceipt { common }),
@@ -312,10 +311,9 @@ mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                DeployAccount(_) => Self::DeployAccount(PendingDeployAccountTransactionReceipt {
+                DeployAccount(tx) => Self::DeployAccount(PendingDeployAccountTransactionReceipt {
                     common,
-                    // TODO FIXME what is the contract address for DEPLOY_ACCOUNT transaction?
-                    contract_address: ContractAddress::new_or_panic(stark_hash::StarkHash::ZERO),
+                    contract_address: tx.contract_address,
                 }),
                 Invoke(_) => Self::Invoke(PendingInvokeTransactionReceipt { common }),
                 L1Handler(_) => Self::L1Handler(PendingL1HandlerTransactionReceipt { common }),

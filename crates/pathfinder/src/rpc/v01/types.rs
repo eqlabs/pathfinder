@@ -774,8 +774,7 @@ pub mod reply {
                 sequencer::reply::transaction::Transaction::DeployAccount(txn) => {
                     Self::DeployAccount(DeployAccountTransaction {
                         common: CommonTransactionProperties {
-                            // TODO FIXME what is the transaction hash?
-                            hash: StarknetTransactionHash(stark_hash::StarkHash::ZERO),
+                            hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
                             version: txn.version,
                             signature: txn.signature.clone(),

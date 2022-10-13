@@ -327,10 +327,7 @@ pub mod transaction {
             match self {
                 Transaction::Declare(t) => t.transaction_hash,
                 Transaction::Deploy(t) => t.transaction_hash,
-                Transaction::DeployAccount(_) => {
-                    // TODO FIXME not sure what to return here
-                    StarknetTransactionHash(stark_hash::StarkHash::ZERO)
-                }
+                Transaction::DeployAccount(t) => t.transaction_hash,
                 Transaction::Invoke(t) => match t {
                     InvokeTransaction::V0(t) => t.transaction_hash,
                     InvokeTransaction::V1(t) => t.transaction_hash,
@@ -343,10 +340,7 @@ pub mod transaction {
             match self {
                 Transaction::Declare(t) => t.sender_address,
                 Transaction::Deploy(t) => t.contract_address,
-                Transaction::DeployAccount(_) => {
-                    // TODO FIXME not sure what to return here
-                    ContractAddress::new_or_panic(stark_hash::StarkHash::ZERO)
-                }
+                Transaction::DeployAccount(t) => t.contract_address,
                 Transaction::Invoke(t) => match t {
                     InvokeTransaction::V0(t) => t.contract_address,
                     InvokeTransaction::V1(t) => t.contract_address,
@@ -399,17 +393,25 @@ pub mod transaction {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeployAccountTransaction {
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        pub version: TransactionVersion,
+        pub contract_address: ContractAddress,
+
+        // COMMON_TXN_PROPERTIES
+        pub transaction_hash: StarknetTransactionHash,
+
+        // BROADCASTED_TXN_COMMON_PROPERTIES
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
-        pub class_hash: ClassHash,
+
+        // DEPLOY_ACCOUNT_TXN_PROPERTIES
         pub contract_address_salt: ContractAddressSalt,
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub constructor_calldata: Vec<CallParam>,
+        pub class_hash: ClassHash,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
