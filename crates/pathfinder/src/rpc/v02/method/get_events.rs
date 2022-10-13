@@ -325,7 +325,7 @@ fn check_continuation_token_validity(
 ) -> Result<(), GetEventsError> {
     match continuation_token {
         Some(token) if token > 0 && events.is_empty() => {
-            return Err(GetEventsError::InvalidContinuationToken)
+            Err(GetEventsError::InvalidContinuationToken)
         }
         Some(_) | None => Ok(()),
     }
