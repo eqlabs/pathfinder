@@ -389,7 +389,7 @@ mod tests {
             address: Some(ContractAddress::new_or_panic(starkhash!("01"))),
             keys: vec![EventKey(starkhash!("02"))],
             chunk_size: 3,
-            continuation_token: 4,
+            continuation_token: Some(4),
         };
         let optional_absent = EventFilter {
             from_block: None,
@@ -397,20 +397,20 @@ mod tests {
             address: None,
             keys: vec![],
             chunk_size: 5,
-            continuation_token: 6,
+            continuation_token: None,
         };
 
         [
             (
-                r#"[{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"page_size":3,"page_number":4}]"#,
+                r#"[{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":4}]"#,
                 optional_present.clone(),
             ),
             (
-                r#"{"filter":{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"page_size":3,"page_number":4}}"#,
+                r#"{"filter":{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":4}}"#,
                 optional_present
             ),
-            (r#"[{"page_size":5,"page_number":6}]"#, optional_absent.clone()),
-            (r#"{"filter":{"page_size":5,"page_number":6}}"#, optional_absent),
+            (r#"[{"chunk_size":5}]"#, optional_absent.clone()),
+            (r#"{"filter":{"chunk_size":5}}"#, optional_absent),
         ]
         .into_iter()
         .enumerate()
@@ -454,7 +454,7 @@ mod tests {
                 address: None,
                 keys: vec![],
                 chunk_size: test_utils::NUM_EVENTS,
-                continuation_token: 0,
+                continuation_token: None,
             },
         };
         let result = get_events(context, input).await.unwrap();
@@ -463,8 +463,7 @@ mod tests {
             result,
             GetEventsResult {
                 events,
-                continuation_token: 0,
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -474,7 +473,11 @@ mod tests {
         let (context, events) = setup();
 
         let expected_event = &events[1];
-        let input = GetEventsInput {
+        let expected_result = GetEventsResult {
+            events: vec![expected_event.clone()],
+            continuation_token: None,
+        };
+        let mut input = GetEventsInput {
             filter: EventFilter {
                 from_block: Some(expected_event.block_number.unwrap().into()),
                 to_block: Some(expected_event.block_number.unwrap().into()),
@@ -482,19 +485,16 @@ mod tests {
                 // we're using a key which is present in _all_ events
                 keys: vec![EventKey(starkhash!("deadbeef"))],
                 chunk_size: test_utils::NUM_EVENTS,
-                continuation_token: 0,
+                continuation_token: None,
             },
         };
-        let result = get_events(context, input).await.unwrap();
+        let result = get_events(context.clone(), input.clone()).await.unwrap();
+        assert_eq!(result, expected_result);
 
-        assert_eq!(
-            result,
-            GetEventsResult {
-                events: vec![expected_event.clone()],
-                continuation_token: 0,
-                is_last_page: true,
-            }
-        );
+        // 0 continuation token should yield the same result as no token
+        input.filter.continuation_token = Some(0);
+        let result = get_events(context, input).await.unwrap();
+        assert_eq!(result, expected_result);
     }
 
     #[tokio::test]
@@ -509,7 +509,8 @@ mod tests {
                 address: None,
                 keys: vec![],
                 chunk_size: test_utils::NUM_EVENTS,
-                continuation_token: 0,
+                // TODO Some(0)
+                continuation_token: None,
             },
         };
         let result = get_events(context, input).await.unwrap();
@@ -520,8 +521,7 @@ mod tests {
             result,
             GetEventsResult {
                 events: expected_events.to_vec(),
-                continuation_token: 0,
-                is_last_page: true,
+                continuation_token: None,
             }
         );
     }
@@ -537,7 +537,8 @@ mod tests {
                 address: None,
                 keys: vec![],
                 chunk_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
-                continuation_token: 0,
+                // TODO Some(0)
+                continuation_token: None,
             },
         };
         let error = get_events(context, input).await.unwrap_err();
@@ -559,7 +560,8 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 2,
-                continuation_token: 0,
+                // TODO Some(0)
+                continuation_token: None,
             },
         };
         let result = get_events(context.clone(), input).await.unwrap();
@@ -567,8 +569,7 @@ mod tests {
             result,
             GetEventsResult {
                 events: expected_events[..2].to_vec(),
-                continuation_token: 0,
-                is_last_page: false,
+                continuation_token: Some(1),
             }
         );
 
@@ -579,7 +580,7 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 2,
-                continuation_token: 1,
+                continuation_token: Some(1),
             },
         };
         let result = get_events(context.clone(), input).await.unwrap();
@@ -587,8 +588,7 @@ mod tests {
             result,
             GetEventsResult {
                 events: expected_events[2..4].to_vec(),
-                continuation_token: 1,
-                is_last_page: false,
+                continuation_token: Some(2),
             }
         );
 
@@ -599,7 +599,7 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 2,
-                continuation_token: 2,
+                continuation_token: Some(2),
             },
         };
         let result = get_events(context.clone(), input).await.unwrap();
@@ -607,8 +607,7 @@ mod tests {
             result,
             GetEventsResult {
                 events: expected_events[4..].to_vec(),
-                continuation_token: 2,
-                is_last_page: true,
+                continuation_token: None,
             }
         );
 
@@ -620,18 +619,11 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 2,
-                continuation_token: 3,
+                continuation_token: Some(3),
             },
         };
-        let result = get_events(context, input).await.unwrap();
-        assert_eq!(
-            result,
-            GetEventsResult {
-                events: vec![],
-                continuation_token: 3,
-                is_last_page: true,
-            }
-        );
+        let error = get_events(context, input).await.unwrap_err();
+        assert_eq!(error, GetEventsError::InvalidContinuationToken);
     }
 
     mod pending {
@@ -649,7 +641,8 @@ mod tests {
                     address: None,
                     keys: vec![],
                     chunk_size: 100,
-                    continuation_token: 0,
+                    // TODO Some(0)
+                    continuation_token: None,
                 },
             };
             let result = get_events(context, input).await.unwrap();
@@ -667,7 +660,8 @@ mod tests {
                     address: None,
                     keys: vec![],
                     chunk_size: 1024,
-                    continuation_token: 0,
+                    // TODO Some(0)
+                    continuation_token: None,
                 },
             };
 
@@ -687,7 +681,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             assert_eq!(all_events.events, expected);
-            assert!(all_events.is_last_page);
+            assert!(all_events.continuation_token.is_none());
         }
 
         #[tokio::test]
@@ -701,7 +695,8 @@ mod tests {
                     address: None,
                     keys: vec![],
                     chunk_size: 1024,
-                    continuation_token: 0,
+                    // TODO Some(0)
+                    continuation_token: None,
                 },
             };
 
@@ -711,19 +706,28 @@ mod tests {
                 .events;
 
             input.filter.chunk_size = 2;
-            let mut last_pages = Vec::new();
-            for (idx, chunk) in all.chunks(input.filter.chunk_size).enumerate() {
-                input.filter.continuation_token = idx;
-                let result = get_events(context.clone(), input.clone()).await.unwrap();
-                assert_eq!(result.continuation_token, idx);
-                assert_eq!(result.events, chunk);
+            let chunks = all.chunks(input.filter.chunk_size);
+            let num_chunks = chunks.clone().count();
+            let expected_tokens = (1..num_chunks)
+                .map(Some)
+                .chain(std::iter::once(None))
+                .collect::<Vec<_>>();
 
-                last_pages.push(result.is_last_page);
+            let mut tokens = Vec::new();
+            for (idx, chunk) in chunks.enumerate() {
+                input.filter.continuation_token = Some(idx);
+                let result = get_events(context.clone(), input.clone()).await.unwrap();
+                tokens.push(result.continuation_token);
+                assert_eq!(result.events, chunk);
             }
 
-            let mut expected = vec![false; last_pages.len() - 1];
-            expected.push(true);
-            assert_eq!(last_pages, expected);
+            assert_eq!(tokens, expected_tokens);
+
+            // nonexistent page
+            let last_page_plus_1 = Some(num_chunks + 1);
+            input.filter.continuation_token = last_page_plus_1;
+            let error = get_events(context.clone(), input).await.unwrap_err();
+            assert_eq!(error, GetEventsError::InvalidContinuationToken);
         }
     }
 }
