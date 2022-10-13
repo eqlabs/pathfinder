@@ -778,6 +778,9 @@ mod tests {
             // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
             serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/216171.json"))
                 .unwrap();
+            // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
+            serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/228457.json"))
+                .unwrap();
         }
 
         #[test]

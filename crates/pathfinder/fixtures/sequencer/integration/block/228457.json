@@ -1,0 +1,44 @@
+{
+    "block_hash": "0x357dd542a2df5a5a85c22eca3eea3303fcd02b460efabda5cb6db2874f88164",
+    "parent_block_hash": "0x723291afb02722d20718992790f5f5957793da26e80b558ea8f9106eac95a47",
+    "block_number": 228457,
+    "state_root": "06e31e5f1af729acdb4454e9f9af70ac91783b39bcd576bc66de24a4e7ab2c39",
+    "status": "ACCEPTED_ON_L1",
+    "gas_price": "0x14f93ca8",
+    "transactions": [
+        {
+            "transaction_hash": "0x1d6f35c0239183ebd25e3e878227d4c0247c31b62811cad8d6f3143c54a9aea",
+            "version": "0x1",
+            "max_fee": "0x1c8482b480e",
+            "signature": [
+                "0x6325a9678f7601a6ea05f0bb96e474e0e2be447bf4762cd64194f29f23aed73",
+                "0x36562c1f8f6775c29004395604f702f80bbea6f6653391867286f2d18f93777"
+            ],
+            "nonce": "0x0",
+            "contract_address": "0x39696a0665e4c9806a709c7872030c63ca82b551925b2f517ed1985066217b8",
+            "contract_address_salt": "0x6ccdf35bc37d9c5030215e2fb39b97de8f755c8ed43dd52a4c30e5ab96e61b",
+            "class_hash": "0x1fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d",
+            "constructor_calldata": [
+                "0x539f848975104309396ee8ebaee0a45acb0238e0b13da9df0f855c082a3b7f3"
+            ],
+            "type": "DEPLOY_ACCOUNT"
+        }
+    ],
+    "timestamp": 1665044362,
+    "sequencer_address": "0x46a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b",
+    "transaction_receipts": [
+        {
+            "transaction_index": 0,
+            "transaction_hash": "0x1d6f35c0239183ebd25e3e878227d4c0247c31b62811cad8d6f3143c54a9aea",
+            "l2_to_l1_messages": [],
+            "events": [],
+            "execution_resources": {
+                "n_steps": 41,
+                "builtin_instance_counter": {},
+                "n_memory_holes": 0
+            },
+            "actual_fee": "0x19ecd3e9e98"
+        }
+    ],
+    "starknet_version": "0.10.1"
+}
