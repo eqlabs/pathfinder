@@ -14,7 +14,7 @@
 # Note that we're explicitly using the Debian bullseye image to make sure we're
 # compatible with the Python container we'll be copying the pathfinder
 # executable to.
-FROM rust:1.63-bullseye AS rust-builder
+FROM rust:1.64-bullseye AS rust-builder
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev && rm -rf /var/lib/apt/lists/*
 
