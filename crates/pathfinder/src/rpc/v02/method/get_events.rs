@@ -37,7 +37,7 @@ pub struct EventFilter {
     // don't work together.
     pub chunk_size: usize,
     #[serde(default)]
-    pub continuation_token: Option<usize>,
+    pub continuation_token: Option<String>,
 }
 
 /// Returns events matching the specified filter
@@ -66,6 +66,13 @@ pub async fn get_events(
     use BlockId::*;
 
     let request = input.filter;
+    let reqest_continuation_token = match request.continuation_token {
+        Some(s) => Some(
+            s.parse::<usize>()
+                .map_err(|_| GetEventsError::InvalidContinuationToken)?,
+        ),
+        None => None,
+    };
 
     // Handle the trivial (1) and (2) cases.
     match (request.from_block, request.to_block) {
@@ -76,7 +83,7 @@ pub async fn get_events(
             });
         }
         (Some(Pending), Some(Pending)) => {
-            let skip = request.continuation_token.unwrap_or_default() * request.chunk_size;
+            let skip = reqest_continuation_token.unwrap_or_default() * request.chunk_size;
 
             let mut events = Vec::new();
             let is_last_page = append_pending_events(
@@ -89,14 +96,14 @@ pub async fn get_events(
             )
             .await;
 
-            check_continuation_token_validity(request.continuation_token, &events)?;
+            check_continuation_token_validity(reqest_continuation_token, &events)?;
 
             // FIXME refactor after tests pass
             let continuation_token = if is_last_page {
                 None
             } else {
                 // Point to the next page
-                Some(skip + 1)
+                Some((skip + 1).to_string())
             };
 
             return Ok(types::GetEventsResult {
@@ -149,7 +156,7 @@ pub async fn get_events(
             contract_address: request.address,
             keys: keys.clone(),
             page_size: request.chunk_size,
-            page_number: request.continuation_token.unwrap_or_default(),
+            page_number: reqest_continuation_token.unwrap_or_default(),
         };
         // We don't add context here, because [StarknetEventsTable::get_events] adds its
         // own context to the errors. This way we get meaningful error information
@@ -183,7 +190,7 @@ pub async fn get_events(
             None
         } else {
             // Point to the next page
-            Some(filter.page_number + 1)
+            Some((filter.page_number + 1).to_string())
         };
 
         Ok((
@@ -212,9 +219,7 @@ pub async fn get_events(
                 // This will not yield an underflow error, as when continuation_token is None,
                 // then the count is also always 0, since the last page can only be empty if there's
                 // only a single empty page
-                let page_number = request
-                    .continuation_token
-                    .map_or(0, |current_page| current_page);
+                let page_number = reqest_continuation_token.map_or(0, |current_page| current_page);
                 page_number * request.chunk_size - count
             }
             None => 0,
@@ -234,11 +239,11 @@ pub async fn get_events(
             None
         } else {
             // Point to the next page
-            Some(skip + 1)
+            Some((skip + 1).to_string())
         };
     }
 
-    check_continuation_token_validity(request.continuation_token, &events.events)?;
+    check_continuation_token_validity(reqest_continuation_token, &events.events)?;
 
     Ok(events)
 }
@@ -366,7 +371,7 @@ mod types {
     #[serde(deny_unknown_fields)]
     pub struct GetEventsResult {
         pub events: Vec<EmittedEvent>,
-        pub continuation_token: Option<usize>,
+        pub continuation_token: Option<String>,
     }
 }
 
@@ -389,7 +394,7 @@ mod tests {
             address: Some(ContractAddress::new_or_panic(starkhash!("01"))),
             keys: vec![EventKey(starkhash!("02"))],
             chunk_size: 3,
-            continuation_token: Some(4),
+            continuation_token: Some("4".to_string()),
         };
         let optional_absent = EventFilter {
             from_block: None,
@@ -402,11 +407,11 @@ mod tests {
 
         [
             (
-                r#"[{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":4}]"#,
+                r#"[{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":"4"}]"#,
                 optional_present.clone(),
             ),
             (
-                r#"{"filter":{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":4}}"#,
+                r#"{"filter":{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":"4"}}"#,
                 optional_present
             ),
             (r#"[{"chunk_size":5}]"#, optional_absent.clone()),
@@ -492,7 +497,7 @@ mod tests {
         assert_eq!(result, expected_result);
 
         // 0 continuation token should yield the same result as no token
-        input.filter.continuation_token = Some(0);
+        input.filter.continuation_token = Some(0.to_string());
         let result = get_events(context, input).await.unwrap();
         assert_eq!(result, expected_result);
     }
@@ -569,7 +574,7 @@ mod tests {
             result,
             GetEventsResult {
                 events: expected_events[..2].to_vec(),
-                continuation_token: Some(1),
+                continuation_token: Some(1.to_string()),
             }
         );
 
@@ -580,7 +585,7 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 2,
-                continuation_token: Some(1),
+                continuation_token: Some(1.to_string()),
             },
         };
         let result = get_events(context.clone(), input).await.unwrap();
@@ -588,7 +593,7 @@ mod tests {
             result,
             GetEventsResult {
                 events: expected_events[2..4].to_vec(),
-                continuation_token: Some(2),
+                continuation_token: Some(2.to_string()),
             }
         );
 
@@ -599,7 +604,7 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 2,
-                continuation_token: Some(2),
+                continuation_token: Some(2.to_string()),
             },
         };
         let result = get_events(context.clone(), input).await.unwrap();
@@ -619,7 +624,7 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 2,
-                continuation_token: Some(3),
+                continuation_token: Some(3.to_string()),
             },
         };
         let error = get_events(context, input).await.unwrap_err();
@@ -709,13 +714,13 @@ mod tests {
             let chunks = all.chunks(input.filter.chunk_size);
             let num_chunks = chunks.clone().count();
             let expected_tokens = (1..num_chunks)
-                .map(Some)
+                .map(|x| Some(x.to_string()))
                 .chain(std::iter::once(None))
                 .collect::<Vec<_>>();
 
             let mut tokens = Vec::new();
             for (idx, chunk) in chunks.enumerate() {
-                input.filter.continuation_token = Some(idx);
+                input.filter.continuation_token = Some(idx.to_string());
                 let result = get_events(context.clone(), input.clone()).await.unwrap();
                 tokens.push(result.continuation_token);
                 assert_eq!(result.events, chunk);
@@ -724,7 +729,7 @@ mod tests {
             assert_eq!(tokens, expected_tokens);
 
             // nonexistent page
-            let last_page_plus_1 = Some(num_chunks + 1);
+            let last_page_plus_1 = Some((num_chunks + 1).to_string());
             input.filter.continuation_token = last_page_plus_1;
             let error = get_events(context.clone(), input).await.unwrap_err();
             assert_eq!(error, GetEventsError::InvalidContinuationToken);
