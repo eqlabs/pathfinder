@@ -185,12 +185,7 @@ pub async fn get_events(
             None
         };
 
-        let continuation_token = if page.is_last_page {
-            None
-        } else {
-            // Point to the next page
-            Some((filter.page_number + 1).to_string())
-        };
+        let continuation_token = next_continuation_token(filter.page_number, page.is_last_page);
 
         Ok((
             types::GetEventsResult {
@@ -239,6 +234,8 @@ pub async fn get_events(
             // Point to the next page
             Some((skip + 1).to_string())
         };
+
+        events.continuation_token = next_continuation_token(skip, is_last_page);
     }
 
     check_continuation_token_validity(reqest_continuation_token, &events.events)?;
@@ -326,6 +323,15 @@ fn check_continuation_token_validity(
             Err(GetEventsError::InvalidContinuationToken)
         }
         Some(_) | None => Ok(()),
+    }
+}
+
+fn next_continuation_token(current_page: usize, is_last_page: bool) -> Option<String> {
+    if is_last_page {
+        None
+    } else {
+        // Point to the next page
+        Some((current_page + 1).to_string())
     }
 }
 
