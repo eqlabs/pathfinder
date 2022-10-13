@@ -1286,6 +1286,8 @@ impl RpcApi {
 
             let amount = request.page_size - events.events.len();
             let skip = match count {
+                // This will not yield an underflow error, as when request.page_number is 0,
+                // then the count is also always 0
                 Some(count) => request.page_number * request.page_size - count,
                 None => 0,
             };
