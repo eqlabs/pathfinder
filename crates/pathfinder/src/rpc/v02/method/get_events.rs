@@ -64,7 +64,6 @@ pub async fn get_events(
 
     use BlockId::*;
 
-    // FIXME
     let request = input.filter;
 
     // Handle the trivial (1) and (2) cases.
