@@ -100,6 +100,7 @@ impl Handle {
                 ))
             }
             BroadcastedTransaction::DeployAccount(tx) => {
+                // TODO(0.10.1) Cairo upgrade is required for estimate_fee to support DEPLOY_ACCOUNT
                 add_transaction::AddTransaction::DeployAccount(add_transaction::DeployAccount {
                     version: tx.version,
                     max_fee: tx.max_fee,

@@ -394,11 +394,7 @@ pub mod transaction {
     #[serde(deny_unknown_fields)]
     pub struct DeployAccountTransaction {
         pub contract_address: ContractAddress,
-
-        // COMMON_TXN_PROPERTIES
         pub transaction_hash: StarknetTransactionHash,
-
-        // BROADCASTED_TXN_COMMON_PROPERTIES
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
@@ -406,8 +402,6 @@ pub mod transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
-
-        // DEPLOY_ACCOUNT_TXN_PROPERTIES
         pub contract_address_salt: ContractAddressSalt,
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub constructor_calldata: Vec<CallParam>,

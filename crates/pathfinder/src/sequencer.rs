@@ -1659,11 +1659,12 @@ mod tests {
         async fn test_deploy_account() {
             let (_jh, client) = setup([(
                 "/gateway/add_transaction",
-                response!("0.10.1/deploy_account/response.json"),
+                response!("0.10.1/add_transaction/deploy_account_response.json"),
             )]);
 
-            let json =
-                include_str!("../fixtures/sequencer/0.10.1/deploy_account/deploy_account.json");
+            let json = include_str!(
+                "../fixtures/sequencer/0.10.1/add_transaction/deploy_account_request.json"
+            );
             let req: request::add_transaction::AddTransaction =
                 serde_json::from_str(json).expect("Request parsed from JSON");
             let req = match req {
