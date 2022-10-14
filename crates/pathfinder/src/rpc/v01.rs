@@ -2532,7 +2532,7 @@ mod tests {
                 filter.page_size = 2;
                 let mut last_pages = Vec::new();
                 let chunks = all.chunks(filter.page_size);
-                let num_chunks = chunks.clone().count();
+                let num_chunks = chunks.len();
                 for (idx, chunk) in chunks.enumerate() {
                     filter.page_number = idx;
                     let result = client(addr)
