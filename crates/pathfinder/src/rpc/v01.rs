@@ -2531,7 +2531,9 @@ mod tests {
 
                 filter.page_size = 2;
                 let mut last_pages = Vec::new();
-                for (idx, chunk) in all.chunks(filter.page_size).enumerate() {
+                let chunks = all.chunks(filter.page_size);
+                let num_chunks = chunks.len();
+                for (idx, chunk) in chunks.enumerate() {
                     filter.page_number = idx;
                     let result = client(addr)
                         .request::<GetEventsResult>(
@@ -2549,6 +2551,21 @@ mod tests {
                 let mut expected = vec![false; last_pages.len() - 1];
                 expected.push(true);
                 assert_eq!(last_pages, expected);
+
+                // nonexistent page
+                filter.page_number = num_chunks;
+                let result = client(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter))
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    result,
+                    GetEventsResult {
+                        events: vec![],
+                        page_number: num_chunks,
+                        is_last_page: true,
+                    }
+                );
             }
         }
     }

@@ -55,6 +55,11 @@ impl RpcContext {
         Self::new(storage, sync_state, chain, sequencer)
     }
 
+    #[cfg(test)]
+    pub fn with_storage(self, storage: Storage) -> Self {
+        Self { storage, ..self }
+    }
+
     pub fn with_pending_data(self, pending_data: PendingData) -> Self {
         Self {
             pending_data: Some(pending_data),
@@ -213,6 +218,7 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         "starknet_getClassHashAt",
         method::get_class_hash_at::get_class_hash_at,
     )?;
+    register_method(module, "starknet_getEvents", method::get_events::get_events)?;
     register_method(
         module,
         "starknet_estimateFee",
