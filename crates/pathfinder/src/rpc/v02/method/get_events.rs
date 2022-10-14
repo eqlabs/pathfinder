@@ -578,25 +578,6 @@ mod tests {
             result,
             GetEventsResult {
                 events: expected_events[..2].to_vec(),
-                continuation_token: Some(1.to_string()),
-            }
-        );
-
-        let input = GetEventsInput {
-            filter: EventFilter {
-                from_block: None,
-                to_block: None,
-                address: None,
-                keys: keys_for_expected_events.clone(),
-                chunk_size: 2,
-                continuation_token: Some(1.to_string()),
-            },
-        };
-        let result = get_events(context.clone(), input).await.unwrap();
-        assert_eq!(
-            result,
-            GetEventsResult {
-                events: expected_events[2..4].to_vec(),
                 continuation_token: Some(2.to_string()),
             }
         );
@@ -607,7 +588,7 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: keys_for_expected_events.clone(),
-                chunk_size: 2,
+                chunk_size: 3,
                 continuation_token: Some(2.to_string()),
             },
         };
@@ -615,7 +596,26 @@ mod tests {
         assert_eq!(
             result,
             GetEventsResult {
-                events: expected_events[4..].to_vec(),
+                events: expected_events[2..5].to_vec(),
+                continuation_token: Some(5.to_string()),
+            }
+        );
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys: keys_for_expected_events.clone(),
+                chunk_size: 4,
+                continuation_token: Some(5.to_string()),
+            },
+        };
+        let result = get_events(context.clone(), input).await.unwrap();
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events: expected_events[5..].to_vec(),
                 continuation_token: None,
             }
         );
@@ -627,7 +627,8 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: keys_for_expected_events.clone(),
-                chunk_size: 2,
+                chunk_size: 1,
+                // TODO use offset pointing to after the last event
                 continuation_token: Some(3.to_string()),
             },
         };
