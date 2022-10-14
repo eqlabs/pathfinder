@@ -178,10 +178,12 @@ mod tests {
         // We need to set the magic bytes for zstd compression to simulate a compressed
         // contract definition, as this is asserted for internally
         let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+        let contract_definition =
+            include_bytes!("../fixtures/contract_definition.json.zst").to_vec();
         let contract0_code = CompressedContract {
             abi: zstd_magic.clone(),
-            bytecode: zstd_magic.clone(),
-            definition: zstd_magic,
+            bytecode: zstd_magic,
+            definition: contract_definition,
             hash: class0_hash,
         };
         let mut contract1_code = contract0_code.clone();
