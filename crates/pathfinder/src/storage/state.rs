@@ -750,6 +750,15 @@ pub struct StarknetEventFilter {
     pub page_number: usize,
 }
 
+pub struct StarknetEventFilterWithOffset {
+    pub from_block: Option<StarknetBlockNumber>,
+    pub to_block: Option<StarknetBlockNumber>,
+    pub contract_address: Option<ContractAddress>,
+    pub keys: Vec<EventKey>,
+    pub page_size: usize,
+    pub offset: usize,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StarknetEmittedEvent {
     pub from_address: ContractAddress,
@@ -1002,6 +1011,112 @@ impl StarknetEventsTable {
         );
 
         let offset = filter.page_number * filter.page_size;
+
+        // We have to be able to decide if there are more events. We request one extra event
+        // above the requested page size, so that we can decide.
+        let limit = filter.page_size + 1;
+        params.push((":limit", &limit));
+        params.push((":offset", &offset));
+
+        base_query.to_mut().push_str(" ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset");
+
+        let mut statement = tx.prepare(&base_query).context("Preparing SQL query")?;
+        let mut rows = statement
+            .query(params.as_slice())
+            .context("Executing SQL query")?;
+
+        let mut is_last_page = true;
+        let mut emitted_events = Vec::new();
+        while let Some(row) = rows.next().context("Fetching next event")? {
+            if emitted_events.len() == filter.page_size {
+                // We already have a full page, and are just fetching the extra event
+                // This means that there are more pages.
+                is_last_page = false;
+            } else {
+                let block_number = row.get_unwrap("block_number");
+                let block_hash = row.get_unwrap("block_hash");
+                let transaction_hash = row.get_unwrap("transaction_hash");
+                let from_address = row.get_unwrap("from_address");
+
+                let data = row.get_ref_unwrap("data").as_blob().unwrap();
+                let data: Vec<_> = data
+                    .chunks_exact(32)
+                    .map(|data| {
+                        let data = StarkHash::from_be_slice(data).unwrap();
+                        EventData(data)
+                    })
+                    .collect();
+
+                let keys = row.get_ref_unwrap("keys").as_str().unwrap();
+
+                // no need to allocate a vec for this in loop
+                let mut temp = [0u8; 32];
+
+                let keys: Vec<_> = keys
+                    .split(' ')
+                    .map(|key| {
+                        let used =
+                            base64::decode_config_slice(key, base64::STANDARD, &mut temp).unwrap();
+                        let key = StarkHash::from_be_slice(&temp[..used]).unwrap();
+                        EventKey(key)
+                    })
+                    .collect();
+
+                let event = StarknetEmittedEvent {
+                    data,
+                    from_address,
+                    keys,
+                    block_hash,
+                    block_number,
+                    transaction_hash,
+                };
+                emitted_events.push(event);
+            }
+        }
+
+        Ok(PageOfEvents {
+            events: emitted_events,
+            is_last_page,
+        })
+    }
+
+    pub fn get_events_by_offset(
+        tx: &Transaction<'_>,
+        filter: &StarknetEventFilterWithOffset,
+    ) -> anyhow::Result<PageOfEvents> {
+        if filter.page_size > Self::PAGE_SIZE_LIMIT {
+            return Err(EventFilterError::PageSizeTooBig(Self::PAGE_SIZE_LIMIT).into());
+        }
+
+        if filter.page_size < 1 {
+            anyhow::bail!("Invalid page size");
+        }
+
+        let base_query = r#"SELECT
+                  block_number,
+                  starknet_blocks.hash as block_hash,
+                  transaction_hash,
+                  starknet_transactions.idx as transaction_idx,
+                  from_address,
+                  data,
+                  starknet_events.keys as keys
+               FROM starknet_events
+               INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
+               INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#;
+
+        let mut key_fts_expression = String::new();
+
+        let (mut base_query, mut params) = Self::event_query(
+            base_query,
+            filter.from_block.as_ref(),
+            filter.to_block.as_ref(),
+            filter.contract_address.as_ref(),
+            &filter.keys,
+            &mut key_fts_expression,
+        );
+
+        // let offset = filter.page_number * filter.page_size;
+        let offset = filter.offset;
 
         // We have to be able to decide if there are more events. We request one extra event
         // above the requested page size, so that we can decide.

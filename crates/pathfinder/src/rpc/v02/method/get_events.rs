@@ -36,6 +36,7 @@ pub struct EventFilter {
     // These are inlined here because serde flatten and deny_unknown_fields
     // don't work together.
     pub chunk_size: usize,
+    /// Offset, measured in events, which points to the requested chunk
     #[serde(default)]
     pub continuation_token: Option<String>,
 }
@@ -66,7 +67,7 @@ pub async fn get_events(
     use BlockId::*;
 
     let request = input.filter;
-    let request_continuation_token = match request.continuation_token {
+    let requested_offset = match request.continuation_token {
         Some(s) => Some(
             s.parse::<usize>()
                 .map_err(|_| GetEventsError::InvalidContinuationToken)?,
@@ -83,7 +84,7 @@ pub async fn get_events(
             });
         }
         (Some(Pending), Some(Pending)) => {
-            let skip = request_continuation_token.unwrap_or_default() * request.chunk_size;
+            let skip = requested_offset.unwrap_or_default();
 
             let mut events = Vec::new();
             let is_last_page = append_pending_events(
@@ -96,14 +97,10 @@ pub async fn get_events(
             )
             .await;
 
-            check_continuation_token_validity(request_continuation_token, &events)?;
+            check_continuation_token_validity(requested_offset, &events)?;
 
-            let continuation_token = if is_last_page {
-                None
-            } else {
-                // Point to the next page
-                Some((skip + 1).to_string())
-            };
+            let continuation_token =
+                next_continuation_token(skip, request.chunk_size, is_last_page);
 
             return Ok(types::GetEventsResult {
                 events,
@@ -149,24 +146,25 @@ pub async fn get_events(
         let from_block = map_to_number(&transaction, request.from_block)?;
         let to_block = map_to_number(&transaction, request.to_block)?;
 
-        let filter = crate::storage::StarknetEventFilter {
+        let filter = crate::storage::StarknetEventFilterWithOffset {
             from_block,
             to_block,
             contract_address: request.address,
             keys: keys.clone(),
             page_size: request.chunk_size,
-            page_number: request_continuation_token.unwrap_or_default(),
+            offset: requested_offset.unwrap_or_default(),
         };
         // We don't add context here, because [StarknetEventsTable::get_events] adds its
         // own context to the errors. This way we get meaningful error information
         // for errors related to query parameters.
-        let page = StarknetEventsTable::get_events(&transaction, &filter).map_err(|e| {
-            if e.downcast_ref::<EventFilterError>().is_some() {
-                GetEventsError::PageSizeTooBig
-            } else {
-                GetEventsError::from(e)
-            }
-        })?;
+        let page =
+            StarknetEventsTable::get_events_by_offset(&transaction, &filter).map_err(|e| {
+                if e.downcast_ref::<EventFilterError>().is_some() {
+                    GetEventsError::PageSizeTooBig
+                } else {
+                    GetEventsError::from(e)
+                }
+            })?;
 
         // Additional information is required if we need to append pending events.
         // More specifically, we need some database event count in order to page through
@@ -185,7 +183,8 @@ pub async fn get_events(
             None
         };
 
-        let continuation_token = next_continuation_token(filter.page_number, page.is_last_page);
+        let continuation_token =
+            next_continuation_token(filter.offset, filter.page_size, page.is_last_page);
 
         Ok((
             types::GetEventsResult {
@@ -208,16 +207,17 @@ pub async fn get_events(
             .collect::<std::collections::HashSet<_>>();
 
         let amount = request.chunk_size - events.events.len();
+
         let skip = match count {
             Some(count) => {
                 // This will not yield an underflow error, as when continuation_token is None,
                 // then the count is also always 0, since the last page can only be empty if there's
                 // only a single empty page
-                let page_number = request_continuation_token.map_or(0, |current_page| current_page);
-                page_number * request.chunk_size - count
+                requested_offset.unwrap_or_default() - count
             }
             None => 0,
         };
+
         let is_last_page = append_pending_events(
             &context.pending_data,
             &mut events.events,
@@ -228,17 +228,14 @@ pub async fn get_events(
         )
         .await;
 
-        events.continuation_token = if is_last_page {
-            None
-        } else {
-            // Point to the next page
-            Some((skip + 1).to_string())
-        };
-
-        events.continuation_token = next_continuation_token(skip, is_last_page);
+        events.continuation_token = next_continuation_token(
+            requested_offset.unwrap_or_default(),
+            request.chunk_size,
+            is_last_page,
+        );
     }
 
-    check_continuation_token_validity(request_continuation_token, &events.events)?;
+    check_continuation_token_validity(requested_offset, &events.events)?;
 
     Ok(events)
 }
@@ -326,12 +323,16 @@ fn check_continuation_token_validity(
     }
 }
 
-fn next_continuation_token(current_page: usize, is_last_page: bool) -> Option<String> {
+fn next_continuation_token(
+    current_offset: usize,
+    chunk_size: usize,
+    is_last_page: bool,
+) -> Option<String> {
     if is_last_page {
         None
     } else {
         // Point to the next page
-        Some((current_page + 1).to_string())
+        Some((current_offset + chunk_size).to_string())
     }
 }
 
@@ -375,6 +376,7 @@ mod types {
     #[serde(deny_unknown_fields)]
     pub struct GetEventsResult {
         pub events: Vec<EmittedEvent>,
+        /// Offset, measured in events, which points to the chunk that follows currenty requested chunk (`events`)
         pub continuation_token: Option<String>,
     }
 }
@@ -522,6 +524,7 @@ mod tests {
                 continuation_token: None,
             },
         };
+
         let result = get_events(context, input).await.unwrap();
 
         let expected_events = &events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
@@ -559,7 +562,7 @@ mod tests {
     async fn get_events_by_key_with_paging() {
         let (context, events) = setup();
 
-        let expected_events = &events[27..32];
+        let expected_events = &events[27..33];
         let keys_for_expected_events: Vec<_> = expected_events.iter().map(|e| e.keys[0]).collect();
 
         let input = GetEventsInput {
@@ -568,7 +571,7 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: keys_for_expected_events.clone(),
-                chunk_size: 2,
+                chunk_size: 1,
                 // TODO Some(0)
                 continuation_token: None,
             },
@@ -577,8 +580,27 @@ mod tests {
         assert_eq!(
             result,
             GetEventsResult {
-                events: expected_events[..2].to_vec(),
-                continuation_token: Some(2.to_string()),
+                events: expected_events[..1].to_vec(),
+                continuation_token: Some(1.to_string()),
+            }
+        );
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys: keys_for_expected_events.clone(),
+                chunk_size: 2,
+                continuation_token: Some(1.to_string()),
+            },
+        };
+        let result = get_events(context.clone(), input).await.unwrap();
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events: expected_events[1..3].to_vec(),
+                continuation_token: Some(3.to_string()),
             }
         );
 
@@ -589,33 +611,14 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 3,
-                continuation_token: Some(2.to_string()),
+                continuation_token: Some(3.to_string()),
             },
         };
         let result = get_events(context.clone(), input).await.unwrap();
         assert_eq!(
             result,
             GetEventsResult {
-                events: expected_events[2..5].to_vec(),
-                continuation_token: Some(5.to_string()),
-            }
-        );
-
-        let input = GetEventsInput {
-            filter: EventFilter {
-                from_block: None,
-                to_block: None,
-                address: None,
-                keys: keys_for_expected_events.clone(),
-                chunk_size: 4,
-                continuation_token: Some(5.to_string()),
-            },
-        };
-        let result = get_events(context.clone(), input).await.unwrap();
-        assert_eq!(
-            result,
-            GetEventsResult {
-                events: expected_events[5..].to_vec(),
+                events: expected_events[3..].to_vec(),
                 continuation_token: None,
             }
         );
@@ -628,8 +631,8 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 1,
-                // TODO use offset pointing to after the last event
-                continuation_token: Some(3.to_string()),
+                // Offset pointing to after the last event
+                continuation_token: Some(6.to_string()),
             },
         };
         let error = get_events(context, input).await.unwrap_err();
@@ -705,7 +708,6 @@ mod tests {
                     address: None,
                     keys: vec![],
                     chunk_size: 1024,
-                    // TODO Some(0)
                     continuation_token: None,
                 },
             };
@@ -716,26 +718,26 @@ mod tests {
                 .events;
 
             input.filter.chunk_size = 2;
-            let chunks = all.chunks(input.filter.chunk_size);
-            let num_chunks = chunks.clone().count();
-            let expected_tokens = (1..num_chunks)
-                .map(|x| Some(x.to_string()))
-                .chain(std::iter::once(None))
-                .collect::<Vec<_>>();
+            input.filter.continuation_token = Some(0.to_string()); // Should yield the same result as None above
+            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            assert_eq!(result.events, &all[0..2]);
+            assert_eq!(result.continuation_token, Some(2.to_string()));
 
-            let mut tokens = Vec::new();
-            for (idx, chunk) in chunks.enumerate() {
-                input.filter.continuation_token = Some(idx.to_string());
-                let result = get_events(context.clone(), input.clone()).await.unwrap();
-                tokens.push(result.continuation_token);
-                assert_eq!(result.events, chunk);
-            }
+            input.filter.chunk_size = 1;
+            input.filter.continuation_token = result.continuation_token;
+            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            assert_eq!(result.events, &all[2..3]);
+            assert_eq!(result.continuation_token, Some(3.to_string()));
 
-            assert_eq!(tokens, expected_tokens);
+            input.filter.chunk_size = 100; // Only a single event remains though
+            input.filter.continuation_token = result.continuation_token;
+            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            assert_eq!(result.events, &all[3..4]);
+            assert_eq!(result.continuation_token, None);
 
             // nonexistent page
-            let last_page_plus_1 = Some((num_chunks + 1).to_string());
-            input.filter.continuation_token = last_page_plus_1;
+            input.filter.chunk_size = 123; // Does not matter
+            input.filter.continuation_token = Some(4.to_string()); // Points to after the last event
             let error = get_events(context.clone(), input).await.unwrap_err();
             assert_eq!(error, GetEventsError::InvalidContinuationToken);
         }

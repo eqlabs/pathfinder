@@ -18,7 +18,8 @@ pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 pub use state::{
     CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEmittedEvent,
-    StarknetEventFilter, StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable,
+    StarknetEventFilter, StarknetEventFilterWithOffset, StarknetEventsTable,
+    StarknetStateUpdatesTable, StarknetTransactionsTable,
 };
 
 use anyhow::Context;
