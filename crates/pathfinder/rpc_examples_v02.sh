@@ -145,6 +145,24 @@ rpc_call '{"jsonrpc":"2.0","id":"36","method":"starknet_blockNumber"}'
 
 rpc_call '{
     "jsonrpc": "2.0",
+    "method": "starknet_getEvents",
+    "params": {
+        "filter": {"from_block": {"block_number": 800}, "to_block": {"block_number": 1701}, "chunk_size": 1000}
+    },
+    "id": 0
+}'
+
+rpc_call '{
+    "jsonrpc": "2.0",
+    "method": "starknet_getEvents",
+    "params": {
+        "filter": {"from_block": {"block_number": 800}, "to_block": {"block_number": 1701}, "chunk_size": 1000, "continuation_token": "1000"}
+    },
+    "id": 1
+}'
+
+rpc_call '{
+    "jsonrpc": "2.0",
     "method": "starknet_addInvokeTransaction",
     "params": {
         "invoke_transaction": {
