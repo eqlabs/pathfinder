@@ -66,7 +66,7 @@ pub async fn get_events(
     use BlockId::*;
 
     let request = input.filter;
-    let reqest_continuation_token = match request.continuation_token {
+    let request_continuation_token = match request.continuation_token {
         Some(s) => Some(
             s.parse::<usize>()
                 .map_err(|_| GetEventsError::InvalidContinuationToken)?,
@@ -83,7 +83,7 @@ pub async fn get_events(
             });
         }
         (Some(Pending), Some(Pending)) => {
-            let skip = reqest_continuation_token.unwrap_or_default() * request.chunk_size;
+            let skip = request_continuation_token.unwrap_or_default() * request.chunk_size;
 
             let mut events = Vec::new();
             let is_last_page = append_pending_events(
@@ -96,7 +96,7 @@ pub async fn get_events(
             )
             .await;
 
-            check_continuation_token_validity(reqest_continuation_token, &events)?;
+            check_continuation_token_validity(request_continuation_token, &events)?;
 
             let continuation_token = if is_last_page {
                 None
@@ -155,7 +155,7 @@ pub async fn get_events(
             contract_address: request.address,
             keys: keys.clone(),
             page_size: request.chunk_size,
-            page_number: reqest_continuation_token.unwrap_or_default(),
+            page_number: request_continuation_token.unwrap_or_default(),
         };
         // We don't add context here, because [StarknetEventsTable::get_events] adds its
         // own context to the errors. This way we get meaningful error information
@@ -213,7 +213,7 @@ pub async fn get_events(
                 // This will not yield an underflow error, as when continuation_token is None,
                 // then the count is also always 0, since the last page can only be empty if there's
                 // only a single empty page
-                let page_number = reqest_continuation_token.map_or(0, |current_page| current_page);
+                let page_number = request_continuation_token.map_or(0, |current_page| current_page);
                 page_number * request.chunk_size - count
             }
             None => 0,
@@ -238,7 +238,7 @@ pub async fn get_events(
         events.continuation_token = next_continuation_token(skip, is_last_page);
     }
 
-    check_continuation_token_validity(reqest_continuation_token, &events.events)?;
+    check_continuation_token_validity(request_continuation_token, &events.events)?;
 
     Ok(events)
 }
