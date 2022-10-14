@@ -118,6 +118,15 @@ fn get_definition_at(
         .context("Reading definition from database")?
         .context("Class definition is missing")?;
 
+    let definition = zstd::decode_all(&*definition)
+        .context("Decompressing contract definition")
+        .map_err(|e| {
+            GetClassAtError::Internal(anyhow::anyhow!(
+                "Decompressing class definition failed: {}",
+                e
+            ))
+        })?;
+
     Ok(definition)
 }
 
