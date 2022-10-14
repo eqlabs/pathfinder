@@ -747,15 +747,6 @@ pub struct StarknetEventFilter {
     pub contract_address: Option<ContractAddress>,
     pub keys: Vec<EventKey>,
     pub page_size: usize,
-    pub page_number: usize,
-}
-
-pub struct StarknetEventFilterWithOffset {
-    pub from_block: Option<StarknetBlockNumber>,
-    pub to_block: Option<StarknetBlockNumber>,
-    pub contract_address: Option<ContractAddress>,
-    pub keys: Vec<EventKey>,
-    pub page_size: usize,
     pub offset: usize,
 }
 
@@ -1010,119 +1001,11 @@ impl StarknetEventsTable {
             &mut key_fts_expression,
         );
 
-        let offset = filter.page_number * filter.page_size;
-
         // We have to be able to decide if there are more events. We request one extra event
         // above the requested page size, so that we can decide.
         let limit = filter.page_size + 1;
         params.push((":limit", &limit));
-        params.push((":offset", &offset));
-
-        base_query.to_mut().push_str(" ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset");
-
-        let mut statement = tx.prepare(&base_query).context("Preparing SQL query")?;
-        let mut rows = statement
-            .query(params.as_slice())
-            .context("Executing SQL query")?;
-
-        let mut is_last_page = true;
-        let mut emitted_events = Vec::new();
-        while let Some(row) = rows.next().context("Fetching next event")? {
-            if emitted_events.len() == filter.page_size {
-                // We already have a full page, and are just fetching the extra event
-                // This means that there are more pages.
-                is_last_page = false;
-            } else {
-                let block_number = row.get_unwrap("block_number");
-                let block_hash = row.get_unwrap("block_hash");
-                let transaction_hash = row.get_unwrap("transaction_hash");
-                let from_address = row.get_unwrap("from_address");
-
-                let data = row.get_ref_unwrap("data").as_blob().unwrap();
-                let data: Vec<_> = data
-                    .chunks_exact(32)
-                    .map(|data| {
-                        let data = StarkHash::from_be_slice(data).unwrap();
-                        EventData(data)
-                    })
-                    .collect();
-
-                let keys = row.get_ref_unwrap("keys").as_str().unwrap();
-
-                // no need to allocate a vec for this in loop
-                let mut temp = [0u8; 32];
-
-                let keys: Vec<_> = keys
-                    .split(' ')
-                    .map(|key| {
-                        let used =
-                            base64::decode_config_slice(key, base64::STANDARD, &mut temp).unwrap();
-                        let key = StarkHash::from_be_slice(&temp[..used]).unwrap();
-                        EventKey(key)
-                    })
-                    .collect();
-
-                let event = StarknetEmittedEvent {
-                    data,
-                    from_address,
-                    keys,
-                    block_hash,
-                    block_number,
-                    transaction_hash,
-                };
-                emitted_events.push(event);
-            }
-        }
-
-        Ok(PageOfEvents {
-            events: emitted_events,
-            is_last_page,
-        })
-    }
-
-    pub fn get_events_by_offset(
-        tx: &Transaction<'_>,
-        filter: &StarknetEventFilterWithOffset,
-    ) -> anyhow::Result<PageOfEvents> {
-        if filter.page_size > Self::PAGE_SIZE_LIMIT {
-            return Err(EventFilterError::PageSizeTooBig(Self::PAGE_SIZE_LIMIT).into());
-        }
-
-        if filter.page_size < 1 {
-            anyhow::bail!("Invalid page size");
-        }
-
-        let base_query = r#"SELECT
-                  block_number,
-                  starknet_blocks.hash as block_hash,
-                  transaction_hash,
-                  starknet_transactions.idx as transaction_idx,
-                  from_address,
-                  data,
-                  starknet_events.keys as keys
-               FROM starknet_events
-               INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
-               INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#;
-
-        let mut key_fts_expression = String::new();
-
-        let (mut base_query, mut params) = Self::event_query(
-            base_query,
-            filter.from_block.as_ref(),
-            filter.to_block.as_ref(),
-            filter.contract_address.as_ref(),
-            &filter.keys,
-            &mut key_fts_expression,
-        );
-
-        // let offset = filter.page_number * filter.page_size;
-        let offset = filter.offset;
-
-        // We have to be able to decide if there are more events. We request one extra event
-        // above the requested page size, so that we can decide.
-        let limit = filter.page_size + 1;
-        params.push((":limit", &limit));
-        params.push((":offset", &offset));
+        params.push((":offset", &filter.offset));
 
         base_query.to_mut().push_str(" ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset");
 
@@ -2209,7 +2092,7 @@ mod tests {
                 // we're using a key which is present in _all_ events
                 keys: vec![EventKey(starkhash!("deadbeef"))],
                 page_size: test_utils::NUM_EVENTS,
-                page_number: 0,
+                offset: 0,
             };
 
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
@@ -2339,7 +2222,7 @@ mod tests {
                     contract_address: None,
                     keys: vec![],
                     page_size: 1024,
-                    page_number: 0,
+                    offset: 0,
                 },
             )
             .unwrap()
@@ -2369,7 +2252,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: test_utils::NUM_EVENTS,
-                page_number: 0,
+                offset: 0,
             };
 
             let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
@@ -2397,7 +2280,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: test_utils::NUM_EVENTS,
-                page_number: 0,
+                offset: 0,
             };
 
             let expected_events =
@@ -2425,7 +2308,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: test_utils::NUM_EVENTS,
-                page_number: 0,
+                offset: 0,
             };
 
             let expected_events =
@@ -2454,7 +2337,7 @@ mod tests {
                 contract_address: Some(expected_event.from_address),
                 keys: vec![],
                 page_size: test_utils::NUM_EVENTS,
-                page_number: 0,
+                offset: 0,
             };
 
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
@@ -2480,7 +2363,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![expected_event.keys[0]],
                 page_size: test_utils::NUM_EVENTS,
-                page_number: 0,
+                offset: 0,
             };
 
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
@@ -2505,7 +2388,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: test_utils::NUM_EVENTS,
-                page_number: 0,
+                offset: 0,
             };
 
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
@@ -2530,7 +2413,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: 10,
-                page_number: 0,
+                offset: 0,
             };
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
@@ -2547,7 +2430,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: 10,
-                page_number: 1,
+                offset: 10,
             };
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
@@ -2564,7 +2447,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: 10,
-                page_number: 3,
+                offset: 30,
             };
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
@@ -2589,8 +2472,8 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: PAGE_SIZE,
-                // one page _after_ the last one
-                page_number: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK / PAGE_SIZE,
+                // _after_ the last one
+                offset: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK,
             };
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
@@ -2614,7 +2497,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: 0,
-                page_number: 0,
+                offset: 0,
             };
             let result = StarknetEventsTable::get_events(&tx, &filter);
             assert!(result.is_err());
@@ -2626,7 +2509,7 @@ mod tests {
                 contract_address: None,
                 keys: vec![],
                 page_size: StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
-                page_number: 0,
+                offset: 0,
             };
             let result = StarknetEventsTable::get_events(&tx, &filter);
             assert!(result.is_err());
@@ -2652,7 +2535,7 @@ mod tests {
                 contract_address: None,
                 keys: keys_for_expected_events.clone(),
                 page_size: 2,
-                page_number: 0,
+                offset: 0,
             };
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
@@ -2669,7 +2552,7 @@ mod tests {
                 contract_address: None,
                 keys: keys_for_expected_events.clone(),
                 page_size: 2,
-                page_number: 1,
+                offset: 2,
             };
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(
@@ -2686,7 +2569,7 @@ mod tests {
                 contract_address: None,
                 keys: keys_for_expected_events,
                 page_size: 2,
-                page_number: 2,
+                offset: 4,
             };
             let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
             assert_eq!(

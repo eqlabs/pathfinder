@@ -1229,7 +1229,7 @@ impl RpcApi {
                 contract_address: request.address,
                 keys: keys.clone(),
                 page_size: request.page_size,
-                page_number: request.page_number,
+                offset: request.page_number * request.page_size,
             };
             // We don't add context here, because [StarknetEventsTable::get_events] adds its
             // own context to the errors. This way we get meaningful error information
@@ -1263,7 +1263,7 @@ impl RpcApi {
             Ok((
                 GetEventsResult {
                     events: page.events.into_iter().map(|e| e.into()).collect(),
-                    page_number: filter.page_number,
+                    page_number: request.page_number,
                     is_last_page: page.is_last_page,
                 },
                 event_count,

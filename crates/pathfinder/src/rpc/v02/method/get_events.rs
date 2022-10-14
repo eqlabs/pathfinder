@@ -146,7 +146,7 @@ pub async fn get_events(
         let from_block = map_to_number(&transaction, request.from_block)?;
         let to_block = map_to_number(&transaction, request.to_block)?;
 
-        let filter = crate::storage::StarknetEventFilterWithOffset {
+        let filter = crate::storage::StarknetEventFilter {
             from_block,
             to_block,
             contract_address: request.address,
@@ -157,14 +157,13 @@ pub async fn get_events(
         // We don't add context here, because [StarknetEventsTable::get_events] adds its
         // own context to the errors. This way we get meaningful error information
         // for errors related to query parameters.
-        let page =
-            StarknetEventsTable::get_events_by_offset(&transaction, &filter).map_err(|e| {
-                if e.downcast_ref::<EventFilterError>().is_some() {
-                    GetEventsError::PageSizeTooBig
-                } else {
-                    GetEventsError::from(e)
-                }
-            })?;
+        let page = StarknetEventsTable::get_events(&transaction, &filter).map_err(|e| {
+            if e.downcast_ref::<EventFilterError>().is_some() {
+                GetEventsError::PageSizeTooBig
+            } else {
+                GetEventsError::from(e)
+            }
+        })?;
 
         // Additional information is required if we need to append pending events.
         // More specifically, we need some database event count in order to page through
