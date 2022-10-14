@@ -24,9 +24,9 @@ pub struct GetEventsInput {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct EventFilter {
-    #[serde(default, alias = "fromBlock")]
+    #[serde(default)]
     pub from_block: Option<BlockId>,
-    #[serde(default, alias = "toBlock")]
+    #[serde(default)]
     pub to_block: Option<BlockId>,
     #[serde(default)]
     pub address: Option<ContractAddress>,
@@ -411,11 +411,11 @@ mod tests {
 
         [
             (
-                r#"[{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":"4"}]"#,
+                r#"[{"from_block":{"block_number":0},"to_block":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":"4"}]"#,
                 optional_present.clone(),
             ),
             (
-                r#"{"filter":{"fromBlock":{"block_number":0},"toBlock":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":"4"}}"#,
+                r#"{"filter":{"from_block":{"block_number":0},"to_block":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":"4"}}"#,
                 optional_present
             ),
             (r#"[{"chunk_size":5}]"#, optional_absent.clone()),
