@@ -102,17 +102,11 @@ impl Handle {
                     fee: ZERO,
                 });
             }
-            BroadcastedTransaction::DeployAccount(tx) => {
+            BroadcastedTransaction::DeployAccount(_) => {
                 // TODO(0.10.1) Cairo upgrade is required for estimate_fee to support DEPLOY_ACCOUNT
-                add_transaction::AddTransaction::DeployAccount(add_transaction::DeployAccount {
-                    version: tx.version,
-                    max_fee: tx.max_fee,
-                    signature: tx.signature,
-                    nonce: tx.nonce,
-                    class_hash: tx.class_hash,
-                    contract_address_salt: tx.contract_address_salt,
-                    constructor_calldata: tx.constructor_calldata,
-                })
+                return Err(CallFailure::Internal(
+                    "DEPLOY_ACCOUNT transactions are unsupported",
+                ));
             }
             BroadcastedTransaction::Declare(tx) => {
                 add_transaction::AddTransaction::Declare(add_transaction::Declare {
