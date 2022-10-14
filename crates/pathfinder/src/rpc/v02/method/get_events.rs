@@ -519,7 +519,6 @@ mod tests {
                 address: None,
                 keys: vec![],
                 chunk_size: test_utils::NUM_EVENTS,
-                // TODO Some(0)
                 continuation_token: None,
             },
         };
@@ -548,7 +547,6 @@ mod tests {
                 address: None,
                 keys: vec![],
                 chunk_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
-                // TODO Some(0)
                 continuation_token: None,
             },
         };
@@ -571,7 +569,6 @@ mod tests {
                 address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 1,
-                // TODO Some(0)
                 continuation_token: None,
             },
         };
@@ -653,7 +650,6 @@ mod tests {
                     address: None,
                     keys: vec![],
                     chunk_size: 100,
-                    // TODO Some(0)
                     continuation_token: None,
                 },
             };
@@ -665,35 +661,38 @@ mod tests {
         async fn all_events() {
             let context = RpcContext::for_tests_with_pending().await;
 
-            let mut input = GetEventsInput {
+            let input0 = GetEventsInput {
                 filter: EventFilter {
                     from_block: None,
                     to_block: Some(BlockId::Latest),
                     address: None,
                     keys: vec![],
                     chunk_size: 1024,
-                    // TODO Some(0)
                     continuation_token: None,
                 },
             };
+            let mut input1 = input0.clone();
+            input1.filter.continuation_token = Some(0.to_string());
 
-            let events = get_events(context.clone(), input.clone()).await.unwrap();
+            for mut input in [input0, input1] {
+                let events = get_events(context.clone(), input.clone()).await.unwrap();
 
-            input.filter.from_block = Some(BlockId::Pending);
-            input.filter.to_block = Some(BlockId::Pending);
-            let pending_events = get_events(context.clone(), input.clone()).await.unwrap();
+                input.filter.from_block = Some(BlockId::Pending);
+                input.filter.to_block = Some(BlockId::Pending);
+                let pending_events = get_events(context.clone(), input.clone()).await.unwrap();
 
-            input.filter.from_block = None;
-            let all_events = get_events(context, input.clone()).await.unwrap();
+                input.filter.from_block = None;
+                let all_events = get_events(context.clone(), input.clone()).await.unwrap();
 
-            let expected = events
-                .events
-                .into_iter()
-                .chain(pending_events.events.into_iter())
-                .collect::<Vec<_>>();
+                let expected = events
+                    .events
+                    .into_iter()
+                    .chain(pending_events.events.into_iter())
+                    .collect::<Vec<_>>();
 
-            assert_eq!(all_events.events, expected);
-            assert!(all_events.continuation_token.is_none());
+                assert_eq!(all_events.events, expected);
+                assert!(all_events.continuation_token.is_none());
+            }
         }
 
         #[tokio::test]
