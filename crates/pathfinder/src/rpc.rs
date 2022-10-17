@@ -73,20 +73,15 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         v01::register_all_methods(&mut module_v01)?;
         let module_v01: Methods = module_v01.into_inner().into();
 
-        let mut _module_v02 = RpcModule::new(context_v02);
-        v02::register_all_methods(&mut _module_v02)?;
-        let _module_v02: Methods = _module_v02.into();
-
-        // FIXME
-        // Ok(server
-        //     .start_with_paths([
-        //         (vec!["/", "/rpc/v0.1"], module_v01),
-        //         (vec!["/rpc/v0.2"], module_v02),
-        //     ])
-        //     .map(|handle| (handle, local_addr))?)
+        let mut module_v02 = RpcModule::new(context_v02);
+        v02::register_all_methods(&mut module_v02)?;
+        let module_v02: Methods = module_v02.into();
 
         Ok(server
-            .start(module_v01)
+            .start_with_paths([
+                (vec!["/", "/rpc/v0.1"], module_v01),
+                (vec!["/rpc/v0.2"], module_v02),
+            ])
             .map(|handle| (handle, local_addr))?)
     }
 }

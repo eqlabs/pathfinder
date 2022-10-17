@@ -29,7 +29,7 @@ flate2 = "1.0.23"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 hex = "0.4.3"
 hex-literal = "0.3"
-jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", rev = "45c94a271d92294eda2a2c7d26477044a5983a25", default-features = false, features = [
+jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", rev = "a23589bc3988a28506ed8a37527b6adc04f31627", default-features = false, features = [
     "jsonrpsee-types",
     "server",
 ] }
