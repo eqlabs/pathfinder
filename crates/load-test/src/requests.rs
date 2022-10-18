@@ -2,25 +2,14 @@ use goose::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::json;
 
-use pathfinder_lib::core::{
-    BlockId, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
-    StarknetTransactionIndex, StorageAddress, StorageValue,
-};
-use pathfinder_lib::rpc::v01::types::{
-    reply::{
-        Block, GetEventsResult, Transaction as StarknetTransaction,
-        TransactionReceipt as StarknetTransactionReceipt,
-    },
-    request::EventFilter,
-};
+use stark_hash::StarkHash;
+
+use crate::types::{Block, Transaction, TransactionReceipt};
 
 type GooseTransactionError = goose::goose::TransactionError;
 type MethodResult<T> = Result<T, GooseTransactionError>;
 
-pub async fn get_block_by_number(
-    user: &mut GooseUser,
-    block_number: StarknetBlockNumber,
-) -> MethodResult<Block> {
+pub async fn get_block_by_number(user: &mut GooseUser, block_number: u64) -> MethodResult<Block> {
     post_jsonrpc_request(
         user,
         "starknet_getBlockWithTxHashes",
@@ -29,10 +18,7 @@ pub async fn get_block_by_number(
     .await
 }
 
-pub async fn get_block_by_hash(
-    user: &mut GooseUser,
-    block_hash: StarknetBlockHash,
-) -> MethodResult<Block> {
+pub async fn get_block_by_hash(user: &mut GooseUser, block_hash: StarkHash) -> MethodResult<Block> {
     post_jsonrpc_request(
         user,
         "starknet_getBlockWithTxHashes",
@@ -43,8 +29,8 @@ pub async fn get_block_by_hash(
 
 pub async fn get_transaction_by_hash(
     user: &mut GooseUser,
-    hash: StarknetTransactionHash,
-) -> MethodResult<StarknetTransaction> {
+    hash: StarkHash,
+) -> MethodResult<Transaction> {
     post_jsonrpc_request(
         user,
         "starknet_getTransactionByHash",
@@ -55,9 +41,9 @@ pub async fn get_transaction_by_hash(
 
 pub async fn get_transaction_by_block_hash_and_index(
     user: &mut GooseUser,
-    block_hash: StarknetBlockHash,
-    index: StarknetTransactionIndex,
-) -> MethodResult<StarknetTransaction> {
+    block_hash: StarkHash,
+    index: usize,
+) -> MethodResult<Transaction> {
     post_jsonrpc_request(
         user,
         "starknet_getTransactionByBlockIdAndIndex",
@@ -68,9 +54,9 @@ pub async fn get_transaction_by_block_hash_and_index(
 
 pub async fn get_transaction_by_block_number_and_index(
     user: &mut GooseUser,
-    block_number: StarknetBlockNumber,
-    index: StarknetTransactionIndex,
-) -> MethodResult<StarknetTransaction> {
+    block_number: u64,
+    index: usize,
+) -> MethodResult<Transaction> {
     post_jsonrpc_request(
         user,
         "starknet_getTransactionByBlockIdAndIndex",
@@ -81,8 +67,8 @@ pub async fn get_transaction_by_block_number_and_index(
 
 pub async fn get_transaction_receipt_by_hash(
     user: &mut GooseUser,
-    hash: StarknetTransactionHash,
-) -> MethodResult<StarknetTransactionReceipt> {
+    hash: StarkHash,
+) -> MethodResult<TransactionReceipt> {
     post_jsonrpc_request(
         user,
         "starknet_getTransactionReceipt",
@@ -93,7 +79,7 @@ pub async fn get_transaction_receipt_by_hash(
 
 pub async fn get_block_transaction_count_by_hash(
     user: &mut GooseUser,
-    hash: StarknetBlockHash,
+    hash: StarkHash,
 ) -> MethodResult<u64> {
     post_jsonrpc_request(
         user,
@@ -105,7 +91,7 @@ pub async fn get_block_transaction_count_by_hash(
 
 pub async fn get_block_transaction_count_by_number(
     user: &mut GooseUser,
-    number: StarknetBlockNumber,
+    number: u64,
 ) -> MethodResult<u64> {
     post_jsonrpc_request(
         user,
@@ -131,29 +117,64 @@ pub async fn get_events(
     user: &mut GooseUser,
     filter: EventFilter,
 ) -> MethodResult<GetEventsResult> {
-    post_jsonrpc_request(user, "starknet_getEvents", json!({ "filter": filter })).await
+    let from_block = block_number_to_block_id(filter.from_block);
+    let to_block = block_number_to_block_id(filter.to_block);
+    post_jsonrpc_request(
+        user,
+        "starknet_getEvents",
+        json!({ "filter": {
+            "from_block": from_block,
+            "to_block": to_block,
+            "address": filter.address,
+            "keys": filter.keys,
+        }}),
+    )
+    .await
+}
+
+pub struct EventFilter {
+    pub from_block: Option<u64>,
+    pub to_block: Option<u64>,
+    pub address: Option<StarkHash>,
+    pub keys: Vec<StarkHash>,
+    pub page_size: u64,
+    pub page_number: u64,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
+pub struct GetEventsResult {
+    pub events: Vec<serde_json::Value>,
+    pub page_number: usize,
+    pub is_last_page: bool,
+}
+
+fn block_number_to_block_id(number: Option<u64>) -> serde_json::Value {
+    match number {
+        Some(number) => json!({ "block_number": number }),
+        None => serde_json::Value::Null,
+    }
 }
 
 pub async fn get_storage_at(
     user: &mut GooseUser,
-    contract_address: ContractAddress,
-    key: StorageAddress,
-    block_id: BlockId,
-) -> MethodResult<StorageValue> {
+    contract_address: StarkHash,
+    key: StarkHash,
+    block_hash: StarkHash,
+) -> MethodResult<StarkHash> {
     post_jsonrpc_request(
         user,
         "starknet_getStorageAt",
-        json!({ "contract_address": contract_address, "key": key, "block_id": block_id }),
+        json!({ "contract_address": contract_address, "key": key, "block_id": {"block_hash": block_hash} }),
     )
     .await
 }
 
 pub async fn call(
     user: &mut GooseUser,
-    contract_address: ContractAddress,
+    contract_address: StarkHash,
     call_data: &[&str],
     entry_point_selector: &str,
-    at_block: BlockId,
+    at_block: StarkHash,
 ) -> MethodResult<Vec<String>> {
     post_jsonrpc_request(
         user,
@@ -164,7 +185,7 @@ pub async fn call(
                 "calldata": call_data,
                 "entry_point_selector": entry_point_selector,
             },
-            "block_id": at_block,
+            "block_id": {"block_hash": at_block},
         }),
     )
     .await

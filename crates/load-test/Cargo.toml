@@ -8,7 +8,6 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 goose = "0.16.3"
-pathfinder = { path = "../pathfinder", features = ["rpc-full-serde"] }
 rand = "0.8.5"
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
