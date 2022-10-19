@@ -575,6 +575,7 @@ mod tests {
         async fn happy_path_and_starkware_errors() {
             Test::new("starknet_getStateUpdate", line!())
                 .with_storage(|tx| with_n_state_updates(tx, 3))
+                .with_pending_empty_and_then(|_tx| vec![(), ()])
                 .with_params_json(json!([
                     {"block_hash":"0x0"},
                     {"block_hash":"0x1"},
@@ -585,7 +586,7 @@ mod tests {
                     {"block_number":9999}
                 ]))
                 .map_err_to_starkware_error_code()
-                .map_expected(|in_storage| {
+                .map_expected(|in_storage, _in_pending| {
                     let in_storage = in_storage.collect::<Vec<_>>();
                     vec![
                         Ok(in_storage[0].clone()),
