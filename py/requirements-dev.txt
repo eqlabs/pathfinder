@@ -228,7 +228,7 @@ wheel==0.37.1
     # via pip-tools
 yarl==1.7.2
     # via aiohttp
-zstandard==0.17.0
+zstandard==0.18.0
     # via -r requirements-dev.in
 
 # The following packages are considered to be unsafe in a requirements file:
