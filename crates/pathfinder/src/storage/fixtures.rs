@@ -29,7 +29,7 @@ pub mod init {
     use super::*;
     use crate::storage::{StarknetBlocksTable, StarknetStateUpdatesTable};
 
-    /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and hashes `("0x0".."0xn")` respectively.
+    /// Inserts `N` state updates, referring to blocks with numbers `(0..N)` and hashes `("0x0".."0xN")` respectively.
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
         (0..n)
             .into_iter()
@@ -73,7 +73,7 @@ impl StateUpdate {
 }
 
 impl StarknetBlock {
-    /// Creates a [`StarknetBlock`] with number `n` and hash `0xh` filled with arbitrary data useful for testing.
+    /// Creates a [`StarknetBlock`] with number `N` and hash `0xN` filled with arbitrary data useful for testing.
     pub fn nth(n: u8) -> Self {
         Self {
             number: StarknetBlockNumber::new(n as u64).expect("block number out of range"),
