@@ -60,7 +60,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-d
 
 WORKDIR /usr/share/pathfinder
 COPY py py
-RUN python3 -m pip --disable-pip-version-check install -r py/requirements-dev.txt
+RUN python3 -m pip --disable-pip-version-check install -r py/requirements.txt
 
 # This reduces the size of the python libs by about 50%
 ENV PY_PATH=/usr/local/lib/python3.8/

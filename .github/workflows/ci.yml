@@ -35,14 +35,14 @@ jobs:
         with:
           python-version: '3.8'
           cache: 'pip'
-          cache-dependency-path: 'py/requirements-dev.txt'
+          cache-dependency-path: 'py/requirements*.txt'
       # Workaround for setup-python issue #330 (https://github.com/actions/setup-python/issues/330)
       - uses: actions/cache@v3
         id: python_cache
         with:
           path: ${{ env.pythonLocation }}/**/site-packages
-          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements-dev.txt') }}
-      - run: pip install -r py/requirements-dev.txt
+          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}
+      - run: pip install -r py/requirements.txt -r py/requirements-dev.txt
       - run: |
           cargo test --no-run --workspace --locked
           timeout 5m cargo test -p pathfinder -- --skip ethereum::
@@ -115,7 +115,7 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
-          pip install --requirement requirements-dev.txt
+          pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Test (python)
         run: |

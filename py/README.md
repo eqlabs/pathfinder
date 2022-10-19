@@ -26,14 +26,14 @@ $ PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
 Then install development tools:
 
 ```bash
-$ PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+$ PIP_REQUIRE_VIRTUALENV=true pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 That is currently the only list we have, and it doesn't have too large extras.
 
 ### Upgrading dependencies
 
-Re-use the `PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt` to upgrade the virtual environment.
+Re-use the `PIP_REQUIRE_VIRTUALENV=true pip install -r requirements.txt -r requirements-dev.txt` to upgrade the virtual environment.
 
 ## Testing
 

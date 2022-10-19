@@ -107,7 +107,7 @@ Next install the python tooling and dependencies
 
 ```bash
 PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
-PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+PIP_REQUIRE_VIRTUALENV=true pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 Finally, run our python tests to make sure you were succesful.
@@ -155,7 +155,7 @@ source ./py/.venv/bin/activate
 and then update:
 
 ```bash
-PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+PIP_REQUIRE_VIRTUALENV=true pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 #### Build and run `pathfinder`
