@@ -362,17 +362,18 @@ where
         let sync_state = Arc::new(SyncState::default());
         let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
 
+        let line = self.line;
+
         let (__handle, addr) = RpcServer::new(
             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
             api,
         )
         .run()
         .await
-        .unwrap();
+        .unwrap_or_else(|error| panic!("line {line}, failed to create test server {error}"));
 
         let params_iter = self.params;
         let expected_iter = self.expected;
-        let line = self.line;
 
         let client = client(addr);
 
