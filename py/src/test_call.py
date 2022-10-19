@@ -208,7 +208,7 @@ def inmemory_with_tables():
         type(EXPECTED_SCHEMA_REVISION) is int
     ), f"expected schema revision must be just int, not: {type(EXPECTED_SCHEMA_REVISION)}"
     assert (
-        0 <= EXPECTED_SCHEMA_REVISION < 2 ** 16
+        0 <= EXPECTED_SCHEMA_REVISION < 2**16
     ), f"schema revision out of range: {EXPECTED_SCHEMA_REVISION}"
     cur.execute("pragma user_version = %d" % EXPECTED_SCHEMA_REVISION)
 
