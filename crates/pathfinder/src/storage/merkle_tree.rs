@@ -187,7 +187,7 @@ pub struct PersistedBinaryNode {
 /// An edge node which can be read / written from an [RcNodeStorage].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedEdgeNode {
-    pub path: BitVec<Msb0, u8>,
+    pub path: BitVec<u8, Msb0>,
     pub child: StarkHash,
 }
 
@@ -513,7 +513,7 @@ mod tests {
             // and deserializing big endian bit paths to a fixed size big endian array.
             let child = starkhash!("123abc");
             // 251 randomly generated bits.
-            let bits251 = bitvec![Msb0, u8; 1,0,0,1,1,0,1,1,0,0,1,1,1,1,0,0,1,1,1,0,1,0,0,1,0,1,0,1,1,0,0,0,
+            let bits251 = bitvec![u8, Msb0; 1,0,0,1,1,0,1,1,0,0,1,1,1,1,0,0,1,1,1,0,1,0,0,1,0,1,0,1,1,0,0,0,
                                             1,1,1,1,1,1,1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,1,1,0,0,0,1,0,1,0,0,
                                             0,1,0,0,1,1,0,0,1,0,1,1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,1,1,0,0,1,0,
                                             0,0,1,1,1,0,0,0,0,1,0,1,0,1,0,0,0,0,1,1,1,1,0,0,1,0,0,1,0,1,0,1,
@@ -680,7 +680,7 @@ mod tests {
 
             let parent_key = starkhash!("def123");
             let parent = PersistedNode::Edge(PersistedEdgeNode {
-                path: bitvec![Msb0, u8; 1, 0, 0],
+                path: bitvec![u8, Msb0; 1, 0, 0],
                 child: child_key,
             });
 
@@ -791,7 +791,7 @@ mod tests {
 
             let parent_key = starkhash!("def123");
             let parent = PersistedNode::Edge(PersistedEdgeNode {
-                path: bitvec![Msb0, u8; 1, 0, 0],
+                path: bitvec![u8, Msb0; 1, 0, 0],
                 child: child_key,
             });
 
@@ -816,11 +816,11 @@ mod tests {
             let parent_key_2 = starkhash!("0222");
 
             let parent_node_1 = PersistedNode::Edge(PersistedEdgeNode {
-                path: bitvec![Msb0, u8; 1, 0, 0],
+                path: bitvec![u8, Msb0; 1, 0, 0],
                 child: leaf_key,
             });
             let parent_node_2 = PersistedNode::Edge(PersistedEdgeNode {
-                path: bitvec![Msb0, u8; 1, 1, 1],
+                path: bitvec![u8, Msb0; 1, 1, 1],
                 child: leaf_key,
             });
 

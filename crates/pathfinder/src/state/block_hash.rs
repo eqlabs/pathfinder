@@ -1,5 +1,5 @@
 use anyhow::{Context, Error, Result};
-use bitvec::prelude::BitView;
+use bitvec::view::BitView;
 use stark_hash::{stark_hash, HashChain, StarkHash};
 
 use crate::core::{

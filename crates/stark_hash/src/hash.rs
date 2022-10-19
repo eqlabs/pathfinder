@@ -191,12 +191,12 @@ impl StarkHash {
     }
 
     /// Returns a bit view of the 251 least significant bits in MSB order.
-    pub fn view_bits(&self) -> &BitSlice<Msb0, u8> {
+    pub fn view_bits(&self) -> &BitSlice<u8, Msb0> {
         &self.0.view_bits()[5..]
     }
 
     /// Creates a [StarkHash] from up-to 251 bits.
-    pub fn from_bits(bits: &BitSlice<Msb0, u8>) -> Result<Self, OverflowError> {
+    pub fn from_bits(bits: &BitSlice<u8, Msb0>) -> Result<Self, OverflowError> {
         if bits.len() > 251 {
             return Err(OverflowError);
         }
@@ -271,7 +271,7 @@ pub fn stark_hash(a: StarkHash, b: StarkHash) -> StarkHash {
 
     // Preprocessed material is lookup-tables for each chunk of bits
     let table_size = (1 << CURVE_CONSTS_BITS) - 1;
-    let add_points = |acc: &mut ProjectivePoint, bits: &BitSlice<_, u64>, prep: &[AffinePoint]| {
+    let add_points = |acc: &mut ProjectivePoint, bits: &BitSlice<u64, _>, prep: &[AffinePoint]| {
         bits.chunks(CURVE_CONSTS_BITS)
             .enumerate()
             .for_each(|(i, v)| {
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn bits_round_trip() {
-        let mut bits = bitvec![Msb0, u8; 1; 251];
+        let mut bits = bitvec![u8, Msb0; 1; 251];
         bits.set(0, false);
         bits.set(1, false);
         bits.set(2, false);

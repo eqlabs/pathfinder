@@ -88,7 +88,7 @@ impl AffinePoint {
         self.x = result_x;
     }
 
-    pub fn multiply(&self, bits: &BitSlice<Lsb0, u64>) -> AffinePoint {
+    pub fn multiply(&self, bits: &BitSlice<u64, Lsb0>) -> AffinePoint {
         let mut product = AffinePoint::identity();
         for b in bits.iter().rev() {
             product.double();
@@ -238,7 +238,7 @@ impl ProjectivePoint {
         self.z = z;
     }
 
-    pub fn multiply(&self, bits: &BitSlice<Lsb0, u64>) -> ProjectivePoint {
+    pub fn multiply(&self, bits: &BitSlice<u64, Lsb0>) -> ProjectivePoint {
         let mut product = ProjectivePoint::identity();
         for b in bits.iter().rev() {
             product.double();

@@ -48,7 +48,7 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     }
 
     /// See [`MerkleTree::dfs`]
-    pub fn dfs<B, F: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
+    pub fn dfs<B, F: FnMut(&Node, &BitSlice<u8, Msb0>) -> ControlFlow<B, Visit>>(
         &self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
@@ -90,7 +90,7 @@ impl<'tx> GlobalStateTree<'tx, '_> {
     }
 
     /// See [`MerkleTree::dfs`]
-    pub fn dfs<B, F: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
+    pub fn dfs<B, F: FnMut(&Node, &BitSlice<u8, Msb0>) -> ControlFlow<B, Visit>>(
         &self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {

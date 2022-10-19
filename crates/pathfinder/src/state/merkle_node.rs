@@ -46,7 +46,7 @@ pub struct EdgeNode {
     /// The starting height of this node in the tree.
     pub height: usize,
     /// The path this edge takes.
-    pub path: BitVec<Msb0, u8>,
+    pub path: BitVec<u8, Msb0>,
     /// The child of this node.
     pub child: Rc<RefCell<Node>>,
 }
@@ -99,7 +99,7 @@ impl BinaryNode {
     /// This can be used to check which direction the key descibes in the context
     /// of this binary node i.e. which direction the child along the key's path would
     /// take.
-    pub fn direction(&self, key: &BitSlice<Msb0, u8>) -> Direction {
+    pub fn direction(&self, key: &BitSlice<u8, Msb0>) -> Direction {
         key[self.height].into()
     }
 
@@ -193,14 +193,14 @@ impl Node {
 
 impl EdgeNode {
     /// Returns true if the edge node's path matches the same path given by the key.
-    pub fn path_matches(&self, key: &BitSlice<Msb0, u8>) -> bool {
+    pub fn path_matches(&self, key: &BitSlice<u8, Msb0>) -> bool {
         self.path == key[self.height..self.height + self.path.len()]
     }
 
     /// Returns the common bit prefix between the edge node's path and the given key.
     ///
     /// This is calculated with the edge's height taken into account.
-    pub fn common_path(&self, key: &BitSlice<Msb0, u8>) -> &BitSlice<Msb0, u8> {
+    pub fn common_path(&self, key: &BitSlice<u8, Msb0>) -> &BitSlice<u8, Msb0> {
         let key_path = key.iter().skip(self.height);
         let common_length = key_path
             .zip(self.path.iter())
@@ -282,10 +282,10 @@ mod tests {
                 right: Rc::new(RefCell::new(Node::Leaf(starkhash!("0def")))),
             };
 
-            let mut zero_key = bitvec![Msb0, u8; 1; 251];
+            let mut zero_key = bitvec![u8, Msb0; 1; 251];
             zero_key.set(1, false);
 
-            let mut one_key = bitvec![Msb0, u8; 0; 251];
+            let mut one_key = bitvec![u8, Msb0; 0; 251];
             one_key.set(1, true);
 
             let zero_direction = uut.direction(&zero_key);
@@ -359,7 +359,7 @@ mod tests {
             let child = starkhash!("1234ABCD");
             let child = Rc::new(RefCell::new(Node::Unresolved(child)));
             // Path = 42 in binary.
-            let path = bitvec![Msb0, u8; 1, 0, 1, 0, 1, 0];
+            let path = bitvec![u8, Msb0; 1, 0, 1, 0, 1, 0];
 
             let mut uut = EdgeNode {
                 hash: None,

@@ -14,7 +14,8 @@ stark_curve = { path = "../stark_curve" }
 
 [dependencies]
 # paritys scale codec locks us here
-bitvec = "0.20.4"
+#bitvec = "0.20.4"
+bitvec = "1.0.1"
 rand_core = "0.6.3"
 serde = "1.0.134"
 stark_curve = { path = "../stark_curve" }
