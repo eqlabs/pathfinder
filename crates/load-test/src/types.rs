@@ -28,3 +28,23 @@ pub struct TransactionReceipt {
     pub r#type: String,
     pub transaction_hash: StarkHash,
 }
+
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
+pub struct StateUpdate {
+    pub block_hash: StarkHash,
+    pub new_root: StarkHash,
+    pub old_root: StarkHash,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
+pub struct ContractClass {
+    pub abi: serde_json::Value,
+    pub program: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
+pub struct FeeEstimate {
+    pub gas_consumed: String,
+    pub gas_price: String,
+    pub overall_fee: String,
+}
