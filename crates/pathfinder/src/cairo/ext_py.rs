@@ -336,9 +336,9 @@ mod tests {
     use super::sub_process::launch_python;
     use crate::{
         core::{
-            ContractAddress, ContractNonce, ContractRoot, GasPrice, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
-            StorageValue,
+            ContractAddress, ContractNonce, ContractRoot, ContractStateHash, GasPrice,
+            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+            StorageAddress, StorageValue,
         },
         rpc::v02::types::request::{
             BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV0, BroadcastedTransaction,
@@ -398,7 +398,7 @@ mod tests {
 
         let tx = conn.transaction().unwrap();
 
-        fill_example_state(&tx);
+        deploy_test_contract_in_block_one(&tx);
 
         tx.commit().unwrap();
 
@@ -473,7 +473,7 @@ mod tests {
 
         let tx = conn.transaction().unwrap();
 
-        fill_example_state(&tx);
+        deploy_test_contract_in_block_one(&tx);
 
         tx.commit().unwrap();
 
@@ -568,7 +568,7 @@ mod tests {
 
         let tx = conn.transaction().unwrap();
 
-        fill_example_state(&tx);
+        deploy_test_contract_in_block_one(&tx);
 
         tx.commit().unwrap();
 
@@ -633,7 +633,7 @@ mod tests {
 
         let tx = conn.transaction().unwrap();
 
-        fill_example_state(&tx);
+        deploy_test_contract_in_block_one(&tx);
 
         tx.commit().unwrap();
 
@@ -715,76 +715,27 @@ mod tests {
         jh.await.unwrap();
     }
 
-    fn fill_example_state(tx: &rusqlite::Transaction<'_>) {
+    fn deploy_test_contract_in_block_one(tx: &rusqlite::Transaction<'_>) {
         let contract_definition = zstd::decode_all(std::io::Cursor::new(include_bytes!(
             "../../fixtures/contract_definition.json.zst"
         )))
         .unwrap();
 
-        let address =
-            starkhash!("057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374");
-        let expected_hash =
-            starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
+        let contract_address = ContractAddress::new_or_panic(starkhash!(
+            "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
+        ));
 
-        let (abi, bytecode, class_hash) =
-            crate::state::class_hash::extract_abi_code_hash(&*contract_definition).unwrap();
-
-        assert_eq!(class_hash.0, expected_hash);
-
-        crate::storage::ContractCodeTable::insert(
+        let contract_state_hash = deploy_contract(
             tx,
-            class_hash,
-            &abi,
-            &bytecode,
+            contract_address,
             &contract_definition,
-        )
-        .unwrap();
-
-        crate::storage::ContractsTable::upsert(
-            tx,
-            crate::core::ContractAddress::new_or_panic(address),
-            class_hash,
-        )
-        .unwrap();
-
-        // set up contract state tree
-        let mut contract_state = crate::state::state_tree::ContractsStateTree::load(
-            tx,
-            crate::core::ContractRoot(StarkHash::ZERO),
-        )
-        .unwrap();
-
-        contract_state
-            .set(
+            &[(
                 StorageAddress::new_or_panic(starkhash!("84")),
                 StorageValue(starkhash!("03")),
-            )
-            .unwrap();
-
-        let contract_state_root = contract_state.apply().unwrap();
-        assert_eq!(
-            contract_state_root,
-            ContractRoot(starkhash!(
-                "04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028"
-            ))
-        );
-        let contract_nonce = ContractNonce(StarkHash::ZERO);
-
-        let contract_state_hash = crate::state::calculate_contract_state_hash(
-            class_hash,
-            contract_state_root,
-            contract_nonce,
+            )],
         );
 
-        crate::storage::ContractsStateTable::upsert(
-            tx,
-            contract_state_hash,
-            class_hash,
-            contract_state_root,
-            contract_nonce,
-        )
-        .unwrap();
-
+        // and then the global tree
         let mut global_tree = crate::state::state_tree::GlobalStateTree::load(
             tx,
             crate::core::GlobalRoot(StarkHash::ZERO),
@@ -792,10 +743,11 @@ mod tests {
         .unwrap();
 
         global_tree
-            .set(ContractAddress::new_or_panic(address), contract_state_hash)
+            .set(contract_address, contract_state_hash)
             .unwrap();
         let global_root = global_tree.apply().unwrap();
 
+        // create a block with the global root
         crate::storage::StarknetBlocksTable::insert(
             tx,
             &StarknetBlock {
@@ -824,5 +776,61 @@ mod tests {
                 println!("{}", hex::encode(first));
             }
         }
+    }
+
+    fn deploy_contract(
+        tx: &rusqlite::Transaction<'_>,
+        contract_address: ContractAddress,
+        contract_definition: &[u8],
+        storage_updates: &[(StorageAddress, StorageValue)],
+    ) -> ContractStateHash {
+        let (abi, bytecode, class_hash) =
+            crate::state::class_hash::extract_abi_code_hash(contract_definition).unwrap();
+
+        // create class
+        crate::storage::ContractCodeTable::insert(
+            tx,
+            class_hash,
+            &abi,
+            &bytecode,
+            contract_definition,
+        )
+        .unwrap();
+
+        // create contract
+        crate::storage::ContractsTable::upsert(tx, contract_address, class_hash).unwrap();
+
+        // set up contract state tree
+        let mut contract_state = crate::state::state_tree::ContractsStateTree::load(
+            tx,
+            crate::core::ContractRoot(StarkHash::ZERO),
+        )
+        .unwrap();
+        for (storage_address, storage_value) in storage_updates {
+            contract_state
+                .set(*storage_address, *storage_value)
+                .unwrap();
+        }
+        let contract_state_root = contract_state.apply().unwrap();
+
+        let contract_nonce = ContractNonce(StarkHash::ZERO);
+
+        let contract_state_hash = crate::state::calculate_contract_state_hash(
+            class_hash,
+            contract_state_root,
+            contract_nonce,
+        );
+
+        // set up contract state table
+        crate::storage::ContractsStateTable::upsert(
+            tx,
+            contract_state_hash,
+            class_hash,
+            contract_state_root,
+            contract_nonce,
+        )
+        .unwrap();
+
+        contract_state_hash
     }
 }
