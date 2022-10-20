@@ -117,10 +117,11 @@ impl RpcApi {
     ///
     /// This is useful for queries to access pending data or return an error via `?` if it
     /// is not meant to be used (as on testnet for example).
-    fn pending_data(&self) -> anyhow::Result<&PendingData> {
+    fn pending_data(&self) -> RpcResult<&PendingData> {
         self.pending_data
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Pending data not supported in this configuration"))
+            .map_err(internal_server_error)
     }
 
     /// Get block information given the block id.
