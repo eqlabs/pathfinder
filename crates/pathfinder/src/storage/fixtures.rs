@@ -10,6 +10,7 @@ use crate::{
         state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
         StateUpdate,
     },
+    sequencer,
     storage::{StarknetBlock, Storage},
 };
 use rusqlite::Transaction;
@@ -34,7 +35,8 @@ pub mod init {
         (0..n)
             .into_iter()
             .map(|n| {
-                StarknetBlocksTable::insert(tx, &StarknetBlock::nth(n), None).unwrap();
+                let block = StarknetBlock::nth(n);
+                StarknetBlocksTable::insert(tx, &block, None).unwrap();
                 let update = StateUpdate::with_block_hash(n);
                 StarknetStateUpdatesTable::insert(tx, update.block_hash.unwrap(), &update).unwrap();
                 update
@@ -98,4 +100,11 @@ where
     let tx = connection.transaction().unwrap();
 
     f(&storage, &tx, init::with_n_state_updates(&tx, n))
+}
+
+/// Helper type which allows for more flexible pending data setup
+#[derive(Clone, Debug)]
+pub struct RawPendingData {
+    pub block: Option<sequencer::reply::PendingBlock>,
+    pub state_update: Option<sequencer::reply::StateUpdate>,
 }
