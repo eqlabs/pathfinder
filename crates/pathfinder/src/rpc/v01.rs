@@ -566,8 +566,11 @@ mod tests {
     }
 
     mod get_state_update {
+        use crate::core::GlobalRoot;
         use crate::rpc::test_setup::Test;
         use crate::rpc::v01::types::reply::ErrorCode;
+        use crate::sequencer::reply::{state_update::StateDiff, StateUpdate};
+        use crate::starkhash_bytes;
         use crate::storage::fixtures::init::with_n_state_updates;
         use serde_json::json;
 
@@ -575,37 +578,47 @@ mod tests {
         async fn happy_path_and_starkware_errors() {
             Test::new("starknet_getStateUpdate", line!())
                 .with_storage(|tx| with_n_state_updates(tx, 3))
-                .with_pending_empty_and_then(|_tx| vec![(), ()])
+                .map_pending_then_empty_then_disabled(|_, _| {
+                    vec![StateUpdate {
+                        block_hash: None,
+                        new_root: GlobalRoot(starkhash_bytes!(b"new")),
+                        old_root: GlobalRoot(starkhash_bytes!(b"old")),
+                        state_diff: StateDiff::empty_for_test(),
+                    }]
+                })
                 .with_params_json(json!([
                     {"block_hash":"0x0"},
                     {"block_hash":"0x1"},
                     {"block_number":0},
                     {"block_number":1},
                     "latest",
+                    "pending", // pops mapped pending data
+                    "pending", // pops empty pending data
                     {"block_hash":"0xdead"},
-                    {"block_number":9999}
+                    {"block_number":9999},
                 ]))
                 .map_err_to_starkware_error_code()
-                .map_expected(|in_storage, _in_pending| {
+                .map_expected(|in_storage, mut in_pending| {
                     let in_storage = in_storage.collect::<Vec<_>>();
+                    let in_pending = in_pending.next().unwrap().into();
                     vec![
                         Ok(in_storage[0].clone()),
                         Ok(in_storage[1].clone()),
                         Ok(in_storage[0].clone()),
                         Ok(in_storage[1].clone()),
                         Ok(in_storage[2].clone()),
+                        Ok(in_pending),            // mapped pending
+                        Ok(in_storage[2].clone()), // empty pending, falls back to latest
                         Err(ErrorCode::InvalidBlockId),
                         Err(ErrorCode::InvalidBlockId),
                     ]
                 })
+                .then_expect_internal_err_when_pending_disabled(
+                    json!("pending"),
+                    "Internal error: Pending data not supported in this configuration".to_string(),
+                )
                 .run()
                 .await;
-        }
-
-        #[tokio::test]
-        #[ignore = "implement after local pending is merged into master"]
-        async fn pending() {
-            todo!()
         }
     }
 
