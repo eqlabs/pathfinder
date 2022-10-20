@@ -107,6 +107,24 @@ pub struct RawPendingData {
     pub state_update: Option<sequencer::reply::StateUpdate>,
 }
 
+impl From<sequencer::reply::PendingBlock> for RawPendingData {
+    fn from(block: sequencer::reply::PendingBlock) -> Self {
+        Self {
+            block: Some(block),
+            state_update: None,
+        }
+    }
+}
+
+impl From<sequencer::reply::StateUpdate> for RawPendingData {
+    fn from(state_update: sequencer::reply::StateUpdate) -> Self {
+        Self {
+            block: None,
+            state_update: Some(state_update),
+        }
+    }
+}
+
 impl sequencer::reply::PendingBlock {
     /// Use in tests where an instance has to be provided for initializatioin
     /// because the api does not accept `Option<PendingBlock>` but otherwise
