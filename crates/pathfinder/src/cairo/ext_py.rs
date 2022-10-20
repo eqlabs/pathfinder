@@ -335,10 +335,16 @@ type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExit
 mod tests {
     use super::sub_process::launch_python;
     use crate::{
+        core::{
+            ContractAddress, ContractNonce, ContractRoot, GasPrice, SequencerAddress,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
+            StorageValue,
+        },
         rpc::v02::types::request::{
             BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV0, BroadcastedTransaction,
         },
-        starkhash,
+        starkhash, starkhash_bytes,
+        storage::StarknetBlock,
     };
     use stark_hash::StarkHash;
     use std::path::PathBuf;
@@ -720,71 +726,89 @@ mod tests {
         let expected_hash =
             starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
 
-        let (abi, bytecode, hash) =
+        let (abi, bytecode, class_hash) =
             crate::state::class_hash::extract_abi_code_hash(&*contract_definition).unwrap();
 
-        assert_eq!(hash.0, expected_hash);
+        assert_eq!(class_hash.0, expected_hash);
 
-        crate::storage::ContractCodeTable::insert(tx, hash, &abi, &bytecode, &contract_definition)
-            .unwrap();
+        crate::storage::ContractCodeTable::insert(
+            tx,
+            class_hash,
+            &abi,
+            &bytecode,
+            &contract_definition,
+        )
+        .unwrap();
 
         crate::storage::ContractsTable::upsert(
             tx,
             crate::core::ContractAddress::new_or_panic(address),
-            hash,
+            class_hash,
         )
         .unwrap();
 
-        // this will create the table, not created by migration
-        crate::state::state_tree::ContractsStateTree::load(tx, crate::core::ContractRoot::ZERO)
+        // set up contract state tree
+        let mut contract_state = crate::state::state_tree::ContractsStateTree::load(
+            tx,
+            crate::core::ContractRoot(StarkHash::ZERO),
+        )
+        .unwrap();
+
+        contract_state
+            .set(
+                StorageAddress::new_or_panic(starkhash!("84")),
+                StorageValue(starkhash!("03")),
+            )
             .unwrap();
 
-        crate::state::state_tree::GlobalStateTree::load(
+        let contract_state_root = contract_state.apply().unwrap();
+        assert_eq!(
+            contract_state_root,
+            ContractRoot(starkhash!(
+                "04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028"
+            ))
+        );
+        let contract_nonce = ContractNonce(StarkHash::ZERO);
+
+        let contract_state_hash = crate::state::calculate_contract_state_hash(
+            class_hash,
+            contract_state_root,
+            contract_nonce,
+        );
+
+        crate::storage::ContractsStateTable::upsert(
+            tx,
+            contract_state_hash,
+            class_hash,
+            contract_state_root,
+            contract_nonce,
+        )
+        .unwrap();
+
+        let mut global_tree = crate::state::state_tree::GlobalStateTree::load(
             tx,
             crate::core::GlobalRoot(StarkHash::ZERO),
         )
         .unwrap();
 
-        tx.execute("insert into tree_contracts (hash, data, ref_count) values (?1, ?2, 1)",
-                   rusqlite::params![
-                &hex::decode("04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028").unwrap()[..],
-                &hex::decode("00000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000084fb").unwrap()[..],
-            ]).unwrap();
+        global_tree
+            .set(ContractAddress::new_or_panic(address), contract_state_hash)
+            .unwrap();
+        let global_root = global_tree.apply().unwrap();
 
-        tx.execute(
-            "insert into contract_states (state_hash, hash, root) values (?1, ?2, ?3)",
-            rusqlite::params![
-                &hex::decode("002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5")
-                    .unwrap()[..],
-                &hex::decode("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
-                    .unwrap()[..],
-                &hex::decode("04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028")
-                    .unwrap()[..],
-            ],
+        crate::storage::StarknetBlocksTable::insert(
+            tx,
+            &StarknetBlock {
+                number: StarknetBlockNumber::new_or_panic(1),
+                hash: StarknetBlockHash(starkhash_bytes!(b"some blockhash somewhere")),
+                root: global_root,
+                timestamp: StarknetBlockTimestamp::new_or_panic(1),
+                gas_price: GasPrice(1),
+                sequencer_address: SequencerAddress(StarkHash::ZERO),
+            },
+            None,
         )
         .unwrap();
-
-        tx.execute(
-            "insert into tree_global (hash, data, ref_count) values (?, ?, 1)",
-            rusqlite::params![
-                &hex::decode("0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd").unwrap()[..],
-                &hex::decode("002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374fb").unwrap()[..],
-            ],
-        )
-            .unwrap();
-
-        tx.execute(
-            r"insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, version_id)
-              values (?, 1, 1, ?, X'01', X'0000000000000000000000000000000000000000000000000000000000000000', X'00')",
-            rusqlite::params![
-                &StarkHash::from_be_slice(&b"some blockhash somewhere"[..])
-                    .unwrap()
-                    .to_be_bytes()[..],
-                &hex::decode("0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd")
-                    .unwrap()[..],
-            ],
-        )
-            .unwrap();
 
         if false {
             let mut stmt = tx

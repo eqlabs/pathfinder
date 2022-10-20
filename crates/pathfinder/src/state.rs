@@ -94,7 +94,7 @@ pub(crate) fn update_contract_state(
 }
 
 /// Calculates the contract state hash from its preimage.
-fn calculate_contract_state_hash(
+pub(crate) fn calculate_contract_state_hash(
     hash: ClassHash,
     root: ContractRoot,
     nonce: ContractNonce,
