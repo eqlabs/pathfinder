@@ -73,7 +73,8 @@ impl<'a, StorageInitIter> TestWithStorage<'a, StorageInitIter> {
     ) -> TestWithPending<'a, StorageInitIter, PendingInitIntoIterator::IntoIter>
     where
         StorageInitIter: Clone,
-        PendingInitIntoIterator: IntoIterator<Item = RawPendingData>,
+        PendingInitIntoIterator: IntoIterator,
+        <PendingInitIntoIterator as IntoIterator>::Item: Into<RawPendingData>,
         PendingInitFn: FnOnce(&Transaction<'_>, StorageInitIter) -> PendingInitIntoIterator,
     {
         let mut connection = self.storage.connection().unwrap();
@@ -397,7 +398,8 @@ impl<
     >
     TestWithPendingDisabled<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn, PendingParams>
 where
-    PendingInitIter: Iterator<Item = RawPendingData>,
+    PendingInitIter: Iterator,
+    <PendingInitIter as Iterator>::Item: Into<RawPendingData>,
     ParamsIter: Iterator,
     ExpectedIter: Iterator<Item = Result<ExpectedOk, MappedError>>,
     ExpectedOk: Clone + DeserializeOwned + Debug + PartialEq,
@@ -484,16 +486,21 @@ fn test_case_descr<TestCase: ToString>(
     )
 }
 
-async fn api_with_maybe_pending<PendingInitIter: Iterator<Item = RawPendingData>>(
+async fn api_with_maybe_pending<PendingInitIter>(
     serialized_params: &str,
     pending_init_iter: &mut PendingInitIter,
     api: &RpcApi,
-) -> RpcApi {
-    // I know, this is fishy, but still works because `pending` is stictly defined
+) -> RpcApi
+where
+    PendingInitIter: Iterator,
+    <PendingInitIter as Iterator>::Item: Into<RawPendingData>,
+{
+    // I know, this is fishy, but it still works because `pending` is stictly defined
     if serialized_params.contains(r#"pending"#) {
         match pending_init_iter.next() {
             // Some valid pending data fixture is available, use it
             Some(pending_data) => {
+                let pending_data = pending_data.into();
                 let block = pending_data.block.unwrap_or(PendingBlock::dummy_for_test());
                 let state_update = pending_data
                     .state_update
