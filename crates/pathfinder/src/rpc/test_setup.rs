@@ -100,51 +100,6 @@ pub struct TestWithPending<'a, StorageInitIter, PendingInitIter> {
 }
 
 impl<'a, StorageInitIter, PendingInitIter> TestWithPending<'a, StorageInitIter, PendingInitIter> {
-    /// Initialize test setup with a sequence of test params.
-    /// Each item in the sequence corresponds to a separate test case.
-    #[allow(dead_code)]
-    pub fn with_params<ParamsIntoIterator, ParamsItem>(
-        self,
-        params: ParamsIntoIterator,
-    ) -> TestWithParams<'a, StorageInitIter, PendingInitIter, ParamsIntoIterator::IntoIter>
-    where
-        ParamsItem: Serialize,
-        ParamsIntoIterator: IntoIterator<Item = ParamsItem>,
-    {
-        TestWithParams {
-            method: self.method,
-            line: self.line,
-            storage: self.storage,
-            storage_init: self.storage_init,
-            pending_init: self.pending_init,
-            params: params.into_iter(),
-        }
-    }
-
-    /// Initialize test setup with a sequence of test params
-    /// which are of type `serde_json::Value`.
-    /// Each item in the sequence corresponds to a separate test case.
-    ///
-    /// Useful for handling test cases where consecutive param sets
-    /// contain vastly different variants.
-    #[allow(dead_code)]
-    pub fn with_params_json0<ParamsIntoIterator>(
-        self,
-        params: ParamsIntoIterator,
-    ) -> TestWithParams<'a, StorageInitIter, PendingInitIter, ParamsIntoIterator::IntoIter>
-    where
-        ParamsIntoIterator: IntoIterator<Item = &'a serde_json::Value>,
-    {
-        TestWithParams {
-            method: self.method,
-            line: self.line,
-            storage: self.storage,
-            storage_init: self.storage_init,
-            pending_init: self.pending_init,
-            params: params.into_iter(),
-        }
-    }
-
     /// Initialize test setup with a single JSON array `params`.
     /// Each item in `params` corresponds to a separate test case.
     ///
