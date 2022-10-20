@@ -340,7 +340,7 @@ impl<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
     pub fn then_expect_internal_err_when_pending_disabled<PendingParams>(
         self,
         params: PendingParams,
-        error_msg: String,
+        error_msg: &'a str,
     ) -> TestWithPendingDisabled<
         'a,
         PendingInitIter,
@@ -363,9 +363,9 @@ impl<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
 }
 
 /// Holds data required for a disabled pending scenario
-struct PendingDisabled<Params> {
+struct PendingDisabled<'a, Params> {
     params: Params,
-    error_msg: String,
+    error_msg: &'a str,
 }
 
 pub struct TestWithPendingDisabled<
@@ -383,7 +383,7 @@ pub struct TestWithPendingDisabled<
     params: ParamsIter,
     expected: ExpectedIter,
     map_err_fn: MapErrFn,
-    pending_disabled: PendingDisabled<PendingParams>,
+    pending_disabled: PendingDisabled<'a, PendingParams>,
 }
 
 impl<

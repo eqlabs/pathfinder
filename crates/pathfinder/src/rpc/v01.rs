@@ -615,7 +615,7 @@ mod tests {
                 })
                 .then_expect_internal_err_when_pending_disabled(
                     json!("pending"),
-                    "Internal error: Pending data not supported in this configuration".to_string(),
+                    "Internal error: Pending data not supported in this configuration",
                 )
                 .run()
                 .await;
