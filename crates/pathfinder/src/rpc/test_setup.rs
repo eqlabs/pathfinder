@@ -1,8 +1,20 @@
 ///! Utilities for easier construction of RPC tests.
-use crate::{state::PendingData, storage::Storage};
+use crate::core::Chain;
+use crate::rpc::test_client::client;
+use crate::rpc::{RpcApi, RpcServer};
+use crate::sequencer::reply::{PendingBlock, StateUpdate};
+use crate::sequencer::Client;
+use crate::state::PendingData;
+use crate::state::SyncState;
+use crate::storage::{fixtures::RawPendingData, Storage};
+use ::serde::de::DeserializeOwned;
 use ::serde::Serialize;
+use jsonrpsee::http_server::HttpServerHandle;
+use jsonrpsee::rpc_params;
 use rusqlite::Transaction;
 use std::fmt::Debug;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::Arc;
 
 pub struct Test<'a> {
     method: &'a str,
@@ -52,33 +64,21 @@ pub struct TestWithStorage<'a, StorageInitIter> {
 }
 
 impl<'a, StorageInitIter> TestWithStorage<'a, StorageInitIter> {
-    /// The first call to `pending` will yield empty pending data and then TODO
-    ///
-    ///
-    /// TODO Initialize test setup with pending data in the following order:
-    /// 1. pending is __disabled__
-    /// 2. pending is __enabled__ and __empty__
-    /// 3. pending is __enabled__ and yields elements from the __TODO__
-    ///    in consecutive test cases
-    ///
-    /// TODO how it relates to number of params test cases and if it's
-    /// appended or prepended to the test cases vector
-    /// TODO Initialize test setup storage using function `f`.
-    /// `f` **must produce a sequence of the items put into the storage
-    /// in the very same order as they were inserted**.
-    ///
-    /// FIXME: PendingInitItem does not need to be generic, this is a genuine type
-    pub fn with_pending_empty_and_then<PendingInitFn, PendingInitIntoIterator, PendingInitItem>(
+    /// The calls to `pending` will yield pending data from
+    /// 1. the iterable collection created by the mapping function `f`
+    /// 2. and when the resulting iterator is exhausted __empty__ pending data is returned
+    pub fn map_pending_then_empty_then_disabled<PendingInitFn, PendingInitIntoIterator>(
         self,
         f: PendingInitFn,
     ) -> TestWithPending<'a, StorageInitIter, PendingInitIntoIterator::IntoIter>
     where
-        PendingInitIntoIterator: IntoIterator<Item = PendingInitItem>,
-        PendingInitFn: FnOnce(&Transaction<'_>) -> PendingInitIntoIterator,
+        StorageInitIter: Clone,
+        PendingInitIntoIterator: IntoIterator<Item = RawPendingData>,
+        PendingInitFn: FnOnce(&Transaction<'_>, StorageInitIter) -> PendingInitIntoIterator,
     {
         let mut connection = self.storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
-        let pending_init = f(&tx);
+        let pending_init = f(&tx, self.storage_init.clone());
         tx.commit().unwrap();
         TestWithPending {
             method: self.method,
@@ -196,7 +196,7 @@ impl<'a, StorageInitIter, PendingInitIter, ParamsIter>
         f: MapErrFn,
     ) -> TestWithMapErr<'a, StorageInitIter, PendingInitIter, ParamsIter, MapErrFn>
     where
-        MapErrFn: FnOnce(jsonrpsee::core::Error, u32, usize) -> MappedError,
+        MapErrFn: FnOnce(jsonrpsee::core::Error, &str) -> MappedError,
     {
         TestWithMapErr {
             method: self.method,
@@ -219,17 +219,18 @@ impl<'a, StorageInitIter, PendingInitIter, ParamsIter>
         StorageInitIter,
         PendingInitIter,
         ParamsIter,
-        impl Copy
-            + FnOnce(jsonrpsee::core::Error, u32, usize) -> crate::rpc::v01::types::reply::ErrorCode,
+        impl Copy + FnOnce(jsonrpsee::core::Error, &str) -> crate::rpc::v01::types::reply::ErrorCode,
     > {
-        self.map_err(|error, line, test_case| match &error {
+        self.map_err(|error, test_case_descr| match &error {
             jsonrpsee::core::Error::Call(jsonrpsee::types::error::CallError::Custom(custom)) => {
                 match crate::rpc::v01::types::reply::ErrorCode::try_from(custom.code()) {
                     Ok(error_code) => error_code,
-                    Err(_) => panic!("line {line}, test case {test_case}: {error}"),
+                    Err(_) => {
+                        panic!("{test_case_descr}, mapping to starkware error code failed: {error}")
+                    }
                 }
             }
-            _ => panic!("line {line}, test case {test_case}: {error}"),
+            _ => panic!("{test_case_descr}, expected custom call error, got: {error}"),
         })
     }
 }
@@ -332,65 +333,192 @@ pub struct TestWithExpected<'a, PendingInitIter, ParamsIter, ExpectedIter, MapEr
     map_err_fn: MapErrFn,
 }
 
-impl<'a, PendingInitIter, ParamsIter, ExpectedIter, ExpectedOk, MapErrFn, MappedError>
+impl<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
     TestWithExpected<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
+{
+    pub fn then_expect_internal_err_when_pending_disabled<PendingParams>(
+        self,
+        params: PendingParams,
+        error_msg: String,
+    ) -> TestWithPendingDisabled<
+        'a,
+        PendingInitIter,
+        ParamsIter,
+        ExpectedIter,
+        MapErrFn,
+        PendingParams,
+    > {
+        TestWithPendingDisabled {
+            method: self.method,
+            line: self.line,
+            storage: self.storage,
+            pending_init: self.pending_init,
+            params: self.params,
+            expected: self.expected,
+            map_err_fn: self.map_err_fn,
+            pending_disabled: PendingDisabled { params, error_msg },
+        }
+    }
+}
+
+/// Holds data required for a disabled pending scenario
+struct PendingDisabled<Params> {
+    params: Params,
+    error_msg: String,
+}
+
+pub struct TestWithPendingDisabled<
+    'a,
+    PendingInitIter,
+    ParamsIter,
+    ExpectedIter,
+    MapErrFn,
+    PendingParams,
+> {
+    method: &'a str,
+    line: u32,
+    storage: Storage,
+    pending_init: PendingInitIter,
+    params: ParamsIter,
+    expected: ExpectedIter,
+    map_err_fn: MapErrFn,
+    pending_disabled: PendingDisabled<PendingParams>,
+}
+
+impl<
+        'a,
+        PendingInitIter,
+        ParamsIter,
+        ExpectedIter,
+        ExpectedOk,
+        MapErrFn,
+        MappedError,
+        PendingParams,
+    >
+    TestWithPendingDisabled<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn, PendingParams>
 where
+    PendingInitIter: Iterator<Item = RawPendingData>,
     ParamsIter: Iterator,
     ExpectedIter: Iterator<Item = Result<ExpectedOk, MappedError>>,
-    ExpectedOk: Clone + ::serde::de::DeserializeOwned + Debug + PartialEq,
-    MapErrFn: FnOnce(jsonrpsee::core::Error, u32, usize) -> MappedError + Copy,
+    ExpectedOk: Clone + DeserializeOwned + Debug + PartialEq,
+    MapErrFn: FnOnce(jsonrpsee::core::Error, &str) -> MappedError + Copy,
     MappedError: Debug + PartialEq,
 {
     /// Runs the test cases.
     pub async fn run(self)
     where
         <ParamsIter as Iterator>::Item: Debug + Serialize,
+        PendingParams: Debug + Serialize,
     {
-        use crate::core::Chain;
-        use crate::rpc::{
-            test_client::client,
-            {RpcApi, RpcServer},
-        };
-        use crate::sequencer::Client;
-        use crate::state::SyncState;
-        use jsonrpsee::rpc_params;
-        use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-        use std::sync::Arc;
-
         let storage = self.storage;
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
         let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
 
         let line = self.line;
-
-        let (__handle, addr) = RpcServer::new(
-            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
-            api,
-        )
-        .run()
-        .await
-        .unwrap_or_else(|error| panic!("line {line}, failed to create test server {error}"));
-
         let params_iter = self.params;
         let expected_iter = self.expected;
+        let mut pending_iter = self.pending_init;
 
-        let client = client(addr);
+        // Iterate through all the 'normal' scenarios
+        for (test_case, (params, expected)) in params_iter.zip(expected_iter).enumerate() {
+            let serialized_params = serialize_params(&params, line, test_case);
+            let test_case_descr = test_case_descr(line, test_case, &serialized_params);
+            let api = api_with_maybe_pending(&serialized_params, &mut pending_iter, &api).await;
+            let (_handle, addr) = run_server(api, &test_case_descr).await;
+            let client = client(addr);
 
-        for (i, (params, expected)) in params_iter.zip(expected_iter).enumerate() {
-            let serialized_params = serde_json::to_string(&params).unwrap_or_else(|_| {
-                panic!(
-                    "line {line}, test case {i}, inputs should be serializable to JSON {params:?}"
-                )
-            });
             let params = rpc_params!(params);
             let actual = client.request::<ExpectedOk>(self.method, params).await;
-            let actual = actual.map_err(|error| (self.map_err_fn)(error, self.line, i));
-            std::assert_eq!(
-                actual,
-                expected,
-                "line {line}, test case {i}, inputs {serialized_params}"
-            );
+            let actual = actual.map_err(|error| (self.map_err_fn)(error, &test_case_descr));
+            std::assert_eq!(actual, expected, "{test_case_descr}",);
         }
+
+        // Now the 'disabled pending' scenario
+        let params = self.pending_disabled.params;
+        let expected_error_msg = self.pending_disabled.error_msg;
+
+        let test_case = "'disabled pending'";
+        let serialized_params = serialize_params(&params, line, test_case);
+        let test_case_descr = test_case_descr(line, test_case, &serialized_params);
+        let (_handle, addr) = run_server(api, &test_case_descr).await;
+        let client = client(addr);
+
+        let params = rpc_params!(params);
+        let actual = client.request::<ExpectedOk>(self.method, params).await;
+        let error = actual.expect_err(&test_case_descr);
+
+        use jsonrpsee::{core::error::Error, types::error::CallError};
+
+        assert_matches::assert_matches!(error, Error::Call(CallError::Custom(error_object)) => {
+            pretty_assertions::assert_eq!(error_object.message(), expected_error_msg, "{test_case_descr}");
+            // Internal error
+            // https://www.jsonrpc.org/specification#error_object
+            pretty_assertions::assert_eq!(error_object.code(), -32603, "{test_case_descr}");
+        });
     }
+}
+
+fn serialize_params<Params: Debug + Serialize, TestCase: ToString>(
+    params: &Params,
+    line: u32,
+    test_case: TestCase,
+) -> String {
+    serde_json::to_string(&params).unwrap_or_else(|_| {
+        panic!(
+            "line {line}, test case {}, inputs should be serializable to JSON: {params:?}",
+            test_case.to_string()
+        )
+    })
+}
+
+fn test_case_descr<TestCase: ToString>(
+    line: u32,
+    test_case: TestCase,
+    serialized_params: &str,
+) -> String {
+    format!(
+        "line {line}, test case {}, inputs {}",
+        test_case.to_string(),
+        serialized_params,
+    )
+}
+
+async fn api_with_maybe_pending<PendingInitIter: Iterator<Item = RawPendingData>>(
+    serialized_params: &str,
+    pending_init_iter: &mut PendingInitIter,
+    api: &RpcApi,
+) -> RpcApi {
+    // I know, this is fishy, but still works because `pending` is stictly defined
+    if serialized_params.contains(r#"pending"#) {
+        match pending_init_iter.next() {
+            // Some valid pending data fixture is available, use it
+            Some(pending_data) => {
+                let block = pending_data.block.unwrap_or(PendingBlock::dummy_for_test());
+                let state_update = pending_data
+                    .state_update
+                    .unwrap_or(StateUpdate::dummy_for_test());
+                let pending_data = PendingData::default();
+                pending_data
+                    .set(Arc::new(block), Arc::new(state_update))
+                    .await;
+                api.clone().with_pending_data(pending_data)
+            }
+            // All valid pending data fixtures have been exhausted so __simulate empty pending data from now on__
+            None => api.clone().with_pending_data(PendingData::default()),
+        }
+    } else {
+        // Pending was not requested so just treat pending data as disabled
+        api.clone()
+    }
+}
+
+async fn run_server(api: RpcApi, failure_msg: &str) -> (HttpServerHandle, SocketAddr) {
+    RpcServer::new(
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
+        api,
+    )
+    .run()
+    .await
+    .expect(&failure_msg)
 }
