@@ -43,6 +43,7 @@ use crate::rpc::v01::types::reply::{
 };
 
 /// Implements JSON-RPC endpoints.
+#[cfg_attr(test, derive(Clone))]
 pub struct RpcApi {
     pub storage: Storage,
     pub sequencer: sequencer::Client,
