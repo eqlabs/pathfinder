@@ -71,6 +71,8 @@ impl TestClient {
     /// The difference from [`jsonrpsee::http_client::HttpClient::request`] is that
     /// this method reports the core reason for response `R` serde error,
     /// while the former just ignores it.
+    ///
+    /// TODO get rid of the ParamsSer ugliness
     pub async fn request<'a, R>(
         &self,
         method: &'a str,

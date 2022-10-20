@@ -568,8 +568,8 @@ mod tests {
     mod get_state_update {
         use crate::core::GlobalRoot;
         use crate::rpc::test_setup::Test;
-        use crate::rpc::v01::types::reply::ErrorCode;
-        use crate::sequencer::reply::{state_update::StateDiff, StateUpdate};
+        use crate::rpc::v01::types::reply::{ErrorCode, StateUpdate};
+        use crate::sequencer;
         use crate::starkhash_bytes;
         use crate::storage::fixtures::init::with_n_state_updates;
         use serde_json::json;
@@ -579,42 +579,67 @@ mod tests {
             Test::new("starknet_getStateUpdate", line!())
                 .with_storage(|tx| with_n_state_updates(tx, 3))
                 .map_pending_then_empty_then_disabled(|_, _| {
-                    vec![StateUpdate {
+                    std::iter::repeat(sequencer::reply::StateUpdate {
                         block_hash: None,
                         new_root: GlobalRoot(starkhash_bytes!(b"new")),
                         old_root: GlobalRoot(starkhash_bytes!(b"old")),
-                        state_diff: StateDiff::empty_for_test(),
-                    }]
+                        state_diff: sequencer::reply::state_update::StateDiff::empty_for_test(),
+                    })
+                    .take(2)
                 })
                 .with_params_json(json!([
-                    {"block_hash":"0x0"},
-                    {"block_hash":"0x1"},
-                    {"block_number":0},
-                    {"block_number":1},
-                    "latest",
-                    "pending", // pops mapped pending data
-                    "pending", // pops empty pending data
-                    {"block_hash":"0xdead"},
-                    {"block_number":9999},
+                    // Positional
+                    [{"block_hash":"0x0"}],
+                    [{"block_hash":"0x1"}],
+                    [{"block_hash":"0xdead"}],
+                    [{"block_number":0}],
+                    [{"block_number":1}],
+                    [{"block_number":9999}],
+                    ["latest"],
+                    // Named
+                    {"block_id":{"block_hash":"0x0"}},
+                    {"block_id":{"block_hash":"0x1"}},
+                    {"block_id":{"block_hash":"0xdead"}},
+                    {"block_id":{"block_number":0}},
+                    {"block_id":{"block_number":1}},
+                    {"block_id":{"block_number":9999}},
+                    {"block_id":"latest"},
+                    // Pending
+                    ["pending"],            // Pops mapped pending data
+                    {"block_id":"pending"}, // Pops mapped pending data
+                    ["pending"],            // Pops empty pending data
+                    {"block_id":"pending"}, // Pops empty pending data
                 ]))
                 .map_err_to_starkware_error_code()
                 .map_expected(|in_storage, mut in_pending| {
                     let in_storage = in_storage.collect::<Vec<_>>();
-                    let in_pending = in_pending.next().unwrap().into();
+                    let in_pending: StateUpdate = in_pending.next().unwrap().into();
                     vec![
+                        // Positional
                         Ok(in_storage[0].clone()),
                         Ok(in_storage[1].clone()),
+                        Err(ErrorCode::InvalidBlockId),
                         Ok(in_storage[0].clone()),
                         Ok(in_storage[1].clone()),
+                        Err(ErrorCode::InvalidBlockId),
                         Ok(in_storage[2].clone()),
+                        // Named
+                        Ok(in_storage[0].clone()),
+                        Ok(in_storage[1].clone()),
+                        Err(ErrorCode::InvalidBlockId),
+                        Ok(in_storage[0].clone()),
+                        Ok(in_storage[1].clone()),
+                        Err(ErrorCode::InvalidBlockId),
+                        Ok(in_storage[2].clone()),
+                        // Pending
+                        Ok(in_pending.clone()),    // mapped pending
                         Ok(in_pending),            // mapped pending
                         Ok(in_storage[2].clone()), // empty pending, falls back to latest
-                        Err(ErrorCode::InvalidBlockId),
-                        Err(ErrorCode::InvalidBlockId),
+                        Ok(in_storage[2].clone()), // empty pending, falls back to latest
                     ]
                 })
                 .then_expect_internal_err_when_pending_disabled(
-                    json!("pending"),
+                    json!([["pending"], {"block_id":"pending"}]),
                     "Internal error: Pending data not supported in this configuration",
                 )
                 .run()

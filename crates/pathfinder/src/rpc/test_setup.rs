@@ -10,7 +10,7 @@ use crate::storage::{fixtures::RawPendingData, Storage};
 use ::serde::de::DeserializeOwned;
 use ::serde::Serialize;
 use jsonrpsee::http_server::HttpServerHandle;
-use jsonrpsee::rpc_params;
+use jsonrpsee::types::ParamsSer;
 use rusqlite::Transaction;
 use std::fmt::Debug;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -145,10 +145,15 @@ impl<'a, StorageInitIter, PendingInitIter> TestWithPending<'a, StorageInitIter, 
         }
     }
 
-    /// Initialize test setup with a single json array.
-    /// Each item in the json array corresponds to a separate test case.
-    /// **Any other json type will be automatically wrapped in a json
-    /// array and treated as a single test case.**
+    /// Initialize test setup with a single JSON array `params`.
+    /// Each item in `params` corresponds to a separate test case.
+    ///
+    /// An item in the `params` outermost JSON array should either be:
+    /// - an array, it will then be treated as __positional__ params to the RPC method,
+    /// - an object, it will then be treated as __named__ params to the RPC method.
+    ///
+    /// Panics if `params` is not a JSON array.
+    /// Panics if any item in `params` outermost JSON array is neither an array nor an object.
     ///
     /// Useful for handling test cases where consecutive param sets
     /// contain vastly different variants.
@@ -161,10 +166,7 @@ impl<'a, StorageInitIter, PendingInitIter> TestWithPending<'a, StorageInitIter, 
         PendingInitIter,
         impl Clone + Iterator<Item = serde_json::Value>,
     > {
-        let params = match params {
-            serde_json::Value::Array(v) => v,
-            _ => vec![params],
-        };
+        let params = unwrap_json_array(params, self.line);
 
         TestWithParams {
             method: self.method,
@@ -337,18 +339,23 @@ pub struct TestWithExpected<'a, PendingInitIter, ParamsIter, ExpectedIter, MapEr
 impl<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
     TestWithExpected<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
 {
-    pub fn then_expect_internal_err_when_pending_disabled<PendingParams>(
+    /// Add scenarios where pending support is disabled and internal server error is expected.
+    /// Each item in `params` corresponds to a separate test case and each should
+    /// represent some vaild input to the tested method that refers to the pending block.
+    ///
+    /// An item in the `params` outermost JSON array should either be:
+    /// - an array, it will then be treated as __positional__ params to the RPC method,
+    /// - an object, it will then be treated as __named__ params to the RPC method.
+    ///
+    /// Panics if `params` is not a JSON array.
+    /// Panics if any item in `params` outermost JSON array is neither an array nor an object.
+    pub fn then_expect_internal_err_when_pending_disabled(
         self,
-        params: PendingParams,
+        params: serde_json::Value,
         error_msg: &'a str,
-    ) -> TestWithPendingDisabled<
-        'a,
-        PendingInitIter,
-        ParamsIter,
-        ExpectedIter,
-        MapErrFn,
-        PendingParams,
-    > {
+    ) -> TestWithPendingDisabled<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn> {
+        let params = unwrap_json_array(params, self.line);
+
         TestWithPendingDisabled {
             method: self.method,
             line: self.line,
@@ -363,19 +370,12 @@ impl<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
 }
 
 /// Holds data required for a disabled pending scenario
-struct PendingDisabled<'a, Params> {
-    params: Params,
+struct PendingDisabled<'a> {
+    params: Vec<serde_json::Value>,
     error_msg: &'a str,
 }
 
-pub struct TestWithPendingDisabled<
-    'a,
-    PendingInitIter,
-    ParamsIter,
-    ExpectedIter,
-    MapErrFn,
-    PendingParams,
-> {
+pub struct TestWithPendingDisabled<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn> {
     method: &'a str,
     line: u32,
     storage: Storage,
@@ -383,20 +383,11 @@ pub struct TestWithPendingDisabled<
     params: ParamsIter,
     expected: ExpectedIter,
     map_err_fn: MapErrFn,
-    pending_disabled: PendingDisabled<'a, PendingParams>,
+    pending_disabled: PendingDisabled<'a>,
 }
 
-impl<
-        'a,
-        PendingInitIter,
-        ParamsIter,
-        ExpectedIter,
-        ExpectedOk,
-        MapErrFn,
-        MappedError,
-        PendingParams,
-    >
-    TestWithPendingDisabled<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn, PendingParams>
+impl<'a, PendingInitIter, ParamsIter, ExpectedIter, ExpectedOk, MapErrFn, MappedError>
+    TestWithPendingDisabled<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
 where
     PendingInitIter: Iterator,
     <PendingInitIter as Iterator>::Item: Into<RawPendingData>,
@@ -410,7 +401,6 @@ where
     pub async fn run(self)
     where
         <ParamsIter as Iterator>::Item: Debug + Serialize,
-        PendingParams: Debug + Serialize,
     {
         let storage = self.storage;
         let sequencer = Client::new(Chain::Testnet).unwrap();
@@ -429,35 +419,36 @@ where
             let api = api_with_maybe_pending(&serialized_params, &mut pending_iter, &api).await;
             let (_handle, addr) = run_server(api, &test_case_descr).await;
             let client = client(addr);
-
-            let params = rpc_params!(params);
+            let params = serde_json::to_value(params).unwrap();
+            let params = rpc_params(&params);
             let actual = client.request::<ExpectedOk>(self.method, params).await;
             let actual = actual.map_err(|error| (self.map_err_fn)(error, &test_case_descr));
             std::assert_eq!(actual, expected, "{test_case_descr}",);
         }
 
         // Now the 'disabled pending' scenario
-        let params = self.pending_disabled.params;
+        let params_array = self.pending_disabled.params;
         let expected_error_msg = self.pending_disabled.error_msg;
+        let test_case = r#""disabled pending""#;
 
-        let test_case = "'disabled pending'";
-        let serialized_params = serialize_params(&params, line, test_case);
-        let test_case_descr = test_case_descr(line, test_case, &serialized_params);
-        let (_handle, addr) = run_server(api, &test_case_descr).await;
-        let client = client(addr);
+        for params in params_array {
+            let serialized_params = serialize_params(&params, line, test_case);
+            let test_case_descr = test_case_descr(line, test_case, &serialized_params);
+            let (_handle, addr) = run_server(api.clone(), &test_case_descr).await;
+            let client = client(addr);
+            let params = rpc_params(&params);
+            let actual = client.request::<ExpectedOk>(self.method, params).await;
+            let error = actual.expect_err(&test_case_descr);
 
-        let params = rpc_params!(params);
-        let actual = client.request::<ExpectedOk>(self.method, params).await;
-        let error = actual.expect_err(&test_case_descr);
+            use jsonrpsee::{core::error::Error, types::error::CallError};
 
-        use jsonrpsee::{core::error::Error, types::error::CallError};
-
-        assert_matches::assert_matches!(error, Error::Call(CallError::Custom(error_object)) => {
-            pretty_assertions::assert_eq!(error_object.message(), expected_error_msg, "{test_case_descr}");
-            // Internal error
-            // https://www.jsonrpc.org/specification#error_object
-            pretty_assertions::assert_eq!(error_object.code(), -32603, "{test_case_descr}");
-        });
+            assert_matches::assert_matches!(error, Error::Call(CallError::Custom(error_object)) => {
+                pretty_assertions::assert_eq!(error_object.message(), expected_error_msg, "{test_case_descr}");
+                // Internal error
+                // https://www.jsonrpc.org/specification#error_object
+                pretty_assertions::assert_eq!(error_object.code(), -32603, "{test_case_descr}");
+            });
+        }
     }
 }
 
@@ -528,4 +519,49 @@ async fn run_server(api: RpcApi, failure_msg: &str) -> (HttpServerHandle, Socket
     .run()
     .await
     .expect(&failure_msg)
+}
+
+/// Workaround before rpc_params! is actually removed from __all__ tests
+fn rpc_params<'a>(params: &'a serde_json::Value) -> Option<ParamsSer<'a>> {
+    match params {
+        serde_json::Value::Array(x) => Some(x.clone().into()),
+        serde_json::Value::Object(x) => {
+            let x = x
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.clone()))
+                .collect::<std::collections::BTreeMap<&'a str, serde_json::Value>>();
+
+            Some(x.into())
+        }
+        _ => unreachable!("{params}"),
+    }
+}
+
+fn json_value_type_name(value: &serde_json::Value) -> &str {
+    match value {
+        serde_json::Value::Null => "JSON null",
+        serde_json::Value::Bool(_) => "JSON bool",
+        serde_json::Value::Number(_) => "JSON number",
+        serde_json::Value::String(_) => "JSON string",
+        serde_json::Value::Array(_) => "JSON array",
+        serde_json::Value::Object(_) => "JSON object",
+    }
+}
+
+fn unwrap_json_array(params: serde_json::Value, line: u32) -> Vec<serde_json::Value> {
+    let params = match params {
+        serde_json::Value::Array(array) => array,
+        _ => {
+            let type_name = json_value_type_name(&params);
+            panic!("line {line}, params sets for all test cases should be passed in a single JSON array, but got {params}, which is a {type_name}");
+        }
+    };
+
+    params.iter().for_each(|x| if !x.is_array() && !x.is_object() {
+        let type_name = json_value_type_name(x);
+        panic!("line {line}, each params set for a single test case should be a JSON array or a JSON object \
+            to represent positional or named method params respectively, but got {x}, which is a {type_name}")
+    });
+
+    params
 }
