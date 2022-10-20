@@ -25,6 +25,7 @@ try:
         AccountTransaction,
     )
     from starkware.storage.storage import Storage
+    from starkware.starknet.business_logic.state.state import CachedState
 except ModuleNotFoundError:
     print(
         "missing cairo-lang module: please reinstall dependencies to upgrade.",
@@ -34,7 +35,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 21
-EXPECTED_CAIRO_VERSION = "0.10.0"
+EXPECTED_CAIRO_VERSION = "0.10.1"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
@@ -819,24 +820,24 @@ async def do_estimate_fee(
 
 
 def apply_pending(
-    state,
+    state: CachedState,
     updates: Dict[int, List[StorageDiff]],
     deployed: List[DeployedContract],
     nonces: Dict[int, int],
 ):
     for deployed_contract in deployed:
-        state.cache._class_hash_reads[
+        state.cache._class_hash_initial_values[
             deployed_contract.address
         ] = deployed_contract.contract_hash.to_bytes(length=32, byteorder="big")
 
     for addr, updates in updates.items():
         for update in updates:
-            state.cache._storage_reads[(addr, update.key)] = update.value
+            state.cache._storage_initial_values[(addr, update.key)] = update.value
 
     for addr, nonce in nonces.items():
         # bypass the CachedState.increment_nonce which would give extra queries
         # per each, and only single step at a time
-        state.cache._nonce_reads[addr] = nonce
+        state.cache._nonce_initial_values[addr] = nonce
 
 
 def create_general_config(chain_id):
