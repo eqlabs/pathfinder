@@ -112,7 +112,7 @@ impl<'a, StorageInitIter, PendingInitIter> TestWithPending<'a, StorageInitIter, 
     ///
     /// Useful for handling test cases where consecutive param sets
     /// contain vastly different variants.
-    pub fn with_params_json(
+    pub fn with_params(
         self,
         params: serde_json::Value,
     ) -> TestWithParams<

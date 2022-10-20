@@ -587,7 +587,7 @@ mod tests {
                     })
                     .take(2)
                 })
-                .with_params_json(json!([
+                .with_params(json!([
                     // Positional
                     [{"block_hash":"0x0"}],
                     [{"block_hash":"0x1"}],
