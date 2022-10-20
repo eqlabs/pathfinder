@@ -502,10 +502,7 @@ mod tests {
         let at_block_fee = handle
             .estimate_fee(
                 transaction.clone(),
-                crate::core::StarknetBlockHash(
-                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )
-                .into(),
+                crate::core::StarknetBlockNumber::new_or_panic(1).into(),
                 super::GasPriceSource::PastBlock,
                 None,
             )

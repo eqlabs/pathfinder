@@ -217,7 +217,9 @@ impl serde::Serialize for BlockHashNumberOrLatest {
         use BlockHashNumberOrLatest::*;
         match self {
             Hash(h) => h.serialize(serializer),
-            Number(n) => n.serialize(serializer),
+            // We serialize block number as string, since the Python-side dataclass expects
+            // `at_block` to be a string (and does proper conversion on that)
+            Number(n) => n.get().to_string().serialize(serializer),
             // I failed to get this working with the derive(serde::Serialize)
             Latest => "latest".serialize(serializer),
         }
@@ -378,7 +380,7 @@ mod tests {
 
         let data = &[
             (StarknetBlockHash(StarkHash::ZERO).into(), "\"0x0\""),
-            (StarknetBlockNumber::GENESIS.into(), "0"),
+            (StarknetBlockNumber::GENESIS.into(), "\"0\""),
             (BlockHashNumberOrLatest::Latest, "\"latest\""),
         ];
 
