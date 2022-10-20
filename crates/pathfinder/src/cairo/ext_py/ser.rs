@@ -380,7 +380,7 @@ mod tests {
 
         let data = &[
             (StarknetBlockHash(StarkHash::ZERO).into(), "\"0x0\""),
-            (StarknetBlockNumber::GENESIS.into(), "0"),
+            (StarknetBlockNumber::GENESIS.into(), "\"0\""),
             (BlockHashNumberOrLatest::Latest, "\"latest\""),
         ];
 
