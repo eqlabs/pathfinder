@@ -143,3 +143,17 @@ impl sequencer::reply::StateUpdate {
         }
     }
 }
+
+impl sequencer::reply::state_update::StateDiff {
+    /// Use in tests where an instance has to be provided for initializatioin
+    /// because the api does not accept `Option<StateDiff>` but otherwise
+    /// the values will not be used.
+    pub fn empty_for_test() -> Self {
+        Self {
+            storage_diffs: HashMap::new(),
+            deployed_contracts: vec![],
+            declared_contracts: vec![],
+            nonces: HashMap::new(),
+        }
+    }
+}
