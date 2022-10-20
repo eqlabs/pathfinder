@@ -1,20 +1,18 @@
 //! Basic test fixtures for storage.
 
-use crate::{
-    core::{
-        ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
-        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
-        StorageValue,
-    },
-    rpc::v01::types::reply::{
-        state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
-        StateUpdate,
-    },
-    sequencer,
-    storage::{StarknetBlock, Storage},
+use crate::core::{
+    ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress, StorageValue,
 };
+use crate::rpc::v01::types::reply::{
+    state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
+    StateUpdate,
+};
+use crate::sequencer;
+use crate::storage::{StarknetBlock, Storage};
 use rusqlite::Transaction;
 use stark_hash::StarkHash;
+use std::collections::HashMap;
 
 /// Generate [`StarkHash`] from a sequence of bytes.
 macro_rules! hash {
@@ -107,4 +105,41 @@ where
 pub struct RawPendingData {
     pub block: Option<sequencer::reply::PendingBlock>,
     pub state_update: Option<sequencer::reply::StateUpdate>,
+}
+
+impl sequencer::reply::PendingBlock {
+    /// Use in tests where an instance has to be provided for initializatioin
+    /// because the api does not accept `Option<PendingBlock>` but otherwise
+    /// the values will not be used.
+    pub fn dummy_for_test() -> Self {
+        Self {
+            gas_price: GasPrice::ZERO,
+            parent_hash: StarknetBlockHash(StarkHash::ZERO),
+            sequencer_address: SequencerAddress(StarkHash::ZERO),
+            status: sequencer::reply::Status::AcceptedOnL1,
+            timestamp: StarknetBlockTimestamp::new_or_panic(0),
+            transaction_receipts: vec![],
+            transactions: vec![],
+            starknet_version: None,
+        }
+    }
+}
+
+impl sequencer::reply::StateUpdate {
+    /// Use in tests where an instance has to be provided for initializatioin
+    /// because the api does not accept `Option<StateUpdate>` but otherwise
+    /// the values will not be used.
+    pub fn dummy_for_test() -> Self {
+        Self {
+            block_hash: None,
+            new_root: GlobalRoot(StarkHash::ZERO),
+            old_root: GlobalRoot(StarkHash::ZERO),
+            state_diff: sequencer::reply::state_update::StateDiff {
+                storage_diffs: HashMap::new(),
+                deployed_contracts: vec![],
+                declared_contracts: vec![],
+                nonces: HashMap::new(),
+            },
+        }
+    }
 }
