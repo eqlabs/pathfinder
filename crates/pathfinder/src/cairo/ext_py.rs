@@ -102,11 +102,16 @@ impl Handle {
                     fee: ZERO,
                 });
             }
-            BroadcastedTransaction::DeployAccount(_) => {
-                // TODO(0.10.1) Cairo upgrade is required for estimate_fee to support DEPLOY_ACCOUNT
-                return Err(CallFailure::Internal(
-                    "DEPLOY_ACCOUNT transactions are unsupported",
-                ));
+            BroadcastedTransaction::DeployAccount(tx) => {
+                add_transaction::AddTransaction::DeployAccount(add_transaction::DeployAccount {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    nonce: tx.nonce,
+                    class_hash: tx.class_hash,
+                    contract_address_salt: tx.contract_address_salt,
+                    constructor_calldata: tx.constructor_calldata,
+                })
             }
             BroadcastedTransaction::Declare(tx) => {
                 add_transaction::AddTransaction::Declare(add_transaction::Declare {
@@ -336,12 +341,13 @@ mod tests {
     use super::sub_process::launch_python;
     use crate::{
         core::{
-            ContractAddress, ContractNonce, ContractRoot, ContractStateHash, GasPrice,
-            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StorageAddress, StorageValue,
+            ClassHash, ContractAddress, ContractAddressSalt, ContractNonce, ContractStateHash,
+            GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+            StarknetBlockTimestamp, StorageAddress, StorageValue,
         },
         rpc::v02::types::request::{
-            BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV0, BroadcastedTransaction,
+            BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction,
+            BroadcastedInvokeTransactionV0, BroadcastedTransaction,
         },
         starkhash, starkhash_bytes,
         storage::StarknetBlock,
@@ -554,6 +560,77 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    async fn estimate_fee_for_deploy_account() {
+        // TODO: refactor the outer parts to a with_test_env or similar?
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+
+        let s = crate::storage::Storage::migrate(
+            PathBuf::from(db_file.path()),
+            crate::storage::JournalMode::WAL,
+        )
+        .unwrap();
+
+        let mut conn = s.connection().unwrap();
+        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
+
+        let tx = conn.transaction().unwrap();
+
+        let account_contract_class_hash = deploy_account_contract_in_block_one(&tx);
+
+        tx.commit().unwrap();
+
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let (handle, jh) = super::start(
+            PathBuf::from(db_file.path()),
+            std::num::NonZeroUsize::new(1).unwrap(),
+            async move {
+                let _ = shutdown_rx.await;
+            },
+            // chain doesn't matter here because we are not estimating any real transaction
+            crate::core::Chain::Testnet,
+        )
+        .await
+        .unwrap();
+
+        let transaction =
+            BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction {
+                version: crate::core::TransactionVersion::ONE_WITH_QUERY_VERSION,
+                max_fee: super::Call::DEFAULT_MAX_FEE,
+                signature: Default::default(),
+                nonce: super::Call::DEFAULT_NONCE,
+                contract_address_salt: ContractAddressSalt(StarkHash::ZERO),
+                class_hash: account_contract_class_hash,
+                constructor_calldata: vec![],
+            });
+
+        let at_block_fee = handle
+            .estimate_fee(
+                transaction.clone(),
+                crate::core::StarknetBlockNumber::new_or_panic(1).into(),
+                super::GasPriceSource::PastBlock,
+                None,
+            )
+            .await
+            .unwrap();
+
+        use web3::types::H256;
+
+        assert_eq!(
+            at_block_fee,
+            crate::rpc::v01::types::reply::FeeEstimate {
+                consumed: H256::from_low_u64_be(0xa2c),
+                gas_price: H256::from_low_u64_be(1),
+                fee: H256::from_low_u64_be(0xa2c),
+            }
+        );
+
+        shutdown_tx.send(()).unwrap();
+
+        jh.await.unwrap();
+    }
+
+    #[test_log::test(tokio::test)]
     async fn call_with_unknown_contract() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -715,27 +792,27 @@ mod tests {
         jh.await.unwrap();
     }
 
-    fn deploy_test_contract_in_block_one(tx: &rusqlite::Transaction<'_>) {
-        let contract_definition = zstd::decode_all(std::io::Cursor::new(include_bytes!(
+    fn deploy_test_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
+        let test_contract_definition = zstd::decode_all(std::io::Cursor::new(include_bytes!(
             "../../fixtures/contract_definition.json.zst"
         )))
         .unwrap();
 
-        let contract_address = ContractAddress::new_or_panic(starkhash!(
+        let test_contract_address = ContractAddress::new_or_panic(starkhash!(
             "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
         ));
 
-        let contract_state_hash = deploy_contract(
+        let (test_contract_state_hash, test_contract_class_hash) = deploy_contract(
             tx,
-            contract_address,
-            &contract_definition,
+            test_contract_address,
+            &test_contract_definition,
             &[(
                 StorageAddress::new_or_panic(starkhash!("84")),
                 StorageValue(starkhash!("03")),
             )],
         );
 
-        // and then the global tree
+        // and then add the contract states to the global tree
         let mut global_tree = crate::state::state_tree::GlobalStateTree::load(
             tx,
             crate::core::GlobalRoot(StarkHash::ZERO),
@@ -743,7 +820,7 @@ mod tests {
         .unwrap();
 
         global_tree
-            .set(contract_address, contract_state_hash)
+            .set(test_contract_address, test_contract_state_hash)
             .unwrap();
         let global_root = global_tree.apply().unwrap();
 
@@ -776,6 +853,68 @@ mod tests {
                 println!("{}", hex::encode(first));
             }
         }
+
+        test_contract_class_hash
+    }
+
+    fn deploy_account_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
+        let account_contract_definition = zstd::decode_all(std::io::Cursor::new(include_bytes!(
+            "../../fixtures/dummy_account.json.zst"
+        )))
+        .unwrap();
+
+        let account_contract_address = ContractAddress::new_or_panic(starkhash!("0123"));
+
+        let (account_contract_state_hash, account_contract_class_hash) = deploy_contract(
+            tx,
+            account_contract_address,
+            &account_contract_definition,
+            &[],
+        );
+
+        // and then add the contract states to the global tree
+        let mut global_tree = crate::state::state_tree::GlobalStateTree::load(
+            tx,
+            crate::core::GlobalRoot(StarkHash::ZERO),
+        )
+        .unwrap();
+
+        global_tree
+            .set(account_contract_address, account_contract_state_hash)
+            .unwrap();
+        let global_root = global_tree.apply().unwrap();
+
+        // create a block with the global root
+        crate::storage::StarknetBlocksTable::insert(
+            tx,
+            &StarknetBlock {
+                number: StarknetBlockNumber::new_or_panic(1),
+                hash: StarknetBlockHash(starkhash_bytes!(b"some blockhash somewhere")),
+                root: global_root,
+                timestamp: StarknetBlockTimestamp::new_or_panic(1),
+                gas_price: GasPrice(1),
+                sequencer_address: SequencerAddress(StarkHash::ZERO),
+            },
+            None,
+        )
+        .unwrap();
+
+        if false {
+            let mut stmt = tx
+                .prepare("select starknet_block_hash from global_state")
+                .unwrap();
+            let mut rows = stmt.query([]).unwrap();
+            while let Some(row) = rows.next().unwrap() {
+                let first = row.get_ref(0).expect("get column");
+
+                println!("{:?}", first);
+
+                let first = first.as_blob().expect("cannot read it as a blob");
+                println!("{}", hex::encode(first));
+            }
+        }
+
+        account_contract_class_hash
     }
 
     fn deploy_contract(
@@ -783,7 +922,7 @@ mod tests {
         contract_address: ContractAddress,
         contract_definition: &[u8],
         storage_updates: &[(StorageAddress, StorageValue)],
-    ) -> ContractStateHash {
+    ) -> (ContractStateHash, ClassHash) {
         let (abi, bytecode, class_hash) =
             crate::state::class_hash::extract_abi_code_hash(contract_definition).unwrap();
 
@@ -831,6 +970,6 @@ mod tests {
         )
         .unwrap();
 
-        contract_state_hash
+        (contract_state_hash, class_hash)
     }
 }
