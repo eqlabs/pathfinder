@@ -578,7 +578,7 @@ mod tests {
         async fn happy_path_and_starkware_errors() {
             Test::new("starknet_getStateUpdate", line!())
                 .with_storage(|tx| with_n_state_updates(tx, 3))
-                .map_pending_then_empty_then_disabled(|_, _| {
+                .map_pending_then_empty(|_, _| {
                     std::iter::repeat(sequencer::reply::StateUpdate {
                         block_hash: None,
                         new_root: GlobalRoot(starkhash_bytes!(b"new")),

@@ -67,7 +67,7 @@ impl<'a, StorageInitIter> TestWithStorage<'a, StorageInitIter> {
     /// The calls to `pending` will yield pending data from
     /// 1. the iterable collection created by the mapping function `f`
     /// 2. and when the resulting iterator is exhausted __empty__ pending data is returned
-    pub fn map_pending_then_empty_then_disabled<PendingInitFn, PendingInitIntoIterator>(
+    pub fn map_pending_then_empty<PendingInitFn, PendingInitIntoIterator>(
         self,
         f: PendingInitFn,
     ) -> TestWithPending<'a, StorageInitIter, PendingInitIntoIterator::IntoIter>
