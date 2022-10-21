@@ -115,12 +115,7 @@ impl<'a, StorageInitIter, PendingInitIter> TestWithPending<'a, StorageInitIter, 
     pub fn with_params(
         self,
         params: serde_json::Value,
-    ) -> TestWithParams<
-        'a,
-        StorageInitIter,
-        PendingInitIter,
-        impl Clone + Iterator<Item = serde_json::Value>,
-    > {
+    ) -> TestWithParams<'a, StorageInitIter, PendingInitIter> {
         let params = unwrap_json_array(params, self.line);
 
         TestWithParams {
@@ -129,30 +124,28 @@ impl<'a, StorageInitIter, PendingInitIter> TestWithPending<'a, StorageInitIter, 
             storage: self.storage,
             storage_init: self.storage_init,
             pending_init: self.pending_init,
-            params: params.into_iter(),
+            params,
         }
     }
 }
 
-pub struct TestWithParams<'a, StorageInitIter, PendingInitIter, ParamsIter> {
+pub struct TestWithParams<'a, StorageInitIter, PendingInitIter> {
     method: &'a str,
     line: u32,
     storage: Storage,
     storage_init: StorageInitIter,
     pending_init: PendingInitIter,
-    params: ParamsIter,
+    params: Vec<serde_json::Value>,
 }
 
-impl<'a, StorageInitIter, PendingInitIter, ParamsIter>
-    TestWithParams<'a, StorageInitIter, PendingInitIter, ParamsIter>
-{
+impl<'a, StorageInitIter, PendingInitIter> TestWithParams<'a, StorageInitIter, PendingInitIter> {
     /// Map actual `jsonrpsee::core::Error` replies from the RPC server to a more manageable type,
     /// so that expressing the actual expected outputs is easier.
     /// The mapping function also takes the line and test case numbers.
     pub fn map_err<MapErrFn, MappedError>(
         self,
         f: MapErrFn,
-    ) -> TestWithMapErr<'a, StorageInitIter, PendingInitIter, ParamsIter, MapErrFn>
+    ) -> TestWithMapErr<'a, StorageInitIter, PendingInitIter, MapErrFn>
     where
         MapErrFn: FnOnce(jsonrpsee::core::Error, &str) -> MappedError,
     {
@@ -176,7 +169,6 @@ impl<'a, StorageInitIter, PendingInitIter, ParamsIter>
         'a,
         StorageInitIter,
         PendingInitIter,
-        ParamsIter,
         impl Copy + FnOnce(jsonrpsee::core::Error, &str) -> crate::rpc::v01::types::reply::ErrorCode,
     > {
         self.map_err(|error, test_case_descr| match &error {
@@ -193,18 +185,18 @@ impl<'a, StorageInitIter, PendingInitIter, ParamsIter>
     }
 }
 
-pub struct TestWithMapErr<'a, StorageInitIter, PendingInitIter, ParamsIter, MapErrFn> {
+pub struct TestWithMapErr<'a, StorageInitIter, PendingInitIter, MapErrFn> {
     method: &'a str,
     line: u32,
     storage: Storage,
     storage_init: StorageInitIter,
     pending_init: PendingInitIter,
-    params: ParamsIter,
+    params: Vec<serde_json::Value>,
     map_err_fn: MapErrFn,
 }
 
-impl<'a, StorageInitIter, PendingInitIter, ParamsIter, MapErrFn>
-    TestWithMapErr<'a, StorageInitIter, PendingInitIter, ParamsIter, MapErrFn>
+impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
+    TestWithMapErr<'a, StorageInitIter, PendingInitIter, MapErrFn>
 {
     /// Initialize test setup with a sequence of expected test outputs.
     ///
@@ -215,16 +207,15 @@ impl<'a, StorageInitIter, PendingInitIter, ParamsIter, MapErrFn>
     pub fn with_expected<ExpectedIntoIterator, ExpectedIter, ExpectedOk, MappedError>(
         self,
         expected: ExpectedIntoIterator,
-    ) -> TestWithExpected<'a, PendingInitIter, ParamsIter, ExpectedIntoIterator::IntoIter, MapErrFn>
+    ) -> TestWithExpected<'a, PendingInitIter, ExpectedIntoIterator::IntoIter, MapErrFn>
     where
         ExpectedIntoIterator: IntoIterator<Item = Result<ExpectedOk, MappedError>>,
         <ExpectedIntoIterator as IntoIterator>::IntoIter: Clone,
         ExpectedOk: Clone,
-        ParamsIter: Clone + Iterator,
     {
         let expected_iter = expected.into_iter();
         let expected_cnt = expected_iter.clone().count();
-        let params_cnt = self.params.clone().count();
+        let params_cnt = self.params.len();
         std::assert_eq!(params_cnt, expected_cnt,
                         "numbers of test cases from vectors differ (params: {params_cnt}, expected outputs: {expected_cnt}), line {}", self.line);
         TestWithExpected {
@@ -254,7 +245,7 @@ impl<'a, StorageInitIter, PendingInitIter, ParamsIter, MapErrFn>
     >(
         self,
         f: StorageAndPendingInitToExpectedMapperFn,
-    ) -> TestWithExpected<'a, PendingInitIter, ParamsIter, ExpectedIntoIterator::IntoIter, MapErrFn>
+    ) -> TestWithExpected<'a, PendingInitIter, ExpectedIntoIterator::IntoIter, MapErrFn>
     where
         PendingInitIter: Clone,
         StorageAndPendingInitToExpectedMapperFn:
@@ -262,11 +253,10 @@ impl<'a, StorageInitIter, PendingInitIter, ParamsIter, MapErrFn>
         ExpectedIntoIterator: IntoIterator<Item = Result<ExpectedOk, MappedError>>,
         <ExpectedIntoIterator as IntoIterator>::IntoIter: Clone,
         ExpectedOk: Clone,
-        ParamsIter: Clone + Iterator,
     {
         let expected_iter = f(self.storage_init, self.pending_init.clone()).into_iter();
         let expected_cnt = expected_iter.clone().count();
-        let params_cnt = self.params.clone().count();
+        let params_cnt = self.params.len();
         std::assert_eq!(params_cnt, expected_cnt,
                         "numbers of test cases from vectors differ (params: {params_cnt}, expected outputs: {expected_cnt}), line {}", self.line);
         TestWithExpected {
@@ -281,18 +271,18 @@ impl<'a, StorageInitIter, PendingInitIter, ParamsIter, MapErrFn>
     }
 }
 
-pub struct TestWithExpected<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn> {
+pub struct TestWithExpected<'a, PendingInitIter, ExpectedIter, MapErrFn> {
     method: &'a str,
     line: u32,
     storage: Storage,
     pending_init: PendingInitIter,
-    params: ParamsIter,
+    params: Vec<serde_json::Value>,
     expected: ExpectedIter,
     map_err_fn: MapErrFn,
 }
 
-impl<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
-    TestWithExpected<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
+impl<'a, PendingInitIter, ExpectedIter, MapErrFn>
+    TestWithExpected<'a, PendingInitIter, ExpectedIter, MapErrFn>
 {
     /// Add scenarios where pending support is disabled and internal server error is expected.
     /// Each item in `params` corresponds to a separate test case and each should
@@ -308,7 +298,7 @@ impl<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
         self,
         params: serde_json::Value,
         error_msg: &'a str,
-    ) -> TestWithPendingDisabled<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn> {
+    ) -> TestWithPendingDisabled<'a, PendingInitIter, ExpectedIter, MapErrFn> {
         let params = unwrap_json_array(params, self.line);
 
         TestWithPendingDisabled {
@@ -330,40 +320,36 @@ struct PendingDisabled<'a> {
     error_msg: &'a str,
 }
 
-pub struct TestWithPendingDisabled<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn> {
+pub struct TestWithPendingDisabled<'a, PendingInitIter, ExpectedIter, MapErrFn> {
     method: &'a str,
     line: u32,
     storage: Storage,
     pending_init: PendingInitIter,
-    params: ParamsIter,
+    params: Vec<serde_json::Value>,
     expected: ExpectedIter,
     map_err_fn: MapErrFn,
     pending_disabled: PendingDisabled<'a>,
 }
 
-impl<'a, PendingInitIter, ParamsIter, ExpectedIter, ExpectedOk, MapErrFn, MappedError>
-    TestWithPendingDisabled<'a, PendingInitIter, ParamsIter, ExpectedIter, MapErrFn>
+impl<'a, PendingInitIter, ExpectedIter, ExpectedOk, MapErrFn, MappedError>
+    TestWithPendingDisabled<'a, PendingInitIter, ExpectedIter, MapErrFn>
 where
     PendingInitIter: Iterator,
     <PendingInitIter as Iterator>::Item: Into<RawPendingData>,
-    ParamsIter: Iterator,
     ExpectedIter: Iterator<Item = Result<ExpectedOk, MappedError>>,
     ExpectedOk: Clone + DeserializeOwned + Debug + PartialEq,
     MapErrFn: FnOnce(jsonrpsee::core::Error, &str) -> MappedError + Copy,
     MappedError: Debug + PartialEq,
 {
     /// Runs the test cases.
-    pub async fn run(self)
-    where
-        <ParamsIter as Iterator>::Item: Debug + Serialize,
-    {
+    pub async fn run(self) {
         let storage = self.storage;
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
         let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
 
         let line = self.line;
-        let params_iter = self.params;
+        let params_iter = self.params.into_iter();
         let expected_iter = self.expected;
         let mut pending_iter = self.pending_init;
 
