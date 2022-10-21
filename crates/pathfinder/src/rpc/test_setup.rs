@@ -540,10 +540,12 @@ where
             // Some valid pending data fixture is available, use it
             Some(pending_data) => {
                 let pending_data = pending_data.into();
-                let block = pending_data.block.unwrap_or(PendingBlock::dummy_for_test());
+                let block = pending_data
+                    .block
+                    .unwrap_or_else(PendingBlock::dummy_for_test);
                 let state_update = pending_data
                     .state_update
-                    .unwrap_or(StateUpdate::dummy_for_test());
+                    .unwrap_or_else(StateUpdate::dummy_for_test);
                 let pending_data = PendingData::default();
                 pending_data
                     .set(Arc::new(block), Arc::new(state_update))
@@ -566,7 +568,7 @@ async fn run_server(api: RpcApi, failure_msg: &str) -> (HttpServerHandle, Socket
     )
     .run()
     .await
-    .expect(&failure_msg)
+    .expect(failure_msg)
 }
 
 /// Workaround before rpc_params! is actually removed from __all__ tests
@@ -614,7 +616,7 @@ fn unwrap_json_array(params: serde_json::Value, line: u32) -> Vec<serde_json::Va
     params
 }
 
-fn client<'a>(addr: SocketAddr, path: &'a str) -> TestClient {
+fn client(addr: SocketAddr, path: &str) -> TestClient {
     TestClientBuilder::default()
         .with_request_timeout(Duration::from_secs(120))
         .with_path(path)
