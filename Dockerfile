@@ -60,7 +60,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-d
 
 WORKDIR /usr/share/pathfinder
 COPY py py
-RUN python3 -m pip --disable-pip-version-check install -r py/requirements.txt
+RUN python3 -m pip --disable-pip-version-check install py/.
 
 # This reduces the size of the python libs by about 50%
 ENV PY_PATH=/usr/local/lib/python3.8/
@@ -81,6 +81,7 @@ RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pat
 
 COPY --from=rust-builder /usr/src/pathfinder/target/release/pathfinder /usr/local/bin/pathfinder
 COPY --from=python-builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
+COPY --from=python-builder /usr/local/bin/pathfinder_python_worker /usr/local/bin
 
 # Create directory and volume for persistent data
 RUN install --owner 1000 --group 1000 --mode 0755 -d /usr/share/pathfinder/data

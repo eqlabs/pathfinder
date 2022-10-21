@@ -1,5 +1,0 @@
--c requirements.txt
-pip-tools==6.9.0
-pytest==7.1.3
-flake8==5.0.4
-black==22.10.0

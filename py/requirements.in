@@ -1,6 +1,0 @@
-# see README.md
-cairo-lang==0.10.1
-# We don't use rlp directly, however this needs to be defined for it to help pip-compile
-eth-rlp==0.2.1
-zstandard==0.18.0
-cachetools==5.0.0

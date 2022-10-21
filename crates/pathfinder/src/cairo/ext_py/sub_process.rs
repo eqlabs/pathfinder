@@ -6,7 +6,7 @@ use super::{
     CallFailure, Command, SharedReceiver, SubProcessEvent, SubprocessError, SubprocessExitReason,
 };
 use anyhow::Context;
-use std::{io::Write, path::PathBuf};
+use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{broadcast, mpsc};
@@ -166,27 +166,13 @@ pub(super) async fn launch_python(
     Ok((pid, exit_status, exit_reason))
 }
 
-const PYTHON_SCRIPT_SOURCE: &str = include_str!("../../../../../py/src/call.py");
-
 async fn spawn(
     database_path: PathBuf,
     current_span: std::sync::Arc<std::sync::Mutex<tracing::Span>>,
 ) -> anyhow::Result<(Child, u32, ChildStdin, BufReader<ChildStdout>, String)> {
-    // this is done so that we avoid explicit dependency to the location of `py/` directory thus
-    // making docker image much easier to do. however it does infect (GPL-style, should such
-    // license be cairo-lang's license ever in future) our main binary due to this being very much
-    // "static linkage".
-    let script_file = tempfile::NamedTempFile::new()
-        .context("Failed to create temporary file for Python script")?;
-    script_file
-        .as_file()
-        .write_all(PYTHON_SCRIPT_SOURCE.as_bytes())
-        .context("Failed to write temporary file for Python script")?;
-
     // FIXME: use choom, add something over /proc/self/oom_score_adj ?
-    let mut command = tokio::process::Command::new("python3");
+    let mut command = tokio::process::Command::new("pathfinder_python_worker");
     command
-        .arg(script_file.path())
         .arg(database_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

@@ -10,8 +10,8 @@ from starkware.starknet.services.api.gateway.transaction import InvokeFunction, 
 from starkware.starknet.services.api.contract_class import ContractClass
 from starkware.starkware_utils.error_handling import WebFriendlyException
 
-import call
-from call import (
+import pathfinder_worker.call as call
+from pathfinder_worker.call import (
     EXPECTED_SCHEMA_REVISION,
     NOT_FOUND_CONTRACT_STATE,
     Call,
@@ -230,7 +230,7 @@ def populate_test_contract_with_132_on_3(con):
     cur = con.execute("BEGIN")
 
     path = test_relative_path(
-        "../../crates/pathfinder/fixtures/contract_definition.json.zst"
+        "../../../crates/pathfinder/fixtures/contract_definition.json.zst"
     )
 
     with open(path, "rb") as file:
@@ -533,7 +533,7 @@ def test_fee_estimate_for_declare_transaction_directly():
     contract_address = populate_test_contract_with_132_on_3(con)
 
     path = test_relative_path(
-        "../../crates/pathfinder/fixtures/contract_definition.json.zst"
+        "../../../crates/pathfinder/fixtures/contract_definition.json.zst"
     )
 
     with open(path, "rb") as file:
@@ -876,7 +876,9 @@ def test_nonce_with_dummy():
     con = inmemory_with_tables()
     test_contract = populate_test_contract_with_132_on_3(con)
 
-    path = test_relative_path("../../crates/pathfinder/fixtures/dummy_account.json.zst")
+    path = test_relative_path(
+        "../../../crates/pathfinder/fixtures/dummy_account.json.zst"
+    )
 
     cur = con.execute("BEGIN")
 

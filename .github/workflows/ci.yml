@@ -42,7 +42,7 @@ jobs:
         with:
           path: ${{ env.pythonLocation }}/**/site-packages
           key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}
-      - run: pip install -r py/requirements.txt -r py/requirements-dev.txt
+      - run: pip install -e py/.
       - run: |
           cargo test --no-run --workspace --locked
           timeout 5m cargo test -p pathfinder -- --skip ethereum::
@@ -115,7 +115,7 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -e .[dev]
 
       - name: Test (python)
         run: |
@@ -127,13 +127,13 @@ jobs:
         run: |
           source py/.venv/bin/activate
           cd py
-          black --check src/
+          black --check .
 
       - name: Lints (python)
         run: |
           source py/.venv/bin/activate
           cd py
-          flake8 src/
+          flake8 src/ tests/ tools/
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: rui314/setup-mold@v1
