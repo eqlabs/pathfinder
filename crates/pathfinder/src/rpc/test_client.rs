@@ -12,44 +12,54 @@ use serde::de::DeserializeOwned;
 /// Create an RPC [`TestClient`] with a timeout of 120 seconds.
 pub fn client(addr: SocketAddr) -> TestClient {
     TestClientBuilder::default()
-        .request_timeout(Duration::from_secs(120))
+        .with_request_timeout(Duration::from_secs(120))
         .build(addr)
         .expect("Failed to create test HTTP-RPC client")
 }
 
 /// Test Http Client Builder.
 #[derive(Debug)]
-pub struct TestClientBuilder {
+pub struct TestClientBuilder<'a> {
     request_timeout: Duration,
+    path: Option<&'a str>,
 }
 
 #[allow(dead_code)]
-impl TestClientBuilder {
+impl<'a> TestClientBuilder<'a> {
     /// Set request timeout (default is 120 seconds).
-    pub fn request_timeout(mut self, timeout: Duration) -> Self {
+    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;
         self
     }
 
+    /// Set path (default is none).
+    pub fn with_path(mut self, path: &'a str) -> Self {
+        self.path = Some(path);
+        self
+    }
+
     /// Build the HTTP client with target to connect to.
-    pub fn build(self, target: std::net::SocketAddr) -> Result<TestClient, Error> {
+    pub fn build(self, addr: SocketAddr) -> Result<TestClient, Error> {
         let transport = reqwest::Client::builder()
             .timeout(self.request_timeout)
             .build()
             .map_err(|e| Error::Transport(e.into()))?;
 
+        let path = self.path.unwrap_or_default();
+
         Ok(TestClient {
             transport,
-            target: reqwest::Url::parse(&format!("http://{target}")).unwrap(),
+            target: reqwest::Url::parse(&format!("http://{addr}{path}")).unwrap(),
             current_id: AtomicU64::new(0),
         })
     }
 }
 
-impl Default for TestClientBuilder {
+impl Default for TestClientBuilder<'_> {
     fn default() -> Self {
         Self {
             request_timeout: Duration::from_secs(120),
+            path: None,
         }
     }
 }
@@ -105,10 +115,23 @@ impl TestClient {
             .send()
             .await
         {
-            Ok(response) => match response.bytes().await {
-                Ok(body) => body,
-                Err(error) => return Err(Error::Transport(error.into())),
-            },
+            Ok(response) => {
+                let status = response.status();
+
+                if status.is_success() {
+                    match response.bytes().await {
+                        Ok(body) => body,
+                        Err(error) => return Err(Error::Transport(error.into())),
+                    }
+                } else {
+                    // Normal clients would just return the HTTP body content, but we really wanna return
+                    // the convenient error type, so let's just return some exotic variant with some
+                    // informative content
+                    return Err(Error::Custom(format!(
+                        "TestClient: Server replied with HTTP status {status}",
+                    )));
+                }
+            }
             Err(error) => {
                 if error.is_timeout() {
                     return Err(Error::RequestTimeout);
@@ -141,7 +164,7 @@ impl TestClient {
                     // We could also use a `ParseError` here but it would not be as informative.
                     {
                         return Err(Error::Custom(format!(
-                            "Error deserializing {}, {error}",
+                            "TestClient: Error deserializing {}, {error}",
                             std::any::type_name::<R>()
                         )))
                     }

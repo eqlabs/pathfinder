@@ -642,7 +642,7 @@ mod tests {
                     json!([["pending"], {"block_id":"pending"}]),
                     "Internal error: Pending data not supported in this configuration",
                 )
-                .run()
+                .run(vec!["", "/", "/rpc/v0.1"])
                 .await;
         }
     }

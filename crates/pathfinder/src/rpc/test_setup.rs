@@ -1,6 +1,6 @@
 ///! Utilities for easier construction of RPC tests.
 use crate::core::Chain;
-use crate::rpc::test_client::client;
+use crate::rpc::test_client::{TestClient, TestClientBuilder};
 use crate::rpc::{RpcApi, RpcServer};
 use crate::sequencer::reply::{PendingBlock, StateUpdate};
 use crate::sequencer::Client;
@@ -15,6 +15,7 @@ use rusqlite::Transaction;
 use std::fmt::Debug;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
+use std::time::Duration;
 
 pub struct Test<'a> {
     method: &'a str,
@@ -430,63 +431,62 @@ pub struct TestWithPendingDisabled<'a, PendingInitIter, ExpectedIter, MapErrFn> 
 impl<'a, PendingInitIter, ExpectedIter, ExpectedOk, MapErrFn, MappedError>
     TestWithPendingDisabled<'a, PendingInitIter, ExpectedIter, MapErrFn>
 where
-    PendingInitIter: Iterator,
+    PendingInitIter: Clone + Iterator,
     <PendingInitIter as Iterator>::Item: Into<RawPendingData>,
-    ExpectedIter: Iterator<Item = Result<ExpectedOk, MappedError>>,
+    ExpectedIter: Clone + Iterator<Item = Result<ExpectedOk, MappedError>>,
     ExpectedOk: Clone + DeserializeOwned + Debug + PartialEq,
     MapErrFn: FnOnce(jsonrpsee::core::Error, &str) -> MappedError + Copy,
     MappedError: Debug + PartialEq,
 {
-    /// Runs all test cases in the following order:
+    /// Runs all test cases for each of the `paths` in the following order:
     /// 1. those defined by `with_params`
     /// 2. and then the _pending disabled_ scenarios, as defined by `then_expect_internal_err_when_pending_disabled`
-    pub async fn run(self) {
+    pub async fn run<'b>(self, paths: Vec<&'b str>) {
         let storage = self.storage;
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
         let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
 
         let line = self.line;
-        let params_iter = self.params.into_iter();
-        let expected_iter = self.expected;
-        let mut pending_iter = self.pending_init;
+        const TEST_CASE: &str = r#""disabled pending""#;
 
-        // Iterate through all the 'normal' scenarios
-        for (test_case, (params, expected)) in params_iter.zip(expected_iter).enumerate() {
-            let serialized_params = serialize_params(&params, line, test_case);
-            let test_case_descr = test_case_descr(line, test_case, &serialized_params);
-            let api = api_with_maybe_pending(&serialized_params, &mut pending_iter, &api).await;
-            let (_handle, addr) = run_server(api, &test_case_descr).await;
-            let client = client(addr);
-            let params = serde_json::to_value(params).unwrap();
-            let params = rpc_params(&params);
-            let actual = client.request::<ExpectedOk>(self.method, params).await;
-            let actual = actual.map_err(|error| (self.map_err_fn)(error, &test_case_descr));
-            std::assert_eq!(actual, expected, "{test_case_descr}",);
-        }
+        for path in paths {
+            let mut pending_iter = self.pending_init.clone();
 
-        // Now the 'disabled pending' scenario
-        let params_array = self.pending_disabled.params;
-        let expected_error_msg = self.pending_disabled.error_msg;
-        let test_case = r#""disabled pending""#;
+            // Iterate through all the 'normal' scenarios
+            for (test_case, (params, expected)) in
+                self.params.iter().zip(self.expected.clone()).enumerate()
+            {
+                let serialized_params = serialize_params(&params, line, test_case);
+                let test_case_descr = test_case_descr(line, test_case, &serialized_params, path);
+                let api = api_with_maybe_pending(&serialized_params, &mut pending_iter, &api).await;
+                let (_handle, addr) = run_server(api, &test_case_descr).await;
+                let client = client(addr, path);
+                let params = serde_json::to_value(params).unwrap();
+                let params = rpc_params(&params);
+                let actual = client.request::<ExpectedOk>(self.method, params).await;
+                let actual = actual.map_err(|error| (self.map_err_fn)(error, &test_case_descr));
+                std::assert_eq!(actual, expected, "{test_case_descr}",);
+            }
 
-        for params in params_array {
-            let serialized_params = serialize_params(&params, line, test_case);
-            let test_case_descr = test_case_descr(line, test_case, &serialized_params);
-            let (_handle, addr) = run_server(api.clone(), &test_case_descr).await;
-            let client = client(addr);
-            let params = rpc_params(&params);
-            let actual = client.request::<ExpectedOk>(self.method, params).await;
-            let error = actual.expect_err(&test_case_descr);
+            for params in self.pending_disabled.params.clone() {
+                let serialized_params = serialize_params(&params, line, TEST_CASE);
+                let test_case_descr = test_case_descr(line, TEST_CASE, &serialized_params, path);
+                let (_handle, addr) = run_server(api.clone(), &test_case_descr).await;
+                let client = client(addr, path);
+                let params = rpc_params(&params);
+                let actual = client.request::<ExpectedOk>(self.method, params).await;
+                let error = actual.expect_err(&test_case_descr);
 
-            use jsonrpsee::{core::error::Error, types::error::CallError};
+                use jsonrpsee::{core::error::Error, types::error::CallError};
 
-            assert_matches::assert_matches!(error, Error::Call(CallError::Custom(error_object)) => {
-                pretty_assertions::assert_eq!(error_object.message(), expected_error_msg, "{test_case_descr}");
-                // Internal error
-                // https://www.jsonrpc.org/specification#error_object
-                pretty_assertions::assert_eq!(error_object.code(), -32603, "{test_case_descr}");
-            });
+                assert_matches::assert_matches!(error, Error::Call(CallError::Custom(error_object)) => {
+                    pretty_assertions::assert_eq!(error_object.message(), self.pending_disabled.error_msg, "{test_case_descr}");
+                    // Internal error
+                    // https://www.jsonrpc.org/specification#error_object
+                    pretty_assertions::assert_eq!(error_object.code(), -32603, "{test_case_descr}");
+                });
+            }
         }
     }
 }
@@ -508,9 +508,10 @@ fn test_case_descr<TestCase: ToString>(
     line: u32,
     test_case: TestCase,
     serialized_params: &str,
+    path: &str,
 ) -> String {
     format!(
-        "line {line}, test case {}, inputs {}",
+        "line {line}, test case {}, inputs {}, path \"{path}\"",
         test_case.to_string(),
         serialized_params,
     )
@@ -572,7 +573,7 @@ fn rpc_params<'a>(params: &'a serde_json::Value) -> Option<ParamsSer<'a>> {
 
             Some(x.into())
         }
-        _ => unreachable!("{params}"),
+        _ => panic!("Unexpected JSON type: {params}"),
     }
 }
 
@@ -603,4 +604,12 @@ fn unwrap_json_array(params: serde_json::Value, line: u32) -> Vec<serde_json::Va
     });
 
     params
+}
+
+fn client<'a>(addr: SocketAddr, path: &'a str) -> TestClient {
+    TestClientBuilder::default()
+        .with_request_timeout(Duration::from_secs(120))
+        .with_path(path)
+        .build(addr)
+        .expect("Failed to create test HTTP-RPC client")
 }
