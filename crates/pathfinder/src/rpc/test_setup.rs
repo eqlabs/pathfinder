@@ -23,7 +23,7 @@ pub struct Test<'a> {
 }
 
 impl<'a> Test<'a> {
-    /// Create test setup with empty in-memory storage.
+    /// Creates test setup with empty in-memory storage.
     pub fn new(method: &'a str, line: u32) -> Self {
         Self {
             method,
@@ -32,9 +32,12 @@ impl<'a> Test<'a> {
         }
     }
 
-    /// Initialize test setup storage using function `f`.
-    /// `f` **must produce a sequence of the items put into the storage
-    /// in the very same order as they were inserted**.
+    /// Initialize test setup storage using `f`.
+    ///
+    /// ## Important
+    ///
+    /// `f` must produce a sequence of the items put into the storage
+    /// in the **very same order as they were inserted**.
     pub fn with_storage<StorageInitFn, StorageInitIntoIterator, StorageInitItem>(
         self,
         f: StorageInitFn,
@@ -64,9 +67,9 @@ pub struct TestWithStorage<'a, StorageInitIter> {
 }
 
 impl<'a, StorageInitIter> TestWithStorage<'a, StorageInitIter> {
-    /// The calls to `pending` will yield pending data from
-    /// 1. the iterable collection created by the mapping function `f`
-    /// 2. and when the resulting iterator is exhausted __empty__ pending data is returned
+    /// Test cases in which calls `pending` will yield pending data in the following order:
+    /// 1. from the iterable collection created by the mapping function `f`
+    /// 2. __empty__ pending data when the former iterable is exhausted
     pub fn map_pending_then_empty<PendingInitFn, PendingInitIntoIterator>(
         self,
         f: PendingInitFn,
@@ -100,18 +103,45 @@ pub struct TestWithPending<'a, StorageInitIter, PendingInitIter> {
 }
 
 impl<'a, StorageInitIter, PendingInitIter> TestWithPending<'a, StorageInitIter, PendingInitIter> {
-    /// Initialize test setup with a single JSON array `params`.
+    /// Initialize test cases with input parameters.
+    ///
+    /// ## Important
+    ///
+    /// `params` should be a JSON array.
+    ///
     /// Each item in `params` corresponds to a separate test case.
     ///
     /// An item in the `params` outermost JSON array should either be:
     /// - an array, it will then be treated as __positional__ params to the RPC method,
     /// - an object, it will then be treated as __named__ params to the RPC method.
     ///
-    /// Panics if `params` is not a JSON array.
-    /// Panics if any item in `params` outermost JSON array is neither an array nor an object.
+    /// ## Examples
     ///
-    /// Useful for handling test cases where consecutive param sets
-    /// contain vastly different variants.
+    /// ```
+    /// .with_params(json!([
+    ///     // Test case 0, method inputs as positional args
+    ///     [
+    ///         "arg0 value",
+    ///         1,
+    ///         {"some arg2":"value"}
+    ///     ],
+    ///     // Test case 1, method inputs same as in test case 0 but as named args
+    ///     {
+    ///         "arg0":"arg0 value",
+    ///         "arg1":1,
+    ///         "arg2":{"some arg2":"value"}
+    ///     },
+    ///     // Test case 2, one parameter, positional
+    ///     ["and"],
+    ///     // Test case 3, two parameters, named
+    ///     {"so":0,"on":[]},
+    /// ]))
+    /// ```
+    ///
+    /// ## Panics
+    ///
+    /// - if `params` is not a JSON array.
+    /// - if any item in `params` outermost JSON array is neither an array nor an object.
     pub fn with_params(
         self,
         params: serde_json::Value,
@@ -141,7 +171,8 @@ pub struct TestWithParams<'a, StorageInitIter, PendingInitIter> {
 impl<'a, StorageInitIter, PendingInitIter> TestWithParams<'a, StorageInitIter, PendingInitIter> {
     /// Map actual `jsonrpsee::core::Error` replies from the RPC server to a more manageable type,
     /// so that expressing the actual expected outputs is easier.
-    /// The mapping function also takes the line and test case numbers.
+    ///
+    /// The mapping function `f` also takes the test case description.
     pub fn map_err<MapErrFn, MappedError>(
         self,
         f: MapErrFn,
@@ -162,7 +193,10 @@ impl<'a, StorageInitIter, PendingInitIter> TestWithParams<'a, StorageInitIter, P
 
     /// Map actual `jsonrpsee::core::Error` replies from the RPC server to [StarkWare error codes](crate::rpc::types::reply::ErrorCode),
     /// so that expressing the actual expected outputs is easier.
-    /// Panics if the mapping fails, outputing the actual `jsonrpsee::core::Error`, line, and test case numbers.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the mapping fails, outputing the actual `jsonrpsee::core::Error` and test case description.
     pub fn map_err_to_starkware_error_code(
         self,
     ) -> TestWithMapErr<
@@ -200,9 +234,14 @@ impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
 {
     /// Initialize test setup with a sequence of expected test outputs.
     ///
-    /// - Each item in the resulting sequence corresponds to a separate test case.
-    /// - This function panics if the lenght of the `expected` sequence
-    /// is different from the `params` sequence in [`GotStorage::with_params`].
+    /// ## Important
+    ///
+    /// Each item in the resulting sequence corresponds to a separate test case.
+    ///
+    /// ## Panics
+    ///
+    /// This function panics if the lenght of the `expected` sequence
+    /// is different from the `params` sequence in [`TestWithPending::with_params`].
     #[allow(dead_code)]
     pub fn with_expected<ExpectedIntoIterator, ExpectedIter, ExpectedOk, MappedError>(
         self,
@@ -231,12 +270,18 @@ impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
 
     /// Initialize test setup with a sequence of expected test outputs
     /// by mapping from the storage initialization sequence.
+    ///
     /// Useful for test cases where expected outputs are the same or very
     /// similar types to what was inserted into storage upon its initialization.
     ///
-    /// - Each item in the resulting sequence corresponds to a separate test case.
-    /// - This function panics if the lenght of the `expected` sequence
-    /// is different from the `params` sequence in [`GotStorage::with_params`].
+    /// ## Important
+    ///
+    /// Each item in the resulting sequence corresponds to a separate test case.
+    ///
+    /// ## Panics
+    ///
+    /// This function panics if the lenght of the `expected` sequence
+    /// is different from the `params` sequence in [`TestWithPending::with_params`].
     pub fn map_expected<
         StorageAndPendingInitToExpectedMapperFn,
         ExpectedIntoIterator,
@@ -286,14 +331,45 @@ impl<'a, PendingInitIter, ExpectedIter, MapErrFn>
 {
     /// Add scenarios where pending support is disabled and internal server error is expected.
     /// Each item in `params` corresponds to a separate test case and each should
-    /// represent some vaild input to the tested method that refers to the pending block.
+    /// represent some __vaild input__ to the tested method that __refers to the pending block__.
+    ///
+    /// ## Important
+    ///
+    /// `params` should be a JSON array.
+    ///
+    /// Each item in `params` corresponds to a separate test case.
     ///
     /// An item in the `params` outermost JSON array should either be:
     /// - an array, it will then be treated as __positional__ params to the RPC method,
     /// - an object, it will then be treated as __named__ params to the RPC method.
     ///
-    /// Panics if `params` is not a JSON array.
-    /// Panics if any item in `params` outermost JSON array is neither an array nor an object.
+    /// ## Examples
+    ///
+    /// ```
+    /// .with_params(json!([
+    ///     // Test case 0, method inputs as positional args
+    ///     [
+    ///         "pending",
+    ///         1,
+    ///         {"some arg2":"value"}
+    ///     ],
+    ///     // Test case 1, method inputs same as in test case 0 but as named args
+    ///     {
+    ///         "arg0":"pending",
+    ///         "arg1":1,
+    ///         "arg2":{"some arg2":"value"}
+    ///     },
+    ///     // Test case 2, two parameters, positional
+    ///     ["pending", "and"],
+    ///     // Test case 3, three parameters, named
+    ///     {"so":"pending","on":[]},
+    /// ]))
+    /// ```
+    ///
+    /// ## Panics
+    ///
+    /// - if `params` is not a JSON array.
+    /// - if any item in `params` outermost JSON array is neither an array nor an object.
     pub fn then_expect_internal_err_when_pending_disabled(
         self,
         params: serde_json::Value,
@@ -341,7 +417,9 @@ where
     MapErrFn: FnOnce(jsonrpsee::core::Error, &str) -> MappedError + Copy,
     MappedError: Debug + PartialEq,
 {
-    /// Runs the test cases.
+    /// Runs all test cases in the following order:
+    /// 1. those defined by `with_params`
+    /// 2. and then the _pending disabled_ scenarios, as defined by `then_expect_internal_err_when_pending_disabled`
     pub async fn run(self) {
         let storage = self.storage;
         let sequencer = Client::new(Chain::Testnet).unwrap();
