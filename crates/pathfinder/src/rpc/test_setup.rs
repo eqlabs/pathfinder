@@ -43,8 +43,8 @@ impl<'a> Test<'a> {
         f: StorageInitFn,
     ) -> TestWithStorage<'a, StorageInitIntoIterator::IntoIter>
     where
-        StorageInitIntoIterator: IntoIterator<Item = StorageInitItem>,
         StorageInitFn: FnOnce(&Transaction<'_>) -> StorageInitIntoIterator,
+        StorageInitIntoIterator: IntoIterator<Item = StorageInitItem>,
     {
         let mut connection = self.storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
@@ -90,6 +90,26 @@ impl<'a, StorageInitIter> TestWithStorage<'a, StorageInitIter> {
             storage: self.storage,
             storage_init: self.storage_init,
             pending_init: pending_init.into_iter(),
+        }
+    }
+
+    /// Assume that __empty pending__ data is returned for __all__ test cases.
+    ///
+    /// ## Warning
+    ///
+    /// It is discouraged to skip testing `pending` related cases.
+    pub fn with_empty_pending(
+        self,
+    ) -> TestWithPending<'a, StorageInitIter, std::iter::Empty<RawPendingData>>
+    where
+        StorageInitIter: Clone,
+    {
+        TestWithPending {
+            method: self.method,
+            line: self.line,
+            storage: self.storage,
+            storage_init: self.storage_init,
+            pending_init: std::iter::empty(),
         }
     }
 }
