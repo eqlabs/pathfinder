@@ -1,10 +1,7 @@
-use anyhow::Context;
-
-use crate::{
-    core::BlockId,
-    rpc::v02::RpcContext,
-    storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable},
-};
+use crate::core::BlockId;
+use crate::rpc::v02::RpcContext;
+use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable};
+use anyhow::{anyhow, Context};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -19,11 +16,12 @@ pub async fn get_state_update(
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
     let block_id = match input.block_id {
         BlockId::Pending => {
-            let update = match &context.pending_data {
-                Some(pending) => pending.state_update().await,
-                None => None,
-            };
-            match update {
+            match &context
+                .pending_data
+                .ok_or_else(|| anyhow!("Pending data not supported in this configuration"))?
+                .state_update()
+                .await
+            {
                 Some(update) => {
                     let update = update.as_ref().clone().into();
                     return Ok(update);
