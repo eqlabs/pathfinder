@@ -67,7 +67,7 @@ pub async fn get_state_update(
     jh.await.context("Database read panic or shutting down")?
 }
 
-mod types {
+pub(crate) mod types {
     use serde::Serialize;
     use serde_with::skip_serializing_none;
 

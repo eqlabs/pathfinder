@@ -30,6 +30,8 @@ use std::{
 };
 use web3::types::H256;
 
+mod get_state_update;
+
 /// Starts the HTTP-RPC server.
 pub async fn run_server(
     addr: SocketAddr,
@@ -47,7 +49,7 @@ lazy_static::lazy_static! {
     pub static ref LOCALHOST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
 }
 
-// Local test helper
+/// Creates storage for tests
 pub fn setup_storage() -> Storage {
     use crate::sequencer::reply::transaction::Transaction;
     use crate::{

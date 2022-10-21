@@ -17,6 +17,7 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use std::time::Duration;
 
+#[derive(Clone)]
 pub struct Test<'a> {
     method: &'a str,
     line: u32,
@@ -60,6 +61,7 @@ impl<'a> Test<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct TestWithStorage<'a, StorageInitIter> {
     method: &'a str,
     line: u32,
@@ -115,6 +117,7 @@ impl<'a, StorageInitIter> TestWithStorage<'a, StorageInitIter> {
     }
 }
 
+#[derive(Clone)]
 pub struct TestWithPending<'a, StorageInitIter, PendingInitIter> {
     method: &'a str,
     line: u32,
@@ -180,6 +183,7 @@ impl<'a, StorageInitIter, PendingInitIter> TestWithPending<'a, StorageInitIter, 
     }
 }
 
+#[derive(Clone)]
 pub struct TestWithParams<'a, StorageInitIter, PendingInitIter> {
     method: &'a str,
     line: u32,
@@ -240,6 +244,7 @@ impl<'a, StorageInitIter, PendingInitIter> TestWithParams<'a, StorageInitIter, P
     }
 }
 
+#[derive(Clone)]
 pub struct TestWithMapErr<'a, StorageInitIter, PendingInitIter, MapErrFn> {
     method: &'a str,
     line: u32,
@@ -337,6 +342,7 @@ impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
     }
 }
 
+#[derive(Clone)]
 pub struct TestWithExpected<'a, PendingInitIter, ExpectedIter, MapErrFn> {
     method: &'a str,
     line: u32,
@@ -412,11 +418,13 @@ impl<'a, PendingInitIter, ExpectedIter, MapErrFn>
 }
 
 /// Holds data required for a disabled pending scenario
+#[derive(Clone)]
 struct PendingDisabled<'a> {
     params: Vec<serde_json::Value>,
     error_msg: &'a str,
 }
 
+#[derive(Clone)]
 pub struct TestWithPendingDisabled<'a, PendingInitIter, ExpectedIter, MapErrFn> {
     method: &'a str,
     line: u32,
