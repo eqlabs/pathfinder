@@ -1,8 +1,9 @@
 //! Basic test fixtures for storage.
 
 use crate::core::{
-    ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress, StorageValue,
+    ClassHash, ContractAddress, ContractNonce, Fee, GasPrice, GlobalRoot, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+    StorageAddress, StorageValue, TransactionNonce, TransactionVersion,
 };
 use crate::rpc::v01::types::reply::{
     state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
@@ -173,5 +174,19 @@ impl sequencer::reply::state_update::StateDiff {
             declared_contracts: vec![],
             nonces: HashMap::new(),
         }
+    }
+}
+
+impl sequencer::reply::transaction::Transaction {
+    pub fn nth_declare(n: u8) -> Self {
+        Self::Declare(sequencer::reply::transaction::DeclareTransaction {
+            class_hash: ClassHash(hash!(n)),
+            max_fee: Fee(web3::types::H128::from_low_u64_be(n as u64)),
+            nonce: TransactionNonce(hash!(1, n)),
+            sender_address: ContractAddress::new_or_panic(hash!(2, n)),
+            signature: vec![],
+            transaction_hash: StarknetTransactionHash(hash!(3, n)),
+            version: TransactionVersion::ZERO,
+        })
     }
 }
