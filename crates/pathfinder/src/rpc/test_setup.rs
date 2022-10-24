@@ -268,6 +268,8 @@ impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
     ///
     /// This function panics if the lenght of the `expected` sequence
     /// is different from the `params` sequence in [`TestWithPending::with_params`].
+    // TODO refactor me out of the lint
+    #[allow(clippy::type_complexity)]
     pub fn with_expected<ExpectedIntoIterator, ExpectedOk, MappedError>(
         self,
         expected: ExpectedIntoIterator,
@@ -314,6 +316,8 @@ impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
     ///
     /// This function panics if the lenght of the `expected` sequence
     /// is different from the `params` sequence in [`TestWithPending::with_params`].
+    // TODO refactor me out of the lint
+    #[allow(clippy::type_complexity)]
     pub fn map_expected<
         StorageAndPendingInitToExpectedMapperFn,
         ExpectedIntoIterator,

@@ -96,19 +96,19 @@ pub fn init_storage(db_txn: &Transaction<'_>) {
     let mut contract1_code = contract0_code.clone();
     contract1_code.hash = class1_hash;
 
-    ContractCodeTable::insert_compressed(&db_txn, &contract0_code).unwrap();
-    ContractCodeTable::insert_compressed(&db_txn, &contract1_code).unwrap();
+    ContractCodeTable::insert_compressed(db_txn, &contract0_code).unwrap();
+    ContractCodeTable::insert_compressed(db_txn, &contract1_code).unwrap();
 
-    ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
-    ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
+    ContractsTable::upsert(db_txn, contract0_addr, class0_hash).unwrap();
+    ContractsTable::upsert(db_txn, contract1_addr, class1_hash).unwrap();
 
-    let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
+    let mut global_tree = GlobalStateTree::load(db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
     let contract_state_hash = update_contract_state(
         contract0_addr,
         &contract0_update,
         Some(ContractNonce(starkhash!("01"))),
         &global_tree,
-        &db_txn,
+        db_txn,
     )
     .unwrap();
     global_tree
@@ -116,13 +116,13 @@ pub fn init_storage(db_txn: &Transaction<'_>) {
         .unwrap();
     let global_root0 = global_tree.apply().unwrap();
 
-    let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
+    let mut global_tree = GlobalStateTree::load(db_txn, global_root0).unwrap();
     let contract_state_hash = update_contract_state(
         contract1_addr,
         &contract1_update0,
         None,
         &global_tree,
-        &db_txn,
+        db_txn,
     )
     .unwrap();
     global_tree
@@ -133,7 +133,7 @@ pub fn init_storage(db_txn: &Transaction<'_>) {
         &contract1_update1,
         None,
         &global_tree,
-        &db_txn,
+        db_txn,
     )
     .unwrap();
     global_tree
@@ -141,13 +141,13 @@ pub fn init_storage(db_txn: &Transaction<'_>) {
         .unwrap();
     let global_root1 = global_tree.apply().unwrap();
 
-    let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
+    let mut global_tree = GlobalStateTree::load(db_txn, global_root1).unwrap();
     let contract_state_hash = update_contract_state(
         contract1_addr,
         &contract1_update2,
         Some(ContractNonce(starkhash!("10"))),
         &global_tree,
-        &db_txn,
+        db_txn,
     )
     .unwrap();
     global_tree
@@ -182,15 +182,15 @@ pub fn init_storage(db_txn: &Transaction<'_>) {
         gas_price: GasPrice::from(2),
         sequencer_address: SequencerAddress(starkhash_bytes!(&[2u8])),
     };
-    StarknetBlocksTable::insert(&db_txn, &block0, None).unwrap();
-    StarknetBlocksTable::insert(&db_txn, &block1, None).unwrap();
-    StarknetBlocksTable::insert(&db_txn, &block2, None).unwrap();
+    StarknetBlocksTable::insert(db_txn, &block0, None).unwrap();
+    StarknetBlocksTable::insert(db_txn, &block1, None).unwrap();
+    StarknetBlocksTable::insert(db_txn, &block2, None).unwrap();
 
-    CanonicalBlocksTable::insert(&db_txn, block0.number, block0.hash).unwrap();
-    CanonicalBlocksTable::insert(&db_txn, block1.number, block1.hash).unwrap();
-    CanonicalBlocksTable::insert(&db_txn, block2.number, block2.hash).unwrap();
+    CanonicalBlocksTable::insert(db_txn, block0.number, block0.hash).unwrap();
+    CanonicalBlocksTable::insert(db_txn, block1.number, block1.hash).unwrap();
+    CanonicalBlocksTable::insert(db_txn, block2.number, block2.hash).unwrap();
 
-    ContractCodeTable::update_declared_on_if_null(&db_txn, class0_hash, block1.hash).unwrap();
+    ContractCodeTable::update_declared_on_if_null(db_txn, class0_hash, block1.hash).unwrap();
 
     let txn0_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
     // TODO introduce other types of transactions too
@@ -260,11 +260,11 @@ pub fn init_storage(db_txn: &Transaction<'_>) {
     let transaction_data0 = [(txn0, receipt0)];
     let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
     let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5)];
-    StarknetTransactionsTable::upsert(&db_txn, block0.hash, block0.number, &transaction_data0)
+    StarknetTransactionsTable::upsert(db_txn, block0.hash, block0.number, &transaction_data0)
         .unwrap();
-    StarknetTransactionsTable::upsert(&db_txn, block1.hash, block1.number, &transaction_data1)
+    StarknetTransactionsTable::upsert(db_txn, block1.hash, block1.number, &transaction_data1)
         .unwrap();
-    StarknetTransactionsTable::upsert(&db_txn, block2.hash, block2.number, &transaction_data2)
+    StarknetTransactionsTable::upsert(db_txn, block2.hash, block2.number, &transaction_data2)
         .unwrap();
 }
 
