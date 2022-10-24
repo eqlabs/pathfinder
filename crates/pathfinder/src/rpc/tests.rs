@@ -22,6 +22,7 @@ use crate::{
     },
 };
 use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
+use rusqlite::Transaction;
 use stark_hash::StarkHash;
 use std::{
     collections::BTreeMap,
@@ -30,6 +31,7 @@ use std::{
 };
 use web3::types::H256;
 
+mod get_block;
 mod get_state_update;
 
 /// Starts the HTTP-RPC server.
@@ -49,18 +51,14 @@ lazy_static::lazy_static! {
     pub static ref LOCALHOST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
 }
 
-/// Creates storage for tests
-pub fn setup_storage() -> Storage {
+/// Init existing storage for tests
+pub fn init_storage(db_txn: &Transaction<'_>) {
     use crate::sequencer::reply::transaction::Transaction;
     use crate::{
         core::{ContractNonce, StorageValue},
         state::{update_contract_state, CompressedContract},
     };
     use web3::types::H128;
-
-    let storage = Storage::in_memory().unwrap();
-    let mut connection = storage.connection().unwrap();
-    let db_txn = connection.transaction().unwrap();
 
     let contract0_addr = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
     let contract1_addr = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
@@ -268,6 +266,15 @@ pub fn setup_storage() -> Storage {
         .unwrap();
     StarknetTransactionsTable::upsert(&db_txn, block2.hash, block2.number, &transaction_data2)
         .unwrap();
+}
+
+/// Creates storage for tests
+pub fn setup_storage() -> Storage {
+    let storage = Storage::in_memory().unwrap();
+    let mut connection = storage.connection().unwrap();
+    let db_txn = connection.transaction().unwrap();
+
+    init_storage(&db_txn);
 
     db_txn.commit().unwrap();
     storage

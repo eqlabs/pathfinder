@@ -159,7 +159,7 @@ fn get_block_transactions(
     }
 }
 
-mod types {
+pub(crate) mod types {
     use crate::core::{
         GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash,
@@ -180,6 +180,7 @@ mod types {
     /// Wrapper for transaction data returned in block related queries,
     /// chosen variant depends on [`BlockResponseScope`].
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     #[serde(untagged)]
     pub enum Transactions {
@@ -191,6 +192,7 @@ mod types {
     #[serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct Block {
         pub status: BlockStatus,
