@@ -347,16 +347,12 @@ pub fn register_all_methods(
 mod tests {
     use crate::rpc::v01::types::reply::BlockHashAndNumber;
     use crate::rpc::{tests::by_name, RpcServer};
-    use crate::sequencer::reply::PendingBlock;
     use crate::{
         core::BlockId,
         rpc::{
             test_client::client,
             tests::{create_pending_data, run_server, setup_storage, LOCALHOST},
-            v01::{
-                api::RpcApi,
-                types::reply::{Block, Transactions},
-            },
+            v01::api::RpcApi,
         },
     };
     use crate::{
@@ -371,199 +367,10 @@ mod tests {
         storage::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage},
     };
     use assert_matches::assert_matches;
-    use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};
+    use jsonrpsee::{rpc_params, types::ParamsSer};
     use serde_json::json;
     use stark_hash::StarkHash;
     use std::sync::Arc;
-
-    mod get_block {
-        use super::*;
-
-        async fn check_result_with_api<F: Fn(&RpcResult<Block>, Option<&PendingBlock>)>(
-            api: RpcApi,
-            params: Option<ParamsSer<'_>>,
-            check_fn: F,
-        ) {
-            let pending_data = api.pending_data.as_ref();
-            let pending_block = match pending_data {
-                Some(pending_data) => pending_data.block().await,
-                None => None,
-            };
-            let pending_block = pending_block.as_ref().map(|x| x.as_ref());
-
-            let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-            let result = client(addr)
-                .request::<Block>("starknet_getBlockWithTxHashes", params.clone())
-                .await;
-            check_fn(&result, pending_block);
-            let _ = result.map(
-                |block| assert_matches!(block.transactions, Transactions::HashesOnly(_) => {}),
-            );
-
-            let result = client(addr)
-                .request::<Block>("starknet_getBlockWithTxs", params)
-                .await;
-            check_fn(&result, pending_block);
-            let _ = result
-                .map(|block| assert_matches!(block.transactions, Transactions::Full(_) => {}));
-        }
-
-        async fn check_result<F: Fn(&RpcResult<Block>, Option<&PendingBlock>)>(
-            params: Option<ParamsSer<'_>>,
-            check_fn: F,
-        ) {
-            let storage = setup_storage();
-            let pending_data = create_pending_data(storage.clone()).await;
-            let sequencer = Client::new(Chain::Testnet).unwrap();
-            let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
-                .with_pending_data(pending_data.clone());
-            check_result_with_api(api, params, check_fn).await
-        }
-
-        #[tokio::test]
-        async fn genesis_by_hash() {
-            let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
-            let genesis_id = BlockId::Hash(genesis_hash);
-            let params = rpc_params!(genesis_id);
-
-            check_result(params, move |result, _| {
-                assert_matches!(result, Ok(block) => {
-                    assert_eq!(block.block_number, Some(StarknetBlockNumber::GENESIS));
-                    assert_eq!(block.block_hash, Some(genesis_hash));
-                });
-            })
-            .await;
-        }
-
-        #[tokio::test]
-        async fn genesis_by_number() {
-            let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
-            let genesis_id = BlockId::Number(StarknetBlockNumber::GENESIS);
-            let params = rpc_params!(genesis_id);
-
-            check_result(params, move |result, _| {
-                assert_matches!(result, Ok(block) => {
-                    assert_eq!(block.block_number, Some(StarknetBlockNumber::GENESIS));
-                    assert_eq!(block.block_hash, Some(genesis_hash));
-                });
-            })
-            .await;
-        }
-
-        mod latest {
-            use super::*;
-
-            mod positional_args {
-                use super::*;
-                use pretty_assertions::assert_eq;
-
-                #[tokio::test]
-                async fn all() {
-                    let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
-                    let params = rpc_params!(BlockId::Latest);
-
-                    check_result(params, move |result, _| {
-                        assert_matches!(result, Ok(block) => {
-                            assert_eq!(
-                                block.block_number,
-                                Some(StarknetBlockNumber::new_or_panic(2))
-                            );
-                            assert_eq!(block.block_hash, Some(latest_hash));
-                        });
-                    })
-                    .await;
-                }
-            }
-
-            mod named_args {
-                use crate::rpc::tests::by_name;
-
-                use super::*;
-                use pretty_assertions::assert_eq;
-                use serde_json::json;
-
-                #[tokio::test]
-                async fn all() {
-                    let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
-                    let params = by_name([("block_id", json!("latest"))]);
-
-                    check_result(params, move |result, _| {
-                        assert_matches!(result, Ok(block) => {
-                            assert_eq!(
-                                block.block_number,
-                                Some(StarknetBlockNumber::new_or_panic(2))
-                            );
-                            assert_eq!(block.block_hash, Some(latest_hash));
-                        });
-                    })
-                    .await;
-                }
-            }
-        }
-
-        mod pending {
-            use super::*;
-
-            #[tokio::test]
-            async fn available() {
-                let params = rpc_params!(BlockId::Pending);
-                check_result(params, move |result, pending| {
-                    assert_matches!(result, Ok(block) => {
-                        assert_eq!(block.parent_hash, pending.unwrap().parent_hash);
-                    });
-                })
-                .await;
-            }
-
-            #[tokio::test]
-            async fn empty() {
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
-                    .with_pending_data(PendingData::default());
-                let params = rpc_params!(BlockId::Pending);
-                check_result_with_api(api, params, |result, _| {
-                    assert_matches!(result, Ok(block) => {
-                        assert_eq!(
-                            block.block_hash,
-                            Some(StarknetBlockHash(starkhash_bytes!(b"latest")))
-                        );
-                    });
-                })
-                .await;
-            }
-
-            #[tokio::test]
-            async fn disabled() {
-                use jsonrpsee::{core::error::Error, types::error::CallError};
-
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
-                let params = rpc_params!(BlockId::Pending);
-                check_result_with_api(api, params, |result, _| {
-                    assert_matches!(result, Err(Error::Call(CallError::Custom(_))));
-                })
-                .await;
-            }
-        }
-
-        #[tokio::test]
-        async fn invalid_block_id() {
-            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)));
-            check_result(params, |result, _| {
-                assert_matches!(result, Err(error) => assert_eq!(
-                    &crate::rpc::v01::types::reply::ErrorCode::InvalidBlockId,
-                    error
-                ));
-            })
-            .await;
-        }
-    }
 
     mod get_storage_at {
         use super::*;
