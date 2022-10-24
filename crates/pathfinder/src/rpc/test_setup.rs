@@ -268,11 +268,16 @@ impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
     ///
     /// This function panics if the lenght of the `expected` sequence
     /// is different from the `params` sequence in [`TestWithPending::with_params`].
-    #[allow(dead_code)]
-    pub fn with_expected<ExpectedIntoIterator, ExpectedIter, ExpectedOk, MappedError>(
+    pub fn with_expected<ExpectedIntoIterator, ExpectedOk, MappedError>(
         self,
         expected: ExpectedIntoIterator,
-    ) -> TestWithExpected<'a, PendingInitIter, ExpectedIntoIterator::IntoIter, MapErrFn>
+    ) -> TestWithExpected<
+        'a,
+        PendingInitIter,
+        MapErrFn,
+        ExpectedIntoIterator::IntoIter,
+        fn(ExpectedOk) -> ExpectedOk,
+    >
     where
         ExpectedIntoIterator: IntoIterator<Item = Result<ExpectedOk, MappedError>>,
         <ExpectedIntoIterator as IntoIterator>::IntoIter: Clone,
@@ -289,8 +294,9 @@ impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
             storage: self.storage,
             pending_init: self.pending_init,
             params: self.params,
-            expected: expected_iter,
             map_err_fn: self.map_err_fn,
+            expected: expected_iter,
+            map_actual_fn: |x| x,
         }
     }
 
@@ -316,7 +322,13 @@ impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
     >(
         self,
         f: StorageAndPendingInitToExpectedMapperFn,
-    ) -> TestWithExpected<'a, PendingInitIter, ExpectedIntoIterator::IntoIter, MapErrFn>
+    ) -> TestWithExpected<
+        'a,
+        PendingInitIter,
+        MapErrFn,
+        ExpectedIntoIterator::IntoIter,
+        fn(ExpectedOk) -> ExpectedOk,
+    >
     where
         PendingInitIter: Clone,
         StorageAndPendingInitToExpectedMapperFn:
@@ -336,26 +348,58 @@ impl<'a, StorageInitIter, PendingInitIter, MapErrFn>
             storage: self.storage,
             pending_init: self.pending_init,
             params: self.params,
-            expected: expected_iter,
             map_err_fn: self.map_err_fn,
+            expected: expected_iter,
+            map_actual_fn: |x| x,
         }
     }
 }
 
 #[derive(Clone)]
-pub struct TestWithExpected<'a, PendingInitIter, ExpectedIter, MapErrFn> {
+pub struct TestWithExpected<'a, PendingInitIter, MapErrFn, ExpectedIter, MapActualFn> {
     method: &'a str,
     line: u32,
     storage: Storage,
     pending_init: PendingInitIter,
     params: Vec<serde_json::Value>,
-    expected: ExpectedIter,
     map_err_fn: MapErrFn,
+    expected: ExpectedIter,
+    map_actual_fn: MapActualFn,
 }
 
-impl<'a, PendingInitIter, ExpectedIter, MapErrFn>
-    TestWithExpected<'a, PendingInitIter, ExpectedIter, MapErrFn>
+impl<'a, PendingInitIter, MapErrFn, ExpectedIter, MapActualFnOld>
+    TestWithExpected<'a, PendingInitIter, MapErrFn, ExpectedIter, MapActualFnOld>
 {
+    /// Map the successful result of calling a method to some other type.
+    ///
+    /// Useful for tests where asserting the entire response is not necessary,
+    /// for example `getBlock`, where only the block header from the resulting
+    /// block needs to be checked.
+    ///
+    /// ## Important
+    ///
+    /// The type `ActualOk` that is passed to function `f` is the actual type
+    /// that will be used by the test client to deserialize a successful reply.
+    pub fn map_actual<MapActualFn, ActualOk, ExpectedOk, MappedError>(
+        self,
+        f: MapActualFn,
+    ) -> TestWithExpected<'a, PendingInitIter, MapErrFn, ExpectedIter, MapActualFn>
+    where
+        ExpectedIter: Iterator<Item = Result<ExpectedOk, MappedError>>,
+        MapActualFn: FnOnce(ActualOk) -> ExpectedOk,
+    {
+        TestWithExpected {
+            method: self.method,
+            line: self.line,
+            storage: self.storage,
+            pending_init: self.pending_init,
+            params: self.params,
+            map_err_fn: self.map_err_fn,
+            expected: self.expected,
+            map_actual_fn: f,
+        }
+    }
+
     /// Add scenarios where pending support is disabled and internal server error is expected.
     /// Each item in `params` corresponds to a separate test case and each should
     /// represent some __vaild input__ to the tested method that __refers to the pending block__.
@@ -401,7 +445,7 @@ impl<'a, PendingInitIter, ExpectedIter, MapErrFn>
         self,
         params: serde_json::Value,
         error_msg: &'a str,
-    ) -> TestWithPendingDisabled<'a, PendingInitIter, ExpectedIter, MapErrFn> {
+    ) -> TestWithPendingDisabled<'a, PendingInitIter, MapErrFn, ExpectedIter, MapActualFnOld> {
         let params = unwrap_json_array(params, self.line);
 
         TestWithPendingDisabled {
@@ -410,8 +454,9 @@ impl<'a, PendingInitIter, ExpectedIter, MapErrFn>
             storage: self.storage,
             pending_init: self.pending_init,
             params: self.params,
-            expected: self.expected,
             map_err_fn: self.map_err_fn,
+            expected: self.expected,
+            map_actual_fn: self.map_actual_fn,
             pending_disabled: PendingDisabled { params, error_msg },
         }
     }
@@ -425,31 +470,35 @@ struct PendingDisabled<'a> {
 }
 
 #[derive(Clone)]
-pub struct TestWithPendingDisabled<'a, PendingInitIter, ExpectedIter, MapErrFn> {
+pub struct TestWithPendingDisabled<'a, PendingInitIter, MapErrFn, ExpectedIter, MapActualFn> {
     method: &'a str,
     line: u32,
     storage: Storage,
     pending_init: PendingInitIter,
     params: Vec<serde_json::Value>,
-    expected: ExpectedIter,
     map_err_fn: MapErrFn,
+    expected: ExpectedIter,
+    map_actual_fn: MapActualFn,
     pending_disabled: PendingDisabled<'a>,
 }
 
-impl<'a, PendingInitIter, ExpectedIter, ExpectedOk, MapErrFn, MappedError>
-    TestWithPendingDisabled<'a, PendingInitIter, ExpectedIter, MapErrFn>
-where
-    PendingInitIter: Clone + Iterator,
-    <PendingInitIter as Iterator>::Item: Into<RawPendingData>,
-    ExpectedIter: Clone + Iterator<Item = Result<ExpectedOk, MappedError>>,
-    ExpectedOk: Clone + DeserializeOwned + Debug + PartialEq,
-    MapErrFn: FnOnce(jsonrpsee::core::Error, &str) -> MappedError + Copy,
-    MappedError: Debug + PartialEq,
+impl<'a, PendingInitIter, MapErrFn, ExpectedIter, MapActualFn>
+    TestWithPendingDisabled<'a, PendingInitIter, MapErrFn, ExpectedIter, MapActualFn>
 {
     /// Runs all test cases for each of the `paths` in the following order:
     /// 1. those defined by `with_params`
     /// 2. and then the _pending disabled_ scenarios, as defined by `then_expect_internal_err_when_pending_disabled`
-    pub async fn run<'b>(self, paths: Vec<&'b str>) {
+    pub async fn run<'b, MappedError, ExpectedOk, ActualOk>(self, paths: Vec<&'b str>)
+    where
+        PendingInitIter: Clone + Iterator,
+        <PendingInitIter as Iterator>::Item: Into<RawPendingData>,
+        MapErrFn: FnOnce(jsonrpsee::core::Error, &str) -> MappedError + Copy,
+        MappedError: Debug + PartialEq,
+        ExpectedIter: Clone + Iterator<Item = Result<ExpectedOk, MappedError>>,
+        ExpectedOk: Debug + PartialEq,
+        MapActualFn: FnOnce(ActualOk) -> ExpectedOk + Copy,
+        ActualOk: Clone + DeserializeOwned + Debug + PartialEq,
+    {
         let storage = self.storage;
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
@@ -472,8 +521,10 @@ where
                 let client = client(addr, path);
                 let params = serde_json::to_value(params).unwrap();
                 let params = rpc_params(&params);
-                let actual = client.request::<ExpectedOk>(self.method, params).await;
-                let actual = actual.map_err(|error| (self.map_err_fn)(error, &test_case_descr));
+                let actual = client.request::<ActualOk>(self.method, params).await;
+                let actual = actual
+                    .map(|actual| (self.map_actual_fn)(actual))
+                    .map_err(|error| (self.map_err_fn)(error, &test_case_descr));
                 std::assert_eq!(actual, expected, "{test_case_descr}",);
             }
 
@@ -483,7 +534,7 @@ where
                 let (_handle, addr) = run_server(api.clone(), &test_case_descr).await;
                 let client = client(addr, path);
                 let params = rpc_params(&params);
-                let actual = client.request::<ExpectedOk>(self.method, params).await;
+                let actual = client.request::<ActualOk>(self.method, params).await;
                 let error = actual.expect_err(&test_case_descr);
 
                 use jsonrpsee::{core::error::Error, types::error::CallError};
