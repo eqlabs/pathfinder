@@ -112,7 +112,7 @@ impl From<&super::v01::api::RpcApi> for RpcContext {
 ///
 /// An example signature for `method` is:
 /// ```ignore
-/// async fn method(context: Arc<RpcContext>, input: Input) -> Result<Ouput, Error>
+/// async fn method(context: RpcContext, input: Input) -> Result<Ouput, Error>
 /// ```
 fn register_method<Input, Output, Error, MethodFuture, Method>(
     module: &mut jsonrpsee::RpcModule<RpcContext>,
@@ -156,7 +156,7 @@ where
 ///
 /// An example signature for `method` is:
 /// ```ignore
-/// async fn method(context: Arc<RpcContext>) -> Result<Ouput, Error>
+/// async fn method(context: RpcContext) -> Result<Ouput, Error>
 /// ```
 fn register_method_with_no_input<Output, Error, MethodFuture, Method>(
     module: &mut jsonrpsee::RpcModule<RpcContext>,
