@@ -470,9 +470,7 @@ mod tests {
         use assert_matches::assert_matches;
         use http::{response::Builder, StatusCode};
         use pretty_assertions::assert_eq;
-        use std::{
-            collections::VecDeque, convert::Infallible, net::SocketAddr, sync::Arc, time::Duration,
-        };
+        use std::{collections::VecDeque, net::SocketAddr, sync::Arc, time::Duration};
         use tokio::{sync::Mutex, task::JoinHandle};
         use warp::Filter;
 
@@ -485,12 +483,12 @@ mod tests {
             use std::cell::RefCell;
 
             let statuses = Arc::new(Mutex::new(RefCell::new(statuses)));
-            let any = warp::any().and_then(move || {
+            let any = warp::any().then(move || {
                 let s = statuses.clone();
                 async move {
                     let s = s.lock().await;
                     let s = s.borrow_mut().pop_front().unwrap();
-                    Result::<_, Infallible>::Ok(Builder::new().status(s.0).body(s.1))
+                    Builder::new().status(s.0).body(s.1)
                 }
             });
 
@@ -501,12 +499,10 @@ mod tests {
 
         // A test helper
         fn slow_server() -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
-            async fn slow() -> Result<impl warp::Reply, Infallible> {
+            let any = warp::any().then(|| async {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(Builder::new().status(200).body(""))
-            }
-
-            let any = warp::any().and_then(slow);
+            });
             let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
             let server_handle = tokio::spawn(run_srv);
             (server_handle, addr)
