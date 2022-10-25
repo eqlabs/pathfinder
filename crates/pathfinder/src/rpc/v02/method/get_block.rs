@@ -414,6 +414,11 @@ mod tests {
                 assert_hash(b"genesis"),
             ),
             (
+                ctx.clone(),
+                BlockId::Number(StarknetBlockNumber::new_or_panic(9999)),
+                assert_error(GetBlockError::BlockNotFound),
+            ),
+            (
                 ctx,
                 BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"non-existent"))),
                 assert_error(GetBlockError::BlockNotFound),
