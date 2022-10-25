@@ -377,7 +377,7 @@ mod tests {
         let ctx_with_pending_disabled = RpcContext::for_tests();
 
         let cases: &[(RpcContext, BlockId, TestCaseHandler)] = &[
-            // Pending - happy paths
+            // Pending
             (
                 ctx.clone(),
                 BlockId::Pending,
@@ -392,9 +392,16 @@ mod tests {
             (
                 ctx_with_pending_empty,
                 BlockId::Pending,
-                assert_hash(b"latest"),
+                assert_error(GetBlockError::BlockNotFound),
             ),
-            // Other block ids - happy paths
+            (
+                ctx_with_pending_disabled,
+                BlockId::Pending,
+                assert_error(GetBlockError::Internal(anyhow!(
+                    "Pending data not supported in this configuration"
+                ))),
+            ),
+            // Other block ids
             (ctx.clone(), BlockId::Latest, assert_hash(b"latest")),
             (
                 ctx.clone(),
@@ -406,18 +413,10 @@ mod tests {
                 BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"genesis"))),
                 assert_hash(b"genesis"),
             ),
-            // Errors
             (
                 ctx,
                 BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"non-existent"))),
                 assert_error(GetBlockError::BlockNotFound),
-            ),
-            (
-                ctx_with_pending_disabled,
-                BlockId::Pending,
-                assert_error(GetBlockError::Internal(anyhow!(
-                    "Pending data not supported in this configuration"
-                ))),
             ),
         ];
 
