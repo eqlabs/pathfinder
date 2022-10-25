@@ -61,7 +61,7 @@ async fn get_block(
                         scope,
                     ))
                 }
-                None => StarknetBlocksBlockId::Latest,
+                None => return Err(GetBlockError::BlockNotFound),
             }
         }
         BlockId::Hash(hash) => hash.into(),
