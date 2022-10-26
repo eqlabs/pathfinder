@@ -1,10 +1,7 @@
-use anyhow::Context;
-
-use crate::{
-    core::BlockId,
-    rpc::v02::RpcContext,
-    storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable},
-};
+use crate::core::BlockId;
+use crate::rpc::v02::RpcContext;
+use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable};
+use anyhow::{anyhow, Context};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -19,11 +16,12 @@ pub async fn get_state_update(
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
     let block_id = match input.block_id {
         BlockId::Pending => {
-            let update = match &context.pending_data {
-                Some(pending) => pending.state_update().await,
-                None => None,
-            };
-            match update {
+            match &context
+                .pending_data
+                .ok_or_else(|| anyhow!("Pending data not supported in this configuration"))?
+                .state_update()
+                .await
+            {
                 Some(update) => {
                     let update = update.as_ref().clone().into();
                     return Ok(update);
@@ -336,121 +334,157 @@ mod types {
 mod tests {
     use super::types::{DeployedContract, StateDiff, StateUpdate, StorageDiff, StorageEntry};
     use super::*;
-
     use crate::core::{
         ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
         StorageAddress, StorageValue,
     };
     use crate::{starkhash, starkhash_bytes};
-
+    use assert_matches::assert_matches;
+    use jsonrpsee::types::Params;
     use stark_hash::StarkHash;
 
-    mod parsing {
-        use super::*;
+    #[test]
+    fn parsing() {
+        let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
+        let hash = BlockId::Hash(StarknetBlockHash(starkhash!("beef")));
 
-        use jsonrpsee::types::Params;
-
-        #[test]
-        fn positional_args() {
-            let positional = r#"[
-                {"block_hash": "0xdeadbeef"}
-            ]"#;
-            let positional = Params::new(Some(positional));
-
-            let input = positional.parse::<GetStateUpdateInput>().unwrap();
+        [
+            (r#"["pending"]"#, BlockId::Pending),
+            (r#"{"block_id": "pending"}"#, BlockId::Pending),
+            (r#"["latest"]"#, BlockId::Latest),
+            (r#"{"block_id": "latest"}"#, BlockId::Latest),
+            (r#"[{"block_number":123}]"#, number),
+            (r#"{"block_id": {"block_number":123}}"#, number),
+            (r#"[{"block_hash": "0xbeef"}]"#, hash),
+            (r#"{"block_id": {"block_hash": "0xbeef"}}"#, hash),
+        ]
+        .into_iter()
+        .enumerate()
+        .for_each(|(i, (input, expected))| {
+            let actual = Params::new(Some(input))
+                .parse::<GetStateUpdateInput>()
+                .unwrap_or_else(|error| panic!("test case {i}: {input}, {error}"));
             assert_eq!(
-                input,
-                GetStateUpdateInput {
-                    block_id: BlockId::Hash(StarknetBlockHash(starkhash!("deadbeef")))
-                }
-            )
-        }
-
-        #[test]
-        fn named_args() {
-            let named_args = r#"{
-                "block_id": {"block_hash": "0xdeadbeef"}
-            }"#;
-            let named_args = Params::new(Some(named_args));
-
-            let input = named_args.parse::<GetStateUpdateInput>().unwrap();
-            assert_eq!(
-                input,
-                GetStateUpdateInput {
-                    block_id: BlockId::Hash(StarknetBlockHash(starkhash!("deadbeef")))
-                }
-            )
-        }
+                actual,
+                GetStateUpdateInput { block_id: expected },
+                "test case {i}: {input}"
+            );
+        });
     }
 
-    mod errors {
-        use super::*;
+    type TestCaseHandler = Box<dyn Fn(usize, &Result<types::StateUpdate, GetStateUpdateError>)>;
 
-        #[tokio::test]
-        async fn block_not_found() {
-            let context = RpcContext::for_tests();
-            let input = GetStateUpdateInput {
-                block_id: BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"invalid"))),
-            };
-
-            let result = get_state_update(context, input).await;
-
-            assert_matches::assert_matches!(result, Err(GetStateUpdateError::BlockNotFound));
-        }
-    }
-
-    fn context_with_state_updates() -> (Vec<StateUpdate>, RpcContext) {
+    /// Add some dummy state updates to the context for testing
+    fn context_with_state_updates() -> (Vec<types::StateUpdate>, RpcContext) {
         let storage = crate::storage::Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
-        let state_updates = crate::storage::fixtures::init::with_n_state_updates(&tx, 1);
+        let state_updates = crate::storage::fixtures::init::with_n_state_updates(&tx, 3);
         tx.commit().unwrap();
 
         let sync_state = std::sync::Arc::new(crate::state::SyncState::default());
         let chain = crate::core::Chain::Testnet;
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
-
         let context = RpcContext::new(storage, sync_state, chain, sequencer);
-
         let state_updates = state_updates.into_iter().map(Into::into).collect();
 
         (state_updates, context)
     }
 
-    #[tokio::test]
-    async fn by_hash() {
-        let (state_updates, context) = context_with_state_updates();
-        let input = GetStateUpdateInput {
-            block_id: BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)),
-        };
+    /// Execute a single test case and check its outcome.
+    async fn check(test_case_idx: usize, test_case: &(RpcContext, BlockId, TestCaseHandler)) {
+        let (context, block_id, f) = test_case;
+        let result = get_state_update(
+            context.clone(),
+            GetStateUpdateInput {
+                block_id: *block_id,
+            },
+        )
+        .await;
+        f(test_case_idx, &result);
+    }
 
-        let result = get_state_update(context, input).await.unwrap();
+    /// Common assertion type for most of the test cases
+    fn assert_ok(expected: types::StateUpdate) -> TestCaseHandler {
+        Box::new(move |i: usize, result| {
+            assert_matches!(result, Ok(actual) => assert_eq!(
+                *actual,
+                expected,
+                "test case {i}"
+            ), "test case {i}");
+        })
+    }
 
-        assert_eq!(result, state_updates[0]);
+    impl PartialEq for GetStateUpdateError {
+        fn eq(&self, other: &Self) -> bool {
+            match (self, other) {
+                (Self::Internal(l), Self::Internal(r)) => l.to_string() == r.to_string(),
+                _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            }
+        }
+    }
+
+    /// Common assertion type for most of the error paths
+    fn assert_error(expected: GetStateUpdateError) -> TestCaseHandler {
+        Box::new(move |i: usize, result| {
+            assert_matches!(result, Err(error) => assert_eq!(*error, expected, "test case {i}"), "test case {i}");
+        })
     }
 
     #[tokio::test]
-    async fn by_number() {
-        let (state_updates, context) = context_with_state_updates();
-        let input = GetStateUpdateInput {
-            block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(0)),
-        };
+    async fn happy_paths_and_major_errors() {
+        let (in_storage, ctx) = context_with_state_updates();
+        let ctx_with_pending_empty = ctx
+            .clone()
+            .with_pending_data(crate::state::PendingData::default());
 
-        let result = get_state_update(context, input).await.unwrap();
+        let cases: &[(RpcContext, BlockId, TestCaseHandler)] = &[
+            // Successful
+            (
+                ctx.clone(),
+                BlockId::Latest,
+                assert_ok(in_storage[2].clone()),
+            ),
+            (
+                ctx.clone(),
+                BlockId::Number(StarknetBlockNumber::GENESIS),
+                assert_ok(in_storage[0].clone()),
+            ),
+            (
+                ctx.clone(),
+                // The fixture happens to init this to zero for genesis block
+                BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)),
+                assert_ok(in_storage[0].clone()),
+            ),
+            // Errors
+            (
+                ctx.clone(),
+                BlockId::Number(StarknetBlockNumber::new_or_panic(9999)),
+                assert_error(GetStateUpdateError::BlockNotFound),
+            ),
+            (
+                ctx.clone(),
+                BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"non-existent"))),
+                assert_error(GetStateUpdateError::BlockNotFound),
+            ),
+            (
+                // Pending is disabled for this context
+                ctx,
+                BlockId::Pending,
+                assert_error(GetStateUpdateError::Internal(anyhow!(
+                    "Pending data not supported in this configuration"
+                ))),
+            ),
+            (
+                ctx_with_pending_empty,
+                BlockId::Pending,
+                assert_error(GetStateUpdateError::BlockNotFound),
+            ),
+        ];
 
-        assert_eq!(result, state_updates[0]);
-    }
-
-    #[tokio::test]
-    async fn latest() {
-        let (state_updates, context) = context_with_state_updates();
-        let input = GetStateUpdateInput {
-            block_id: BlockId::Latest,
-        };
-
-        let result = get_state_update(context, input).await.unwrap();
-
-        assert_eq!(result, state_updates[0]);
+        for (i, test_case) in cases.iter().enumerate() {
+            check(i, test_case).await;
+        }
     }
 
     #[tokio::test]

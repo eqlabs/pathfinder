@@ -117,10 +117,11 @@ impl RpcApi {
     ///
     /// This is useful for queries to access pending data or return an error via `?` if it
     /// is not meant to be used (as on testnet for example).
-    fn pending_data(&self) -> anyhow::Result<&PendingData> {
+    fn pending_data(&self) -> RpcResult<&PendingData> {
         self.pending_data
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Pending data not supported in this configuration"))
+            .map_err(internal_server_error)
     }
 
     /// Get block information given the block id.
@@ -260,16 +261,17 @@ impl RpcApi {
     }
 
     /// Get the information about the result of executing the requested block.
-    ///
-    /// FIXME: add support for pending
     pub async fn get_state_update(&self, block_id: BlockId) -> RpcResult<StateUpdate> {
         let block_id = match block_id {
             BlockId::Hash(hash) => hash.into(),
             BlockId::Number(number) => number.into(),
             BlockId::Latest => StarknetBlocksBlockId::Latest,
-            BlockId::Pending => {
-                return Err(ErrorCode::InvalidBlockId.into());
-            }
+            BlockId::Pending => match self.pending_data()?.state_update().await {
+                Some(state_update) => {
+                    return Ok(state_update.as_ref().clone().into());
+                }
+                None => StarknetBlocksBlockId::Latest,
+            },
         };
 
         let storage = self.storage.clone();
