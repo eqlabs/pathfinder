@@ -26,14 +26,14 @@ $ PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
 Then install development tools:
 
 ```bash
-$ PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+$ PIP_REQUIRE_VIRTUALENV=true pip install -e .[dev]
 ```
 
 That is currently the only list we have, and it doesn't have too large extras.
 
 ### Upgrading dependencies
 
-Re-use the `PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt` to upgrade the virtual environment.
+Re-use the `PIP_REQUIRE_VIRTUALENV=true pip install -e .[dev]` to upgrade the virtual environment.
 
 ## Testing
 
@@ -52,7 +52,7 @@ Running this will modify your files, regardless if they staged in git or not.
 Inside the virtual environment, similar to testing:
 
 ```
-$ black src/
+$ black src/ tests/ tools/
 ```
 
 ## Linting
@@ -62,5 +62,5 @@ Many lints consider formatting, so format before linting.
 Inside the virtual environment, similar to testing:
 
 ```
-$ flake8 src/
+$ flake8 src/ tests/ tools/
 ```

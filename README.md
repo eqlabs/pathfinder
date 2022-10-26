@@ -63,7 +63,7 @@ rustup update
 
 ### Install Python
 
-`pathfinder` requires Python version `3.8` (in particular, `cairo-lang` 0.7.1 seems incompatible with Python 3.10).
+`pathfinder` requires Python version `3.8` (in particular, `cairo-lang` 0.10.1 seems incompatible with Python 3.10).
 
 ```bash
 sudo apt install python3 python3-venv python3-dev
@@ -107,7 +107,7 @@ Next install the python tooling and dependencies
 
 ```bash
 PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
-PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+PIP_REQUIRE_VIRTUALENV=true pip install -e .[dev]
 ```
 
 Finally, run our python tests to make sure you were succesful.
@@ -155,7 +155,7 @@ source ./py/.venv/bin/activate
 and then update:
 
 ```bash
-PIP_REQUIRE_VIRTUALENV=true pip install -r requirements-dev.txt
+PIP_REQUIRE_VIRTUALENV=true pip install -e py/.[dev]
 ```
 
 #### Build and run `pathfinder`
