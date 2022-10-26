@@ -938,7 +938,7 @@ pub mod reply {
             status: BlockStatus,
             block_hash: StarknetBlockHash,
             block_number: StarknetBlockNumber,
-            transaction: &sequencer::reply::transaction::Transaction,
+            transaction: sequencer::reply::transaction::Transaction,
         ) -> Self {
             use sequencer::reply::transaction::Transaction::*;
             match transaction {
