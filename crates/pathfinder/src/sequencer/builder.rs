@@ -10,7 +10,6 @@
 //!   3. [Method](stage::Method) where you select the REST API method.
 //!   4. [Params](stage::Params) where you select the retry behavior.
 //!   5. [Final](stage::Final) where you select the REST operation type, which is then executed.
-
 use crate::{
     core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
     sequencer::{
@@ -389,8 +388,12 @@ async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, Seq
     // Starknet specific errors end with a 500 status code
     // but the body contains a JSON object with the error description
     if response.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
-        let starknet_error = response.json::<StarknetError>().await?;
-        return Err(SequencerError::StarknetError(starknet_error));
+        let error = match response.json::<StarknetError>().await {
+            Ok(e) => SequencerError::StarknetError(e),
+            Err(e) if e.is_decode() => SequencerError::InvalidStarknetErrorVariant,
+            Err(e) => SequencerError::ReqwestError(e),
+        };
+        return Err(error);
     }
     // Status codes 400..499 and 501..599 are mapped to SequencerError::TransportError
     response.error_for_status_ref().map(|_| ())?;
@@ -454,6 +457,10 @@ fn retry_condition(e: &SequencerError) -> bool {
             true
         }
         SequencerError::StarknetError(_) => false,
+        SequencerError::InvalidStarknetErrorVariant => {
+            error!(reason=%e, "Request failed, retrying");
+            true
+        }
     }
 }
 
@@ -463,9 +470,7 @@ mod tests {
         use assert_matches::assert_matches;
         use http::{response::Builder, StatusCode};
         use pretty_assertions::assert_eq;
-        use std::{
-            collections::VecDeque, convert::Infallible, net::SocketAddr, sync::Arc, time::Duration,
-        };
+        use std::{collections::VecDeque, net::SocketAddr, sync::Arc, time::Duration};
         use tokio::{sync::Mutex, task::JoinHandle};
         use warp::Filter;
 
@@ -478,12 +483,12 @@ mod tests {
             use std::cell::RefCell;
 
             let statuses = Arc::new(Mutex::new(RefCell::new(statuses)));
-            let any = warp::any().and_then(move || {
+            let any = warp::any().then(move || {
                 let s = statuses.clone();
                 async move {
                     let s = s.lock().await;
                     let s = s.borrow_mut().pop_front().unwrap();
-                    Result::<_, Infallible>::Ok(Builder::new().status(s.0).body(s.1))
+                    Builder::new().status(s.0).body(s.1)
                 }
             });
 
@@ -494,12 +499,10 @@ mod tests {
 
         // A test helper
         fn slow_server() -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
-            async fn slow() -> Result<impl warp::Reply, Infallible> {
+            let any = warp::any().then(|| async {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(Builder::new().status(200).body(""))
-            }
-
-            let any = warp::any().and_then(slow);
+            });
             let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
             let server_handle = tokio::spawn(run_srv);
             (server_handle, addr)
@@ -607,6 +610,32 @@ mod tests {
                 .unwrap_err();
             // 4th try should have timedout if this is really exponential backoff
             assert_eq!(CNT.load(Ordering::Relaxed), 4);
+        }
+    }
+
+    mod invalid_starknet_error_variant {
+        use crate::sequencer::Client;
+        use http::response::Builder;
+        use warp::Filter;
+
+        fn server() -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
+            let any = warp::any().then(|| async { Builder::new().status(500).body("whatever") });
+            let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
+            let server_handle = tokio::spawn(run_srv);
+            (server_handle, addr)
+        }
+
+        #[tokio::test]
+        async fn causes_short_reply() {
+            let (_jh, addr) = server();
+            let mut url = reqwest::Url::parse("http://localhost/").unwrap();
+            url.set_port(Some(addr.port())).unwrap();
+            let client = Client::with_url(url).unwrap();
+            let error = client.chain().await.unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "error decoding response body: invalid error variant"
+            );
         }
     }
 }

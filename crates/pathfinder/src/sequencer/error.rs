@@ -9,15 +9,20 @@ pub enum SequencerError {
     /// Starknet specific errors.
     #[error(transparent)]
     StarknetError(#[from] StarknetError),
-    /// All other kinds of errors
+    /// Errors directly coming from reqwest
     #[error(transparent)]
     ReqwestError(#[from] reqwest::Error),
+    /// Custom errors that we fidded with because the original error was either
+    /// not informative enough or bloated
+    #[error("error decoding response body: invalid error variant")]
+    InvalidStarknetErrorVariant,
 }
 
 impl From<SequencerError> for Error {
     fn from(e: SequencerError) -> Self {
         match e {
             SequencerError::ReqwestError(e) => Error::Call(CallError::Failed(e.into())),
+            SequencerError::InvalidStarknetErrorVariant => Error::Call(CallError::Failed(e.into())),
             SequencerError::StarknetError(e) => match e.code {
                 StarknetErrorCode::OutOfRangeBlockHash | StarknetErrorCode::BlockNotFound
                     if e.message.contains("Block hash") =>
