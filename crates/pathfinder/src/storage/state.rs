@@ -676,8 +676,8 @@ impl StarknetTransactionsTable {
             Some(data) => data,
             None => return Ok(None),
         };
-        let receipt = zstd::decode_all(receipt).context("Decompressing transaction")?;
-        let receipt = serde_json::from_slice(&receipt).context("Deserializing transaction")?;
+        let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
+        let receipt = serde_json::from_slice(&receipt).context("Deserializing receipt")?;
 
         let block_hash = row.get_unwrap("block_hash");
 
@@ -705,6 +705,44 @@ impl StarknetTransactionsTable {
             serde_json::from_slice(&transaction).context("Deserializing transaction")?;
 
         Ok(Some(transaction))
+    }
+
+    pub fn get_transaction_with_receipt(
+        tx: &Transaction<'_>,
+        txn_hash: StarknetTransactionHash,
+    ) -> anyhow::Result<
+        Option<(
+            transaction::Transaction,
+            transaction::Receipt,
+            StarknetBlockHash,
+        )>,
+    > {
+        let mut stmt = tx
+            .prepare("SELECT tx, receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
+            .context("Preparing statement")?;
+
+        let mut rows = stmt.query([txn_hash]).context("Executing query")?;
+
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let transaction = row.get_ref_unwrap("tx").as_blob()?;
+        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
+        let transaction =
+            serde_json::from_slice(&transaction).context("Deserializing transaction")?;
+
+        let receipt = match row.get_ref_unwrap("receipt").as_blob_or_null()? {
+            Some(data) => data,
+            None => return Ok(None),
+        };
+        let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
+        let receipt = serde_json::from_slice(&receipt).context("Deserializing receipt")?;
+
+        let block_hash = row.get_unwrap("block_hash");
+
+        Ok(Some((transaction, receipt, block_hash)))
     }
 
     pub fn get_transaction_count(

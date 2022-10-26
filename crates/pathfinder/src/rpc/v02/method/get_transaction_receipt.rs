@@ -48,32 +48,28 @@ pub async fn get_transaction_receipt(
 
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        match StarknetTransactionsTable::get_receipt(&db_tx, input.transaction_hash)
-            .context("Reading transaction receipt from database")?
+        match StarknetTransactionsTable::get_transaction_with_receipt(
+            &db_tx,
+            input.transaction_hash,
+        )
+        .context("Reading transaction receipt from database")?
         {
-            Some((receipt, block_hash)) => {
+            Some((transaction, receipt, block_hash)) => {
                 // We require the block status here as well..
-                let block = StarknetBlocksTable::get(&db_tx, block_hash.into())
+                let block_number = StarknetBlocksTable::get_number(&db_tx, block_hash)
                     .context("Reading block from database")?
                     .context("Block missing from database")?;
+                let block_status = get_block_status(&db_tx, block_number)?;
 
-                let block_status = get_block_status(&db_tx, block.number)?;
-
-                // We require the transaction so that we can return the right RPC type for the receipt.
-                match StarknetTransactionsTable::get_transaction(&db_tx, input.transaction_hash)
-                    .context("Reading transaction from database")?
-                {
-                    Some(transaction) => Ok(types::MaybePendingTransactionReceipt::Normal(
-                        types::TransactionReceipt::with_block_data(
-                            receipt,
-                            block_status,
-                            block.hash,
-                            block.number,
-                            &transaction,
-                        ),
-                    )),
-                    None => Err(GetTransactionReceiptError::TxnHashNotFound),
-                }
+                Ok(types::MaybePendingTransactionReceipt::Normal(
+                    types::TransactionReceipt::with_block_data(
+                        receipt,
+                        block_status,
+                        block_hash,
+                        block_number,
+                        transaction,
+                    ),
+                ))
             }
             None => Err(GetTransactionReceiptError::TxnHashNotFound),
         }
@@ -182,7 +178,7 @@ mod types {
             status: BlockStatus,
             block_hash: StarknetBlockHash,
             block_number: StarknetBlockNumber,
-            transaction: &crate::sequencer::reply::transaction::Transaction,
+            transaction: crate::sequencer::reply::transaction::Transaction,
         ) -> Self {
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
