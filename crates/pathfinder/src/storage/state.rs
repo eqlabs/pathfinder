@@ -655,35 +655,6 @@ impl StarknetTransactionsTable {
         Ok(Some(transaction))
     }
 
-    pub fn get_receipt(
-        tx: &Transaction<'_>,
-        transaction: StarknetTransactionHash,
-    ) -> anyhow::Result<Option<(transaction::Receipt, StarknetBlockHash)>> {
-        let mut stmt = tx
-            .prepare("SELECT receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
-            .context("Preparing statement")?;
-
-        let mut rows = stmt
-            .query(params![transaction.0.as_be_bytes()])
-            .context("Executing query")?;
-
-        let row = match rows.next()? {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let receipt = match row.get_ref_unwrap("receipt").as_blob_or_null()? {
-            Some(data) => data,
-            None => return Ok(None),
-        };
-        let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
-        let receipt = serde_json::from_slice(&receipt).context("Deserializing receipt")?;
-
-        let block_hash = row.get_unwrap("block_hash");
-
-        Ok(Some((receipt, block_hash)))
-    }
-
     pub fn get_transaction(
         tx: &Transaction<'_>,
         transaction: StarknetTransactionHash,
