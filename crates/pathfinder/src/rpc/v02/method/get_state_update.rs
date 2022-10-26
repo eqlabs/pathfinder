@@ -391,7 +391,7 @@ mod tests {
         (state_updates, context)
     }
 
-    /// Execute a single test case and check its outcome for both: `get_block_with_[txs|tx_hashes]`
+    /// Execute a single test case and check its outcome.
     async fn check(test_case_idx: usize, test_case: &(RpcContext, BlockId, TestCaseHandler)) {
         let (context, block_id, f) = test_case;
         let result = get_state_update(
