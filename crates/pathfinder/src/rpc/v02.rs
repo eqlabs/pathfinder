@@ -112,7 +112,7 @@ impl From<&super::v01::api::RpcApi> for RpcContext {
 ///
 /// An example signature for `method` is:
 /// ```ignore
-/// async fn method(context: Arc<RpcContext>, input: Input) -> Result<Ouput, Error>
+/// async fn method(context: RpcContext, input: Input) -> Result<Ouput, Error>
 /// ```
 fn register_method<Input, Output, Error, MethodFuture, Method>(
     module: &mut jsonrpsee::RpcModule<RpcContext>,
@@ -156,7 +156,7 @@ where
 ///
 /// An example signature for `method` is:
 /// ```ignore
-/// async fn method(context: Arc<RpcContext>) -> Result<Ouput, Error>
+/// async fn method(context: RpcContext) -> Result<Ouput, Error>
 /// ```
 fn register_method_with_no_input<Output, Error, MethodFuture, Method>(
     module: &mut jsonrpsee::RpcModule<RpcContext>,
@@ -294,4 +294,48 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RpcContext;
+    use crate::rpc::{test_client::client, RpcApi, RpcServer};
+    use jsonrpsee::rpc_params;
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+
+    #[tokio::test]
+    async fn registered_method_is_callable_via_json_rpc() {
+        let ctx = RpcContext::for_tests();
+        let api = RpcApi::new(
+            ctx.storage.clone(),
+            ctx.sequencer.clone(),
+            ctx.chain,
+            ctx.sync_status.clone(),
+        );
+        let (__handle, addr) = RpcServer::new(
+            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
+            api,
+        )
+        .run()
+        .await
+        .unwrap();
+
+        let client = client(addr);
+
+        // A method with no params via `register_method_with_no_input`
+        let params = rpc_params!();
+        let number = client
+            .request::<u64>("starknet_blockNumber", params)
+            .await
+            .unwrap();
+        assert_eq!(number, 2);
+
+        // A method with params via `register_method`
+        let params = rpc_params!("latest");
+        let number = client
+            .request::<u64>("starknet_getBlockTransactionCount", params)
+            .await
+            .unwrap();
+        assert_eq!(number, 3);
+    }
 }
