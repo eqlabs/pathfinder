@@ -12,6 +12,7 @@ pub struct ContractAddresses {
 
 /// Starknet contract addresses on L1 Mainnet.
 const MAINNET_ADDRESSES: ContractAddresses = ContractAddresses {
+    // `core` and `gps` addresses can be fetched from https://alpha-mainnet.starknet.io/feeder_gateway/get_contract_addresses
     core: H160([
         198, 98, 196, 16, 192, 236, 247, 71, 84, 63, 91, 169, 6, 96, 246, 171, 235, 217, 200, 196,
     ]),
@@ -36,6 +37,21 @@ const TESTNET_ADDRESSES: ContractAddresses = ContractAddresses {
     ]),
 };
 
+/// Starknet contract addresses on L1 Goerli for testnet 2.
+const TESTNET2_ADDRESSES: ContractAddresses = ContractAddresses {
+    core: H160([
+        0xa4, 0xed, 0x3a, 0xd2, 0x7c, 0x29, 0x45, 0x65, 0xcb, 0x0d, 0xcc, 0x99, 0x3b, 0xdd, 0xcc,
+        0x75, 0x43, 0x2d, 0x49, 0x8c,
+    ]),
+    gps: H160([
+        171, 67, 186, 72, 201, 237, 244, 194, 196, 187, 1, 35, 115, 72, 209, 215, 178, 142, 241,
+        104,
+    ]),
+    // FIXME: This was copied from testnet addresses as this info is not available from the gateway.
+    //        Currently not important as it is not used.
+    mempage: TESTNET_ADDRESSES.mempage,
+};
+
 /// Starknet contract addresses on L1 Goerli for integration.
 const INTEGRATION_ADDRESSES: ContractAddresses = ContractAddresses {
     core: H160([
@@ -55,6 +71,7 @@ pub fn addresses(chain: Chain) -> ContractAddresses {
     match chain {
         Chain::Mainnet => MAINNET_ADDRESSES,
         Chain::Testnet => TESTNET_ADDRESSES,
+        Chain::Testnet2 => TESTNET2_ADDRESSES,
         Chain::Integration => INTEGRATION_ADDRESSES,
     }
 }

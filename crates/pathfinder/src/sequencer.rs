@@ -7,7 +7,6 @@ pub mod request;
 
 use self::request::add_transaction::ContractDefinition;
 use crate::{
-    consts::INTEGRATION_GENESIS_HASH,
     core::{
         BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, EntryPoint, Fee, StarknetTransactionHash, StorageAddress,
@@ -132,6 +131,7 @@ impl Client {
         let url = match chain {
             Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
             Chain::Testnet => Url::parse("https://alpha4.starknet.io/").unwrap(),
+            Chain::Testnet2 => Url::parse("https://alpha4-2.starknet.io/").unwrap(),
             Chain::Integration => Url::parse("https://external.integration.starknet.io").unwrap(),
         };
 
@@ -157,7 +157,10 @@ impl Client {
 
     /// Returns the [network chain](Chain) this client is operating on.
     pub async fn chain(&self) -> anyhow::Result<Chain> {
-        use crate::consts::{MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH};
+        use crate::consts::{
+            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
+            TESTNET_GENESIS_HASH,
+        };
         use crate::core::StarknetBlockNumber;
 
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
@@ -170,6 +173,7 @@ impl Client {
 
         match genesis_hash {
             testnet if testnet == TESTNET_GENESIS_HASH => Ok(Chain::Testnet),
+            testnet2 if testnet2 == TESTNET2_GENESIS_HASH => Ok(Chain::Testnet2),
             mainnet if mainnet == MAINNET_GENESIS_HASH => Ok(Chain::Mainnet),
             integration if integration == INTEGRATION_GENESIS_HASH => Ok(Chain::Integration),
             other => Err(anyhow::anyhow!("Unknown genesis block hash: {}", other.0)),

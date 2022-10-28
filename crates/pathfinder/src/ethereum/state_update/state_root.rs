@@ -11,6 +11,8 @@ pub struct StateRootFetcher(LogFetcher<StateUpdateLog>);
 const MAINNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(13_627_224);
 /// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog] for testnet.
 const TESTNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_854_324);
+/// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog] for testnet 2.
+const TESTNET2_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_854_324);
 /// The Goerli Ethereum block containing the Starknet genesis [StateUpdateLog] for integration.
 const INTEGRATION_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_986_835);
 
@@ -19,6 +21,7 @@ impl StateRootFetcher {
         let genesis = match chain {
             Chain::Mainnet => MAINNET_GENESIS,
             Chain::Testnet => TESTNET_GENESIS,
+            Chain::Testnet2 => TESTNET2_GENESIS,
             Chain::Integration => INTEGRATION_GENESIS,
         };
 

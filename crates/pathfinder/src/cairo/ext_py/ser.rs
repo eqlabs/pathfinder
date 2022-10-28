@@ -55,6 +55,7 @@ impl From<crate::core::Chain> for UsedChain {
         match c {
             crate::core::Chain::Mainnet => UsedChain::Mainnet,
             crate::core::Chain::Testnet => UsedChain::Goerli,
+            crate::core::Chain::Testnet2 => UsedChain::Goerli,
             crate::core::Chain::Integration => UsedChain::Goerli,
         }
     }

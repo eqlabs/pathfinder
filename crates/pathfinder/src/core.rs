@@ -408,6 +408,7 @@ pub enum Chain {
     Mainnet,
     Testnet,
     Integration,
+    Testnet2,
 }
 
 impl Chain {
@@ -417,6 +418,8 @@ impl Chain {
             Chain::Mainnet => StarkHash::from_u128(0x534e5f4d41494eu128),
             // SN_GOERLI
             Chain::Testnet => StarkHash::from_u128(0x534e5f474f45524c49u128),
+            // SN_GOERLI2
+            Chain::Testnet2 => StarkHash::from_u128(0x534e5f474f45524c4932),
             // SN_INTEGRATION
             Chain::Integration => StarkHash::from_u128(0x534E5F494E544547524154494F4E),
         }
@@ -428,6 +431,7 @@ impl std::fmt::Display for Chain {
         match self {
             Chain::Mainnet => f.write_str("Mainnet"),
             Chain::Testnet => f.write_str("Görli"),
+            Chain::Testnet2 => f.write_str("Görli2"),
             Chain::Integration => f.write_str("Integration"),
         }
     }
