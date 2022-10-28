@@ -237,6 +237,8 @@ sqlite-wal = true
 poll-pending = true
 # The address to host the monitoring API at. Defaults to disabled.
 monitor-address = "127.0.0.1:54321"
+# Use Goerli Testnet 2 instead of Goerli Testnet. Defaults to false.
+testnet2 = true
 
 [ethereum]
 # This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
