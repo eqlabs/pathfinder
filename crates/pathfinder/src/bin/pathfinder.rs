@@ -56,18 +56,23 @@ async fn main() -> anyhow::Result<()> {
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     )?;
 
-    let starknet_chain = match (ethereum_chain, config.integration) {
-        (EthereumChain::Mainnet, false) => Chain::Mainnet,
-        (EthereumChain::Goerli, false) => Chain::Testnet,
-        (EthereumChain::Goerli, true) => Chain::Integration,
-        (EthereumChain::Mainnet, true) => {
-            anyhow::bail!("'--integration flag' is invalid on Ethereum mainnet");
+    let starknet_chain = match (ethereum_chain, config.integration, config.testnet2) {
+        (EthereumChain::Mainnet, false, false) => Chain::Mainnet,
+        (EthereumChain::Mainnet, _, _) => {
+            anyhow::bail!("'--integration' and '--testnet2' flags are invalid on Ethereum mainnet");
         }
+        (EthereumChain::Goerli, false, false) => Chain::Testnet,
+        (EthereumChain::Goerli, false, true) => Chain::Testnet2,
+        (EthereumChain::Goerli, true, true) => {
+            anyhow::bail!("'--integration' and '--testnet2' flags cannot be used together")
+        }
+        (EthereumChain::Goerli, true, false) => Chain::Integration,
     };
 
     let database_path = config.data_directory.join(match starknet_chain {
         Chain::Mainnet => "mainnet.sqlite",
         Chain::Testnet => "goerli.sqlite",
+        Chain::Testnet2 => "testnet2.sqlite",
         Chain::Integration => "integration.sqlite",
     });
     let journal_mode = match config.sqlite_wal {

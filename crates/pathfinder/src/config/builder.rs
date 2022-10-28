@@ -90,6 +90,15 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             })
             .transpose()?;
         let integration = self.take(ConfigOption::Integration).is_some();
+        let testnet2: bool = self.take(ConfigOption::Testnet2).is_some();
+
+        if integration && testnet2 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Cannot use both integration and testnet 2 at the same time. Please choose one."
+                    .to_string(),
+            ));
+        }
 
         // Optional parameters with defaults.
         let data_directory = self
@@ -176,6 +185,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             poll_pending,
             monitoring_addr,
             integration,
+            testnet2,
         })
     }
 

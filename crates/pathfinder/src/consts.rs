@@ -19,3 +19,7 @@ pub const MAINNET_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(crate::sta
 pub const INTEGRATION_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(crate::starkhash!(
     "03ae41b0f023e53151b0c8ab8b9caafb7005d5f41c9ab260276d5bdc49726279"
 ));
+
+pub const TESTNET2_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(crate::starkhash!(
+    "04163f64ea0258f21fd05b478e2306ab2daeb541bdbd3bf29a9874dc5cd4b64e"
+));

@@ -17,6 +17,7 @@ const SQLITE_WAL: &str = "sqlite-wal";
 const POLL_PENDING: &str = "poll-pending";
 const MONITOR_ADDRESS: &str = "monitor-address";
 const INTEGRATION: &str = "integration";
+const TESTNET2: &str = "testnet2";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -51,8 +52,9 @@ where
     let sqlite_wal = args.value_of(SQLITE_WAL).map(|s| s.to_owned());
     let poll_pending = args.value_of(POLL_PENDING).map(|s| s.to_owned());
     let monitor_address = args.value_of(MONITOR_ADDRESS).map(|s| s.to_owned());
-    // Hack around our builder requiring Strings, but this arg just needs to be present.
+    // Hack around our builder requiring Strings, but these args just needs to be present.
     let integration = args.is_present(INTEGRATION).then_some(String::new());
+    let testnet2: Option<String> = args.is_present(TESTNET2).then_some(String::new());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
@@ -64,7 +66,8 @@ where
         .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal)
         .with(ConfigOption::PollPending, poll_pending)
         .with(ConfigOption::MonitorAddress, monitor_address)
-        .with(ConfigOption::Integration, integration);
+        .with(ConfigOption::Integration, integration)
+        .with(ConfigOption::Testnet2, testnet2);
 
     Ok((config_filepath, cfg))
 }
@@ -173,6 +176,12 @@ Examples:
                 .long(INTEGRATION)
                 .hide(true)
                 .takes_value(false)
+        )
+        .arg(
+            Arg::new(TESTNET2)
+            .long(TESTNET2)
+            .help("Use Testnet 2 on Ethereum Goerli")
+            .takes_value(false)
         )
 }
 
@@ -413,6 +422,15 @@ mod tests {
         env::set_var("PATHFINDER_MONITOR_ADDRESS", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::MonitorAddress), Some(value));
+    }
+
+    #[test]
+    fn testnet2_long() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let (_, mut cfg) = parse_args(vec!["bin name", "--testnet2"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::Testnet2), Some("".to_owned()));
     }
 
     #[test]
