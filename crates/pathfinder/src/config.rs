@@ -33,6 +33,8 @@ pub enum ConfigOption {
     MonitorAddress,
     /// Chooses Integration network instead of testnet.
     Integration,
+    /// Chooses Testnet 2 network.
+    Testnet2,
 }
 
 impl Display for ConfigOption {
@@ -50,6 +52,7 @@ impl Display for ConfigOption {
             ConfigOption::PollPending => f.write_str("Enable pending block polling"),
             ConfigOption::MonitorAddress => f.write_str("Pathfinder monitoring address"),
             ConfigOption::Integration => f.write_str("Select integration network"),
+            ConfigOption::Testnet2 => f.write_str("Select Testnet 2 network"),
         }
     }
 }
@@ -84,6 +87,8 @@ pub struct Configuration {
     pub monitoring_addr: Option<SocketAddr>,
     /// Select integration network.
     pub integration: bool,
+    /// Select testnet 2 network.
+    pub testnet2: bool,
 }
 
 impl Configuration {
