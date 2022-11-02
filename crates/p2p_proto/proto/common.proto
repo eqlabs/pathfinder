@@ -1,8 +1,10 @@
 syntax = "proto3";
 
-package starknet;
+package starknet.common;
 
 message FieldElement { bytes elements = 1; }
+
+message PeerID { bytes id = 1; }
 
 message BlockHeader {
   FieldElement parent_block_hash = 1;
@@ -26,7 +28,8 @@ message InvokeTransaction {
   repeated FieldElement calldata = 3;
   repeated FieldElement signature = 4;
   FieldElement max_fee = 5;
-  FieldElement version = 6;
+  FieldElement nonce = 6;
+  FieldElement version = 7;
 }
 
 message DeclareTransaction {
@@ -60,7 +63,7 @@ message Transaction {
   }
 }
 
-message Event { uint32 placeholder = 1; }
+message Event {}
 
 message BlockBody {
   uint32 transaction_count = 1;

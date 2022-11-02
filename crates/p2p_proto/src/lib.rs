@@ -2,19 +2,27 @@ use anyhow::anyhow;
 use stark_hash::StarkHash;
 
 pub mod proto {
-    include!(concat!(env!("OUT_DIR"), "/starknet.rs"));
+    pub mod common {
+        include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
+    }
+    pub mod propagation {
+        include!(concat!(env!("OUT_DIR"), "/starknet.propagation.rs"));
+    }
+    pub mod sync {
+        include!(concat!(env!("OUT_DIR"), "/starknet.sync.rs"));
+    }
 }
 
-impl TryFrom<proto::FieldElement> for StarkHash {
+impl TryFrom<proto::common::FieldElement> for StarkHash {
     type Error = stark_hash::OverflowError;
 
-    fn try_from(element: proto::FieldElement) -> Result<Self, Self::Error> {
+    fn try_from(element: proto::common::FieldElement) -> Result<Self, Self::Error> {
         let stark_hash = StarkHash::from_be_slice(&element.elements)?;
         Ok(stark_hash)
     }
 }
 
-impl From<StarkHash> for proto::FieldElement {
+impl From<StarkHash> for proto::common::FieldElement {
     fn from(hash: StarkHash) -> Self {
         Self {
             elements: hash.to_be_bytes().into(),
@@ -38,10 +46,10 @@ pub struct BlockHeader {
     pub protocol_version: u32,
 }
 
-impl TryFrom<proto::BlockHeader> for BlockHeader {
+impl TryFrom<proto::common::BlockHeader> for BlockHeader {
     type Error = anyhow::Error;
 
-    fn try_from(block: proto::BlockHeader) -> Result<Self, Self::Error> {
+    fn try_from(block: proto::common::BlockHeader) -> Result<Self, Self::Error> {
         Ok(Self {
             parent_block_hash: block
                 .parent_block_hash
@@ -72,7 +80,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
     }
 }
 
-impl From<BlockHeader> for proto::BlockHeader {
+impl From<BlockHeader> for proto::common::BlockHeader {
     fn from(block: BlockHeader) -> Self {
         Self {
             parent_block_hash: Some(block.parent_block_hash.into()),
