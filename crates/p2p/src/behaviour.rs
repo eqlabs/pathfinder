@@ -5,16 +5,16 @@ use std::time::Duration;
 use libp2p::gossipsub::{
     Gossipsub, GossipsubEvent, GossipsubMessage, MessageAuthenticity, MessageId,
 };
-use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
+use libp2p::identify;
 use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
-use libp2p::ping::{Ping, PingConfig, PingEvent};
+use libp2p::ping;
 use libp2p::{identity, kad, NetworkBehaviour};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "Event", event_process = false)]
 pub struct Behaviour {
-    ping: Ping,
-    identify: Identify,
+    ping: ping::Behaviour,
+    identify: identify::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
     pub gossipsub: Gossipsub,
 }
@@ -23,7 +23,7 @@ impl Behaviour {
     pub fn new(identity: &identity::Keypair, capabilities: &[&str]) -> Self {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
         // FIXME: clarify what version number should be
-        // FIXME: we're also missing the staring '/'
+        // FIXME: we're also missing the starting '/'
         const PROTOCOL_VERSION: &str = "starknet/0.9.1";
 
         let mut kademlia_config = KademliaConfig::default();
@@ -61,9 +61,9 @@ impl Behaviour {
         .expect("valid gossipsub params");
 
         Self {
-            ping: Ping::new(PingConfig::new()),
-            identify: Identify::new(
-                IdentifyConfig::new(PROTOCOL_VERSION.to_string(), identity.public())
+            ping: ping::Behaviour::new(ping::Config::new()),
+            identify: identify::Behaviour::new(
+                identify::Config::new(PROTOCOL_VERSION.to_string(), identity.public())
                     .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
             ),
             kademlia,
@@ -74,20 +74,20 @@ impl Behaviour {
 
 #[derive(Debug)]
 pub enum Event {
-    Ping(PingEvent),
-    Identify(Box<IdentifyEvent>),
+    Ping(ping::Event),
+    Identify(Box<identify::Event>),
     Kademlia(KademliaEvent),
     Gossipsub(GossipsubEvent),
 }
 
-impl From<PingEvent> for Event {
-    fn from(event: PingEvent) -> Self {
+impl From<ping::Event> for Event {
+    fn from(event: ping::Event) -> Self {
         Event::Ping(event)
     }
 }
 
-impl From<IdentifyEvent> for Event {
-    fn from(event: IdentifyEvent) -> Self {
+impl From<identify::Event> for Event {
+    fn from(event: identify::Event) -> Self {
         Event::Identify(Box::new(event))
     }
 }

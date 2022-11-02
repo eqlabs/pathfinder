@@ -1,15 +1,15 @@
 use std::time::Duration;
 
-use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
+use libp2p::identify;
 use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
-use libp2p::ping::{Ping, PingConfig, PingEvent};
+use libp2p::ping;
 use libp2p::{identity, NetworkBehaviour};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "BootstrapEvent", event_process = false)]
 pub struct BootstrapBehaviour {
-    ping: Ping,
-    identify: Identify,
+    ping: ping::Behaviour,
+    identify: identify::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
 }
 
@@ -17,7 +17,7 @@ impl BootstrapBehaviour {
     pub fn new(pub_key: identity::PublicKey) -> Self {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
         // FIXME: clarify what version number should be
-        // FIXME: we're also missing the staring '/'
+        // FIXME: we're also missing the starting '/'
         const PROTOCOL_VERSION: &str = "starknet/0.9.1";
 
         let mut kademlia_config = KademliaConfig::default();
@@ -32,9 +32,9 @@ impl BootstrapBehaviour {
         );
 
         Self {
-            ping: Ping::new(PingConfig::new()),
-            identify: Identify::new(
-                IdentifyConfig::new(PROTOCOL_VERSION.to_string(), pub_key)
+            ping: ping::Behaviour::new(ping::Config::new()),
+            identify: identify::Behaviour::new(
+                identify::Config::new(PROTOCOL_VERSION.to_string(), pub_key)
                     .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
             ),
             kademlia,
@@ -44,19 +44,19 @@ impl BootstrapBehaviour {
 
 #[derive(Debug)]
 pub enum BootstrapEvent {
-    Ping(PingEvent),
-    Identify(Box<IdentifyEvent>),
+    Ping(ping::Event),
+    Identify(Box<identify::Event>),
     Kademlia(KademliaEvent),
 }
 
-impl From<PingEvent> for BootstrapEvent {
-    fn from(event: PingEvent) -> Self {
+impl From<ping::Event> for BootstrapEvent {
+    fn from(event: ping::Event) -> Self {
         BootstrapEvent::Ping(event)
     }
 }
 
-impl From<IdentifyEvent> for BootstrapEvent {
-    fn from(event: IdentifyEvent) -> Self {
+impl From<identify::Event> for BootstrapEvent {
+    fn from(event: identify::Event) -> Self {
         BootstrapEvent::Identify(Box::new(event))
     }
 }

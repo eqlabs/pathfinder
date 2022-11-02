@@ -6,7 +6,7 @@ use std::time::Duration;
 use clap::Parser;
 use futures::StreamExt;
 use libp2p::core::upgrade;
-use libp2p::identify::{IdentifyEvent, IdentifyInfo};
+use libp2p::identify::{Event as IdentifyEvent, Info as IdentifyInfo};
 use libp2p::identity::Keypair;
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};

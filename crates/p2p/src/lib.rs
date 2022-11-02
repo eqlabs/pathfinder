@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use libp2p::gossipsub::IdentTopic;
-use libp2p::identify::{IdentifyEvent, IdentifyInfo};
+use libp2p::identify;
 use libp2p::identity::Keypair;
 use libp2p::kad::{self, KademliaEvent};
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
@@ -74,10 +74,10 @@ async fn main_loop(mut swarm: libp2p::swarm::Swarm<behaviour::Behaviour>) {
             Some(event) = swarm.next() => {
                 match event {
                     SwarmEvent::Behaviour(behaviour::Event::Identify(e)) => {
-                        if let IdentifyEvent::Received {
+                        if let identify::Event::Received {
                             peer_id,
                             info:
-                                IdentifyInfo {
+                                identify::Info {
                                     listen_addrs,
                                     protocols,
                                     ..
