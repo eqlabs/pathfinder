@@ -23,6 +23,7 @@ pub fn start(
     listen_on: Multiaddr,
     bootstrap_addresses: Vec<Multiaddr>,
     capabilities: &[&str],
+    chain_id: u128,
 ) -> anyhow::Result<JoinHandle<()>> {
     let peer_id = keypair.public().to_peer_id();
 
@@ -40,8 +41,11 @@ pub fn start(
         swarm.dial(bootstrap_address)?;
     }
 
-    let topic = IdentTopic::new("_starknet_nodes/SN_GOERLI");
-    swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+    let block_propagation_topic = IdentTopic::new(format!("blocks/{}", chain_id));
+    swarm
+        .behaviour_mut()
+        .gossipsub
+        .subscribe(&block_propagation_topic)?;
 
     let join_handle = tokio::task::spawn(
         async move {
