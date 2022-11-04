@@ -177,7 +177,7 @@ impl<T: NodeStorage> MerkleTree<T> {
         // Go through tree, collect dirty nodes, calculate their hashes and
         // persist them. Take care to increment ref counts of child nodes. So in order
         // to do this correctly, will have to start back-to-front.
-        self.commit_subtree(&mut *self.root.borrow_mut())?;
+        self.commit_subtree(&mut self.root.borrow_mut())?;
         // unwrap is safe as `commit_subtree` will set the hash.
         let root = self.root.borrow().hash().unwrap();
         self.storage.increment_ref_count(root)?;
@@ -203,8 +203,8 @@ impl<T: NodeStorage> MerkleTree<T> {
             Edge(edge) if edge.hash.is_some() => { /* not dirty, already persisted */ }
 
             Binary(binary) => {
-                self.commit_subtree(&mut *binary.left.borrow_mut())?;
-                self.commit_subtree(&mut *binary.right.borrow_mut())?;
+                self.commit_subtree(&mut binary.left.borrow_mut())?;
+                self.commit_subtree(&mut binary.right.borrow_mut())?;
                 // This will succeed as `commit_subtree` will set the child hashes.
                 binary.calculate_hash();
                 // unwrap is safe as `commit_subtree` will set the hashes.
@@ -218,7 +218,7 @@ impl<T: NodeStorage> MerkleTree<T> {
             }
 
             Edge(edge) => {
-                self.commit_subtree(&mut *edge.child.borrow_mut())?;
+                self.commit_subtree(&mut edge.child.borrow_mut())?;
                 // This will succeed as `commit_subtree` will set the child's hash.
                 edge.calculate_hash();
 

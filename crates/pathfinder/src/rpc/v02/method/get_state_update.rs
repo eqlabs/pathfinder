@@ -319,7 +319,7 @@ mod types {
             ];
 
             let fixture = include_str!("../../../../fixtures/rpc/0.44.0/state_update.json")
-                .replace(&[' ', '\n'], "");
+                .replace([' ', '\n'], "");
 
             assert_eq!(serde_json::to_string(&data).unwrap(), fixture);
             assert_eq!(

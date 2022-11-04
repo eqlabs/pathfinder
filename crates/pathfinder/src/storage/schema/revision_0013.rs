@@ -121,7 +121,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
             _ => continue,
         };
 
-        if class_query.exists(&[class_hash.0.as_be_bytes()])? {
+        if class_query.exists([class_hash.0.as_be_bytes()])? {
             continue;
         }
 

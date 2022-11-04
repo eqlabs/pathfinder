@@ -87,7 +87,7 @@ pub(super) async fn launch_python(
 
         {
             let op = process(
-                &*current_span,
+                &current_span,
                 command,
                 &mut command_buffer,
                 &mut stdin,

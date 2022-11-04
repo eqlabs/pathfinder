@@ -83,7 +83,7 @@ mod tests {
         };
 
         pub static ref CONTRACT_CLASS: ContractClass = {
-            ContractClass::from_definition_bytes(&*CONTRACT_DEFINITION_JSON).unwrap()
+            ContractClass::from_definition_bytes(&CONTRACT_DEFINITION_JSON).unwrap()
         };
 
         pub static ref CONTRACT_CLASS_JSON: String = {
