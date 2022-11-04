@@ -467,7 +467,7 @@ async fn download_and_compress_class(
             .compress(&bytecode)
             .context("Compress bytecode")?;
         let definition = compressor
-            .compress(&*definition)
+            .compress(&definition)
             .context("Compress definition")?;
 
         Ok((abi, bytecode, definition))
@@ -516,7 +516,7 @@ async fn download_and_compress_contract(
             .compress(&bytecode)
             .context("Compress bytecode")?;
         let definition = compressor
-            .compress(&*contract_definition)
+            .compress(&contract_definition)
             .context("Compress definition")?;
 
         Ok((abi, bytecode, definition))

@@ -1115,7 +1115,7 @@ impl StarknetVersionsTable {
         let id: Option<i64> = transaction
             .query_row(
                 "SELECT id FROM starknet_versions WHERE version = ?",
-                &[version],
+                [version],
                 |r| Ok(r.get_unwrap(0)),
             )
             .optional()

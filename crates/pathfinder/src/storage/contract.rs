@@ -139,7 +139,7 @@ impl ContractCodeTable {
 
         Ok(classes
             .iter()
-            .map(|hash| stmt.exists(&[&hash.0.to_be_bytes()[..]]))
+            .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
             .collect::<Result<Vec<_>, _>>()?)
     }
 }

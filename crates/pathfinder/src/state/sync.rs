@@ -880,7 +880,7 @@ async fn download_verify_and_insert_missing_classes<
                 .compress(&bytecode)
                 .context("Compress bytecode")?;
             let definition = compressor
-                .compress(&*definition)
+                .compress(&definition)
                 .context("Compress definition")?;
 
             Ok((abi, bytecode, definition))
@@ -1382,7 +1382,7 @@ mod tests {
         let tx = connection.transaction().unwrap();
 
         // This is what we're asking for
-        L1StateTable::upsert(&tx, &*STATE_UPDATE_LOG0).unwrap();
+        L1StateTable::upsert(&tx, &STATE_UPDATE_LOG0).unwrap();
 
         tx.commit().unwrap();
 
