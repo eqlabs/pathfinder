@@ -146,7 +146,7 @@ rpc_call '{
     "jsonrpc": "2.0",
     "method": "starknet_getEvents",
     "params": [
-        {"from_block": 800, "to_block": 1701, "page_size": 1000, "page_number": 0}
+        {"from_block": {"block_number": 800}, "to_block": {"block_number": 1701}, "page_size": 1000, "page_number": 0}
     ],
     "id": 0
 }'
