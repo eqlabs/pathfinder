@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use clap::Parser;
+use futures::StreamExt;
 use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
 use serde_derive::Deserialize;
@@ -71,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(%peer_id, "Starting up");
 
     let capabilities = ["core/block-propagate/1", "core/blocks-sync/1"];
-    let p2p_task = p2p::start(
+    let (mut p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(
         keypair,
         args.listen_on,
         args.bootstrap_addresses,
@@ -79,7 +80,15 @@ async fn main() -> anyhow::Result<()> {
         // SN_GOERLI chain ID
         0x534e5f474f45524c49u128,
     )?;
-    p2p_task.await?;
+
+    let p2p_task = tokio::task::spawn(p2p_main_loop.run());
+
+    loop {
+        match p2p_events.next().await {
+            Some(e) => tracing::debug!(?e, "Received P2P event"),
+            None => break,
+        }
+    }
 
     Ok(())
 }
