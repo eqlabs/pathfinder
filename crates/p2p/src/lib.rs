@@ -16,26 +16,16 @@ mod behaviour;
 mod executor;
 mod transport;
 
-pub fn new(
-    keypair: Keypair,
-    capabilities: &[&str],
-    chain_id: u128,
-) -> anyhow::Result<(Client, mpsc::Receiver<Event>, MainLoop)> {
+pub fn new(keypair: Keypair) -> anyhow::Result<(Client, mpsc::Receiver<Event>, MainLoop)> {
     let peer_id = keypair.public().to_peer_id();
 
-    let mut swarm = SwarmBuilder::new(
+    let swarm = SwarmBuilder::new(
         transport::create(&keypair),
-        behaviour::Behaviour::new(&keypair, capabilities),
+        behaviour::Behaviour::new(&keypair),
         peer_id,
     )
     .executor(Box::new(executor::TokioExecutor()))
     .build();
-
-    let block_propagation_topic = IdentTopic::new(format!("blocks/{}", chain_id));
-    swarm
-        .behaviour_mut()
-        .gossipsub
-        .subscribe(&block_propagation_topic)?;
 
     let (command_sender, command_receiver) = mpsc::channel(1);
     let (event_sender, event_receiver) = mpsc::channel(1);
@@ -71,25 +61,54 @@ impl Client {
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }
+
+    pub async fn provide_capability(&mut self, capability: &str) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::ProvideCapability {
+                capability: capability.to_owned(),
+                sender,
+            })
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
+
+    pub async fn subscribe_topic(&mut self, topic: &str) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+        let topic = IdentTopic::new(topic);
+        self.sender
+            .send(Command::SubscribeTopic { topic, sender })
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
 }
 
+type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
+
 #[derive(Debug)]
-pub enum Command {
+enum Command {
     StarListening {
         addr: Multiaddr,
-        sender: oneshot::Sender<anyhow::Result<()>>,
+        sender: EmptyResultSender,
     },
     Dial {
         addr: Multiaddr,
-        sender: oneshot::Sender<anyhow::Result<()>>,
+        sender: EmptyResultSender,
     },
-    RequestBlockHeader,
+    ProvideCapability {
+        capability: String,
+        sender: EmptyResultSender,
+    },
+    SubscribeTopic {
+        topic: IdentTopic,
+        sender: EmptyResultSender,
+    },
 }
 
 #[derive(Debug)]
-pub enum Event {
-    InboundRequestBlockHeader,
-}
+pub enum Event {}
 
 pub struct MainLoop {
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
@@ -201,7 +220,24 @@ impl MainLoop {
                     Err(e) => sender.send(Err(e.into())),
                 };
             }
-            _ => {}
+            Command::ProvideCapability { capability, sender } => {
+                let _ = match self.swarm.behaviour_mut().provide_capability(&capability) {
+                    Ok(_) => {
+                        tracing::debug!(%capability, "Providing capability");
+                        sender.send(Ok(()))
+                    }
+                    Err(e) => sender.send(Err(e)),
+                };
+            }
+            Command::SubscribeTopic { topic, sender } => {
+                let _ = match self.swarm.behaviour_mut().subscribe_topic(&topic) {
+                    Ok(_) => {
+                        tracing::debug!(%topic, "Providing capability");
+                        sender.send(Ok(()))
+                    }
+                    Err(e) => sender.send(Err(e)),
+                };
+            }
         };
     }
 }

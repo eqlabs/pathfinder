@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
 use libp2p::gossipsub::{
-    Gossipsub, GossipsubEvent, GossipsubMessage, MessageAuthenticity, MessageId,
+    Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic, MessageAuthenticity, MessageId,
 };
 use libp2p::identify;
 use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
@@ -20,7 +20,7 @@ pub struct Behaviour {
 }
 
 impl Behaviour {
-    pub fn new(identity: &identity::Keypair, capabilities: &[&str]) -> Self {
+    pub fn new(identity: &identity::Keypair) -> Self {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
         // FIXME: clarify what version number should be
         // FIXME: we're also missing the starting '/'
@@ -33,15 +33,7 @@ impl Behaviour {
 
         let peer_id = identity.public().to_peer_id();
 
-        let mut kademlia =
-            Kademlia::with_config(peer_id, MemoryStore::new(peer_id), kademlia_config);
-
-        for capability in capabilities {
-            let key = string_to_key(capability);
-            kademlia
-                .start_providing(key)
-                .expect("Providing capability should not fail");
-        }
+        let kademlia = Kademlia::with_config(peer_id, MemoryStore::new(peer_id), kademlia_config);
 
         // FIXME: find out how we should derive message id
         let message_id_fn = |message: &GossipsubMessage| {
@@ -69,6 +61,17 @@ impl Behaviour {
             kademlia,
             gossipsub,
         }
+    }
+
+    pub fn provide_capability(&mut self, capability: &str) -> anyhow::Result<()> {
+        let key = string_to_key(capability);
+        self.kademlia.start_providing(key)?;
+        Ok(())
+    }
+
+    pub fn subscribe_topic(&mut self, topic: &IdentTopic) -> anyhow::Result<()> {
+        self.gossipsub.subscribe(topic)?;
+        Ok(())
     }
 }
 

@@ -13,13 +13,11 @@ pub fn create(
     let transport = TokioTcpTransport::new(GenTcpConfig::new());
     let transport = dns::TokioDnsConfig::system(transport).unwrap();
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-        .into_authentic(&keypair)
+        .into_authentic(keypair)
         .expect("Signing libp2p-noise static DH keypair failed.");
-    let transport = transport
+    transport
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(libp2p::yamux::YamuxConfig::default())
-        .boxed();
-
-    transport
+        .boxed()
 }

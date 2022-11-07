@@ -70,13 +70,7 @@ async fn main() -> anyhow::Result<()> {
     let peer_id = keypair.public().to_peer_id();
     tracing::info!(%peer_id, "Starting up");
 
-    let capabilities = ["core/block-propagate/1", "core/blocks-sync/1"];
-    let (mut p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(
-        keypair,
-        &capabilities,
-        // SN_GOERLI chain ID
-        0x534e5f474f45524c49u128,
-    )?;
+    let (mut p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(keypair)?;
 
     let _p2p_task = tokio::task::spawn(p2p_main_loop.run());
 
@@ -86,11 +80,18 @@ async fn main() -> anyhow::Result<()> {
         p2p_client.dial(bootstrap_address).await?;
     }
 
-    loop {
-        match p2p_events.recv().await {
-            Some(e) => tracing::debug!(?e, "Received P2P event"),
-            None => break,
-        }
+    let capabilities = ["core/block-propagate/1", "core/blocks-sync/1"];
+    for capability in capabilities {
+        p2p_client.provide_capability(capability).await?
+    }
+
+    // SN_GOERLI chain ID
+    const GOERLI_CHAIN_ID: u128 = 0x534e5f474f45524c49u128;
+    let block_propagation_topic = format!("blocks/{}", GOERLI_CHAIN_ID);
+    p2p_client.subscribe_topic(&block_propagation_topic).await?;
+
+    while let Some(e) = p2p_events.recv().await {
+        tracing::debug!(?e, "Received P2P event");
     }
 
     Ok(())
