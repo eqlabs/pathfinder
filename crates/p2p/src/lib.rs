@@ -2,8 +2,6 @@
 
 use std::time::Duration;
 
-use futures::channel::mpsc;
-use futures::stream::Stream;
 use futures::StreamExt;
 use libp2p::gossipsub::IdentTopic;
 use libp2p::identify;
@@ -11,6 +9,8 @@ use libp2p::identity::Keypair;
 use libp2p::kad::{self, KademliaEvent};
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::Multiaddr;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 mod behaviour;
 mod executor;
@@ -18,11 +18,9 @@ mod transport;
 
 pub fn new(
     keypair: Keypair,
-    listen_on: Multiaddr,
-    bootstrap_addresses: Vec<Multiaddr>,
     capabilities: &[&str],
     chain_id: u128,
-) -> anyhow::Result<(Client, impl Stream<Item = Event>, MainLoop)> {
+) -> anyhow::Result<(Client, mpsc::Receiver<Event>, MainLoop)> {
     let peer_id = keypair.public().to_peer_id();
 
     let mut swarm = SwarmBuilder::new(
@@ -33,20 +31,14 @@ pub fn new(
     .executor(Box::new(executor::TokioExecutor()))
     .build();
 
-    swarm.listen_on(listen_on)?;
-
-    for bootstrap_address in bootstrap_addresses {
-        swarm.dial(bootstrap_address)?;
-    }
-
     let block_propagation_topic = IdentTopic::new(format!("blocks/{}", chain_id));
     swarm
         .behaviour_mut()
         .gossipsub
         .subscribe(&block_propagation_topic)?;
 
-    let (command_sender, command_receiver) = mpsc::channel(0);
-    let (event_sender, event_receiver) = mpsc::channel(0);
+    let (command_sender, command_receiver) = mpsc::channel(1);
+    let (event_sender, event_receiver) = mpsc::channel(1);
 
     Ok((
         Client {
@@ -61,8 +53,36 @@ pub struct Client {
     sender: mpsc::Sender<Command>,
 }
 
+impl Client {
+    pub async fn start_listening(&mut self, addr: Multiaddr) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::StarListening { addr, sender })
+            .await
+            .expect("Command receiver not to be dropped.");
+        receiver.await.expect("Sender not to be dropped")
+    }
+
+    pub async fn dial(&mut self, addr: Multiaddr) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::Dial { addr, sender })
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
+}
+
 #[derive(Debug)]
 pub enum Command {
+    StarListening {
+        addr: Multiaddr,
+        sender: oneshot::Sender<anyhow::Result<()>>,
+    },
+    Dial {
+        addr: Multiaddr,
+        sender: oneshot::Sender<anyhow::Result<()>>,
+    },
     RequestBlockHeader,
 }
 
@@ -105,7 +125,7 @@ impl MainLoop {
                     tracing::debug!("Doing periodical bootstrap");
                     _ = self.swarm.behaviour_mut().kademlia.bootstrap();
                 }
-                command = self.command_receiver.next() => {
+                command = self.command_receiver.recv() => {
                     match command {
                         Some(c) => self.handle_command(c).await,
                         None => return,
@@ -161,5 +181,27 @@ impl MainLoop {
         }
     }
 
-    async fn handle_command(&mut self, _command: Command) {}
+    async fn handle_command(&mut self, command: Command) {
+        match command {
+            Command::StarListening { addr, sender } => {
+                let _ = match self.swarm.listen_on(addr.clone()) {
+                    Ok(_) => {
+                        tracing::debug!(%addr, "Started listening");
+                        sender.send(Ok(()))
+                    }
+                    Err(e) => sender.send(Err(e.into())),
+                };
+            }
+            Command::Dial { addr, sender } => {
+                let _ = match self.swarm.dial(addr.clone()) {
+                    Ok(_) => {
+                        tracing::debug!(%addr, "Dialed peer");
+                        sender.send(Ok(()))
+                    }
+                    Err(e) => sender.send(Err(e.into())),
+                };
+            }
+            _ => {}
+        };
+    }
 }
