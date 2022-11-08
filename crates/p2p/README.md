@@ -19,12 +19,24 @@ The `peer` example can be used with the `p2p_bootstrap` crate to connect to a bo
 }
 ```
 
+The `generate_key` example can be used to output a private key in the proper format for inclusion in the config file:
+
+```shell
+cargo run -p p2p --example generate_key
+```
+
+Starting up the bootstrap node:
 
 ```
 RUST_LOG=info cargo run -p p2p_bootstrap -- --identity-config-file ./identity.json --listen-on /ip4/127.0.0.1/tcp/4000
+````
 
-# start 3 peers
+And then starting three peers that initially connect to the boostrap node:
+
+````
 RUST_LOG=debug cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4001 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWFck5QPHjZ9dZkAfEz7dwVfKkcUdf6xA3Rch4wadu7MH7
 RUST_LOG=debug cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4002 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWFck5QPHjZ9dZkAfEz7dwVfKkcUdf6xA3Rch4wadu7MH7
 RUST_LOG=debug cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4003 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWFck5QPHjZ9dZkAfEz7dwVfKkcUdf6xA3Rch4wadu7MH7
 ```
+
+(Note that the last part is the peer ID of the boostrap node that's derived from the private key in the configuration. The bootsrap node prints its peer id when starting up, change the peer id to the appropriate one in the commands above.)
