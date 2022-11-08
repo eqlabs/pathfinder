@@ -15,22 +15,21 @@ mod tests {
     use super::chain_id;
 
     #[tokio::test]
-    async fn mainnet() {
-        let mut context = RpcContext::for_tests();
-        context.chain = Chain::Mainnet;
+    async fn test_chain_id() {
+        let cases = vec![
+            (Chain::Mainnet, "SN_MAIN"),
+            (Chain::Testnet, "SN_GOERLI"),
+            (Chain::Testnet2, "SN_GOERLI"),
+            (Chain::Integration, "SN_INTEGRATION"),
+        ];
 
-        let result = chain_id(context).await.unwrap();
-        let expected = format!("0x{}", hex::encode("SN_MAIN"));
-        assert_eq!(result, expected);
-    }
+        for (chain, label) in cases {
+            let mut context = RpcContext::for_tests();
+            context.chain = chain;
 
-    #[tokio::test]
-    async fn testnet() {
-        let mut context = RpcContext::for_tests();
-        context.chain = Chain::Testnet;
-
-        let result = chain_id(context).await.unwrap();
-        let expected = format!("0x{}", hex::encode("SN_GOERLI"));
-        assert_eq!(result, expected);
+            let returned = chain_id(context).await.unwrap();
+            let expected = format!("0x{}", hex::encode(label));
+            assert_eq!(returned, expected, "{}", label);
+        }
     }
 }
