@@ -8,7 +8,7 @@ build = "build.rs"
 [dependencies]
 anyhow = "1.0.62"
 prost = "0.11.0"
-stark_hash = { version = "0.1.0", path = "../stark_hash" }
+stark_hash = { path = "../stark_hash" }
 
 [build-dependencies]
 prost-build = "0.11.0"

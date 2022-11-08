@@ -99,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
 
     swarm.listen_on(args.listen_on)?;
 
-    const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(5 * 60);
+    const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(5 * 6);
     let mut bootstrap_interval = tokio::time::interval(BOOTSTRAP_INTERVAL);
 
     loop {

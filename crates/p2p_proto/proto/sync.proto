@@ -5,6 +5,22 @@ package starknet.sync;
 import "common.proto";
 import "propagation.proto";
 
+message Request {
+  oneof request {
+    GetBlockHeaders get_block_headers = 1;
+    GetBlockBodies get_block_bodies = 2;
+    GetStateDiffs get_state_diffs = 3;
+  }
+}
+
+message Response {
+  oneof response {
+    BlockHeaders block_headers = 1;
+    BlockBodies block_bodies = 2;
+    StateDiffs state_diffs = 3;
+  }
+}
+
 message GetBlockHeaders {
   uint32 request_id = 1;
 

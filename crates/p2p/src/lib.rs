@@ -14,6 +14,7 @@ use tokio::sync::oneshot;
 
 mod behaviour;
 mod executor;
+mod sync;
 mod transport;
 
 pub fn new(keypair: Keypair) -> anyhow::Result<(Client, mpsc::Receiver<Event>, MainLoop)> {

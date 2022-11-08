@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use stark_hash::StarkHash;
 
 pub mod proto {
@@ -14,10 +13,15 @@ pub mod proto {
 }
 
 impl TryFrom<proto::common::FieldElement> for StarkHash {
-    type Error = stark_hash::OverflowError;
+    type Error = std::io::Error;
 
     fn try_from(element: proto::common::FieldElement) -> Result<Self, Self::Error> {
-        let stark_hash = StarkHash::from_be_slice(&element.elements)?;
+        let stark_hash = StarkHash::from_be_slice(&element.elements).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid field element: {}", e),
+            )
+        })?;
         Ok(stark_hash)
     }
 }
@@ -30,69 +34,5 @@ impl From<StarkHash> for proto::common::FieldElement {
     }
 }
 
-pub struct BlockHeader {
-    pub parent_block_hash: StarkHash,
-    pub block_number: u64,
-    pub global_state_root: StarkHash,
-    pub sequencer_address: StarkHash,
-    pub block_timestamp: u64,
-
-    pub transaction_count: u32,
-    pub transaction_commitment: StarkHash,
-
-    pub event_count: u32,
-    pub event_commitment: StarkHash,
-
-    pub protocol_version: u32,
-}
-
-impl TryFrom<proto::common::BlockHeader> for BlockHeader {
-    type Error = anyhow::Error;
-
-    fn try_from(block: proto::common::BlockHeader) -> Result<Self, Self::Error> {
-        Ok(Self {
-            parent_block_hash: block
-                .parent_block_hash
-                .ok_or_else(|| anyhow!("Missing parent_block_hash"))?
-                .try_into()?,
-            block_number: block.block_number,
-            global_state_root: block
-                .global_state_root
-                .ok_or_else(|| anyhow!("Missing global_state_root"))?
-                .try_into()?,
-            sequencer_address: block
-                .sequencer_address
-                .ok_or_else(|| anyhow!("Missing sequencer_address"))?
-                .try_into()?,
-            block_timestamp: block.block_timestamp,
-            transaction_count: block.transaction_count,
-            transaction_commitment: block
-                .transaction_commitment
-                .ok_or_else(|| anyhow!("Missing transaction_commitment"))?
-                .try_into()?,
-            event_count: block.event_count,
-            event_commitment: block
-                .event_commitment
-                .ok_or_else(|| anyhow!("Missing event_commitment"))?
-                .try_into()?,
-            protocol_version: block.protocol_version,
-        })
-    }
-}
-
-impl From<BlockHeader> for proto::common::BlockHeader {
-    fn from(block: BlockHeader) -> Self {
-        Self {
-            parent_block_hash: Some(block.parent_block_hash.into()),
-            block_number: block.block_number,
-            global_state_root: Some(block.global_state_root.into()),
-            sequencer_address: Some(block.sequencer_address.into()),
-            block_timestamp: block.block_timestamp,
-            transaction_count: block.transaction_count,
-            transaction_commitment: Some(block.transaction_commitment.into()),
-            event_count: block.event_count,
-            event_commitment: Some(block.event_commitment.into()),
-            protocol_version: block.protocol_version,
-        }
-    }
-}
+pub mod common;
+pub mod sync;
