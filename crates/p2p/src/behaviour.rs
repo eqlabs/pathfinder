@@ -16,7 +16,7 @@ pub struct Behaviour {
     ping: ping::Behaviour,
     identify: identify::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
-    pub gossipsub: Gossipsub,
+    gossipsub: Gossipsub,
 }
 
 impl Behaviour {
