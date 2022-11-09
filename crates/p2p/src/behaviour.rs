@@ -17,7 +17,7 @@ pub struct Behaviour {
     ping: ping::Behaviour,
     identify: identify::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
-    gossipsub: Gossipsub,
+    pub gossipsub: Gossipsub,
     pub block_sync: RequestResponse<super::sync::BlockSyncCodec>,
 }
 

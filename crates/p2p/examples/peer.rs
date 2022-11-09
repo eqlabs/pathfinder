@@ -5,6 +5,7 @@ use std::path::Path;
 use clap::Parser;
 use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
+use p2p::Event;
 use serde_derive::Deserialize;
 use stark_hash::StarkHash;
 use zeroize::Zeroizing;
@@ -71,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
     let peer_id = keypair.public().to_peer_id();
     tracing::info!(%peer_id, "Starting up");
 
-    let (mut p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(keypair)?;
+    let (mut p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(keypair);
 
     let _p2p_task = tokio::task::spawn(p2p_main_loop.run());
 
@@ -91,8 +92,13 @@ async fn main() -> anyhow::Result<()> {
     let block_propagation_topic = format!("blocks/{}", GOERLI_CHAIN_ID);
     p2p_client.subscribe_topic(&block_propagation_topic).await?;
 
-    while let Some(e) = p2p_events.recv().await {
-        match e {
+    let event = Event::BlockPropagation(42);
+    p2p_client
+        .publish_event(&block_propagation_topic, event)
+        .await?;
+
+    while let Some(event) = p2p_events.recv().await {
+        match event {
             p2p::Event::SyncPeerConnected { peer_id } => {
                 use p2p_proto::sync::{GetBlockHeaders, Request};
 
@@ -118,6 +124,9 @@ async fn main() -> anyhow::Result<()> {
                 use p2p_proto::sync::{BlockHeaders, Response};
                 let response = Response::BlockHeaders(BlockHeaders { headers: vec![] });
                 p2p_client.send_sync_response(channel, response).await;
+            },
+            p2p::Event::BlockPropagation(seq) => {
+                tracing::debug!(?seq, "Block Propagation");
             }
         }
     }

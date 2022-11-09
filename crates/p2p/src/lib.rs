@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use futures::StreamExt;
-use libp2p::gossipsub::IdentTopic;
+use libp2p::gossipsub::{GossipsubEvent, IdentTopic};
 use libp2p::identity::Keypair;
 use libp2p::kad::{self, KademliaEvent};
 use libp2p::request_response::{
@@ -21,7 +21,7 @@ mod executor;
 mod sync;
 mod transport;
 
-pub fn new(keypair: Keypair) -> anyhow::Result<(Client, mpsc::Receiver<Event>, MainLoop)> {
+pub fn new(keypair: Keypair) -> (Client, mpsc::Receiver<Event>, MainLoop) {
     let peer_id = keypair.public().to_peer_id();
 
     let swarm = SwarmBuilder::new(
@@ -35,13 +35,13 @@ pub fn new(keypair: Keypair) -> anyhow::Result<(Client, mpsc::Receiver<Event>, M
     let (command_sender, command_receiver) = mpsc::channel(1);
     let (event_sender, event_receiver) = mpsc::channel(1);
 
-    Ok((
+    (
         Client {
             sender: command_sender,
         },
         event_receiver,
         MainLoop::new(swarm, command_receiver, event_sender),
-    ))
+    )
 }
 
 #[derive(Clone)]
@@ -126,6 +126,20 @@ impl Client {
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }
+
+    pub async fn publish_event(&mut self, topic: &str, event: Event) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+        let topic = IdentTopic::new(topic);
+        self.sender
+            .send(Command::PublishEvent {
+                event,
+                topic,
+                sender,
+            })
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
 }
 
 type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
@@ -160,6 +174,12 @@ enum Command {
     GetSyncPeer {
         sender: oneshot::Sender<Option<PeerId>>,
     },
+    PublishEvent {
+        topic: IdentTopic,
+        sender: EmptyResultSender,
+        #[allow(dead_code)] // TODO FIXME
+        event: Event,
+    },
 }
 
 #[derive(Debug)]
@@ -171,6 +191,8 @@ pub enum Event {
         request: p2p_proto::sync::Request,
         channel: ResponseChannel<p2p_proto::sync::Response>,
     },
+    // TODO https://github.com/starknet-community-libs/starknet-p2p-specs/blob/main/p2p/starknet-p2p.md#block-propagation
+    BlockPropagation(u64),
 }
 
 pub struct MainLoop {
@@ -224,12 +246,19 @@ impl MainLoop {
                         None => return,
                     }
                 }
-                Some(event) = self.swarm.next() => self.handle_event(event).await,
+                Some(event) = self.swarm.next() => {
+                    if let Err(e) = self.handle_event(event).await {
+                        tracing::error!("event handling failed: {}", e);
+                    }
+                },
             }
         }
     }
 
-    async fn handle_event<E: std::fmt::Debug>(&mut self, event: SwarmEvent<behaviour::Event, E>) {
+    async fn handle_event<E: std::fmt::Debug>(
+        &mut self,
+        event: SwarmEvent<behaviour::Event, E>,
+    ) -> anyhow::Result<()> {
         match event {
             SwarmEvent::Behaviour(behaviour::Event::Identify(e)) => {
                 if let identify::Event::Received {
@@ -272,9 +301,23 @@ impl MainLoop {
                         tracing::debug!(%peer_id, "Added peer to DHT");
                     }
                 }
+                Ok(())
             }
-            SwarmEvent::Behaviour(behaviour::Event::Gossipsub(e)) => {
-                tracing::info!(?e, "Gossipsub event");
+            SwarmEvent::Behaviour(behaviour::Event::Gossipsub(GossipsubEvent::Message {
+                propagation_source: peer_id,
+                message_id: id,
+                message,
+            })) => {
+                let event = Event::BlockPropagation(42);
+                tracing::debug!(
+                    "Gossipsub Event Message: [id={}][peer={}] {:?} ({} bytes)",
+                    id,
+                    peer_id,
+                    event,
+                    message.data.len()
+                );
+                self.event_sender.send(event).await?;
+                Ok(())
             }
             SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
                 if let KademliaEvent::OutboundQueryCompleted { .. } = e {
@@ -282,8 +325,9 @@ impl MainLoop {
                     let num_peers = network_info.num_peers();
                     let connection_counters = network_info.connection_counters();
                     let num_connections = connection_counters.num_connections();
-                    tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed")
+                    tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
                 }
+                Ok(())
             }
             SwarmEvent::Behaviour(behaviour::Event::BlockSync(RequestResponseEvent::Message {
                 message,
@@ -298,6 +342,7 @@ impl MainLoop {
                             .send(Event::InboundSyncRequest { request, channel })
                             .await
                             .expect("Event receiver not to be dropped");
+                        Ok(())
                     }
                     RequestResponseMessage::Response {
                         request_id,
@@ -308,6 +353,7 @@ impl MainLoop {
                             .remove(&request_id)
                             .expect("Block sync request still to be pending")
                             .send(Ok(response));
+                        Ok(())
                     }
                 }
             }
@@ -322,16 +368,20 @@ impl MainLoop {
                     .remove(&request_id)
                     .expect("Block sync request still to be pending")
                     .send(Err(error.into()));
+                Ok(())
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 tracing::debug!(%peer_id, "Connected to peer");
+                Ok(())
             }
             SwarmEvent::ConnectionClosed { peer_id, .. } => {
                 self.peers.remove(&peer_id);
                 tracing::debug!(%peer_id, "Disconnected from peer");
+                Ok(())
             }
             event => {
                 tracing::trace!(?event, "Ignoring event");
+                Ok(())
             }
         }
     }
@@ -400,6 +450,26 @@ impl MainLoop {
                 let maybe_peer_id = self.peers.keys().cloned().next();
                 let _ = sender.send(maybe_peer_id);
             }
+            Command::PublishEvent {
+                event: _,
+                topic,
+                sender,
+            } => {
+                let data = &[42u8]; // TODO FIXME
+                let result = self.publish_data(topic, data);
+                let _ = sender.send(result);
+            }
         };
+    }
+
+    fn publish_data(&mut self, topic: IdentTopic, data: &[u8]) -> anyhow::Result<()> {
+        let message_id = self
+            .swarm
+            .behaviour_mut()
+            .gossipsub
+            .publish(topic, data)
+            .map_err(|e| anyhow::anyhow!("Gossipsub publish failed: {}", e))?;
+        tracing::debug!(?message_id, "Data published");
+        Ok(())
     }
 }
