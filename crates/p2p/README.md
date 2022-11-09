@@ -33,7 +33,7 @@ RUST_LOG=info cargo run -p p2p_bootstrap -- --identity-config-file ./identity.js
 
 And then starting three peers that initially connect to the boostrap node:
 
-````
+```
 RUST_LOG=debug cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4001 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWFck5QPHjZ9dZkAfEz7dwVfKkcUdf6xA3Rch4wadu7MH7
 RUST_LOG=debug cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4002 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWFck5QPHjZ9dZkAfEz7dwVfKkcUdf6xA3Rch4wadu7MH7
 RUST_LOG=debug cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4003 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWFck5QPHjZ9dZkAfEz7dwVfKkcUdf6xA3Rch4wadu7MH7
