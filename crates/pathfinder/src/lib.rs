@@ -6,6 +6,7 @@ pub mod consts;
 pub mod core;
 pub mod ethereum;
 pub mod monitoring;
+pub mod p2p;
 pub mod retry;
 pub mod rpc;
 pub mod sequencer;
