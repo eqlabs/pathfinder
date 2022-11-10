@@ -26,6 +26,19 @@ try:
     )
     from starkware.storage.storage import Storage
     from starkware.starknet.business_logic.state.state import CachedState
+    from starkware.cairo.lang.builtins.all_builtins import (
+        BITWISE_BUILTIN,
+        EC_OP_BUILTIN,
+        ECDSA_BUILTIN,
+        OUTPUT_BUILTIN,
+        PEDERSEN_BUILTIN,
+        RANGE_CHECK_BUILTIN,
+    )
+    from starkware.starknet.definitions.general_config import (
+        N_STEPS_RESOURCE,
+        StarknetGeneralConfig,
+        StarknetOsConfig,
+    )
 except ModuleNotFoundError:
     print(
         "missing cairo-lang module: please reinstall dependencies to upgrade.",
@@ -35,7 +48,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 21
-EXPECTED_CAIRO_VERSION = "0.10.1"
+EXPECTED_CAIRO_VERSION = "0.10.2a0"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
@@ -325,8 +338,6 @@ def loop_inner(connection, command: Command):
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
 
-    general_config = create_general_config(command.chain.value)
-
     at_block = int_hash_or_latest(command.at_block)
 
     timings = {}
@@ -361,6 +372,8 @@ def loop_inner(connection, command: Command):
 
     timings["resolve_block"] = time.time() - started_at
     started_at = time.time()
+
+    general_config = create_general_config(command.chain.value)
 
     adapter = SqliteAdapter(connection)
 
@@ -744,8 +757,12 @@ async def do_call(
 
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
-    state_reader = PatriciaStateReader(PatriciaTree(root, 251), ffc)
-    async_state = CachedState(block_info, state_reader)
+    state_reader = PatriciaStateReader(
+        PatriciaTree(root, 251), ffc, contract_class_storage=adapter
+    )
+    async_state = CachedState(
+        block_info=block_info, state_reader=state_reader, contract_class_cache={}
+    )
 
     apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
@@ -802,8 +819,12 @@ async def do_estimate_fee(
     )
 
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
-    state_reader = PatriciaStateReader(PatriciaTree(root, 251), ffc)
-    async_state = CachedState(block_info, state_reader)
+    state_reader = PatriciaStateReader(
+        PatriciaTree(root, 251), ffc, contract_class_storage=adapter
+    )
+    async_state = CachedState(
+        block_info=block_info, state_reader=state_reader, contract_class_cache={}
+    )
 
     apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
@@ -840,35 +861,12 @@ def apply_pending(
         state.cache._nonce_initial_values[addr] = nonce
 
 
-def create_general_config(chain_id):
+def create_general_config(chain_id: StarknetChainId):
     """
     Separate fn because it's tricky to get a new instance with actual configuration
     """
-    from starkware.cairo.lang.builtins.all_builtins import (
-        BITWISE_BUILTIN,
-        EC_OP_BUILTIN,
-        ECDSA_BUILTIN,
-        OUTPUT_BUILTIN,
-        PEDERSEN_BUILTIN,
-        RANGE_CHECK_BUILTIN,
-    )
-    from starkware.starknet.definitions.general_config import (
-        N_STEPS_RESOURCE,
-        StarknetGeneralConfig,
-        StarknetOsConfig,
-    )
 
-    # given on 2022-06-07
-    weights = {
-        N_STEPS_RESOURCE: 1.0,
-        # these need to be suffixed because ... they are checked to have these suffixes, except for N_STEPS_RESOURCE
-        f"{PEDERSEN_BUILTIN}_builtin": 8.0,
-        f"{RANGE_CHECK_BUILTIN}_builtin": 8.0,
-        f"{ECDSA_BUILTIN}_builtin": 512.0,
-        f"{BITWISE_BUILTIN}_builtin": 256.0,
-        f"{OUTPUT_BUILTIN}_builtin": 0.0,
-        f"{EC_OP_BUILTIN}_builtin": 0.0,
-    }
+    weights = resource_fee_weights_0_10_2
 
     # because of units ... scale these down
     weights = dict(map(lambda t: (t[0], t[1] * 0.05), weights.items()))
@@ -879,12 +877,21 @@ def create_general_config(chain_id):
     )
 
     assert general_config.cairo_resource_fee_weights[f"{N_STEPS_RESOURCE}"] == 0.05
-    assert (
-        general_config.cairo_resource_fee_weights[f"{BITWISE_BUILTIN}_builtin"] == 12.8
-    )
 
     return general_config
 
+
+# given on 2022-11-10
+resource_fee_weights_0_10_2 = {
+    N_STEPS_RESOURCE: 1.0,
+    # these need to be suffixed because ... they are checked to have these suffixes, except for N_STEPS_RESOURCE
+    f"{PEDERSEN_BUILTIN}_builtin": 32.0,
+    f"{RANGE_CHECK_BUILTIN}_builtin": 16.0,
+    f"{ECDSA_BUILTIN}_builtin": 2048.0,
+    f"{BITWISE_BUILTIN}_builtin": 64.0,
+    f"{OUTPUT_BUILTIN}_builtin": 0.0,
+    f"{EC_OP_BUILTIN}_builtin": 1024.0,
+}
 
 if __name__ == "__main__":
     main()

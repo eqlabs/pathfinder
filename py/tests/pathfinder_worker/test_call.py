@@ -1135,7 +1135,7 @@ def test_nonce_with_dummy():
 
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
 def test_failing_mainnet_tx2():
-    con = sqlite3.connect(test_relative_path("../../mainnet.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../mainnet.sqlite"))
     con.execute("BEGIN")
 
     # this is running fee estimation on existing transaction from mainnet, on the block before
@@ -1176,9 +1176,9 @@ def test_failing_mainnet_tx2():
         ),
     )
 
-    (verb, output, _timings) = loop_inner(con, command)
+    (_verb, output, timings) = loop_inner(con, command)
 
-    print(_timings)
+    print(timings)
 
     # this is correct in 0.10, not in 0.9.1
     assert output == {
@@ -1190,7 +1190,7 @@ def test_failing_mainnet_tx2():
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_without_deployed():
-    con = sqlite3.connect(test_relative_path("../../goerli.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../goerli.sqlite"))
     con.execute("BEGIN")
 
     with_updates = Call(
@@ -1235,7 +1235,7 @@ def test_positive_streamed_on_early_goerli_block_without_deployed():
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_with_deployed():
-    con = sqlite3.connect(test_relative_path("../../goerli.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../goerli.sqlite"))
     con.execute("BEGIN")
 
     # this is from the corresponding state update for block 6
