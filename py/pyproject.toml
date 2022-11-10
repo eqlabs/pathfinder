@@ -11,6 +11,7 @@ dependencies = [
     "cairo-lang == 0.10.1",
     "zstandard == 0.18.0",
     "cachetools == 5.0.0",
+    "semver == 2.13.0",
 ]
 requires-python = ">=3.8"
 
