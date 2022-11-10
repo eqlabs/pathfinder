@@ -19,7 +19,7 @@ mod tests {
         let cases = vec![
             (Chain::Mainnet, "SN_MAIN"),
             (Chain::Testnet, "SN_GOERLI"),
-            (Chain::Testnet2, "SN_GOERLI"),
+            (Chain::Testnet2, "SN_GOERLI2"),
             (Chain::Integration, "SN_INTEGRATION"),
         ];
 

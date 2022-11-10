@@ -416,8 +416,10 @@ impl Chain {
         match self {
             // SN_MAIN
             Chain::Mainnet => StarkHash::from_u128(0x534e5f4d41494eu128),
-            // Both testnets have the same ID: SN_GOERLI
-            Chain::Testnet | Chain::Testnet2 => StarkHash::from_u128(0x534e5f474f45524c49u128),
+            // SN_GOERLI
+            Chain::Testnet => StarkHash::from_u128(0x534e5f474f45524c49u128),
+            // SN_GOERLI2
+            Chain::Testnet2 => StarkHash::from_u128(0x534e5f474f45524c4932),
             // SN_INTEGRATION
             Chain::Integration => StarkHash::from_u128(0x534E5F494E544547524154494F4E),
         }
