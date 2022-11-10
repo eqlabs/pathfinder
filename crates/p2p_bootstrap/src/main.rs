@@ -141,7 +141,9 @@ async fn main() -> anyhow::Result<()> {
                             }
                         }
                     }
-                    _ => {}
+                    e => {
+                        tracing::debug!(?e, "Swarm Event");
+                    }
                 }
             }
         }

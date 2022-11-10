@@ -5,7 +5,6 @@ use std::path::Path;
 use clap::Parser;
 use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
-use p2p::Event;
 use serde_derive::Deserialize;
 use stark_hash::StarkHash;
 use zeroize::Zeroizing;
@@ -89,13 +88,14 @@ async fn main() -> anyhow::Result<()> {
 
     // SN_GOERLI chain ID
     const GOERLI_CHAIN_ID: u128 = 0x534e5f474f45524c49u128;
-    let block_propagation_topic = format!("blocks/{}", GOERLI_CHAIN_ID);
+    let block_propagation_topic = format!("blocks/{:#x}", GOERLI_CHAIN_ID);
     p2p_client.subscribe_topic(&block_propagation_topic).await?;
 
-    let event = Event::BlockPropagation(42);
-    p2p_client
-        .publish_event(&block_propagation_topic, event)
-        .await?;
+    // echo '{"private_key":"CAESQD2O1wg6Zff85HcP2WroCxkSjjWF0j1MZDd+v46yOQFDcparn+5uwE1jnvPTNa8l3GKwfdh9SDMLSPeyN3aHxfk="}' > identity.json
+    // RUST_LOG=info cargo run -p p2p_bootstrap -- --identity-config-file ./identity.json --listen-on /ip4/127.0.0.1/tcp/4000
+    // RUST_LOG=info cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4001 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWHXfu9x4rXGTqYwXhdb69iatUxKnRU8PyPWbg3k4qLNwr
+    // RUST_LOG=info cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4002 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWHXfu9x4rXGTqYwXhdb69iatUxKnRU8PyPWbg3k4qLNwr
+    // RUST_LOG=info cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4003 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWHXfu9x4rXGTqYwXhdb69iatUxKnRU8PyPWbg3k4qLNwr
 
     while let Some(event) = p2p_events.recv().await {
         match event {
@@ -124,9 +124,16 @@ async fn main() -> anyhow::Result<()> {
                 use p2p_proto::sync::{BlockHeaders, Response};
                 let response = Response::BlockHeaders(BlockHeaders { headers: vec![] });
                 p2p_client.send_sync_response(channel, response).await;
-            },
+            }
             p2p::Event::BlockPropagation(seq) => {
                 tracing::debug!(?seq, "Block Propagation");
+                match p2p_client
+                    .publish_event(&block_propagation_topic, event)
+                    .await
+                {
+                    Ok(_) => tracing::info!("event published"),
+                    Err(e) => tracing::error!("event publising failed: {}", e),
+                }
             }
         }
     }
