@@ -49,7 +49,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 21
-EXPECTED_CAIRO_VERSION = "0.10.1"
+EXPECTED_CAIRO_VERSION = "0.10.2a0"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
@@ -760,8 +760,12 @@ async def do_call(
 
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
-    state_reader = PatriciaStateReader(PatriciaTree(root, 251), ffc)
-    async_state = CachedState(block_info, state_reader)
+    state_reader = PatriciaStateReader(
+        PatriciaTree(root, 251), ffc, contract_class_storage=adapter
+    )
+    async_state = CachedState(
+        block_info=block_info, state_reader=state_reader, contract_class_cache={}
+    )
 
     apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
@@ -818,8 +822,12 @@ async def do_estimate_fee(
     )
 
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
-    state_reader = PatriciaStateReader(PatriciaTree(root, 251), ffc)
-    async_state = CachedState(block_info, state_reader)
+    state_reader = PatriciaStateReader(
+        PatriciaTree(root, 251), ffc, contract_class_storage=adapter
+    )
+    async_state = CachedState(
+        block_info=block_info, state_reader=state_reader, contract_class_cache={}
+    )
 
     apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
