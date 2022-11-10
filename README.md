@@ -63,7 +63,7 @@ rustup update
 
 ### Install Python
 
-`pathfinder` requires Python version `3.8` (in particular, `cairo-lang` 0.10.1 seems incompatible with Python 3.10).
+`pathfinder` requires Python version `3.8` (in particular, `cairo-lang` 0.10.2a0 seems incompatible with Python 3.10).
 
 ```bash
 sudo apt install python3 python3-venv python3-dev
@@ -357,8 +357,8 @@ To check if it's running well use `docker-compose logs -f`.
 Pathfinder supports both version `v0.1.0` and `v0.2.1` of the Starknet JSON-RPC specification.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:
 
-- the `v0.1.0` API is exposed on the `/` and `/rpc/v0.1` paths
-- the `v0.2.1-rc1` API is exposed on the `/rpc/v0.2` path
+- the `v0.1.0` API is exposed on the `/rpc/v0.1` path
+- the `v0.2.1-rc1` API is exposed on the `/` and `/rpc/v0.2` paths
 
 ### API `v1.0.0`
 
