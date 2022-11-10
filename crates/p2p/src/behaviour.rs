@@ -8,6 +8,7 @@ use libp2p::gossipsub::{
 use libp2p::identify;
 use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping;
+use libp2p::request_response::{ProtocolSupport, RequestResponse, RequestResponseEvent};
 use libp2p::{identity, kad, NetworkBehaviour};
 
 #[derive(NetworkBehaviour)]
@@ -17,6 +18,7 @@ pub struct Behaviour {
     identify: identify::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
     gossipsub: Gossipsub,
+    pub block_sync: RequestResponse<super::sync::BlockSyncCodec>,
 }
 
 impl Behaviour {
@@ -52,6 +54,12 @@ impl Behaviour {
         )
         .expect("valid gossipsub params");
 
+        let block_sync = RequestResponse::new(
+            super::sync::BlockSyncCodec(),
+            std::iter::once((super::sync::BlockSyncProtocol(), ProtocolSupport::Full)),
+            Default::default(),
+        );
+
         Self {
             ping: ping::Behaviour::new(ping::Config::new()),
             identify: identify::Behaviour::new(
@@ -60,6 +68,7 @@ impl Behaviour {
             ),
             kademlia,
             gossipsub,
+            block_sync,
         }
     }
 
@@ -81,6 +90,7 @@ pub enum Event {
     Identify(Box<identify::Event>),
     Kademlia(KademliaEvent),
     Gossipsub(GossipsubEvent),
+    BlockSync(RequestResponseEvent<p2p_proto::sync::Request, p2p_proto::sync::Response>),
 }
 
 impl From<ping::Event> for Event {
@@ -104,6 +114,14 @@ impl From<KademliaEvent> for Event {
 impl From<GossipsubEvent> for Event {
     fn from(event: GossipsubEvent) -> Self {
         Event::Gossipsub(event)
+    }
+}
+
+impl From<RequestResponseEvent<p2p_proto::sync::Request, p2p_proto::sync::Response>> for Event {
+    fn from(
+        event: RequestResponseEvent<p2p_proto::sync::Request, p2p_proto::sync::Response>,
+    ) -> Self {
+        Event::BlockSync(event)
     }
 }
 

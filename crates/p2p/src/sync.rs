@@ -1,13 +1,10 @@
 use async_trait::async_trait;
 use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed, ProtocolName};
-use libp2p::request_response::{
-    ProtocolSupport, RequestId, RequestResponse, RequestResponseCodec, RequestResponseEvent,
-    RequestResponseMessage, ResponseChannel,
-};
+use libp2p::request_response::RequestResponseCodec;
 
 #[derive(Debug, Clone)]
-struct BlockSyncProtocol();
+pub struct BlockSyncProtocol();
 
 impl ProtocolName for BlockSyncProtocol {
     fn protocol_name(&self) -> &[u8] {
@@ -16,7 +13,7 @@ impl ProtocolName for BlockSyncProtocol {
 }
 
 #[derive(Clone)]
-struct BlockSyncCodec();
+pub struct BlockSyncCodec();
 
 #[async_trait]
 impl RequestResponseCodec for BlockSyncCodec {
