@@ -27,7 +27,7 @@ jobs:
           EOF
 
           cat $HOME/.cargo/config.toml
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
         with:
           key: "mold"
       - uses: actions/setup-python@v4
@@ -70,7 +70,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings -D rust_2018_idioms
 
   rustfmt:
@@ -80,7 +80,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
 
   doc:
@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - run: cargo doc --no-deps --document-private-items
 
   dep-sort:
@@ -98,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - run: |
           cargo install cargo-sort
           cargo sort --check --workspace
@@ -151,7 +151,7 @@ jobs:
 
           cat $HOME/.cargo/config.toml
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
         with:
           key: "mold"
       - name: Integration (rust)
@@ -181,7 +181,7 @@ jobs:
           EOF
 
           cat $HOME/.cargo/config.toml
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
         with:
           key: "mold"
       - run: cargo install cargo-fuzz
