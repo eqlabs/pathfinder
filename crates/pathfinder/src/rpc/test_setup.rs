@@ -1,4 +1,5 @@
-///! Utilities for easier construction of RPC tests.
+//! Utilities for easier construction of RPC tests.
+use crate::rpc::test_client::TestClient;
 use crate::storage::Storage;
 use rusqlite::Transaction;
 
@@ -279,10 +280,7 @@ where
         <ParamsIter as Iterator>::Item: ::serde::Serialize,
     {
         use crate::core::Chain;
-        use crate::rpc::{
-            test_client::client,
-            {RpcApi, RpcServer},
-        };
+        use crate::rpc::{RpcApi, RpcServer};
         use crate::sequencer::Client;
         use crate::state::SyncState;
         use futures::stream::StreamExt;
@@ -305,7 +303,7 @@ where
         let params_iter = self.params;
         let expected_iter = self.expected;
 
-        let client = client(addr);
+        let client = TestClient::v01(addr);
 
         let actual_results = params_iter
             .map(|params| {
