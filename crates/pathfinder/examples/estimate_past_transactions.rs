@@ -171,16 +171,12 @@ fn feed_work(
                 declares += 1;
                 continue;
             }
-            SimpleTransaction::Deploy(SimpleDeploy { contract_address }) => {
+            SimpleTransaction::Deploy(tx) => {
                 deploys += 1;
-                previously_declared_deployed_in_the_same_block.insert(*contract_address.get());
+                previously_declared_deployed_in_the_same_block.insert(*tx.contract_address.get());
                 continue;
             }
-            SimpleTransaction::DeployAccount(SimpleDeployAccount { contract_address }) => {
-                deploys += 1;
-                previously_declared_deployed_in_the_same_block.insert(*contract_address.get());
-                continue;
-            }
+            SimpleTransaction::DeployAccount(tx) => tx.into(),
             SimpleTransaction::L1Handler(_) => {
                 l1_handlers += 1;
                 continue;
@@ -351,29 +347,44 @@ struct SimpleDeploy {
 #[derive(serde::Deserialize, Debug)]
 struct SimpleDeclare {}
 
+#[serde_with::serde_as]
 #[derive(serde::Deserialize, Debug)]
 struct SimpleDeployAccount {
-    contract_address: pathfinder_lib::core::ContractAddress,
+    #[serde_as(as = "pathfinder_lib::rpc::serde::TransactionVersionAsHexStr")]
+    pub version: pathfinder_lib::core::TransactionVersion,
+    #[serde_as(as = "pathfinder_lib::rpc::serde::FeeAsHexStr")]
+    pub max_fee: pathfinder_lib::core::Fee,
+    #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::TransactionSignatureElemAsDecimalStr>")]
+    #[serde(default)]
+    pub signature: Vec<pathfinder_lib::core::TransactionSignatureElem>,
+    #[serde(default = "default_transaction_nonce")]
+    pub nonce: pathfinder_lib::core::TransactionNonce,
+
+    contract_address_salt: pathfinder_lib::core::ContractAddressSalt,
+    #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::CallParamAsDecimalStr>")]
+    pub constructor_calldata: Vec<pathfinder_lib::core::CallParam>,
+    pub class_hash: pathfinder_lib::core::ClassHash,
 }
 
 #[serde_with::serde_as]
 #[derive(serde::Deserialize, Debug)]
 struct SimpleInvoke {
+    #[serde(default)]
+    #[serde_as(as = "Option<pathfinder_lib::rpc::serde::TransactionVersionAsHexStr>")]
+    pub version: Option<pathfinder_lib::core::TransactionVersion>,
+    #[serde_as(as = "pathfinder_lib::rpc::serde::FeeAsHexStr")]
+    pub max_fee: pathfinder_lib::core::Fee,
+    #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::TransactionSignatureElemAsDecimalStr>")]
+    #[serde(default)]
+    pub signature: Vec<pathfinder_lib::core::TransactionSignatureElem>,
+    #[serde(default = "default_transaction_nonce")]
+    pub nonce: pathfinder_lib::core::TransactionNonce,
+
     contract_address: pathfinder_lib::core::ContractAddress,
     #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::CallParamAsDecimalStr>")]
     pub calldata: Vec<pathfinder_lib::core::CallParam>,
     #[serde(default)]
     pub entry_point_selector: Option<pathfinder_lib::core::EntryPoint>,
-    #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::TransactionSignatureElemAsDecimalStr>")]
-    #[serde(default)]
-    pub signature: Vec<pathfinder_lib::core::TransactionSignatureElem>,
-    #[serde_as(as = "pathfinder_lib::rpc::serde::FeeAsHexStr")]
-    pub max_fee: pathfinder_lib::core::Fee,
-    #[serde(default)]
-    #[serde_as(as = "Option<pathfinder_lib::rpc::serde::TransactionVersionAsHexStr>")]
-    pub version: Option<pathfinder_lib::core::TransactionVersion>,
-    #[serde(default = "default_transaction_nonce")]
-    pub nonce: pathfinder_lib::core::TransactionNonce,
 }
 
 fn default_transaction_nonce() -> pathfinder_lib::core::TransactionNonce {
@@ -428,6 +439,24 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::v02::types::request::Broadcaste
                 },
             )),
         }
+    }
+}
+
+impl From<SimpleDeployAccount>
+    for pathfinder_lib::rpc::v02::types::request::BroadcastedTransaction
+{
+    fn from(tx: SimpleDeployAccount) -> Self {
+        use pathfinder_lib::rpc::v02::types::request::*;
+
+        BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction {
+            version: tx.version,
+            max_fee: tx.max_fee,
+            signature: tx.signature,
+            nonce: tx.nonce,
+            contract_address_salt: tx.contract_address_salt,
+            constructor_calldata: tx.constructor_calldata,
+            class_hash: tx.class_hash,
+        })
     }
 }
 
