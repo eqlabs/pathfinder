@@ -299,7 +299,8 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
 #[cfg(test)]
 mod tests {
     use super::RpcContext;
-    use crate::rpc::{test_client::client, RpcApi, RpcServer};
+    use crate::rpc::test_client::TestClient;
+    use crate::rpc::{RpcApi, RpcServer};
     use jsonrpsee::rpc_params;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
@@ -320,7 +321,7 @@ mod tests {
         .await
         .unwrap();
 
-        let client = client(addr);
+        let client = TestClient::v01(addr);
 
         // A method with no params via `register_method_with_no_input`
         let params = rpc_params!();
