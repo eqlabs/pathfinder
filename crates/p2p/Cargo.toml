@@ -22,3 +22,4 @@ base64 = "0.13.0"
 sha2 = "0.10.2"
 async-trait = "0.1.58"
 p2p_proto = { path = "../p2p_proto" }
+stark_hash = { path = "../stark_hash" }

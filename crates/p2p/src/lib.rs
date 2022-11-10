@@ -1,14 +1,18 @@
 #![deny(rust_2018_idioms)]
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use futures::StreamExt;
 use libp2p::gossipsub::IdentTopic;
-use libp2p::identify;
 use libp2p::identity::Keypair;
 use libp2p::kad::{self, KademliaEvent};
+use libp2p::request_response::{
+    RequestId, RequestResponseEvent, RequestResponseMessage, ResponseChannel,
+};
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::Multiaddr;
+use libp2p::{identify, PeerId};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -84,6 +88,32 @@ impl Client {
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }
+
+    pub async fn send_sync_request(
+        &mut self,
+        peer_id: PeerId,
+        request: p2p_proto::sync::Request,
+    ) -> anyhow::Result<p2p_proto::sync::Response> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::SendSyncRequest {
+                peer_id,
+                request,
+                sender,
+            })
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
+
+    pub async fn get_sync_peer(&mut self) -> Option<PeerId> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::GetSyncPeer { sender })
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
 }
 
 type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
@@ -106,15 +136,40 @@ enum Command {
         topic: IdentTopic,
         sender: EmptyResultSender,
     },
+    SendSyncRequest {
+        peer_id: PeerId,
+        request: p2p_proto::sync::Request,
+        sender: oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>,
+    },
+    GetSyncPeer {
+        sender: oneshot::Sender<Option<PeerId>>,
+    },
 }
 
 #[derive(Debug)]
-pub enum Event {}
+pub enum Event {
+    SyncPeerConnected {
+        peer_id: PeerId,
+    },
+    InboundSyncRequest {
+        request: p2p_proto::sync::Request,
+        channel: ResponseChannel<p2p_proto::sync::Response>,
+    },
+}
 
 pub struct MainLoop {
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
+
+    peers: HashMap<PeerId, Peer>,
+
+    pending_block_sync_requests:
+        HashMap<RequestId, oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>>,
+}
+
+pub struct Peer {
+    pub listening_addresses: Vec<Multiaddr>,
 }
 
 impl MainLoop {
@@ -127,6 +182,8 @@ impl MainLoop {
             swarm,
             command_receiver,
             event_sender,
+            peers: Default::default(),
+            pending_block_sync_requests: Default::default(),
         }
     }
 
@@ -173,11 +230,28 @@ impl MainLoop {
                         .iter()
                         .any(|p| p.as_bytes() == kad::protocol::DEFAULT_PROTO_NAME)
                     {
-                        for addr in listen_addrs {
+                        for addr in &listen_addrs {
                             self.swarm
                                 .behaviour_mut()
                                 .kademlia
-                                .add_address(&peer_id, addr);
+                                .add_address(&peer_id, addr.clone());
+                        }
+
+                        // add to peers if seems useful
+                        if protocols
+                            .iter()
+                            .any(|p| p.as_bytes() == sync::PROTOCOL_NAME)
+                        {
+                            self.peers.insert(
+                                peer_id,
+                                Peer {
+                                    listening_addresses: listen_addrs,
+                                },
+                            );
+                            self.event_sender
+                                .send(Event::SyncPeerConnected { peer_id })
+                                .await
+                                .expect("Event receiver not to be dropped");
                         }
                         tracing::debug!(%peer_id, "Added peer to DHT");
                     }
@@ -194,6 +268,50 @@ impl MainLoop {
                     let num_connections = connection_counters.num_connections();
                     tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed")
                 }
+            }
+            SwarmEvent::Behaviour(behaviour::Event::BlockSync(RequestResponseEvent::Message {
+                message,
+                peer,
+            })) => {
+                tracing::trace!(%peer, "Received a message");
+                match message {
+                    RequestResponseMessage::Request {
+                        request, channel, ..
+                    } => {
+                        self.event_sender
+                            .send(Event::InboundSyncRequest { request, channel })
+                            .await
+                            .expect("Event receiver not to be dropped");
+                    }
+                    RequestResponseMessage::Response {
+                        request_id,
+                        response,
+                    } => {
+                        let _ = self
+                            .pending_block_sync_requests
+                            .remove(&request_id)
+                            .expect("Block sync request still to be pending")
+                            .send(Ok(response));
+                    }
+                }
+            }
+            SwarmEvent::Behaviour(behaviour::Event::BlockSync(
+                RequestResponseEvent::OutboundFailure {
+                    request_id, error, ..
+                },
+            )) => {
+                let _ = self
+                    .pending_block_sync_requests
+                    .remove(&request_id)
+                    .expect("Block sync request still to be pending")
+                    .send(Err(error.into()));
+            }
+            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                tracing::debug!(%peer_id, "Connected to peer");
+            }
+            SwarmEvent::ConnectionClosed { peer_id, .. } => {
+                self.peers.remove(&peer_id);
+                tracing::debug!(%peer_id, "Disconnected from peer");
             }
             event => {
                 tracing::trace!(?event, "Ignoring event");
@@ -238,6 +356,22 @@ impl MainLoop {
                     }
                     Err(e) => sender.send(Err(e)),
                 };
+            }
+            Command::SendSyncRequest {
+                peer_id,
+                request,
+                sender,
+            } => {
+                let request_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .block_sync
+                    .send_request(&peer_id, request);
+                self.pending_block_sync_requests.insert(request_id, sender);
+            }
+            Command::GetSyncPeer { sender } => {
+                let maybe_peer_id = self.peers.keys().cloned().next();
+                let _ = sender.send(maybe_peer_id);
             }
         };
     }

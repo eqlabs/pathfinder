@@ -3593,6 +3593,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sha2 0.10.6",
+ "stark_hash",
  "tokio",
  "tracing",
  "tracing-subscriber",

@@ -6,9 +6,11 @@ use libp2p::request_response::RequestResponseCodec;
 #[derive(Debug, Clone)]
 pub struct BlockSyncProtocol();
 
+pub const PROTOCOL_NAME: &[u8] = "/core/blocks-sync/1".as_bytes();
+
 impl ProtocolName for BlockSyncProtocol {
     fn protocol_name(&self) -> &[u8] {
-        "/core/blocks-sync/1".as_bytes()
+        PROTOCOL_NAME
     }
 }
 

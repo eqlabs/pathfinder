@@ -6,6 +6,7 @@ use clap::Parser;
 use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
 use serde_derive::Deserialize;
+use stark_hash::StarkHash;
 use zeroize::Zeroizing;
 
 #[derive(Parser, Debug)]
@@ -91,7 +92,26 @@ async fn main() -> anyhow::Result<()> {
     p2p_client.subscribe_topic(&block_propagation_topic).await?;
 
     while let Some(e) = p2p_events.recv().await {
-        tracing::debug!(?e, "Received P2P event");
+        match e {
+            p2p::Event::SyncPeerConnected { peer_id } => {
+                use p2p_proto::sync::{GetBlockHeaders, Request};
+                let response = p2p_client
+                    .send_sync_request(
+                        peer_id,
+                        Request::GetBlockHeaders(GetBlockHeaders {
+                            start_block: StarkHash::ZERO,
+                            count: 1,
+                            size_limit: 1_000_000,
+                            direction: p2p_proto::sync::Direction::Forward,
+                        }),
+                    )
+                    .await;
+                tracing::debug!(?response, "Received response");
+            }
+            p2p::Event::InboundSyncRequest { request, channel } => {
+                tracing::warn!(?request, "Received inbound sync request");
+            }
+        }
     }
 
     Ok(())
