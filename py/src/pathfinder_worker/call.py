@@ -15,7 +15,6 @@ try:
     import marshmallow.exceptions
     import marshmallow_dataclass
     import marshmallow_oneofschema
-    import semver
     from cachetools import LRUCache
     from marshmallow import Schema
     from marshmallow import fields as mfields
@@ -374,9 +373,7 @@ def loop_inner(connection, command: Command):
     timings["resolve_block"] = time.time() - started_at
     started_at = time.time()
 
-    general_config = create_general_config(
-        command.chain.value, block_info.starknet_version
-    )
+    general_config = create_general_config(command.chain.value)
 
     adapter = SqliteAdapter(connection)
 
@@ -864,12 +861,12 @@ def apply_pending(
         state.cache._nonce_initial_values[addr] = nonce
 
 
-def create_general_config(chain_id: StarknetChainId, starknet_version: Optional[str]):
+def create_general_config(chain_id: StarknetChainId):
     """
     Separate fn because it's tricky to get a new instance with actual configuration
     """
 
-    weights = get_resource_fee_weights(starknet_version)
+    weights = resource_fee_weights_0_10_2
 
     # because of units ... scale these down
     weights = dict(map(lambda t: (t[0], t[1] * 0.05), weights.items()))
@@ -884,30 +881,7 @@ def create_general_config(chain_id: StarknetChainId, starknet_version: Optional[
     return general_config
 
 
-def get_resource_fee_weights(starknet_version: Optional[str]):
-    if starknet_version is None:
-        return resource_fee_weights_pre_0_10_2
-
-    version = semver.VersionInfo.parse(starknet_version)
-
-    if version < semver.VersionInfo.parse("0.10.2"):
-        return resource_fee_weights_pre_0_10_2
-    else:
-        return resource_fee_weights_0_10_2
-
-
-# given on 2022-06-07
-resource_fee_weights_pre_0_10_2 = {
-    N_STEPS_RESOURCE: 1.0,
-    # these need to be suffixed because ... they are checked to have these suffixes, except for N_STEPS_RESOURCE
-    f"{PEDERSEN_BUILTIN}_builtin": 8.0,
-    f"{RANGE_CHECK_BUILTIN}_builtin": 8.0,
-    f"{ECDSA_BUILTIN}_builtin": 512.0,
-    f"{BITWISE_BUILTIN}_builtin": 256.0,
-    f"{OUTPUT_BUILTIN}_builtin": 0.0,
-    f"{EC_OP_BUILTIN}_builtin": 0.0,
-}
-
+# given on 2022-11-10
 resource_fee_weights_0_10_2 = {
     N_STEPS_RESOURCE: 1.0,
     # these need to be suffixed because ... they are checked to have these suffixes, except for N_STEPS_RESOURCE

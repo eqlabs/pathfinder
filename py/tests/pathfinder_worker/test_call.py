@@ -21,7 +21,6 @@ from pathfinder_worker.call import (
     do_loop,
     loop_inner,
     resolve_block,
-    get_resource_fee_weights,
 )
 
 
@@ -1314,34 +1313,3 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
 
     (verb, output, _timings) = loop_inner(con, on_newly_deployed)
     assert output == [0]
-
-
-def test_get_resource_fee_weights_returns_old_weights_without_version():
-    weights = get_resource_fee_weights(None)
-    assert weights == call.resource_fee_weights_pre_0_10_2
-
-
-def test_get_resource_fee_weights_raises_with_invalid_version():
-    with pytest.raises(ValueError) as excinfo:
-        get_resource_fee_weights("not_semver")
-    assert "is not valid SemVer string" in str(excinfo.value)
-
-
-def test_get_resource_fee_weights_returns_old_weights_with_old_version():
-    weights = get_resource_fee_weights("0.7.0")
-    assert weights == call.resource_fee_weights_pre_0_10_2
-
-
-def test_get_resource_fee_weights_returns_old_weights_with_0_10_1():
-    weights = get_resource_fee_weights("0.10.1")
-    assert weights == call.resource_fee_weights_pre_0_10_2
-
-
-def test_get_resource_fee_weights_returns_new_weights_with_0_10_2():
-    weights = get_resource_fee_weights("0.10.2")
-    assert weights == call.resource_fee_weights_0_10_2
-
-
-def test_get_resource_fee_weights_returns_new_weights_with_future_version():
-    weights = get_resource_fee_weights("0.11.0")
-    assert weights == call.resource_fee_weights_0_10_2

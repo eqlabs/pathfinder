@@ -198,8 +198,6 @@ rlp==2.0.1
     # via
     #   eth-account
     #   eth-rlp
-semver==2.13.0
-    # via pathfinder-worker (pyproject.toml)
 six==1.16.0
     # via
     #   ecdsa
