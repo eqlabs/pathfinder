@@ -176,6 +176,11 @@ fn feed_work(
                 previously_declared_deployed_in_the_same_block.insert(*contract_address.get());
                 continue;
             }
+            SimpleTransaction::DeployAccount(SimpleDeployAccount { contract_address }) => {
+                deploys += 1;
+                previously_declared_deployed_in_the_same_block.insert(*contract_address.get());
+                continue;
+            }
             SimpleTransaction::L1Handler(_) => {
                 l1_handlers += 1;
                 continue;
@@ -334,6 +339,8 @@ enum SimpleTransaction {
     Invoke(SimpleInvoke),
     #[serde(rename = "L1_HANDLER")]
     L1Handler(SimpleL1Handler),
+    #[serde(rename = "DEPLOY_ACCOUNT")]
+    DeployAccount(SimpleDeployAccount),
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -343,6 +350,11 @@ struct SimpleDeploy {
 
 #[derive(serde::Deserialize, Debug)]
 struct SimpleDeclare {}
+
+#[derive(serde::Deserialize, Debug)]
+struct SimpleDeployAccount {
+    contract_address: pathfinder_lib::core::ContractAddress,
+}
 
 #[serde_with::serde_as]
 #[derive(serde::Deserialize, Debug)]
