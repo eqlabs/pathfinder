@@ -8,10 +8,11 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  compile_tests:
+    name: Compile pathfinder tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: rui314/setup-mold@v1
         with:
@@ -27,9 +28,48 @@ jobs:
           EOF
 
           cat $HOME/.cargo/config.toml
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
         with:
           key: "mold"
+
+      - name: Compile tests
+        # Note: profile changed because otherwise test binary is 1GB+ in size..
+        run: cargo test --no-run --lib pathfinder -p pathfinder --locked --profile stripdebuginfo
+
+      # Finds the pathfinder_lib- test binary, and renames it and the .d file to something simpler to use.
+      # Essentially removing the hash to make running the file simpler (as it is used in other jobs).
+      - name: Rename test binary
+        run: |
+          filepath=`find target/stripdebuginfo/deps/ -type f -name pathfinder_lib-* | head -n 1`; \
+          filepathd="${filepath}.d"; \
+          mv $filepath pathfinder_test; \
+          mv $filepathd pathfinder_test.d;
+
+      - name: Archive test binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-binary
+          path: |
+            pathfinder_test
+            pathfinder_test.d
+          if-no-files-found: error
+
+  test_pathfinder:
+    name: pathfinder tests (excludes L1)
+    needs: compile_tests
+    runs-on: ubuntu-latest
+    steps:
+      # Required for the python environment
+      - uses: actions/checkout@v3
+
+      # Fetch the test binary artifact
+      - uses: actions/download-artifact@v3
+        with:
+          name: test-binary
+      # Archiving removes the file permissions
+      - name: Fix file permissions
+        run: chmod +x pathfinder_test
+
       - uses: actions/setup-python@v4
         id: setup_python
         with:
@@ -43,44 +83,90 @@ jobs:
           path: ${{ env.pythonLocation }}/**/site-packages
           key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}
       - run: pip install -e py/.
-      - run: |
-          cargo test --no-run --workspace --locked
-          timeout 5m cargo test -p pathfinder -- --skip ethereum::
 
-          # Run Ethereum tests using Infura endpoint
-          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.INFURA_GOERLI_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.INFURA_GOERLI_PASSWORD }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.INFURA_MAINNET_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.INFURA_MAINNET_PASSWORD }} \
-            timeout 3m cargo test -p pathfinder --locked -- ethereum::
+      - name: Execute tests
+        run: "./pathfinder_test --skip ethereum::"
 
-          # Run Ethereum tests using Alchemy endpoint
+  test_alchemy:
+    name: pathfinder tests (alchemy)
+    needs: compile_tests
+    runs-on: ubuntu-latest
+    steps:       
+      # Fetch the test binary artifact
+      - uses: actions/download-artifact@v3
+        with:
+          name: test-binary
+      # Archiving removes the file permissions
+      - name: Fix file permissions
+        run: chmod +x pathfinder_test
+
+      - name: Execute tests
+        run: |
           PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.ALCHEMY_GOERLI_URL }} \
             PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.ALCHEMY_GOERLI_PASSWORD }} \
             PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.ALCHEMY_MAINNET_URL }} \
             PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.ALCHEMY_MAINNET_PASSWORD }} \
-            timeout 3m cargo test -p pathfinder --locked -- ethereum::
+            timeout 3m ./pathfinder_test ethereum::
 
-          timeout 3m cargo test -p stark_hash --all-targets --locked
-          timeout 1m cargo test -p stark_curve --all-targets --locked
+  test_infura:
+    name: pathfinder tests (infura)
+    needs: compile_tests
+    runs-on: ubuntu-latest
+    steps:       
+      # Fetch the test binary artifact
+      - uses: actions/download-artifact@v3
+        with:
+          name: test-binary
+      # Archiving removes the file permissions
+      - name: Fix file permissions
+        run: chmod +x pathfinder_test
+
+      - name: Execute tests
+        run: |
+          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.INFURA_GOERLI_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.INFURA_GOERLI_PASSWORD }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.INFURA_MAINNET_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.INFURA_MAINNET_PASSWORD }} \
+            timeout 3m ./pathfinder_test ethereum::
+
+  test_stark_curve:
+    name: stark_curve tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: tests
+        run: cargo test -p stark_curve --all-targets --locked
+
+  test_stark_hash:
+    name: stark_hash tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: tests
+        run: cargo test -p stark_hash --all-targets --locked
+
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings -D rust_2018_idioms
 
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
 
   doc:
@@ -88,17 +174,17 @@ jobs:
     env:
       RUSTDOCFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - run: cargo doc --no-deps --document-private-items
 
   dep-sort:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - run: |
           cargo install cargo-sort
           cargo sort --check --workspace
@@ -107,7 +193,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Prepare py/
         run: |
@@ -151,7 +237,7 @@ jobs:
 
           cat $HOME/.cargo/config.toml
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
         with:
           key: "mold"
       - name: Integration (rust)
@@ -163,7 +249,7 @@ jobs:
   fuzz_targets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
@@ -181,7 +267,7 @@ jobs:
           EOF
 
           cat $HOME/.cargo/config.toml
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
         with:
           key: "mold"
       - run: cargo install cargo-fuzz
