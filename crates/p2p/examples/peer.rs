@@ -95,21 +95,29 @@ async fn main() -> anyhow::Result<()> {
         match e {
             p2p::Event::SyncPeerConnected { peer_id } => {
                 use p2p_proto::sync::{GetBlockHeaders, Request};
-                let response = p2p_client
-                    .send_sync_request(
-                        peer_id,
-                        Request::GetBlockHeaders(GetBlockHeaders {
-                            start_block: StarkHash::ZERO,
-                            count: 1,
-                            size_limit: 1_000_000,
-                            direction: p2p_proto::sync::Direction::Forward,
-                        }),
-                    )
-                    .await;
-                tracing::debug!(?response, "Received response");
+
+                let mut p2p_client = p2p_client.clone();
+
+                tokio::spawn(async move {
+                    let response = p2p_client
+                        .send_sync_request(
+                            peer_id,
+                            Request::GetBlockHeaders(GetBlockHeaders {
+                                start_block: StarkHash::ZERO,
+                                count: 1,
+                                size_limit: 1_000_000,
+                                direction: p2p_proto::sync::Direction::Forward,
+                            }),
+                        )
+                        .await;
+                    tracing::debug!(?response, "Received response");
+                });
             }
             p2p::Event::InboundSyncRequest { request, channel } => {
-                tracing::warn!(?request, "Received inbound sync request");
+                tracing::debug!(?request, "Received request");
+                use p2p_proto::sync::{BlockHeaders, Response};
+                let response = Response::BlockHeaders(BlockHeaders { headers: vec![] });
+                p2p_client.send_sync_response(channel, response).await;
             }
         }
     }
