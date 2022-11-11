@@ -44,6 +44,7 @@ pub fn new(keypair: Keypair) -> anyhow::Result<(Client, mpsc::Receiver<Event>, M
     ))
 }
 
+#[derive(Clone)]
 pub struct Client {
     sender: mpsc::Sender<Command>,
 }
@@ -106,6 +107,17 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    pub async fn send_sync_response(
+        &mut self,
+        channel: ResponseChannel<p2p_proto::sync::Response>,
+        response: p2p_proto::sync::Response,
+    ) {
+        self.sender
+            .send(Command::SendSyncResponse { channel, response })
+            .await
+            .expect("Command receiver not to be dropped");
+    }
+
     pub async fn get_sync_peer(&mut self) -> Option<PeerId> {
         let (sender, receiver) = oneshot::channel();
         self.sender
@@ -140,6 +152,10 @@ enum Command {
         peer_id: PeerId,
         request: p2p_proto::sync::Request,
         sender: oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>,
+    },
+    SendSyncResponse {
+        channel: ResponseChannel<p2p_proto::sync::Response>,
+        response: p2p_proto::sync::Response,
     },
     GetSyncPeer {
         sender: oneshot::Sender<Option<PeerId>>,
@@ -300,6 +316,7 @@ impl MainLoop {
                     request_id, error, ..
                 },
             )) => {
+                tracing::warn!(?request_id, ?error, "Outbound request failed");
                 let _ = self
                     .pending_block_sync_requests
                     .remove(&request_id)
@@ -368,6 +385,16 @@ impl MainLoop {
                     .block_sync
                     .send_request(&peer_id, request);
                 self.pending_block_sync_requests.insert(request_id, sender);
+            }
+            Command::SendSyncResponse { channel, response } => {
+                // This might fail, but we're just ignoring it. In case of failure a
+                // RequestResponseEvent::InboundFailure will or has been be emitted.
+                let response = self
+                    .swarm
+                    .behaviour_mut()
+                    .block_sync
+                    .send_response(channel, response);
+                tracing::warn!(?response, "Sent response");
             }
             Command::GetSyncPeer { sender } => {
                 let maybe_peer_id = self.peers.keys().cloned().next();

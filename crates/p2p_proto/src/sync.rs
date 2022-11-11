@@ -184,7 +184,7 @@ impl From<Response> for proto::sync::Response {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockHeaders {
-    headers: Vec<BlockHeader>,
+    pub headers: Vec<BlockHeader>,
 }
 
 impl TryFrom<proto::sync::BlockHeaders> for BlockHeaders {
