@@ -81,6 +81,70 @@ pub trait NodeStorage {
     fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
 }
 
+/// TODO: comment
+#[derive(Debug)]
+pub enum ProofNode {
+    Binary(BinaryProofNode),
+    Edge(EdgeProofNode),
+}
+
+/// TODO: comment
+#[derive(Debug)]
+pub struct BinaryProofNode {
+    left_hash: StarkHash,
+    right_hash: StarkHash,
+}
+
+impl From<&BinaryNode> for BinaryProofNode {
+    fn from(bin: &BinaryNode) -> Self {
+        Self {
+            left_hash: bin.left.borrow().hash().unwrap(), // decide what to do with unwrap
+            right_hash: bin.right.borrow().hash().unwrap(), // decide what to do with unwrap
+        }
+    }
+}
+
+impl BinaryProofNode {
+    /// TODO: comment
+    fn hash(&self) -> StarkHash {
+        // Code taken from [merkle_node::EdgeNode::calculate_hash]
+        stark_hash::stark_hash(self.left_hash, self.right_hash)
+    }
+}
+
+/// TODO: comment
+#[derive(Debug)]
+pub struct EdgeProofNode {
+    path: BitVec<Msb0, u8>,
+    child_hash: StarkHash,
+}
+
+impl From<&EdgeNode> for EdgeProofNode {
+    fn from(edge: &EdgeNode) -> Self {
+        Self {
+            path: edge.path.clone(),
+            child_hash: edge.child.borrow().hash().unwrap(), // TODO: decide what to do with unwrap
+        }
+    }
+}
+
+impl EdgeProofNode {
+    /// TODO: comment
+    fn hash(&self) -> StarkHash {
+        // Code taken from [merkle_node::EdgeNode::calculate_hash]
+        let child_hash = self.child_hash;
+
+        let path = StarkHash::from_bits(&self.path).unwrap(); // TODO: decide what to do with unwrap
+        let mut length = [0; 32];
+        // Safe as len() is guaranteed to be <= 251
+        length[31] = self.path.len() as u8;
+
+        let length = StarkHash::from_be_bytes(length).unwrap(); // TODO: decide what to do with unwrap
+
+        stark_hash::stark_hash(child_hash, path) + length
+    }
+}
+
 /// A Starknet binary Merkle-Patricia tree with a specific root entry-point and storage.
 ///
 /// This is used to update, mutate and access global Starknet state as well as individual contract states.
@@ -461,6 +525,50 @@ impl<T: NodeStorage> MerkleTree<T> {
                 _ => None,
             });
         Ok(result)
+    }
+
+    /// TODO: Comment
+    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
+        if self.root.borrow().is_empty() {
+            // TODO: Should be an error here since it's impossible to prove `key` of a non-existent tree.
+            // Plus, an empty vector means there is only a single edge.
+            return Ok(Vec::new());
+        }
+
+        let mut current = self.root.clone();
+        let mut height = 0;
+        let mut nodes: Vec<ProofNode> = Vec::new();
+        loop {
+            use Node::*;
+
+            let current_tmp = current.borrow().clone();
+
+            let next = match current_tmp {
+                Unresolved(hash) => {
+                    let node = self.resolve(hash, height)?;
+                    current.swap(&RefCell::new(node));
+                    current
+                }
+                Binary(binary) => {
+                    height += 1;
+                    let direction = binary.direction(key);
+                    let proof_node = ProofNode::Binary(BinaryProofNode::from(&binary));
+                    nodes.push(proof_node);
+
+                    binary.get_child(direction)
+                }
+                Edge(edge) if edge.path_matches(key) => {
+                    height += edge.path.len();
+                    let proof_node = ProofNode::Edge(EdgeProofNode::from(&edge));
+                    nodes.push(proof_node);
+                    edge.child
+                }
+                Leaf(_) | Edge(_) => {
+                    return Ok(nodes);
+                }
+            };
+            current = next;
+        }
     }
 
     /// Traverses from the current root towards the destination [Leaf](Node::Leaf) node.
@@ -1648,6 +1756,269 @@ mod tests {
                     expected_6
                 ]
             );
+        }
+    }
+
+    mod proofs {
+        use super::{Direction, MerkleTree, ProofNode};
+        use crate::starkhash;
+        use bitvec::prelude::Msb0;
+        use bitvec::slice::BitSlice;
+        use stark_hash::StarkHash;
+
+        /// TODO: Comment
+        fn verify_proof(
+            root: StarkHash,
+            key: &BitSlice<Msb0, u8>,
+            value: StarkHash,
+            proofs: &Vec<ProofNode>,
+        ) -> bool {
+            let mut expected_hash = root;
+            let mut tracking_key: &BitSlice<Msb0, u8> = key;
+
+            for proof_node in proofs.iter() {
+                match proof_node {
+                    ProofNode::Binary(bin) => {
+                        // Hash mismatch? Return false.
+                        if bin.hash() != expected_hash {
+                            return false;
+                        }
+
+                        // Direction will always correspond to the 0th index
+                        // because we're removing nibbles on every iteration.
+                        let direction = Direction::from(tracking_key[0]);
+
+                        // Set the next hash to be the left or right hash,
+                        // depending on the direction
+                        expected_hash = match direction {
+                            Direction::Left => bin.left_hash,
+                            Direction::Right => bin.right_hash,
+                        };
+
+                        // Advance by a single nibble
+                        tracking_key = &tracking_key[1..];
+                    }
+                    ProofNode::Edge(edge) => {
+                        // Hash mismatch? Return false.
+                        if edge.hash() != expected_hash {
+                            return false;
+                        }
+
+                        let path_matches = edge.path == tracking_key[..edge.path.len()];
+                        // If paths don't match, the key can't be proven.
+                        if !path_matches {
+                            return false;
+                        }
+
+                        // Set the next hash to the child's hash
+                        expected_hash = edge.child_hash;
+
+                        // Advance by the whole edge path
+                        tracking_key = &tracking_key[edge.path.len()..];
+                    }
+                }
+            }
+
+            expected_hash == value
+        }
+
+        #[test]
+        fn simple_binary() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+
+            //   (250, 0, x1)
+            //        |
+            //     (0,0,x1)
+            //      /    \
+            //     (2)  (3)
+
+            let key_1 = starkhash!("00"); // 0b01
+            let key_2 = starkhash!("01"); // 0b01
+
+            let key1 = key_1.view_bits();
+            let key2 = key_2.view_bits();
+
+            let value_1 = starkhash!("02");
+            let value_2 = starkhash!("03");
+
+            uut.set(key1, value_1).unwrap();
+            uut.set(key2, value_2).unwrap();
+            let root = uut.commit().unwrap();
+
+            let uut = MerkleTree::load("test", &transaction, root).unwrap();
+
+            let proofs = uut.get_proof(key1).unwrap();
+
+            let verified_key1 = verify_proof(root, key1, value_1, &proofs);
+
+            assert_eq!(verified_key1, true);
+        }
+
+        #[test]
+        fn double_binary() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+
+            //           (249,0,x3)
+            //               |
+            //           (0, 0, x3)
+            //         /            \
+            //     (0,0,x1)       (1, 1, 5)
+            //      /    \          /     \
+            //     (2)  (3)       (0)    (5)
+
+            let key_1 = starkhash!("00"); // 0b01
+            let key_2 = starkhash!("01"); // 0b01
+            let key_3 = starkhash!("03"); // 0b11
+
+            let key1 = key_1.view_bits();
+            let key2 = key_2.view_bits();
+            let key3 = key_3.view_bits();
+
+            let value_1 = starkhash!("02");
+            let value_2 = starkhash!("03");
+            let value_3 = starkhash!("05");
+
+            uut.set(key1, value_1).unwrap();
+            uut.set(key2, value_2).unwrap();
+            uut.set(key3, value_3).unwrap();
+
+            let root = uut.commit().unwrap();
+            let uut = MerkleTree::load("test", &transaction, root).unwrap();
+
+            let proofs = uut.get_proof(key1).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs);
+            assert_eq!(verified_1, true, "Failed to prove key1");
+
+            let proofs = uut.get_proof(key2).unwrap();
+            let verified_2 = verify_proof(root, key2, value_2, &proofs);
+            assert_eq!(verified_2, true, "Failed to prove key2");
+
+            let proofs = uut.get_proof(key3).unwrap();
+            let verified_key3 = verify_proof(root, key3, value_3, &proofs);
+            assert_eq!(verified_key3, true, "Failed to prove key3");
+        }
+
+        #[test]
+        fn left_edge() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+
+            //  (251,0x00,0x99)
+            //       /
+            //      /
+            //   (0x99)
+
+            let key_1 = starkhash!("00"); // 0b00
+
+            let key1 = key_1.view_bits();
+
+            let value_1 = starkhash!("aa");
+
+            uut.set(key1, value_1).unwrap();
+
+            let root = uut.commit().unwrap();
+            let uut = MerkleTree::load("test", &transaction, root).unwrap();
+
+            let proofs = uut.get_proof(key1).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs);
+            assert_eq!(verified_1, true, "Failed to prove key1");
+        }
+
+        #[test]
+        fn left_right_edge() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+
+            //  (251,0xff,0xaa)
+            //     /
+            //     \
+            //   (0xaa)
+
+            let key_1 = starkhash!("ff"); // 0b11111111
+
+            let key1 = key_1.view_bits();
+
+            let value_1 = starkhash!("aa");
+
+            uut.set(key1, value_1).unwrap();
+
+            let root = uut.commit().unwrap();
+            let uut = MerkleTree::load("test", &transaction, root).unwrap();
+
+            let proofs = uut.get_proof(key1).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs);
+            assert_eq!(verified_1, true, "Failed to prove key1");
+        }
+
+        #[test]
+        fn right_most_edge() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+
+            //  (251,0x7fff...,0xbb)
+            //          \
+            //           \
+            //          (0xbb)
+
+            let key_1 =
+                starkhash!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+
+            let key1 = key_1.view_bits();
+
+            let value_1 = starkhash!("bb");
+
+            uut.set(key1, value_1).unwrap();
+
+            let root = uut.commit().unwrap();
+            let uut = MerkleTree::load("test", &transaction, root).unwrap();
+
+            let proofs = uut.get_proof(key1).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs);
+            assert_eq!(verified_1, true, "Failed to prove key1");
+        }
+
+        #[test]
+        fn binary_root() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+
+            //           (0, 0, x)
+            //    /                    \
+            // (250, 0, cc)     (250, 11111.., dd)
+            //    |                     |
+            //   (cc)                  (dd)
+
+            let key_1 = starkhash!("00");
+            let key_2 =
+                starkhash!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+
+            let key1 = key_1.view_bits();
+            let key2 = key_2.view_bits();
+
+            let value_1 = starkhash!("cc");
+            let value_2 = starkhash!("dd");
+
+            uut.set(key1, value_1).unwrap();
+            uut.set(key2, value_2).unwrap();
+
+            let root = uut.commit().unwrap();
+            let uut = MerkleTree::load("test", &transaction, root).unwrap();
+
+            let proofs = uut.get_proof(key1).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs);
+            assert_eq!(verified_1, true, "Failed to prove key1");
+
+            let proofs = uut.get_proof(key2).unwrap();
+            let verified_2 = verify_proof(root, key2, value_2, &proofs);
+            assert_eq!(verified_2, true, "Failed to prove key2");
         }
     }
 
