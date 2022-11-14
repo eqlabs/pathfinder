@@ -3589,6 +3589,7 @@ dependencies = [
  "futures",
  "libp2p",
  "p2p_proto",
+ "prost",
  "serde",
  "serde_derive",
  "serde_json",

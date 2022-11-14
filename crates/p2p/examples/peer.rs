@@ -1,10 +1,15 @@
 #![deny(rust_2018_idioms)]
 
-use std::path::Path;
+use std::{
+    path::Path,
+    time::{Duration, SystemTime},
+};
 
 use clap::Parser;
 use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
+use p2p::{BlockPropagation, Event};
+use p2p_proto::proto::propagation::NewBlockHeader;
 use serde_derive::Deserialize;
 use stark_hash::StarkHash;
 use zeroize::Zeroizing;
@@ -17,6 +22,8 @@ struct Args {
     listen_on: Multiaddr,
     #[clap(long, value_parser, env = "BOOTSTRAP_ADDRESSES")]
     bootstrap_addresses: Vec<Multiaddr>,
+    #[clap(long)]
+    emit_events: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -93,9 +100,39 @@ async fn main() -> anyhow::Result<()> {
 
     // echo '{"private_key":"CAESQD2O1wg6Zff85HcP2WroCxkSjjWF0j1MZDd+v46yOQFDcparn+5uwE1jnvPTNa8l3GKwfdh9SDMLSPeyN3aHxfk="}' > identity.json
     // RUST_LOG=info cargo run -p p2p_bootstrap -- --identity-config-file ./identity.json --listen-on /ip4/127.0.0.1/tcp/4000
-    // RUST_LOG=info cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4001 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWHXfu9x4rXGTqYwXhdb69iatUxKnRU8PyPWbg3k4qLNwr
+    // RUST_LOG=info cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4001 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWHXfu9x4rXGTqYwXhdb69iatUxKnRU8PyPWbg3k4qLNwr --emit-events
     // RUST_LOG=info cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4002 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWHXfu9x4rXGTqYwXhdb69iatUxKnRU8PyPWbg3k4qLNwr
     // RUST_LOG=info cargo run -p p2p --example peer -- --listen-on /ip4/127.0.0.1/tcp/4003 --bootstrap-addresses /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWHXfu9x4rXGTqYwXhdb69iatUxKnRU8PyPWbg3k4qLNwr
+
+    if args.emit_events {
+        let mut client = p2p_client.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(Duration::from_secs(10));
+            loop {
+                ticker.tick().await;
+
+                let request_id = SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as u32;
+                let new_block_header = NewBlockHeader {
+                    request_id,
+                    ..Default::default()
+                };
+                let block_propagation = BlockPropagation::NewBlockHeader(new_block_header);
+                match client
+                    .publish_event(
+                        &block_propagation_topic,
+                        Event::BlockPropagation(block_propagation),
+                    )
+                    .await
+                {
+                    Ok(_) => tracing::info!("event published"),
+                    Err(e) => tracing::error!("event publising failed: {}", e),
+                }
+            }
+        });
+    }
 
     while let Some(event) = p2p_events.recv().await {
         match event {
@@ -125,15 +162,8 @@ async fn main() -> anyhow::Result<()> {
                 let response = Response::BlockHeaders(BlockHeaders { headers: vec![] });
                 p2p_client.send_sync_response(channel, response).await;
             }
-            p2p::Event::BlockPropagation(seq) => {
-                tracing::debug!(?seq, "Block Propagation");
-                match p2p_client
-                    .publish_event(&block_propagation_topic, event)
-                    .await
-                {
-                    Ok(_) => tracing::info!("event published"),
-                    Err(e) => tracing::error!("event publising failed: {}", e),
-                }
+            p2p::Event::BlockPropagation(block_propagation) => {
+                tracing::info!(?block_propagation, "Block Propagation");
             }
         }
     }

@@ -16,6 +16,8 @@ use libp2p::{identify, PeerId};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
+use p2p_proto::proto::propagation::{NewBlockBody, NewBlockHeader, NewBlockState};
+
 mod behaviour;
 mod executor;
 mod sync;
@@ -177,9 +179,52 @@ enum Command {
     PublishEvent {
         topic: IdentTopic,
         sender: EmptyResultSender,
-        #[allow(dead_code)] // TODO FIXME
         event: Event,
     },
+}
+
+#[derive(Debug)]
+pub enum BlockPropagation {
+    NewBlockHeader(NewBlockHeader),
+    NewBlockBody(NewBlockBody),
+    NewBlockState(NewBlockState),
+}
+
+impl TryFrom<&[u8]> for BlockPropagation {
+    type Error = anyhow::Error;
+
+    fn try_from(buf: &[u8]) -> Result<Self, Self::Error> {
+        if let Ok(new_block_header) = prost::Message::decode(buf)
+            .map_err(|e| anyhow::anyhow!("BlockPropagation decode failed: {}", e))
+        {
+            return Ok(BlockPropagation::NewBlockHeader(new_block_header));
+        }
+
+        if let Ok(new_block_body) = prost::Message::decode(buf)
+            .map_err(|e| anyhow::anyhow!("BlockPropagation decode failed: {}", e))
+        {
+            return Ok(BlockPropagation::NewBlockBody(new_block_body));
+        }
+
+        if let Ok(new_block_state) = prost::Message::decode(buf)
+            .map_err(|e| anyhow::anyhow!("BlockPropagation decode failed: {}", e))
+        {
+            return Ok(BlockPropagation::NewBlockState(new_block_state));
+        }
+
+        Err(anyhow::anyhow!("BlockPropagation decoding failed"))
+    }
+}
+
+impl From<BlockPropagation> for Vec<u8> {
+    fn from(value: BlockPropagation) -> Self {
+        use prost::Message;
+        match value {
+            BlockPropagation::NewBlockHeader(new_block_header) => new_block_header.encode_to_vec(),
+            BlockPropagation::NewBlockBody(new_block_body) => new_block_body.encode_to_vec(),
+            BlockPropagation::NewBlockState(new_block_state) => new_block_state.encode_to_vec(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -191,8 +236,7 @@ pub enum Event {
         request: p2p_proto::sync::Request,
         channel: ResponseChannel<p2p_proto::sync::Response>,
     },
-    // TODO https://github.com/starknet-community-libs/starknet-p2p-specs/blob/main/p2p/starknet-p2p.md#block-propagation
-    BlockPropagation(u64),
+    BlockPropagation(BlockPropagation),
 }
 
 pub struct MainLoop {
@@ -308,15 +352,26 @@ impl MainLoop {
                 message_id: id,
                 message,
             })) => {
-                let event = Event::BlockPropagation(42);
-                tracing::debug!(
-                    "Gossipsub Event Message: [id={}][peer={}] {:?} ({} bytes)",
-                    id,
-                    peer_id,
-                    event,
-                    message.data.len()
-                );
-                self.event_sender.send(event).await?;
+                match BlockPropagation::try_from(message.data.as_ref()) {
+                    Ok(event) => {
+                        tracing::debug!(
+                            "Gossipsub Event Message: [id={}][peer={}] {:?} ({} bytes)",
+                            id,
+                            peer_id,
+                            event,
+                            message.data.len()
+                        );
+                        self.event_sender
+                            .send(Event::BlockPropagation(event))
+                            .await?;
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to parse Gossipsub Message as Block Propagation: {}",
+                            e
+                        );
+                    }
+                }
                 Ok(())
             }
             SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
@@ -451,13 +506,16 @@ impl MainLoop {
                 let _ = sender.send(maybe_peer_id);
             }
             Command::PublishEvent {
-                event: _,
+                event: Event::BlockPropagation(block_propagation),
                 topic,
                 sender,
             } => {
-                let data = &[42u8]; // TODO FIXME
-                let result = self.publish_data(topic, data);
+                let data: Vec<u8> = block_propagation.into();
+                let result = self.publish_data(topic, &data);
                 let _ = sender.send(result);
+            }
+            _ => {
+                tracing::warn!(?command, "Unexpected command");
             }
         };
     }
