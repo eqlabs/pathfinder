@@ -7,7 +7,7 @@ use pathfinder_lib::{
     core::{self, Chain, EthereumChain},
     ethereum::transport::{EthereumTransport, HttpTransport},
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
-    rpc, sequencer, state,
+    p2p, rpc, sequencer, state,
     storage::{JournalMode, Storage},
 };
 use std::sync::{atomic::AtomicBool, Arc};
@@ -116,11 +116,17 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
 
+    let (p2p_client, _p2p_sub_rx, p2p_loop) =
+        p2p::new(sequencer.clone(), starknet_chain).expect("P2P api creation should succeed");
+
+    let p2p_handle = tokio::spawn(p2p_loop.run());
+
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
         eth_transport.clone(),
         starknet_chain,
         sequencer.clone(),
+        p2p_client,
         sync_state.clone(),
         state::l1::sync,
         state::l2::sync,
@@ -176,6 +182,9 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                 Ok(_) => tracing::error!("Release monitoring process ended unexpectedly"),
                 Err(err) => tracing::error!(error=%err, "Release monitoring process ended unexpectedly"),
             }
+        }
+        _result = p2p_handle => {
+            tracing::error!("P2P main loop ended unexpected");
         }
     }
 

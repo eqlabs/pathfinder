@@ -11,6 +11,7 @@ use crate::{
         StarknetBlockNumber,
     },
     ethereum::{log::StateUpdateLog, transport::EthereumTransport},
+    p2p,
     rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer::{
         self,
@@ -100,6 +101,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     transport: Transport,
     chain: Chain,
     sequencer: SequencerClient,
+    p2p_client: p2p::Client,
     state: Arc<State>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
@@ -114,6 +116,7 @@ where
     L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, Option<StateUpdateLog>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
+            p2p::Client,
             SequencerClient,
             Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
             Chain,
@@ -158,6 +161,7 @@ where
     let mut l1_handle = tokio::spawn(l1_sync(tx_l1, transport.clone(), chain, l1_head));
     let mut l2_handle = tokio::spawn(l2_sync(
         tx_l2,
+        p2p_client.clone(),
         sequencer.clone(),
         l2_head,
         chain,
@@ -441,7 +445,7 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval);
+                    let fut = l2_sync(new_tx, p2p_client.clone(), sequencer.clone(), l2_head, chain, pending_poll_interval);
 
                     l2_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
@@ -450,7 +454,7 @@ where
                     });
                     tracing::info!("L2 sync process restarted.");
                 }
-            }
+            },
         }
     }
 }

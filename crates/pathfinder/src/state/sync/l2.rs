@@ -5,16 +5,20 @@ use anyhow::{anyhow, Context};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::core::GlobalRoot;
+use crate::p2p;
 use crate::sequencer;
 use crate::sequencer::error::SequencerError;
-use crate::sequencer::reply::state_update::{DeployedContract, StateDiff};
+use crate::sequencer::reply::{
+    state_update::{DeployedContract, StateDiff},
+    StateUpdate,
+};
 use crate::sequencer::reply::{Block, Status};
 use crate::state::block_hash::verify_block_hash;
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
 use crate::{
     core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber},
-    sequencer::reply::{PendingBlock, StateUpdate},
+    sequencer::reply::PendingBlock,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -54,6 +58,7 @@ pub enum Event {
 
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
+    p2p_client: p2p::Client,
     sequencer: impl sequencer::ClientApi,
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
     chain: Chain,
@@ -120,10 +125,9 @@ pub async fn sync(
         // Unwrap in both block and state update is safe as the block hash always exists (unless we query for pending).
         let block_hash = block.block_hash;
         let t_update = std::time::Instant::now();
-        let state_update = sequencer
-            .state_update(block_hash.into())
-            .await
-            .with_context(|| format!("Fetch state diff for block {:?} from sequencer", next))?;
+
+        let state_update = state_update(block_hash, &p2p_client, &sequencer, next).await?;
+
         let state_update_block_hash = state_update.block_hash.unwrap();
         // An extra sanity check for the state update API.
         anyhow::ensure!(
@@ -161,6 +165,31 @@ pub async fn sync(
             .send(Event::Update(block, Box::new(state_update), timings))
             .await
             .context("Event channel closed")?;
+    }
+}
+
+/// Get state update via pubsub. Falls back to the sequencer on failure.
+async fn state_update(
+    block_hash: StarknetBlockHash,
+    p2p_client: &p2p::Client,
+    sequencer: &impl sequencer::ClientApi,
+    next: StarknetBlockNumber,
+) -> Result<StateUpdate, anyhow::Error> {
+    match p2p_client.request_state_diff(block_hash.into()).await {
+        Ok(state_update) => {
+            tracing::trace!(block_number=%next ,"P2P: requested state update");
+            Ok(state_update)
+        }
+        Err(error) => {
+            tracing::warn!(block_number=%next, %error ,"P2P: request state upadate failed");
+
+            let state_update = sequencer
+                .state_update(block_hash.into())
+                .await
+                .with_context(|| format!("Fetch state diff for block {:?} from sequencer", next))?;
+
+            Ok(state_update)
+        }
     }
 }
 

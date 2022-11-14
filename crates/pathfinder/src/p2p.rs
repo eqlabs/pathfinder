@@ -27,6 +27,7 @@ pub fn new(
     ))
 }
 
+#[derive(Clone, Debug)]
 pub struct Client {
     sequencer: sequencer::Client,
 }
