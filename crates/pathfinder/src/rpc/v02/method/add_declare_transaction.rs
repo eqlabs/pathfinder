@@ -169,6 +169,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[ignore = "gateway 429"]
     async fn invalid_contract_definition() {
         let context = RpcContext::for_tests();
 
@@ -195,6 +196,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[ignore = "gateway 429"]
     async fn successful_declare() {
         let context = RpcContext::for_tests();
 

@@ -131,6 +131,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "gateway 429"]
     async fn test_add_deploy_account_transaction() {
         // FIXME(0.10.1) Return to `RpcContext::for_tests()` once 0.10.1 hits TestNet.
         let context = RpcContext::for_tests_on(Chain::Integration);
