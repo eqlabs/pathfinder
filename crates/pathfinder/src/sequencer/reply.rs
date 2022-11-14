@@ -343,7 +343,7 @@ pub mod transaction {
                 Transaction::DeployAccount(t) => t.contract_address,
                 Transaction::Invoke(t) => match t {
                     InvokeTransaction::V0(t) => t.contract_address,
-                    InvokeTransaction::V1(t) => t.contract_address,
+                    InvokeTransaction::V1(t) => t.sender_address,
                 },
                 Transaction::L1Handler(t) => t.contract_address,
             }
@@ -496,7 +496,12 @@ pub mod transaction {
     pub struct InvokeTransactionV1 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
-        pub contract_address: ContractAddress,
+        // contract_address is the historic name for this field. sender_address was
+        // introduced with starknet v0.11. Although the gateway no longer uses the historic
+        // name at all, this alias must be kept until a database migration fixes all historic
+        // transaction naming, or until regenesis removes them all.
+        #[serde(alias = "contract_address")]
+        pub sender_address: ContractAddress,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]

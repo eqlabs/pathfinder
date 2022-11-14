@@ -741,7 +741,7 @@ pub mod reply {
                                     signature: txn.signature.clone(),
                                     nonce: txn.nonce,
                                 },
-                                contract_address: txn.contract_address,
+                                contract_address: txn.sender_address,
                                 entry_point_selector: EntryPoint(StarkHash::ZERO),
                                 calldata: txn.calldata.clone(),
                             })

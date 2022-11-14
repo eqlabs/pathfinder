@@ -527,7 +527,7 @@ pub mod reply {
                                     signature: txn.signature.clone(),
                                     nonce: txn.nonce,
                                 },
-                                sender_address: txn.contract_address,
+                                sender_address: txn.sender_address,
                                 calldata: txn.calldata.clone(),
                             }))
                         }
