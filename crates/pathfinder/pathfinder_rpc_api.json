@@ -1,0 +1,23 @@
+{
+    "openrpc": "1.2.6",
+    "info": {
+        "title": "Pathfinder RPC API",
+        "version": "0.1",
+        "description": "Provides additional (pathfinder specific) methods over and above the StarkNet RPC API"
+    },
+    "methods": [
+        {
+            "name": "version",
+            "summary": "The version of the pathfinder node hosting this API.",
+            "params": [],
+            "result": {
+                "name": "semver version",
+                "required": true,
+                "schema": {
+                    "type": "string",
+                    "description": "A semver compatible version string"
+                }
+            }
+        }
+    ]
+}

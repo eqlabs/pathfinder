@@ -1,6 +1,7 @@
 //! StarkNet node JSON-RPC related modules.
 mod error;
 pub mod gas_price;
+mod pathfinder;
 pub mod serde;
 #[cfg(test)]
 pub mod test_client;
@@ -77,10 +78,15 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         v02::register_all_methods(&mut module_v02)?;
         let module_v02 = module_v02.into();
 
+        let mut pathfinder_module = RpcModule::new(());
+        pathfinder::register_all_methods(&mut pathfinder_module)?;
+        let pathfinder_module = pathfinder_module.into();
+
         Ok(server
             .start_with_paths([
                 (vec!["/rpc/v0.1"], module_v01),
                 (vec!["/", "/rpc/v0.2"], module_v02),
+                (vec!["/rpc/pathfinder/v0.1"], pathfinder_module),
             ])
             .map(|handle| (handle, local_addr))?)
     }
