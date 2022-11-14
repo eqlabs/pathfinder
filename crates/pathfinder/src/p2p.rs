@@ -2,6 +2,7 @@
 //! p2p api that is currently being worked on.
 use crate::core::{BlockId, ClassHash, ContractAddress};
 use crate::core::{Chain, StarknetBlockHash};
+use crate::sequencer::error::{SequencerError, StarknetErrorCode};
 use crate::sequencer::{
     self,
     reply::{Block, MaybePendingBlock, StateUpdate},
@@ -32,10 +33,45 @@ pub struct Client {
     sequencer: sequencer::Client,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum RequestBlockError {
+    /// Block with a given id was not found
+    #[error("block not found")]
+    BlockNotFound,
+    /// Failed to get block
+    #[error(transparent)]
+    Other(SequencerError),
+}
+
+impl From<SequencerError> for RequestBlockError {
+    fn from(e: SequencerError) -> Self {
+        match e {
+            SequencerError::StarknetError(error)
+                if error.code == StarknetErrorCode::BlockNotFound =>
+            {
+                Self::BlockNotFound
+            }
+            SequencerError::StarknetError(_)
+            | SequencerError::ReqwestError(_)
+            | SequencerError::InvalidStarknetErrorVariant => Self::Other(e),
+        }
+    }
+}
+
 impl Client {
-    pub async fn request_block(&self, block_id: BlockId) -> anyhow::Result<MaybePendingBlock> {
-        let block = self.sequencer.block(block_id).await?;
-        Ok(block)
+    pub async fn request_block(
+        &self,
+        block_id: BlockId,
+    ) -> Result<MaybePendingBlock, RequestBlockError> {
+        match self.sequencer.block(block_id).await {
+            Ok(block) => Ok(block),
+            Err(SequencerError::StarknetError(error))
+                if error.code == StarknetErrorCode::BlockNotFound =>
+            {
+                Err(RequestBlockError::BlockNotFound)
+            }
+            Err(other) => Err(RequestBlockError::Other(other)),
+        }
     }
 
     pub async fn request_state_diff(&self, block_id: BlockId) -> anyhow::Result<StateUpdate> {

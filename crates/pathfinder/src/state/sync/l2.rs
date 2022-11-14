@@ -7,7 +7,6 @@ use tokio::sync::{mpsc, oneshot};
 use crate::core::GlobalRoot;
 use crate::p2p;
 use crate::sequencer;
-use crate::sequencer::error::SequencerError;
 use crate::sequencer::reply::{
     state_update::{DeployedContract, StateDiff},
     StateUpdate,
@@ -75,7 +74,9 @@ pub async fn sync(
         let t_block = std::time::Instant::now();
 
         let block = loop {
-            match download_block(next, chain, head_meta.map(|h| h.1), &sequencer).await? {
+            match download_block(next, chain, head_meta.map(|h| h.1), &p2p_client, &sequencer)
+                .await?
+            {
                 DownloadBlock::Block(block) => break block,
                 DownloadBlock::AtHead => {
                     // Poll pending if it is enabled, otherwise just wait to poll head again.
@@ -102,7 +103,7 @@ pub async fn sync(
                 }
                 DownloadBlock::Reorg => {
                     let some_head = head.unwrap();
-                    head = reorg(some_head, chain, &tx_event, &sequencer)
+                    head = reorg(some_head, chain, &tx_event, &p2p_client, &sequencer)
                         .await
                         .context("L2 reorg")?;
 
@@ -114,7 +115,7 @@ pub async fn sync(
 
         if let Some(some_head) = head {
             if some_head.1 != block.parent_block_hash {
-                head = reorg(some_head, chain, &tx_event, &sequencer)
+                head = reorg(some_head, chain, &tx_event, &p2p_client, &sequencer)
                     .await
                     .context("L2 reorg")?;
 
@@ -275,13 +276,30 @@ async fn download_block(
     block_number: StarknetBlockNumber,
     chain: Chain,
     prev_block_hash: Option<StarknetBlockHash>,
+    p2p_client: &p2p::Client,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
     use crate::core::BlockId;
-    use sequencer::error::StarknetErrorCode::BlockNotFound;
     use sequencer::reply::MaybePendingBlock;
 
-    let result = sequencer.block(block_number.into()).await;
+    let result = match p2p_client.request_block(block_number.into()).await {
+        Ok(block) => {
+            tracing::trace!(%block_number, "P2P: request block");
+            Ok(block)
+        }
+        Err(error @ p2p::RequestBlockError::BlockNotFound) => {
+            tracing::trace!(%block_number, %error, "P2P: request block failed");
+            Err(error)
+        }
+        Err(p2p::RequestBlockError::Other(error)) => {
+            tracing::warn!(%block_number, %error, "P2P: request block failed");
+
+            sequencer
+                .block(block_number.into())
+                .await
+                .map_err(Into::into)
+        }
+    };
 
     match result {
         Ok(MaybePendingBlock::Block(block)) => {
@@ -311,7 +329,7 @@ async fn download_block(
             }
         }
         Ok(MaybePendingBlock::Pending(_)) => anyhow::bail!("Sequencer returned `pending` block"),
-        Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound => {
+        Err(p2p::RequestBlockError::BlockNotFound) => {
             // This would occur if we queried past the head of the chain. We now need to check that
             // a reorg hasn't put us too far in the future. This does run into race conditions with
             // the sequencer but this is the best we can do I think.
@@ -348,6 +366,7 @@ async fn reorg(
     head: (StarknetBlockNumber, StarknetBlockHash, GlobalRoot),
     chain: Chain,
     tx_event: &mpsc::Sender<Event>,
+    p2p_client: &p2p::Client,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>> {
     // Go back in history until we find an L2 block that does still exist.
@@ -372,9 +391,15 @@ async fn reorg(
             None => break None,
         };
 
-        match download_block(previous_block_number, chain, Some(previous.0), sequencer)
-            .await
-            .with_context(|| format!("Download block {} from sequencer", previous_block_number))?
+        match download_block(
+            previous_block_number,
+            chain,
+            Some(previous.0),
+            p2p_client,
+            sequencer,
+        )
+        .await
+        .with_context(|| format!("Download block {} from sequencer", previous_block_number))?
         {
             DownloadBlock::Block(block) if block.block_hash == previous.0 => {
                 break Some((previous_block_number, previous.0, previous.1));
