@@ -38,10 +38,7 @@ impl Client {
         Ok(block)
     }
 
-    pub async fn request_state_diff(
-        &self,
-        block_id: BlockId, // FIXME
-    ) -> anyhow::Result<StateUpdate> {
+    pub async fn request_state_diff(&self, block_id: BlockId) -> anyhow::Result<StateUpdate> {
         let state_update = self.sequencer.state_update(block_id).await?;
         Ok(state_update)
     }

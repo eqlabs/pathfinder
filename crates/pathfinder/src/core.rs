@@ -440,6 +440,7 @@ impl std::fmt::Display for Chain {
 // these types are used in sequencer tests, which require special fixed width representation
 // FIXME: it'd be better if these had normal varlen display and lenient parsing.
 macros::fmt::thin_debug!(ContractAddress);
+macros::fmt::thin_display!(ContractAddress);
 macros::starkhash::to_from_sql!(ContractAddress);
 
 macros::fmt::thin_debug!(StarknetTransactionHash);

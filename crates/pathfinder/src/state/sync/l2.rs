@@ -147,7 +147,7 @@ pub async fn sync(
 
         // Download and emit any newly deployed (but undeclared) classes.
         let t_deploy = std::time::Instant::now();
-        deploy_contracts(&tx_event, &sequencer, &state_update.state_diff)
+        deploy_contracts(&tx_event, &p2p_client, &sequencer, &state_update.state_diff)
             .await
             .with_context(|| format!("Deploying new contracts for block {:?}", next))?;
         let t_deploy = t_deploy.elapsed();
@@ -399,6 +399,7 @@ async fn reorg(
 
 async fn deploy_contracts(
     tx_event: &mpsc::Sender<Event>,
+    p2p_client: &p2p::Client,
     sequencer: &impl sequencer::ClientApi,
     state_diff: &StateDiff,
 ) -> anyhow::Result<()> {
@@ -446,7 +447,7 @@ async fn deploy_contracts(
             .find(|contract| contract.class_hash == contract_hash)
             .unwrap();
 
-        let contract = download_and_compress_contract(contract, sequencer)
+        let contract = download_and_compress_contract(contract, p2p_client, sequencer)
             .await
             .with_context(|| format!("Download and compress contract {:?}", contract.address))?;
 
@@ -525,12 +526,25 @@ async fn download_and_compress_class(
 
 async fn download_and_compress_contract(
     contract: &DeployedContract,
+    p2p_client: &p2p::Client,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<CompressedContract> {
-    let contract_definition = sequencer
-        .full_contract(contract.address)
-        .await
-        .context("Download contract from sequencer")?;
+    let contract_address = contract.address;
+
+    let contract_definition = match p2p_client.request_contract(contract_address).await {
+        Ok(definition) => {
+            tracing::trace!(target: "p2p", %contract_address ,"request contract");
+            definition
+        }
+        Err(error) => {
+            tracing::warn!(target: "p2p", %contract_address, %error, "request contract failed");
+
+            sequencer
+                .full_contract(contract.address)
+                .await
+                .context("Download contract from sequencer")?
+        }
+    };
 
     // Parse the contract definition for ABI, code and calculate the class hash. This can
     // be expensive, so perform in a blocking task.
