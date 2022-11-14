@@ -3,7 +3,7 @@
     "info": {
         "title": "Pathfinder RPC API",
         "version": "0.1",
-        "description": "Provides additional (pathfinder specific) methods above the StarkNet RPC API"
+        "description": "Provides additional (pathfinder specific) methods over and above the StarkNet RPC API"
     },
     "methods": [
         {
