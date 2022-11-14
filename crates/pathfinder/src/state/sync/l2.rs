@@ -140,7 +140,7 @@ pub async fn sync(
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        declare_classes(&block, &sequencer, &tx_event)
+        declare_classes(&block, &p2p_client, &sequencer, &tx_event)
             .await
             .with_context(|| format!("Handling newly declared classes for block {:?}", next))?;
         let t_declare = t_declare.elapsed();
@@ -177,11 +177,11 @@ async fn state_update(
 ) -> Result<StateUpdate, anyhow::Error> {
     match p2p_client.request_state_diff(block_hash.into()).await {
         Ok(state_update) => {
-            tracing::trace!(block_number=%next ,"P2P: requested state update");
+            tracing::trace!(target: "p2p", block_number=%next ,"request state update");
             Ok(state_update)
         }
         Err(error) => {
-            tracing::warn!(block_number=%next, %error ,"P2P: request state upadate failed");
+            tracing::warn!(target: "p2p", block_number=%next, %error ,"request state upadate failed");
 
             let state_update = sequencer
                 .state_update(block_hash.into())
@@ -199,6 +199,7 @@ async fn state_update(
 /// is required to handle older blocks which don't have declare transactions.
 async fn declare_classes(
     block: &Block,
+    p2p_client: &p2p::Client,
     sequencer: &impl sequencer::ClientApi,
     tx_event: &mpsc::Sender<Event>,
 ) -> Result<(), anyhow::Error> {
@@ -246,7 +247,7 @@ async fn declare_classes(
         .collect::<Vec<_>>();
 
     for class_hash in require_downloading {
-        let class = download_and_compress_class(class_hash, sequencer)
+        let class = download_and_compress_class(class_hash, p2p_client, sequencer)
             .await
             .with_context(|| format!("Downloading class {}", class_hash.0))?;
 
@@ -463,12 +464,23 @@ async fn deploy_contracts(
 /// These should eventually be deduplicated, but right now we are just aiming at functional.
 async fn download_and_compress_class(
     class_hash: ClassHash,
+    p2p_client: &p2p::Client,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<CompressedContract> {
-    let definition = sequencer
-        .class_by_hash(class_hash)
-        .await
-        .context("Downloading contract from sequencer")?;
+    let definition = match p2p_client.request_class(class_hash).await {
+        Ok(definition) => {
+            tracing::trace!(target: "p2p", %class_hash ,"request class");
+            definition
+        }
+        Err(error) => {
+            tracing::warn!(target: "p2p", %class_hash ,"request class failed {error}");
+
+            sequencer
+                .class_by_hash(class_hash)
+                .await
+                .context("Downloading contract from sequencer")?
+        }
+    };
 
     // Parse the contract definition for ABI, code and calculate the class hash. This can
     // be expensive, so perform in a blocking task.

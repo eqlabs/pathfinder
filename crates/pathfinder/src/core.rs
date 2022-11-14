@@ -446,6 +446,7 @@ macros::fmt::thin_debug!(StarknetTransactionHash);
 macros::starkhash::to_from_sql!(StarknetTransactionHash);
 
 macros::fmt::thin_debug!(ClassHash);
+macros::fmt::thin_display!(ClassHash);
 macros::starkhash::to_from_sql!(ClassHash);
 
 macros::starkhash::common_newtype!(
