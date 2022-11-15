@@ -284,15 +284,15 @@ async fn download_block(
 
     let result = match p2p_client.request_block(block_number.into()).await {
         Ok(block) => {
-            tracing::trace!(%block_number, "P2P: request block");
+            tracing::trace!(target: "p2p", %block_number, "request block");
             Ok(block)
         }
         Err(error @ p2p::RequestBlockError::BlockNotFound) => {
-            tracing::trace!(%block_number, %error, "P2P: request block failed");
+            tracing::trace!(target: "p2p", %block_number, %error, "request block failed");
             Err(error)
         }
         Err(p2p::RequestBlockError::Other(error)) => {
-            tracing::warn!(%block_number, %error, "P2P: request block failed");
+            tracing::warn!(target: "p2p", %block_number, %error, "request block failed");
 
             sequencer
                 .block(block_number.into())
@@ -499,7 +499,7 @@ async fn download_and_compress_class(
             definition
         }
         Err(error) => {
-            tracing::warn!(target: "p2p", %class_hash ,"request class failed {error}");
+            tracing::warn!(target: "p2p", %class_hash, %error, "request class failed");
 
             sequencer
                 .class_by_hash(class_hash)
