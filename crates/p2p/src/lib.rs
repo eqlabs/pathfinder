@@ -325,24 +325,24 @@ impl MainLoop {
                                 .kademlia
                                 .add_address(&peer_id, addr.clone());
                         }
-
-                        // add to peers if seems useful
-                        if protocols
-                            .iter()
-                            .any(|p| p.as_bytes() == sync::PROTOCOL_NAME)
-                        {
-                            self.peers.insert(
-                                peer_id,
-                                Peer {
-                                    listening_addresses: listen_addrs,
-                                },
-                            );
-                            self.event_sender
-                                .send(Event::SyncPeerConnected { peer_id })
-                                .await
-                                .expect("Event receiver not to be dropped");
-                        }
                         tracing::debug!(%peer_id, "Added peer to DHT");
+                    }
+
+                    // add to peers if seems useful
+                    if protocols
+                        .iter()
+                        .any(|p| p.as_bytes() == sync::PROTOCOL_NAME)
+                    {
+                        self.peers.insert(
+                            peer_id,
+                            Peer {
+                                listening_addresses: listen_addrs,
+                            },
+                        );
+                        self.event_sender
+                            .send(Event::SyncPeerConnected { peer_id })
+                            .await
+                            .expect("Event receiver not to be dropped");
                     }
                 }
                 Ok(())
