@@ -1,7 +1,10 @@
 //! A temporary wrapper around the sequencer client that mocks the real
 //! p2p api that is currently being worked on.
 //!
-//! Types returned by this api will change soon.
+//! ## Important
+//!
+//! - Types returned by this api will change soon.
+//! - Guarantees that this api makes can change soon.
 use crate::core::{
     BlockId, Chain, ClassHash, ContractAddress, StarknetBlockHash, StarknetBlockNumber,
 };
@@ -16,6 +19,10 @@ use stark_hash::StarkHash;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+/// Creates:
+/// - the client used to retrieve data from p2p network on a request-response basis
+/// - the receiver which notifies of incoming p2p events that we're subscribing to
+/// - the p2p main loop which is used to drive the entire libp2p processing
 pub fn new(
     sequencer: sequencer::Client,
     chain: Chain,
@@ -34,12 +41,14 @@ pub fn new(
     ))
 }
 
+/// A mock p2p client that uses a sequencer client under the hood
 #[derive(Clone, Debug)]
 pub struct Client {
     sequencer: sequencer::Client,
     latest_block_tx: mpsc::Sender<Block>,
 }
 
+/// Errors returned by [`Client::request_block`]
 #[derive(Debug, thiserror::Error)]
 pub enum RequestBlockError {
     /// Block with a given id was not found
@@ -69,14 +78,18 @@ impl From<SequencerError> for RequestBlockError {
 }
 
 impl Client {
-    /// Guarantee: will never succeed when requesting past the latest block carried in [`Event::NewBlock`]
+    /// Requests a block by id
+    ///
+    /// ## Guarantee
+    ///
+    /// This method will never succeed when requesting past the latest block carried in [`Event::NewBlock`]
     pub async fn request_block(&self, block_id: BlockId) -> Result<Block, RequestBlockError> {
         match self.sequencer.block(block_id).await {
             Ok(MaybePendingBlock::Block(block)) => {
                 self.latest_block_tx
                     .send(block.clone())
                     .await
-                    .expect("todo");
+                    .expect("the channel is not closed");
                 Ok(block)
             }
             Ok(MaybePendingBlock::Pending(_)) => Err(RequestBlockError::GotPending),
@@ -89,16 +102,19 @@ impl Client {
         }
     }
 
+    /// Requests a state diff by id
     pub async fn request_state_diff(&self, block_id: BlockId) -> anyhow::Result<StateUpdate> {
         let state_update = self.sequencer.state_update(block_id).await?;
         Ok(state_update)
     }
 
+    /// Requests a contract class by class hash
     pub async fn request_class(&self, class_hash: ClassHash) -> anyhow::Result<Bytes> {
         let class = self.sequencer.class_by_hash(class_hash).await?;
         Ok(class)
     }
 
+    /// Requests a full contract definiton by contract address
     pub async fn request_contract(
         &self,
         contract_address: ContractAddress,
@@ -108,13 +124,17 @@ impl Client {
     }
 }
 
+/// Events received via Gossipsub
 #[derive(Debug)]
 pub enum Event {
-    /// Guarantee: Always carries the latest available block, [`Client::request_block`] will never succeed when
+    /// ## Guarantee
+    ///
+    /// Always carries the latest available block, [`Client::request_block`] will never succeed when
     /// requesting past this block
     NewBlock(Block),
 }
 
+/// The main loop that drives lip2p operation
 pub struct MainLoop {
     sequencer: sequencer::Client,
     last_requested_block_rx: mpsc::Receiver<Block>,
@@ -123,6 +143,7 @@ pub struct MainLoop {
 }
 
 impl MainLoop {
+    /// Creates new main loop
     fn new(
         sequencer: sequencer::Client,
         last_requested_block_rx: mpsc::Receiver<Block>,
@@ -137,7 +158,8 @@ impl MainLoop {
         }
     }
 
-    pub async fn run(self) {
+    /// Entry point for the loop
+    pub async fn run(self) -> ! {
         // Keep head_poll_interval private
         let poll_interval: Duration = match self.chain {
             // 5 minute interval for a 30 minute block time.
