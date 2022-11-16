@@ -2,18 +2,22 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
+use libp2p::autonat;
 use libp2p::gossipsub::{
     Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic, MessageAuthenticity, MessageId,
 };
 use libp2p::identify;
 use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping;
+use libp2p::relay::v2::relay;
 use libp2p::request_response::{ProtocolSupport, RequestResponse, RequestResponseEvent};
 use libp2p::{identity, kad, NetworkBehaviour};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "Event", event_process = false)]
 pub struct Behaviour {
+    relay: relay::Relay,
+    autonat: autonat::Behaviour,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
@@ -67,6 +71,8 @@ impl Behaviour {
         );
 
         Self {
+            relay: relay::Relay::new(peer_id, Default::default()),
+            autonat: autonat::Behaviour::new(peer_id, Default::default()),
             ping: ping::Behaviour::new(ping::Config::new()),
             identify: identify::Behaviour::new(
                 identify::Config::new(PROTOCOL_VERSION.to_string(), identity.public())
@@ -92,11 +98,25 @@ impl Behaviour {
 
 #[derive(Debug)]
 pub enum Event {
+    Relay(relay::Event),
+    Autonat(autonat::Event),
     Ping(ping::Event),
     Identify(Box<identify::Event>),
     Kademlia(KademliaEvent),
     Gossipsub(GossipsubEvent),
     BlockSync(RequestResponseEvent<p2p_proto::sync::Request, p2p_proto::sync::Response>),
+}
+
+impl From<relay::Event> for Event {
+    fn from(event: relay::Event) -> Self {
+        Event::Relay(event)
+    }
+}
+
+impl From<autonat::Event> for Event {
+    fn from(event: autonat::Event) -> Self {
+        Event::Autonat(event)
+    }
 }
 
 impl From<ping::Event> for Event {

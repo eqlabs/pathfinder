@@ -1,13 +1,17 @@
 use std::time::Duration;
 
+use libp2p::autonat;
 use libp2p::identify;
 use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping;
+use libp2p::relay::v2::relay;
 use libp2p::{identity, NetworkBehaviour};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "BootstrapEvent", event_process = false)]
 pub struct BootstrapBehaviour {
+    relay: relay::Relay,
+    autonat: autonat::Behaviour,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
@@ -37,7 +41,11 @@ impl BootstrapBehaviour {
             kademlia_config,
         );
 
+        let peer_id = pub_key.to_peer_id();
+
         Self {
+            relay: relay::Relay::new(peer_id, Default::default()),
+            autonat: autonat::Behaviour::new(peer_id, Default::default()),
             ping: ping::Behaviour::new(ping::Config::new()),
             identify: identify::Behaviour::new(
                 identify::Config::new(PROTOCOL_VERSION.to_string(), pub_key)
@@ -50,9 +58,23 @@ impl BootstrapBehaviour {
 
 #[derive(Debug)]
 pub enum BootstrapEvent {
+    Relay(relay::Event),
+    Autonat(autonat::Event),
     Ping(ping::Event),
     Identify(Box<identify::Event>),
     Kademlia(KademliaEvent),
+}
+
+impl From<relay::Event> for BootstrapEvent {
+    fn from(event: relay::Event) -> Self {
+        BootstrapEvent::Relay(event)
+    }
+}
+
+impl From<autonat::Event> for BootstrapEvent {
+    fn from(event: autonat::Event) -> Self {
+        BootstrapEvent::Autonat(event)
+    }
 }
 
 impl From<ping::Event> for BootstrapEvent {
