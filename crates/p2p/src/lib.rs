@@ -20,6 +20,7 @@ use p2p_proto::proto::propagation::{NewBlockBody, NewBlockHeader, NewBlockState}
 
 mod behaviour;
 mod executor;
+mod peers;
 mod sync;
 mod transport;
 
@@ -245,14 +246,10 @@ pub struct MainLoop {
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
 
-    peers: HashMap<PeerId, Peer>,
+    peers: peers::Peers,
 
     pending_block_sync_requests:
         HashMap<RequestId, oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>>,
-}
-
-pub struct Peer {
-    pub listening_addresses: Vec<Multiaddr>,
 }
 
 impl MainLoop {
@@ -334,12 +331,7 @@ impl MainLoop {
                         .iter()
                         .any(|p| p.as_bytes() == sync::PROTOCOL_NAME)
                     {
-                        self.peers.insert(
-                            peer_id,
-                            Peer {
-                                listening_addresses: listen_addrs,
-                            },
-                        );
+                        self.peers.add(peer_id, listen_addrs);
                         self.event_sender
                             .send(Event::SyncPeerConnected { peer_id })
                             .await
@@ -507,7 +499,7 @@ impl MainLoop {
                 tracing::warn!(?response, "Sent response");
             }
             Command::GetSyncPeer { sender } => {
-                let maybe_peer_id = self.peers.keys().cloned().next();
+                let maybe_peer_id = self.peers.first();
                 let _ = sender.send(maybe_peer_id);
             }
             Command::PublishEvent {
