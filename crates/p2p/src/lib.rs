@@ -233,6 +233,7 @@ pub enum Event {
         peer_id: PeerId,
     },
     InboundSyncRequest {
+        from: PeerId,
         request: p2p_proto::sync::Request,
         channel: ResponseChannel<p2p_proto::sync::Response>,
     },
@@ -394,7 +395,11 @@ impl MainLoop {
                         request, channel, ..
                     } => {
                         self.event_sender
-                            .send(Event::InboundSyncRequest { request, channel })
+                            .send(Event::InboundSyncRequest {
+                                from: peer,
+                                request,
+                                channel,
+                            })
                             .await
                             .expect("Event receiver not to be dropped");
                         Ok(())
