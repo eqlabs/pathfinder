@@ -123,15 +123,6 @@ impl Client {
             .expect("Command receiver not to be dropped");
     }
 
-    pub async fn get_sync_peer(&mut self) -> Option<PeerId> {
-        let (sender, receiver) = oneshot::channel();
-        self.sender
-            .send(Command::GetSyncPeer { sender })
-            .await
-            .expect("Command receiver not to be dropped");
-        receiver.await.expect("Sender not to be dropped")
-    }
-
     pub async fn publish_event(&mut self, topic: &str, event: Event) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         let topic = IdentTopic::new(topic);
@@ -175,9 +166,6 @@ enum Command {
     SendSyncResponse {
         channel: ResponseChannel<p2p_proto::sync::Response>,
         response: p2p_proto::sync::Response,
-    },
-    GetSyncPeer {
-        sender: oneshot::Sender<Option<PeerId>>,
     },
     PublishEvent {
         topic: IdentTopic,
@@ -500,10 +488,6 @@ impl MainLoop {
                     .block_sync
                     .send_response(channel, response);
                 tracing::warn!(?response, "Sent response");
-            }
-            Command::GetSyncPeer { sender } => {
-                let maybe_peer_id = self.peers.first().await;
-                let _ = sender.send(maybe_peer_id);
             }
             Command::PublishEvent {
                 event: Event::BlockPropagation(block_propagation),
