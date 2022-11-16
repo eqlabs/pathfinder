@@ -13,14 +13,14 @@ pub struct BootstrapBehaviour {
     pub kademlia: Kademlia<MemoryStore>,
 }
 
+pub const KADEMLIA_PROTOCOL_NAME: &[u8] = b"/pathfinder/kad/1.0.0";
+
 impl BootstrapBehaviour {
     pub fn new(pub_key: identity::PublicKey) -> Self {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
         // FIXME: clarify what version number should be
         // FIXME: we're also missing the starting '/'
         const PROTOCOL_VERSION: &str = "starknet/0.9.1";
-
-        const KADEMLIA_PROTOCOL_NAME: &[u8] = b"/pathfinder/kad/1.0.0";
 
         let mut kademlia_config = KademliaConfig::default();
         kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));

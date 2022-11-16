@@ -6,7 +6,7 @@ use std::time::Duration;
 use futures::StreamExt;
 use libp2p::gossipsub::{GossipsubEvent, IdentTopic};
 use libp2p::identity::Keypair;
-use libp2p::kad::{self, KademliaEvent};
+use libp2p::kad::KademliaEvent;
 use libp2p::request_response::{
     RequestId, RequestResponseEvent, RequestResponseMessage, ResponseChannel,
 };
@@ -317,7 +317,7 @@ impl MainLoop {
                 {
                     if protocols
                         .iter()
-                        .any(|p| p.as_bytes() == kad::protocol::DEFAULT_PROTO_NAME)
+                        .any(|p| p.as_bytes() == behaviour::KADEMLIA_PROTOCOL_NAME)
                     {
                         for addr in &listen_addrs {
                             self.swarm

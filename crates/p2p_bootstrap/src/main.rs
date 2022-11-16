@@ -11,8 +11,7 @@ use libp2p::identity::Keypair;
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::Transport;
-use libp2p::{dns, Multiaddr};
-use libp2p::{kad, noise};
+use libp2p::{dns, noise, Multiaddr};
 use serde_derive::Deserialize;
 use zeroize::Zeroizing;
 
@@ -132,7 +131,7 @@ async fn main() -> anyhow::Result<()> {
                         {
                             if protocols
                                 .iter()
-                                .any(|p| p.as_bytes() == kad::protocol::DEFAULT_PROTO_NAME)
+                                .any(|p| p.as_bytes() == behaviour::KADEMLIA_PROTOCOL_NAME)
                             {
                                 for addr in listen_addrs {
                                     swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
