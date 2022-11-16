@@ -520,11 +520,11 @@ async fn download_and_compress_class<C: sequencer::ClientApi>(
 ) -> anyhow::Result<CompressedContract> {
     let definition = match p2p_client.request_class(class_hash).await {
         Ok(definition) => {
-            tracing::trace!(target: "p2p", %class_hash ,"request class");
+            tracing::trace!(target: "p2p", ?class_hash ,"request class");
             definition
         }
         Err(error) => {
-            tracing::warn!(target: "p2p", %class_hash, %error, "request class failed");
+            tracing::warn!(target: "p2p", ?class_hash, %error, "request class failed");
 
             sequencer
                 .class_by_hash(class_hash)
@@ -583,11 +583,11 @@ async fn download_and_compress_contract<C: sequencer::ClientApi>(
 
     let contract_definition = match p2p_client.request_contract(contract_address).await {
         Ok(definition) => {
-            tracing::trace!(target: "p2p", %contract_address ,"request contract");
+            tracing::trace!(target: "p2p", ?contract_address ,"request contract");
             definition
         }
         Err(error) => {
-            tracing::warn!(target: "p2p", %contract_address, %error, "request contract failed");
+            tracing::warn!(target: "p2p", ?contract_address, %error, "request contract failed");
 
             sequencer
                 .full_contract(contract.address)

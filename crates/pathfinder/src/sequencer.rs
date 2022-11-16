@@ -520,7 +520,23 @@ mod tests {
     use assert_matches::assert_matches;
     use stark_hash::StarkHash;
 
+    impl std::fmt::Display for crate::core::ContractAddress {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut buf = [0u8; 2 + 64];
+            let s = self.get().as_hex_str(&mut buf);
+            f.write_str(s)
+        }
+    }
+
     impl std::fmt::Display for crate::core::StarknetTransactionHash {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut buf = [0u8; 2 + 64];
+            let s = self.0.as_hex_str(&mut buf);
+            f.write_str(s)
+        }
+    }
+
+    impl std::fmt::Display for crate::core::ClassHash {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let mut buf = [0u8; 2 + 64];
             let s = self.0.as_hex_str(&mut buf);
