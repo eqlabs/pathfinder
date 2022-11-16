@@ -483,12 +483,16 @@ mod tests {
         let transport = crate::ethereum::transport::HttpTransport::test_transport(chain);
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
         let state = Arc::new(sync::State::default());
+        let (p2p_client, p2p_rx, p2p_loop) = crate::p2p::new(sequencer.clone(), chain).unwrap();
+        tokio::spawn(p2p_loop.run());
 
         sync::sync(
             storage,
             transport,
             chain,
             sequencer,
+            p2p_rx,
+            p2p_client,
             state,
             sync::l1::sync,
             sync::l2::sync,
