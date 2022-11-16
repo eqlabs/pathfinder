@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use crate::{
     core::{
-        Chain, ClassHash, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber,
+        BlockId, Chain, ClassHash, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
+        StarknetBlockHash, StarknetBlockNumber,
     },
     ethereum::{log::StateUpdateLog, transport::EthereumTransport},
     p2p,
@@ -101,6 +101,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     transport: Transport,
     chain: Chain,
     sequencer: SequencerClient,
+    mut p2p_sub_rx: mpsc::Receiver<p2p::Event>,
     p2p_client: p2p::Client,
     state: Arc<State>,
     mut l1_sync: L1Sync,
@@ -177,6 +178,8 @@ where
     /// tasks are crashing.
     #[cfg(not(test))]
     const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
+
+    let mut p2p_l2_head = None;
 
     loop {
         tokio::select! {
@@ -423,6 +426,24 @@ where
                         }
                     }
                 }
+                Some(l2::Event::QueryHead(tx)) => {
+                    // TODO add some timeout on the p2p head
+                    let head = match p2p_l2_head {
+                        Some(head) => head,
+                        None => {
+                            tracing::info!("Falling back to sequencer for L2 head");
+                            let block = sequencer
+                                .block(BlockId::Latest)
+                                .await
+                                .context("Query sequencer for latest block")?
+                                .as_block()
+                                .context("Latest block is `pending`")?;
+                                (block.block_number, block.block_hash)
+                            }
+                    };
+
+                    let _ = tx.send(head);
+                }
                 None => {
                     pending_data.clear().await;
                     // L2 sync process failed; restart it.
@@ -455,6 +476,13 @@ where
                     tracing::info!("L2 sync process restarted.");
                 }
             },
+            p2p_event = p2p_sub_rx.recv() => match p2p_event {
+                Some(p2p::Event::NewBlock(block)) => {
+                    tracing::trace!(target: "p2p", block_number=%block.block_number, block_hash=%block.block_hash, "new L2 head");
+                    p2p_l2_head = Some((block.block_number, block.block_hash));
+                },
+                None => todo!("handle unexpected channel closure"),
+            }
         }
     }
 }
@@ -467,13 +495,12 @@ async fn update_sync_status_latest(
     starting_block_num: StarknetBlockNumber,
     chain: Chain,
 ) -> anyhow::Result<()> {
-    use crate::core::BlockId;
-
     let poll_interval = head_poll_interval(chain);
 
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
     loop {
+        // TODO take from gossipsub
         match sequencer.block(BlockId::Latest).await {
             Ok(MaybePendingBlock::Block(block)) => {
                 let latest = {

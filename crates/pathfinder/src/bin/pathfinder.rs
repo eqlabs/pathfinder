@@ -116,7 +116,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
 
-    let (p2p_client, _p2p_sub_rx, p2p_loop) =
+    let (p2p_client, p2p_sub_rx, p2p_loop) =
         p2p::new(sequencer.clone(), starknet_chain).expect("P2P api creation should succeed");
 
     let p2p_handle = tokio::spawn(p2p_loop.run());
@@ -126,6 +126,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         eth_transport.clone(),
         starknet_chain,
         sequencer.clone(),
+        p2p_sub_rx,
         p2p_client,
         sync_state.clone(),
         state::l1::sync,

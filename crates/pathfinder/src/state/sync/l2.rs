@@ -53,6 +53,8 @@ pub enum Event {
     QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
     /// A new L2 pending update was polled.
     Pending(Arc<PendingBlock>, Arc<sequencer::reply::StateUpdate>),
+    /// Query L2 head.
+    QueryHead(oneshot::Sender<(StarknetBlockNumber, StarknetBlockHash)>),
 }
 
 pub async fn sync(
@@ -74,8 +76,15 @@ pub async fn sync(
         let t_block = std::time::Instant::now();
 
         let block = loop {
-            match download_block(next, chain, head_meta.map(|h| h.1), &p2p_client, &sequencer)
-                .await?
+            match download_block(
+                next,
+                chain,
+                head_meta.map(|h| h.1),
+                &p2p_client,
+                &sequencer,
+                &tx_event,
+            )
+            .await?
             {
                 DownloadBlock::Block(block) => break block,
                 DownloadBlock::AtHead => {
@@ -278,8 +287,8 @@ async fn download_block(
     prev_block_hash: Option<StarknetBlockHash>,
     p2p_client: &p2p::Client,
     sequencer: &impl sequencer::ClientApi,
+    tx_event: &mpsc::Sender<Event>,
 ) -> anyhow::Result<DownloadBlock> {
-    use crate::core::BlockId;
     use sequencer::reply::MaybePendingBlock;
 
     let result = match p2p_client.request_block(block_number.into()).await {
@@ -333,27 +342,35 @@ async fn download_block(
             // This would occur if we queried past the head of the chain. We now need to check that
             // a reorg hasn't put us too far in the future. This does run into race conditions with
             // the sequencer but this is the best we can do I think.
-            let latest = sequencer
-                .block(BlockId::Latest)
+            let (tx, rx) = oneshot::channel();
+            tx_event
+                .send(Event::QueryHead(tx))
                 .await
-                .context("Query sequencer for latest block")?
-                .as_block()
-                .context("Latest block is `pending`")?;
+                .context("Event channel closed")?;
 
-            if latest.block_number + 1 == block_number {
+            let (latest_block_number, latest_block_hash) =
+                rx.await.context("Oneshot channel closed")?;
+
+            tracing::trace!(target: "p2p", %latest_block_number, %block_number, "checking reorg");
+
+            if latest_block_number + 1 == block_number {
                 match prev_block_hash {
                     // We are definitely still at the head and it's just that a new block
                     // has not been published yet
-                    Some(parent_block_hash) if parent_block_hash == latest.block_hash => {
+                    Some(parent_block_hash) if parent_block_hash == latest_block_hash => {
                         Ok(DownloadBlock::AtHead)
                     }
                     // Our head is not valid anymore so there must have been a reorg only at this height
-                    Some(_) => Ok(DownloadBlock::Reorg),
+                    Some(_) => {
+                        tracing::warn!(target: "p2p", "reorg: head not valid");
+                        Ok(DownloadBlock::Reorg)
+                    }
                     // There is something wrong with the sequencer, as we are attempting to get the genesis block
                     // Let's retry in a while
                     None => Ok(DownloadBlock::AtHead),
                 }
             } else {
+                tracing::warn!(target: "p2p", "reorg: new head lower");
                 // The new head is at lower height than our head which means there must have been a reorg
                 Ok(DownloadBlock::Reorg)
             }
@@ -397,6 +414,7 @@ async fn reorg(
             Some(previous.0),
             p2p_client,
             sequencer,
+            tx_event,
         )
         .await
         .with_context(|| format!("Download block {} from sequencer", previous_block_number))?
