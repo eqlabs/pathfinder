@@ -300,18 +300,26 @@ async fn download_block(
             tracing::trace!(target: "p2p", %block_number, %error, "request block failed");
             Err(error)
         }
+        Err(p2p::RequestBlockError::GotPending) => {
+            anyhow::bail!("Underlying sequencer returned `pending` block");
+        }
         Err(p2p::RequestBlockError::Other(error)) => {
             tracing::warn!(target: "p2p", %block_number, %error, "request block failed");
 
-            sequencer
-                .block(block_number.into())
-                .await
-                .map_err(Into::into)
+            let result = sequencer.block(block_number.into()).await;
+
+            match result {
+                Ok(MaybePendingBlock::Pending(_)) => {
+                    anyhow::bail!("Sequencer returned `pending` block")
+                }
+                Ok(MaybePendingBlock::Block(block)) => Ok(block),
+                Err(e) => Err(e.into()),
+            }
         }
     };
 
     match result {
-        Ok(MaybePendingBlock::Block(block)) => {
+        Ok(block) => {
             let block = Box::new(block);
             // Check if block hash is correct.
             let expected_block_hash = block.block_hash;
@@ -337,7 +345,6 @@ async fn download_block(
                 )),
             }
         }
-        Ok(MaybePendingBlock::Pending(_)) => anyhow::bail!("Sequencer returned `pending` block"),
         Err(p2p::RequestBlockError::BlockNotFound) => {
             // This would occur if we queried past the head of the chain. We now need to check that
             // a reorg hasn't put us too far in the future. This does run into race conditions with

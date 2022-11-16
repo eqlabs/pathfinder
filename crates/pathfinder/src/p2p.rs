@@ -1,5 +1,7 @@
 //! A temporary wrapper around the sequencer client that mocks the real
 //! p2p api that is currently being worked on.
+//!
+//! Types returned by this api will change soon.
 use crate::core::{
     BlockId, Chain, ClassHash, ContractAddress, StarknetBlockHash, StarknetBlockNumber,
 };
@@ -46,6 +48,9 @@ pub enum RequestBlockError {
     /// Failed to get block
     #[error(transparent)]
     Other(SequencerError),
+    /// Underlying sequencer client returned a pending block
+    #[error("got pending block")]
+    GotPending,
 }
 
 impl From<SequencerError> for RequestBlockError {
@@ -65,19 +70,16 @@ impl From<SequencerError> for RequestBlockError {
 
 impl Client {
     /// Guarantee: will never succeed when requesting past the latest block carried in [`Event::NewBlock`]
-    pub async fn request_block(
-        &self,
-        block_id: BlockId,
-    ) -> Result<MaybePendingBlock, RequestBlockError> {
-        // FIXME use Block in result
+    pub async fn request_block(&self, block_id: BlockId) -> Result<Block, RequestBlockError> {
         match self.sequencer.block(block_id).await {
-            Ok(block) => {
+            Ok(MaybePendingBlock::Block(block)) => {
                 self.latest_block_tx
-                    .send(block.clone().as_block().expect("todo"))
+                    .send(block.clone())
                     .await
                     .expect("todo");
                 Ok(block)
             }
+            Ok(MaybePendingBlock::Pending(_)) => Err(RequestBlockError::GotPending),
             Err(SequencerError::StarknetError(error))
                 if error.code == StarknetErrorCode::BlockNotFound =>
             {
