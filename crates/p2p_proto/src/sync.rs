@@ -6,6 +6,7 @@ use super::proto;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
     GetBlockHeaders(GetBlockHeaders),
+    Status(Status),
 }
 
 impl Request {
@@ -45,6 +46,7 @@ impl TryFrom<proto::sync::Request> for Request {
                 }
                 proto::sync::request::Request::GetBlockBodies(_) => todo!(),
                 proto::sync::request::Request::GetStateDiffs(_) => todo!(),
+                proto::sync::request::Request::Status(r) => Ok(Request::Status(r.try_into()?)),
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -61,6 +63,7 @@ impl From<Request> for proto::sync::Request {
                 Request::GetBlockHeaders(r) => {
                     proto::sync::request::Request::GetBlockHeaders(r.into())
                 }
+                Request::Status(r) => proto::sync::request::Request::Status(r.into()),
             }),
         }
     }
@@ -122,6 +125,7 @@ impl From<GetBlockHeaders> for proto::sync::GetBlockHeaders {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Response {
     BlockHeaders(BlockHeaders),
+    Status(Status),
 }
 
 impl Response {
@@ -161,6 +165,7 @@ impl TryFrom<proto::sync::Response> for Response {
                 }
                 proto::sync::response::Response::BlockBodies(_) => todo!(),
                 proto::sync::response::Response::StateDiffs(_) => todo!(),
+                proto::sync::response::Response::Status(s) => Ok(Response::Status(s.try_into()?)),
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -177,6 +182,7 @@ impl From<Response> for proto::sync::Response {
                 Response::BlockHeaders(r) => {
                     proto::sync::response::Response::BlockHeaders(r.into())
                 }
+                Response::Status(r) => proto::sync::response::Response::Status(r.into()),
             }),
         }
     }
@@ -207,6 +213,45 @@ impl From<BlockHeaders> for proto::sync::BlockHeaders {
         Self {
             request_id: 0,
             headers: headers.headers.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Status {
+    pub height: u64,
+    pub hash: StarkHash,
+    pub chain_id: StarkHash,
+}
+
+impl TryFrom<proto::sync::Status> for Status {
+    type Error = std::io::Error;
+
+    fn try_from(value: proto::sync::Status) -> Result<Self, Self::Error> {
+        Ok(Self {
+            height: value.height,
+            hash: value
+                .hash
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "Missing hash field")
+                })?
+                .try_into()?,
+            chain_id: value
+                .chain_id
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "Missing chain_id field")
+                })?
+                .try_into()?,
+        })
+    }
+}
+
+impl From<Status> for proto::sync::Status {
+    fn from(status: Status) -> Self {
+        Self {
+            height: status.height,
+            hash: Some(status.hash.into()),
+            chain_id: Some(status.chain_id.into()),
         }
     }
 }
