@@ -24,7 +24,9 @@ mod peers;
 mod sync;
 mod transport;
 
-pub fn new(keypair: Keypair) -> (Client, mpsc::Receiver<Event>, MainLoop) {
+pub use peers::Peers;
+
+pub fn new(keypair: Keypair, peers: peers::Peers) -> (Client, mpsc::Receiver<Event>, MainLoop) {
     let peer_id = keypair.public().to_peer_id();
 
     let swarm = SwarmBuilder::new(
@@ -43,7 +45,7 @@ pub fn new(keypair: Keypair) -> (Client, mpsc::Receiver<Event>, MainLoop) {
             sender: command_sender,
         },
         event_receiver,
-        MainLoop::new(swarm, command_receiver, event_sender),
+        MainLoop::new(swarm, command_receiver, event_sender, peers),
     )
 }
 
@@ -257,12 +259,13 @@ impl MainLoop {
         swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
         command_receiver: mpsc::Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
+        peers: peers::Peers,
     ) -> Self {
         Self {
             swarm,
             command_receiver,
             event_sender,
-            peers: Default::default(),
+            peers,
             pending_block_sync_requests: Default::default(),
         }
     }
@@ -331,7 +334,7 @@ impl MainLoop {
                         .iter()
                         .any(|p| p.as_bytes() == sync::PROTOCOL_NAME)
                     {
-                        self.peers.add(peer_id, listen_addrs);
+                        self.peers.add(peer_id, listen_addrs).await;
                         self.event_sender
                             .send(Event::SyncPeerConnected { peer_id })
                             .await
@@ -427,7 +430,7 @@ impl MainLoop {
                 Ok(())
             }
             SwarmEvent::ConnectionClosed { peer_id, .. } => {
-                self.peers.remove(&peer_id);
+                self.peers.remove(&peer_id).await;
                 tracing::debug!(%peer_id, "Disconnected from peer");
                 Ok(())
             }
@@ -499,7 +502,7 @@ impl MainLoop {
                 tracing::warn!(?response, "Sent response");
             }
             Command::GetSyncPeer { sender } => {
-                let maybe_peer_id = self.peers.first();
+                let maybe_peer_id = self.peers.first().await;
                 let _ = sender.send(maybe_peer_id);
             }
             Command::PublishEvent {

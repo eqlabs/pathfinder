@@ -8,7 +8,7 @@ use std::{
 use clap::Parser;
 use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
-use p2p::{BlockPropagation, Event};
+use p2p::{BlockPropagation, Event, Peers};
 use p2p_proto::proto::propagation::NewBlockHeader;
 use serde_derive::Deserialize;
 use stark_hash::StarkHash;
@@ -78,7 +78,8 @@ async fn main() -> anyhow::Result<()> {
     let peer_id = keypair.public().to_peer_id();
     tracing::info!(%peer_id, "Starting up");
 
-    let (mut p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(keypair);
+    let peers: Peers = Default::default();
+    let (mut p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(keypair, peers);
 
     let _p2p_task = tokio::task::spawn(p2p_main_loop.run());
 
