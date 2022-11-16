@@ -960,7 +960,6 @@ pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
     }
 }
 
-// #[cfg(test_ignore_me)]
 #[cfg(test)]
 mod tests {
     use super::{l1, l2};
@@ -1039,7 +1038,8 @@ mod tests {
             block: crate::core::BlockId,
         ) -> Result<reply::MaybePendingBlock, SequencerError> {
             match block {
-                crate::core::BlockId::Number(_) => {
+                // Latest is for `update_sync_status_latest` to leave us alone
+                crate::core::BlockId::Number(_) | crate::core::BlockId::Latest => {
                     Ok(reply::MaybePendingBlock::Block(BLOCK0.clone()))
                 }
                 _ => unimplemented!(),
@@ -1337,19 +1337,14 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l1_reorg() {
-        let results = [
-            // Case 0: single block in L1, reorg on genesis
-            (vec![STATE_UPDATE_LOG0.clone()], 0),
-            // Case 1: 2 blocks in L1, reorg on block #1
-            (
-                vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
-                1,
-            ),
-        ]
-        .into_iter()
-        .map(|(updates, reorg_on_block)| async move {
+    mod l1_reorg {
+        use super::*;
+        use crate::core::StarknetBlockNumber;
+
+        async fn check(
+            updates: Vec<ethereum::log::StateUpdateLog>,
+            reorg_on_block: u64,
+        ) -> (Option<StarknetBlockNumber>, Option<StarknetBlockNumber>) {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
@@ -1400,23 +1395,34 @@ mod tests {
                 .map(|s| s.block_number);
             let head = RefsTable::get_l1_l2_head(&tx).unwrap();
             (head, latest_block_number)
-        })
-        .collect::<futures::stream::FuturesOrdered<_>>()
-        .collect::<Vec<_>>()
-        .await;
+        }
 
-        assert_eq!(
-            results,
-            vec![
-                // Case 0: no L1-L2 head expected, as we start from genesis
-                (None, None),
-                // Case 1: some L1-L2 head expected, block #1 removed
+        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+        async fn on_genesis() {
+            assert_eq!(
+                // single block in L1, reorg on genesis
+                check(vec![STATE_UPDATE_LOG0.clone()], 0).await,
+                // no L1-L2 head expected, as we start from genesis
+                (None, None)
+            );
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+        async fn on_block_1() {
+            assert_eq!(
+                // 2 blocks in L1, reorg on block #1
+                check(
+                    vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
+                    1
+                )
+                .await,
+                // some L1-L2 head expected, block #1 removed
                 (
                     Some(StarknetBlockNumber::GENESIS),
                     Some(StarknetBlockNumber::GENESIS)
-                ),
-            ]
-        );
+                )
+            );
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
