@@ -23,10 +23,14 @@ use tokio::sync::mpsc;
 /// - the client used to retrieve data from p2p network on a request-response basis
 /// - the receiver which notifies of incoming p2p events that we're subscribing to
 /// - the p2p main loop which is used to drive the entire libp2p processing
-pub fn new(
-    sequencer: sequencer::Client,
+pub fn new<SequencerClient: Clone>(
+    sequencer: SequencerClient,
     chain: Chain,
-) -> anyhow::Result<(Client, mpsc::Receiver<Event>, MainLoop)> {
+) -> anyhow::Result<(
+    Client<SequencerClient>,
+    mpsc::Receiver<Event>,
+    MainLoop<SequencerClient>,
+)> {
     let (event_sender, event_receiver) = mpsc::channel(1);
     // Helps uphold api guarantees
     let (last_requested_block_tx, last_requested_block_rx) = mpsc::channel(1);
@@ -43,8 +47,8 @@ pub fn new(
 
 /// A mock p2p client that uses a sequencer client under the hood
 #[derive(Clone, Debug)]
-pub struct Client {
-    sequencer: sequencer::Client,
+pub struct Client<SequencerClient> {
+    sequencer: SequencerClient,
     latest_block_tx: mpsc::Sender<Block>,
 }
 
@@ -77,7 +81,7 @@ impl From<SequencerError> for RequestBlockError {
     }
 }
 
-impl Client {
+impl<SequencerClient: ClientApi> Client<SequencerClient> {
     /// Requests a block by id
     ///
     /// ## Guarantee
@@ -135,17 +139,17 @@ pub enum Event {
 }
 
 /// The main loop that drives lip2p operation
-pub struct MainLoop {
-    sequencer: sequencer::Client,
+pub struct MainLoop<SequencerClient> {
+    sequencer: SequencerClient,
     last_requested_block_rx: mpsc::Receiver<Block>,
     chain: Chain,
     event_sender: mpsc::Sender<Event>,
 }
 
-impl MainLoop {
+impl<SequencerClient> MainLoop<SequencerClient> {
     /// Creates new main loop
     fn new(
-        sequencer: sequencer::Client,
+        sequencer: SequencerClient,
         last_requested_block_rx: mpsc::Receiver<Block>,
         chain: Chain,
         event_sender: mpsc::Sender<Event>,
@@ -159,7 +163,10 @@ impl MainLoop {
     }
 
     /// Entry point for the loop
-    pub async fn run(self) -> ! {
+    pub async fn run(self) -> !
+    where
+        SequencerClient: sequencer::ClientApi,
+    {
         // Keep head_poll_interval private
         let poll_interval: Duration = match self.chain {
             // 5 minute interval for a 30 minute block time.

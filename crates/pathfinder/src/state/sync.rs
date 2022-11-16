@@ -102,7 +102,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     chain: Chain,
     sequencer: SequencerClient,
     mut p2p_sub_rx: mpsc::Receiver<p2p::Event>,
-    p2p_client: p2p::Client,
+    p2p_client: p2p::Client<SequencerClient>,
     state: Arc<State>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
@@ -117,7 +117,7 @@ where
     L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, Option<StateUpdateLog>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
-            p2p::Client,
+            p2p::Client<SequencerClient>,
             SequencerClient,
             Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
             Chain,
@@ -481,7 +481,10 @@ where
                     tracing::trace!(target: "p2p", block_number=%block.block_number, block_hash=%block.block_hash, "new L2 head");
                     p2p_l2_head = Some((block.block_number, block.block_hash));
                 },
-                None => todo!("handle unexpected channel closure"),
+                None => {
+                    #[cfg(not(test))]
+                    anyhow::bail!("Unexpected p2p event channel closure")
+                },
             }
         }
     }
@@ -957,6 +960,7 @@ pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
     }
 }
 
+// #[cfg(test_ignore_me)]
 #[cfg(test)]
 mod tests {
     use super::{l1, l2};
@@ -969,7 +973,7 @@ mod tests {
             StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
             TransactionSignatureElem, TransactionVersion,
         },
-        ethereum,
+        ethereum, p2p,
         rpc::v01::types::BlockHashOrTag,
         sequencer::{
             self, error::SequencerError, reply, request::add_transaction::ContractDefinition,
@@ -1152,9 +1156,10 @@ mod tests {
         Ok(())
     }
 
-    async fn l2_noop(
+    async fn l2_noop<SequencerClient: sequencer::ClientApi>(
         _: mpsc::Sender<l2::Event>,
-        _: impl sequencer::ClientApi,
+        _: p2p::Client<SequencerClient>,
+        _: SequencerClient,
         _: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
         _: Chain,
         _: Option<std::time::Duration>,
@@ -1291,12 +1296,16 @@ mod tests {
             tx.commit().unwrap();
             drop(blocks);
 
+            let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, chain).unwrap();
+
             // UUT
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
                 FakeTransport,
                 chain,
                 FakeSequencer,
+                p2p_rx,
+                p2p_client,
                 sync_state.clone(),
                 l1,
                 l2_noop,
@@ -1364,12 +1373,16 @@ mod tests {
 
             tx.commit().unwrap();
 
+            let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, Chain::Testnet).unwrap();
+
             // UUT
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
                 FakeTransport,
                 Chain::Testnet,
                 FakeSequencer,
+                p2p_rx,
+                p2p_client,
                 Arc::new(state::SyncState::default()),
                 l1,
                 l2_noop,
@@ -1417,6 +1430,8 @@ mod tests {
 
         tx.commit().unwrap();
 
+        let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, Chain::Testnet).unwrap();
+
         // A simple L1 sync task which does the request and checks he result
         let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
             let (tx1, rx1) =
@@ -1439,6 +1454,8 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             FakeSequencer,
+            p2p_rx,
+            p2p_client,
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
@@ -1453,6 +1470,7 @@ mod tests {
     async fn l1_restart() -> Result<(), anyhow::Error> {
         use anyhow::Context;
         let storage = Storage::in_memory().unwrap();
+        let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, Chain::Testnet).unwrap();
 
         let (starts_tx, mut starts_rx) = tokio::sync::mpsc::channel(1);
 
@@ -1474,6 +1492,8 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             FakeSequencer,
+            p2p_rx,
+            p2p_client,
             Arc::new(state::SyncState::default()),
             l1,
             l2_noop,
@@ -1512,7 +1532,7 @@ mod tests {
         };
 
         // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 Box::new(block()),
                 Box::new(state_update()),
@@ -1542,12 +1562,16 @@ mod tests {
 
             tx.commit().unwrap();
 
+            let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, Chain::Testnet).unwrap();
+
             // UUT
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
                 FakeTransport,
                 chain,
                 FakeSequencer,
+                p2p_rx,
+                p2p_client,
                 sync_state.clone(),
                 l1_noop,
                 l2,
@@ -1592,7 +1616,7 @@ mod tests {
             let tx = connection.transaction().unwrap();
 
             // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
                 tx.send(l2::Event::Reorg(StarknetBlockNumber::new_or_panic(
                     reorg_on_block,
                 )))
@@ -1610,12 +1634,16 @@ mod tests {
 
             tx.commit().unwrap();
 
+            let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, Chain::Testnet).unwrap();
+
             // UUT
             let _jh = tokio::spawn(state::sync(
                 storage.clone(),
                 FakeTransport,
                 Chain::Testnet,
                 FakeSequencer,
+                p2p_rx,
+                p2p_client,
                 Arc::new(state::SyncState::default()),
                 l1_noop,
                 l2,
@@ -1656,9 +1684,10 @@ mod tests {
     async fn l2_new_contract() {
         let storage = Storage::in_memory().unwrap();
         let connection = storage.connection().unwrap();
+        let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, Chain::Testnet).unwrap();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewContract(state::CompressedContract {
                 abi: zstd_magic.clone(),
@@ -1679,6 +1708,8 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             FakeSequencer,
+            p2p_rx,
+            p2p_client,
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
@@ -1704,8 +1735,10 @@ mod tests {
         // This is what we're asking for
         StarknetBlocksTable::insert(&tx, &STORAGE_BLOCK0, None).unwrap();
 
+        let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, Chain::Testnet).unwrap();
+
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel();
 
             tx.send(l2::Event::QueryBlock(StarknetBlockNumber::GENESIS, tx1))
@@ -1726,6 +1759,8 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             FakeSequencer,
+            p2p_rx,
+            p2p_client,
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
@@ -1752,8 +1787,10 @@ mod tests {
         )
         .unwrap();
 
+        let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, Chain::Testnet).unwrap();
+
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel::<Vec<bool>>();
 
             tx.send(l2::Event::QueryContractExistance(vec![ClassHash(*A)], tx1))
@@ -1773,6 +1810,8 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             FakeSequencer,
+            p2p_rx,
+            p2p_client,
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
@@ -1786,11 +1825,12 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         let storage = Storage::in_memory().unwrap();
+        let (p2p_client, p2p_rx, _) = p2p::new(FakeSequencer, Chain::Testnet).unwrap();
 
         static CNT: AtomicUsize = AtomicUsize::new(0);
 
         // A simple L2 sync task
-        let l2 = move |_, _, _, _, _| async move {
+        let l2 = move |_, _, _, _, _, _| async move {
             CNT.fetch_add(1, Ordering::Relaxed);
             Ok(())
         };
@@ -1801,6 +1841,8 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             FakeSequencer,
+            p2p_rx,
+            p2p_client,
             Arc::new(state::SyncState::default()),
             l1_noop,
             l2,
