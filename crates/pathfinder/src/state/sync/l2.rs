@@ -1132,33 +1132,44 @@ mod tests {
             }
         }
 
-        #[cfg(just_ignore_me)]
-        mod ignore_me_now {
+        mod errors {
+            use super::*;
+            use crate::core::Chain;
+            use crate::sequencer::reply::Status;
 
-            mod errors {
-                use super::*;
-                use crate::core::Chain;
-                use crate::sequencer::reply::Status;
+            #[tokio::test]
+            async fn invalid_block_status() {
+                let (tx_event, _rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
 
-                #[tokio::test]
-                async fn invalid_block_status() {
-                    let (tx_event, _rx_event) = tokio::sync::mpsc::channel(1);
-                    let mut mock = MockClientApi::new();
-                    let mut seq = mockall::Sequence::new();
+                // Block with a non-accepted status
+                let mut block = BLOCK0.clone();
+                block.status = Status::Reverted;
+                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER.into(), Ok(block.into()));
 
-                    // Block with a non-accepted status
-                    let mut block = BLOCK0.clone();
-                    block.status = Status::Reverted;
-                    expect_block(&mut mock, &mut seq, BLOCK0_NUMBER.into(), Ok(block.into()));
+                let p2p_client = crate::p2p::Client::for_tests(mock).await;
 
-                    let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
-                    let error = jh.await.unwrap().unwrap_err();
-                    assert_eq!(
+                let mock2 = MockClientApi::new();
+
+                let jh = tokio::spawn(sync(
+                    tx_event,
+                    p2p_client,
+                    mock2,
+                    None,
+                    Chain::Testnet,
+                    None,
+                ));
+                let error = jh.await.unwrap().unwrap_err();
+                assert_eq!(
                     &error.to_string(),
                     "Rejecting block as its status is REVERTED, and only accepted blocks are allowed"
                 );
-                }
             }
+        }
+
+        #[cfg(just_ignore_me)]
+        mod ignore_me_now {
 
             mod reorg {
                 use super::*;
