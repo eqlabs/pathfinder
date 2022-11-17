@@ -2244,42 +2244,49 @@ mod tests {
                 });
             }
 
-            #[cfg(just_ignore_me)]
-            mod ignore_me_now {
+            #[tokio::test]
+            async fn shutdown() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                // Closing the event's channel should trigger the sync to exit with error after the first send.
+                rx_event.close();
 
-                #[tokio::test]
-                async fn shutdown() {
-                    let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                    // Closing the event's channel should trigger the sync to exit with error after the first send.
-                    rx_event.close();
+                let mut mock = MockClientApi::new();
+                let mut seq = mockall::Sequence::new();
 
-                    let mut mock = MockClientApi::new();
-                    let mut seq = mockall::Sequence::new();
+                expect_block(
+                    &mut mock,
+                    &mut seq,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0.clone().into()),
+                );
+                expect_state_update(
+                    &mut mock,
+                    &mut seq,
+                    (*BLOCK0_HASH).into(),
+                    Ok(STATE_UPDATE0.clone()),
+                );
 
-                    expect_block(
-                        &mut mock,
-                        &mut seq,
-                        BLOCK0_NUMBER.into(),
-                        Ok(BLOCK0.clone().into()),
-                    );
-                    expect_state_update(
-                        &mut mock,
-                        &mut seq,
-                        (*BLOCK0_HASH).into(),
-                        Ok(STATE_UPDATE0.clone()),
-                    );
+                let p2p_client = crate::p2p::Client::for_tests(mock).await;
 
-                    // Run the UUT
-                    let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let mock2 = MockClientApi::new();
 
-                    // Wrap this in a timeout so we don't wait forever in case of test failure.
-                    // Right now closing the channel causes an error.
-                    tokio::time::timeout(std::time::Duration::from_secs(2), jh)
-                        .await
-                        .unwrap()
-                        .unwrap()
-                        .unwrap_err();
-                }
+                // Run the UUT
+                let jh = tokio::spawn(sync(
+                    tx_event,
+                    p2p_client,
+                    mock2,
+                    None,
+                    Chain::Testnet,
+                    None,
+                ));
+
+                // Wrap this in a timeout so we don't wait forever in case of test failure.
+                // Right now closing the channel causes an error.
+                tokio::time::timeout(std::time::Duration::from_secs(2), jh)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .unwrap_err();
             }
         }
     }
