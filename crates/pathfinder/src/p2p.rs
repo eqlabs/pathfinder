@@ -126,6 +126,17 @@ impl<SequencerClient: ClientApi> Client<SequencerClient> {
         let contract = self.sequencer.full_contract(contract_address).await?;
         Ok(contract)
     }
+
+    #[cfg(test)]
+    pub async fn for_tests(sequencer: SequencerClient) -> Self {
+        // Let's make the channel deep enough so that it does not complain
+        let (latest_block_tx, rx) = mpsc::channel(1000);
+        let _ = Box::leak(Box::new(rx));
+        Self {
+            sequencer,
+            latest_block_tx,
+        }
+    }
 }
 
 /// Events received via Gossipsub
