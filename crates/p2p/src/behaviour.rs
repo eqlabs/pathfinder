@@ -3,6 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
 use libp2p::autonat;
+use libp2p::dcutr;
 use libp2p::gossipsub::{
     Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic, MessageAuthenticity, MessageId,
 };
@@ -18,6 +19,7 @@ use libp2p::{identity, kad, NetworkBehaviour};
 pub struct Behaviour {
     relay: relay_client::Client,
     autonat: autonat::Behaviour,
+    dcutr: dcutr::behaviour::Behaviour,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
@@ -76,6 +78,7 @@ impl Behaviour {
             Self {
                 relay,
                 autonat: autonat::Behaviour::new(peer_id, Default::default()),
+                dcutr: dcutr::behaviour::Behaviour::new(),
                 ping: ping::Behaviour::new(ping::Config::new()),
                 identify: identify::Behaviour::new(
                     identify::Config::new(PROTOCOL_VERSION.to_string(), identity.public())
@@ -105,6 +108,7 @@ impl Behaviour {
 pub enum Event {
     Relay(relay_client::Event),
     Autonat(autonat::Event),
+    Dcutr(dcutr::behaviour::Event),
     Ping(ping::Event),
     Identify(Box<identify::Event>),
     Kademlia(KademliaEvent),
@@ -121,6 +125,12 @@ impl From<relay_client::Event> for Event {
 impl From<autonat::Event> for Event {
     fn from(event: autonat::Event) -> Self {
         Event::Autonat(event)
+    }
+}
+
+impl From<dcutr::behaviour::Event> for Event {
+    fn from(event: dcutr::behaviour::Event) -> Self {
+        Event::Dcutr(event)
     }
 }
 
