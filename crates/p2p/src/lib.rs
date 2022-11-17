@@ -29,9 +29,11 @@ pub use peers::Peers;
 pub fn new(keypair: Keypair, peers: peers::Peers) -> (Client, mpsc::Receiver<Event>, MainLoop) {
     let peer_id = keypair.public().to_peer_id();
 
+    let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair);
+
     let swarm = SwarmBuilder::new(
-        transport::create(&keypair),
-        behaviour::Behaviour::new(&keypair),
+        transport::create(&keypair, relay_transport),
+        behaviour,
         peer_id,
     )
     .executor(Box::new(executor::TokioExecutor()))

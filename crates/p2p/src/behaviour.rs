@@ -9,14 +9,14 @@ use libp2p::gossipsub::{
 use libp2p::identify;
 use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping;
-use libp2p::relay::v2::relay;
+use libp2p::relay::v2::client as relay_client;
 use libp2p::request_response::{ProtocolSupport, RequestResponse, RequestResponseEvent};
 use libp2p::{identity, kad, NetworkBehaviour};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "Event", event_process = false)]
 pub struct Behaviour {
-    relay: relay::Relay,
+    relay: relay_client::Client,
     autonat: autonat::Behaviour,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
@@ -28,7 +28,7 @@ pub struct Behaviour {
 pub const KADEMLIA_PROTOCOL_NAME: &[u8] = b"/pathfinder/kad/1.0.0";
 
 impl Behaviour {
-    pub fn new(identity: &identity::Keypair) -> Self {
+    pub fn new(identity: &identity::Keypair) -> (Self, relay_client::transport::ClientTransport) {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
         // FIXME: clarify what version number should be
         // FIXME: we're also missing the starting '/'
@@ -70,18 +70,23 @@ impl Behaviour {
             Default::default(),
         );
 
-        Self {
-            relay: relay::Relay::new(peer_id, Default::default()),
-            autonat: autonat::Behaviour::new(peer_id, Default::default()),
-            ping: ping::Behaviour::new(ping::Config::new()),
-            identify: identify::Behaviour::new(
-                identify::Config::new(PROTOCOL_VERSION.to_string(), identity.public())
-                    .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
-            ),
-            kademlia,
-            gossipsub,
-            block_sync,
-        }
+        let (relay_transport, relay) = relay_client::Client::new_transport_and_behaviour(peer_id);
+
+        (
+            Self {
+                relay,
+                autonat: autonat::Behaviour::new(peer_id, Default::default()),
+                ping: ping::Behaviour::new(ping::Config::new()),
+                identify: identify::Behaviour::new(
+                    identify::Config::new(PROTOCOL_VERSION.to_string(), identity.public())
+                        .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
+                ),
+                kademlia,
+                gossipsub,
+                block_sync,
+            },
+            relay_transport,
+        )
     }
 
     pub fn provide_capability(&mut self, capability: &str) -> anyhow::Result<()> {
@@ -98,7 +103,7 @@ impl Behaviour {
 
 #[derive(Debug)]
 pub enum Event {
-    Relay(relay::Event),
+    Relay(relay_client::Event),
     Autonat(autonat::Event),
     Ping(ping::Event),
     Identify(Box<identify::Event>),
@@ -107,8 +112,8 @@ pub enum Event {
     BlockSync(RequestResponseEvent<p2p_proto::sync::Request, p2p_proto::sync::Response>),
 }
 
-impl From<relay::Event> for Event {
-    fn from(event: relay::Event) -> Self {
+impl From<relay_client::Event> for Event {
+    fn from(event: relay_client::Event) -> Self {
         Event::Relay(event)
     }
 }
