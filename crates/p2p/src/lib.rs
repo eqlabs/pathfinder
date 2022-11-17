@@ -66,10 +66,14 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn dial(&mut self, addr: Multiaddr) -> anyhow::Result<()> {
+    pub async fn dial(&mut self, peer_id: PeerId, addr: Multiaddr) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
-            .send(Command::Dial { addr, sender })
+            .send(Command::Dial {
+                peer_id,
+                addr,
+                sender,
+            })
             .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
@@ -149,6 +153,7 @@ enum Command {
         sender: EmptyResultSender,
     },
     Dial {
+        peer_id: PeerId,
         addr: Multiaddr,
         sender: EmptyResultSender,
     },
@@ -240,6 +245,7 @@ pub struct MainLoop {
 
     peers: peers::Peers,
 
+    pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_block_sync_requests:
         HashMap<RequestId, oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>>,
 }
@@ -256,6 +262,7 @@ impl MainLoop {
             command_receiver,
             event_sender,
             peers,
+            pending_dials: Default::default(),
             pending_block_sync_requests: Default::default(),
         }
     }
@@ -415,8 +422,17 @@ impl MainLoop {
                     .send(Err(error.into()));
                 Ok(())
             }
-            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                tracing::debug!(%peer_id, "Connected to peer");
+            SwarmEvent::ConnectionEstablished {
+                peer_id, endpoint, ..
+            } => {
+                if endpoint.is_dialer() {
+                    if let Some(sender) = self.pending_dials.remove(&peer_id) {
+                        let _ = sender.send(Ok(()));
+                        tracing::debug!(%peer_id, "Established outbound connection");
+                    }
+                } else {
+                    tracing::debug!(%peer_id, "Established inbound connection");
+                }
                 Ok(())
             }
             SwarmEvent::ConnectionClosed { peer_id, .. } => {
@@ -442,14 +458,30 @@ impl MainLoop {
                     Err(e) => sender.send(Err(e.into())),
                 };
             }
-            Command::Dial { addr, sender } => {
-                let _ = match self.swarm.dial(addr.clone()) {
-                    Ok(_) => {
-                        tracing::debug!(%addr, "Dialed peer");
-                        sender.send(Ok(()))
-                    }
-                    Err(e) => sender.send(Err(e.into())),
-                };
+            Command::Dial {
+                peer_id,
+                addr,
+                sender,
+            } => {
+                if let std::collections::hash_map::Entry::Vacant(e) =
+                    self.pending_dials.entry(peer_id)
+                {
+                    self.swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .add_address(&peer_id, addr.clone());
+                    match self.swarm.dial(addr.clone()) {
+                        Ok(_) => {
+                            tracing::debug!(%addr, "Dialed peer");
+                            e.insert(sender);
+                        }
+                        Err(e) => {
+                            let _ = sender.send(Err(e.into()));
+                        }
+                    };
+                } else {
+                    let _ = sender.send(Err(anyhow::anyhow!("Dialing is already pending")));
+                }
             }
             Command::ProvideCapability { capability, sender } => {
                 let _ = match self.swarm.behaviour_mut().provide_capability(&capability) {
