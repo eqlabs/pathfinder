@@ -6,8 +6,8 @@ use std::{
 };
 
 use clap::Parser;
-use libp2p::identity::Keypair;
 use libp2p::Multiaddr;
+use libp2p::{identity::Keypair, PeerId};
 use p2p::{BlockPropagation, Event, Peers};
 use p2p_proto::proto::propagation::NewBlockHeader;
 use serde_derive::Deserialize;
@@ -86,7 +86,17 @@ async fn main() -> anyhow::Result<()> {
     p2p_client.start_listening(args.listen_on).await?;
 
     for bootstrap_address in args.bootstrap_addresses {
-        p2p_client.dial(bootstrap_address).await?;
+        let peer_id = bootstrap_address
+            .iter()
+            .find_map(|p| match p {
+                libp2p::multiaddr::Protocol::P2p(h) => PeerId::from_multihash(h).ok(),
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("Boostrap addresses must inlcude peer ID"))?;
+        p2p_client.dial(peer_id, bootstrap_address.clone()).await?;
+        p2p_client
+            .start_listening(bootstrap_address.with(libp2p::multiaddr::Protocol::P2pCircuit))
+            .await?;
     }
 
     let capabilities = ["core/block-propagate/1", "core/blocks-sync/1"];
