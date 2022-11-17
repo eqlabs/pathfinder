@@ -1249,40 +1249,27 @@ mod tests {
         };
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l1_update() {
-        let chain = Chain::Testnet;
-        let sync_state = Arc::new(state::SyncState::default());
+    mod l1_update {
+        use super::*;
+        use crate::storage::StarknetBlock;
 
-        lazy_static::lazy_static! {
-            static ref UPDATES: Arc<tokio::sync::RwLock<Vec<Vec<ethereum::log::StateUpdateLog>>>> =
-            Arc::new(tokio::sync::RwLock::new(vec![
-                vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
-                vec![STATE_UPDATE_LOG0.clone()],
-                vec![STATE_UPDATE_LOG0.clone()],
-            ]));
-        }
+        async fn check(
+            blocks: Option<Vec<StarknetBlock>>,
+            state_update: Vec<ethereum::log::StateUpdateLog>,
+        ) -> Option<StarknetBlockNumber> {
+            let chain = Chain::Testnet;
+            let sync_state = Arc::new(state::SyncState::default());
 
-        // A simple L1 sync task
-        let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
-            let mut update = UPDATES.write().await;
-            if let Some(some_update) = update.pop() {
-                tx.send(l1::Event::Update(some_update)).await.unwrap();
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            Ok(())
-        };
+            // A simple L1 sync task
+            let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| {
+                let state_update = state_update.clone();
+                async move {
+                    tx.send(l1::Event::Update(state_update)).await.unwrap();
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    Ok(())
+                }
+            };
 
-        let results = [
-            // Case 0: no L2 head
-            None,
-            // Case 1: some L2 head
-            Some(vec![STORAGE_BLOCK0.clone()]),
-            // Case 2: some L2 head, update contains more than one item
-            Some(vec![STORAGE_BLOCK0.clone(), STORAGE_BLOCK1.clone()]),
-        ]
-        .into_iter()
-        .map(|blocks| async {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
@@ -1316,24 +1303,34 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
             let tx = connection.transaction().unwrap();
-            RefsTable::get_l1_l2_head(&tx)
-        })
-        .collect::<futures::stream::FuturesOrdered<_>>()
-        .try_collect::<Vec<_>>()
-        .await
-        .unwrap();
+            RefsTable::get_l1_l2_head(&tx).unwrap()
+        }
 
-        assert_eq!(
-            results,
-            vec![
-                // Case 0: no L1-L2 head expected
-                None,
-                // Case 1: some L1-L2 head expected
-                Some(StarknetBlockNumber::GENESIS),
-                // Case 2: some L1-L2 head expected
-                Some(StarknetBlockNumber::new_or_panic(1)),
-            ]
-        );
+        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+        async fn no_head() {
+            let new_head = check(None, vec![STATE_UPDATE_LOG0.clone()]).await;
+            assert!(new_head.is_none());
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+        async fn genesis_becomes_head() {
+            let new_head = check(
+                Some(vec![STORAGE_BLOCK0.clone()]),
+                vec![STATE_UPDATE_LOG0.clone()],
+            )
+            .await;
+            assert_eq!(new_head, Some(StarknetBlockNumber::GENESIS));
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+        async fn block1_becomes_head() {
+            let new_head = check(
+                Some(vec![STORAGE_BLOCK0.clone(), STORAGE_BLOCK1.clone()]),
+                vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
+            )
+            .await;
+            assert_eq!(new_head, Some(StarknetBlockNumber::new_or_panic(1)));
+        }
     }
 
     mod l1_reorg {
