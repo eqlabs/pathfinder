@@ -130,7 +130,7 @@ impl<SequencerClient: ClientApi> Client<SequencerClient> {
     #[cfg(test)]
     pub async fn for_tests(sequencer: SequencerClient) -> Self {
         // Let's make the channel deep enough so that it does not complain
-        let (latest_block_tx, rx) = mpsc::channel(1000);
+        let (latest_block_tx, rx) = mpsc::channel(100);
         let _ = Box::leak(Box::new(rx));
         Self {
             sequencer,
@@ -174,7 +174,7 @@ impl<SequencerClient> MainLoop<SequencerClient> {
     }
 
     /// Entry point for the loop
-    pub async fn run(self) -> !
+    pub async fn run(self) -> anyhow::Result<()>
     where
         SequencerClient: sequencer::ClientApi,
     {
@@ -239,11 +239,11 @@ impl<SequencerClient> MainLoop<SequencerClient> {
                                     Ok(_) => {
                                         tracing::trace!(target: "p2p", number=%last_block_number, hash=%last_block_hash, "Gossipsub: new block SEND DONE kechup");
                                     },
-                                    Err(error) => tracing::error!(target: "p2p", reason=%error, "Sending latest block kechup"),
+                                    Err(_) => anyhow::bail!("Unexpected event channel closure"),
                                 }
                             }
                         },
-                        None => todo!("handle unexpected channel closure"),
+                        None => anyhow::bail!("Unexpected channel closure"),
                     }
                 }
             }

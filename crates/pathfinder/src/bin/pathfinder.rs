@@ -184,8 +184,11 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                 Err(err) => tracing::error!(error=%err, "Release monitoring process ended unexpectedly"),
             }
         }
-        _result = p2p_handle => {
-            tracing::error!("P2P main loop ended unexpected");
+        result = p2p_handle => {
+            match result {
+                Ok(_) => tracing::error!("P2P main loop ended unexpected"),
+                Err(err) => tracing::error!(error=%err, "P2P main loop ended unexpected"),
+            }
         }
     }
 
