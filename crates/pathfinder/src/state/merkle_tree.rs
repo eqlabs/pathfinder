@@ -115,15 +115,12 @@ impl From<&EdgeNode> for EdgeProofNode {
     }
 }
 
-#[derive(Debug)]
-pub struct LastProofNode {}
-
 /// TODO: comment
 #[derive(Debug)]
 pub enum ProofNode {
     Binary(BinaryProofNode),
     Edge(EdgeProofNode),
-    LastNode(LastProofNode),
+    Leaf(StarkHash),
 }
 
 impl From<&Node> for ProofNode {
@@ -132,7 +129,7 @@ impl From<&Node> for ProofNode {
             Node::Binary(bin) => Self::Binary(BinaryProofNode::from(bin)),
             Node::Edge(edge) => Self::Edge(EdgeProofNode::from(edge)),
             Node::Unresolved(_) => unreachable!(),
-            _ => Self::LastNode(LastProofNode {}),
+            Node::Leaf(leaf) => Self::Leaf(leaf.clone()),
         }
     }
 }
@@ -1798,11 +1795,12 @@ mod tests {
                         // Advance by the whole edge path
                         tracking_key = &tracking_key[edge.path.len()..];
                     }
-                    ProofNode::LastNode(_) => {}
+                    ProofNode::Leaf(hash) => {
+                        return expected_hash == value && *hash == expected_hash;
+                    }
                 }
             }
-
-            expected_hash == value
+            unreachable!();
         }
 
         #[test]
