@@ -89,6 +89,7 @@ pub enum ProofNode {
 }
 
 /// TODO: comment
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct BinaryProofNode {
     left_hash: StarkHash,
@@ -104,15 +105,8 @@ impl From<&BinaryNode> for BinaryProofNode {
     }
 }
 
-impl BinaryProofNode {
-    /// TODO: comment
-    fn hash(&self) -> StarkHash {
-        // Code taken from [merkle_node::EdgeNode::calculate_hash]
-        stark_hash::stark_hash(self.left_hash, self.right_hash)
-    }
-}
-
 /// TODO: comment
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct EdgeProofNode {
     path: BitVec<Msb0, u8>,
@@ -125,23 +119,6 @@ impl From<&EdgeNode> for EdgeProofNode {
             path: edge.path.clone(),
             child_hash: edge.child.borrow().hash().unwrap(), // TODO: decide what to do with unwrap
         }
-    }
-}
-
-impl EdgeProofNode {
-    /// TODO: comment
-    fn hash(&self) -> StarkHash {
-        // Code taken from [merkle_node::EdgeNode::calculate_hash]
-        let child_hash = self.child_hash;
-
-        let path = StarkHash::from_bits(&self.path).unwrap(); // TODO: decide what to do with unwrap
-        let mut length = [0; 32];
-        // Safe as len() is guaranteed to be <= 251
-        length[31] = self.path.len() as u8;
-
-        let length = StarkHash::from_be_bytes(length).unwrap(); // TODO: decide what to do with unwrap
-
-        stark_hash::stark_hash(child_hash, path) + length
     }
 }
 
@@ -1760,11 +1737,36 @@ mod tests {
     }
 
     mod proofs {
-        use super::{Direction, MerkleTree, ProofNode};
+        use super::{BinaryProofNode, Direction, EdgeProofNode, MerkleTree, ProofNode};
         use crate::starkhash;
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
         use stark_hash::StarkHash;
+
+        impl EdgeProofNode {
+            /// TODO: comment
+            fn hash(&self) -> StarkHash {
+                // Code taken from [merkle_node::EdgeNode::calculate_hash]
+                let child_hash = self.child_hash;
+
+                let path = StarkHash::from_bits(&self.path).unwrap(); // TODO: decide what to do with unwrap
+                let mut length = [0; 32];
+                // Safe as len() is guaranteed to be <= 251
+                length[31] = self.path.len() as u8;
+
+                let length = StarkHash::from_be_bytes(length).unwrap(); // TODO: decide what to do with unwrap
+
+                stark_hash::stark_hash(child_hash, path) + length
+            }
+        }
+
+        impl BinaryProofNode {
+            /// TODO: comment
+            fn hash(&self) -> StarkHash {
+                // Code taken from [merkle_node::EdgeNode::calculate_hash]
+                stark_hash::stark_hash(self.left_hash, self.right_hash)
+            }
+        }
 
         /// TODO: Comment
         fn verify_proof(
