@@ -3,7 +3,7 @@ use stark_hash::StarkHash;
 use super::common::{invalid_data, parse_felt_vector, BlockBody, BlockHeader};
 use super::proto;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     NewBlockHeader(NewBlockHeader),
     NewBlockBody(NewBlockBody),
@@ -87,7 +87,7 @@ impl From<Message> for proto::propagation::Message {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewBlockHeader {
     pub block_header: BlockHeader,
 }
@@ -113,7 +113,7 @@ impl From<NewBlockHeader> for proto::propagation::NewBlockHeader {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewBlockBody {
     pub block_hash: StarkHash,
     pub body: BlockBody,
@@ -145,7 +145,7 @@ impl From<NewBlockBody> for proto::propagation::NewBlockBody {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewBlockState {
     pub block_hash: StarkHash,
     pub state_update: BlockStateUpdate,
@@ -177,7 +177,7 @@ impl From<NewBlockState> for proto::propagation::NewBlockState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockStateUpdate {
     pub contract_diffs: Vec<ContractDiff>,
     pub deployed_contracts: Vec<DeployedContract>,
@@ -228,7 +228,7 @@ impl From<BlockStateUpdate> for proto::propagation::BlockStateUpdate {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContractDiff {
     pub contract_address: StarkHash,
     pub nonce: StarkHash,
@@ -270,7 +270,7 @@ impl From<ContractDiff> for proto::propagation::block_state_update::ContractDiff
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StorageDiff {
     pub key: StarkHash,
     pub value: StarkHash,
@@ -304,7 +304,7 @@ impl From<StorageDiff> for proto::propagation::block_state_update::StorageDiff {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeployedContract {
     pub contract_address: StarkHash,
     pub contract_class_hash: StarkHash,
