@@ -197,7 +197,7 @@ impl TryFrom<proto::sync::BlockHeaders> for BlockHeaders {
     type Error = std::io::Error;
 
     fn try_from(value: proto::sync::BlockHeaders) -> Result<Self, Self::Error> {
-        let headers: Result<Vec<_>, _> = value.headers.into_iter().map(|h| h.try_into()).collect();
+        let headers: Result<Vec<_>, _> = value.headers.into_iter().map(TryInto::try_into).collect();
         let headers = headers.map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,

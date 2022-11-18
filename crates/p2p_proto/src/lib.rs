@@ -35,4 +35,5 @@ impl From<StarkHash> for proto::common::FieldElement {
 }
 
 pub mod common;
+pub mod propagation;
 pub mod sync;

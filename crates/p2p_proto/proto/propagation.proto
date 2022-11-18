@@ -4,11 +4,15 @@ package starknet.propagation;
 
 import "common.proto";
 
-message NewBlockHeader {
-  uint32 request_id = 1;
-
-  starknet.common.BlockHeader header = 2;
+message Message {
+  oneof message {
+    NewBlockHeader new_block_header = 1;
+    NewBlockBody new_block_body = 2;
+    NewBlockState new_block_state = 3;
+  }
 }
+
+message NewBlockHeader { starknet.common.BlockHeader header = 2; }
 
 message NewBlockBody {
   starknet.common.FieldElement block_hash = 1;
