@@ -82,13 +82,6 @@ pub trait NodeStorage {
 }
 
 /// TODO: comment
-#[derive(Debug)]
-pub enum ProofNode {
-    Binary(BinaryProofNode),
-    Edge(EdgeProofNode),
-}
-
-/// TODO: comment
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct BinaryProofNode {
@@ -118,6 +111,28 @@ impl From<&EdgeNode> for EdgeProofNode {
         Self {
             path: edge.path.clone(),
             child_hash: edge.child.borrow().hash().unwrap(), // TODO: decide what to do with unwrap
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct LastProofNode {}
+
+/// TODO: comment
+#[derive(Debug)]
+pub enum ProofNode {
+    Binary(BinaryProofNode),
+    Edge(EdgeProofNode),
+    LastNode(LastProofNode),
+}
+
+impl From<&Node> for ProofNode {
+    fn from(node: &Node) -> Self {
+        match node {
+            Node::Binary(bin) => Self::Binary(BinaryProofNode::from(bin)),
+            Node::Edge(edge) => Self::Edge(EdgeProofNode::from(edge)),
+            Node::Unresolved(_) => unreachable!(),
+            _ => Self::LastNode(LastProofNode {}),
         }
     }
 }
@@ -506,46 +521,11 @@ impl<T: NodeStorage> MerkleTree<T> {
 
     /// TODO: Comment
     pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
-        if self.root.borrow().is_empty() {
-            // TODO: Should be an error here since it's impossible to prove `key` of a non-existent tree.
-            // Plus, an empty vector means there is only a single edge.
-            return Ok(Vec::new());
-        }
-
-        let mut current = self.root.clone();
-        let mut height = 0;
-        let mut nodes: Vec<ProofNode> = Vec::new();
-        loop {
-            use Node::*;
-
-            let current_tmp = current.borrow().clone();
-
-            let next = match current_tmp {
-                Unresolved(hash) => {
-                    let node = self.resolve(hash, height)?;
-                    current.swap(&RefCell::new(node));
-                    current
-                }
-                Binary(binary) => {
-                    height += 1;
-                    let direction = binary.direction(key);
-                    let proof_node = ProofNode::Binary(BinaryProofNode::from(&binary));
-                    nodes.push(proof_node);
-
-                    binary.get_child(direction)
-                }
-                Edge(edge) if edge.path_matches(key) => {
-                    height += edge.path.len();
-                    let proof_node = ProofNode::Edge(EdgeProofNode::from(&edge));
-                    nodes.push(proof_node);
-                    edge.child
-                }
-                Leaf(_) | Edge(_) => {
-                    return Ok(nodes);
-                }
-            };
-            current = next;
-        }
+        Ok(self
+            .traverse(key)?
+            .iter()
+            .map(|node| ProofNode::from(&*node.borrow()))
+            .collect())
     }
 
     /// Traverses from the current root towards the destination [Leaf](Node::Leaf) node.
@@ -1818,6 +1798,7 @@ mod tests {
                         // Advance by the whole edge path
                         tracking_key = &tracking_key[edge.path.len()..];
                     }
+                    ProofNode::LastNode(_) => {}
                 }
             }
 
