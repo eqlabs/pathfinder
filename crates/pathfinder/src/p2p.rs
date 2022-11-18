@@ -215,7 +215,7 @@ impl<SequencerClient> MainLoop<SequencerClient> {
                                             Ok(_) => {
                                                 tracing::trace!(target: "p2p", %number, %hash, "Gossipsub: new block SEND DONE");
                                             },
-                                            Err(error) => tracing::error!(target: "p2p", reason=%error, "Sending latest block"),
+                                            Err(_) => anyhow::bail!("Unexpected event channel closure"),
                                         }
                                     }
                                 }
