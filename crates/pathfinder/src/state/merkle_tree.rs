@@ -1760,7 +1760,7 @@ mod tests {
             proofs: &Vec<ProofNode>,
         ) -> bool {
             let mut expected_hash = root;
-            let mut tracking_key: &BitSlice<Msb0, u8> = key;
+            let mut remaining_path: &BitSlice<Msb0, u8> = key;
 
             for proof_node in proofs.iter() {
                 match proof_node {
@@ -1772,7 +1772,7 @@ mod tests {
 
                         // Direction will always correspond to the 0th index
                         // because we're removing nibbles on every iteration.
-                        let direction = Direction::from(tracking_key[0]);
+                        let direction = Direction::from(remaining_path[0]);
 
                         // Set the next hash to be the left or right hash,
                         // depending on the direction
@@ -1782,7 +1782,7 @@ mod tests {
                         };
 
                         // Advance by a single nibble
-                        tracking_key = &tracking_key[1..];
+                        remaining_path = &remaining_path[1..];
                     }
                     ProofNode::Edge(edge) => {
                         // Hash mismatch? Return false.
@@ -1790,7 +1790,7 @@ mod tests {
                             return false;
                         }
 
-                        let path_matches = edge.path == tracking_key[..edge.path.len()];
+                        let path_matches = edge.path == remaining_path[..edge.path.len()];
                         // If paths don't match, the key can't be proven.
                         if !path_matches {
                             return false;
@@ -1800,7 +1800,7 @@ mod tests {
                         expected_hash = edge.child_hash;
 
                         // Advance by the whole edge path
-                        tracking_key = &tracking_key[edge.path.len()..];
+                        remaining_path = &remaining_path[edge.path.len()..];
                     }
                 }
             }
