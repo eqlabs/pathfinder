@@ -120,7 +120,6 @@ impl From<&EdgeNode> for EdgeProofNode {
 pub enum ProofNode {
     Binary(BinaryProofNode),
     Edge(EdgeProofNode),
-    Leaf(StarkHash),
 }
 
 impl From<&Node> for ProofNode {
@@ -128,8 +127,7 @@ impl From<&Node> for ProofNode {
         match node {
             Node::Binary(bin) => Self::Binary(BinaryProofNode::from(bin)),
             Node::Edge(edge) => Self::Edge(EdgeProofNode::from(edge)),
-            Node::Unresolved(_) => unreachable!(),
-            Node::Leaf(leaf) => Self::Leaf(leaf.clone()),
+            _ => unreachable!(),
         }
     }
 }
@@ -518,8 +516,17 @@ impl<T: NodeStorage> MerkleTree<T> {
 
     /// TODO: Comment
     pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
-        Ok(self
-            .traverse(key)?
+        let mut nodes = self.traverse(key)?;
+
+        // TODO: should we return an error or simply an empty vec if `nodes` is emtpy?
+        if let Some(node) = nodes.last() {
+            // Remove the last node if it's a leaf. Indeed the verifier won't need this information.
+            if matches!(&*node.borrow(), Node::Leaf(_)) {
+                nodes.pop();
+            }
+        }
+
+        Ok(nodes
             .iter()
             .map(|node| ProofNode::from(&*node.borrow()))
             .collect())
@@ -1795,12 +1802,9 @@ mod tests {
                         // Advance by the whole edge path
                         tracking_key = &tracking_key[edge.path.len()..];
                     }
-                    ProofNode::Leaf(hash) => {
-                        return expected_hash == value && *hash == expected_hash;
-                    }
                 }
             }
-            unreachable!();
+            expected_hash == value
         }
 
         #[test]
