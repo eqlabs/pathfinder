@@ -1752,22 +1752,42 @@ mod tests {
             }
         }
 
-        /// TODO: Comment
+        #[derive(Debug, PartialEq)]
+        pub enum Membership {
+            Member,
+            NonMember,
+        }
+
+        /// Verifies that the key `key` with value `value` is indeed part of the MPT that has root
+        /// `root`, given `proofs`.
+        /// Supports proofs of non-membership as well as proof of membership: this function returns
+        /// an enum corresponding to the membership of `value`, or returns `None` in case of a hash mismatch.
+        // The algorithm follows this logic:
+        // 1. init expected_hash <- root hash
+        // 2. loop over nodes: current <- nodes[i]
+        // 1. verify the current node's hash matches expected_hash (if not then we have a bad proof)
+        // 2. move towards the target - if current is:
+        //    1. binary node then choose the child that moves towards the target, else if
+        //    2. edge node then check the path against the target bits
+        //       1. If it matches then proceed with the child, else
+        //       2. if it does not match then we now have a proof that the target does not exist
+        // 3. nibble off target bits according to which child you got in (2). If all bits are gone then you have reached the target and the child hash is the value you wanted and the proof is complete.
+        // 4. set expected_hash <- to the child hash
         fn verify_proof(
             root: StarkHash,
             key: &BitSlice<Msb0, u8>,
             value: StarkHash,
             proofs: &Vec<ProofNode>,
-        ) -> bool {
+        ) -> Option<Membership> {
             let mut expected_hash = root;
             let mut remaining_path: &BitSlice<Msb0, u8> = key;
 
             for proof_node in proofs.iter() {
                 match proof_node {
                     ProofNode::Binary(bin) => {
-                        // Hash mismatch? Return false.
+                        // Hash mismatch? Return None.
                         if bin.hash() != expected_hash {
-                            return false;
+                            return None;
                         }
 
                         // Direction will always correspond to the 0th index
@@ -1785,15 +1805,18 @@ mod tests {
                         remaining_path = &remaining_path[1..];
                     }
                     ProofNode::Edge(edge) => {
-                        // Hash mismatch? Return false.
+                        // Hash mismatch? Return None.
                         if edge.hash() != expected_hash {
-                            return false;
+                            return None;
                         }
 
                         let path_matches = edge.path == remaining_path[..edge.path.len()];
-                        // If paths don't match, the key can't be proven.
                         if !path_matches {
-                            return false;
+                            // If paths don't match, we've found a proof of non membership because we:
+                            // 1. Correctly moved towards the target insofar as is possible, and
+                            // 2. hashing all the nodes along the path does result in the root hash, which means
+                            // 3. the target definitely does not exist in this tree
+                            return Some(Membership::NonMember);
                         }
 
                         // Set the next hash to the child's hash
@@ -1804,7 +1827,14 @@ mod tests {
                     }
                 }
             }
-            expected_hash == value
+
+            // At this point, we should reach `value` !
+            // TODO: should we check that `remaining_path` is empty here?
+            if expected_hash == value {
+                Some(Membership::Member)
+            } else {
+                Some(Membership::NonMember)
+            }
         }
 
         #[test]
@@ -1836,9 +1866,9 @@ mod tests {
 
             let proofs = uut.get_proof(key1).unwrap();
 
-            let verified_key1 = verify_proof(root, key1, value_1, &proofs);
+            let verified_key1 = verify_proof(root, key1, value_1, &proofs).unwrap();
 
-            assert_eq!(verified_key1, true);
+            assert_eq!(verified_key1, Membership::Member);
         }
 
         #[test]
@@ -1875,16 +1905,16 @@ mod tests {
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
             let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs);
-            assert_eq!(verified_1, true, "Failed to prove key1");
+            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
             let proofs = uut.get_proof(key2).unwrap();
-            let verified_2 = verify_proof(root, key2, value_2, &proofs);
-            assert_eq!(verified_2, true, "Failed to prove key2");
+            let verified_2 = verify_proof(root, key2, value_2, &proofs).unwrap();
+            assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
 
             let proofs = uut.get_proof(key3).unwrap();
-            let verified_key3 = verify_proof(root, key3, value_3, &proofs);
-            assert_eq!(verified_key3, true, "Failed to prove key3");
+            let verified_key3 = verify_proof(root, key3, value_3, &proofs).unwrap();
+            assert_eq!(verified_key3, Membership::Member, "Failed to prove key3");
         }
 
         #[test]
@@ -1910,8 +1940,8 @@ mod tests {
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
             let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs);
-            assert_eq!(verified_1, true, "Failed to prove key1");
+            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
         #[test]
@@ -1937,8 +1967,8 @@ mod tests {
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
             let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs);
-            assert_eq!(verified_1, true, "Failed to prove key1");
+            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
         #[test]
@@ -1965,8 +1995,8 @@ mod tests {
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
             let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs);
-            assert_eq!(verified_1, true, "Failed to prove key1");
+            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
         #[test]
@@ -1998,12 +2028,12 @@ mod tests {
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
             let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs);
-            assert_eq!(verified_1, true, "Failed to prove key1");
+            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
             let proofs = uut.get_proof(key2).unwrap();
-            let verified_2 = verify_proof(root, key2, value_2, &proofs);
-            assert_eq!(verified_2, true, "Failed to prove key2");
+            let verified_2 = verify_proof(root, key2, value_2, &proofs).unwrap();
+            assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
         }
     }
 
