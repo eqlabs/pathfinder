@@ -127,13 +127,17 @@ impl Client {
             .expect("Command receiver not to be dropped");
     }
 
-    pub async fn publish_event(&mut self, topic: &str, event: Event) -> anyhow::Result<()> {
+    pub async fn publish_propagation_message(
+        &mut self,
+        topic: &str,
+        message: p2p_proto::propagation::Message,
+    ) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         let topic = IdentTopic::new(topic);
         self.sender
-            .send(Command::PublishEvent {
-                event,
+            .send(Command::PublishPropagationMessage {
                 topic,
+                message,
                 sender,
             })
             .await
@@ -172,10 +176,10 @@ enum Command {
         channel: ResponseChannel<p2p_proto::sync::Response>,
         response: p2p_proto::sync::Response,
     },
-    PublishEvent {
+    PublishPropagationMessage {
         topic: IdentTopic,
+        message: p2p_proto::propagation::Message,
         sender: EmptyResultSender,
-        event: Event,
     },
 }
 
@@ -478,17 +482,14 @@ impl MainLoop {
                     .send_response(channel, response);
                 tracing::warn!(?response, "Sent response");
             }
-            Command::PublishEvent {
-                event: Event::BlockPropagation(block_propagation),
+            Command::PublishPropagationMessage {
                 topic,
+                message,
                 sender,
             } => {
-                let data: Vec<u8> = block_propagation.into_protobuf_encoding();
+                let data: Vec<u8> = message.into_protobuf_encoding();
                 let result = self.publish_data(topic, &data);
                 let _ = sender.send(result);
-            }
-            _ => {
-                tracing::warn!(?command, "Unexpected command");
             }
         };
     }

@@ -2,7 +2,7 @@ use stark_hash::StarkHash;
 
 use super::proto;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct BlockHeader {
     pub parent_block_hash: StarkHash,
     pub block_number: u64,

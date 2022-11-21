@@ -1,15 +1,13 @@
 #![deny(rust_2018_idioms)]
 
-use std::{
-    path::Path,
-    time::{Duration, SystemTime},
-};
+use std::{path::Path, time::Duration};
 
 use clap::Parser;
 use libp2p::Multiaddr;
 use libp2p::{identity::Keypair, PeerId};
-use p2p::{BlockPropagation, Event, Peers};
-use p2p_proto::proto::propagation::NewBlockHeader;
+use p2p::Peers;
+use p2p_proto as proto;
+use proto::sync::{BlockBodies, StateDiffs};
 use serde_derive::Deserialize;
 use stark_hash::StarkHash;
 use zeroize::Zeroizing;
@@ -122,20 +120,13 @@ async fn main() -> anyhow::Result<()> {
             loop {
                 ticker.tick().await;
 
-                let request_id = SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as u32;
-                let new_block_header = NewBlockHeader {
-                    request_id,
-                    ..Default::default()
-                };
-                let block_propagation = BlockPropagation::NewBlockHeader(new_block_header);
+                let message = proto::propagation::Message::NewBlockHeader(
+                    proto::propagation::NewBlockHeader {
+                        block_header: Default::default(),
+                    },
+                );
                 match client
-                    .publish_event(
-                        &block_propagation_topic,
-                        Event::BlockPropagation(block_propagation),
-                    )
+                    .publish_propagation_message(&block_propagation_topic, message)
                     .await
                 {
                     Ok(_) => tracing::info!("event published"),
@@ -177,7 +168,13 @@ async fn main() -> anyhow::Result<()> {
                     Request::GetBlockHeaders(_r) => {
                         Response::BlockHeaders(BlockHeaders { headers: vec![] })
                     }
-                    Request::Status(r) => Response::Status(Status {
+                    Request::GetBlockBodies(_r) => Response::BlockBodies(BlockBodies {
+                        block_bodies: vec![],
+                    }),
+                    Request::GetStateDiffs(_r) => Response::StateDiffs(StateDiffs {
+                        block_state_updates: vec![],
+                    }),
+                    Request::Status(_r) => Response::Status(Status {
                         chain_id: GOERLI_CHAIN_ID.into(),
                         height: 128,
                         hash: StarkHash::ZERO,
