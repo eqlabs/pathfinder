@@ -115,32 +115,6 @@ mod tests {
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
 
-    /// # Important
-    ///
-    /// `BlockId` parsing is tested in [`get_block`][crate::rpc::v02::method::get_block::tests::parsing]
-    /// and is not repeated here.
-    #[test]
-    fn parsing() {
-        let expected = GetStorageProofInput {
-            contract_address: ContractAddress::new_or_panic(starkhash!("01")),
-            key: StorageAddress::new_or_panic(starkhash!("02")),
-            block_id: BlockId::Latest,
-        };
-
-        [
-            r#"["1", "2", "latest"]"#,
-            r#"{"contract_address": "0x1", "key": "0x2", "block_id": "latest"}"#,
-        ]
-        .into_iter()
-        .enumerate()
-        .for_each(|(i, input)| {
-            let actual = Params::new(Some(input))
-                .parse::<GetStorageProofInput>()
-                .unwrap_or_else(|error| panic!("test case {i}: {input}, {error}"));
-            assert_eq!(actual, expected, "test case {i}: {input}");
-        });
-    }
-
     type TestCaseHandler = Box<dyn Fn(usize, &Result<Vec<ProofNode>, GetStorageProofError>)>;
 
     /// Execute a single test case and check its outcome for `get_storage_at`
