@@ -49,6 +49,7 @@ use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use rusqlite::Transaction;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
+use serde::Serialize;
 
 use crate::state::merkle_node::{BinaryNode, Direction, EdgeNode, Node};
 
@@ -83,7 +84,7 @@ pub trait NodeStorage {
 
 /// TODO: comment
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct BinaryProofNode {
     left_hash: StarkHash,
     right_hash: StarkHash,
@@ -100,8 +101,9 @@ impl From<&BinaryNode> for BinaryProofNode {
 
 /// TODO: comment
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct EdgeProofNode {
+    #[serde(skip_serializing)] // TODO: fix this
     path: BitVec<Msb0, u8>,
     child_hash: StarkHash,
 }
@@ -116,7 +118,7 @@ impl From<&EdgeNode> for EdgeProofNode {
 }
 
 /// TODO: comment
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum ProofNode {
     Binary(BinaryProofNode),
     Edge(EdgeProofNode),

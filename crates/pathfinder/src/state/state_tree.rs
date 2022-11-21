@@ -11,7 +11,7 @@ use crate::{
     core::{
         ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
     },
-    state::merkle_tree::{MerkleTree, Visit},
+    state::merkle_tree::{MerkleTree, ProofNode, Visit},
     storage::merkle_tree::RcNodeStorage,
 };
 
@@ -35,6 +35,10 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     pub fn get(&self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
         let value = self.tree.get(address.view_bits())?;
         Ok(value.map(StorageValue))
+    }
+
+    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
+        self.tree.get_proof(key)
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
