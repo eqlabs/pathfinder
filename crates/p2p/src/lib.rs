@@ -226,7 +226,7 @@ impl MainLoop {
     }
 
     pub async fn run(mut self) {
-        const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(30);
+        const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(10 * 60);
         // delay bootstrap so that by the time we attempt it we've connected to the bootstrap node
         let bootstrap_start = tokio::time::Instant::now() + Duration::from_secs(5);
         let mut bootstrap_interval = tokio::time::interval_at(bootstrap_start, BOOTSTRAP_INTERVAL);
