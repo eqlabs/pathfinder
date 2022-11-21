@@ -1725,6 +1725,7 @@ mod tests {
         use crate::starkhash;
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
+        use rand::{distributions::Uniform, Rng};
         use stark_hash::StarkHash;
 
         impl EdgeProofNode {
@@ -2034,6 +2035,41 @@ mod tests {
             let proofs = uut.get_proof(key2).unwrap();
             let verified_2 = verify_proof(root, key2, value_2, &proofs).unwrap();
             assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
+        }
+
+        #[test]
+        fn random_tree() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            const LEN: usize = 256;
+
+            let range = Uniform::from(0..u64::MAX);
+            let keys: Vec<StarkHash> = rand::thread_rng()
+                .sample_iter(&range)
+                .take(LEN)
+                .map(|k| StarkHash::from_u64(k))
+                .collect();
+
+            let values: Vec<StarkHash> = rand::thread_rng()
+                .sample_iter(&range)
+                .take(LEN)
+                .map(|v| StarkHash::from_u64(v))
+                .collect();
+
+            keys.iter()
+                .zip(values.iter())
+                .for_each(|(k, v)| uut.set(k.view_bits(), *v).unwrap());
+
+            let root = uut.commit().unwrap();
+            let uut = MerkleTree::load("test", &transaction, root).unwrap();
+
+            keys.iter().zip(values.iter()).for_each(|(k, v)| {
+                let key = k.view_bits();
+                let proofs = uut.get_proof(key).unwrap();
+                let verified_1 = verify_proof(root, key, *v, &proofs).unwrap();
+                assert_eq!(verified_1, Membership::Member, "Failed to prove key");
+            });
         }
     }
 
