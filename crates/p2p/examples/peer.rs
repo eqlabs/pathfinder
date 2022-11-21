@@ -41,17 +41,6 @@ impl zeroize::Zeroize for IdentityConfig {
     }
 }
 
-pub struct TokioExecutor();
-
-impl libp2p::core::Executor for TokioExecutor {
-    fn exec(
-        &self,
-        future: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'static + Send>>,
-    ) {
-        tokio::task::spawn(future);
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
