@@ -381,6 +381,10 @@ impl MainLoop {
                     .send(Err(error.into()));
                 Ok(())
             }
+            SwarmEvent::Behaviour(behaviour::Event::Dcutr(event)) => {
+                tracing::debug!(?event, "DCUtR event");
+                Ok(())
+            }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
