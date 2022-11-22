@@ -1841,11 +1841,9 @@ mod tests {
             }
 
             // Sanity check: `remaining_path` should be empty now.
-            assert_eq!(
-                remaining_path.is_empty(),
-                true,
-                "Logic error: Remaining path is not empty"
-            );
+            if !remaining_path.is_empty() {
+                return None;
+            }
 
             // At this point, we should reach `value` !
             if expected_hash == value {
