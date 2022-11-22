@@ -47,9 +47,9 @@
 use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use rusqlite::Transaction;
+use serde::Serialize;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
-use serde::Serialize;
 
 use crate::state::merkle_node::{BinaryNode, Direction, EdgeNode, Node};
 
@@ -82,7 +82,7 @@ pub trait NodeStorage {
     fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
 }
 
-/// TODO: comment
+/// Lightweight representation of [BinaryNode]. Only holds left and right hashes.
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Serialize)]
 pub struct BinaryProofNode {
@@ -93,17 +93,17 @@ pub struct BinaryProofNode {
 impl From<&BinaryNode> for BinaryProofNode {
     fn from(bin: &BinaryNode) -> Self {
         Self {
-            left_hash: bin.left.borrow().hash().unwrap(), // decide what to do with unwrap
-            right_hash: bin.right.borrow().hash().unwrap(), // decide what to do with unwrap
+            left_hash: bin.left.borrow().hash().expect("Node should be committed"),
+            right_hash: bin.right.borrow().hash().expect("Node should be committed"),
         }
     }
 }
 
-/// TODO: comment
+/// Ligthtweight representation of [EdgeNode]. Only holds its path and its child's hash.
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Serialize)]
 pub struct EdgeProofNode {
-    #[serde(skip_serializing)] // TODO: fix this
+    #[serde(skip)]
     path: BitVec<Msb0, u8>,
     child_hash: StarkHash,
 }
@@ -112,12 +112,18 @@ impl From<&EdgeNode> for EdgeProofNode {
     fn from(edge: &EdgeNode) -> Self {
         Self {
             path: edge.path.clone(),
-            child_hash: edge.child.borrow().hash().unwrap(), // TODO: decide what to do with unwrap
+            child_hash: edge
+                .child
+                .borrow()
+                .hash()
+                .expect("Node should be committed"),
         }
     }
 }
 
-/// TODO: comment
+/// [ProofNode] s are lightweight versions of their `Node` counterpart.
+/// They only consist of [BinaryProofNode] and [EdgeProofNode] because `Leaf`
+/// and `Unresolved` nodes should not appear in a proof.
 #[derive(Debug, PartialEq, Serialize)]
 pub enum ProofNode {
     Binary(BinaryProofNode),
@@ -516,16 +522,19 @@ impl<T: NodeStorage> MerkleTree<T> {
         Ok(result)
     }
 
-    /// TODO: Comment
+    /// Generates a proof for the value located at `key`, as described in [#714](https://github.com/eqlabs/pathfinder/issues/714).
+    ///
+    /// Returns a vector of `ProofNode` which can then be verified by the verifier
+    /// (provided the verifier knows `root`, `key` and `value`).
     pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
         let mut nodes = self.traverse(key)?;
 
-        // TODO: should we return an error or simply an empty vec if `nodes` is emtpy?
-        if let Some(node) = nodes.last() {
-            // Remove the last node if it's a leaf. Indeed the verifier won't need this information.
-            if matches!(&*node.borrow(), Node::Leaf(_)) {
-                nodes.pop();
-            }
+        // Return an error if the list is empty
+        let node = nodes.last().context("Tree is empty")?;
+
+        // Remove the last node if it's a leaf. Indeed the verifier won't need this information.
+        if matches!(&*node.borrow(), Node::Leaf(_)) {
+            nodes.pop();
         }
 
         Ok(nodes
@@ -1731,24 +1740,24 @@ mod tests {
         use stark_hash::StarkHash;
 
         impl EdgeProofNode {
-            /// TODO: comment
             fn hash(&self) -> StarkHash {
                 // Code taken from [merkle_node::EdgeNode::calculate_hash]
                 let child_hash = self.child_hash;
 
-                let path = StarkHash::from_bits(&self.path).unwrap(); // TODO: decide what to do with unwrap
+                // Path should be valid, so `unwrap()` is safe to use here.
+                let path = StarkHash::from_bits(&self.path).unwrap();
                 let mut length = [0; 32];
                 // Safe as len() is guaranteed to be <= 251
                 length[31] = self.path.len() as u8;
 
-                let length = StarkHash::from_be_bytes(length).unwrap(); // TODO: decide what to do with unwrap
+                // Length should be smaller than the maximum size of a stark hash.
+                let length = StarkHash::from_be_bytes(length).unwrap();
 
                 stark_hash::stark_hash(child_hash, path) + length
             }
         }
 
         impl BinaryProofNode {
-            /// TODO: comment
             fn hash(&self) -> StarkHash {
                 // Code taken from [merkle_node::EdgeNode::calculate_hash]
                 stark_hash::stark_hash(self.left_hash, self.right_hash)
@@ -1831,8 +1840,14 @@ mod tests {
                 }
             }
 
+            // Sanity check: `remaining_path` should be empty now.
+            assert_eq!(
+                remaining_path.is_empty(),
+                true,
+                "Logic error: Remaining path is not empty"
+            );
+
             // At this point, we should reach `value` !
-            // TODO: should we check that `remaining_path` is empty here?
             if expected_hash == value {
                 Some(Membership::Member)
             } else {
