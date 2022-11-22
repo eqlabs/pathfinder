@@ -86,8 +86,8 @@ pub trait NodeStorage {
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Serialize)]
 pub struct BinaryProofNode {
-    left_hash: StarkHash,
-    right_hash: StarkHash,
+    pub left_hash: StarkHash,
+    pub right_hash: StarkHash,
 }
 
 impl From<&BinaryNode> for BinaryProofNode {
@@ -104,8 +104,8 @@ impl From<&BinaryNode> for BinaryProofNode {
 #[derive(Debug, PartialEq, Serialize)]
 pub struct EdgeProofNode {
     #[serde(skip)]
-    path: BitVec<Msb0, u8>,
-    child_hash: StarkHash,
+    pub path: BitVec<Msb0, u8>,
+    pub child_hash: StarkHash,
 }
 
 impl From<&EdgeNode> for EdgeProofNode {
@@ -1732,11 +1732,14 @@ mod tests {
     }
 
     mod proofs {
-        use super::{BinaryProofNode, Direction, EdgeProofNode, MerkleTree, ProofNode};
+        use super::{
+            BinaryProofNode, Direction, EdgeProofNode, MerkleTree, ProofNode, RcNodeStorage,
+        };
         use crate::starkhash;
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
         use rand::{distributions::Uniform, Rng};
+        use rusqlite::Transaction;
         use stark_hash::StarkHash;
 
         impl EdgeProofNode {
@@ -1835,6 +1838,7 @@ mod tests {
                         expected_hash = edge.child_hash;
 
                         // Advance by the whole edge path
+                        // remaining_path.get(edge.path.len()..).unwrap();
                         remaining_path = &remaining_path[edge.path.len()..];
                     }
                 }
@@ -1849,7 +1853,63 @@ mod tests {
             if expected_hash == value {
                 Some(Membership::Member)
             } else {
-                Some(Membership::NonMember)
+                // Hash mismatch. Return `None`.
+                None
+            }
+        }
+
+        /// Structure representing a randomly generated tree.
+        struct RandomTree<'tx, 'queries> {
+            keys: Vec<StarkHash>,
+            values: Vec<StarkHash>,
+            root: StarkHash,
+            tree: MerkleTree<RcNodeStorage<'tx, 'queries>>,
+        }
+
+        impl<'tx> RandomTree<'tx, '_> {
+            /// Creates a new random tree with `len` key / value pairs.
+            fn new(len: usize, transaction: &'tx Transaction<'tx>) -> Self {
+                let mut uut = MerkleTree::load("test", transaction, StarkHash::ZERO).unwrap();
+
+                let range = Uniform::from(0..u64::MAX);
+                // Create random keys
+                let keys: Vec<StarkHash> = rand::thread_rng()
+                    .sample_iter(&range)
+                    .take(len)
+                    .map(|k| StarkHash::from_u64(k))
+                    .collect();
+
+                // Create random values
+                let values: Vec<StarkHash> = rand::thread_rng()
+                    .sample_iter(&range)
+                    .take(len)
+                    .map(|v| StarkHash::from_u64(v))
+                    .collect();
+
+                // Insert them
+                keys.iter()
+                    .zip(values.iter())
+                    .for_each(|(k, v)| uut.set(k.view_bits(), *v).unwrap());
+
+                let root = uut.commit().unwrap();
+                let tree = MerkleTree::load("test", &transaction, root).unwrap();
+
+                Self {
+                    keys,
+                    values,
+                    root,
+                    tree,
+                }
+            }
+
+            /// Calls `get_proof` and `verify_proof` on every key/value pair in the random_tree.
+            fn verify(&self) {
+                self.keys.iter().zip(self.values.iter()).for_each(|(k, v)| {
+                    let key = k.view_bits();
+                    let proofs = self.tree.get_proof(key).unwrap();
+                    let verified = verify_proof(self.root, key, *v, &proofs).unwrap();
+                    assert_eq!(verified, Membership::Member, "Failed to prove key");
+                });
             }
         }
 
@@ -2054,37 +2114,158 @@ mod tests {
 
         #[test]
         fn random_tree() {
+            const LEN: usize = 256;
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
-            const LEN: usize = 256;
+            let random_tree = RandomTree::new(LEN, &transaction);
 
+            random_tree.verify();
+        }
+
+        #[test]
+        fn non_membership() {
+            const LEN: usize = 256;
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+
+            let random_tree = RandomTree::new(LEN, &transaction);
+
+            // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
+            let keys_set: std::collections::HashSet<&StarkHash> = random_tree.keys.iter().collect();
+
+            // Generate inexistent keys
             let range = Uniform::from(0..u64::MAX);
-            let keys: Vec<StarkHash> = rand::thread_rng()
+            let inexistent_keys: Vec<StarkHash> = rand::thread_rng()
                 .sample_iter(&range)
                 .take(LEN)
                 .map(|k| StarkHash::from_u64(k))
+                .filter(|key| !keys_set.contains(key)) // Filter out duplicates if there are any
                 .collect();
 
-            let values: Vec<StarkHash> = rand::thread_rng()
+            inexistent_keys
+                .iter()
+                .zip(random_tree.values.iter())
+                .for_each(|(k, v)| {
+                    let key = k.view_bits();
+                    let proofs = random_tree.tree.get_proof(key).unwrap();
+                    let verified = verify_proof(random_tree.root, key, *v, &proofs).unwrap();
+                    assert_eq!(verified, Membership::NonMember);
+                });
+        }
+
+        #[test]
+        fn invalid_values() {
+            const LEN: usize = 256;
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+
+            let random_tree = RandomTree::new(LEN, &transaction);
+
+            // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
+            let values_set: std::collections::HashSet<&StarkHash> =
+                random_tree.values.iter().collect();
+
+            // Generate inexistent keys
+            let range = Uniform::from(0..u64::MAX);
+            let inexistent_values: Vec<StarkHash> = rand::thread_rng()
                 .sample_iter(&range)
                 .take(LEN)
                 .map(|v| StarkHash::from_u64(v))
+                .filter(|value| !values_set.contains(value)) // Filter out duplicates if there are any
                 .collect();
 
-            keys.iter()
-                .zip(values.iter())
-                .for_each(|(k, v)| uut.set(k.view_bits(), *v).unwrap());
+            random_tree
+                .keys
+                .iter()
+                .zip(inexistent_values.iter())
+                .for_each(|(k, v)| {
+                    let key = k.view_bits();
+                    let proofs = random_tree.tree.get_proof(key).unwrap();
+                    let verified = verify_proof(random_tree.root, key, *v, &proofs);
+                    assert!(verified.is_none());
+                });
+        }
+
+        #[test]
+        fn modified_binary_left() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+
+            //           (0, 0, x)
+            //    /                    \
+            // (250, 0, cc)     (250, 11111.., dd)
+            //    |                     |
+            //   (cc)                  (dd)
+
+            let key_1 = starkhash!("00");
+            let key_2 =
+                starkhash!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+
+            let key1 = key_1.view_bits();
+            let key2 = key_2.view_bits();
+
+            let value_1 = starkhash!("cc");
+            let value_2 = starkhash!("dd");
+
+            uut.set(key1, value_1).unwrap();
+            uut.set(key2, value_2).unwrap();
 
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            keys.iter().zip(values.iter()).for_each(|(k, v)| {
-                let key = k.view_bits();
-                let proofs = uut.get_proof(key).unwrap();
-                let verified_1 = verify_proof(root, key, *v, &proofs).unwrap();
-                assert_eq!(verified_1, Membership::Member, "Failed to prove key");
-            });
+            let mut proofs = uut.get_proof(key1).unwrap();
+
+            // Modify the left hash
+            let to_change = proofs.get_mut(0).unwrap();
+            match to_change {
+                ProofNode::Binary(bin) => bin.left_hash = starkhash!("42"),
+                _ => unreachable!(),
+            };
+
+            let verified = verify_proof(root, key1, value_1, &proofs);
+            assert!(verified.is_none());
+        }
+
+        #[test]
+        fn modified_edge_child() {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let transaction = conn.transaction().unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+
+            //           (0, 0, x)
+            //    /                    \
+            // (250, 0, cc)     (250, 11111.., dd)
+            //    |                     |
+            //   (cc)                  (dd)
+
+            let key_1 = starkhash!("00");
+            let key_2 =
+                starkhash!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+
+            let key1 = key_1.view_bits();
+            let key2 = key_2.view_bits();
+
+            let value_1 = starkhash!("cc");
+            let value_2 = starkhash!("dd");
+
+            uut.set(key1, value_1).unwrap();
+            uut.set(key2, value_2).unwrap();
+
+            let root = uut.commit().unwrap();
+            let uut = MerkleTree::load("test", &transaction, root).unwrap();
+
+            let mut proofs = uut.get_proof(key1).unwrap();
+
+            // Modify the child hash
+            let to_change = proofs.get_mut(1).unwrap();
+            match to_change {
+                ProofNode::Edge(edge) => edge.child_hash = starkhash!("42"),
+                _ => unreachable!(),
+            };
+
+            let verified = verify_proof(root, key1, value_1, &proofs);
+            assert!(verified.is_none());
         }
     }
 
