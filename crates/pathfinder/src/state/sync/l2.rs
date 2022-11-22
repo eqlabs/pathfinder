@@ -186,13 +186,8 @@ async fn state_update<C: sequencer::ClientApi>(
     next: StarknetBlockNumber,
 ) -> Result<StateUpdate, anyhow::Error> {
     match p2p_client.request_state_diff(block_hash.into()).await {
-        Ok(state_update) => {
-            tracing::trace!(target: "p2p", block_number=%next ,"request state update");
-            Ok(state_update)
-        }
-        Err(error) => {
-            tracing::warn!(target: "p2p", block_number=%next, %error ,"request state upadate failed");
-
+        Ok(state_update) => Ok(state_update),
+        Err(_) => {
             let state_update = sequencer
                 .state_update(block_hash.into())
                 .await
@@ -292,20 +287,12 @@ async fn download_block<C: sequencer::ClientApi>(
     use sequencer::reply::MaybePendingBlock;
 
     let result = match p2p_client.request_block(block_number.into()).await {
-        Ok(block) => {
-            tracing::trace!(target: "p2p", %block_number, "request block");
-            Ok(block)
-        }
-        Err(error @ p2p::RequestBlockError::BlockNotFound) => {
-            tracing::trace!(target: "p2p", %block_number, %error, "request block failed");
-            Err(error)
-        }
+        Ok(block) => Ok(block),
+        Err(error @ p2p::RequestBlockError::BlockNotFound) => Err(error),
         Err(p2p::RequestBlockError::GotPending) => {
             anyhow::bail!("Underlying sequencer returned `pending` block");
         }
-        Err(p2p::RequestBlockError::Other(error)) => {
-            tracing::warn!(target: "p2p", %block_number, %error, "request block failed");
-
+        Err(p2p::RequestBlockError::Other(_)) => {
             let result = sequencer.block(block_number.into()).await;
 
             match result {
@@ -358,8 +345,6 @@ async fn download_block<C: sequencer::ClientApi>(
             let (latest_block_number, latest_block_hash) =
                 rx.await.context("Oneshot channel closed")?;
 
-            tracing::trace!(target: "p2p", %latest_block_number, %block_number, "checking reorg");
-
             if latest_block_number + 1 == block_number {
                 match prev_block_hash {
                     // We are definitely still at the head and it's just that a new block
@@ -368,16 +353,12 @@ async fn download_block<C: sequencer::ClientApi>(
                         Ok(DownloadBlock::AtHead)
                     }
                     // Our head is not valid anymore so there must have been a reorg only at this height
-                    Some(_) => {
-                        tracing::warn!(target: "p2p", "reorg: head not valid");
-                        Ok(DownloadBlock::Reorg)
-                    }
+                    Some(_) => Ok(DownloadBlock::Reorg),
                     // There is something wrong with the sequencer, as we are attempting to get the genesis block
                     // Let's retry in a while
                     None => Ok(DownloadBlock::AtHead),
                 }
             } else {
-                tracing::warn!(target: "p2p", "reorg: new head lower");
                 // The new head is at lower height than our head which means there must have been a reorg
                 Ok(DownloadBlock::Reorg)
             }
@@ -519,18 +500,11 @@ async fn download_and_compress_class<C: sequencer::ClientApi>(
     sequencer: &C,
 ) -> anyhow::Result<CompressedContract> {
     let definition = match p2p_client.request_class(class_hash).await {
-        Ok(definition) => {
-            tracing::trace!(target: "p2p", ?class_hash ,"request class");
-            definition
-        }
-        Err(error) => {
-            tracing::warn!(target: "p2p", ?class_hash, %error, "request class failed");
-
-            sequencer
-                .class_by_hash(class_hash)
-                .await
-                .context("Downloading contract from sequencer")?
-        }
+        Ok(definition) => definition,
+        Err(_) => sequencer
+            .class_by_hash(class_hash)
+            .await
+            .context("Downloading contract from sequencer")?,
     };
 
     // Parse the contract definition for ABI, code and calculate the class hash. This can
@@ -582,18 +556,11 @@ async fn download_and_compress_contract<C: sequencer::ClientApi>(
     let contract_address = contract.address;
 
     let contract_definition = match p2p_client.request_contract(contract_address).await {
-        Ok(definition) => {
-            tracing::trace!(target: "p2p", ?contract_address ,"request contract");
-            definition
-        }
-        Err(error) => {
-            tracing::warn!(target: "p2p", ?contract_address, %error, "request contract failed");
-
-            sequencer
-                .full_contract(contract.address)
-                .await
-                .context("Download contract from sequencer")?
-        }
+        Ok(definition) => definition,
+        Err(_) => sequencer
+            .full_contract(contract.address)
+            .await
+            .context("Download contract from sequencer")?,
     };
 
     // Parse the contract definition for ABI, code and calculate the class hash. This can

@@ -197,48 +197,34 @@ impl<SequencerClient> MainLoop<SequencerClient> {
 
             tokio::select! {
                 _ = tick => {
-                    tracing::trace!(target: "p2p", "Gossipsub: poll latest");
                     match self.sequencer.block(BlockId::Latest).await {
                         Ok(block) =>
                             match block {
                                 MaybePendingBlock::Block(block) => {
-                                    tracing::trace!(target: "p2p", number=%block.block_number, hash=%block.block_hash, "Gossipsub: polled");
-
                                     if last_block_hash != block.block_hash {
                                         last_block_hash = block.block_hash;
                                         last_block_number = block.block_number;
 
-                                        let number = block.block_number;
-                                        let hash = block.block_hash;
-                                        tracing::trace!(target: "p2p", %number, %hash, "Gossipsub: new block SEND START");
                                         match self.event_sender.send(Event::NewBlock(block)).await {
-                                            Ok(_) => {
-                                                tracing::trace!(target: "p2p", %number, %hash, "Gossipsub: new block SEND DONE");
-                                            },
+                                            Ok(_) => {},
                                             Err(_) => anyhow::bail!("Unexpected event channel closure"),
                                         }
                                     }
                                 }
-                                MaybePendingBlock::Pending(_) => {
-                                    tracing::warn!(target: "p2p", "Gossipsub: polled pending");
-                                },
+                                MaybePendingBlock::Pending(_) => anyhow::bail!("Sequencer returned `pending` block"),
                             }
-                        Err(error) => tracing::error!(target: "p2p", reason=%error, "Polling latest block"),
+                        Err(error) => tracing::warn!(reason=%error, "Error polling latest block"),
                     }
                 }
                 last_requested_block = last_requested_block_rx.recv() => {
-                    tracing::trace!(target: "p2p", "Gossipsub: poll kechup");
                     match last_requested_block {
                         Some(block) => {
                             if last_block_number < block.block_number {
                                 last_block_hash = block.block_hash;
                                 last_block_number = block.block_number;
 
-                                tracing::trace!(target: "p2p", number=%last_block_number, hash=%last_block_hash, "Gossipsub: new block SEND START kechup");
                                 match self.event_sender.send(Event::NewBlock(block.clone())).await {
-                                    Ok(_) => {
-                                        tracing::trace!(target: "p2p", number=%last_block_number, hash=%last_block_hash, "Gossipsub: new block SEND DONE kechup");
-                                    },
+                                    Ok(_) => {},
                                     Err(_) => anyhow::bail!("Unexpected event channel closure"),
                                 }
                             }

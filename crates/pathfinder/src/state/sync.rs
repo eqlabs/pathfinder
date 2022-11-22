@@ -478,7 +478,6 @@ where
             },
             p2p_event = p2p_sub_rx.recv() => {
                 if let Some(p2p::Event::NewBlock(block)) = p2p_event {
-                    tracing::trace!(target: "p2p", block_number=%block.block_number, block_hash=%block.block_hash, "new L2 head");
                     p2p_l2_head = Some((block.block_number, block.block_hash));
                 } else {
                     #[cfg(not(test))]
