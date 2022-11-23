@@ -2118,6 +2118,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-core"
+version = "0.1.0"
+dependencies = [
+ "bitvec",
+ "hex-literal",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha3",
+ "stark_hash",
+ "thiserror",
+ "web3",
+]
+
+[[package]]
 name = "pathfinder-retry"
 version = "0.1.0"
 dependencies = [
