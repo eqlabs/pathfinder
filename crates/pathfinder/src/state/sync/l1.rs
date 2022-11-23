@@ -2,6 +2,7 @@ use std::{num::NonZeroU64, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use futures::Future;
+use retry::Retry;
 use tokio::sync::{mpsc, oneshot, RwLock};
 
 use crate::{
@@ -11,7 +12,6 @@ use crate::{
         state_update::state_root::StateRootFetcher,
         transport::EthereumTransport,
     },
-    retry::Retry,
 };
 
 /// Events and queries emitted by L1 sync process.

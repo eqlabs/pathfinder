@@ -1,5 +1,4 @@
 //! Wrapper for the parts of the [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
-use crate::retry::Retry;
 use crate::{config::EthereumConfig, core::EthereumChain};
 
 use std::future::Future;
@@ -8,6 +7,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use futures::TryFutureExt;
+use retry::Retry;
 use tracing::{debug, error, info};
 use web3::{
     transports::Http,
