@@ -412,7 +412,7 @@ where
     FutureFactory: FnMut() -> Fut,
     Ret: FnMut(&SequencerError) -> bool,
 {
-    use retry::Retry;
+    use pathfinder_retry::Retry;
     use std::num::NonZeroU64;
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())

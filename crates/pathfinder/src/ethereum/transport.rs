@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use futures::TryFutureExt;
-use retry::Retry;
+use pathfinder_retry::Retry;
 use tracing::{debug, error, info};
 use web3::{
     transports::Http,

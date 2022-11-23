@@ -2090,12 +2090,12 @@ dependencies = [
  "metrics-exporter-prometheus",
  "mockall",
  "num-bigint 0.4.3",
+ "pathfinder-retry",
  "pretty_assertions",
  "r2d2",
  "r2d2_sqlite",
  "rand",
  "reqwest",
- "retry",
  "rusqlite",
  "semver 1.0.7",
  "serde",
@@ -2115,6 +2115,14 @@ dependencies = [
  "warp",
  "web3",
  "zstd",
+]
+
+[[package]]
+name = "pathfinder-retry"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tokio-retry",
 ]
 
 [[package]]
@@ -2590,14 +2598,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "winreg",
-]
-
-[[package]]
-name = "retry"
-version = "0.1.0"
-dependencies = [
- "tokio",
- "tokio-retry",
 ]
 
 [[package]]
