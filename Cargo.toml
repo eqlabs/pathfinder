@@ -7,6 +7,7 @@ strip = "debuginfo"
 members = [
     "crates/load-test",
     "crates/pathfinder",
+    "crates/retry",
     "crates/stark_curve",
     "crates/stark_hash",
 ]
