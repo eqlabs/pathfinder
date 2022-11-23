@@ -215,6 +215,14 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         })
         .for_each(|x| outer.update(x.finalize()));
 
+    fn update_hash_chain(
+        mut hc: HashChain,
+        next: Result<StarkHash, Error>,
+    ) -> Result<HashChain, Error> {
+        hc.update(next?);
+        Result::<_, Error>::Ok(hc)
+    }
+
     let builtins = contract_definition
         .program
         .builtins
@@ -224,10 +232,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         .map(|(i, s)| {
             StarkHash::from_be_slice(s).with_context(|| format!("Invalid builtin at index {i}"))
         })
-        .try_fold(HashChain::default(), |mut hc, next| {
-            hc.update(next?);
-            Result::<_, Error>::Ok(hc)
-        })
+        .try_fold(HashChain::default(), update_hash_chain)
         .context("Failed to process contract_definition.program.builtins")?;
 
     outer.update(builtins.finalize());
@@ -242,10 +247,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         .map(|(i, s)| {
             StarkHash::from_hex_str(s).with_context(|| format!("Invalid bytecode at index {i}"))
         })
-        .try_fold(HashChain::default(), |mut hc, next| {
-            hc.update(next?);
-            Result::<_, Error>::Ok(hc)
-        })
+        .try_fold(HashChain::default(), update_hash_chain)
         .context("Failed to process contract_definition.program.data")?;
 
     outer.update(bytecodes.finalize());
