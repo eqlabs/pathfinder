@@ -163,5 +163,5 @@ struct LightReceipt {
 
 #[derive(serde::Deserialize)]
 struct LightEvent {
-    from_address: crate::core::ContractAddress,
+    from_address: pathfinder_core::ContractAddress,
 }

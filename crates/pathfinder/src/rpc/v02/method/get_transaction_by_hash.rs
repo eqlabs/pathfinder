@@ -1,9 +1,8 @@
-use anyhow::Context;
-
-use crate::core::StarknetTransactionHash;
 use crate::rpc::v02::types::reply::Transaction;
 use crate::rpc::v02::RpcContext;
 use crate::storage::StarknetTransactionsTable;
+use anyhow::Context;
+use pathfinder_core::StarknetTransactionHash;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByHashInput {
@@ -55,10 +54,10 @@ pub async fn get_transaction_by_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{
-        ContractAddress, EntryPoint, Fee, StarknetTransactionHash, TransactionNonce,
+    use pathfinder_core::{
+        starkhash, starkhash_bytes, ContractAddress, EntryPoint, Fee, StarknetTransactionHash,
+        TransactionNonce,
     };
-    use crate::{starkhash, starkhash_bytes};
     use stark_hash::StarkHash;
 
     mod parsing {

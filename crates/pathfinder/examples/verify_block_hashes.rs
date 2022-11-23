@@ -1,6 +1,6 @@
 use anyhow::Context;
+use pathfinder_core::{Chain, StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_lib::{
-    core::{Chain, StarknetBlockHash, StarknetBlockNumber},
     sequencer::reply::{Block, Status},
     state::block_hash::{verify_block_hash, VerifyResult},
     storage::{

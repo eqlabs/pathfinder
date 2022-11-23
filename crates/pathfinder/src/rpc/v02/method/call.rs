@@ -1,7 +1,5 @@
-use crate::{
-    core::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint},
-    rpc::v02::RpcContext,
-};
+use crate::rpc::v02::RpcContext;
+use pathfinder_core::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 
 crate::rpc::error::generate_rpc_error_subset!(
     CallError: BlockNotFound,
@@ -86,11 +84,9 @@ mod tests {
     use crate::starkhash;
 
     mod parsing {
-        use crate::core::StarknetBlockHash;
-
         use super::*;
-
         use jsonrpsee::types::Params;
+        use pathfinder_core::StarknetBlockHash;
 
         #[test]
         fn positional_args() {
@@ -134,14 +130,11 @@ mod tests {
     }
 
     mod ext_py {
+        use super::*;
+        use crate::storage::JournalMode;
+        use pathfinder_core::{starkhash_bytes, Chain, StarknetBlockHash};
         use std::path::PathBuf;
         use std::sync::Arc;
-
-        use crate::core::{Chain, StarknetBlockHash};
-        use crate::starkhash_bytes;
-        use crate::storage::JournalMode;
-
-        use super::*;
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(

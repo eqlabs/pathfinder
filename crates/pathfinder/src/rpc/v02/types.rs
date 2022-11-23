@@ -5,12 +5,10 @@ pub use class::*;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use crate::{
-        core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
-        },
-        rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
+    use crate::rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr};
+    use pathfinder_core::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use serde::Deserialize;
     use serde_with::serde_as;
@@ -278,13 +276,13 @@ pub mod request {
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
     use crate::{
-        core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
-            TransactionVersion,
-        },
         rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
         sequencer,
+    };
+    use pathfinder_core::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
+        TransactionVersion,
     };
     use serde::Serialize;
     use serde_with::serde_as;

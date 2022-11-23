@@ -1,14 +1,11 @@
+use crate::ethereum::EthOrigin;
+use pathfinder_core::{GlobalRoot, StarknetBlockNumber};
+use web3::types::H256;
+
 mod fetch;
 mod parse;
 
 pub use fetch::*;
-
-use web3::types::H256;
-
-use crate::{
-    core::{GlobalRoot, StarknetBlockNumber},
-    ethereum::EthOrigin,
-};
 
 /// Describes a state update log event. Is always emitted
 /// as a pair with [StateTransitionFactLog].

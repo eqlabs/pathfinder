@@ -17,17 +17,15 @@ pub async fn pending_transactions(context: RpcContext) -> Result<Vec<Transaction
 
 #[cfg(test)]
 mod tests {
-    use crate::core::{
-        ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, StarknetTransactionHash,
-        TransactionNonce, TransactionVersion,
-    };
+    use super::*;
     use crate::rpc::v02::types::reply::{
         CommonInvokeTransactionProperties, DeployTransaction, InvokeTransaction,
         InvokeTransactionV0,
     };
-    use crate::starkhash_bytes;
-
-    use super::*;
+    use pathfinder_core::{
+        starkhash_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
+        StarknetTransactionHash, TransactionNonce, TransactionVersion,
+    };
 
     #[tokio::test]
     async fn pending() {

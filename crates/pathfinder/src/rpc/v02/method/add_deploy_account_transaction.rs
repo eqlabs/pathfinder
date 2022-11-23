@@ -1,10 +1,9 @@
-use anyhow::Context;
-
 use crate::{
-    core::{ContractAddress, StarknetTransactionHash},
     rpc::v02::{types::request::BroadcastedDeployAccountTransaction, RpcContext},
     sequencer::ClientApi,
 };
+use anyhow::Context;
+use pathfinder_core::{ContractAddress, StarknetTransactionHash};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -54,12 +53,9 @@ pub async fn add_deploy_account_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        core::{
-            CallParam, Chain, ClassHash, ContractAddressSalt, Fee, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
-        starkhash,
+    use pathfinder_core::{
+        starkhash, CallParam, Chain, ClassHash, ContractAddressSalt, Fee, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
 
     const INPUT_JSON: &str = r#"{

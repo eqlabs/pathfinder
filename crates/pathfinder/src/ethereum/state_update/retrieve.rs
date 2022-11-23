@@ -1,12 +1,3 @@
-use std::collections::{HashMap, HashSet};
-
-use anyhow::Context;
-use web3::{
-    futures::future::try_join_all,
-    types::{FilterBuilder, Transaction, TransactionId, U256},
-};
-
-use crate::core::Chain;
 use crate::ethereum::{
     contract::{REGISTER_MEMORY_PAGE_FUNCTION, STATE_TRANSITION_FACT_EVENT},
     log::{
@@ -15,6 +6,13 @@ use crate::ethereum::{
     },
     state_update::RetrieveStateUpdateError,
     transport::EthereumTransport,
+};
+use anyhow::Context;
+use pathfinder_core::Chain;
+use std::collections::{HashMap, HashSet};
+use web3::{
+    futures::future::try_join_all,
+    types::{FilterBuilder, Transaction, TransactionId, U256},
 };
 
 /// Retrieves the [StateTransitionFactLog] associated with the given [StateUpdateLog].

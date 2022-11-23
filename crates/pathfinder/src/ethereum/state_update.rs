@@ -1,18 +1,16 @@
+use crate::ethereum::{
+    log::StateUpdateLog,
+    state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
+    transport::{EthereumTransport, LogsError},
+};
+use pathfinder_core::{Chain, ClassHash, ContractAddress, StorageAddress, StorageValue};
+
 mod parse;
 mod retrieve;
 pub mod state_root;
 
 use retrieve::*;
 use stark_hash::StarkHash;
-
-use crate::{
-    core::{Chain, ClassHash, ContractAddress, StorageAddress, StorageValue},
-    ethereum::{
-        log::StateUpdateLog,
-        state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
-        transport::{EthereumTransport, LogsError},
-    },
-};
 
 /// Describes the deployment of a new StarkNet contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,18 +131,16 @@ impl From<&crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
 
 #[cfg(test)]
 mod tests {
-    use pretty_assertions::assert_eq;
-    use web3::types::H256;
-
-    use crate::core::{
-        EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-        EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
-    };
+    use super::*;
     use crate::ethereum::{transport::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin};
     use crate::starkhash;
     use hex_literal::hex;
-
-    use super::*;
+    use pathfinder_core::{
+        Chain, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+        EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
+    };
+    use pretty_assertions::assert_eq;
+    use web3::types::H256;
 
     #[tokio::test]
     async fn reality_check() {
@@ -170,7 +166,7 @@ mod tests {
             block_number: StarknetBlockNumber::new_or_panic(16407),
         };
 
-        let chain = crate::core::Chain::Testnet;
+        let chain = Chain::Testnet;
         let transport = HttpTransport::test_transport(chain);
         let update = StateUpdate::retrieve(&transport, update_log, chain)
             .await

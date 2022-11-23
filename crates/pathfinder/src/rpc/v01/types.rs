@@ -1,5 +1,5 @@
 //! Data structures used by the JSON-RPC API methods.
-use crate::core::{StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
 use serde::{Deserialize, Serialize};
 
 /// Special tag used when specifying the `latest` or `pending` block.
@@ -55,6 +55,22 @@ impl std::fmt::Display for BlockHashOrTag {
     }
 }
 
+impl From<StarknetBlockHash> for BlockHashOrTag {
+    fn from(hash: StarknetBlockHash) -> Self {
+        crate::rpc::v01::types::BlockHashOrTag::Hash(hash)
+    }
+}
+
+impl From<BlockHashOrTag> for pathfinder_core::BlockId {
+    fn from(x: BlockHashOrTag) -> Self {
+        match x {
+            BlockHashOrTag::Hash(h) => Self::Hash(h),
+            BlockHashOrTag::Tag(Tag::Latest) => Self::Latest,
+            BlockHashOrTag::Tag(Tag::Pending) => Self::Pending,
+        }
+    }
+}
+
 /// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
@@ -75,16 +91,30 @@ impl std::fmt::Display for BlockNumberOrTag {
     }
 }
 
+impl From<StarknetBlockNumber> for BlockNumberOrTag {
+    fn from(number: StarknetBlockNumber) -> Self {
+        crate::rpc::v01::types::BlockNumberOrTag::Number(number)
+    }
+}
+
+impl From<BlockNumberOrTag> for pathfinder_core::BlockId {
+    fn from(x: BlockNumberOrTag) -> Self {
+        match x {
+            BlockNumberOrTag::Number(n) => Self::Number(n),
+            BlockNumberOrTag::Tag(Tag::Latest) => Self::Latest,
+            BlockNumberOrTag::Tag(Tag::Pending) => Self::Pending,
+        }
+    }
+}
+
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use crate::{
-        core::{
-            CallParam, ContractAddress, EntryPoint, EventKey, Fee, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
-        rpc::serde::{
-            FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-        },
+    use crate::rpc::serde::{
+        FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+    };
+    use pathfinder_core::{
+        BlockId, CallParam, ContractAddress, EntryPoint, EventKey, Fee, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use serde::Deserialize;
     use serde_with::{serde_as, skip_serializing_none};
@@ -157,9 +187,9 @@ pub mod request {
     #[serde(deny_unknown_fields)]
     pub struct EventFilter {
         #[serde(default, alias = "fromBlock")]
-        pub from_block: Option<crate::core::BlockId>,
+        pub from_block: Option<BlockId>,
         #[serde(default, alias = "toBlock")]
-        pub to_block: Option<crate::core::BlockId>,
+        pub to_block: Option<BlockId>,
         #[serde(default)]
         pub address: Option<ContractAddress>,
         #[serde(default)]
@@ -176,14 +206,14 @@ pub mod request {
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
     use crate::{
-        core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, EventData, EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash,
-            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
         rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
         sequencer,
+    };
+    use pathfinder_core::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        EventData, EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
@@ -482,10 +512,10 @@ pub mod reply {
     /// on the `rpc-full-serde` feature because state updates are
     /// stored in the DB as compressed raw JSON bytes.
     pub mod state_update {
-        use crate::core::{
+        use crate::sequencer;
+        use pathfinder_core::{
             ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
         };
-        use crate::sequencer;
         use serde::{Deserialize, Serialize};
 
         /// L2 state diff.
@@ -539,15 +569,6 @@ pub mod reply {
             pub key: StorageAddress,
             pub value: StorageValue,
         }
-
-        // impl From<sequencer::reply::state_update::StorageDiff> for StorageItem {
-        //     fn from(x: sequencer::reply::state_update::StorageDiff) -> Self {
-        //         Self {
-        //             key: x.key,
-        //             value: x.value,
-        //         }
-        //     }
-        // }
 
         /// L2 state diff declared contract item.
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -992,12 +1013,12 @@ pub mod reply {
     /// Transaction receipt related substructures.
     pub mod transaction_receipt {
         use crate::{
-            core::{
-                ContractAddress, EthereumAddress, EventData, EventKey, L1ToL2MessagePayloadElem,
-                L2ToL1MessagePayloadElem,
-            },
             rpc::serde::EthereumAddressAsHexStr,
             sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message},
+        };
+        use pathfinder_core::{
+            ContractAddress, EthereumAddress, EventData, EventKey, L1ToL2MessagePayloadElem,
+            L2ToL1MessagePayloadElem,
         };
         use serde::Serialize;
         use serde_with::serde_as;
@@ -1112,10 +1133,8 @@ pub mod reply {
 
     /// Starknet's syncing status substructures.
     pub mod syncing {
-        use crate::{
-            core::{StarknetBlockHash, StarknetBlockNumber},
-            rpc::serde::StarknetBlockNumberAsHexStr,
-        };
+        use crate::rpc::serde::StarknetBlockNumberAsHexStr;
+        use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
         use serde::Serialize;
         use serde_with::serde_as;
 
@@ -1419,20 +1438,20 @@ pub mod reply {
                         Self {
                             common: CommonTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
-                                to_address: crate::core::EthereumAddress(
+                                to_address: pathfinder_core::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x2),
                                 ),
-                                payload: vec![crate::core::L2ToL1MessagePayloadElem(starkhash!(
-                                    "03"
-                                ))],
+                                payload: vec![pathfinder_core::L2ToL1MessagePayloadElem(
+                                    starkhash!("03"),
+                                )],
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
-                                from_address: crate::core::EthereumAddress(
+                                from_address: pathfinder_core::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x4),
                                 ),
-                                payload: vec![crate::core::L1ToL2MessagePayloadElem(starkhash!(
-                                    "05"
-                                ))],
+                                payload: vec![pathfinder_core::L1ToL2MessagePayloadElem(
+                                    starkhash!("05"),
+                                )],
                             }),
                             events: vec![transaction_receipt::Event {
                                 from_address: ContractAddress::new_or_panic(starkhash!("06")),
@@ -1448,20 +1467,20 @@ pub mod reply {
                         Self {
                             common: CommonPendingTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
-                                to_address: crate::core::EthereumAddress(
+                                to_address: pathfinder_core::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x5),
                                 ),
-                                payload: vec![crate::core::L2ToL1MessagePayloadElem(starkhash!(
-                                    "06"
-                                ))],
+                                payload: vec![pathfinder_core::L2ToL1MessagePayloadElem(
+                                    starkhash!("06"),
+                                )],
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
-                                from_address: crate::core::EthereumAddress(
+                                from_address: pathfinder_core::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x77),
                                 ),
-                                payload: vec![crate::core::L1ToL2MessagePayloadElem(starkhash!(
-                                    "07"
-                                ))],
+                                payload: vec![pathfinder_core::L1ToL2MessagePayloadElem(
+                                    starkhash!("07"),
+                                )],
                             }),
                             events: vec![transaction_receipt::Event {
                                 from_address: ContractAddress::new_or_panic(starkhash!("a6")),

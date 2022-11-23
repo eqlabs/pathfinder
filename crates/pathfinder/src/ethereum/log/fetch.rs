@@ -1,6 +1,5 @@
 use web3::types::{H160, H256};
 
-use crate::core::Chain;
 use crate::ethereum::{
     contract::{
         MEMORY_PAGE_FACT_CONTINUOUS_EVENT, MEMORY_PAGE_HASHES_EVENT, STATE_TRANSITION_FACT_EVENT,
@@ -11,6 +10,7 @@ use crate::ethereum::{
     },
     EthOrigin,
 };
+use pathfinder_core::Chain;
 
 mod backward;
 mod forward;

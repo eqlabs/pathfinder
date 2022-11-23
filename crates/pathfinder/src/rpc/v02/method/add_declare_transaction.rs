@@ -1,9 +1,9 @@
-use crate::core::{ClassHash, StarknetTransactionHash};
 use crate::rpc::v02::types::request::BroadcastedDeclareTransaction;
 use crate::rpc::v02::RpcContext;
 use crate::sequencer::error::SequencerError;
 use crate::sequencer::request::add_transaction::ContractDefinition;
 use crate::sequencer::ClientApi;
+use pathfinder_core::{ClassHash, StarknetTransactionHash};
 
 crate::rpc::error::generate_rpc_error_subset!(AddDeclareTransactionError: InvalidContractClass);
 
@@ -72,14 +72,11 @@ pub async fn add_declare_transaction(
 
 #[cfg(test)]
 mod tests {
-    use stark_hash::StarkHash;
-
-    use crate::core::{ContractAddress, Fee, TransactionNonce, TransactionVersion};
+    use super::*;
     use crate::rpc::v02::types::request::BroadcastedDeclareTransaction;
     use crate::rpc::v02::types::ContractClass;
-    use crate::starkhash;
-
-    use super::*;
+    use pathfinder_core::{starkhash, ContractAddress, Fee, TransactionNonce, TransactionVersion};
+    use stark_hash::StarkHash;
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {

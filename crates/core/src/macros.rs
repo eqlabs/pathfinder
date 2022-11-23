@@ -285,7 +285,6 @@ macro_rules! starkhash {
 
 /// Creates a [`stark_hash::StarkHash`] from a byte slice, resulting in compile-time error when
 /// invalid.
-#[cfg(test)]
 #[macro_export]
 macro_rules! starkhash_bytes {
     ($bytes:expr) => {{

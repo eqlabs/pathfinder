@@ -1,11 +1,7 @@
-use crate::core::StarknetBlockHash;
-use crate::{
-    core::{ClassHash, ContractAddress, ContractClass},
-    state::{class_hash::extract_program_and_entry_points_by_type, CompressedContract},
-};
-
+use crate::state::{class_hash::extract_program_and_entry_points_by_type, CompressedContract};
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
+use pathfinder_core::{ClassHash, ContractAddress, ContractClass, StarknetBlockHash};
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
 /// Stores StarkNet contract information, specifically a contract's

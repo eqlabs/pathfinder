@@ -309,19 +309,6 @@ impl From<EthereumBlockNumber> for web3::types::BlockId {
     }
 }
 
-// FIXME
-// impl From<StarknetBlockNumber> for crate::rpc::v01::types::BlockNumberOrTag {
-//     fn from(number: StarknetBlockNumber) -> Self {
-//         crate::rpc::v01::types::BlockNumberOrTag::Number(number)
-//     }
-// }
-
-// impl From<StarknetBlockHash> for crate::rpc::v01::types::BlockHashOrTag {
-//     fn from(hash: StarknetBlockHash) -> Self {
-//         crate::rpc::v01::types::BlockHashOrTag::Hash(hash)
-//     }
-// }
-
 #[derive(Debug, thiserror::Error)]
 #[error("expected slice length of 16 or less, got {0}")]
 pub struct FromSliceError(usize);
@@ -357,33 +344,6 @@ impl From<u64> for GasPrice {
         Self(u128::from(src))
     }
 }
-
-// FIXME
-// impl From<crate::rpc::v01::types::BlockNumberOrTag> for BlockId {
-//     fn from(block: crate::rpc::v01::types::BlockNumberOrTag) -> Self {
-//         use crate::rpc::v01::types::BlockNumberOrTag::*;
-//         use crate::rpc::v01::types::Tag::*;
-
-//         match block {
-//             Number(number) => Self::Number(number),
-//             Tag(Latest) => Self::Latest,
-//             Tag(Pending) => Self::Pending,
-//         }
-//     }
-// }
-
-// impl From<crate::rpc::v01::types::BlockHashOrTag> for BlockId {
-//     fn from(block: crate::rpc::v01::types::BlockHashOrTag) -> Self {
-//         use crate::rpc::v01::types::BlockHashOrTag::*;
-//         use crate::rpc::v01::types::Tag::*;
-
-//         match block {
-//             Hash(hash) => Self::Hash(hash),
-//             Tag(Latest) => Self::Latest,
-//             Tag(Pending) => Self::Pending,
-//         }
-//     }
-// }
 
 impl From<StarknetBlockNumber> for BlockId {
     fn from(number: StarknetBlockNumber) -> Self {
@@ -442,12 +402,15 @@ impl std::fmt::Display for Chain {
 // these types are used in sequencer tests, which require special fixed width representation
 // FIXME: it'd be better if these had normal varlen display and lenient parsing.
 macros::fmt::thin_debug!(ContractAddress);
+macros::fmt::thin_display!(ContractAddress);
 macros::starkhash::to_from_sql!(ContractAddress);
 
 macros::fmt::thin_debug!(StarknetTransactionHash);
+macros::fmt::thin_display!(StarknetTransactionHash);
 macros::starkhash::to_from_sql!(StarknetTransactionHash);
 
 macros::fmt::thin_debug!(ClassHash);
+macros::fmt::thin_display!(ClassHash);
 macros::starkhash::to_from_sql!(ClassHash);
 
 macros::starkhash::common_newtype!(

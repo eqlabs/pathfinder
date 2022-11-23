@@ -1,10 +1,10 @@
 use web3::types::{BlockNumber, FilterBuilder};
 
-use crate::core::Chain;
 use crate::ethereum::{
     log::fetch::{EitherMetaLog, MetaLog},
     transport::{EthereumTransport, LogsError},
 };
+use pathfinder_core::Chain;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackwardFetchError {
@@ -155,22 +155,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::str::FromStr;
-
-    use web3::types::H256;
-
     use crate::{
-        core::{
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
-        },
         ethereum::{
             log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin,
             TransactionOrigin,
         },
         starkhash,
     };
+    use pathfinder_core::{
+        Chain, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+        EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
+    };
+    use std::str::FromStr;
+    use web3::types::H256;
 
     #[tokio::test]
     async fn consistency() {
@@ -206,7 +203,7 @@ mod tests {
 
         // We use the same log type twice; this shouldn't matter and let's us check
         // the block number sequence.
-        let chain = crate::core::Chain::Testnet;
+        let chain = Chain::Testnet;
         let mut fetcher = BackwardLogFetcher::<StateUpdateLog, StateUpdateLog>::new(
             EitherMetaLog::Left(update_log.clone()),
             chain,

@@ -5,6 +5,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+rpc-full-serde = []
+
 [dependencies]
 bitvec = "0.20.4"
 hex-literal = "0.3"

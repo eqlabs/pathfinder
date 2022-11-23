@@ -1,13 +1,12 @@
-use anyhow::Context;
-use rusqlite::Transaction;
-use stark_hash::{stark_hash, StarkHash};
-
 use crate::{
-    core::{ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash},
     sequencer::reply::state_update::StorageDiff,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{ContractsStateTable, ContractsTable},
 };
+use anyhow::Context;
+use pathfinder_core::{ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash};
+use rusqlite::Transaction;
+use stark_hash::{stark_hash, StarkHash};
 
 pub mod block_hash;
 pub(crate) mod class_hash;
@@ -114,8 +113,8 @@ pub(crate) fn calculate_contract_state_hash(
 #[cfg(test)]
 mod tests {
     use super::{calculate_contract_state_hash, sync};
-    use crate::core::{ClassHash, ContractNonce, ContractRoot, ContractStateHash};
     use crate::starkhash;
+    use pathfinder_core::{ClassHash, ContractNonce, ContractRoot, ContractStateHash};
 
     #[test]
     fn hash() {
@@ -143,7 +142,7 @@ mod tests {
         // This is a regression test for a bug that we encountered at block 47047 on alpha4/goerli.
         // It resulted in a global root mismatch due to the fact that we did not initialize
         // the contract root to zero when a contract was deployed.
-        // use crate::core::StarknetBlockTimestamp;
+        // use pathfinder_core::StarknetBlockTimestamp;
 
         // let s = crate::storage::Storage::in_memory().unwrap();
 
@@ -269,7 +268,7 @@ mod tests {
     #[ignore]
     fn update_requests_fetching_unique_new_contracts() {
         todo!("Update me to new sync process when possible");
-        // use crate::core::{StorageAddress, StorageValue};
+        // use pathfinder_core::{StorageAddress, StorageValue};
         // use crate::ethereum::state_update::{ContractUpdate, StorageUpdate};
 
         // let s = crate::storage::Storage::in_memory().unwrap();
@@ -380,7 +379,7 @@ mod tests {
     #[ignore = "Sequencer currently gives 502/503"]
     async fn genesis() {
         todo!("Update me to new sync process when possible");
-        // use crate::core::{
+        // use pathfinder_core::{
         //     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
         //     EthereumTransactionIndex, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
         // };
@@ -479,7 +478,7 @@ mod tests {
             crate::storage::JournalMode::WAL,
         )
         .unwrap();
-        let chain = crate::core::Chain::Testnet;
+        let chain = pathfinder_core::Chain::Testnet;
         let transport = crate::ethereum::transport::HttpTransport::test_transport(chain);
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
         let state = Arc::new(sync::State::default());

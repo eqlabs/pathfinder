@@ -1,12 +1,13 @@
-use anyhow::Context;
-use rusqlite::named_params;
-use stark_hash::StarkHash;
-
 use crate::{
-    core::{ContractAddress, EventData, EventKey, StarknetBlockNumber, StarknetTransactionHash},
     starkhash,
     storage::{StarknetBlocksTable, StarknetEventsTable},
 };
+use anyhow::Context;
+use pathfinder_core::{
+    ContractAddress, EventData, EventKey, StarknetBlockNumber, StarknetTransactionHash,
+};
+use rusqlite::named_params;
+use stark_hash::StarkHash;
 
 /// Removes bogus transfer events from the affected block range on Starknet Testnet.
 ///
@@ -269,21 +270,20 @@ fn update_database(
 /// in the database. We copy these here so that further modifications don't break this
 /// migration.
 mod types {
-    use serde::{Deserialize, Serialize};
-    use serde_with::serde_as;
-
-    use crate::core::{
-        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-        EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
-        L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
-    };
     use crate::rpc::serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
         EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
         L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
         TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
+    use pathfinder_core::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
+        L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    };
+    use serde::{Deserialize, Serialize};
+    use serde_with::serde_as;
 
     /// Represents deserialized L2 transaction receipt data.
     #[serde_as]

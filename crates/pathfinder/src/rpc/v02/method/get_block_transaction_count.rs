@@ -1,10 +1,9 @@
-use anyhow::Context;
-
 use crate::{
-    core::BlockId,
     rpc::v02::RpcContext,
     storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable},
 };
+use anyhow::Context;
+use pathfinder_core::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetBlockTransactionCountInput {
@@ -67,12 +66,9 @@ pub async fn get_block_transaction_count(
 
 #[cfg(test)]
 mod tests {
-    use stark_hash::StarkHash;
-
-    use crate::core::StarknetBlockHash;
-    use crate::core::StarknetBlockNumber;
-
     use super::*;
+    use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+    use stark_hash::StarkHash;
 
     mod json {
         use super::*;

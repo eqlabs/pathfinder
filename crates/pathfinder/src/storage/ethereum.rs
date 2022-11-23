@@ -1,8 +1,7 @@
-use rusqlite::{named_params, Transaction};
-
-use crate::core::{
+use pathfinder_core::{
     EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex,
 };
+use rusqlite::{named_params, Transaction};
 
 /// Stores basic information about an Ethereum block, enough to descibe it as a unique point
 /// of origin. This lets us link StarkNet information to a point in Ethereum's history.

@@ -1,7 +1,6 @@
+use pathfinder_core::Chain;
 use web3::ethabi::{Contract, Event, Function};
 use web3::types::H160;
-
-use crate::core::Chain;
 
 /// Groups the Starknet contract addresses for a specific chain.
 pub struct ContractAddresses {
@@ -123,15 +122,13 @@ mod tests {
     use std::str::FromStr;
 
     mod contract {
+        use super::*;
+        use crate::ethereum::transport::HttpTransport;
+        use pathfinder_core::Chain;
         use web3::{
             contract::Options,
             types::{BlockId, BlockNumber},
         };
-
-        use crate::core::Chain;
-        use crate::ethereum::transport::HttpTransport;
-
-        use super::*;
 
         #[test]
         fn core() {

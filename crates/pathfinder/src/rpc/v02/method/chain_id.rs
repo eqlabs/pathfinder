@@ -9,10 +9,9 @@ pub async fn chain_id(context: RpcContext) -> Result<String, ChainIdError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::Chain;
-    use crate::rpc::v02::RpcContext;
-
     use super::chain_id;
+    use crate::rpc::v02::RpcContext;
+    use pathfinder_core::Chain;
 
     #[tokio::test]
     async fn test_chain_id() {

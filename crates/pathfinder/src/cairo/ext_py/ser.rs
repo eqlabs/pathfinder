@@ -1,8 +1,11 @@
 //! The json serializable types
 
-use crate::core::{CallParam, ContractAddress, ContractNonce, EntryPoint};
 use crate::rpc::v01::types::BlockHashOrTag;
 use crate::sequencer::reply::state_update::{DeployedContract, StorageDiff};
+use pathfinder_core::{
+    BlockId, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint, StarknetBlockHash,
+    StarknetBlockNumber,
+};
 use std::collections::HashMap;
 
 /// The command we send to the Python loop.
@@ -51,13 +54,13 @@ pub(crate) enum UsedChain {
     Goerli,
 }
 
-impl From<crate::core::Chain> for UsedChain {
-    fn from(c: crate::core::Chain) -> Self {
+impl From<Chain> for UsedChain {
+    fn from(c: Chain) -> Self {
         match c {
-            crate::core::Chain::Mainnet => UsedChain::Mainnet,
-            crate::core::Chain::Testnet => UsedChain::Goerli,
-            crate::core::Chain::Testnet2 => UsedChain::Goerli,
-            crate::core::Chain::Integration => UsedChain::Goerli,
+            Chain::Mainnet => UsedChain::Mainnet,
+            Chain::Testnet => UsedChain::Goerli,
+            Chain::Testnet2 => UsedChain::Goerli,
+            Chain::Integration => UsedChain::Goerli,
         }
     }
 }
@@ -206,8 +209,8 @@ impl<'a> serde::Serialize for NoncesWrapper<'a> {
 /// Custom "when" without the Pending tag, which has no meaning crossing process boundaries.
 #[derive(Debug)]
 pub enum BlockHashNumberOrLatest {
-    Hash(crate::core::StarknetBlockHash),
-    Number(crate::core::StarknetBlockNumber),
+    Hash(StarknetBlockHash),
+    Number(StarknetBlockNumber),
     Latest,
 }
 
@@ -228,14 +231,14 @@ impl serde::Serialize for BlockHashNumberOrLatest {
     }
 }
 
-impl From<crate::core::StarknetBlockHash> for BlockHashNumberOrLatest {
-    fn from(h: crate::core::StarknetBlockHash) -> Self {
+impl From<StarknetBlockHash> for BlockHashNumberOrLatest {
+    fn from(h: StarknetBlockHash) -> Self {
         BlockHashNumberOrLatest::Hash(h)
     }
 }
 
-impl From<crate::core::StarknetBlockNumber> for BlockHashNumberOrLatest {
-    fn from(n: crate::core::StarknetBlockNumber) -> Self {
+impl From<StarknetBlockNumber> for BlockHashNumberOrLatest {
+    fn from(n: StarknetBlockNumber) -> Self {
         BlockHashNumberOrLatest::Number(n)
     }
 }
@@ -279,15 +282,15 @@ impl TryFrom<crate::rpc::v01::types::BlockNumberOrTag> for BlockHashNumberOrLate
     }
 }
 
-impl TryFrom<crate::core::BlockId> for BlockHashNumberOrLatest {
+impl TryFrom<BlockId> for BlockHashNumberOrLatest {
     type Error = Pending;
 
-    fn try_from(value: crate::core::BlockId) -> Result<Self, Self::Error> {
+    fn try_from(value: BlockId) -> Result<Self, Self::Error> {
         match value {
-            crate::core::BlockId::Number(n) => Ok(n.into()),
-            crate::core::BlockId::Hash(h) => Ok(h.into()),
-            crate::core::BlockId::Latest => Ok(BlockHashNumberOrLatest::Latest),
-            crate::core::BlockId::Pending => Err(Pending),
+            BlockId::Number(n) => Ok(n.into()),
+            BlockId::Hash(h) => Ok(h.into()),
+            BlockId::Latest => Ok(BlockHashNumberOrLatest::Latest),
+            BlockId::Pending => Err(Pending),
         }
     }
 }
@@ -296,17 +299,16 @@ impl TryFrom<crate::core::BlockId> for BlockHashNumberOrLatest {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::{
-        cairo::ext_py::ser::NoncesWrapper,
-        core::{ContractAddress, ContractNonce},
-        starkhash,
+    use crate::cairo::ext_py::ser::NoncesWrapper;
+    use pathfinder_core::{
+        starkhash, {ContractAddress, ContractNonce},
     };
 
     #[test]
     fn serialize_some_updates() {
         use super::ContractUpdatesWrapper;
-        use crate::core::{ContractAddress, StorageAddress, StorageValue};
         use crate::sequencer::reply::state_update::StorageDiff;
+        use pathfinder_core::{StorageAddress, StorageValue};
         use std::collections::HashMap;
 
         let expected = r#"{"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0x0"}]}"#;
@@ -343,8 +345,8 @@ mod tests {
     #[test]
     fn serialize_some_deployed_contracts() {
         use super::DeployedContractsWrapper;
-        use crate::core::{ClassHash, ContractAddress};
         use crate::sequencer::reply::state_update::DeployedContract;
+        use pathfinder_core::ClassHash;
 
         let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
         let contracts = vec![DeployedContract {
@@ -377,7 +379,7 @@ mod tests {
     #[test]
     fn serialize_block_hash_num_latest() {
         use super::BlockHashNumberOrLatest;
-        use crate::core::{StarknetBlockHash, StarknetBlockNumber};
+        use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
         use stark_hash::StarkHash;
 
         let data = &[

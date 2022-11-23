@@ -195,22 +195,19 @@ pub(crate) mod test_utils {
         StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable,
         Storage,
     };
-
     use crate::{
-        core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StarknetTransactionIndex, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
         sequencer::reply::transaction::{
             self, DeclareTransaction, DeployTransaction, EntryPointType, InvokeTransaction,
             InvokeTransactionV0,
         },
         starkhash,
     };
-
+    use pathfinder_core::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    };
     use stark_hash::StarkHash;
     use web3::types::{H128, H256};
 

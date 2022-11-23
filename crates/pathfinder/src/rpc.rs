@@ -95,12 +95,6 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
 #[cfg(test)]
 mod tests {
     use crate::{
-        core::{
-            ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey,
-            GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex,
-            StorageAddress, TransactionVersion,
-        },
         rpc::RpcServer,
         sequencer::reply::{
             state_update::StorageDiff,
@@ -118,7 +112,12 @@ mod tests {
         },
     };
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
-
+    use pathfinder_core::{
+        ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
+        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
+        TransactionVersion,
+    };
     use stark_hash::StarkHash;
     use std::{
         collections::BTreeMap,
@@ -149,10 +148,8 @@ mod tests {
     // Local test helper
     pub fn setup_storage() -> Storage {
         use crate::sequencer::reply::transaction::Transaction;
-        use crate::{
-            core::{ContractNonce, StorageValue},
-            state::{update_contract_state, CompressedContract},
-        };
+        use crate::state::{update_contract_state, CompressedContract};
+        use pathfinder_core::{ContractNonce, StorageValue};
         use web3::types::H128;
 
         let storage = Storage::in_memory().unwrap();
@@ -298,7 +295,7 @@ mod tests {
             contract_address: contract0_addr,
             entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(StarkHash::ZERO),
-            max_fee: crate::core::Fee(H128::zero()),
+            max_fee: pathfinder_core::Fee(H128::zero()),
             signature: vec![],
             transaction_hash: txn0_hash,
         };
@@ -377,9 +374,9 @@ mod tests {
     /// i.e. the pending block's parent hash will be the latest block's hash from storage,
     /// and similarly for the pending state diffs state root.
     pub async fn create_pending_data(storage: Storage) -> PendingData {
-        use crate::core::StorageValue;
         use crate::sequencer::reply::transaction::DeployTransaction;
         use crate::sequencer::reply::transaction::Transaction;
+        use pathfinder_core::StorageValue;
 
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {

@@ -1,11 +1,10 @@
-use anyhow::{anyhow, Context};
-use serde::Deserialize;
-use stark_hash::StarkHash;
-
-use crate::core::{BlockId, ContractAddress, StorageAddress, StorageValue};
 use crate::rpc::v02::RpcContext;
 use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use crate::storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
+use anyhow::{anyhow, Context};
+use pathfinder_core::{BlockId, ContractAddress, StorageAddress, StorageValue};
+use serde::Deserialize;
+use stark_hash::StarkHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStorageAtInput {
@@ -106,10 +105,10 @@ pub async fn get_storage_at(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{ContractAddress, StarknetBlockHash, StorageAddress};
     use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
+    use pathfinder_core::{ContractAddress, StarknetBlockHash, StorageAddress};
 
     /// # Important
     ///

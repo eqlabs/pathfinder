@@ -1,13 +1,9 @@
-use std::vec::IntoIter;
-
+use crate::ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate};
 use anyhow::{Context, Result};
+use pathfinder_core::{ClassHash, ContractAddress, StorageAddress, StorageValue};
 use stark_hash::StarkHash;
+use std::vec::IntoIter;
 use web3::types::U256;
-
-use crate::{
-    core::{ClassHash, ContractAddress, StorageAddress, StorageValue},
-    ethereum::state_update::{ContractUpdate, DeployedContract, StateUpdate, StorageUpdate},
-};
 
 /// Utility to parse StarkNet memory pages into a [StateUpdate].
 ///

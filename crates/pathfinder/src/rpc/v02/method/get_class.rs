@@ -1,8 +1,7 @@
-use crate::core::{BlockId, ClassHash};
 use crate::rpc::v02::types::ContractClass;
 use crate::rpc::v02::RpcContext;
-
 use anyhow::Context;
+use pathfinder_core::{BlockId, ClassHash};
 use rusqlite::OptionalExtension;
 
 crate::rpc::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
@@ -96,7 +95,7 @@ fn read_latest(tx: &rusqlite::Transaction<'_>, class: ClassHash) -> Result<Vec<u
 fn read_at_hash(
     tx: &rusqlite::Transaction<'_>,
     class: ClassHash,
-    block: crate::core::StarknetBlockHash,
+    block: pathfinder_core::StarknetBlockHash,
 ) -> Result<Vec<u8>, GetClassError> {
     let number = tx
         .query_row(
@@ -129,7 +128,7 @@ fn read_at_hash(
 fn read_at_number(
     tx: &rusqlite::Transaction<'_>,
     class: ClassHash,
-    block: crate::core::StarknetBlockNumber,
+    block: pathfinder_core::StarknetBlockNumber,
 ) -> Result<Vec<u8>, GetClassError> {
     // Check that the block number exists. This has to happen first as the <= check
     // in the class selection query will work even if the block number exceeds what
@@ -185,12 +184,10 @@ mod tests {
     use assert_matches::assert_matches;
 
     mod parsing {
-        use crate::core::StarknetBlockHash;
-        use crate::starkhash;
-
         use super::*;
-
+        use crate::starkhash;
         use jsonrpsee::types::Params;
+        use pathfinder_core::StarknetBlockHash;
 
         #[test]
         fn positional_args() {
@@ -260,7 +257,7 @@ mod tests {
 
     #[test]
     fn read_at_number() {
-        use crate::core::StarknetBlockNumber;
+        use pathfinder_core::StarknetBlockNumber;
 
         let context = RpcContext::for_tests();
         let mut conn = context.storage.connection().unwrap();
@@ -292,7 +289,7 @@ mod tests {
 
     #[test]
     fn read_at_hash() {
-        use crate::core::StarknetBlockHash;
+        use pathfinder_core::StarknetBlockHash;
 
         let context = RpcContext::for_tests();
         let mut conn = context.storage.connection().unwrap();

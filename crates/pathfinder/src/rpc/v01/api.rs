@@ -2,8 +2,10 @@
 use crate::rpc::{
     v01::types::{
         reply::{
-            Block, BlockHashAndNumber, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate,
-            GetEventsResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
+            Block, BlockHashAndNumber, BlockStatus, DeclareTransactionResult,
+            DeployTransactionResult, EmittedEvent, ErrorCode, FeeEstimate, GetEventsResult,
+            InvokeTransactionResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
+            Transactions,
         },
         request::{Call, ContractCall, EventFilter},
     },
@@ -14,13 +16,6 @@ use crate::rpc::{
 };
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
-    core::{
-        BlockId, CallResultValue, Chain, ClassHash, ConstructorParam, ContractAddress,
-        ContractAddressSalt, ContractClass, ContractNonce, Fee, GasPrice, GlobalRoot,
-        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
-    },
     rpc::gas_price,
     sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
@@ -34,13 +29,16 @@ use jsonrpsee::{
     core::{error::Error, RpcResult},
     types::{error::CallError, ErrorObject},
 };
+use pathfinder_core::{
+    BlockId, CallResultValue, Chain, ClassHash, ConstructorParam, ContractAddress,
+    ContractAddressSalt, ContractClass, ContractNonce, EventKey, Fee, GasPrice, GlobalRoot,
+    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
+    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+};
 use stark_hash::StarkHash;
 use std::convert::TryInto;
 use std::sync::Arc;
-
-use crate::rpc::v01::types::reply::{
-    DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult, Transactions,
-};
 
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
@@ -1066,7 +1064,7 @@ impl RpcApi {
         skip: usize,
         amount: usize,
         address: Option<ContractAddress>,
-        keys: std::collections::HashSet<crate::core::EventKey>,
+        keys: std::collections::HashSet<EventKey>,
     ) -> bool {
         let pending_block = match self.pending_data.as_ref() {
             Some(data) => match data.block().await {

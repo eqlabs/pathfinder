@@ -2,14 +2,7 @@ pub mod l1;
 pub mod l2;
 mod pending;
 
-use std::future::Future;
-use std::sync::Arc;
-
 use crate::{
-    core::{
-        Chain, ClassHash, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp,
-    },
     ethereum::{log::StateUpdateLog, transport::EthereumTransport},
     rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer::{
@@ -23,10 +16,15 @@ use crate::{
         StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
     },
 };
-
 use anyhow::Context;
+use pathfinder_core::{
+    Chain, ClassHash, ContractNonce, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::StarkHash;
+use std::future::Future;
+use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 
 pub struct State {
@@ -471,7 +469,7 @@ async fn update_sync_status_latest(
     starting_block_num: StarknetBlockNumber,
     chain: Chain,
 ) -> anyhow::Result<()> {
-    use crate::core::BlockId;
+    use pathfinder_core::BlockId;
 
     let poll_interval = head_poll_interval(chain);
 
@@ -799,7 +797,7 @@ fn deploy_contract(
     // Add a new contract to global tree, the contract root is initialized to ZERO.
     let contract_root = ContractRoot::ZERO;
     // The initial value of a contract nonce is ZERO.
-    let contract_nonce = crate::core::ContractNonce::ZERO;
+    let contract_nonce = ContractNonce::ZERO;
     // sequencer::reply::state_update::Contract::contract_hash is the old (pre cairo 0.9.0)
     // name for `class_hash`.
     let class_hash = contract.class_hash;
@@ -922,8 +920,8 @@ async fn download_verify_and_insert_missing_classes<
 /// interval is chosen to provide a good balance between spamming and getting new
 /// block information as it is available. The interval is based on the block creation
 /// time, which is 2 minutes for Goerlie and 2 hours for Mainnet.
-pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
-    use crate::core::Chain::*;
+pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
+    use pathfinder_core::Chain::*;
     use std::time::Duration;
 
     match chain {
@@ -938,14 +936,6 @@ pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
 mod tests {
     use super::{l1, l2};
     use crate::{
-        core::{
-            CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice, GlobalRoot,
-            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
         ethereum,
         rpc::v01::types::BlockHashOrTag,
         sequencer::{
@@ -955,6 +945,14 @@ mod tests {
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
     use futures::stream::{StreamExt, TryStreamExt};
+    use pathfinder_core::{
+        BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
+        ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
+        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
+        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    };
     use stark_hash::StarkHash;
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
@@ -976,7 +974,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn chain(&self) -> anyhow::Result<crate::core::EthereumChain> {
+        async fn chain(&self) -> anyhow::Result<EthereumChain> {
             unimplemented!()
         }
 
@@ -1007,14 +1005,9 @@ mod tests {
 
     #[async_trait::async_trait]
     impl sequencer::ClientApi for FakeSequencer {
-        async fn block(
-            &self,
-            block: crate::core::BlockId,
-        ) -> Result<reply::MaybePendingBlock, SequencerError> {
+        async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
             match block {
-                crate::core::BlockId::Number(_) => {
-                    Ok(reply::MaybePendingBlock::Block(BLOCK0.clone()))
-                }
+                BlockId::Number(_) => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
                 _ => unimplemented!(),
             }
         }
@@ -1054,10 +1047,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn state_update(
-            &self,
-            _: crate::core::BlockId,
-        ) -> Result<reply::StateUpdate, SequencerError> {
+        async fn state_update(&self, _: BlockId) -> Result<reply::StateUpdate, SequencerError> {
             unimplemented!()
         }
 
@@ -1174,7 +1164,7 @@ mod tests {
             sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
             state_root: GlobalRoot(StarkHash::ZERO),
             status: reply::Status::AcceptedOnL1,
-            timestamp: crate::core::StarknetBlockTimestamp::new_or_panic(0),
+            timestamp: StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: None,
@@ -1187,7 +1177,7 @@ mod tests {
             sequencer_address: Some(SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap())),
             state_root: GlobalRoot(*B),
             status: reply::Status::AcceptedOnL2,
-            timestamp: crate::core::StarknetBlockTimestamp::new_or_panic(1),
+            timestamp: StarknetBlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: None,

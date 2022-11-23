@@ -1,24 +1,20 @@
+use crate::ethereum::{
+    contract::{
+        MEMORY_PAGE_FACT_CONTINUOUS_EVENT, MEMORY_PAGE_HASHES_EVENT, STATE_TRANSITION_FACT_EVENT,
+        STATE_UPDATE_EVENT,
+    },
+    log::{
+        MemoryPageFactContinuousLog, MemoryPagesHashesLog, StateTransitionFactLog, StateUpdateLog,
+    },
+    EthOrigin,
+};
 use anyhow::Context;
+use pathfinder_core::{GlobalRoot, StarknetBlockNumber};
 use stark_hash::StarkHash;
 use web3::{
     contract::tokens::Tokenizable,
     ethabi::{ethereum_types::BigEndianHash, LogParam, RawLog},
     types::H256,
-};
-
-use crate::{
-    core::{GlobalRoot, StarknetBlockNumber},
-    ethereum::{
-        contract::{
-            MEMORY_PAGE_FACT_CONTINUOUS_EVENT, MEMORY_PAGE_HASHES_EVENT,
-            STATE_TRANSITION_FACT_EVENT, STATE_UPDATE_EVENT,
-        },
-        log::{
-            MemoryPageFactContinuousLog, MemoryPagesHashesLog, StateTransitionFactLog,
-            StateUpdateLog,
-        },
-        EthOrigin,
-    },
 };
 
 impl TryFrom<web3::types::Log> for StateUpdateLog {

@@ -1,9 +1,6 @@
+use crate::rpc::v02::RpcContext;
 use anyhow::Context;
-
-use crate::{
-    core::{BlockId, ContractAddress, ContractNonce},
-    rpc::v02::RpcContext,
-};
+use pathfinder_core::{BlockId, ContractAddress, ContractNonce};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetNonceInput {
@@ -82,10 +79,12 @@ async fn get_pending_nonce(
 #[cfg(test)]
 mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
-
-    use crate::core::{BlockId, ContractAddress, ContractNonce, StarknetBlockNumber};
     use crate::starkhash_bytes;
-    use crate::{core::StarknetBlockHash, rpc::v02::RpcContext, starkhash};
+    use crate::{rpc::v02::RpcContext, starkhash};
+    use pathfinder_core::{
+        BlockId, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
+        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    };
 
     mod parsing {
         use super::*;
@@ -146,7 +145,7 @@ mod tests {
 
         #[tokio::test]
         async fn block_not_found() {
-            use crate::core::StarknetBlockHash;
+            use pathfinder_core::StarknetBlockHash;
 
             let context = RpcContext::for_tests();
 
@@ -225,17 +224,17 @@ mod tests {
         // The data this test actually cares about
         let valid_1 = ContractAddress::new_or_panic(starkhash_bytes!(b"i am valid"));
         let valid_2 = ContractAddress::new_or_panic(starkhash_bytes!(b"valid as well"));
-        let nonce_1 = crate::core::ContractNonce(starkhash_bytes!(b"the nonce"));
-        let nonce_2 = crate::core::ContractNonce(starkhash_bytes!(b"other nonce"));
+        let nonce_1 = ContractNonce(starkhash_bytes!(b"the nonce"));
+        let nonce_2 = ContractNonce(starkhash_bytes!(b"other nonce"));
         let invalid = ContractAddress::new_or_panic(starkhash_bytes!(b"not valid"));
 
         // We don't care about this data, but it is required for setting up pending data.
         let block = crate::sequencer::reply::PendingBlock {
-            gas_price: crate::core::GasPrice(0),
-            parent_hash: crate::core::StarknetBlockHash(starkhash_bytes!(b"dont care")),
-            sequencer_address: crate::core::SequencerAddress(starkhash_bytes!(b"dont care")),
+            gas_price: GasPrice(0),
+            parent_hash: StarknetBlockHash(starkhash_bytes!(b"dont care")),
+            sequencer_address: SequencerAddress(starkhash_bytes!(b"dont care")),
             status: crate::sequencer::reply::Status::Pending,
-            timestamp: crate::core::StarknetBlockTimestamp::new_or_panic(1234),
+            timestamp: StarknetBlockTimestamp::new_or_panic(1234),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: None,
@@ -245,8 +244,8 @@ mod tests {
         // We only care about the nonce data, but the rest is required for setting up pending data.
         let state_update = crate::sequencer::reply::StateUpdate {
             block_hash: None,
-            new_root: crate::core::GlobalRoot(starkhash_bytes!(b"dont care")),
-            old_root: crate::core::GlobalRoot(starkhash_bytes!(b"dont care")),
+            new_root: GlobalRoot(starkhash_bytes!(b"dont care")),
+            old_root: GlobalRoot(starkhash_bytes!(b"dont care")),
             state_diff: crate::sequencer::reply::state_update::StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: Vec::new(),

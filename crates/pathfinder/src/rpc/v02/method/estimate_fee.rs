@@ -1,15 +1,13 @@
-use std::sync::Arc;
-
-use serde::Serialize;
-use serde_with::serde_as;
-
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
-    core::{BlockId, StarknetBlockTimestamp},
     rpc::v02::types::request::BroadcastedTransaction,
     rpc::v02::RpcContext,
     state::PendingData,
 };
+use pathfinder_core::{BlockId, StarknetBlockTimestamp};
+use serde::Serialize;
+use serde_with::serde_as;
+use std::sync::Arc;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct EstimateFeeInput {
@@ -159,19 +157,13 @@ impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use crate::starkhash;
-    use crate::{
-        core::{
-            CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
-            TransactionNonce, TransactionSignatureElem, TransactionVersion,
-        },
-        rpc::v02::types::request::BroadcastedInvokeTransaction,
-        storage::JournalMode,
-    };
-
     use super::*;
+    use crate::{rpc::v02::types::request::BroadcastedInvokeTransaction, storage::JournalMode};
+    use pathfinder_core::{
+        starkhash, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    };
+    use std::path::PathBuf;
 
     mod parsing {
         use super::*;
@@ -255,15 +247,13 @@ mod tests {
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
     mod ext_py {
-        use crate::core::ContractAddressSalt;
+        use super::*;
         use crate::rpc::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeployTransaction,
             BroadcastedInvokeTransactionV0,
         };
         use crate::rpc::v02::types::ContractClass;
-        use crate::starkhash_bytes;
-
-        use super::*;
+        use pathfinder_core::{starkhash_bytes, ContractAddressSalt};
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(

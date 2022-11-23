@@ -1,10 +1,8 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::{
-    core::{
-        EthereumAddress, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp,
-    },
-    rpc::serde::{EthereumAddressAsHexStr, GasPriceAsHexStr},
+use crate::rpc::serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
+use pathfinder_core::{
+    EthereumAddress, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+    StarknetBlockNumber, StarknetBlockTimestamp,
 };
 use serde::Deserialize;
 use serde_with::serde_as;
@@ -183,20 +181,17 @@ pub struct TransactionStatus {
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    use crate::{
-        core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
-            L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
-            StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem,
-            TransactionVersion,
-        },
-        rpc::serde::{
-            CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-            EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
-            L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-            TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-        },
+    use crate::rpc::serde::{
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
+        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
+        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
+        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+    };
+    use pathfinder_core::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
+        L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -590,7 +585,9 @@ pub struct StateUpdate {
 
 /// Types used when deserializing state update related data.
 pub mod state_update {
-    use crate::core::{ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue};
+    use pathfinder_core::{
+        ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
+    };
     use serde::Deserialize;
     use serde_with::serde_as;
     use std::collections::HashMap;
@@ -674,7 +671,7 @@ pub struct EthContractAddresses {
 }
 
 pub mod add_transaction {
-    use crate::core::{ClassHash, ContractAddress, StarknetTransactionHash};
+    use pathfinder_core::{ClassHash, ContractAddress, StarknetTransactionHash};
 
     /// API response for an INVOKE_FUNCTION transaction
     #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]

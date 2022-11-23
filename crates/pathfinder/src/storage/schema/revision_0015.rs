@@ -1,9 +1,7 @@
 use anyhow::Context;
+use pathfinder_core::Fee;
 use rusqlite::{named_params, Transaction as RusqliteTransaction};
-
 use web3::types::H128;
-
-use crate::core::Fee;
 
 // This is a copy of the sequencer reply types _without_ deny_unknown_fields
 // The point is that with the old `struct Transaction` we had some optional
@@ -11,16 +9,16 @@ use crate::core::Fee;
 // format. The point of this migration is getting rid of those `null` values.
 mod transaction {
     use crate::{
-        core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
-            TransactionVersion,
-        },
         rpc::serde::{
             CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
             TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
         },
         sequencer::reply::transaction::EntryPointType,
+    };
+    use pathfinder_core::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
+        TransactionVersion,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -229,12 +227,11 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
 
 #[cfg(test)]
 mod tests {
-    use crate::starkhash;
-    use crate::{core::StarknetTransactionHash, storage::schema};
+    use super::transaction;
+    use crate::storage::schema;
+    use pathfinder_core::{starkhash, StarknetTransactionHash};
     use rusqlite::{named_params, Connection};
     use web3::types::H128;
-
-    use super::transaction;
 
     #[test]
     fn empty() {

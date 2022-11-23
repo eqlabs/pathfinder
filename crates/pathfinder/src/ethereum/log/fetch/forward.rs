@@ -1,13 +1,10 @@
-use anyhow::Context;
-use web3::types::{BlockNumber, FilterBuilder};
-
-use crate::{
-    core::{Chain, EthereumBlockNumber},
-    ethereum::{
-        log::fetch::MetaLog,
-        transport::{EthereumTransport, LogsError},
-    },
+use crate::ethereum::{
+    log::fetch::MetaLog,
+    transport::{EthereumTransport, LogsError},
 };
+use anyhow::Context;
+use pathfinder_core::{Chain, EthereumBlockNumber};
+use web3::types::{BlockNumber, FilterBuilder};
 
 /// Fetches consecutive logs of type T from L1, accounting for chain
 /// reorganisations.
@@ -194,22 +191,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::str::FromStr;
-
-    use stark_hash::StarkHash;
-    use web3::types::H256;
-
-    use crate::{
-        core::{
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
-        },
-        ethereum::{
-            log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin,
-            TransactionOrigin,
-        },
+    use crate::ethereum::{
+        log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin,
     };
+    use pathfinder_core::{
+        EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+        EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
+    };
+    use stark_hash::StarkHash;
+    use std::str::FromStr;
+    use web3::types::H256;
 
     #[tokio::test]
     async fn consistency() {
@@ -249,7 +240,7 @@ mod tests {
 
         let genesis_block = starknet_genesis_log.origin.block.number;
 
-        let chain = crate::core::Chain::Testnet;
+        let chain = Chain::Testnet;
         let mut root_fetcher =
             LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), chain, genesis_block);
         let transport = HttpTransport::test_transport(chain);

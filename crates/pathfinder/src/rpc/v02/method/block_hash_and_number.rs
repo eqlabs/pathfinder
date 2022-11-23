@@ -1,10 +1,6 @@
+use crate::{rpc::v02::RpcContext, storage::StarknetBlocksTable};
 use anyhow::Context;
-
-use crate::{
-    core::{StarknetBlockHash, StarknetBlockNumber},
-    rpc::v02::RpcContext,
-    storage::StarknetBlocksTable,
-};
+use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
 
 #[derive(serde::Serialize)]
 pub struct BlockHashAndNumber {

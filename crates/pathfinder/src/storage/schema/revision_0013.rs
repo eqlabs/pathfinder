@@ -1,6 +1,7 @@
-use crate::{core::ClassHash, state::CompressedContract};
+use crate::state::CompressedContract;
 #[allow(unused)]
 use anyhow::Context;
+use pathfinder_core::{Chain, ClassHash};
 use rusqlite::{OptionalExtension, Transaction};
 use stark_hash::{OverflowError, StarkHash};
 
@@ -14,12 +15,8 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
         .optional()?;
 
     let (minimum_block, chain) = match genesis {
-        Some(Ok(x)) if x == crate::consts::TESTNET_GENESIS_HASH.0 => {
-            (231_579, crate::core::Chain::Testnet)
-        }
-        Some(Ok(x)) if x == crate::consts::MAINNET_GENESIS_HASH.0 => {
-            (2700, crate::core::Chain::Mainnet)
-        }
+        Some(Ok(x)) if x == crate::consts::TESTNET_GENESIS_HASH.0 => (231_579, Chain::Testnet),
+        Some(Ok(x)) if x == crate::consts::MAINNET_GENESIS_HASH.0 => (2700, Chain::Mainnet),
         Some(Ok(y)) => anyhow::bail!("Unknown genesis block hash: {}", y),
         Some(Err(err @ OverflowError)) => {
             return Err(anyhow::Error::new(err).context("Failed to read genesis block hash"))

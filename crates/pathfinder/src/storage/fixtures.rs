@@ -1,16 +1,15 @@
 //! Basic test fixtures for storage.
 
 use crate::{
-    core::{
-        ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
-        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
-        StorageValue,
-    },
     rpc::v01::types::reply::{
         state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
         StateUpdate,
     },
     storage::{StarknetBlock, Storage},
+};
+use pathfinder_core::{
+    ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress, StorageValue,
 };
 use rusqlite::Transaction;
 use stark_hash::StarkHash;

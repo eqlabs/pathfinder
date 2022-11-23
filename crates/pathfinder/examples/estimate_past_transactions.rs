@@ -41,7 +41,7 @@ fn main() -> Result<(), anyhow::Error> {
             async move {
                 let _ = stop_rx.await;
             },
-            pathfinder_lib::core::Chain::Mainnet,
+            pathfinder_core::Chain::Mainnet,
         )
         .await
     })?;
@@ -67,7 +67,7 @@ fn main() -> Result<(), anyhow::Error> {
 #[derive(Debug)]
 struct Work {
     transaction: pathfinder_lib::rpc::v02::types::request::BroadcastedTransaction,
-    at_block: pathfinder_lib::core::StarknetBlockHash,
+    at_block: pathfinder_core::StarknetBlockHash,
     gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource,
     actual_fee: web3::types::H256,
     span: tracing::Span,
@@ -200,7 +200,7 @@ fn feed_work(
         sender
             .blocking_send(Work {
                 transaction,
-                at_block: pathfinder_lib::core::StarknetBlockHash(target_hash),
+                at_block: pathfinder_core::StarknetBlockHash(target_hash),
                 // use the b.gas_price to get as close as possible
                 gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource::Current(
                     gas_price_at_block,
@@ -341,7 +341,7 @@ enum SimpleTransaction {
 
 #[derive(serde::Deserialize, Debug)]
 struct SimpleDeploy {
-    contract_address: pathfinder_lib::core::ContractAddress,
+    contract_address: pathfinder_core::ContractAddress,
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -351,19 +351,19 @@ struct SimpleDeclare {}
 #[derive(serde::Deserialize, Debug)]
 struct SimpleDeployAccount {
     #[serde_as(as = "pathfinder_lib::rpc::serde::TransactionVersionAsHexStr")]
-    pub version: pathfinder_lib::core::TransactionVersion,
+    pub version: pathfinder_core::TransactionVersion,
     #[serde_as(as = "pathfinder_lib::rpc::serde::FeeAsHexStr")]
-    pub max_fee: pathfinder_lib::core::Fee,
+    pub max_fee: pathfinder_core::Fee,
     #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::TransactionSignatureElemAsDecimalStr>")]
     #[serde(default)]
-    pub signature: Vec<pathfinder_lib::core::TransactionSignatureElem>,
+    pub signature: Vec<pathfinder_core::TransactionSignatureElem>,
     #[serde(default = "default_transaction_nonce")]
-    pub nonce: pathfinder_lib::core::TransactionNonce,
+    pub nonce: pathfinder_core::TransactionNonce,
 
-    contract_address_salt: pathfinder_lib::core::ContractAddressSalt,
+    contract_address_salt: pathfinder_core::ContractAddressSalt,
     #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::CallParamAsDecimalStr>")]
-    pub constructor_calldata: Vec<pathfinder_lib::core::CallParam>,
-    pub class_hash: pathfinder_lib::core::ClassHash,
+    pub constructor_calldata: Vec<pathfinder_core::CallParam>,
+    pub class_hash: pathfinder_core::ClassHash,
 }
 
 #[serde_with::serde_as]
@@ -371,23 +371,23 @@ struct SimpleDeployAccount {
 struct SimpleInvoke {
     #[serde(default)]
     #[serde_as(as = "Option<pathfinder_lib::rpc::serde::TransactionVersionAsHexStr>")]
-    pub version: Option<pathfinder_lib::core::TransactionVersion>,
+    pub version: Option<pathfinder_core::TransactionVersion>,
     #[serde_as(as = "pathfinder_lib::rpc::serde::FeeAsHexStr")]
-    pub max_fee: pathfinder_lib::core::Fee,
+    pub max_fee: pathfinder_core::Fee,
     #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::TransactionSignatureElemAsDecimalStr>")]
     #[serde(default)]
-    pub signature: Vec<pathfinder_lib::core::TransactionSignatureElem>,
+    pub signature: Vec<pathfinder_core::TransactionSignatureElem>,
     #[serde(default = "default_transaction_nonce")]
-    pub nonce: pathfinder_lib::core::TransactionNonce,
+    pub nonce: pathfinder_core::TransactionNonce,
 
-    contract_address: pathfinder_lib::core::ContractAddress,
+    contract_address: pathfinder_core::ContractAddress,
     #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::CallParamAsDecimalStr>")]
-    pub calldata: Vec<pathfinder_lib::core::CallParam>,
+    pub calldata: Vec<pathfinder_core::CallParam>,
     #[serde(default)]
-    pub entry_point_selector: Option<pathfinder_lib::core::EntryPoint>,
+    pub entry_point_selector: Option<pathfinder_core::EntryPoint>,
 }
 
-fn default_transaction_nonce() -> pathfinder_lib::core::TransactionNonce {
+fn default_transaction_nonce() -> pathfinder_core::TransactionNonce {
     pathfinder_lib::rpc::v01::types::request::Call::DEFAULT_NONCE
 }
 
@@ -406,7 +406,7 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::v02::types::request::Broadcaste
                         contract_address: tx.contract_address,
                         entry_point_selector: tx
                             .entry_point_selector
-                            .unwrap_or(pathfinder_lib::core::EntryPoint(StarkHash::ZERO)),
+                            .unwrap_or(pathfinder_core::EntryPoint(StarkHash::ZERO)),
                         calldata: tx.calldata,
                     },
                 )),
@@ -427,14 +427,14 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::v02::types::request::Broadcaste
             },
             None => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                 BroadcastedInvokeTransactionV0 {
-                    version: pathfinder_lib::core::TransactionVersion::ZERO,
+                    version: pathfinder_core::TransactionVersion::ZERO,
                     max_fee: tx.max_fee,
                     signature: tx.signature,
                     nonce: None,
                     contract_address: tx.contract_address,
                     entry_point_selector: tx
                         .entry_point_selector
-                        .unwrap_or(pathfinder_lib::core::EntryPoint(StarkHash::ZERO)),
+                        .unwrap_or(pathfinder_core::EntryPoint(StarkHash::ZERO)),
                     calldata: tx.calldata,
                 },
             )),

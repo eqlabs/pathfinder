@@ -1,7 +1,5 @@
-use crate::{
-    core::{Chain, EthereumBlockNumber},
-    ethereum::log::{LogFetcher, StateUpdateLog},
-};
+use crate::ethereum::log::{LogFetcher, StateUpdateLog};
+use pathfinder_core::{Chain, EthereumBlockNumber};
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
 #[derive(Clone)]
@@ -46,13 +44,10 @@ impl std::ops::DerefMut for StateRootFetcher {
 
 #[cfg(test)]
 mod tests {
+    use crate::ethereum::transport::HttpTransport;
     use assert_matches::assert_matches;
+    use pathfinder_core::{Chain, StarknetBlockNumber};
     use pretty_assertions::assert_eq;
-
-    use crate::{
-        core::{Chain, StarknetBlockNumber},
-        ethereum::transport::HttpTransport,
-    };
 
     use super::*;
 
@@ -163,21 +158,19 @@ mod tests {
     }
 
     mod reorg {
-        use web3::types::H256;
-
+        use super::*;
         use crate::{
-            core::{
-                EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-                EthereumTransactionIndex, GlobalRoot,
-            },
             ethereum::{
                 log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
                 TransactionOrigin,
             },
             starkhash,
         };
-
-        use super::*;
+        use pathfinder_core::{
+            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+            EthereumTransactionIndex, GlobalRoot,
+        };
+        use web3::types::H256;
 
         #[tokio::test]
         async fn block_replaced() {

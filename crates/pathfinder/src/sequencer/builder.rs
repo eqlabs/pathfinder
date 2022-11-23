@@ -10,12 +10,12 @@
 //!   3. [Method](stage::Method) where you select the REST API method.
 //!   4. [Params](stage::Params) where you select the retry behavior.
 //!   5. [Final](stage::Final) where you select the REST operation type, which is then executed.
-use crate::{
-    core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
-    sequencer::{
-        error::SequencerError,
-        metrics::{with_metrics, BlockTag, RequestMetadata},
-    },
+use crate::sequencer::{
+    error::SequencerError,
+    metrics::{with_metrics, BlockTag, RequestMetadata},
+};
+use pathfinder_core::{
+    BlockId, ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress,
 };
 
 /// A Sequencer Request builder.
@@ -198,8 +198,7 @@ impl<'a> Request<'a, stage::Method> {
 }
 
 impl<'a> Request<'a, stage::Params> {
-    pub fn with_block<B: Into<crate::core::BlockId>>(self, block: B) -> Self {
-        use crate::core::BlockId;
+    pub fn with_block<B: Into<BlockId>>(self, block: B) -> Self {
         use std::borrow::Cow;
 
         let block: BlockId = block.into();

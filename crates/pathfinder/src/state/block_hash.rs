@@ -1,16 +1,15 @@
-use anyhow::{Context, Error, Result};
-use bitvec::prelude::BitView;
-use stark_hash::{stark_hash, HashChain, StarkHash};
-
-use crate::core::{
-    Chain, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-    StarknetBlockTimestamp,
-};
 use crate::sequencer::reply::{
     transaction::{Event, Receipt, Transaction},
     Block,
 };
 use crate::state::merkle_tree::MerkleTree;
+use anyhow::{Context, Error, Result};
+use bitvec::prelude::BitView;
+use pathfinder_core::{
+    Chain, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+    StarknetBlockTimestamp,
+};
+use stark_hash::{stark_hash, HashChain, StarkHash};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
@@ -94,10 +93,8 @@ pub fn verify_block_hash(
 }
 
 mod meta {
+    use pathfinder_core::{starkhash, Chain, SequencerAddress, StarknetBlockNumber};
     use std::ops::Range;
-
-    use crate::core::{Chain, SequencerAddress, StarknetBlockNumber};
-    use crate::starkhash;
 
     /// Metadata about Starknet chains we use for block hash calculation
     ///
@@ -422,17 +419,16 @@ fn number_of_events_in_block(block: &Block) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{
-        core::{EntryPoint, Fee},
         sequencer::reply::transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
         starkhash,
     };
-
-    use super::*;
+    use pathfinder_core::{EntryPoint, Fee};
 
     #[test]
     fn test_event_hash() {
-        use crate::core::{ContractAddress, EventData, EventKey};
+        use pathfinder_core::{ContractAddress, EventData, EventKey};
 
         let event = Event {
             from_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
@@ -461,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        use crate::core::{ContractAddress, StarknetTransactionHash, TransactionSignatureElem};
+        use pathfinder_core::{ContractAddress, StarknetTransactionHash, TransactionSignatureElem};
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],

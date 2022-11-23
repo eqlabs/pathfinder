@@ -1,11 +1,10 @@
-use anyhow::{anyhow, Context};
-use serde::Deserialize;
-use stark_hash::StarkHash;
-
-use crate::core::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use crate::rpc::v02::common::get_block_status;
 use crate::rpc::v02::RpcContext;
 use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
+use anyhow::{anyhow, Context};
+use pathfinder_core::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use serde::Deserialize;
+use stark_hash::StarkHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Copy, Clone))]
@@ -160,12 +159,12 @@ fn get_block_transactions(
 }
 
 mod types {
-    use crate::core::{
+    use crate::rpc::v02::types::reply::{BlockStatus, Transaction};
+    use crate::sequencer;
+    use pathfinder_core::{
         GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash,
     };
-    use crate::rpc::v02::types::reply::{BlockStatus, Transaction};
-    use crate::sequencer;
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
     use stark_hash::StarkHash;
@@ -282,10 +281,9 @@ mod types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{StarknetBlockHash, StarknetBlockNumber};
-    use crate::starkhash;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
+    use pathfinder_core::{starkhash, StarknetBlockHash, StarknetBlockNumber};
 
     #[test]
     fn parsing() {

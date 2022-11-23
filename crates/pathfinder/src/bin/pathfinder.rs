@@ -2,9 +2,9 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use pathfinder_core::{self, Chain, EthereumChain};
 use pathfinder_lib::{
     cairo, config,
-    core::{self, Chain, EthereumChain},
     ethereum::transport::{EthereumTransport, HttpTransport},
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
     rpc, sequencer, state,
@@ -183,7 +183,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 }
 
 /// Verifies that the database matches the expected chain; throws an error if it does not.
-fn verify_database_chain(storage: &Storage, expected: core::Chain) -> anyhow::Result<()> {
+fn verify_database_chain(storage: &Storage, expected: Chain) -> anyhow::Result<()> {
     use pathfinder_lib::storage::StarknetBlocksTable;
 
     let mut connection = storage.connection().context("Create database connection")?;

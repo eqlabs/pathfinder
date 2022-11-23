@@ -1,8 +1,5 @@
-use crate::{
-    core::{StarknetBlockHash, StarknetBlockNumber},
-    rpc::{serde::StarknetBlockNumberAsHexStr, v02::RpcContext},
-};
-
+use crate::rpc::{serde::StarknetBlockNumberAsHexStr, v02::RpcContext};
+use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
 use serde::Serialize;
 
 crate::rpc::error::generate_rpc_error_subset!(SyncingError);
@@ -80,8 +77,7 @@ mod tests {
 
         #[test]
         fn syncing() {
-            use crate::core::{StarknetBlockHash, StarknetBlockNumber};
-            use crate::starkhash;
+            use pathfinder_core::{starkhash, StarknetBlockHash, StarknetBlockNumber};
 
             let status = SyncingStatus {
                 starting_block_num: StarknetBlockNumber::new_or_panic(0x12),
@@ -109,10 +105,10 @@ mod tests {
 
     #[tokio::test]
     async fn syncing() {
-        use crate::core::{StarknetBlockHash, StarknetBlockNumber};
         use crate::rpc::v01::types::reply::syncing::NumberedBlock;
         use crate::rpc::v01::types::reply::syncing::Status as V1Status;
         use crate::rpc::v01::types::reply::Syncing as V1Syncing;
+        use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
 
         let status = V1Syncing::Status(V1Status {
             starting: NumberedBlock::from(("aabb", 1)),

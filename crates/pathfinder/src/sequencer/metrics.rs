@@ -3,8 +3,8 @@ use super::{
     builder::{stage::Method, Request},
     SequencerError,
 };
-use crate::core::BlockId;
 use futures::Future;
+use pathfinder_core::BlockId;
 
 const METRIC_REQUESTS: &str = "gateway_requests_total";
 const METRIC_FAILED_REQUESTS: &str = "gateway_requests_failed_total";

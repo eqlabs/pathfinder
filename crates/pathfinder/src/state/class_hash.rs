@@ -1,10 +1,9 @@
+use crate::sequencer::request::contract::EntryPointType;
 use anyhow::{Context, Error, Result};
+use pathfinder_core::ClassHash;
 use serde::Serialize;
 use sha3::Digest;
 use stark_hash::{HashChain, StarkHash};
-
-use crate::core::ClassHash;
-use crate::sequencer::request::contract::EntryPointType;
 
 /// Computes the starknet class hash for given class definition json blob.
 ///
@@ -462,13 +461,14 @@ mod json {
         #[tokio::test]
         async fn genesis_contract() {
             use crate::sequencer::ClientApi;
+            use pathfinder_core::{Chain, ContractAddress};
 
             let contract = crate::starkhash!(
                 "0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3"
             );
-            let contract = crate::core::ContractAddress::new_or_panic(contract);
+            let contract = ContractAddress::new_or_panic(contract);
 
-            let chain = crate::core::Chain::Testnet;
+            let chain = Chain::Testnet;
             let sequencer = crate::sequencer::Client::new(chain).unwrap();
             let contract_definition = sequencer
                 .full_contract(contract)
@@ -484,9 +484,9 @@ mod json {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
             // we now need to ignore if empty).
             use super::super::extract_abi_code_hash;
-            use crate::core::{ClassHash, ContractAddress};
             use crate::sequencer::{self, ClientApi};
             use crate::starkhash;
+            use pathfinder_core::{Chain, ClassHash, ContractAddress};
 
             // Known contract which triggered a hash mismatch failure.
             let address = ContractAddress::new_or_panic(starkhash!(
@@ -496,7 +496,7 @@ mod json {
             let expected = ClassHash(starkhash!(
                 "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
             ));
-            let sequencer = sequencer::Client::new(crate::core::Chain::Testnet).unwrap();
+            let sequencer = sequencer::Client::new(Chain::Testnet).unwrap();
 
             let contract_definition = sequencer.full_contract(address).await.unwrap();
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {

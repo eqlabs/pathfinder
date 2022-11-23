@@ -1,9 +1,8 @@
-use anyhow::Context;
-
-use crate::core::StarknetTransactionHash;
 use crate::rpc::v02::types::request::BroadcastedInvokeTransaction;
 use crate::rpc::v02::RpcContext;
 use crate::sequencer::ClientApi;
+use anyhow::Context;
+use pathfinder_core::StarknetTransactionHash;
 
 crate::rpc::error::generate_rpc_error_subset!(AddInvokeTransactionError);
 
@@ -68,14 +67,12 @@ pub async fn add_invoke_transaction(
 
 #[cfg(test)]
 mod tests {
-    use crate::core::{
-        CallParam, ContractAddress, EntryPoint, Fee, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion,
-    };
-    use crate::rpc::v02::types::request::BroadcastedInvokeTransactionV0;
-    use crate::starkhash;
-
     use super::*;
+    use crate::rpc::v02::types::request::BroadcastedInvokeTransactionV0;
+    use pathfinder_core::{
+        starkhash, CallParam, ContractAddress, EntryPoint, Fee, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
+    };
 
     fn test_invoke_txn() -> Transaction {
         Transaction::Invoke(BroadcastedInvokeTransaction::V0(

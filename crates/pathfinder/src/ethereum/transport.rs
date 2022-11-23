@@ -1,13 +1,12 @@
 //! Wrapper for the parts of the [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
-use crate::{config::EthereumConfig, core::EthereumChain};
-
+use crate::config::EthereumConfig;
+use anyhow::Context;
+use futures::TryFutureExt;
+use pathfinder_core::EthereumChain;
+use pathfinder_retry::Retry;
 use std::future::Future;
 use std::num::NonZeroU64;
 use std::time::Duration;
-
-use anyhow::Context;
-use futures::TryFutureExt;
-use pathfinder_retry::Retry;
 use tracing::{debug, error, info};
 use web3::{
     transports::Http,
@@ -92,8 +91,8 @@ impl HttpTransport {
     ///
     /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
     ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
-    pub fn test_transport(chain: crate::core::Chain) -> Self {
-        use crate::core::Chain;
+    pub fn test_transport(chain: pathfinder_core::Chain) -> Self {
+        use pathfinder_core::Chain;
         let key_prefix = match chain {
             Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
             Chain::Testnet | Chain::Testnet2 | Chain::Integration => {
@@ -271,10 +270,9 @@ impl std::ops::Deref for HttpTransport {
 #[cfg(test)]
 mod tests {
     mod logs {
-        use crate::core::Chain;
         use crate::ethereum::transport::{EthereumTransport, HttpTransport, LogsError};
-
         use assert_matches::assert_matches;
+        use pathfinder_core::Chain;
         use web3::types::{BlockNumber, FilterBuilder, H256};
 
         #[tokio::test]

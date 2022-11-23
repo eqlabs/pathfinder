@@ -1,7 +1,7 @@
-use crate::core::BlockId;
 use crate::rpc::v02::RpcContext;
 use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable};
 use anyhow::{anyhow, Context};
+use pathfinder_core::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -68,15 +68,13 @@ pub async fn get_state_update(
 }
 
 mod types {
-    use serde::Serialize;
-    use serde_with::skip_serializing_none;
-
-    use std::collections::HashMap;
-
-    use crate::core::{
+    use pathfinder_core::{
         ClassHash, ContractAddress, ContractNonce, GlobalRoot, StarknetBlockHash, StorageAddress,
         StorageValue,
     };
+    use serde::Serialize;
+    use serde_with::skip_serializing_none;
+    use std::collections::HashMap;
 
     #[skip_serializing_none]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -334,13 +332,13 @@ mod types {
 mod tests {
     use super::types::{DeployedContract, StateDiff, StateUpdate, StorageDiff, StorageEntry};
     use super::*;
-    use crate::core::{
-        ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-        StorageAddress, StorageValue,
-    };
     use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
+    use pathfinder_core::{
+        Chain, ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        StorageAddress, StorageValue,
+    };
     use stark_hash::StarkHash;
 
     #[test]
@@ -383,7 +381,7 @@ mod tests {
         tx.commit().unwrap();
 
         let sync_state = std::sync::Arc::new(crate::state::SyncState::default());
-        let chain = crate::core::Chain::Testnet;
+        let chain = Chain::Testnet;
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
         let context = RpcContext::new(storage, sync_state, chain, sequencer);
         let state_updates = state_updates.into_iter().map(Into::into).collect();

@@ -1,12 +1,10 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
-use crate::core::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
+use pathfinder_core::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
 
 pub mod contract {
-    use std::fmt;
-
+    use pathfinder_core::{ByteCodeOffset, EntryPoint};
     use stark_hash::StarkHash;
-
-    use crate::core::{ByteCodeOffset, EntryPoint};
+    use std::fmt;
 
     #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Hash, Eq)]
     #[serde(deny_unknown_fields)]
@@ -48,20 +46,17 @@ pub mod contract {
 }
 
 pub mod add_transaction {
-    use std::collections::HashMap;
-
-    use crate::core::{
-        ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
-    };
+    use super::contract::{EntryPointType, SelectorAndOffset};
+    use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
     use crate::rpc::serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
         TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
-
+    use pathfinder_core::{
+        ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
+    };
     use serde_with::serde_as;
-
-    use super::contract::{EntryPointType, SelectorAndOffset};
-    use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
+    use std::collections::HashMap;
 
     /// Definition of a contract.
     ///

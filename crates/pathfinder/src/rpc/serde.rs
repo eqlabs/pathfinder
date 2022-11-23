@@ -1,11 +1,11 @@
 //! Utilities used for serializing/deserializing sequencer REST API related data.
 
-use crate::core::{
+use num_bigint::BigUint;
+use pathfinder_core::{
     CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, Fee, GasPrice,
     L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
     TransactionSignatureElem, TransactionVersion,
 };
-use num_bigint::BigUint;
 use serde::de::Visitor;
 use serde_with::{serde_conv, DeserializeAs, SerializeAs};
 use stark_hash::{HexParseError, OverflowError, StarkHash};
@@ -615,12 +615,13 @@ mod tests {
         #[serde_with::serde_as]
         #[derive(Debug, Copy, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
         struct BlockNum(
-            #[serde_as(as = "super::StarknetBlockNumberAsHexStr")] crate::core::StarknetBlockNumber,
+            #[serde_as(as = "super::StarknetBlockNumberAsHexStr")]
+            pathfinder_core::StarknetBlockNumber,
         );
 
         impl BlockNum {
             pub const fn new_or_panic(v: u64) -> Self {
-                Self(crate::core::StarknetBlockNumber::new_or_panic(v))
+                Self(pathfinder_core::StarknetBlockNumber::new_or_panic(v))
             }
         }
 

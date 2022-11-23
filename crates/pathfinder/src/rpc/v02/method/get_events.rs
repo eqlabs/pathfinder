@@ -1,9 +1,9 @@
-use crate::core::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use crate::rpc::v02::RpcContext;
 use crate::state::PendingData;
 use crate::storage::EventFilterError;
 use crate::storage::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
+use pathfinder_core::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use serde::Deserialize;
 use tokio::task::JoinHandle;
 
@@ -336,7 +336,7 @@ fn next_continuation_token(
 }
 
 mod types {
-    use crate::core::{
+    use pathfinder_core::{
         ContractAddress, EventData, EventKey, StarknetBlockHash, StarknetBlockNumber,
         StarknetTransactionHash,
     };
