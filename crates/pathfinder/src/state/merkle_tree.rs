@@ -1738,7 +1738,6 @@ mod tests {
         use crate::starkhash;
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
-        use rand::{distributions::Uniform, Rng};
         use rusqlite::Transaction;
         use stark_hash::StarkHash;
 
@@ -1794,6 +1793,11 @@ mod tests {
             value: StarkHash,
             proofs: &Vec<ProofNode>,
         ) -> Option<Membership> {
+            // Protect from ill-formed keys
+            if key.len() != 251 {
+                return None;
+            }
+
             let mut expected_hash = root;
             let mut remaining_path: &BitSlice<Msb0, u8> = key;
 
@@ -1844,11 +1848,6 @@ mod tests {
                 }
             }
 
-            // Sanity check: `remaining_path` should be empty now.
-            if !remaining_path.is_empty() {
-                return None;
-            }
-
             // At this point, we should reach `value` !
             if expected_hash == value {
                 Some(Membership::Member)
@@ -1871,20 +1870,11 @@ mod tests {
             fn new(len: usize, transaction: &'tx Transaction<'tx>) -> Self {
                 let mut uut = MerkleTree::load("test", transaction, StarkHash::ZERO).unwrap();
 
-                let range = Uniform::from(0..u64::MAX);
                 // Create random keys
-                let keys: Vec<StarkHash> = rand::thread_rng()
-                    .sample_iter(&range)
-                    .take(len)
-                    .map(|k| StarkHash::from_u64(k))
-                    .collect();
+                let keys: Vec<StarkHash> = gen_random_hashes(len);
 
                 // Create random values
-                let values: Vec<StarkHash> = rand::thread_rng()
-                    .sample_iter(&range)
-                    .take(len)
-                    .map(|v| StarkHash::from_u64(v))
-                    .collect();
+                let values: Vec<StarkHash> = gen_random_hashes(len);
 
                 // Insert them
                 keys.iter()
@@ -2112,6 +2102,22 @@ mod tests {
             assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
         }
 
+        /// Generates `n` random [StarkHash]
+        fn gen_random_hashes(n: usize) -> Vec<StarkHash> {
+            let mut out = Vec::with_capacity(n);
+            let mut rng = rand::rngs::ThreadRng::default();
+
+            while out.len() < n {
+                let sh = StarkHash::random(&mut rng);
+                if sh.has_more_than_251_bits() {
+                    continue;
+                }
+                out.push(sh);
+            }
+
+            out
+        }
+
         #[test]
         fn random_tree() {
             const LEN: usize = 256;
@@ -2133,12 +2139,8 @@ mod tests {
             // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
             let keys_set: std::collections::HashSet<&StarkHash> = random_tree.keys.iter().collect();
 
-            // Generate inexistent keys
-            let range = Uniform::from(0..u64::MAX);
-            let inexistent_keys: Vec<StarkHash> = rand::thread_rng()
-                .sample_iter(&range)
-                .take(LEN)
-                .map(|k| StarkHash::from_u64(k))
+            let inexistent_keys: Vec<StarkHash> = gen_random_hashes(LEN)
+                .into_iter()
                 .filter(|key| !keys_set.contains(key)) // Filter out duplicates if there are any
                 .collect();
 
@@ -2165,12 +2167,8 @@ mod tests {
             let values_set: std::collections::HashSet<&StarkHash> =
                 random_tree.values.iter().collect();
 
-            // Generate inexistent keys
-            let range = Uniform::from(0..u64::MAX);
-            let inexistent_values: Vec<StarkHash> = rand::thread_rng()
-                .sample_iter(&range)
-                .take(LEN)
-                .map(|v| StarkHash::from_u64(v))
+            let inexistent_values: Vec<StarkHash> = gen_random_hashes(LEN)
+                .into_iter()
                 .filter(|value| !values_set.contains(value)) // Filter out duplicates if there are any
                 .collect();
 
