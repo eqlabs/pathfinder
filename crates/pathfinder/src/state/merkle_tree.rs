@@ -522,10 +522,17 @@ impl<T: NodeStorage> MerkleTree<T> {
         Ok(result)
     }
 
-    /// Generates a proof for the value located at `key`, as described in [#714](https://github.com/eqlabs/pathfinder/issues/714).
+    /// Generates a merkle-proof for the value located at `key`.
     ///
-    /// Returns a vector of `ProofNode` which can then be verified by the verifier
-    /// (provided the verifier knows `root`, `key` and `value`).
+    /// Returns a vector of [`ProofNode`] which form a chain from the root to the key,
+    /// if it exists, or upto the node which proves that the key does not exist.
+    ///
+    /// The nodes are returned in order, root first.
+    ///
+    /// Verification is performed by confirming that:
+    ///   1. the chain follows the path of `key`, and
+    ///   2. the hashes are correct, and
+    ///   3. the root hash matches the known root
     pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
         let mut nodes = self.traverse(key)?;
 
