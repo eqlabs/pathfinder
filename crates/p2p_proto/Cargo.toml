@@ -9,6 +9,7 @@ build = "build.rs"
 anyhow = "1.0.62"
 prost = "0.11.0"
 stark_hash = { path = "../stark_hash" }
+zstd = "0.12.0"
 
 [build-dependencies]
 prost-build = "0.11.0"

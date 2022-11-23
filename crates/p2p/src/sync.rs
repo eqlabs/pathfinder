@@ -70,7 +70,7 @@ impl RequestResponseCodec for BlockSyncCodec {
     where
         T: AsyncWrite + Unpin + Send,
     {
-        let request = request.into_protobuf_encoding();
+        let request = request.into_protobuf_encoding()?;
         write_length_prefixed(io, &request).await?;
         io.close().await?;
 
@@ -86,7 +86,7 @@ impl RequestResponseCodec for BlockSyncCodec {
     where
         T: AsyncWrite + Unpin + Send,
     {
-        let response = response.into_protobuf_encoding();
+        let response = response.into_protobuf_encoding()?;
         write_length_prefixed(io, &response).await?;
         io.close().await?;
 

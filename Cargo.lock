@@ -3699,6 +3699,7 @@ dependencies = [
  "prost",
  "prost-build",
  "stark_hash",
+ "zstd",
 ]
 
 [[package]]

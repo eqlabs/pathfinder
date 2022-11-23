@@ -11,11 +11,14 @@ pub enum Request {
     Status(Status),
 }
 
+const MAX_UNCOMPRESSED_MESSAGE_SIZE: usize = 1024 * 1024;
+
 impl Request {
     pub fn from_protobuf_encoding(bytes: &[u8]) -> std::io::Result<Self> {
         use prost::Message;
 
-        let request = proto::sync::Request::decode(bytes)?;
+        let bytes = zstd::bulk::decompress(bytes, MAX_UNCOMPRESSED_MESSAGE_SIZE)?;
+        let request = proto::sync::Request::decode(bytes.as_ref())?;
 
         request.try_into().map_err(|e| {
             std::io::Error::new(
@@ -25,15 +28,23 @@ impl Request {
         })
     }
 
-    pub fn into_protobuf_encoding(self) -> Vec<u8> {
+    pub fn into_protobuf_encoding(self) -> std::io::Result<Vec<u8>> {
         use prost::Message;
 
         let request: proto::sync::Request = self.into();
+        let encoded_len = request.encoded_len();
+        if encoded_len > MAX_UNCOMPRESSED_MESSAGE_SIZE {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::OutOfMemory,
+                "Protobuf encoded message would exceed maximum message size",
+            ));
+        }
         let mut buf = Vec::with_capacity(request.encoded_len());
         request
             .encode(&mut buf)
             .expect("Buffer provides enough capacity");
-        buf
+        let buf = zstd::bulk::compress(buf.as_ref(), 1)?;
+        Ok(buf)
     }
 }
 
@@ -220,7 +231,8 @@ impl Response {
     pub fn from_protobuf_encoding(bytes: &[u8]) -> std::io::Result<Self> {
         use prost::Message;
 
-        let response = proto::sync::Response::decode(bytes)?;
+        let bytes = zstd::bulk::decompress(bytes, MAX_UNCOMPRESSED_MESSAGE_SIZE)?;
+        let response = proto::sync::Response::decode(bytes.as_ref())?;
 
         response.try_into().map_err(|e| {
             std::io::Error::new(
@@ -230,15 +242,23 @@ impl Response {
         })
     }
 
-    pub fn into_protobuf_encoding(self) -> Vec<u8> {
+    pub fn into_protobuf_encoding(self) -> std::io::Result<Vec<u8>> {
         use prost::Message;
 
         let response: proto::sync::Response = self.into();
+        let encoded_len = response.encoded_len();
+        if encoded_len > MAX_UNCOMPRESSED_MESSAGE_SIZE {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::OutOfMemory,
+                "Protobuf encoded message would exceed maximum message size",
+            ));
+        }
         let mut buf = Vec::with_capacity(response.encoded_len());
         response
             .encode(&mut buf)
             .expect("Buffer provides enough capacity");
-        buf
+        let buf = zstd::bulk::compress(buf.as_ref(), 1)?;
+        Ok(buf)
     }
 }
 
