@@ -532,7 +532,7 @@ impl<T: NodeStorage> MerkleTree<T> {
         // Return an error if the list is empty
         let node = nodes.last().context("Tree is empty")?;
 
-        // Remove the last node if it's a leaf. Indeed the verifier won't need this information.
+        // A leaf node is redudant data as the information for it is already contained in the previous node.
         if matches!(&*node.borrow(), Node::Leaf(_)) {
             nodes.pop();
         }
