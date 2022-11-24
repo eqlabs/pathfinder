@@ -1,9 +1,9 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use crate::rpc::serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use pathfinder_core::{
     EthereumAddress, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
     StarknetBlockNumber, StarknetBlockTimestamp,
 };
+use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::Deserialize;
 use serde_with::serde_as;
 
@@ -181,17 +181,17 @@ pub struct TransactionStatus {
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    use crate::rpc::serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
-        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-    };
     use pathfinder_core::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    };
+    use pathfinder_serde::{
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
+        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
+        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
+        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;

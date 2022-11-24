@@ -2,7 +2,6 @@
 mod error;
 pub mod gas_price;
 mod pathfinder;
-pub mod serde;
 #[cfg(test)]
 pub mod test_client;
 #[cfg(test)]

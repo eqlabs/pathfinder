@@ -56,19 +56,17 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
 pub fn register_all_methods(
     module: &mut RpcModuleWrapper<RpcApi>,
 ) -> Result<(), jsonrpsee::core::Error> {
-    use crate::{
-        rpc::serde::{
-            FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-        },
-        sequencer::request::add_transaction::ContractDefinition,
-    };
-    use ::serde::Deserialize;
+    use crate::sequencer::request::add_transaction::ContractDefinition;
     use api::BlockResponseScope;
     use pathfinder_core::{
         BlockId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
         StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_serde::{
+        FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+    };
+    use serde::Deserialize;
     use stark_hash::StarkHash;
     use types::request::{Call, ContractCall, EventFilter};
 

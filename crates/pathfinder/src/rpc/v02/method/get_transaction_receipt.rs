@@ -79,14 +79,12 @@ pub async fn get_transaction_receipt(
 
 mod types {
     use crate::rpc::v02::types::reply::BlockStatus;
-    use crate::{
-        rpc::serde::{EthereumAddressAsHexStr, FeeAsHexStr},
-        sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message},
-    };
+    use crate::sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message};
     use pathfinder_core::{
         ContractAddress, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
     };
+    use pathfinder_serde::{EthereumAddressAsHexStr, FeeAsHexStr};
     use serde::Serialize;
     use serde_with::serde_as;
 

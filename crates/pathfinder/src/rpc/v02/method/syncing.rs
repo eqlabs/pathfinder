@@ -1,5 +1,6 @@
-use crate::rpc::{serde::StarknetBlockNumberAsHexStr, v02::RpcContext};
+use crate::rpc::v02::RpcContext;
 use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_serde::StarknetBlockNumberAsHexStr;
 use serde::Serialize;
 
 crate::rpc::error::generate_rpc_error_subset!(SyncingError);

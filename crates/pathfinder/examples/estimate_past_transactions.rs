@@ -350,18 +350,18 @@ struct SimpleDeclare {}
 #[serde_with::serde_as]
 #[derive(serde::Deserialize, Debug)]
 struct SimpleDeployAccount {
-    #[serde_as(as = "pathfinder_lib::rpc::serde::TransactionVersionAsHexStr")]
+    #[serde_as(as = "pathfinder_serde::TransactionVersionAsHexStr")]
     pub version: pathfinder_core::TransactionVersion,
-    #[serde_as(as = "pathfinder_lib::rpc::serde::FeeAsHexStr")]
+    #[serde_as(as = "pathfinder_serde::FeeAsHexStr")]
     pub max_fee: pathfinder_core::Fee,
-    #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::TransactionSignatureElemAsDecimalStr>")]
+    #[serde_as(as = "Vec<pathfinder_serde::TransactionSignatureElemAsDecimalStr>")]
     #[serde(default)]
     pub signature: Vec<pathfinder_core::TransactionSignatureElem>,
     #[serde(default = "default_transaction_nonce")]
     pub nonce: pathfinder_core::TransactionNonce,
 
     contract_address_salt: pathfinder_core::ContractAddressSalt,
-    #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::CallParamAsDecimalStr>")]
+    #[serde_as(as = "Vec<pathfinder_serde::CallParamAsDecimalStr>")]
     pub constructor_calldata: Vec<pathfinder_core::CallParam>,
     pub class_hash: pathfinder_core::ClassHash,
 }
@@ -370,18 +370,18 @@ struct SimpleDeployAccount {
 #[derive(serde::Deserialize, Debug)]
 struct SimpleInvoke {
     #[serde(default)]
-    #[serde_as(as = "Option<pathfinder_lib::rpc::serde::TransactionVersionAsHexStr>")]
+    #[serde_as(as = "Option<pathfinder_serde::TransactionVersionAsHexStr>")]
     pub version: Option<pathfinder_core::TransactionVersion>,
-    #[serde_as(as = "pathfinder_lib::rpc::serde::FeeAsHexStr")]
+    #[serde_as(as = "pathfinder_serde::FeeAsHexStr")]
     pub max_fee: pathfinder_core::Fee,
-    #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::TransactionSignatureElemAsDecimalStr>")]
+    #[serde_as(as = "Vec<pathfinder_serde::TransactionSignatureElemAsDecimalStr>")]
     #[serde(default)]
     pub signature: Vec<pathfinder_core::TransactionSignatureElem>,
     #[serde(default = "default_transaction_nonce")]
     pub nonce: pathfinder_core::TransactionNonce,
 
     contract_address: pathfinder_core::ContractAddress,
-    #[serde_as(as = "Vec<pathfinder_lib::rpc::serde::CallParamAsDecimalStr>")]
+    #[serde_as(as = "Vec<pathfinder_serde::CallParamAsDecimalStr>")]
     pub calldata: Vec<pathfinder_core::CallParam>,
     #[serde(default)]
     pub entry_point_selector: Option<pathfinder_core::EntryPoint>,

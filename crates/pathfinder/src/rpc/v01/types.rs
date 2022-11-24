@@ -109,12 +109,12 @@ impl From<BlockNumberOrTag> for pathfinder_core::BlockId {
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use crate::rpc::serde::{
-        FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-    };
     use pathfinder_core::{
         BlockId, CallParam, ContractAddress, EntryPoint, EventKey, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
+    };
+    use pathfinder_serde::{
+        FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde::Deserialize;
     use serde_with::{serde_as, skip_serializing_none};
@@ -205,16 +205,14 @@ pub mod request {
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
-    use crate::{
-        rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
-        sequencer,
-    };
+    use crate::sequencer;
     use pathfinder_core::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EventData, EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
     use stark_hash::StarkHash;
@@ -1012,14 +1010,12 @@ pub mod reply {
 
     /// Transaction receipt related substructures.
     pub mod transaction_receipt {
-        use crate::{
-            rpc::serde::EthereumAddressAsHexStr,
-            sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message},
-        };
+        use crate::sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message};
         use pathfinder_core::{
             ContractAddress, EthereumAddress, EventData, EventKey, L1ToL2MessagePayloadElem,
             L2ToL1MessagePayloadElem,
         };
+        use pathfinder_serde::EthereumAddressAsHexStr;
         use serde::Serialize;
         use serde_with::serde_as;
         use std::convert::From;
@@ -1133,8 +1129,8 @@ pub mod reply {
 
     /// Starknet's syncing status substructures.
     pub mod syncing {
-        use crate::rpc::serde::StarknetBlockNumberAsHexStr;
         use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+        use pathfinder_serde::StarknetBlockNumberAsHexStr;
         use serde::Serialize;
         use serde_with::serde_as;
 
@@ -1298,14 +1294,14 @@ pub mod reply {
     #[serde(deny_unknown_fields)]
     pub struct FeeEstimate {
         /// The Ethereum gas cost of the transaction
-        #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         #[serde(rename = "gas_consumed")]
         pub consumed: web3::types::H256,
         /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
-        #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         pub gas_price: web3::types::H256,
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
-        #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         #[serde(rename = "overall_fee")]
         pub fee: web3::types::H256,
     }

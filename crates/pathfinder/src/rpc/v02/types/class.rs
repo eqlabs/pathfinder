@@ -1,6 +1,5 @@
-use crate::rpc::serde::U64AsHexStr;
-
 use anyhow::Context;
+use pathfinder_serde::U64AsHexStr;
 use serde::{Deserialize, Serialize};
 use stark_hash::StarkHash;
 

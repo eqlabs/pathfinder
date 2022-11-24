@@ -491,7 +491,7 @@ pub mod test_utils {
         "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
     ));
     lazy_static::lazy_static! {
-        pub static ref VALID_KEY_DEC: String = crate::rpc::serde::starkhash_to_dec_str(VALID_KEY.get());
+        pub static ref VALID_KEY_DEC: String = pathfinder_serde::starkhash_to_dec_str(VALID_KEY.get());
     }
     pub const VALID_CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("04d2"))];
     /// Class hash for VALID_CONTRACT_ADDR

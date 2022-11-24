@@ -3,7 +3,6 @@
 pub mod cairo;
 pub mod config;
 pub mod consts;
-// pub mod core;
 pub mod ethereum;
 pub mod monitoring;
 pub mod rpc;

@@ -233,7 +233,7 @@ impl<'a> Request<'a, stage::Params> {
     }
 
     pub fn with_storage_address(self, address: StorageAddress) -> Self {
-        use crate::rpc::serde::starkhash_to_dec_str;
+        use pathfinder_serde::starkhash_to_dec_str;
         self.add_param("key", &starkhash_to_dec_str(address.get()))
     }
 

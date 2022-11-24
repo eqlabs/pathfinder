@@ -8,17 +8,15 @@ use web3::types::H128;
 // null-valued fields that are now missing from the enum-based serialization
 // format. The point of this migration is getting rid of those `null` values.
 mod transaction {
-    use crate::{
-        rpc::serde::{
-            CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
-            TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-        },
-        sequencer::reply::transaction::EntryPointType,
-    };
+    use crate::sequencer::reply::transaction::EntryPointType;
     use pathfinder_core::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
         TransactionVersion,
+    };
+    use pathfinder_serde::{
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
+        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;

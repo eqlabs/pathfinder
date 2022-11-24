@@ -48,12 +48,12 @@ pub mod contract {
 pub mod add_transaction {
     use super::contract::{EntryPointType, SelectorAndOffset};
     use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
-    use crate::rpc::serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
-        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-    };
     use pathfinder_core::{
         ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
+    };
+    use pathfinder_serde::{
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
+        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde_with::serde_as;
     use std::collections::HashMap;

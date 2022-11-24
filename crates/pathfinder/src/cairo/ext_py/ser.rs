@@ -26,7 +26,7 @@ pub(crate) enum ChildCommand<'a> {
         common: CommonProperties<'a>,
 
         // zero means use the gas price from the block.
-        #[serde_as(as = "&crate::rpc::serde::H256AsHexStr")]
+        #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
         gas_price: &'a web3::types::H256,
         transaction: &'a crate::sequencer::request::add_transaction::AddTransaction,
     },

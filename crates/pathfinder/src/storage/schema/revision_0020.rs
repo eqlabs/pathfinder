@@ -270,17 +270,17 @@ fn update_database(
 /// in the database. We copy these here so that further modifications don't break this
 /// migration.
 mod types {
-    use crate::rpc::serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
-        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-    };
     use pathfinder_core::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    };
+    use pathfinder_serde::{
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
+        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
+        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
+        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;

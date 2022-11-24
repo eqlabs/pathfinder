@@ -6,16 +6,16 @@ use tracing::info;
 // revision 4. We have to keep these intact so that future changes to these types
 // do not break database upgrades.
 mod transaction {
-    use crate::rpc::serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        EventDataAsDecimalStr, EventKeyAsDecimalStr, L1ToL2MessagePayloadElemAsDecimalStr,
-        L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
-    };
     use pathfinder_core::{
         CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
         TransactionSignatureElem,
+    };
+    use pathfinder_serde::{
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
+        EventDataAsDecimalStr, EventKeyAsDecimalStr, L1ToL2MessagePayloadElemAsDecimalStr,
+        L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;

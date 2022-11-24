@@ -2092,6 +2092,7 @@ dependencies = [
  "num-bigint 0.4.3",
  "pathfinder-core",
  "pathfinder-retry",
+ "pathfinder-serde",
  "pretty_assertions",
  "r2d2",
  "r2d2_sqlite",

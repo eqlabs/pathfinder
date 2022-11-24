@@ -135,13 +135,13 @@ pub(super) async fn base_block_and_pending_for_call(
 #[serde(deny_unknown_fields)]
 pub struct FeeEstimate {
     /// The Ethereum gas cost of the transaction
-    #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
     pub gas_consumed: web3::types::H256,
     /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
-    #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
     pub gas_price: web3::types::H256,
     /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
-    #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
     pub overall_fee: web3::types::H256,
 }
 
