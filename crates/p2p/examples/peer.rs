@@ -162,14 +162,6 @@ async fn main() -> anyhow::Result<()> {
                     }),
                 };
                 p2p_client.send_sync_response(channel, response).await;
-
-                {
-                    let peers = peers.read().await;
-                    let connected = peers.connected().count();
-                    let supports_sync = peers.syncing().count();
-
-                    tracing::debug!(%connected, %supports_sync, "Peer status");
-                }
             }
             p2p::Event::BlockPropagation(block_propagation) => {
                 tracing::info!(?block_propagation, "Block Propagation");
