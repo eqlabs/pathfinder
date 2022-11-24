@@ -89,12 +89,12 @@ pub struct BinaryProofNode {
     pub right_hash: StarkHash,
 }
 
-impl From<&BinaryNode> for BinaryProofNode {
+impl From<&BinaryNode> for ProofNode {
     fn from(bin: &BinaryNode) -> Self {
-        Self {
+        Self::Binary(BinaryProofNode {
             left_hash: bin.left.borrow().hash().expect("Node should be committed"),
             right_hash: bin.right.borrow().hash().expect("Node should be committed"),
-        }
+        })
     }
 }
 
@@ -106,16 +106,16 @@ pub struct EdgeProofNode {
     pub child_hash: StarkHash,
 }
 
-impl From<&EdgeNode> for EdgeProofNode {
+impl From<&EdgeNode> for ProofNode {
     fn from(edge: &EdgeNode) -> Self {
-        Self {
+        Self::Edge(EdgeProofNode {
             path: edge.path.clone(),
             child_hash: edge
                 .child
                 .borrow()
                 .hash()
                 .expect("Node should be committed"),
-        }
+        })
     }
 }
 
@@ -126,16 +126,6 @@ impl From<&EdgeNode> for EdgeProofNode {
 pub enum ProofNode {
     Binary(BinaryProofNode),
     Edge(EdgeProofNode),
-}
-
-impl From<&Node> for ProofNode {
-    fn from(node: &Node) -> Self {
-        match node {
-            Node::Binary(bin) => Self::Binary(BinaryProofNode::from(bin)),
-            Node::Edge(edge) => Self::Edge(EdgeProofNode::from(edge)),
-            _ => unreachable!(),
-        }
-    }
 }
 
 /// A Starknet binary Merkle-Patricia tree with a specific root entry-point and storage.
@@ -547,7 +537,11 @@ impl<T: NodeStorage> MerkleTree<T> {
 
         Ok(nodes
             .iter()
-            .map(|node| ProofNode::from(&*node.borrow()))
+            .map(|node| match &*node.borrow() {
+                Node::Binary(bin) => ProofNode::from(bin),
+                Node::Edge(edge) => ProofNode::from(edge),
+                _ => unreachable!(),
+            })
             .collect())
     }
 
