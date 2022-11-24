@@ -83,7 +83,6 @@ pub trait NodeStorage {
 }
 
 /// Lightweight representation of [BinaryNode]. Only holds left and right hashes.
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, Serialize)]
 pub struct BinaryProofNode {
     pub left_hash: StarkHash,
@@ -100,7 +99,6 @@ impl From<&BinaryNode> for BinaryProofNode {
 }
 
 /// Ligthtweight representation of [EdgeNode]. Only holds its path and its child's hash.
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, Serialize)]
 pub struct EdgeProofNode {
     #[serde(skip)]
