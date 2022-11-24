@@ -1,7 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use libp2p::PeerId;
-use tokio::sync::RwLock;
 
 #[derive(Default)]
 struct Peer {
@@ -26,6 +25,10 @@ impl Peer {
     pub fn update_sync_status(&mut self, new_status: p2p_proto::sync::Status) {
         self.sync_status = Some(new_status);
     }
+
+    pub fn is_connected(&self) -> bool {
+        matches!(self.connection_status, ConnectionStatus::Connected)
+    }
 }
 
 #[derive(Default, Clone)]
@@ -37,59 +40,50 @@ enum ConnectionStatus {
     Disconnecting,
 }
 
-#[derive(Default, Clone)]
 pub struct Peers {
-    inner: Arc<RwLock<HashMap<PeerId, Peer>>>,
+    peers: HashMap<PeerId, Peer>,
+}
+
+impl Default for Peers {
+    fn default() -> Self {
+        Self {
+            peers: Default::default(),
+        }
+    }
 }
 
 impl Peers {
-    async fn update_connection_status(
-        &mut self,
-        peer_id: &PeerId,
-        connection_status: ConnectionStatus,
-    ) {
-        self.inner
-            .write()
-            .await
+    fn update_connection_status(&mut self, peer_id: &PeerId, connection_status: ConnectionStatus) {
+        self.peers
             .entry(*peer_id)
             .or_insert_with(|| Default::default())
             .update_connection_status(connection_status);
     }
 
-    pub async fn update_sync_status(
-        &mut self,
-        peer_id: &PeerId,
-        sync_status: p2p_proto::sync::Status,
-    ) {
-        self.inner
-            .write()
-            .await
+    pub fn update_sync_status(&mut self, peer_id: &PeerId, sync_status: p2p_proto::sync::Status) {
+        self.peers
             .entry(*peer_id)
             .and_modify(|peer| peer.update_sync_status(sync_status));
     }
 
-    pub async fn peer_dialing(&mut self, peer_id: &PeerId) {
+    pub fn peer_dialing(&mut self, peer_id: &PeerId) {
         self.update_connection_status(peer_id, ConnectionStatus::Dialing)
-            .await;
     }
 
-    pub async fn peer_connected(&mut self, peer_id: &PeerId) {
+    pub fn peer_connected(&mut self, peer_id: &PeerId) {
         self.update_connection_status(peer_id, ConnectionStatus::Connected)
-            .await;
     }
 
-    pub async fn peer_disconnecting(&mut self, peer_id: &PeerId) {
+    pub fn peer_disconnecting(&mut self, peer_id: &PeerId) {
         self.update_connection_status(peer_id, ConnectionStatus::Disconnecting)
-            .await;
     }
 
-    pub async fn peer_disconnected(&mut self, peer_id: &PeerId) {
+    pub fn peer_disconnected(&mut self, peer_id: &PeerId) {
         self.update_connection_status(peer_id, ConnectionStatus::Disconnected)
-            .await;
     }
 
-    pub async fn peer_dial_error(&mut self, peer_id: &PeerId) {
-        self.inner.write().await.entry(*peer_id).and_modify(|peer| {
+    pub fn peer_dial_error(&mut self, peer_id: &PeerId) {
+        self.peers.entry(*peer_id).and_modify(|peer| {
             if !matches!(peer.connection_status(), ConnectionStatus::Connected) {
                 // no successful connection yet, dialing failed, set to disconnected
                 peer.update_connection_status(ConnectionStatus::Disconnected)
@@ -97,22 +91,40 @@ impl Peers {
         });
     }
 
-    async fn connection_status(&self, peer_id: &PeerId) -> Option<ConnectionStatus> {
-        self.inner
-            .read()
-            .await
+    fn connection_status(&self, peer_id: &PeerId) -> Option<ConnectionStatus> {
+        self.peers
             .get(peer_id)
             .map(|peer| peer.connection_status().clone())
     }
 
-    pub async fn is_connected(&self, peer_id: &PeerId) -> bool {
+    pub fn is_connected(&self, peer_id: &PeerId) -> bool {
         matches!(
-            self.connection_status(peer_id).await,
+            self.connection_status(peer_id),
             Some(ConnectionStatus::Connected)
         )
     }
 
-    pub async fn remove(&mut self, peer_id: &PeerId) {
-        self.inner.write().await.remove(peer_id);
+    pub fn connected(&self) -> impl Iterator<Item = &PeerId> {
+        self.peers.iter().filter_map(|(peer_id, peer)| {
+            if peer.is_connected() {
+                Some(peer_id)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn syncing(&self) -> impl Iterator<Item = (&PeerId, &p2p_proto::sync::Status)> {
+        self.peers.iter().filter_map(|(peer_id, peer)| {
+            if let Some(status) = &peer.sync_status {
+                Some((peer_id, status))
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn remove(&mut self, peer_id: &PeerId) {
+        self.peers.remove(peer_id);
     }
 }

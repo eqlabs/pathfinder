@@ -1,8 +1,10 @@
 #![deny(rust_2018_idioms)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::Duration;
 
+use delay_map::HashSetDelay;
 use futures::StreamExt;
 use libp2p::gossipsub::{GossipsubEvent, IdentTopic};
 use libp2p::identity::Keypair;
@@ -13,8 +15,7 @@ use libp2p::request_response::{
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::Multiaddr;
 use libp2p::{identify, PeerId};
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot, RwLock};
 
 mod behaviour;
 mod executor;
@@ -24,7 +25,11 @@ mod transport;
 
 pub use peers::Peers;
 
-pub fn new(keypair: Keypair, peers: peers::Peers) -> (Client, mpsc::Receiver<Event>, MainLoop) {
+pub fn new(
+    keypair: Keypair,
+    peers: Arc<RwLock<peers::Peers>>,
+    periodic_status_interval: Duration,
+) -> (Client, mpsc::Receiver<Event>, MainLoop) {
     let peer_id = keypair.public().to_peer_id();
 
     let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair);
@@ -45,7 +50,13 @@ pub fn new(keypair: Keypair, peers: peers::Peers) -> (Client, mpsc::Receiver<Eve
             sender: command_sender,
         },
         event_receiver,
-        MainLoop::new(swarm, command_receiver, event_sender, peers),
+        MainLoop::new(
+            swarm,
+            command_receiver,
+            event_sender,
+            peers,
+            periodic_status_interval,
+        ),
     )
 }
 
@@ -144,6 +155,17 @@ impl Client {
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }
+
+    pub async fn send_sync_status_request(
+        &mut self,
+        peer_id: PeerId,
+        status: p2p_proto::sync::Status,
+    ) {
+        self.sender
+            .send(Command::SendSyncStatusRequest { peer_id, status })
+            .await
+            .expect("Command receiver not to be dropped");
+    }
 }
 
 type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
@@ -172,6 +194,10 @@ enum Command {
         request: p2p_proto::sync::Request,
         sender: oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>,
     },
+    SendSyncStatusRequest {
+        peer_id: PeerId,
+        status: p2p_proto::sync::Status,
+    },
     SendSyncResponse {
         channel: ResponseChannel<p2p_proto::sync::Response>,
         response: p2p_proto::sync::Response,
@@ -188,6 +214,9 @@ pub enum Event {
     SyncPeerConnected {
         peer_id: PeerId,
     },
+    SyncPeerRequestStatus {
+        peer_id: PeerId,
+    },
     InboundSyncRequest {
         from: PeerId,
         request: p2p_proto::sync::Request,
@@ -201,11 +230,14 @@ pub struct MainLoop {
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
 
-    peers: peers::Peers,
+    peers: Arc<RwLock<peers::Peers>>,
 
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_block_sync_requests:
         HashMap<RequestId, oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>>,
+    pending_block_sync_status_requests: HashSet<RequestId>,
+
+    request_sync_status: HashSetDelay<PeerId>,
 }
 
 impl MainLoop {
@@ -213,7 +245,8 @@ impl MainLoop {
         swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
         command_receiver: mpsc::Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
-        peers: peers::Peers,
+        peers: Arc<RwLock<peers::Peers>>,
+        periodic_status_interval: Duration,
     ) -> Self {
         Self {
             swarm,
@@ -222,6 +255,8 @@ impl MainLoop {
             peers,
             pending_dials: Default::default(),
             pending_block_sync_requests: Default::default(),
+            pending_block_sync_status_requests: Default::default(),
+            request_sync_status: HashSetDelay::new(periodic_status_interval),
         }
     }
 
@@ -239,6 +274,12 @@ impl MainLoop {
                 _ = bootstrap_interval_tick => {
                     tracing::debug!("Doing periodical bootstrap");
                     _ = self.swarm.behaviour_mut().kademlia.bootstrap();
+                }
+                Some(Ok(peer_id)) = self.request_sync_status.next() => {
+                    self.event_sender
+                        .send(Event::SyncPeerRequestStatus { peer_id })
+                        .await
+                        .expect("Event receiver not to be dropped");
                 }
                 command = self.command_receiver.recv() => {
                     match command {
@@ -266,7 +307,7 @@ impl MainLoop {
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
-                self.peers.peer_connected(&peer_id).await;
+                self.peers.write().await.peer_connected(&peer_id);
 
                 if endpoint.is_dialer() {
                     if let Some(sender) = self.pending_dials.remove(&peer_id) {
@@ -280,7 +321,7 @@ impl MainLoop {
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => {
                 if let Some(peer_id) = peer_id {
-                    self.peers.peer_dial_error(&peer_id).await;
+                    self.peers.write().await.peer_dial_error(&peer_id);
 
                     tracing::debug!(%peer_id, %error, "Error while dialing peer");
 
@@ -296,18 +337,19 @@ impl MainLoop {
                 ..
             } => {
                 if num_established == 0 {
-                    self.peers.peer_disconnected(&peer_id).await;
+                    self.peers.write().await.peer_disconnected(&peer_id);
+                    self.request_sync_status.remove(&peer_id);
                 }
                 tracing::debug!(%peer_id, "Disconnected from peer");
                 Ok(())
             }
             SwarmEvent::Dialing(peer_id) => {
-                self.peers.peer_dialing(&peer_id).await;
+                self.peers.write().await.peer_dialing(&peer_id);
                 tracing::debug!(%peer_id, "Dialing peer");
                 Ok(())
             }
             // ===========================
-            // Identify events
+            // Identify
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Identify(e)) => {
                 if let identify::Event::Received {
@@ -333,11 +375,11 @@ impl MainLoop {
                         tracing::debug!(%peer_id, "Added peer to DHT");
                     }
 
-                    // add to peers if seems useful
                     if protocols
                         .iter()
                         .any(|p| p.as_bytes() == sync::PROTOCOL_NAME)
                     {
+                        self.trigger_periodic_sync_status(peer_id);
                         self.event_sender
                             .send(Event::SyncPeerConnected { peer_id })
                             .await
@@ -346,6 +388,9 @@ impl MainLoop {
                 }
                 Ok(())
             }
+            // ===========================
+            // Block propagation
+            // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Gossipsub(GossipsubEvent::Message {
                 propagation_source: peer_id,
                 message_id: id,
@@ -374,6 +419,9 @@ impl MainLoop {
                 }
                 Ok(())
             }
+            // ===========================
+            // Discovery
+            // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
                 if let KademliaEvent::OutboundQueryCompleted { .. } = e {
                     let network_info = self.swarm.network_info();
@@ -384,15 +432,28 @@ impl MainLoop {
                 }
                 Ok(())
             }
+            // ===========================
+            // Block sync
+            // ===========================
             SwarmEvent::Behaviour(behaviour::Event::BlockSync(RequestResponseEvent::Message {
                 message,
                 peer,
             })) => {
-                tracing::trace!(%peer, "Received a message");
                 match message {
                     RequestResponseMessage::Request {
                         request, channel, ..
                     } => {
+                        tracing::debug!(?request, %peer, "Received block sync request");
+
+                        // received an incoming status request, update peer state
+                        if let p2p_proto::sync::Request::Status(status) = &request {
+                            self.peers
+                                .write()
+                                .await
+                                .update_sync_status(&peer, status.clone());
+                            self.trigger_periodic_sync_status(peer);
+                        }
+
                         self.event_sender
                             .send(Event::InboundSyncRequest {
                                 from: peer,
@@ -407,12 +468,26 @@ impl MainLoop {
                         request_id,
                         response,
                     } => {
-                        let _ = self
-                            .pending_block_sync_requests
-                            .remove(&request_id)
-                            .expect("Block sync request still to be pending")
-                            .send(Ok(response));
-                        Ok(())
+                        tracing::debug!(?response, %peer, "Received block sync response");
+                        if self.pending_block_sync_status_requests.remove(&request_id) {
+                            // this was a status response, handle this internally
+                            if let p2p_proto::sync::Response::Status(status) = response {
+                                self.peers.write().await.update_sync_status(&peer, status);
+                                Ok(())
+                            } else {
+                                Err(anyhow::anyhow!(
+                                    "Expected a status response for a status request"
+                                ))
+                            }
+                        } else {
+                            // a "normal" response
+                            let _ = self
+                                .pending_block_sync_requests
+                                .remove(&request_id)
+                                .expect("Block sync request still to be pending")
+                                .send(Ok(response));
+                            Ok(())
+                        }
                     }
                 }
             }
@@ -422,13 +497,18 @@ impl MainLoop {
                 },
             )) => {
                 tracing::warn!(?request_id, ?error, "Outbound request failed");
-                let _ = self
-                    .pending_block_sync_requests
-                    .remove(&request_id)
-                    .expect("Block sync request still to be pending")
-                    .send(Err(error.into()));
+                if !self.pending_block_sync_status_requests.remove(&request_id) {
+                    let _ = self
+                        .pending_block_sync_requests
+                        .remove(&request_id)
+                        .expect("Block sync request still to be pending")
+                        .send(Err(error.into()));
+                }
                 Ok(())
             }
+            // ===========================
+            // NAT hole punching
+            // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Dcutr(event)) => {
                 tracing::debug!(?event, "DCUtR event");
                 Ok(())
@@ -489,7 +569,7 @@ impl MainLoop {
             Command::SubscribeTopic { topic, sender } => {
                 let _ = match self.swarm.behaviour_mut().subscribe_topic(&topic) {
                     Ok(_) => {
-                        tracing::debug!(%topic, "Providing capability");
+                        tracing::debug!(%topic, "Subscribing to topic");
                         sender.send(Ok(()))
                     }
                     Err(e) => sender.send(Err(e)),
@@ -500,6 +580,8 @@ impl MainLoop {
                 request,
                 sender,
             } => {
+                tracing::debug!(?request, "Sending block sync request");
+
                 let request_id = self
                     .swarm
                     .behaviour_mut()
@@ -510,12 +592,24 @@ impl MainLoop {
             Command::SendSyncResponse { channel, response } => {
                 // This might fail, but we're just ignoring it. In case of failure a
                 // RequestResponseEvent::InboundFailure will or has been be emitted.
-                let response = self
+                tracing::debug!(?response, "Sending block sync response");
+
+                let _ = self
                     .swarm
                     .behaviour_mut()
                     .block_sync
                     .send_response(channel, response);
-                tracing::warn!(?response, "Sent response");
+            }
+            Command::SendSyncStatusRequest { peer_id, status } => {
+                tracing::debug!(?status, "Sending block sync status");
+
+                let request_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .block_sync
+                    .send_request(&peer_id, p2p_proto::sync::Request::Status(status));
+                self.pending_block_sync_status_requests.insert(request_id);
+                self.trigger_periodic_sync_status(peer_id);
             }
             Command::PublishPropagationMessage {
                 topic,
@@ -538,5 +632,12 @@ impl MainLoop {
             .map_err(|e| anyhow::anyhow!("Gossipsub publish failed: {}", e))?;
         tracing::debug!(?message_id, "Data published");
         Ok(())
+    }
+
+    fn trigger_periodic_sync_status(&mut self, peer_id: PeerId) {
+        let local_peer_id = self.swarm.local_peer_id();
+        if local_peer_id < &peer_id {
+            self.request_sync_status.insert(peer_id);
+        }
     }
 }

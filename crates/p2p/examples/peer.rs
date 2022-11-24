@@ -1,5 +1,6 @@
 #![deny(rust_2018_idioms)]
 
+use std::sync::Arc;
 use std::{path::Path, time::Duration};
 
 use clap::Parser;
@@ -10,6 +11,7 @@ use p2p_proto as proto;
 use proto::sync::{BlockBodies, StateDiffs};
 use serde_derive::Deserialize;
 use stark_hash::StarkHash;
+use tokio::sync::RwLock;
 use zeroize::Zeroizing;
 
 #[derive(Parser, Debug)]
@@ -41,6 +43,8 @@ impl zeroize::Zeroize for IdentityConfig {
     }
 }
 
+const PERIODIC_STATUS_INTERVAL: Duration = Duration::from_secs(30);
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -65,8 +69,9 @@ async fn main() -> anyhow::Result<()> {
     let peer_id = keypair.public().to_peer_id();
     tracing::info!(%peer_id, "Starting up");
 
-    let peers: Peers = Default::default();
-    let (mut p2p_client, mut p2p_events, p2p_main_loop) = p2p::new(keypair, peers);
+    let peers: Arc<RwLock<Peers>> = Arc::new(RwLock::new(Default::default()));
+    let (mut p2p_client, mut p2p_events, p2p_main_loop) =
+        p2p::new(keypair, peers.clone(), PERIODIC_STATUS_INTERVAL);
 
     let _p2p_task = tokio::task::spawn(p2p_main_loop.run());
 
@@ -121,31 +126,24 @@ async fn main() -> anyhow::Result<()> {
 
     while let Some(event) = p2p_events.recv().await {
         match event {
-            p2p::Event::SyncPeerConnected { peer_id } => {
-                use p2p_proto::sync::{Request, Status};
+            p2p::Event::SyncPeerConnected { peer_id }
+            | p2p::Event::SyncPeerRequestStatus { peer_id } => {
+                use p2p_proto::sync::Status;
 
-                let mut p2p_client = p2p_client.clone();
-
-                tokio::spawn(async move {
-                    let response = p2p_client
-                        .send_sync_request(
-                            peer_id,
-                            Request::Status(Status {
-                                chain_id: GOERLI_CHAIN_ID.into(),
-                                height: 128,
-                                hash: StarkHash::ZERO,
-                            }),
-                        )
-                        .await;
-                    tracing::debug!(?response, "Received status from new peer");
-                });
+                p2p_client
+                    .send_sync_status_request(
+                        peer_id,
+                        Status {
+                            chain_id: GOERLI_CHAIN_ID.into(),
+                            height: 128,
+                            hash: StarkHash::ZERO,
+                        },
+                    )
+                    .await;
             }
             p2p::Event::InboundSyncRequest {
-                from,
-                request,
-                channel,
+                request, channel, ..
             } => {
-                tracing::debug!(?request, %from, "Received request");
                 use p2p_proto::sync::{BlockHeaders, Request, Response, Status};
                 let response = match request {
                     Request::GetBlockHeaders(_r) => {
@@ -157,13 +155,21 @@ async fn main() -> anyhow::Result<()> {
                     Request::GetStateDiffs(_r) => Response::StateDiffs(StateDiffs {
                         block_state_updates: vec![],
                     }),
-                    Request::Status(_r) => Response::Status(Status {
+                    Request::Status(_) => Response::Status(Status {
                         chain_id: GOERLI_CHAIN_ID.into(),
                         height: 128,
                         hash: StarkHash::ZERO,
                     }),
                 };
                 p2p_client.send_sync_response(channel, response).await;
+
+                {
+                    let peers = peers.read().await;
+                    let connected = peers.connected().count();
+                    let supports_sync = peers.syncing().count();
+
+                    tracing::debug!(%connected, %supports_sync, "Peer status");
+                }
             }
             p2p::Event::BlockPropagation(block_propagation) => {
                 tracing::info!(?block_propagation, "Block Propagation");
