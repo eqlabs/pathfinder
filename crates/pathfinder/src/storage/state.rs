@@ -387,7 +387,7 @@ impl StarknetBlocksTable {
         .map_err(|e| e.into())
     }
 
-    /// Returns the [chain](crate::core::Chain) based on genesis block hash stored in the DB.
+    /// Returns the [chain](pathfinder_core::Chain) based on genesis block hash stored in the DB.
     pub fn get_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
         let genesis = Self::get_hash(tx, StarknetBlockNumber::GENESIS.into())
             .context("Read genesis block from database")?;

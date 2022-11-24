@@ -45,7 +45,7 @@ pub(crate) struct CommonProperties<'a> {
     pub pending_timestamp: u64,
 }
 
-/// Private version of [`crate::core::Chain`] for serialization.
+/// Private version of [`pathfinder_core::Chain`] for serialization.
 #[derive(serde::Serialize, Debug, Clone, Copy)]
 pub(crate) enum UsedChain {
     #[serde(rename = "MAINNET")]

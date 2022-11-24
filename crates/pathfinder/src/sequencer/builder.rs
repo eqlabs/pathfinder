@@ -511,6 +511,8 @@ mod tests {
         async fn stop_on_ok() {
             use crate::sequencer::builder;
 
+            tokio::time::pause();
+
             let statuses = VecDeque::from([
                 (StatusCode::TOO_MANY_REQUESTS, ""),
                 (StatusCode::BAD_GATEWAY, ""),
@@ -541,6 +543,8 @@ mod tests {
         async fn stop_on_fatal() {
             use crate::sequencer::builder;
             use crate::sequencer::error::{SequencerError, StarknetErrorCode};
+
+            tokio::time::pause();
 
             let statuses = VecDeque::from([
                 (StatusCode::TOO_MANY_REQUESTS, ""),
@@ -574,11 +578,13 @@ mod tests {
             );
         }
 
-        #[tokio::test(flavor = "current_thread", start_paused = true)]
+        #[tokio::test(flavor = "current_thread")]
         async fn request_timeout() {
             use crate::sequencer::builder;
 
             use std::sync::atomic::{AtomicUsize, Ordering};
+
+            tokio::time::pause();
 
             let (_jh, addr) = slow_server();
             static CNT: AtomicUsize = AtomicUsize::new(0);
@@ -604,11 +610,14 @@ mod tests {
             );
 
             // The retry loops forever, so wrap it in a timeout and check the counter.
-            tokio::time::timeout(Duration::from_millis(250), fut)
+            // 5 retries = 465s
+            // 6 retries = 945s
+            tokio::time::timeout(Duration::from_secs(500), fut)
                 .await
                 .unwrap_err();
-            // 4th try should have timedout if this is really exponential backoff
-            assert_eq!(CNT.load(Ordering::Relaxed), 4);
+
+            // 5th try should have timedout if this is really exponential backoff
+            assert_eq!(CNT.load(Ordering::Relaxed), 5);
         }
     }
 

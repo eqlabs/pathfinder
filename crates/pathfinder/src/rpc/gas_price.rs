@@ -3,7 +3,7 @@ use std::sync::Arc;
 /// Caching of `eth_gasPrice` with single request at a time refreshing.
 ///
 /// The `gasPrice` is used for `estimate_fee` when user
-/// requests for [`crate::core::BlockId::Latest`] or  [`crate::core::BlockId::Pending`].
+/// requests for [`pathfinder_core::BlockId::Latest`] or  [`pathfinder_core::BlockId::Pending`].
 #[derive(Clone)]
 pub struct Cached {
     inner: Arc<std::sync::Mutex<Inner>>,

@@ -13,8 +13,8 @@ bitvec = "0.20.4"
 hex-literal = "0.3"
 rusqlite = { version = "0.27.0", features = ["bundled"] }
 serde = { version = "1.0.130", features = ["derive"] }
+serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
+sha3 = "0.9"
 stark_hash = { path = "../stark_hash" }
 thiserror = "1.0.30"
 web3 = "0.18.0"
-serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
-sha3 = "0.9"

@@ -922,7 +922,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_full_contract?contractAddress={}",
-                    INVALID_CONTRACT_ADDR
+                    INVALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
                 StarknetErrorCode::UninitializedContract.into_response(),
             )]);
@@ -941,7 +941,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_full_contract?contractAddress={}",
-                    VALID_CONTRACT_ADDR
+                    VALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
                 (r#"{"hello":"world"}"#, 200),
             )]);
@@ -959,7 +959,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_by_hash?classHash={}",
-                    INVALID_CLASS_HASH
+                    INVALID_CLASS_HASH.0.to_hex_str()
                 ),
                 StarknetErrorCode::UndeclaredClass.into_response(),
             )]);
@@ -975,7 +975,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_by_hash?classHash={}",
-                    VALID_CLASS_HASH
+                    VALID_CLASS_HASH.0.to_hex_str()
                 ),
                 (r#"{"hello":"world"}"#, 200),
             )]);
@@ -993,7 +993,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_hash_at?contractAddress={}",
-                    INVALID_CONTRACT_ADDR
+                    INVALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
                 StarknetErrorCode::UninitializedContract.into_response(),
             )]);
@@ -1012,7 +1012,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_hash_at?contractAddress={}",
-                    VALID_CONTRACT_ADDR
+                    VALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
                 (r#""0x01""#, 200),
             )]);
@@ -1030,7 +1030,8 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
-                    INVALID_CONTRACT_ADDR, *VALID_KEY_DEC
+                    INVALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC
                 ),
                 (r#""0x0""#, 200),
             )]);
@@ -1050,7 +1051,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key=0&blockNumber=latest",
-                    VALID_CONTRACT_ADDR
+                    VALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
                 (r#""0x0""#, 200),
             )]);
@@ -1070,7 +1071,9 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
-                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC, INVALID_BLOCK_HASH
+                    VALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC,
+                    INVALID_BLOCK_HASH
                 ),
                 StarknetErrorCode::BlockNotFound.into_response(),
             )]);
@@ -1089,7 +1092,9 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
-                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC, INVOKE_CONTRACT_BLOCK_HASH
+                    VALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC,
+                    INVOKE_CONTRACT_BLOCK_HASH
                 ),
                 (r#""0x1e240""#, 200),
             )]);
@@ -1105,7 +1110,8 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
-                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC,
+                    VALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC,
                 ),
                 (r#""0x1e240""#, 200),
             )]);
@@ -1125,7 +1131,8 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=pending",
-                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC
+                    VALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC
                 ),
                 (r#""0x1e240""#, 200),
             )]);
@@ -1205,7 +1212,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_transaction?transactionHash={}",
-                    INVALID_TX_HASH
+                    INVALID_TX_HASH.0.to_hex_str()
                 ),
                 (r#"{"status": "NOT_RECEIVED"}"#, 200),
             )]);
@@ -1243,7 +1250,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_transaction_status?transactionHash={}",
-                    INVALID_TX_HASH
+                    INVALID_TX_HASH.0.to_hex_str()
                 ),
                 (r#"{"tx_status": "NOT_RECEIVED"}"#, 200),
             )]);
