@@ -1847,7 +1847,6 @@ mod tests {
                         expected_hash = edge.child_hash;
 
                         // Advance by the whole edge path
-                        // remaining_path.get(edge.path.len()..).unwrap();
                         remaining_path = &remaining_path[edge.path.len()..];
                     }
                 }
