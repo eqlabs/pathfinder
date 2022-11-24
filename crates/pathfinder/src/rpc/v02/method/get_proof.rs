@@ -36,22 +36,10 @@ pub async fn get_proof(
                 .state_update()
                 .await
             {
-                Some(update) => {
-                    let pending_value = update
-                        .state_diff
-                        .storage_diffs
-                        .get(&input.contract_address)
-                        .and_then(|storage| {
-                            storage.iter().find_map(|update| {
-                                (update.key == input.key).then_some(update.value)
-                            })
-                        });
-
-                    // match pending_value {
-                    //     Some(value) => return Ok(value),
-                    //     None => StarknetBlocksBlockId::Latest,
-                    // }
-                    StarknetBlocksBlockId::Latest
+                Some(_) => {
+                    return Err(GetStorageProofError::Internal(anyhow!(
+                        "'pending' is not currently supported by this method!"
+                    )))
                 }
                 None => StarknetBlocksBlockId::Latest,
             }
