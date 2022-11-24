@@ -1818,7 +1818,7 @@ mod tests {
                         }
 
                         // Direction will always correspond to the 0th index
-                        // because we're removing nibbles on every iteration.
+                        // because we're removing bits on every iteration.
                         let direction = Direction::from(remaining_path[0]);
 
                         // Set the next hash to be the left or right hash,
