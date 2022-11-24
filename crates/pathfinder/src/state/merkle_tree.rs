@@ -1828,7 +1828,7 @@ mod tests {
                             Direction::Right => bin.right_hash,
                         };
 
-                        // Advance by a single nibble
+                        // Advance by a single bit
                         remaining_path = &remaining_path[1..];
                     }
                     ProofNode::Edge(edge) => {
