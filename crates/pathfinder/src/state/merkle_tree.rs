@@ -536,8 +536,11 @@ impl<T: NodeStorage> MerkleTree<T> {
     pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
         let mut nodes = self.traverse(key)?;
 
-        // Return an error if the list is empty
-        let node = nodes.last().context("Tree is empty")?;
+        // Return an empty list if tree is empty.
+        let node = match nodes.last() {
+            Some(node) => node,
+            None => return Ok(Vec::new()),
+        };
 
         // A leaf node is redudant data as the information for it is already contained in the previous node.
         if matches!(&*node.borrow(), Node::Leaf(_)) {
