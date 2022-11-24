@@ -260,6 +260,55 @@ impl MainLoop {
         event: SwarmEvent<behaviour::Event, E>,
     ) -> anyhow::Result<()> {
         match event {
+            // ===========================
+            // Connection management
+            // ===========================
+            SwarmEvent::ConnectionEstablished {
+                peer_id, endpoint, ..
+            } => {
+                self.peers.peer_connected(&peer_id).await;
+
+                if endpoint.is_dialer() {
+                    if let Some(sender) = self.pending_dials.remove(&peer_id) {
+                        let _ = sender.send(Ok(()));
+                        tracing::debug!(%peer_id, "Established outbound connection");
+                    }
+                } else {
+                    tracing::debug!(%peer_id, "Established inbound connection");
+                }
+                Ok(())
+            }
+            SwarmEvent::OutgoingConnectionError { peer_id, error } => {
+                if let Some(peer_id) = peer_id {
+                    self.peers.peer_dial_error(&peer_id).await;
+
+                    tracing::debug!(%peer_id, %error, "Error while dialing peer");
+
+                    if let Some(sender) = self.pending_dials.remove(&peer_id) {
+                        let _ = sender.send(Err(error.into()));
+                    }
+                }
+                Ok(())
+            }
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                num_established,
+                ..
+            } => {
+                if num_established == 0 {
+                    self.peers.peer_disconnected(&peer_id).await;
+                }
+                tracing::debug!(%peer_id, "Disconnected from peer");
+                Ok(())
+            }
+            SwarmEvent::Dialing(peer_id) => {
+                self.peers.peer_dialing(&peer_id).await;
+                tracing::debug!(%peer_id, "Dialing peer");
+                Ok(())
+            }
+            // ===========================
+            // Identify events
+            // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Identify(e)) => {
                 if let identify::Event::Received {
                     peer_id,
@@ -289,7 +338,6 @@ impl MainLoop {
                         .iter()
                         .any(|p| p.as_bytes() == sync::PROTOCOL_NAME)
                     {
-                        self.peers.add(peer_id, listen_addrs).await;
                         self.event_sender
                             .send(Event::SyncPeerConnected { peer_id })
                             .await
@@ -385,24 +433,7 @@ impl MainLoop {
                 tracing::debug!(?event, "DCUtR event");
                 Ok(())
             }
-            SwarmEvent::ConnectionEstablished {
-                peer_id, endpoint, ..
-            } => {
-                if endpoint.is_dialer() {
-                    if let Some(sender) = self.pending_dials.remove(&peer_id) {
-                        let _ = sender.send(Ok(()));
-                        tracing::debug!(%peer_id, "Established outbound connection");
-                    }
-                } else {
-                    tracing::debug!(%peer_id, "Established inbound connection");
-                }
-                Ok(())
-            }
-            SwarmEvent::ConnectionClosed { peer_id, .. } => {
-                self.peers.remove(&peer_id).await;
-                tracing::debug!(%peer_id, "Disconnected from peer");
-                Ok(())
-            }
+
             event => {
                 tracing::trace!(?event, "Ignoring event");
                 Ok(())

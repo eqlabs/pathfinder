@@ -24,3 +24,4 @@ async-trait = "0.1.58"
 p2p_proto = { path = "../p2p_proto" }
 stark_hash = { path = "../stark_hash" }
 prost = "0.11.2"
+delay_map = "0.1.2"
