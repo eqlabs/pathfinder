@@ -1774,6 +1774,15 @@ mod tests {
             }
         }
 
+        impl ProofNode {
+            fn hash(&self) -> StarkHash {
+                match self {
+                    ProofNode::Binary(bin) => bin.hash(),
+                    ProofNode::Edge(edge) => edge.hash(),
+                }
+            }
+        }
+
         #[derive(Debug, PartialEq)]
         pub enum Membership {
             Member,
@@ -1810,13 +1819,12 @@ mod tests {
             let mut remaining_path: &BitSlice<Msb0, u8> = key;
 
             for proof_node in proofs.iter() {
+                // Hash mismatch? Return None.
+                if proof_node.hash() != expected_hash {
+                    return None;
+                }
                 match proof_node {
                     ProofNode::Binary(bin) => {
-                        // Hash mismatch? Return None.
-                        if bin.hash() != expected_hash {
-                            return None;
-                        }
-
                         // Direction will always correspond to the 0th index
                         // because we're removing bits on every iteration.
                         let direction = Direction::from(remaining_path[0]);
@@ -1832,11 +1840,6 @@ mod tests {
                         remaining_path = &remaining_path[1..];
                     }
                     ProofNode::Edge(edge) => {
-                        // Hash mismatch? Return None.
-                        if edge.hash() != expected_hash {
-                            return None;
-                        }
-
                         let path_matches = edge.path == remaining_path[..edge.path.len()];
                         if !path_matches {
                             // If paths don't match, we've found a proof of non membership because we:
