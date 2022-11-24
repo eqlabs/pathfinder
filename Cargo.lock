@@ -2142,6 +2142,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-serde"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "num-bigint 0.4.3",
+ "pathfinder-core",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "stark_hash",
+ "web3",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

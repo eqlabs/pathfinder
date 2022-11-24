@@ -9,6 +9,7 @@ members = [
     "crates/load-test",
     "crates/pathfinder",
     "crates/retry",
+    "crates/serde",
     "crates/stark_curve",
     "crates/stark_hash",
 ]
