@@ -1783,17 +1783,17 @@ mod tests {
         /// `root`, given `proofs`.
         /// Supports proofs of non-membership as well as proof of membership: this function returns
         /// an enum corresponding to the membership of `value`, or returns `None` in case of a hash mismatch.
-        // The algorithm follows this logic:
-        // 1. init expected_hash <- root hash
-        // 2. loop over nodes: current <- nodes[i]
-        // 1. verify the current node's hash matches expected_hash (if not then we have a bad proof)
-        // 2. move towards the target - if current is:
-        //    1. binary node then choose the child that moves towards the target, else if
-        //    2. edge node then check the path against the target bits
-        //       1. If it matches then proceed with the child, else
-        //       2. if it does not match then we now have a proof that the target does not exist
-        // 3. nibble off target bits according to which child you got in (2). If all bits are gone then you have reached the target and the child hash is the value you wanted and the proof is complete.
-        // 4. set expected_hash <- to the child hash
+        /// The algorithm follows this logic:
+        /// 1. init expected_hash <- root hash
+        /// 2. loop over nodes: current <- nodes[i]
+        /// 1. verify the current node's hash matches expected_hash (if not then we have a bad proof)
+        /// 2. move towards the target - if current is:
+        ///    1. binary node then choose the child that moves towards the target, else if
+        ///    2. edge node then check the path against the target bits
+        ///       1. If it matches then proceed with the child, else
+        ///       2. if it does not match then we now have a proof that the target does not exist
+        /// 3. nibble off target bits according to which child you got in (2). If all bits are gone then you have reached the target and the child hash is the value you wanted and the proof is complete.
+        /// 4. set expected_hash <- to the child hash
         fn verify_proof(
             root: StarkHash,
             key: &BitSlice<Msb0, u8>,
