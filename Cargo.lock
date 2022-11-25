@@ -2398,6 +2398,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-update"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "pathfinder-common",
+ "reqwest",
+ "semver",
+ "serde",
+ "tokio",
+ "tracing",
+ "vergen",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
