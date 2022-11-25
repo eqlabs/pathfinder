@@ -256,7 +256,7 @@ pub struct EthereumLogIndex(pub u64);
 
 /// A way of identifying a specific block.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(Serialize))]
+#[cfg_attr(any(test, feature = "full-serde"), derive(Serialize))]
 #[serde(deny_unknown_fields)]
 pub enum BlockId {
     #[serde(rename = "block_number")]

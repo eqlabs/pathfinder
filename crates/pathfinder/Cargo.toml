@@ -72,7 +72,7 @@ jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_
     "async-client",
 ] }
 mockall = "0.11.0"
-pathfinder-common = { path = "../common", features = ["rpc-full-serde"] }
+pathfinder-common = { path = "../common", features = ["full-serde"] }
 pretty_assertions = "1.0.0"
 rand = "0.8"
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
