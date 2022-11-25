@@ -1,5 +1,5 @@
 [package]
-name = "pathfinder-core"
+name = "pathfinder-common"
 version = "0.1.0"
 edition = "2021"
 
@@ -18,3 +18,6 @@ sha3 = "0.9"
 stark_hash = { path = "../stark_hash" }
 thiserror = "1.0.30"
 web3 = "0.18.0"
+
+[build-dependencies]
+vergen = { version = "7", default-features = false, features = ["git"] }

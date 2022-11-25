@@ -22,7 +22,7 @@ mod tests {
         CommonInvokeTransactionProperties, DeployTransaction, InvokeTransaction,
         InvokeTransactionV0,
     };
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
         StarknetTransactionHash, TransactionNonce, TransactionVersion,
     };

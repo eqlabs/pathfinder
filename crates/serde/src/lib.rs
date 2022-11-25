@@ -1,7 +1,7 @@
 //! Utilities used for serializing/deserializing sequencer REST API related data.
 
 use num_bigint::BigUint;
-use pathfinder_core::{
+use pathfinder_common::{
     CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, Fee, GasPrice,
     L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
     TransactionSignatureElem, TransactionVersion,
@@ -616,12 +616,12 @@ mod tests {
         #[derive(Debug, Copy, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
         struct BlockNum(
             #[serde_as(as = "super::StarknetBlockNumberAsHexStr")]
-            pathfinder_core::StarknetBlockNumber,
+            pathfinder_common::StarknetBlockNumber,
         );
 
         impl BlockNum {
             pub const fn new_or_panic(v: u64) -> Self {
-                Self(pathfinder_core::StarknetBlockNumber::new_or_panic(v))
+                Self(pathfinder_common::StarknetBlockNumber::new_or_panic(v))
             }
         }
 

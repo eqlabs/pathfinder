@@ -58,7 +58,7 @@ pub fn register_all_methods(
 ) -> Result<(), jsonrpsee::core::Error> {
     use crate::sequencer::request::add_transaction::ContractDefinition;
     use api::BlockResponseScope;
-    use pathfinder_core::{
+    use pathfinder_common::{
         BlockId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
         StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
@@ -293,7 +293,7 @@ pub fn register_all_methods(
             const NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
             // actual address dumped from a `starknet declare` call
             const SENDER_ADDRESS: ContractAddress =
-                ContractAddress::new_or_panic(pathfinder_core::starkhash!("01"));
+                ContractAddress::new_or_panic(pathfinder_common::starkhash!("01"));
 
             context
                 .add_declare_transaction(
@@ -360,7 +360,7 @@ mod tests {
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, starkhash_bytes, BlockId, Chain, ClassHash, ContractAddress, ContractClass,
         ContractNonce, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
@@ -605,7 +605,7 @@ mod tests {
     mod get_storage_at {
         use super::*;
         use crate::rpc::v01::types::{BlockHashOrTag, Tag};
-        use pathfinder_core::StorageValue;
+        use pathfinder_common::StorageValue;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -766,7 +766,7 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         mod accepted {
-            use pathfinder_core::StarknetTransactionHash;
+            use pathfinder_common::StarknetTransactionHash;
 
             use super::*;
             use pretty_assertions::assert_eq;
@@ -847,7 +847,7 @@ mod tests {
     mod get_transaction_by_block_id_and_index {
         use super::*;
         use crate::rpc::v01::types::reply::Transaction;
-        use pathfinder_core::StarknetTransactionHash;
+        use pathfinder_common::StarknetTransactionHash;
         use pretty_assertions::assert_eq;
 
         async fn check_result<F: Fn(&Transaction)>(params: Option<ParamsSer<'_>>, check_fn: F) {
@@ -1062,7 +1062,7 @@ mod tests {
                 assert_matches!(
                     receipt,
                     TransactionReceipt::PendingInvoke(invoke) => {
-                        assert_eq!(invoke.common.actual_fee, pathfinder_core::Fee(Default::default()));
+                        assert_eq!(invoke.common.actual_fee, pathfinder_common::Fee(Default::default()));
                         assert_eq!(invoke.events.len(), 3);
                     }
                 );
@@ -1424,7 +1424,7 @@ mod tests {
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
-        use pathfinder_core::{starkhash, StorageValue};
+        use pathfinder_common::{starkhash, StorageValue};
         use pretty_assertions::assert_eq;
 
         pub fn setup_class_and_contract(
@@ -1711,7 +1711,7 @@ mod tests {
     mod call {
         use super::*;
         use crate::rpc::v01::types::request::Call;
-        use pathfinder_core::{starkhash, CallParam, CallResultValue};
+        use pathfinder_common::{starkhash, CallParam, CallResultValue};
         use pretty_assertions::assert_eq;
 
         const INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
@@ -2110,7 +2110,7 @@ mod tests {
         mod positional_args {
             use super::*;
             use crate::rpc::v01::types::request::EventFilter;
-            use pathfinder_core::starkhash;
+            use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -2578,7 +2578,7 @@ mod tests {
                     contract::{EntryPointType, SelectorAndOffset},
                 },
             };
-            use pathfinder_core::{
+            use pathfinder_common::{
                 starkhash, ByteCodeOffset, CallParam, ClassHash, ConstructorParam,
                 ContractAddressSalt, EntryPoint, Fee, TransactionSignatureElem, TransactionVersion,
             };
@@ -2793,7 +2793,7 @@ mod tests {
 
         mod named_args {
             use super::*;
-            use pathfinder_core::{starkhash, ClassHash};
+            use pathfinder_common::{starkhash, ClassHash};
             use pretty_assertions::assert_eq;
 
             #[tokio::test]

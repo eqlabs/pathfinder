@@ -2,7 +2,7 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use pathfinder_core::{self, Chain, EthereumChain};
+use pathfinder_common::{self, Chain, EthereumChain};
 use pathfinder_lib::{
     cairo,
     ethereum::transport::{EthereumTransport, HttpTransport},

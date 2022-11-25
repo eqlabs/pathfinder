@@ -1,5 +1,5 @@
 use crate::rpc::v02::RpcContext;
-use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_serde::StarknetBlockNumberAsHexStr;
 use serde::Serialize;
 
@@ -78,7 +78,7 @@ mod tests {
 
         #[test]
         fn syncing() {
-            use pathfinder_core::{starkhash, StarknetBlockHash, StarknetBlockNumber};
+            use pathfinder_common::{starkhash, StarknetBlockHash, StarknetBlockNumber};
 
             let status = SyncingStatus {
                 starting_block_num: StarknetBlockNumber::new_or_panic(0x12),
@@ -109,7 +109,7 @@ mod tests {
         use crate::rpc::v01::types::reply::syncing::NumberedBlock;
         use crate::rpc::v01::types::reply::syncing::Status as V1Status;
         use crate::rpc::v01::types::reply::Syncing as V1Syncing;
-        use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+        use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 
         let status = V1Syncing::Status(V1Status {
             starting: NumberedBlock::from(("aabb", 1)),
@@ -121,9 +121,9 @@ mod tests {
             starting_block_num: StarknetBlockNumber::new_or_panic(1),
             current_block_num: StarknetBlockNumber::new_or_panic(2),
             highest_block_num: StarknetBlockNumber::new_or_panic(3),
-            starting_block_hash: StarknetBlockHash(pathfinder_core::starkhash!("aabb")),
-            current_block_hash: StarknetBlockHash(pathfinder_core::starkhash!("ccddee")),
-            highest_block_hash: StarknetBlockHash(pathfinder_core::starkhash!("eeffaacc")),
+            starting_block_hash: StarknetBlockHash(pathfinder_common::starkhash!("aabb")),
+            current_block_hash: StarknetBlockHash(pathfinder_common::starkhash!("ccddee")),
+            highest_block_hash: StarknetBlockHash(pathfinder_common::starkhash!("eeffaacc")),
         };
         let expected = SyncingOuput::Status(expected);
 

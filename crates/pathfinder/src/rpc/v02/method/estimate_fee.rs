@@ -4,7 +4,7 @@ use crate::{
     rpc::v02::RpcContext,
     state::PendingData,
 };
-use pathfinder_core::{BlockId, StarknetBlockTimestamp};
+use pathfinder_common::{BlockId, StarknetBlockTimestamp};
 use serde::Serialize;
 use serde_with::serde_as;
 use std::sync::Arc;
@@ -159,7 +159,7 @@ impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
 mod tests {
     use super::*;
     use crate::{rpc::v02::types::request::BroadcastedInvokeTransaction, storage::JournalMode};
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
@@ -253,7 +253,7 @@ mod tests {
             BroadcastedInvokeTransactionV0,
         };
         use crate::rpc::v02::types::ContractClass;
-        use pathfinder_core::{starkhash_bytes, ContractAddressSalt};
+        use pathfinder_common::{starkhash_bytes, ContractAddressSalt};
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(

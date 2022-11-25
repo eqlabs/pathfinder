@@ -17,7 +17,7 @@ use crate::{
     },
 };
 use anyhow::Context;
-use pathfinder_core::{
+use pathfinder_common::{
     Chain, ClassHash, ContractNonce, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
 };
@@ -469,7 +469,7 @@ async fn update_sync_status_latest(
     starting_block_num: StarknetBlockNumber,
     chain: Chain,
 ) -> anyhow::Result<()> {
-    use pathfinder_core::BlockId;
+    use pathfinder_common::BlockId;
 
     let poll_interval = head_poll_interval(chain);
 
@@ -921,7 +921,7 @@ async fn download_verify_and_insert_missing_classes<
 /// block information as it is available. The interval is based on the block creation
 /// time, which is 2 minutes for Goerlie and 2 hours for Mainnet.
 pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
-    use pathfinder_core::Chain::*;
+    use pathfinder_common::Chain::*;
     use std::time::Duration;
 
     match chain {
@@ -945,7 +945,7 @@ mod tests {
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
     use futures::stream::{StreamExt, TryStreamExt};
-    use pathfinder_core::{
+    use pathfinder_common::{
         BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,

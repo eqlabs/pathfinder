@@ -1,6 +1,6 @@
 //! StarkNet L2 sequencer client.
 use crate::{rpc::v01::types::BlockHashOrTag, sequencer::error::SequencerError};
-use pathfinder_core::{
+use pathfinder_common::{
     BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
     EntryPoint, Fee, StarknetBlockNumber, StarknetTransactionHash, StorageAddress, StorageValue,
     TransactionNonce, TransactionSignatureElem, TransactionVersion,
@@ -448,7 +448,7 @@ impl ClientApi for Client {
 #[cfg(test)]
 pub mod test_utils {
     use crate::rpc::v01::types::{BlockHashOrTag, BlockNumberOrTag};
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
         StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
     };
@@ -510,7 +510,7 @@ mod tests {
     use super::{error::StarknetErrorCode, test_utils::*, *};
     use crate::rpc::v01::types::Tag;
     use assert_matches::assert_matches;
-    use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
     use stark_hash::StarkHash;
 
     /// Helper macro which creates a successful response tuple
@@ -702,7 +702,7 @@ mod tests {
     async fn client_user_agent() {
         use crate::monitoring::metrics::test::RecorderGuard;
         use crate::sequencer::reply::{Block, Status};
-        use pathfinder_core::StarknetBlockTimestamp;
+        use pathfinder_common::StarknetBlockTimestamp;
         use std::convert::Infallible;
         use warp::Filter;
 
@@ -721,7 +721,7 @@ mod tests {
                     gas_price: None,
                     parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
                     sequencer_address: None,
-                    state_root: pathfinder_core::GlobalRoot(StarkHash::ZERO),
+                    state_root: pathfinder_common::GlobalRoot(StarkHash::ZERO),
                     status: Status::NotReceived,
                     timestamp: StarknetBlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
@@ -750,7 +750,7 @@ mod tests {
     mod block_matches_by_hash_on {
         use super::*;
         use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
 
         #[tokio::test]
         async fn genesis() {
@@ -812,7 +812,7 @@ mod tests {
     mod block {
         use super::*;
         use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_core::BlockId;
+        use pathfinder_common::BlockId;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1022,7 +1022,7 @@ mod tests {
 
     mod storage {
         use super::*;
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
         use pretty_assertions::assert_eq;
 
         #[test_log::test(tokio::test)]
@@ -1150,7 +1150,7 @@ mod tests {
 
     mod transaction {
         use super::{reply::Status, *};
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1225,7 +1225,7 @@ mod tests {
 
     mod transaction_status {
         use super::{reply::Status, *};
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
 
         #[tokio::test]
         async fn accepted() {
@@ -1274,7 +1274,7 @@ mod tests {
             *,
         };
         use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_core::{starkhash, ContractAddress, GlobalRoot};
+        use pathfinder_common::{starkhash, ContractAddress, GlobalRoot};
         use pretty_assertions::assert_eq;
         use std::collections::{BTreeSet, HashMap};
 
@@ -1452,7 +1452,7 @@ mod tests {
     mod add_transaction {
         use super::*;
         use crate::sequencer::request::contract::{EntryPointType, SelectorAndOffset};
-        use pathfinder_core::{starkhash, ByteCodeOffset, ContractAddress};
+        use pathfinder_common::{starkhash, ByteCodeOffset, ContractAddress};
         use std::collections::HashMap;
 
         #[tokio::test]
@@ -1660,10 +1660,10 @@ mod tests {
 
             let expected = reply::add_transaction::DeployAccountResponse {
                 code: "TRANSACTION_RECEIVED".to_string(),
-                transaction_hash: StarknetTransactionHash(pathfinder_core::starkhash!(
+                transaction_hash: StarknetTransactionHash(pathfinder_common::starkhash!(
                     "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
                 )),
-                address: ContractAddress::new_or_panic(pathfinder_core::starkhash!(
+                address: ContractAddress::new_or_panic(pathfinder_common::starkhash!(
                     "04e574ea2abd76d3105b3d29de28af0c5a28b889aa465903080167f6b48b1acc"
                 )),
             };
@@ -1792,7 +1792,7 @@ mod tests {
 
     mod chain {
         use crate::sequencer;
-        use pathfinder_core::Chain;
+        use pathfinder_common::Chain;
 
         #[derive(Copy, Clone, PartialEq, Eq)]
         /// Used by [setup_server] to determine which block to return.
@@ -1898,7 +1898,7 @@ mod tests {
     mod metrics {
         use super::*;
         use futures::stream::StreamExt;
-        use pathfinder_core::BlockId;
+        use pathfinder_common::BlockId;
         use pretty_assertions::assert_eq;
         use std::future::Future;
 

@@ -1,6 +1,6 @@
 use crate::storage::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
-use pathfinder_core::{
+use pathfinder_common::{
     starkhash, ContractAddress, EventData, EventKey, StarknetBlockNumber, StarknetTransactionHash,
 };
 use rusqlite::named_params;
@@ -267,7 +267,7 @@ fn update_database(
 /// in the database. We copy these here so that further modifications don't break this
 /// migration.
 mod types {
-    use pathfinder_core::{
+    use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,

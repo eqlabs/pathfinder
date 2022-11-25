@@ -3,7 +3,7 @@ use crate::state::PendingData;
 use crate::storage::EventFilterError;
 use crate::storage::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
-use pathfinder_core::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
+use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use serde::Deserialize;
 use tokio::task::JoinHandle;
 
@@ -336,7 +336,7 @@ fn next_continuation_token(
 }
 
 mod types {
-    use pathfinder_core::{
+    use pathfinder_common::{
         ContractAddress, EventData, EventKey, StarknetBlockHash, StarknetBlockNumber,
         StarknetTransactionHash,
     };
@@ -388,7 +388,7 @@ mod tests {
     };
     use crate::storage::test_utils;
     use jsonrpsee::types::Params;
-    use pathfinder_core::starkhash;
+    use pathfinder_common::starkhash;
     use pretty_assertions::assert_eq;
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::sequencer::request::contract::EntryPointType;
 use anyhow::{Context, Error, Result};
-use pathfinder_core::ClassHash;
+use pathfinder_common::ClassHash;
 use serde::Serialize;
 use sha3::Digest;
 use stark_hash::{HashChain, StarkHash};
@@ -416,7 +416,7 @@ mod json {
 
     #[cfg(test)]
     mod test_vectors {
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
 
         #[tokio::test]
         async fn first() {
@@ -460,7 +460,7 @@ mod json {
         #[tokio::test]
         async fn genesis_contract() {
             use crate::sequencer::ClientApi;
-            use pathfinder_core::{Chain, ContractAddress};
+            use pathfinder_common::{Chain, ContractAddress};
 
             let contract =
                 starkhash!("0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3");
@@ -483,7 +483,7 @@ mod json {
             // we now need to ignore if empty).
             use super::super::extract_abi_code_hash;
             use crate::sequencer::{self, ClientApi};
-            use pathfinder_core::{Chain, ClassHash, ContractAddress};
+            use pathfinder_common::{Chain, ClassHash, ContractAddress};
             use starkhash;
 
             // Known contract which triggered a hash mismatch failure.
@@ -619,7 +619,7 @@ mod tests {
     #[test]
     fn truncated_keccak_matches_pythonic() {
         use super::truncated_keccak;
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
         use sha3::{Digest, Keccak256};
         let all_set = Keccak256::digest(&[0xffu8; 32]);
         assert!(all_set[0] > 0xf);

@@ -2,7 +2,7 @@
 
 use super::{sub_process::launch_python, Command, Handle, SharedReceiver, SubProcessEvent};
 use anyhow::Context;
-use pathfinder_core::Chain;
+use pathfinder_common::Chain;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};

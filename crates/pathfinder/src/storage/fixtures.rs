@@ -7,7 +7,7 @@ use crate::{
     },
     storage::{StarknetBlock, Storage},
 };
-use pathfinder_core::{
+use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress, StorageValue,
 };

@@ -1,5 +1,5 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use pathfinder_core::{
+use pathfinder_common::{
     EthereumAddress, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
     StarknetBlockNumber, StarknetBlockTimestamp,
 };
@@ -181,7 +181,7 @@ pub struct TransactionStatus {
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    use pathfinder_core::{
+    use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
@@ -585,7 +585,7 @@ pub struct StateUpdate {
 
 /// Types used when deserializing state update related data.
 pub mod state_update {
-    use pathfinder_core::{
+    use pathfinder_common::{
         ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
     };
     use serde::Deserialize;
@@ -630,7 +630,7 @@ pub mod state_update {
         #[test]
         fn contract_field_backward_compatibility() {
             use super::{ClassHash, ContractAddress, DeployedContract};
-            use pathfinder_core::starkhash;
+            use pathfinder_common::starkhash;
 
             let expected = DeployedContract {
                 address: ContractAddress::new_or_panic(starkhash!("01")),
@@ -671,7 +671,7 @@ pub struct EthContractAddresses {
 }
 
 pub mod add_transaction {
-    use pathfinder_core::{ClassHash, ContractAddress, StarknetTransactionHash};
+    use pathfinder_common::{ClassHash, ContractAddress, StarknetTransactionHash};
 
     /// API response for an INVOKE_FUNCTION transaction
     #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
@@ -711,7 +711,7 @@ pub mod add_transaction {
     #[cfg(test)]
     mod serde_test {
         use super::*;
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
 
         #[test]
         fn test_invoke_response() {

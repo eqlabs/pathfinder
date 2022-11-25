@@ -19,7 +19,7 @@ use crate::rpc::v01::types::{reply::FeeEstimate, request::Call};
 use crate::rpc::v02::types::request::{BroadcastedInvokeTransaction, BroadcastedTransaction};
 use crate::sequencer::reply::StateUpdate;
 use crate::sequencer::request::add_transaction;
-use pathfinder_core::{CallResultValue, StarknetBlockTimestamp};
+use pathfinder_common::{CallResultValue, StarknetBlockTimestamp};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -352,7 +352,7 @@ mod tests {
         },
         storage::StarknetBlock,
     };
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, starkhash_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
         ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,

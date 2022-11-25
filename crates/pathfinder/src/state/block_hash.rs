@@ -5,7 +5,7 @@ use crate::sequencer::reply::{
 use crate::state::merkle_tree::MerkleTree;
 use anyhow::{Context, Error, Result};
 use bitvec::prelude::BitView;
-use pathfinder_core::{
+use pathfinder_common::{
     Chain, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
     StarknetBlockTimestamp,
 };
@@ -93,7 +93,7 @@ pub fn verify_block_hash(
 }
 
 mod meta {
-    use pathfinder_core::{starkhash, Chain, SequencerAddress, StarknetBlockNumber};
+    use pathfinder_common::{starkhash, Chain, SequencerAddress, StarknetBlockNumber};
     use std::ops::Range;
 
     /// Metadata about Starknet chains we use for block hash calculation
@@ -423,11 +423,11 @@ mod tests {
     use crate::sequencer::reply::transaction::{
         EntryPointType, InvokeTransaction, InvokeTransactionV0,
     };
-    use pathfinder_core::{starkhash, EntryPoint, Fee};
+    use pathfinder_common::{starkhash, EntryPoint, Fee};
 
     #[test]
     fn test_event_hash() {
-        use pathfinder_core::{ContractAddress, EventData, EventKey};
+        use pathfinder_common::{ContractAddress, EventData, EventKey};
 
         let event = Event {
             from_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
@@ -456,7 +456,9 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        use pathfinder_core::{ContractAddress, StarknetTransactionHash, TransactionSignatureElem};
+        use pathfinder_common::{
+            ContractAddress, StarknetTransactionHash, TransactionSignatureElem,
+        };
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],

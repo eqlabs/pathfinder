@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
 
-use pathfinder_core::{
+use pathfinder_common::{
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
     EthereumTransactionIndex,
 };
@@ -137,7 +137,7 @@ impl TryFrom<&web3::types::Log> for EthOrigin {
 mod tests {
     mod chain {
         use crate::ethereum::transport::{EthereumTransport, HttpTransport};
-        use pathfinder_core::{Chain, EthereumChain};
+        use pathfinder_common::{Chain, EthereumChain};
 
         #[tokio::test]
         async fn testnet() {

@@ -1,6 +1,6 @@
 use crate::rpc::v02::RpcContext;
 use anyhow::Context;
-use pathfinder_core::{BlockId, ContractAddress, ContractNonce};
+use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetNonceInput {
@@ -80,8 +80,8 @@ async fn get_pending_nonce(
 mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
     use crate::rpc::v02::RpcContext;
-    use pathfinder_core::{starkhash, starkhash_bytes};
-    use pathfinder_core::{
+    use pathfinder_common::{starkhash, starkhash_bytes};
+    use pathfinder_common::{
         BlockId, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
         StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
     };
@@ -145,7 +145,7 @@ mod tests {
 
         #[tokio::test]
         async fn block_not_found() {
-            use pathfinder_core::StarknetBlockHash;
+            use pathfinder_common::StarknetBlockHash;
 
             let context = RpcContext::for_tests();
 

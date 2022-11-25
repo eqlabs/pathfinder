@@ -14,7 +14,7 @@ use crate::sequencer::{
     error::SequencerError,
     metrics::{with_metrics, BlockTag, RequestMetadata},
 };
-use pathfinder_core::{
+use pathfinder_common::{
     BlockId, ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress,
 };
 

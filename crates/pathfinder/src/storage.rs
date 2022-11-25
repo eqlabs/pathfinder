@@ -199,7 +199,7 @@ pub(crate) mod test_utils {
         self, DeclareTransaction, DeployTransaction, EntryPointType, InvokeTransaction,
         InvokeTransactionV0,
     };
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
         EntryPoint, EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress,
         StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,

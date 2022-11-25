@@ -4,7 +4,7 @@ use super::{
     SequencerError,
 };
 use futures::Future;
-use pathfinder_core::BlockId;
+use pathfinder_common::BlockId;
 
 const METRIC_REQUESTS: &str = "gateway_requests_total";
 const METRIC_FAILED_REQUESTS: &str = "gateway_requests_failed_total";

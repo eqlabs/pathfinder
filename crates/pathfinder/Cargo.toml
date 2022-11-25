@@ -36,8 +36,8 @@ lazy_static = "1.4.0"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 num-bigint = { version = "0.4.3", features = ["serde"] }
+pathfinder-common = { path = "../common" }
 pathfinder-config = { path = "../config" }
-pathfinder-core = { path = "../core" }
 pathfinder-retry = { path = "../retry" }
 pathfinder-serde = { path = "../serde" }
 r2d2 = "0.8.9"
@@ -71,7 +71,7 @@ jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_
     "async-client",
 ] }
 mockall = "0.11.0"
-pathfinder-core = { path = "../core", features = ["rpc-full-serde"] }
+pathfinder-common = { path = "../common", features = ["rpc-full-serde"] }
 pretty_assertions = "1.0.0"
 rand = "0.8"
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }

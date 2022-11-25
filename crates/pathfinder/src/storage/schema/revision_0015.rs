@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_core::Fee;
+use pathfinder_common::Fee;
 use rusqlite::{named_params, Transaction as RusqliteTransaction};
 use web3::types::H128;
 
@@ -9,7 +9,7 @@ use web3::types::H128;
 // format. The point of this migration is getting rid of those `null` values.
 mod transaction {
     use crate::sequencer::reply::transaction::EntryPointType;
-    use pathfinder_core::{
+    use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
         TransactionVersion,
@@ -227,7 +227,7 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
 mod tests {
     use super::transaction;
     use crate::storage::schema;
-    use pathfinder_core::{starkhash, StarknetTransactionHash};
+    use pathfinder_common::{starkhash, StarknetTransactionHash};
     use rusqlite::{named_params, Connection};
     use web3::types::H128;
 
@@ -328,7 +328,7 @@ mod tests {
             named_params![
                 ":hash": tx.hash().0.as_be_bytes(),
                 ":idx": idx,
-                ":block_hash": pathfinder_core::starkhash!("01").as_be_bytes(),
+                ":block_hash": pathfinder_common::starkhash!("01").as_be_bytes(),
                 ":tx": &compressed_tx,
                 ":receipt": &[],
             ]

@@ -9,7 +9,7 @@ use crate::{
     storage::merkle_tree::RcNodeStorage,
 };
 use bitvec::{prelude::Msb0, slice::BitSlice};
-use pathfinder_core::{
+use pathfinder_common::{
     ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
 };
 use rusqlite::Transaction;

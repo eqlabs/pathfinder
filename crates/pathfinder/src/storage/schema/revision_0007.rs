@@ -5,7 +5,7 @@ use rusqlite::{named_params, Transaction};
 // revision 6. We have to keep these intact so that future changes to these types
 // do not break database upgrades.
 mod transaction {
-    use pathfinder_core::{
+    use pathfinder_common::{
         CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
@@ -327,14 +327,14 @@ pub(crate) fn migrate_with(
 }
 
 /// Copy of `StarknetEventsTable::event_data_to_bytes` at the time of this migration.
-fn event_data_to_bytes(data: &[pathfinder_core::EventData]) -> Vec<u8> {
+fn event_data_to_bytes(data: &[pathfinder_common::EventData]) -> Vec<u8> {
     data.iter()
         .flat_map(|e| (*e.0.as_be_bytes()).into_iter())
         .collect()
 }
 
 /// Copy of `StarknetEventsTable::event_keys_to_base64_strings` at the time of this migration.
-fn event_keys_to_base64_strings(keys: &[pathfinder_core::EventKey]) -> String {
+fn event_keys_to_base64_strings(keys: &[pathfinder_common::EventKey]) -> String {
     // TODO: we really should be using Iterator::intersperse() here once it's stabilized.
     let keys: Vec<String> = keys
         .iter()

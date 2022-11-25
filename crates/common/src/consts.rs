@@ -1,6 +1,6 @@
 //! Repeated constants used around pathfinder
 
-use pathfinder_common::{starkhash, StarknetBlockHash};
+use crate::{starkhash, StarknetBlockHash};
 
 /// User agent used in http clients
 pub const USER_AGENT: &str = concat!(

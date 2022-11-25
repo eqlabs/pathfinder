@@ -3,7 +3,7 @@ use crate::{
     sequencer::ClientApi,
 };
 use anyhow::Context;
-use pathfinder_core::{ContractAddress, StarknetTransactionHash};
+use pathfinder_common::{ContractAddress, StarknetTransactionHash};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -53,7 +53,7 @@ pub async fn add_deploy_account_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, CallParam, Chain, ClassHash, ContractAddressSalt, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };

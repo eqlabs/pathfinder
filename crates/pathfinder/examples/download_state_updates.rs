@@ -49,7 +49,7 @@ async fn main() {
     let (compressed_tx, compressed_rx) = std::sync::mpsc::sync_channel(2);
 
     let downloader = std::thread::spawn(move || {
-        use pathfinder_core::BlockId;
+        use pathfinder_common::BlockId;
         use pathfinder_lib::sequencer::{Client, ClientApi};
 
         let client = Client::new(chain)?;

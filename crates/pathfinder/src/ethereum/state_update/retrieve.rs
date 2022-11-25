@@ -8,7 +8,7 @@ use crate::ethereum::{
     transport::EthereumTransport,
 };
 use anyhow::Context;
-use pathfinder_core::Chain;
+use pathfinder_common::Chain;
 use std::collections::{HashMap, HashSet};
 use web3::{
     futures::future::try_join_all,

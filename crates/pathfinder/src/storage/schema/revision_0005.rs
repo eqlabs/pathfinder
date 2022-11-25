@@ -6,7 +6,7 @@ use tracing::info;
 // revision 4. We have to keep these intact so that future changes to these types
 // do not break database upgrades.
 mod transaction {
-    use pathfinder_core::{
+    use pathfinder_common::{
         CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,

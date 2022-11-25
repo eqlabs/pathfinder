@@ -81,7 +81,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 ///
 /// Only the paths that are actually requried are kept for deserialisation.
 mod types {
-    use pathfinder_core::{ClassHash, StarknetBlockHash};
+    use pathfinder_common::{ClassHash, StarknetBlockHash};
     use serde::Deserialize;
 
     #[derive(Deserialize)]

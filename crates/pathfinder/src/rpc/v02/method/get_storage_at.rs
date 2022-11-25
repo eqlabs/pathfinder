@@ -2,7 +2,7 @@ use crate::rpc::v02::RpcContext;
 use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use crate::storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use anyhow::{anyhow, Context};
-use pathfinder_core::{BlockId, ContractAddress, StorageAddress, StorageValue};
+use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
 use serde::Deserialize;
 use stark_hash::StarkHash;
 
@@ -107,7 +107,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, starkhash_bytes, ContractAddress, StarknetBlockHash, StorageAddress,
     };
 
@@ -168,7 +168,7 @@ mod tests {
         Box::new(|i: usize, result| {
             assert_matches!(result, Ok(value) => assert_eq!(
                 *value,
-                StorageValue(pathfinder_core::starkhash_bytes!(expected)),
+                StorageValue(pathfinder_common::starkhash_bytes!(expected)),
                 "test case {i}"
             ), "test case {i}");
         })

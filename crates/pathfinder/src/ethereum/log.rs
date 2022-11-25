@@ -1,5 +1,5 @@
 use crate::ethereum::EthOrigin;
-use pathfinder_core::{GlobalRoot, StarknetBlockNumber};
+use pathfinder_common::{GlobalRoot, StarknetBlockNumber};
 use web3::types::H256;
 
 mod fetch;

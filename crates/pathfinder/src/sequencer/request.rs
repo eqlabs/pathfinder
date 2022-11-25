@@ -1,8 +1,8 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
-use pathfinder_core::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
+use pathfinder_common::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
 
 pub mod contract {
-    use pathfinder_core::{ByteCodeOffset, EntryPoint};
+    use pathfinder_common::{ByteCodeOffset, EntryPoint};
     use stark_hash::StarkHash;
     use std::fmt;
 
@@ -48,7 +48,7 @@ pub mod contract {
 pub mod add_transaction {
     use super::contract::{EntryPointType, SelectorAndOffset};
     use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
-    use pathfinder_core::{
+    use pathfinder_common::{
         ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
     };
     use pathfinder_serde::{

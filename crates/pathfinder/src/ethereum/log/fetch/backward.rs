@@ -4,7 +4,7 @@ use crate::ethereum::{
     log::fetch::{EitherMetaLog, MetaLog},
     transport::{EthereumTransport, LogsError},
 };
-use pathfinder_core::Chain;
+use pathfinder_common::Chain;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackwardFetchError {
@@ -158,7 +158,7 @@ mod tests {
     use crate::ethereum::{
         log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin,
     };
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, Chain, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
         EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
     };

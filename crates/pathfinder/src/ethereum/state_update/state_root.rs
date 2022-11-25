@@ -1,5 +1,5 @@
 use crate::ethereum::log::{LogFetcher, StateUpdateLog};
-use pathfinder_core::{Chain, EthereumBlockNumber};
+use pathfinder_common::{Chain, EthereumBlockNumber};
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
 #[derive(Clone)]
@@ -46,7 +46,7 @@ impl std::ops::DerefMut for StateRootFetcher {
 mod tests {
     use crate::ethereum::transport::HttpTransport;
     use assert_matches::assert_matches;
-    use pathfinder_core::{Chain, StarknetBlockNumber};
+    use pathfinder_common::{Chain, StarknetBlockNumber};
     use pretty_assertions::assert_eq;
 
     use super::*;
@@ -163,7 +163,7 @@ mod tests {
             log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
             TransactionOrigin,
         };
-        use pathfinder_core::{
+        use pathfinder_common::{
             starkhash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
             EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
         };

@@ -7,7 +7,7 @@ use crate::{
     sequencer::reply::transaction,
 };
 use anyhow::Context;
-use pathfinder_core::{
+use pathfinder_common::{
     Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
     EthereumTransactionIndex, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
@@ -387,7 +387,7 @@ impl StarknetBlocksTable {
         .map_err(|e| e.into())
     }
 
-    /// Returns the [chain](pathfinder_core::Chain) based on genesis block hash stored in the DB.
+    /// Returns the [chain](pathfinder_common::Chain) based on genesis block hash stored in the DB.
     pub fn get_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
         let genesis = Self::get_hash(tx, StarknetBlockNumber::GENESIS.into())
             .context("Read genesis block from database")?;
@@ -1322,7 +1322,7 @@ mod tests {
 
     mod contracts {
         use super::*;
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
 
         #[test]
         fn get() {
@@ -2038,8 +2038,8 @@ mod tests {
         use super::*;
         use crate::sequencer::reply::transaction;
         use crate::storage::test_utils;
-        use pathfinder_core::starkhash;
-        use pathfinder_core::{EntryPoint, EventData, Fee};
+        use pathfinder_common::starkhash;
+        use pathfinder_common::{EntryPoint, EventData, Fee};
         use web3::types::H128;
 
         #[test]
@@ -2121,7 +2121,7 @@ mod tests {
             //
             // Events should be ordered by block number, transaction index, event index.
             use crate::sequencer::reply::transaction::Event;
-            use pathfinder_core::StarknetTransactionHash;
+            use pathfinder_common::StarknetTransactionHash;
 
             // All events we are storing, arbitrarily use from_address to distinguish them.
             let expected_events = (0u8..5)
@@ -2186,7 +2186,7 @@ mod tests {
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[0].hash(),
-                    transaction_index: pathfinder_core::StarknetTransactionIndex::new_or_panic(0),
+                    transaction_index: pathfinder_common::StarknetTransactionIndex::new_or_panic(0),
                 },
                 transaction::Receipt {
                     actual_fee: None,
@@ -2202,7 +2202,7 @@ mod tests {
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[1].hash(),
-                    transaction_index: pathfinder_core::StarknetTransactionIndex::new_or_panic(1),
+                    transaction_index: pathfinder_common::StarknetTransactionIndex::new_or_panic(1),
                 },
             ];
 
@@ -2671,7 +2671,7 @@ mod tests {
 
             #[test]
             fn none() {
-                use pathfinder_core::starkhash;
+                use pathfinder_common::starkhash;
                 with_n_state_updates(1, |_, tx, _| {
                     let non_existent = StarknetBlockHash(starkhash!("ff"));
                     let actual = StarknetStateUpdatesTable::get(tx, non_existent).unwrap();

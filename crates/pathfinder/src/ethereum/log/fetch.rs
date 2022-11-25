@@ -10,7 +10,7 @@ use crate::ethereum::{
     },
     EthOrigin,
 };
-use pathfinder_core::Chain;
+use pathfinder_common::Chain;
 
 mod backward;
 mod forward;

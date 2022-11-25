@@ -284,7 +284,7 @@ where
         use crate::state::SyncState;
         use futures::stream::StreamExt;
         use jsonrpsee::rpc_params;
-        use pathfinder_core::Chain;
+        use pathfinder_common::Chain;
         use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
         use std::sync::Arc;
 

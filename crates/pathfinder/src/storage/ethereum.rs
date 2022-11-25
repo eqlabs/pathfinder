@@ -1,4 +1,4 @@
-use pathfinder_core::{
+use pathfinder_common::{
     EthereumBlockHash, EthereumBlockNumber, EthereumTransactionHash, EthereumTransactionIndex,
 };
 use rusqlite::{named_params, Transaction};

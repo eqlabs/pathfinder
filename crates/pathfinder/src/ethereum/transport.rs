@@ -1,8 +1,8 @@
 //! Wrapper for the parts of the [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
 use anyhow::Context;
 use futures::TryFutureExt;
+use pathfinder_common::EthereumChain;
 use pathfinder_config::EthereumConfig;
-use pathfinder_core::EthereumChain;
 use pathfinder_retry::Retry;
 use std::future::Future;
 use std::num::NonZeroU64;
@@ -91,8 +91,8 @@ impl HttpTransport {
     ///
     /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
     ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
-    pub fn test_transport(chain: pathfinder_core::Chain) -> Self {
-        use pathfinder_core::Chain;
+    pub fn test_transport(chain: pathfinder_common::Chain) -> Self {
+        use pathfinder_common::Chain;
         let key_prefix = match chain {
             Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
             Chain::Testnet | Chain::Testnet2 | Chain::Integration => {
@@ -272,7 +272,7 @@ mod tests {
     mod logs {
         use crate::ethereum::transport::{EthereumTransport, HttpTransport, LogsError};
         use assert_matches::assert_matches;
-        use pathfinder_core::Chain;
+        use pathfinder_common::Chain;
         use web3::types::{BlockNumber, FilterBuilder, H256};
 
         #[tokio::test]

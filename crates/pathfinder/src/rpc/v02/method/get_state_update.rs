@@ -1,7 +1,7 @@
 use crate::rpc::v02::RpcContext;
 use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable};
 use anyhow::{anyhow, Context};
-use pathfinder_core::BlockId;
+use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -68,7 +68,7 @@ pub async fn get_state_update(
 }
 
 mod types {
-    use pathfinder_core::{
+    use pathfinder_common::{
         ClassHash, ContractAddress, ContractNonce, GlobalRoot, StarknetBlockHash, StorageAddress,
         StorageValue,
     };
@@ -277,7 +277,7 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
 
         #[test]
         fn receipt() {
@@ -333,8 +333,8 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_core::{starkhash, starkhash_bytes};
-    use pathfinder_core::{
+    use pathfinder_common::{starkhash, starkhash_bytes};
+    use pathfinder_common::{
         Chain, ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
         StorageAddress, StorageValue,
     };
@@ -461,7 +461,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(StarknetBlockHash(pathfinder_core::starkhash_bytes!(
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash_bytes!(
                     b"non-existent"
                 ))),
                 assert_error(GetStateUpdateError::BlockNotFound),

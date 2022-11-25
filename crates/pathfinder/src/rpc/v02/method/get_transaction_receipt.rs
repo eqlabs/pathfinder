@@ -2,7 +2,7 @@ use crate::rpc::v02::common::get_block_status;
 use crate::rpc::v02::RpcContext;
 use crate::storage::{StarknetBlocksTable, StarknetTransactionsTable};
 use anyhow::Context;
-use pathfinder_core::StarknetTransactionHash;
+use pathfinder_common::StarknetTransactionHash;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionReceiptInput {
@@ -80,7 +80,7 @@ pub async fn get_transaction_receipt(
 mod types {
     use crate::rpc::v02::types::reply::BlockStatus;
     use crate::sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message};
-    use pathfinder_core::{
+    use pathfinder_common::{
         ContractAddress, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
     };
@@ -401,7 +401,7 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use pathfinder_core::{
+        use pathfinder_common::{
             starkhash, EthereumAddress, EventData, EventKey, L2ToL1MessagePayloadElem,
         };
 
@@ -530,7 +530,7 @@ mod types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, starkhash_bytes, ContractAddress, EventData, EventKey, Fee, StarknetBlockHash,
         StarknetBlockNumber, StarknetTransactionHash,
     };

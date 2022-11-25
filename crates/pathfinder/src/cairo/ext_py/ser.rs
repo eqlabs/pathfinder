@@ -2,7 +2,7 @@
 
 use crate::rpc::v01::types::BlockHashOrTag;
 use crate::sequencer::reply::state_update::{DeployedContract, StorageDiff};
-use pathfinder_core::{
+use pathfinder_common::{
     BlockId, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint, StarknetBlockHash,
     StarknetBlockNumber,
 };
@@ -45,7 +45,7 @@ pub(crate) struct CommonProperties<'a> {
     pub pending_timestamp: u64,
 }
 
-/// Private version of [`pathfinder_core::Chain`] for serialization.
+/// Private version of [`pathfinder_common::Chain`] for serialization.
 #[derive(serde::Serialize, Debug, Clone, Copy)]
 pub(crate) enum UsedChain {
     #[serde(rename = "MAINNET")]
@@ -300,7 +300,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::cairo::ext_py::ser::NoncesWrapper;
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, {ContractAddress, ContractNonce},
     };
 
@@ -308,7 +308,7 @@ mod tests {
     fn serialize_some_updates() {
         use super::ContractUpdatesWrapper;
         use crate::sequencer::reply::state_update::StorageDiff;
-        use pathfinder_core::{StorageAddress, StorageValue};
+        use pathfinder_common::{StorageAddress, StorageValue};
         use std::collections::HashMap;
 
         let expected = r#"{"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0x0"}]}"#;
@@ -346,7 +346,7 @@ mod tests {
     fn serialize_some_deployed_contracts() {
         use super::DeployedContractsWrapper;
         use crate::sequencer::reply::state_update::DeployedContract;
-        use pathfinder_core::ClassHash;
+        use pathfinder_common::ClassHash;
 
         let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
         let contracts = vec![DeployedContract {
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn serialize_block_hash_num_latest() {
         use super::BlockHashNumberOrLatest;
-        use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+        use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
         use stark_hash::StarkHash;
 
         let data = &[

@@ -1,7 +1,7 @@
 use crate::state::CompressedContract;
 #[allow(unused)]
 use anyhow::Context;
-use pathfinder_core::{Chain, ClassHash};
+use pathfinder_common::{Chain, ClassHash};
 use rusqlite::{OptionalExtension, Transaction};
 use stark_hash::{OverflowError, StarkHash};
 

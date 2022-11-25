@@ -1,4 +1,4 @@
-use pathfinder_core::Chain;
+use pathfinder_common::Chain;
 use web3::ethabi::{Contract, Event, Function};
 use web3::types::H160;
 
@@ -124,7 +124,7 @@ mod tests {
     mod contract {
         use super::*;
         use crate::ethereum::transport::HttpTransport;
-        use pathfinder_core::Chain;
+        use pathfinder_common::Chain;
         use web3::{
             contract::Options,
             types::{BlockId, BlockNumber},

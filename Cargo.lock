@@ -2090,8 +2090,8 @@ dependencies = [
  "metrics-exporter-prometheus",
  "mockall",
  "num-bigint 0.4.3",
+ "pathfinder-common",
  "pathfinder-config",
- "pathfinder-core",
  "pathfinder-retry",
  "pathfinder-serde",
  "pretty_assertions",
@@ -2121,20 +2121,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pathfinder-config"
-version = "0.1.0"
-dependencies = [
- "clap 3.1.6",
- "enum-iterator",
- "lazy_static",
- "reqwest",
- "serde",
- "toml",
- "vergen",
-]
-
-[[package]]
-name = "pathfinder-core"
+name = "pathfinder-common"
 version = "0.1.0"
 dependencies = [
  "bitvec",
@@ -2145,7 +2132,21 @@ dependencies = [
  "sha3",
  "stark_hash",
  "thiserror",
+ "vergen",
  "web3",
+]
+
+[[package]]
+name = "pathfinder-config"
+version = "0.1.0"
+dependencies = [
+ "clap 3.1.6",
+ "enum-iterator",
+ "lazy_static",
+ "reqwest",
+ "serde",
+ "toml",
+ "vergen",
 ]
 
 [[package]]
@@ -2162,7 +2163,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "num-bigint 0.4.3",
- "pathfinder-core",
+ "pathfinder-common",
  "pretty_assertions",
  "serde",
  "serde_json",

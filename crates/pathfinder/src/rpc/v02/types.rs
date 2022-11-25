@@ -5,7 +5,7 @@ pub use class::*;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use pathfinder_core::{
+    use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
@@ -194,7 +194,7 @@ pub mod request {
         mod serde {
             use super::super::*;
             use crate::rpc::v02::types::{ContractClass, ContractEntryPoints};
-            use pathfinder_core::starkhash;
+            use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]
@@ -274,7 +274,7 @@ pub mod request {
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
     use crate::sequencer;
-    use pathfinder_core::{
+    use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
         TransactionVersion,
@@ -628,7 +628,7 @@ pub mod reply {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use pathfinder_core::starkhash;
+            use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]

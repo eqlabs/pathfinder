@@ -9,13 +9,13 @@ pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
     sequencer: &impl crate::sequencer::ClientApi,
     head: (
-        pathfinder_core::StarknetBlockHash,
-        pathfinder_core::GlobalRoot,
+        pathfinder_common::StarknetBlockHash,
+        pathfinder_common::GlobalRoot,
     ),
     poll_interval: std::time::Duration,
 ) -> anyhow::Result<()> {
     use anyhow::Context;
-    use pathfinder_core::BlockId;
+    use pathfinder_common::BlockId;
     use std::sync::Arc;
 
     loop {
@@ -76,7 +76,7 @@ mod tests {
     use super::poll_pending;
     use crate::sequencer;
     use assert_matches::assert_matches;
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, starkhash_bytes, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp,
     };

@@ -3,7 +3,7 @@ use crate::ethereum::{
     state_update::{parse::StateUpdateParser, retrieve::retrieve_transition_fact},
     transport::{EthereumTransport, LogsError},
 };
-use pathfinder_core::{Chain, ClassHash, ContractAddress, StorageAddress, StorageValue};
+use pathfinder_common::{Chain, ClassHash, ContractAddress, StorageAddress, StorageValue};
 
 mod parse;
 mod retrieve;
@@ -134,8 +134,8 @@ mod tests {
     use super::*;
     use crate::ethereum::{transport::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin};
     use hex_literal::hex;
-    use pathfinder_core::starkhash;
-    use pathfinder_core::{
+    use pathfinder_common::starkhash;
+    use pathfinder_common::{
         Chain, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
         EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
     };

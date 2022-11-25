@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use stark_hash::StarkHash;
 use web3::types::{H128, H160, H256};
 
+pub mod consts;
 mod macros;
 
 /// The address of a StarkNet contract.

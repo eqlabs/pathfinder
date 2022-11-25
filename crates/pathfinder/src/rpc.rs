@@ -110,7 +110,7 @@ mod tests {
         },
     };
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, starkhash_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
         EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
@@ -147,7 +147,7 @@ mod tests {
     pub fn setup_storage() -> Storage {
         use crate::sequencer::reply::transaction::Transaction;
         use crate::state::{update_contract_state, CompressedContract};
-        use pathfinder_core::{ContractNonce, StorageValue};
+        use pathfinder_common::{ContractNonce, StorageValue};
         use web3::types::H128;
 
         let storage = Storage::in_memory().unwrap();
@@ -293,7 +293,7 @@ mod tests {
             contract_address: contract0_addr,
             entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(StarkHash::ZERO),
-            max_fee: pathfinder_core::Fee(H128::zero()),
+            max_fee: pathfinder_common::Fee(H128::zero()),
             signature: vec![],
             transaction_hash: txn0_hash,
         };
@@ -374,7 +374,7 @@ mod tests {
     pub async fn create_pending_data(storage: Storage) -> PendingData {
         use crate::sequencer::reply::transaction::DeployTransaction;
         use crate::sequencer::reply::transaction::Transaction;
-        use pathfinder_core::StorageValue;
+        use pathfinder_common::StorageValue;
 
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {

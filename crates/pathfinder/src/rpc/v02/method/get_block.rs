@@ -2,7 +2,7 @@ use crate::rpc::v02::common::get_block_status;
 use crate::rpc::v02::RpcContext;
 use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use anyhow::{anyhow, Context};
-use pathfinder_core::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use serde::Deserialize;
 use stark_hash::StarkHash;
 
@@ -161,7 +161,7 @@ fn get_block_transactions(
 mod types {
     use crate::rpc::v02::types::reply::{BlockStatus, Transaction};
     use crate::sequencer;
-    use pathfinder_core::{
+    use pathfinder_common::{
         GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash,
     };
@@ -283,7 +283,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_core::{starkhash, StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{starkhash, StarknetBlockHash, StarknetBlockNumber};
 
     #[test]
     fn parsing() {
@@ -345,7 +345,7 @@ mod tests {
         Box::new(|i: usize, result| {
             assert_matches!(result, Ok(block) => assert_eq!(
                 block.block_hash,
-                Some(StarknetBlockHash(pathfinder_core::starkhash_bytes!(expected))),
+                Some(StarknetBlockHash(pathfinder_common::starkhash_bytes!(expected))),
                 "test case {i}"
             ));
         })
@@ -382,7 +382,7 @@ mod tests {
                 Box::new(|i, result| {
                     assert_matches!(result, Ok(block) => assert_eq!(
                         block.parent_hash,
-                        StarknetBlockHash(pathfinder_core::starkhash_bytes!(b"latest")),
+                        StarknetBlockHash(pathfinder_common::starkhash_bytes!(b"latest")),
                         "test case {i}"
                     ), "test case {i}")
                 }),
@@ -408,7 +408,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(StarknetBlockHash(pathfinder_core::starkhash_bytes!(
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash_bytes!(
                     b"genesis"
                 ))),
                 assert_hash(b"genesis"),
@@ -420,7 +420,7 @@ mod tests {
             ),
             (
                 ctx,
-                BlockId::Hash(StarknetBlockHash(pathfinder_core::starkhash_bytes!(
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash_bytes!(
                     b"non-existent"
                 ))),
                 assert_error(GetBlockError::BlockNotFound),

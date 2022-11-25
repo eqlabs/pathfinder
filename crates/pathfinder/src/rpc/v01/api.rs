@@ -29,7 +29,7 @@ use jsonrpsee::{
     core::{error::Error, RpcResult},
     types::{error::CallError, ErrorObject},
 };
-use pathfinder_core::{
+use pathfinder_common::{
     BlockId, CallResultValue, Chain, ClassHash, ConstructorParam, ContractAddress,
     ContractAddressSalt, ContractClass, ContractNonce, EventKey, Fee, GasPrice, GlobalRoot,
     SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,

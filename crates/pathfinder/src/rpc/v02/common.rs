@@ -2,7 +2,7 @@
 use crate::rpc::v02::types::reply::BlockStatus;
 use crate::storage::RefsTable;
 use anyhow::Context;
-use pathfinder_core::StarknetBlockNumber;
+use pathfinder_common::StarknetBlockNumber;
 
 /// Determines block status based on the current L1-L2 stored in the DB.
 pub fn get_block_status(

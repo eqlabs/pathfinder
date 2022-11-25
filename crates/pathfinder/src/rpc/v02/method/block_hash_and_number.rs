@@ -1,6 +1,6 @@
 use crate::{rpc::v02::RpcContext, storage::StarknetBlocksTable};
 use anyhow::Context;
-use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 
 #[derive(serde::Serialize)]
 pub struct BlockHashAndNumber {
@@ -53,7 +53,7 @@ mod tests {
         assert_eq!(result.block_number, StarknetBlockNumber::new_or_panic(2));
         assert_eq!(
             result.block_hash,
-            StarknetBlockHash(pathfinder_core::starkhash_bytes!(b"latest"))
+            StarknetBlockHash(pathfinder_common::starkhash_bytes!(b"latest"))
         );
     }
 }

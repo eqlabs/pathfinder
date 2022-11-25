@@ -7,7 +7,7 @@ use crate::state::block_hash::verify_block_hash;
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
 use anyhow::{anyhow, Context};
-use pathfinder_core::{Chain, ClassHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{Chain, ClassHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
 use tokio::sync::{mpsc, oneshot};
@@ -242,7 +242,7 @@ async fn download_block(
     prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
-    use pathfinder_core::BlockId;
+    use pathfinder_common::BlockId;
     use sequencer::error::StarknetErrorCode::BlockNotFound;
     use sequencer::reply::MaybePendingBlock;
 
@@ -535,7 +535,7 @@ mod tests {
             reply, MockClientApi,
         };
         use assert_matches::assert_matches;
-        use pathfinder_core::{
+        use pathfinder_common::{
             BlockId, ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
             StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
             StorageValue,
@@ -834,7 +834,7 @@ mod tests {
 
         mod happy_path {
             use super::*;
-            use pathfinder_core::Chain;
+            use pathfinder_common::Chain;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -1007,7 +1007,7 @@ mod tests {
         mod errors {
             use super::*;
             use crate::sequencer::reply::Status;
-            use pathfinder_core::Chain;
+            use pathfinder_common::Chain;
 
             #[tokio::test]
             async fn invalid_block_status() {
@@ -1031,7 +1031,7 @@ mod tests {
 
         mod reorg {
             use super::*;
-            use pathfinder_core::Chain;
+            use pathfinder_common::Chain;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]

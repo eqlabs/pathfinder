@@ -9,7 +9,7 @@ use crate::ethereum::{
     EthOrigin,
 };
 use anyhow::Context;
-use pathfinder_core::{GlobalRoot, StarknetBlockNumber};
+use pathfinder_common::{GlobalRoot, StarknetBlockNumber};
 use stark_hash::StarkHash;
 use web3::{
     contract::tokens::Tokenizable,

@@ -753,7 +753,7 @@ impl NodeStorage for std::cell::RefCell<std::collections::HashMap<StarkHash, Per
 mod tests {
     use super::*;
     use bitvec::prelude::*;
-    use pathfinder_core::starkhash;
+    use pathfinder_common::starkhash;
 
     #[test]
     fn get_empty() {
@@ -1373,7 +1373,7 @@ mod tests {
 
     mod real_world {
         use super::*;
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
 
         #[test]
         fn simple() {
@@ -1453,7 +1453,7 @@ mod tests {
         use super::{BinaryNode, EdgeNode, MerkleTree, Node, Visit};
         use bitvec::slice::BitSlice;
         use bitvec::{bitvec, prelude::Msb0};
-        use pathfinder_core::starkhash;
+        use pathfinder_common::starkhash;
         use stark_hash::StarkHash;
         use std::cell::RefCell;
         use std::ops::ControlFlow;

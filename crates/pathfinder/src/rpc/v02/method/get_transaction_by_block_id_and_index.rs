@@ -2,7 +2,7 @@ use crate::rpc::v02::types::reply::Transaction;
 use crate::rpc::v02::RpcContext;
 use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use anyhow::Context;
-use pathfinder_core::{BlockId, StarknetTransactionIndex};
+use pathfinder_common::{BlockId, StarknetTransactionIndex};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByBlockIdAndIndexInput {
@@ -93,7 +93,7 @@ async fn get_transaction_from_pending(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_core::{
+    use pathfinder_common::{
         starkhash, starkhash_bytes, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
     };
     use stark_hash::StarkHash;

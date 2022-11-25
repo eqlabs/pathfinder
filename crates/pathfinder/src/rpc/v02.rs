@@ -3,7 +3,7 @@ use crate::cairo::ext_py;
 use crate::rpc::gas_price;
 use crate::state::SyncState;
 use crate::{state::PendingData, storage::Storage};
-use pathfinder_core::Chain;
+use pathfinder_common::Chain;
 use std::sync::Arc;
 
 mod common;

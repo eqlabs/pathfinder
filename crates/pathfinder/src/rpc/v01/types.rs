@@ -1,5 +1,5 @@
 //! Data structures used by the JSON-RPC API methods.
-use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 use serde::{Deserialize, Serialize};
 
 /// Special tag used when specifying the `latest` or `pending` block.
@@ -61,7 +61,7 @@ impl From<StarknetBlockHash> for BlockHashOrTag {
     }
 }
 
-impl From<BlockHashOrTag> for pathfinder_core::BlockId {
+impl From<BlockHashOrTag> for pathfinder_common::BlockId {
     fn from(x: BlockHashOrTag) -> Self {
         match x {
             BlockHashOrTag::Hash(h) => Self::Hash(h),
@@ -97,7 +97,7 @@ impl From<StarknetBlockNumber> for BlockNumberOrTag {
     }
 }
 
-impl From<BlockNumberOrTag> for pathfinder_core::BlockId {
+impl From<BlockNumberOrTag> for pathfinder_common::BlockId {
     fn from(x: BlockNumberOrTag) -> Self {
         match x {
             BlockNumberOrTag::Number(n) => Self::Number(n),
@@ -109,7 +109,7 @@ impl From<BlockNumberOrTag> for pathfinder_core::BlockId {
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use pathfinder_core::{
+    use pathfinder_common::{
         BlockId, CallParam, ContractAddress, EntryPoint, EventKey, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
@@ -206,7 +206,7 @@ pub mod request {
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
     use crate::sequencer;
-    use pathfinder_core::{
+    use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EventData, EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
@@ -511,7 +511,7 @@ pub mod reply {
     /// stored in the DB as compressed raw JSON bytes.
     pub mod state_update {
         use crate::sequencer;
-        use pathfinder_core::{
+        use pathfinder_common::{
             ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
         };
         use serde::{Deserialize, Serialize};
@@ -1011,7 +1011,7 @@ pub mod reply {
     /// Transaction receipt related substructures.
     pub mod transaction_receipt {
         use crate::sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message};
-        use pathfinder_core::{
+        use pathfinder_common::{
             ContractAddress, EthereumAddress, EventData, EventKey, L1ToL2MessagePayloadElem,
             L2ToL1MessagePayloadElem,
         };
@@ -1129,7 +1129,7 @@ pub mod reply {
 
     /// Starknet's syncing status substructures.
     pub mod syncing {
-        use pathfinder_core::{StarknetBlockHash, StarknetBlockNumber};
+        use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
         use pathfinder_serde::StarknetBlockNumberAsHexStr;
         use serde::Serialize;
         use serde_with::serde_as;
@@ -1326,7 +1326,7 @@ pub mod reply {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use pathfinder_core::starkhash;
+            use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]
@@ -1434,18 +1434,18 @@ pub mod reply {
                         Self {
                             common: CommonTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
-                                to_address: pathfinder_core::EthereumAddress(
+                                to_address: pathfinder_common::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x2),
                                 ),
-                                payload: vec![pathfinder_core::L2ToL1MessagePayloadElem(
+                                payload: vec![pathfinder_common::L2ToL1MessagePayloadElem(
                                     starkhash!("03"),
                                 )],
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
-                                from_address: pathfinder_core::EthereumAddress(
+                                from_address: pathfinder_common::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x4),
                                 ),
-                                payload: vec![pathfinder_core::L1ToL2MessagePayloadElem(
+                                payload: vec![pathfinder_common::L1ToL2MessagePayloadElem(
                                     starkhash!("05"),
                                 )],
                             }),
@@ -1463,18 +1463,18 @@ pub mod reply {
                         Self {
                             common: CommonPendingTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
-                                to_address: pathfinder_core::EthereumAddress(
+                                to_address: pathfinder_common::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x5),
                                 ),
-                                payload: vec![pathfinder_core::L2ToL1MessagePayloadElem(
+                                payload: vec![pathfinder_common::L2ToL1MessagePayloadElem(
                                     starkhash!("06"),
                                 )],
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
-                                from_address: pathfinder_core::EthereumAddress(
+                                from_address: pathfinder_common::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x77),
                                 ),
-                                payload: vec![pathfinder_core::L1ToL2MessagePayloadElem(
+                                payload: vec![pathfinder_common::L1ToL2MessagePayloadElem(
                                     starkhash!("07"),
                                 )],
                             }),

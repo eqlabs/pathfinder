@@ -6,7 +6,7 @@ strip = "debuginfo"
 [workspace]
 members = [
     "crates/config",
-    "crates/core",
+    "crates/common",
     "crates/load-test",
     "crates/pathfinder",
     "crates/retry",

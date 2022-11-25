@@ -3,7 +3,7 @@ use crate::ethereum::{
     transport::{EthereumTransport, LogsError},
 };
 use anyhow::Context;
-use pathfinder_core::{Chain, EthereumBlockNumber};
+use pathfinder_common::{Chain, EthereumBlockNumber};
 use web3::types::{BlockNumber, FilterBuilder};
 
 /// Fetches consecutive logs of type T from L1, accounting for chain
@@ -194,7 +194,7 @@ mod tests {
     use crate::ethereum::{
         log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin,
     };
-    use pathfinder_core::{
+    use pathfinder_common::{
         EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
         EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
     };
