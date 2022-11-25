@@ -105,10 +105,11 @@ pub async fn get_storage_at(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_core::{ContractAddress, StarknetBlockHash, StorageAddress};
+    use pathfinder_core::{
+        starkhash, starkhash_bytes, ContractAddress, StarknetBlockHash, StorageAddress,
+    };
 
     /// # Important
     ///
@@ -167,7 +168,7 @@ mod tests {
         Box::new(|i: usize, result| {
             assert_matches!(result, Ok(value) => assert_eq!(
                 *value,
-                StorageValue(crate::starkhash_bytes!(expected)),
+                StorageValue(pathfinder_core::starkhash_bytes!(expected)),
                 "test case {i}"
             ), "test case {i}");
         })

@@ -99,8 +99,8 @@ fn read_class_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
+    use pathfinder_core::{starkhash, starkhash_bytes};
 
     mod parsing {
         use super::*;

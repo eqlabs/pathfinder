@@ -193,10 +193,8 @@ pub mod request {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use crate::{
-                rpc::v02::types::{ContractClass, ContractEntryPoints},
-                starkhash,
-            };
+            use crate::rpc::v02::types::{ContractClass, ContractEntryPoints};
+            use pathfinder_core::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]
@@ -630,7 +628,7 @@ pub mod reply {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use crate::starkhash;
+            use pathfinder_core::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]

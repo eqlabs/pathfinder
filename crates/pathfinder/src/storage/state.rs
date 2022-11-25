@@ -1322,7 +1322,7 @@ mod tests {
 
     mod contracts {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
 
         #[test]
         fn get() {
@@ -2037,8 +2037,8 @@ mod tests {
     mod starknet_events {
         use super::*;
         use crate::sequencer::reply::transaction;
-        use crate::starkhash;
         use crate::storage::test_utils;
+        use pathfinder_core::starkhash;
         use pathfinder_core::{EntryPoint, EventData, Fee};
         use web3::types::H128;
 
@@ -2671,7 +2671,7 @@ mod tests {
 
             #[test]
             fn none() {
-                use crate::starkhash;
+                use pathfinder_core::starkhash;
                 with_n_state_updates(1, |_, tx, _| {
                     let non_existent = StarknetBlockHash(starkhash!("ff"));
                     let actual = StarknetStateUpdatesTable::get(tx, non_existent).unwrap();

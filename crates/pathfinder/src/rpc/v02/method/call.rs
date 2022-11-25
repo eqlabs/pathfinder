@@ -81,7 +81,7 @@ pub async fn call(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::starkhash;
+    use pathfinder_core::starkhash;
 
     mod parsing {
         use super::*;

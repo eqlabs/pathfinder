@@ -159,16 +159,13 @@ mod tests {
 
     mod reorg {
         use super::*;
-        use crate::{
-            ethereum::{
-                log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
-                TransactionOrigin,
-            },
-            starkhash,
+        use crate::ethereum::{
+            log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
+            TransactionOrigin,
         };
         use pathfinder_core::{
-            EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-            EthereumTransactionIndex, GlobalRoot,
+            starkhash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
+            EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
         };
         use web3::types::H256;
 

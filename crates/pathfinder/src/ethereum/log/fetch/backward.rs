@@ -155,16 +155,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        ethereum::{
-            log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin,
-            TransactionOrigin,
-        },
-        starkhash,
+    use crate::ethereum::{
+        log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin,
     };
     use pathfinder_core::{
-        Chain, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-        EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
+        starkhash, Chain, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
+        EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
     };
     use std::str::FromStr;
     use web3::types::H256;

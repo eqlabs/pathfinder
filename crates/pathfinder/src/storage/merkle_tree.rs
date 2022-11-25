@@ -505,7 +505,7 @@ mod tests {
 
     mod serde {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
 
         #[test]
         fn edge() {
@@ -554,7 +554,7 @@ mod tests {
 
     mod reference_count {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
 
         #[test]
         fn increment() {
@@ -626,7 +626,7 @@ mod tests {
 
     mod insert_get {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
 
         #[test]
         fn missing() {
@@ -750,7 +750,7 @@ mod tests {
 
     mod delete {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
 
         #[test]
         fn binary() {

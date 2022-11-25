@@ -165,7 +165,7 @@ fn parse_starkhash(value: U256) -> Result<StarkHash> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::starkhash;
+    use pathfinder_core::starkhash;
 
     fn u256_from_starkhash(hash: StarkHash) -> U256 {
         let bytes = hash.to_be_bytes();
@@ -305,7 +305,7 @@ mod tests {
 
     mod parse_storage_update {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
         use pretty_assertions::assert_eq;
 
         #[test]
@@ -337,7 +337,7 @@ mod tests {
 
     mod parse_contract_update {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
         use pretty_assertions::assert_eq;
 
         #[test]

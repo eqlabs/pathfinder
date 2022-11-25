@@ -133,8 +133,8 @@ impl From<&crate::sequencer::reply::state_update::StateDiff> for StateUpdate {
 mod tests {
     use super::*;
     use crate::ethereum::{transport::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin};
-    use crate::starkhash;
     use hex_literal::hex;
+    use pathfinder_core::starkhash;
     use pathfinder_core::{
         Chain, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
         EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,

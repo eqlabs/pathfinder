@@ -277,8 +277,7 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
-
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
 
         #[test]
         fn receipt() {
@@ -332,9 +331,9 @@ mod types {
 mod tests {
     use super::types::{DeployedContract, StateDiff, StateUpdate, StorageDiff, StorageEntry};
     use super::*;
-    use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
+    use pathfinder_core::{starkhash, starkhash_bytes};
     use pathfinder_core::{
         Chain, ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
         StorageAddress, StorageValue,
@@ -462,7 +461,9 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"non-existent"))),
+                BlockId::Hash(StarknetBlockHash(pathfinder_core::starkhash_bytes!(
+                    b"non-existent"
+                ))),
                 assert_error(GetStateUpdateError::BlockNotFound),
             ),
             (

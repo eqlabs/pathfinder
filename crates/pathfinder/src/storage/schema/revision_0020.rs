@@ -1,10 +1,7 @@
-use crate::{
-    starkhash,
-    storage::{StarknetBlocksTable, StarknetEventsTable},
-};
+use crate::storage::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
 use pathfinder_core::{
-    ContractAddress, EventData, EventKey, StarknetBlockNumber, StarknetTransactionHash,
+    starkhash, ContractAddress, EventData, EventKey, StarknetBlockNumber, StarknetTransactionHash,
 };
 use rusqlite::named_params;
 use stark_hash::StarkHash;

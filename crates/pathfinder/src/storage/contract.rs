@@ -189,10 +189,9 @@ impl ContractsTable {
 
 #[cfg(test)]
 mod tests {
-    use crate::starkhash;
-    use crate::storage::Storage;
-
     use super::*;
+    use crate::storage::Storage;
+    use pathfinder_core::starkhash;
 
     #[test]
     fn fails_if_class_hash_missing() {

@@ -102,7 +102,7 @@ mod tests {
         fn test_block_hash() {
             check(
                 "{ \"block_hash\": \"0xFACE\" }",
-                BlockId::Hash(StarknetBlockHash(crate::starkhash!("face"))),
+                BlockId::Hash(StarknetBlockHash(pathfinder_core::starkhash!("face"))),
             );
         }
     }
@@ -133,7 +133,9 @@ mod tests {
     #[tokio::test]
     async fn test_genesis() {
         let context = RpcContext::for_tests();
-        let block_id = BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"genesis")));
+        let block_id = BlockId::Hash(StarknetBlockHash(pathfinder_core::starkhash_bytes!(
+            b"genesis"
+        )));
         check_count(context, block_id, 1).await;
     }
 

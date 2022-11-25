@@ -1326,7 +1326,7 @@ pub mod reply {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use crate::starkhash;
+            use pathfinder_core::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]

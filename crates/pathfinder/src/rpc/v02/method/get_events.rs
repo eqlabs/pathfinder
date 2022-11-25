@@ -386,9 +386,9 @@ mod tests {
         types::{EmittedEvent, GetEventsResult},
         *,
     };
-    use crate::starkhash;
     use crate::storage::test_utils;
     use jsonrpsee::types::Params;
+    use pathfinder_core::starkhash;
     use pretty_assertions::assert_eq;
 
     #[test]

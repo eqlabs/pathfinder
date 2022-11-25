@@ -180,13 +180,13 @@ async fn is_pending_class(pending: &Option<crate::state::PendingData>, hash: Cla
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::starkhash_bytes;
     use assert_matches::assert_matches;
+    use pathfinder_core::starkhash_bytes;
 
     mod parsing {
         use super::*;
-        use crate::starkhash;
         use jsonrpsee::types::Params;
+        use pathfinder_core::starkhash;
         use pathfinder_core::StarknetBlockHash;
 
         #[test]

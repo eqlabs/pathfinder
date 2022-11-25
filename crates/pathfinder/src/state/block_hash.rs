@@ -420,11 +420,10 @@ fn number_of_events_in_block(block: &Block) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        sequencer::reply::transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
-        starkhash,
+    use crate::sequencer::reply::transaction::{
+        EntryPointType, InvokeTransaction, InvokeTransactionV0,
     };
-    use pathfinder_core::{EntryPoint, Fee};
+    use pathfinder_core::{starkhash, EntryPoint, Fee};
 
     #[test]
     fn test_event_hash() {

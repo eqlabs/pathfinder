@@ -293,7 +293,7 @@ pub fn register_all_methods(
             const NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
             // actual address dumped from a `starknet declare` call
             const SENDER_ADDRESS: ContractAddress =
-                ContractAddress::new_or_panic(crate::starkhash!("01"));
+                ContractAddress::new_or_panic(pathfinder_core::starkhash!("01"));
 
             context
                 .add_declare_transaction(
@@ -355,16 +355,16 @@ mod tests {
     use crate::sequencer::reply::PendingBlock;
     use crate::{
         sequencer::{test_utils::*, Client},
-        starkhash, starkhash_bytes,
         state::{state_tree::GlobalStateTree, PendingData, SyncState},
         storage::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage},
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};
     use pathfinder_core::{
-        BlockId, Chain, ClassHash, ContractAddress, ContractClass, ContractNonce, EventKey,
-        GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StorageAddress, TransactionNonce,
+        starkhash, starkhash_bytes, BlockId, Chain, ClassHash, ContractAddress, ContractClass,
+        ContractNonce, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
+        TransactionNonce,
     };
     use serde_json::json;
     use stark_hash::StarkHash;
@@ -2109,8 +2109,8 @@ mod tests {
 
         mod positional_args {
             use super::*;
-            use crate::{rpc::v01::types::request::EventFilter, starkhash};
-
+            use crate::rpc::v01::types::request::EventFilter;
+            use pathfinder_core::starkhash;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]

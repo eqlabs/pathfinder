@@ -750,7 +750,7 @@ mod tests {
     mod block_matches_by_hash_on {
         use super::*;
         use crate::monitoring::metrics::test::RecorderGuard;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
 
         #[tokio::test]
         async fn genesis() {
@@ -1022,7 +1022,7 @@ mod tests {
 
     mod storage {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
         use pretty_assertions::assert_eq;
 
         #[test_log::test(tokio::test)]
@@ -1150,7 +1150,7 @@ mod tests {
 
     mod transaction {
         use super::{reply::Status, *};
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1225,7 +1225,7 @@ mod tests {
 
     mod transaction_status {
         use super::{reply::Status, *};
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
 
         #[tokio::test]
         async fn accepted() {
@@ -1660,10 +1660,10 @@ mod tests {
 
             let expected = reply::add_transaction::DeployAccountResponse {
                 code: "TRANSACTION_RECEIVED".to_string(),
-                transaction_hash: StarknetTransactionHash(crate::starkhash!(
+                transaction_hash: StarknetTransactionHash(pathfinder_core::starkhash!(
                     "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
                 )),
-                address: ContractAddress::new_or_panic(crate::starkhash!(
+                address: ContractAddress::new_or_panic(pathfinder_core::starkhash!(
                     "04e574ea2abd76d3105b3d29de28af0c5a28b889aa465903080167f6b48b1acc"
                 )),
             };

@@ -121,9 +121,9 @@ mod tests {
             starting_block_num: StarknetBlockNumber::new_or_panic(1),
             current_block_num: StarknetBlockNumber::new_or_panic(2),
             highest_block_num: StarknetBlockNumber::new_or_panic(3),
-            starting_block_hash: StarknetBlockHash(crate::starkhash!("aabb")),
-            current_block_hash: StarknetBlockHash(crate::starkhash!("ccddee")),
-            highest_block_hash: StarknetBlockHash(crate::starkhash!("eeffaacc")),
+            starting_block_hash: StarknetBlockHash(pathfinder_core::starkhash!("aabb")),
+            current_block_hash: StarknetBlockHash(pathfinder_core::starkhash!("ccddee")),
+            highest_block_hash: StarknetBlockHash(pathfinder_core::starkhash!("eeffaacc")),
         };
         let expected = SyncingOuput::Status(expected);
 

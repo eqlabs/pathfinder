@@ -630,7 +630,7 @@ pub mod state_update {
         #[test]
         fn contract_field_backward_compatibility() {
             use super::{ClassHash, ContractAddress, DeployedContract};
-            use crate::starkhash;
+            use pathfinder_core::starkhash;
 
             let expected = DeployedContract {
                 address: ContractAddress::new_or_panic(starkhash!("01")),
@@ -710,9 +710,8 @@ pub mod add_transaction {
 
     #[cfg(test)]
     mod serde_test {
-        use crate::starkhash;
-
         use super::*;
+        use pathfinder_core::starkhash;
 
         #[test]
         fn test_invoke_response() {

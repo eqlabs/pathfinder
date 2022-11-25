@@ -416,13 +416,14 @@ mod json {
 
     #[cfg(test)]
     mod test_vectors {
+        use pathfinder_core::starkhash;
+
         #[tokio::test]
         async fn first() {
             // this test is a bit on the slow side because of the download and because of the long
             // processing time in dev builds. expected --release speed is 9 contracts/s.
-            let expected = crate::starkhash!(
-                "0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576"
-            );
+            let expected =
+                starkhash!("0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576");
 
             // this is quite big payload, ~500kB
             let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc")
@@ -452,9 +453,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                crate::starkhash!(
-                    "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
-                )
+                starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
             );
         }
 
@@ -463,9 +462,8 @@ mod json {
             use crate::sequencer::ClientApi;
             use pathfinder_core::{Chain, ContractAddress};
 
-            let contract = crate::starkhash!(
-                "0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3"
-            );
+            let contract =
+                starkhash!("0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3");
             let contract = ContractAddress::new_or_panic(contract);
 
             let chain = Chain::Testnet;
@@ -485,8 +483,8 @@ mod json {
             // we now need to ignore if empty).
             use super::super::extract_abi_code_hash;
             use crate::sequencer::{self, ClientApi};
-            use crate::starkhash;
             use pathfinder_core::{Chain, ClassHash, ContractAddress};
+            use starkhash;
 
             // Known contract which triggered a hash mismatch failure.
             let address = ContractAddress::new_or_panic(starkhash!(
@@ -511,7 +509,7 @@ mod json {
         #[tokio::test]
         async fn cairo_0_10() {
             let expected =
-                crate::starkhash!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6");
+                starkhash!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6");
 
             // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
             let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x444453070729bf2db6a1f36541483c2952674e5de4bd05fcf538726b286bfa2")
@@ -527,9 +525,8 @@ mod json {
 
         #[tokio::test]
         async fn cairo_0_10_part_2() {
-            let expected = crate::starkhash!(
-                "0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f"
-            );
+            let expected =
+                starkhash!("0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f");
 
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
@@ -546,9 +543,8 @@ mod json {
 
         #[tokio::test]
         async fn cairo_0_10_part_3() {
-            let expected = crate::starkhash!(
-                "066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157"
-            );
+            let expected =
+                starkhash!("066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157");
 
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
@@ -623,7 +619,7 @@ mod tests {
     #[test]
     fn truncated_keccak_matches_pythonic() {
         use super::truncated_keccak;
-        use crate::starkhash;
+        use pathfinder_core::starkhash;
         use sha3::{Digest, Keccak256};
         let all_set = Keccak256::digest(&[0xffu8; 32]);
         assert!(all_set[0] > 0xf);

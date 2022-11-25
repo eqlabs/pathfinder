@@ -328,7 +328,7 @@ mod tests {
             named_params![
                 ":hash": tx.hash().0.as_be_bytes(),
                 ":idx": idx,
-                ":block_hash": crate::starkhash!("01").as_be_bytes(),
+                ":block_hash": pathfinder_core::starkhash!("01").as_be_bytes(),
                 ":tx": &compressed_tx,
                 ":receipt": &[],
             ]

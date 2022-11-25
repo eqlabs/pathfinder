@@ -103,7 +103,6 @@ mod tests {
                 Receipt,
             },
         },
-        starkhash, starkhash_bytes,
         state::{state_tree::GlobalStateTree, PendingData},
         storage::{
             CanonicalBlocksTable, ContractCodeTable, ContractsTable, StarknetBlock,
@@ -112,10 +111,10 @@ mod tests {
     };
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
     use pathfinder_core::{
-        ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
-        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
-        TransactionVersion,
+        starkhash, starkhash_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
+        EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        StarknetTransactionIndex, StorageAddress, TransactionVersion,
     };
     use stark_hash::StarkHash;
     use std::{

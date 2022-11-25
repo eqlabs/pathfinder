@@ -79,8 +79,8 @@ async fn get_pending_nonce(
 #[cfg(test)]
 mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
-    use crate::starkhash_bytes;
-    use crate::{rpc::v02::RpcContext, starkhash};
+    use crate::rpc::v02::RpcContext;
+    use pathfinder_core::{starkhash, starkhash_bytes};
     use pathfinder_core::{
         BlockId, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
         StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
