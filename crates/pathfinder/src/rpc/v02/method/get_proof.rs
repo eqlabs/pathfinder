@@ -25,33 +25,35 @@ crate::rpc::error::generate_rpc_error_subset!(
     BlockNotFound
 );
 
+/// Holds the data and proofs for a specific contract.
 #[derive(Debug, Serialize)]
-pub struct ContractStorage {
-    // Required by the verifier to verify the contract state hash to contract root calculation.
+pub struct ContractData {
+    // Required to verify the contract state hash to contract root calculation.
     class_hash: ClassHash,
+    // Required to verify the contract state hash to contract root calculation.
     nonce: ContractNonce,
 
     // Root of the Contract state tree
     root: ContractRoot,
 
-    // This is currently just a constant = 0, however we should include it so the caller
-    // doesn't have to worry about this.
+    // This is currently just a constant = 0, however it might change in the future.
     contract_state_hash_version: StarkHash,
 
-    // Assuming we allow multiple queries in one. Contract root -> storage key proofs
-    storage_proofs: Vec<Vec<ProofNode>>, // SCOTT change to vec<vec<>>
+    // The proofs associated with the queried storage values
+    storage_proofs: Vec<Vec<ProofNode>>,
 }
 
-/// TODO fix comments
+/// Holds the membership/non-membership of a contract and its associated contract contract if the contract exists.
 #[derive(Debug, Serialize)]
 pub struct GetStorageProofOutput {
-    // This is the global root -> contract state hash proof
+    // Membership / Non-membership proof for the queried contract
     contract_proof: Vec<ProofNode>,
 
-    contract_storage: Option<ContractStorage>,
+    // Additional contract data if it exists.
+    contract_data: Option<ContractData>,
 }
 
-/// TODO: description
+/// Returns all the necessary data to trustlessly verify storage slots for a particular contract.
 pub async fn get_proof(
     context: RpcContext,
     input: GetStorageProofInput,
@@ -61,7 +63,6 @@ pub async fn get_proof(
         BlockId::Number(number) => number.into(),
         BlockId::Latest => StarknetBlocksBlockId::Latest,
         BlockId::Pending => {
-            // TODO: what to do with pending blockId?
             match context
                 .pending_data
                 .ok_or_else(|| anyhow!("Pending data not supported in this configuration"))?
@@ -69,9 +70,10 @@ pub async fn get_proof(
                 .await
             {
                 Some(_) => {
+                    // TODO: add support for pending blocks
                     return Err(GetStorageProofError::Internal(anyhow!(
                         "'pending' is not currently supported by this method!"
-                    )))
+                    )));
                 }
                 None => StarknetBlocksBlockId::Latest,
             }
@@ -100,15 +102,18 @@ pub async fn get_proof(
         let global_state_tree =
             GlobalStateTree::load(&tx, global_root).context("Global state tree")?;
 
+        // Generate a proof for this contract. If the contract does not exist, this will
+        // be a "non membership" proof.
         let contract_proof = global_state_tree.get_proof(&input.contract_address)?;
 
         let contract_state_hash = match global_state_tree.get(input.contract_address)? {
             Some(contract_state_hash) => contract_state_hash,
             None => {
+                // Contract not found: return the proof of non membership that we generated earlier.
                 return Ok(GetStorageProofOutput {
                     contract_proof,
-                    contract_storage: None,
-                })
+                    contract_data: None,
+                });
             }
         };
 
@@ -141,17 +146,17 @@ pub async fn get_proof(
             .get_proofs(&keys_bits[..])
             .context("Get proof from contract state treee")?;
 
-        let contract_storage = ContractStorage {
+        let contract_data = ContractData {
             class_hash,
             nonce,
             root: contract_state_root,
-            contract_state_hash_version: StarkHash::ZERO,
+            contract_state_hash_version: StarkHash::ZERO, // Currently, this is defined as 0. Might change in the future.
             storage_proofs,
         };
 
         Ok(GetStorageProofOutput {
             contract_proof,
-            contract_storage: Some(contract_storage),
+            contract_data: Some(contract_data),
         })
     });
 
@@ -228,7 +233,7 @@ mod tests {
     fn assert_value(expected: &'static [&'static [ProofNode]]) -> TestCaseHandler {
         Box::new(|_: usize, result| {
             assert_matches!(result, Ok(values) => {
-            let storage_proofs = &values.contract_storage.as_ref().unwrap().storage_proofs;
+            let storage_proofs = &values.contract_data.as_ref().unwrap().storage_proofs;
             storage_proofs.iter().zip(expected.iter()).for_each(|(proofs, expected_proofs)| {
                 proofs.iter().zip(expected_proofs.iter()).for_each(|(val, exp)| {
                     assert_eq!(val, exp);

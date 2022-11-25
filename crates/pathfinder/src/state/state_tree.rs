@@ -37,6 +37,7 @@ impl<'tx> ContractsStateTree<'tx, '_> {
         Ok(value.map(StorageValue))
     }
 
+    /// Generates a proof for every `key` in `keys`. See [`MerkleTree::get_proofs`].
     pub fn get_proofs<'a>(
         &self,
         keys: &'a [&BitSlice<Msb0, u8>],
