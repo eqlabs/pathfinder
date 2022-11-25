@@ -37,8 +37,11 @@ impl<'tx> ContractsStateTree<'tx, '_> {
         Ok(value.map(StorageValue))
     }
 
-    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
-        self.tree.get_proof(key)
+    pub fn get_proofs<'a>(
+        &self,
+        keys: &'a [&BitSlice<Msb0, u8>],
+    ) -> anyhow::Result<Vec<Vec<ProofNode>>> {
+        self.tree.get_proofs(keys)
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
@@ -93,9 +96,11 @@ impl<'tx> GlobalStateTree<'tx, '_> {
         Ok(GlobalRoot(root))
     }
 
-    /// Generates a proof for a given `key`. See [`MerkleTree::get_proof`].
+    /// Generates a proof for the given `key`. See [`MerkleTree::get_proofs`].
     pub fn get_proof(&self, address: &ContractAddress) -> anyhow::Result<Vec<ProofNode>> {
-        self.tree.get_proof(address.view_bits())
+        self.tree
+            .get_proofs(&[address.view_bits()])
+            .map(|v| v.into_iter().take(1).flatten().collect())
     }
 
     /// See [`MerkleTree::dfs`]

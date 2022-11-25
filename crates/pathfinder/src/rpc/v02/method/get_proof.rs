@@ -9,13 +9,14 @@ use crate::rpc::v02::RpcContext;
 use crate::state::merkle_tree::ProofNode;
 use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use crate::storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
+use bitvec::{prelude::Msb0, slice::BitSlice};
 use serde::Serialize;
 use stark_hash::StarkHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStorageProofInput {
     pub contract_address: ContractAddress,
-    pub key: StorageAddress,
+    pub keys: Vec<StorageAddress>,
     pub block_id: BlockId,
 }
 
@@ -38,7 +39,7 @@ pub struct ContractStorage {
     contract_state_hash_version: StarkHash,
 
     // Assuming we allow multiple queries in one. Contract root -> storage key proofs
-    storage_proofs: Vec<ProofNode>, // SCOTT change to vec<vec<>>
+    storage_proofs: Vec<Vec<ProofNode>>, // SCOTT change to vec<vec<>>
 }
 
 /// TODO fix comments
@@ -134,8 +135,10 @@ pub async fn get_proof(
                 anyhow::anyhow!("State table missing row for state_hash={}", contract_state_hash).into()
             })?;
 
+        let keys_bits: Vec<&BitSlice<Msb0, u8>> =
+            input.keys.iter().map(|k| k.view_bits()).collect();
         let storage_proofs = contract_state_tree
-            .get_proof(input.key.view_bits())
+            .get_proofs(&keys_bits[..])
             .context("Get proof from contract state treee")?;
 
         let contract_storage = ContractStorage {
@@ -197,7 +200,7 @@ mod tests {
             context.clone(),
             GetStorageProofInput {
                 contract_address: *contract_address,
-                key: *key,
+                keys: vec![*key],
                 block_id: *block_id,
             },
         )
@@ -222,11 +225,16 @@ mod tests {
     // }
 
     /// Common assertion type for most of the happy paths
-    fn assert_value(expected: &'static [ProofNode]) -> TestCaseHandler {
-        Box::new(|i: usize, result| {
+    fn assert_value(expected: &'static [&'static [ProofNode]]) -> TestCaseHandler {
+        Box::new(|_: usize, result| {
             assert_matches!(result, Ok(values) => {
-                println!("values {:?}", values.contract_storage.as_ref().unwrap().storage_proofs); // SCOTT temp
-                values.contract_storage.as_ref().unwrap().storage_proofs.iter().zip(expected.iter()).for_each(|(val, exp)| assert_eq!(val, exp))});
+            let storage_proofs = &values.contract_storage.as_ref().unwrap().storage_proofs;
+            storage_proofs.iter().zip(expected.iter()).for_each(|(proofs, expected_proofs)| {
+                proofs.iter().zip(expected_proofs.iter()).for_each(|(val, exp)| {
+                    assert_eq!(val, exp);
+                })
+            }
+            )});
         })
     }
 
@@ -264,7 +272,7 @@ mod tests {
                 pending_contract0,
                 pending_key0,
                 BlockId::Pending,
-                assert_value(&[]),
+                assert_value(&[&[]]),
             ),
             (
                 ctx_with_pending_empty,
@@ -272,7 +280,7 @@ mod tests {
                 key0,
                 BlockId::Pending,
                 // Pending data is absent, fallback to the latest block
-                assert_value(&[]),
+                assert_value(&[&[]]),
             ),
             // Other block ids - happy paths
             (
@@ -280,21 +288,21 @@ mod tests {
                 contract1,
                 key0,
                 deployment_block,
-                assert_value(&[]),
+                assert_value(&[&[]]),
             ),
             (
                 ctx.clone(),
                 contract1,
                 key0,
                 BlockId::Latest,
-                assert_value(&[]),
+                assert_value(&[&[]]),
             ),
             (
                 ctx.clone(),
                 contract1,
                 non_existent_key,
                 BlockId::Latest,
-                assert_value(&[]),
+                assert_value(&[&[]]),
             ),
             // Errors
             // (

@@ -510,9 +510,9 @@ impl<T: NodeStorage> MerkleTree<T> {
         Ok(result)
     }
 
-    /// Generates a merkle-proof for the value located at `key`.
+    /// Generates merkle-proofs for `key` in `keys`.
     ///
-    /// Returns a vector of [`ProofNode`] which form a chain from the root to the key,
+    /// Returns a vector of vectors of [`ProofNode`] which form a chain from the root to the key,
     /// if it exists, or upto the node which proves that the key does not exist.
     ///
     /// The nodes are returned in order, root first.
@@ -521,28 +521,35 @@ impl<T: NodeStorage> MerkleTree<T> {
     ///   1. the chain follows the path of `key`, and
     ///   2. the hashes are correct, and
     ///   3. the root hash matches the known root
-    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
-        let mut nodes = self.traverse(key)?;
+    pub fn get_proofs<'a>(
+        &self,
+        keys: &'a [&BitSlice<Msb0, u8>],
+    ) -> anyhow::Result<Vec<Vec<ProofNode>>> {
+        keys.iter()
+            .map(|key| {
+                let mut nodes = self.traverse(key)?;
 
-        // Return an empty list if tree is empty.
-        let node = match nodes.last() {
-            Some(node) => node,
-            None => return Ok(Vec::new()),
-        };
+                // Return an empty list if tree is empty.
+                let node = match nodes.last() {
+                    Some(node) => node,
+                    None => return Ok(Vec::new()),
+                };
 
-        // A leaf node is redudant data as the information for it is already contained in the previous node.
-        if matches!(&*node.borrow(), Node::Leaf(_)) {
-            nodes.pop();
-        }
+                // A leaf node is redudant data as the information for it is already contained in the previous node.
+                if matches!(&*node.borrow(), Node::Leaf(_)) {
+                    nodes.pop();
+                }
 
-        Ok(nodes
-            .iter()
-            .map(|node| match &*node.borrow() {
-                Node::Binary(bin) => ProofNode::from(bin),
-                Node::Edge(edge) => ProofNode::from(edge),
-                _ => unreachable!(),
+                Ok(nodes
+                    .iter()
+                    .map(|node| match &*node.borrow() {
+                        Node::Binary(bin) => ProofNode::from(bin),
+                        Node::Edge(edge) => ProofNode::from(edge),
+                        _ => unreachable!(),
+                    })
+                    .collect())
             })
-            .collect())
+            .collect::<anyhow::Result<Vec<Vec<ProofNode>>>>()
     }
 
     /// Traverses from the current root towards the destination [Leaf](Node::Leaf) node.
@@ -1898,12 +1905,17 @@ mod tests {
 
             /// Calls `get_proof` and `verify_proof` on every key/value pair in the random_tree.
             fn verify(&self) {
-                self.keys.iter().zip(self.values.iter()).for_each(|(k, v)| {
-                    let key = k.view_bits();
-                    let proofs = self.tree.get_proof(key).unwrap();
-                    let verified = verify_proof(self.root, key, *v, &proofs).unwrap();
-                    assert_eq!(verified, Membership::Member, "Failed to prove key");
-                });
+                let keys_bits: Vec<&BitSlice<Msb0, u8>> =
+                    self.keys.iter().map(|k| k.view_bits()).collect();
+                let proofs = self.tree.get_proofs(&keys_bits).unwrap();
+                keys_bits
+                    .iter()
+                    .zip(self.values.iter())
+                    .enumerate()
+                    .for_each(|(i, (k, v))| {
+                        let verified = verify_proof(self.root, k, *v, &proofs[i]).unwrap();
+                        assert_eq!(verified, Membership::Member, "Failed to prove key");
+                    });
             }
         }
 
@@ -1924,6 +1936,7 @@ mod tests {
 
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
+            let keys = [key1, key2];
 
             let value_1 = starkhash!("02");
             let value_2 = starkhash!("03");
@@ -1934,9 +1947,9 @@ mod tests {
 
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proof(key1).unwrap();
+            let proofs = uut.get_proofs(&keys).unwrap();
 
-            let verified_key1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            let verified_key1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
 
             assert_eq!(verified_key1, Membership::Member);
         }
@@ -1962,6 +1975,7 @@ mod tests {
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
             let key3 = key_3.view_bits();
+            let keys = [key1, key2, key3];
 
             let value_1 = starkhash!("02");
             let value_2 = starkhash!("03");
@@ -1974,16 +1988,14 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            let proofs = uut.get_proofs(&keys).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
-            let proofs = uut.get_proof(key2).unwrap();
-            let verified_2 = verify_proof(root, key2, value_2, &proofs).unwrap();
+            let verified_2 = verify_proof(root, key2, value_2, &proofs[1]).unwrap();
             assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
 
-            let proofs = uut.get_proof(key3).unwrap();
-            let verified_key3 = verify_proof(root, key3, value_3, &proofs).unwrap();
+            let verified_key3 = verify_proof(root, key3, value_3, &proofs[2]).unwrap();
             assert_eq!(verified_key3, Membership::Member, "Failed to prove key3");
         }
 
@@ -2001,6 +2013,7 @@ mod tests {
             let key_1 = starkhash!("00"); // 0b00
 
             let key1 = key_1.view_bits();
+            let keys = [key1];
 
             let value_1 = starkhash!("aa");
 
@@ -2009,8 +2022,8 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            let proofs = uut.get_proofs(&keys).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
@@ -2028,6 +2041,7 @@ mod tests {
             let key_1 = starkhash!("ff"); // 0b11111111
 
             let key1 = key_1.view_bits();
+            let keys = [key1];
 
             let value_1 = starkhash!("aa");
 
@@ -2036,8 +2050,8 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            let proofs = uut.get_proofs(&keys).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
@@ -2056,6 +2070,7 @@ mod tests {
                 starkhash!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
 
             let key1 = key_1.view_bits();
+            let keys = [key1];
 
             let value_1 = starkhash!("bb");
 
@@ -2064,8 +2079,8 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            let proofs = uut.get_proofs(&keys).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
@@ -2087,6 +2102,7 @@ mod tests {
 
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
+            let keys = [key1, key2];
 
             let value_1 = starkhash!("cc");
             let value_2 = starkhash!("dd");
@@ -2097,12 +2113,11 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proof(key1).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs).unwrap();
+            let proofs = uut.get_proofs(&keys).unwrap();
+            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
-            let proofs = uut.get_proof(key2).unwrap();
-            let verified_2 = verify_proof(root, key2, value_2, &proofs).unwrap();
+            let verified_2 = verify_proof(root, key2, value_2, &proofs[1]).unwrap();
             assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
         }
 
@@ -2148,13 +2163,15 @@ mod tests {
                 .filter(|key| !keys_set.contains(key)) // Filter out duplicates if there are any
                 .collect();
 
-            inexistent_keys
+            let keys_bits: Vec<&BitSlice<Msb0, u8>> =
+                inexistent_keys.iter().map(|k| k.view_bits()).collect();
+            let proofs = random_tree.tree.get_proofs(&keys_bits).unwrap();
+            keys_bits
                 .iter()
                 .zip(random_tree.values.iter())
-                .for_each(|(k, v)| {
-                    let key = k.view_bits();
-                    let proofs = random_tree.tree.get_proof(key).unwrap();
-                    let verified = verify_proof(random_tree.root, key, *v, &proofs).unwrap();
+                .enumerate()
+                .for_each(|(i, (k, v))| {
+                    let verified = verify_proof(random_tree.root, k, *v, &proofs[i]).unwrap();
                     assert_eq!(verified, Membership::NonMember);
                 });
         }
@@ -2176,14 +2193,16 @@ mod tests {
                 .filter(|value| !values_set.contains(value)) // Filter out duplicates if there are any
                 .collect();
 
-            random_tree
-                .keys
+            let keys_bits: Vec<&BitSlice<Msb0, u8>> =
+                random_tree.keys.iter().map(|k| k.view_bits()).collect();
+            let proofs = random_tree.tree.get_proofs(&keys_bits[..]).unwrap();
+
+            keys_bits
                 .iter()
                 .zip(inexistent_values.iter())
-                .for_each(|(k, v)| {
-                    let key = k.view_bits();
-                    let proofs = random_tree.tree.get_proof(key).unwrap();
-                    let verified = verify_proof(random_tree.root, key, *v, &proofs);
+                .enumerate()
+                .for_each(|(i, (k, v))| {
+                    let verified = verify_proof(random_tree.root, k, *v, &proofs[i]);
                     assert!(verified.is_none());
                 });
         }
@@ -2206,6 +2225,7 @@ mod tests {
 
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
+            let keys = [key1, key2];
 
             let value_1 = starkhash!("cc");
             let value_2 = starkhash!("dd");
@@ -2216,16 +2236,16 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let mut proofs = uut.get_proof(key1).unwrap();
+            let mut proofs = uut.get_proofs(&keys).unwrap();
 
             // Modify the left hash
-            let to_change = proofs.get_mut(0).unwrap();
+            let to_change = proofs[0].get_mut(0).unwrap();
             match to_change {
                 ProofNode::Binary(bin) => bin.left_hash = starkhash!("42"),
                 _ => unreachable!(),
             };
 
-            let verified = verify_proof(root, key1, value_1, &proofs);
+            let verified = verify_proof(root, key1, value_1, &proofs[0]);
             assert!(verified.is_none());
         }
 
@@ -2247,6 +2267,7 @@ mod tests {
 
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
+            let keys = [key1, key2];
 
             let value_1 = starkhash!("cc");
             let value_2 = starkhash!("dd");
@@ -2257,16 +2278,16 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let mut proofs = uut.get_proof(key1).unwrap();
+            let mut proofs = uut.get_proofs(&keys).unwrap();
 
             // Modify the child hash
-            let to_change = proofs.get_mut(1).unwrap();
+            let to_change = proofs[0].get_mut(1).unwrap();
             match to_change {
                 ProofNode::Edge(edge) => edge.child_hash = starkhash!("42"),
                 _ => unreachable!(),
             };
 
-            let verified = verify_proof(root, key1, value_1, &proofs);
+            let verified = verify_proof(root, key1, value_1, &proofs[0]);
             assert!(verified.is_none());
         }
     }
