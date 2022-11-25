@@ -271,7 +271,7 @@ mod tests {
     fn update_requests_fetching_unique_new_contracts() {
         todo!("Update me to new sync process when possible");
         // use pathfinder_common::{StorageAddress, StorageValue};
-        // use crate::ethereum::state_update::{ContractUpdate, StorageUpdate};
+        // use pathfinder_ethereum::state_update::{ContractUpdate, StorageUpdate};
 
         // let s = crate::storage::Storage::in_memory().unwrap();
 
@@ -385,7 +385,7 @@ mod tests {
         //     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
         //     EthereumTransactionIndex, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
         // };
-        // use crate::ethereum::{
+        // use pathfinder_ethereum::{
         //     log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
         //     TransactionOrigin,
         // };
@@ -481,7 +481,7 @@ mod tests {
         )
         .unwrap();
         let chain = pathfinder_common::Chain::Testnet;
-        let transport = crate::ethereum::transport::HttpTransport::test_transport(chain);
+        let transport = pathfinder_ethereum::transport::HttpTransport::test_transport(chain);
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
         let state = Arc::new(sync::State::default());
 

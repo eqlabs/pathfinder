@@ -24,7 +24,7 @@
 
 use clap::Arg;
 use pathfinder_common::{Chain, EthereumBlockHash, EthereumChain, StarknetBlockNumber};
-use pathfinder_lib::ethereum::{
+use pathfinder_ethereum::{
     log::{MetaLog, StateUpdateLog},
     state_update::StateUpdate,
     transport::{EthereumTransport, HttpTransport},

@@ -79,7 +79,6 @@ impl HttpTransport {
         Ok(Self::new(Web3::new(client)))
     }
 
-    #[cfg(test)]
     /// Creates a [HttpTransport](api::HttpTransport) transport from the Ethereum endpoint specified by the relevant environment variables.
     ///
     /// Requires an environment variable for both the URL and (optional) password.

@@ -3,9 +3,9 @@
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{self, Chain, EthereumChain};
+use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
 use pathfinder_lib::{
     cairo,
-    ethereum::transport::{EthereumTransport, HttpTransport},
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
     rpc, sequencer, state,
     storage::{JournalMode, Storage},

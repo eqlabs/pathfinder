@@ -1,9 +1,9 @@
-use web3::types::{BlockNumber, FilterBuilder};
 use crate::{
     log::fetch::{EitherMetaLog, MetaLog},
     transport::{EthereumTransport, LogsError},
 };
 use pathfinder_common::Chain;
+use web3::types::{BlockNumber, FilterBuilder};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackwardFetchError {

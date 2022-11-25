@@ -2293,6 +2293,7 @@ dependencies = [
  "num-bigint 0.4.3",
  "pathfinder-common",
  "pathfinder-config",
+ "pathfinder-ethereum",
  "pathfinder-retry",
  "pathfinder-serde",
  "pretty_assertions",

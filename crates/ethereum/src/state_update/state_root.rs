@@ -66,10 +66,10 @@ mod tests {
     }
 
     mod genesis {
+        use super::*;
+        use crate::{log::MetaLog, transport::EthereumTransport};
         use pretty_assertions::assert_eq;
         use web3::types::{BlockNumber, FilterBuilder};
-        use crate::{log::MetaLog, transport::EthereumTransport};
-        use super::*;
 
         #[tokio::test]
         async fn mainnet() {

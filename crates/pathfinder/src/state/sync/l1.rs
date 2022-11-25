@@ -1,11 +1,11 @@
-use crate::ethereum::{
+use anyhow::Context;
+use futures::Future;
+use pathfinder_common::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber};
+use pathfinder_ethereum::{
     log::{FetchError, StateUpdateLog},
     state_update::state_root::StateRootFetcher,
     transport::EthereumTransport,
 };
-use anyhow::Context;
-use futures::Future;
-use pathfinder_common::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber};
 use pathfinder_retry::Retry;
 use std::{num::NonZeroU64, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot, RwLock};
@@ -263,11 +263,11 @@ mod tests {
 
     mod sync_ethereum_state_impl {
         use super::*;
-        use crate::ethereum::{BlockOrigin, EthOrigin, TransactionOrigin};
         use pathfinder_common::{
             starkhash, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
             GlobalRoot,
         };
+        use pathfinder_ethereum::{BlockOrigin, EthOrigin, TransactionOrigin};
         use stark_hash::StarkHash;
         use web3::types::H256;
 

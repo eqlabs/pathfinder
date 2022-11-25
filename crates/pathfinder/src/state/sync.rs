@@ -3,7 +3,6 @@ pub mod l2;
 mod pending;
 
 use crate::{
-    ethereum::{log::StateUpdateLog, transport::EthereumTransport},
     rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer::{
         self,
@@ -21,6 +20,7 @@ use pathfinder_common::{
     Chain, ClassHash, ContractNonce, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
 };
+use pathfinder_ethereum::{log::StateUpdateLog, transport::EthereumTransport};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::StarkHash;
 use std::future::Future;
@@ -936,7 +936,6 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 mod tests {
     use super::{l1, l2};
     use crate::{
-        ethereum,
         rpc::v01::types::BlockHashOrTag,
         sequencer::{
             self, error::SequencerError, reply, request::add_transaction::ContractDefinition,
@@ -962,7 +961,7 @@ mod tests {
     struct FakeTransport;
 
     #[async_trait::async_trait]
-    impl ethereum::transport::EthereumTransport for FakeTransport {
+    impl pathfinder_ethereum::transport::EthereumTransport for FakeTransport {
         async fn block(
             &self,
             _: web3::types::BlockId,
@@ -981,7 +980,8 @@ mod tests {
         async fn logs(
             &self,
             _: web3::types::Filter,
-        ) -> std::result::Result<Vec<web3::types::Log>, ethereum::transport::LogsError> {
+        ) -> std::result::Result<Vec<web3::types::Log>, pathfinder_ethereum::transport::LogsError>
+        {
             unimplemented!()
         }
 
@@ -1112,7 +1112,7 @@ mod tests {
         _: mpsc::Sender<l1::Event>,
         _: FakeTransport,
         _: Chain,
-        _: Option<ethereum::log::StateUpdateLog>,
+        _: Option<pathfinder_ethereum::log::StateUpdateLog>,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -1134,24 +1134,24 @@ mod tests {
     lazy_static::lazy_static! {
         static ref A: StarkHash = StarkHash::from_be_slice(&[0xA]).unwrap();
         static ref B: StarkHash = StarkHash::from_be_slice(&[0xB]).unwrap();
-        static ref ETH_ORIG: ethereum::EthOrigin = ethereum::EthOrigin {
-            block: ethereum::BlockOrigin {
+        static ref ETH_ORIG: pathfinder_ethereum::EthOrigin = pathfinder_ethereum::EthOrigin {
+            block: pathfinder_ethereum::BlockOrigin {
                 hash: EthereumBlockHash(H256::zero()),
                 number: EthereumBlockNumber(0),
             },
             log_index: EthereumLogIndex(0),
-            transaction: ethereum::TransactionOrigin {
+            transaction: pathfinder_ethereum::TransactionOrigin {
                 hash: EthereumTransactionHash(H256::zero()),
                 index: EthereumTransactionIndex(0),
             },
         };
-        pub static ref STATE_UPDATE_LOG0: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
+        pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber::GENESIS,
             // State update actually doesn't change the state hence 0 root
             global_root: GlobalRoot(StarkHash::ZERO),
             origin: ETH_ORIG.clone(),
         };
-        pub static ref STATE_UPDATE_LOG1: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
+        pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber::new_or_panic(1),
             global_root: GlobalRoot(*B),
             origin: ETH_ORIG.clone(),
@@ -1218,7 +1218,7 @@ mod tests {
         let sync_state = Arc::new(state::SyncState::default());
 
         lazy_static::lazy_static! {
-            static ref UPDATES: Arc<tokio::sync::RwLock<Vec<Vec<ethereum::log::StateUpdateLog>>>> =
+            static ref UPDATES: Arc<tokio::sync::RwLock<Vec<Vec<pathfinder_ethereum::log::StateUpdateLog>>>> =
             Arc::new(tokio::sync::RwLock::new(vec![
                 vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
                 vec![STATE_UPDATE_LOG0.clone()],
@@ -1387,7 +1387,7 @@ mod tests {
         // A simple L1 sync task which does the request and checks he result
         let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
             let (tx1, rx1) =
-                tokio::sync::oneshot::channel::<Option<ethereum::log::StateUpdateLog>>();
+                tokio::sync::oneshot::channel::<Option<pathfinder_ethereum::log::StateUpdateLog>>();
 
             tx.send(l1::Event::QueryUpdate(StarknetBlockNumber::GENESIS, tx1))
                 .await

@@ -38,6 +38,7 @@ metrics-exporter-prometheus = "0.11.0"
 num-bigint = { version = "0.4.3", features = ["serde"] }
 pathfinder-common = { path = "../common" }
 pathfinder-config = { path = "../config" }
+pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-retry = { path = "../retry" }
 pathfinder-serde = { path = "../serde" }
 r2d2 = "0.8.9"

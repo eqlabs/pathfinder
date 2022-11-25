@@ -1,8 +1,4 @@
-use crate::{
-    ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
-    rpc::v01::types::reply::StateUpdate,
-    sequencer::reply::transaction,
-};
+use crate::{rpc::v01::types::reply::StateUpdate, sequencer::reply::transaction};
 use anyhow::Context;
 use pathfinder_common::{
     consts::{
@@ -13,6 +9,7 @@ use pathfinder_common::{
     EthereumTransactionIndex, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
 };
+use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::StarkHash;
 use web3::types::H256;
