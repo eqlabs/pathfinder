@@ -2296,6 +2296,7 @@ dependencies = [
  "pathfinder-ethereum",
  "pathfinder-retry",
  "pathfinder-serde",
+ "pathfinder-update",
  "pretty_assertions",
  "r2d2",
  "r2d2_sqlite",
