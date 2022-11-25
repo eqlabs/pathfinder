@@ -8,6 +8,7 @@ members = [
     "crates/common",
     "crates/config",
     "crates/ethereum",
+    "crates/gateway-types",
     "crates/load-test",
     "crates/pathfinder",
     "crates/retry",

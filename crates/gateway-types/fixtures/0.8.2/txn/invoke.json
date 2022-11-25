@@ -1,0 +1,21 @@
+{
+    "status": "ACCEPTED_ON_L1",
+    "block_hash": "0x9aaa1733f916339979d0df10e2969c4a12146e80c8aa5bafbec876605bf35a",
+    "block_number": 21520,
+    "transaction_index": 6,
+    "transaction": {
+        "contract_address": "0x639322e9822149638b70f6de65bc18f3563bd6fa16f0106e8162618eb72f7e",
+        "entry_point_selector": "0x317eb442b72a9fae758d4fb26830ed0d9f31c8e7da4dbff4e8c59ea6a158e7f",
+        "entry_point_type": "EXTERNAL",
+        "calldata": [
+            "0x49e2e40a0b61a4d6fe4c85cbbf61b5ba372427c852f88509350c4b1eeb88426",
+            "0x2",
+            "0x1576521d9ed09609f55b86740de4ae6abdb2837d5d960ae71083ccd39c715d2",
+            "0x6897cf3003dc45dd016a34ee4309fc97f3bd471513553e64bc070b4eedf4eae"
+        ],
+        "signature": [],
+        "transaction_hash": "0x493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24",
+        "max_fee": "0x0",
+        "type": "INVOKE_FUNCTION"
+    }
+}

@@ -3255,6 +3255,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "starknet-gateway-types"
+version = "0.1.0"
+dependencies = [
+ "hex-literal",
+ "jsonrpsee",
+ "pathfinder-common",
+ "pathfinder-serde",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "stark_hash",
+ "thiserror",
+ "web3",
+]
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

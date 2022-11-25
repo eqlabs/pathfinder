@@ -1,0 +1,51 @@
+{
+    "status": "ACCEPTED_ON_L1",
+    "block_hash": "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
+    "block_number": 231579,
+    "transaction_index": 0,
+    "transaction": {
+        "contract_address": "0x7463cdd01f6e6a4f13084ea9eee170298b0bbe3faa17f46924c85bb284d4c98",
+        "entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+        "entry_point_type": "EXTERNAL",
+        "calldata": [
+            "0x3",
+            "0x72df4dc5b6c4df72e4288857317caf2ce9da166ab8719ab8306516a2fddfff7",
+            "0x219209e083275171774dab1df80982e9df2096516f06319c5c6d71ae0a8480c",
+            "0x0",
+            "0x3",
+            "0x7394cbe418daa16e42b87ba67372d4ab4a5df0b05c6e554d158458ce245bc10",
+            "0x219209e083275171774dab1df80982e9df2096516f06319c5c6d71ae0a8480c",
+            "0x3",
+            "0x3",
+            "0x4aec73f0611a9be0524e7ef21ab1679bdf9c97dc7d72614f15373d431226b6a",
+            "0x3f35dbce7a07ce455b128890d383c554afbc1b07cf7390a13e2d602a38c1a0a",
+            "0x6",
+            "0xa",
+            "0x10",
+            "0x4aec73f0611a9be0524e7ef21ab1679bdf9c97dc7d72614f15373d431226b6a",
+            "0x14934a76f",
+            "0x0",
+            "0x4aec73f0611a9be0524e7ef21ab1679bdf9c97dc7d72614f15373d431226b6a",
+            "0x2613cd2f52b54fb440",
+            "0x0",
+            "0x72df4dc5b6c4df72e4288857317caf2ce9da166ab8719ab8306516a2fddfff7",
+            "0x7394cbe418daa16e42b87ba67372d4ab4a5df0b05c6e554d158458ce245bc10",
+            "0x14934a76f",
+            "0x0",
+            "0x2613cd2f52b54fb440",
+            "0x0",
+            "0x135740b18",
+            "0x0",
+            "0x23caeef429e7df66e0",
+            "0x0",
+            "0x17"
+        ],
+        "signature": [
+            "0x6e82c6752bd13e29b68cf0c8b0d4eb9133b5a056336a842bff01756e514d04a",
+            "0xa87f00c9e39fd0711aaea4edae0f00044384188a87f489170ac383e3ad087f"
+        ],
+        "transaction_hash": "0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
+        "max_fee": "0x1ee7b2b881350",
+        "type": "INVOKE_FUNCTION"
+    }
+}
