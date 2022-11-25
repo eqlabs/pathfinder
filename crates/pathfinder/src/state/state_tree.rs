@@ -93,6 +93,11 @@ impl<'tx> GlobalStateTree<'tx, '_> {
         Ok(GlobalRoot(root))
     }
 
+    /// Generates a proof for a given `key`. See [`MerkleTree::get_proof`].
+    pub fn get_proof(&self, address: &ContractAddress) -> anyhow::Result<Vec<ProofNode>> {
+        self.tree.get_proof(address.view_bits())
+    }
+
     /// See [`MerkleTree::dfs`]
     pub fn dfs<B, F: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
         &self,

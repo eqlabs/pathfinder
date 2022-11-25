@@ -498,7 +498,7 @@ impl<T: NodeStorage> MerkleTree<T> {
         Ok(())
     }
 
-    /// Returns the value stored at key, or [StarkHash::ZERO] if it does not exist.
+    /// Returns the value stored at key, or `None` if it does not exist.
     pub fn get(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Option<StarkHash>> {
         let result = self
             .traverse(key)?

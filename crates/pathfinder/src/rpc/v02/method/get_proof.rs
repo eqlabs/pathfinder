@@ -1,11 +1,16 @@
 use anyhow::{anyhow, Context};
 use serde::Deserialize;
 
-use crate::core::{BlockId, ContractAddress, StorageAddress};
+use crate::core::{
+    BlockId, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
+    StorageAddress,
+};
 use crate::rpc::v02::RpcContext;
 use crate::state::merkle_tree::ProofNode;
 use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use crate::storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
+use serde::Serialize;
+use stark_hash::StarkHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStorageProofInput {
@@ -19,11 +24,37 @@ crate::rpc::error::generate_rpc_error_subset!(
     BlockNotFound
 );
 
+#[derive(Debug, Serialize)]
+pub struct ContractStorage {
+    // Required by the verifier to verify the contract state hash to contract root calculation.
+    class_hash: ClassHash,
+    nonce: ContractNonce,
+
+    // Root of the Contract state tree
+    root: ContractRoot,
+
+    // This is currently just a constant = 0, however we should include it so the caller
+    // doesn't have to worry about this.
+    contract_state_hash_version: StarkHash,
+
+    // Assuming we allow multiple queries in one. Contract root -> storage key proofs
+    storage_proofs: Vec<ProofNode>, // SCOTT change to vec<vec<>>
+}
+
+/// TODO fix comments
+#[derive(Debug, Serialize)]
+pub struct GetStorageProofOutput {
+    // This is the global root -> contract state hash proof
+    contract_proof: Vec<ProofNode>,
+
+    contract_storage: Option<ContractStorage>,
+}
+
 /// TODO: description
 pub async fn get_proof(
     context: RpcContext,
     input: GetStorageProofInput,
-) -> Result<Vec<ProofNode>, GetStorageProofError> {
+) -> Result<GetStorageProofOutput, GetStorageProofError> {
     let block_id = match input.block_id {
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
@@ -68,42 +99,87 @@ pub async fn get_proof(
         let global_state_tree =
             GlobalStateTree::load(&tx, global_root).context("Global state tree")?;
 
-        let contract_state_hash = global_state_tree
-            .get(input.contract_address)
-            .context("Get contract state hash from global state tree")?
-            .ok_or(GetStorageProofError::ContractNotFound)?;
+        let contract_proof = global_state_tree.get_proof(&input.contract_address)?;
 
-        let contract_state_root = ContractsStateTable::get_root(&tx, contract_state_hash)
-            .context("Get contract state root")?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Contract state root not found for contract state hash {}",
-                    contract_state_hash.0
-                )
-            })?;
+        let contract_state_hash = match global_state_tree.get(input.contract_address)? {
+            Some(contract_state_hash) => contract_state_hash,
+            None => {
+                return Ok(GetStorageProofOutput {
+                    contract_proof,
+                    contract_storage: None,
+                })
+            }
+        };
+
+        let (contract_state_root, nonce) =
+            ContractsStateTable::get_root_and_nonce(&tx, contract_state_hash)
+                .context("Get contract state root and nonce")?
+                // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
+                .ok_or_else(|| -> GetStorageProofError {
+                    anyhow::anyhow!(
+                        "Root or nonce missing for state_hash={}",
+                        contract_state_hash
+                    )
+                    .into()
+                })?;
 
         let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root)
             .context("Load contract state tree")?;
 
-        // Scott: errors?
-        Ok(contract_state_tree
+        let class_hash = read_class_hash(&tx, contract_state_hash)
+            .context("Reading class hash from state table")?
+            // Class hash should not be None at this stage since we have a valid block and non-zero contract state_hash.
+            .ok_or_else(|| -> GetStorageProofError {
+                tracing::error!(%contract_state_hash, "Class hash is missing in `contract_states` table");
+                anyhow::anyhow!("State table missing row for state_hash={}", contract_state_hash).into()
+            })?;
+
+        let storage_proofs = contract_state_tree
             .get_proof(input.key.view_bits())
-            .context("Get proof from contract state treee")
-            .unwrap_or_else(|_| Vec::new()))
+            .context("Get proof from contract state treee")?;
+
+        let contract_storage = ContractStorage {
+            class_hash,
+            nonce,
+            root: contract_state_root,
+            contract_state_hash_version: StarkHash::ZERO,
+            storage_proofs,
+        };
+
+        Ok(GetStorageProofOutput {
+            contract_proof,
+            contract_storage: Some(contract_storage),
+        })
     });
 
     jh.await.context("Database read panic or shutting down")?
+}
+
+/// Returns the [ClassHash] for the given [ContractStateHash] from the database.
+// Copied from `get_class_hash_at.rs`
+fn read_class_hash(
+    tx: &rusqlite::Transaction<'_>,
+    state_hash: ContractStateHash,
+) -> anyhow::Result<Option<ClassHash>> {
+    use rusqlite::OptionalExtension;
+
+    tx.query_row(
+        "SELECT hash FROM contract_states WHERE state_hash=?",
+        [state_hash],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::{ContractAddress, StarknetBlockHash, StorageAddress};
-    use crate::{starkhash, starkhash_bytes};
+    use crate::starkhash_bytes;
     use assert_matches::assert_matches;
-    use jsonrpsee::types::Params;
 
-    type TestCaseHandler = Box<dyn Fn(usize, &Result<Vec<ProofNode>, GetStorageProofError>)>;
+    type TestCaseHandler = Box<dyn Fn(usize, &Result<GetStorageProofOutput, GetStorageProofError>)>;
 
     /// Execute a single test case and check its outcome for `get_storage_at`
     async fn check(
@@ -149,8 +225,8 @@ mod tests {
     fn assert_value(expected: &'static [ProofNode]) -> TestCaseHandler {
         Box::new(|i: usize, result| {
             assert_matches!(result, Ok(values) => {
-                println!("values {:?}", values);
-                values.iter().zip(expected.iter()).for_each(|(val, exp)| assert_eq!(val, exp))});
+                println!("values {:?}", values.contract_storage.as_ref().unwrap().storage_proofs); // SCOTT temp
+                values.contract_storage.as_ref().unwrap().storage_proofs.iter().zip(expected.iter()).for_each(|(val, exp)| assert_eq!(val, exp))});
         })
     }
 
