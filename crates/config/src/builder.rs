@@ -359,7 +359,7 @@ mod tests {
 
             #[test]
             fn http_rpc_addr() {
-                use crate::config::DEFAULT_HTTP_RPC_ADDR;
+                use crate::DEFAULT_HTTP_RPC_ADDR;
                 use std::net::SocketAddr;
 
                 let expected = DEFAULT_HTTP_RPC_ADDR.parse::<SocketAddr>().unwrap();

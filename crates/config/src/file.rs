@@ -62,7 +62,7 @@ fn config_from_str(s: &str) -> std::io::Result<ConfigBuilder> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::ConfigOption;
+    use crate::ConfigOption;
 
     #[test]
     fn ethereum_url() {

@@ -4,7 +4,7 @@ use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_core::{self, Chain, EthereumChain};
 use pathfinder_lib::{
-    cairo, config,
+    cairo,
     ethereum::transport::{EthereumTransport, HttpTransport},
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
     rpc, sequencer, state,
@@ -21,8 +21,8 @@ async fn main() -> anyhow::Result<()> {
 
     setup_tracing();
 
-    let config =
-        config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
+    let config = pathfinder_config::Configuration::parse_cmd_line_and_cfg_file()
+        .context("Parsing configuration")?;
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)

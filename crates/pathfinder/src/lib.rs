@@ -1,7 +1,6 @@
 #![deny(rust_2018_idioms)]
 
 pub mod cairo;
-pub mod config;
 pub mod consts;
 pub mod ethereum;
 pub mod monitoring;

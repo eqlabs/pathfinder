@@ -1,7 +1,7 @@
 //! Wrapper for the parts of the [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
-use crate::config::EthereumConfig;
 use anyhow::Context;
 use futures::TryFutureExt;
+use pathfinder_config::EthereumConfig;
 use pathfinder_core::EthereumChain;
 use pathfinder_retry::Retry;
 use std::future::Future;

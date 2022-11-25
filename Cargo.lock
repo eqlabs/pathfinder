@@ -2090,6 +2090,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "mockall",
  "num-bigint 0.4.3",
+ "pathfinder-config",
  "pathfinder-core",
  "pathfinder-retry",
  "pathfinder-serde",
@@ -2129,6 +2130,7 @@ dependencies = [
  "reqwest",
  "serde",
  "toml",
+ "vergen",
 ]
 
 [[package]]
