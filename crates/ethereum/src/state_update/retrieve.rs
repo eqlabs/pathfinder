@@ -132,7 +132,7 @@ pub async fn retrieve_memory_page_logs(
 
 /// Retrieves and parses the transaction data of the given [MemoryPageFactContinuousLog]'s.
 ///
-/// These can be parsed into a [StateUpdate](pathfinder_ethereum::state_update::StateUpdate).
+/// These can be parsed into a [StateUpdate](crate::state_update::StateUpdate).
 pub async fn retrieve_mempage_transaction_data(
     transport: &impl EthereumTransport,
     mempages: Vec<MemoryPageFactContinuousLog>,

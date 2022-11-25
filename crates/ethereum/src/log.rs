@@ -31,7 +31,7 @@ pub struct StateTransitionFactLog {
 }
 
 /// Links together multiple [memory page logs](MemoryPageFactContinuousLog) into
-/// a single fact. The memory pages can then be interpretted as [state update data](pathfinder_ethereum::state_update::StateUpdate).
+/// a single fact. The memory pages can then be interpretted as [state update data](crate::state_update::StateUpdate).
 ///
 /// This is emitted by the GPS contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
