@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import json
 import os
 import re
@@ -129,6 +130,10 @@ class Command:
     def has_pending_data(self):
         pass
 
+    @abstractmethod
+    def get_pending_timestamp(self) -> int:
+        pass
+
 
 @marshmallow_dataclass.dataclass(frozen=True)
 class Call(Command):
@@ -139,6 +144,7 @@ class Call(Command):
     )
     pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
     pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
+    pending_timestamp: int = field(metadata=fields.timestamp_metadata)
 
     contract_address: int = field(metadata=fields.contract_address_metadata)
     calldata: List[int] = field(metadata=fields.call_data_as_hex_metadata)
@@ -155,6 +161,9 @@ class Call(Command):
             or len(self.pending_nonces) > 0
         )
 
+    def get_pending_timestamp(self) -> int:
+        return self.pending_timestamp
+
 
 @marshmallow_dataclass.dataclass(frozen=True)
 class EstimateFee(Command):
@@ -165,6 +174,7 @@ class EstimateFee(Command):
     )
     pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
     pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
+    pending_timestamp: int = field(metadata=fields.timestamp_metadata)
 
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
@@ -177,6 +187,9 @@ class EstimateFee(Command):
             or len(self.pending_deployed) > 0
             or len(self.pending_nonces) > 0
         )
+
+    def get_pending_timestamp(self) -> int:
+        return self.pending_timestamp
 
 
 class CommandSchema(marshmallow_oneofschema.OneOfSchema):
@@ -369,6 +382,11 @@ def loop_inner(connection, command: Command):
             )
         else:
             raise
+
+    if command.get_pending_timestamp():
+        block_info = dataclasses.replace(
+            block_info, block_timestamp=command.get_pending_timestamp()
+        )
 
     timings["resolve_block"] = time.time() - started_at
     started_at = time.time()
