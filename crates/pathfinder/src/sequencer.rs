@@ -143,7 +143,7 @@ impl Client {
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
-                .user_agent(crate::consts::USER_AGENT)
+                .user_agent(pathfinder_common::consts::USER_AGENT)
                 .build()?,
             sequencer_url: url,
         })
@@ -155,7 +155,7 @@ impl Client {
 
     /// Returns the [network chain](Chain) this client is operating on.
     pub async fn chain(&self) -> anyhow::Result<Chain> {
-        use crate::consts::{
+        use pathfinder_common::consts::{
             INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
             TESTNET_GENESIS_HASH,
         };

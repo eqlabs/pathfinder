@@ -66,7 +66,7 @@ impl HttpTransport {
         let client = reqwest::Client::builder();
 
         let client = client
-            .user_agent(crate::consts::USER_AGENT)
+            .user_agent(pathfinder_common::consts::USER_AGENT)
             .build()
             .context("Creating HTTP client")?;
 

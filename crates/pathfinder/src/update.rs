@@ -81,7 +81,7 @@ fn configure_client() -> anyhow::Result<reqwest::Client> {
     reqwest::Client::builder()
         .default_headers(headers)
         // https://docs.github.com/en/rest/overview/resources-in-the-rest-api#user-agent-required
-        .user_agent(crate::consts::USER_AGENT)
+        .user_agent(pathfinder_common::consts::USER_AGENT)
         .timeout(std::time::Duration::from_secs(300))
         .build()
         .context("Failed to create Github client")

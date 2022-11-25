@@ -1,13 +1,13 @@
 use crate::{
-    consts::{
-        INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
-    },
     ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
     rpc::v01::types::reply::StateUpdate,
     sequencer::reply::transaction,
 };
 use anyhow::Context;
 use pathfinder_common::{
+    consts::{
+        INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
+    },
     Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
     EthereumTransactionIndex, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
