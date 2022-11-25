@@ -92,7 +92,7 @@ pub(super) async fn base_block_and_pending_for_call(
     (
         BlockHashNumberOrLatest,
         Option<StarknetBlockTimestamp>,
-        Option<Arc<crate::sequencer::reply::StateUpdate>>,
+        Option<Arc<starknet_gateway_types::reply::StateUpdate>>,
     ),
     anyhow::Error,
 > {

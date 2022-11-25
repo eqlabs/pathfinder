@@ -89,8 +89,8 @@ mod types {
         pub state_diff: StateDiff,
     }
 
-    impl From<crate::sequencer::reply::StateUpdate> for StateUpdate {
-        fn from(x: crate::sequencer::reply::StateUpdate) -> Self {
+    impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
+        fn from(x: starknet_gateway_types::reply::StateUpdate) -> Self {
             Self {
                 block_hash: x.block_hash,
                 new_root: x.new_root,
@@ -122,8 +122,8 @@ mod types {
         pub nonces: Vec<Nonce>,
     }
 
-    impl From<crate::sequencer::reply::state_update::StateDiff> for StateDiff {
-        fn from(state_diff: crate::sequencer::reply::state_update::StateDiff) -> Self {
+    impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
+        fn from(state_diff: starknet_gateway_types::reply::state_update::StateDiff) -> Self {
             let storage_diffs: Vec<StorageDiff> = state_diff
                 .storage_diffs
                 .into_iter()
@@ -220,8 +220,8 @@ mod types {
         pub value: StorageValue,
     }
 
-    impl From<crate::sequencer::reply::state_update::StorageDiff> for StorageEntry {
-        fn from(diff: crate::sequencer::reply::state_update::StorageDiff) -> Self {
+    impl From<starknet_gateway_types::reply::state_update::StorageDiff> for StorageEntry {
+        fn from(diff: starknet_gateway_types::reply::state_update::StorageDiff) -> Self {
             Self {
                 key: diff.key,
                 value: diff.value,
@@ -238,8 +238,8 @@ mod types {
         pub class_hash: ClassHash,
     }
 
-    impl From<crate::sequencer::reply::state_update::DeployedContract> for DeployedContract {
-        fn from(d: crate::sequencer::reply::state_update::DeployedContract) -> Self {
+    impl From<starknet_gateway_types::reply::state_update::DeployedContract> for DeployedContract {
+        fn from(d: starknet_gateway_types::reply::state_update::DeployedContract) -> Self {
             Self {
                 address: d.address,
                 class_hash: d.class_hash,

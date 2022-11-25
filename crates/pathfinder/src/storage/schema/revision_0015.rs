@@ -8,7 +8,6 @@ use web3::types::H128;
 // null-valued fields that are now missing from the enum-based serialization
 // format. The point of this migration is getting rid of those `null` values.
 mod transaction {
-    use crate::sequencer::reply::transaction::EntryPointType;
     use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
@@ -20,6 +19,7 @@ mod transaction {
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
+    use starknet_gateway_types::reply::transaction::EntryPointType;
 
     /// Represents deserialized L2 transaction data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -394,7 +394,7 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        assert_matches::assert_matches!(migrated_tx, crate::sequencer::reply::transaction::Transaction::Deploy(deploy) => {
+        assert_matches::assert_matches!(migrated_tx, starknet_gateway_types::reply::transaction::Transaction::Deploy(deploy) => {
             assert_eq!(deploy.class_hash.0, fake_class_hash);
         });
     }
@@ -437,7 +437,7 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        use crate::sequencer::reply::transaction::{InvokeTransaction, Transaction};
+        use starknet_gateway_types::reply::transaction::{InvokeTransaction, Transaction};
         assert_matches::assert_matches!(migrated_tx, Transaction::Invoke(InvokeTransaction::V0(invoke)) => {
             assert_eq!(invoke.max_fee.0, H128::zero());
         });

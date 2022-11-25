@@ -17,9 +17,8 @@
 
 use crate::rpc::v01::types::{reply::FeeEstimate, request::Call};
 use crate::rpc::v02::types::request::{BroadcastedInvokeTransaction, BroadcastedTransaction};
-use crate::sequencer::reply::StateUpdate;
-use crate::sequencer::request::add_transaction;
 use pathfinder_common::{CallResultValue, StarknetBlockTimestamp};
+use starknet_gateway_types::{reply::StateUpdate, request::add_transaction};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -706,7 +705,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn call_with_pending_updates() {
-        use crate::sequencer::reply::StateUpdate;
+        use starknet_gateway_types::reply::StateUpdate;
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -770,12 +769,12 @@ mod tests {
             block_hash: None,
             old_root: GlobalRoot(StarkHash::ZERO),
             new_root: GlobalRoot(StarkHash::ZERO),
-            state_diff: crate::sequencer::reply::state_update::StateDiff {
+            state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: {
                     let mut map = std::collections::HashMap::new();
                     map.insert(
                         target_contract,
-                        vec![crate::sequencer::reply::state_update::StorageDiff {
+                        vec![starknet_gateway_types::reply::state_update::StorageDiff {
                             key: StorageAddress::new_or_panic(storage_address),
                             value: StorageValue(starkhash!("04")),
                         }],

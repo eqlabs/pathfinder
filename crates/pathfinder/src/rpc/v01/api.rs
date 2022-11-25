@@ -17,7 +17,7 @@ use crate::rpc::{
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
     rpc::gas_price,
-    sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
+    sequencer::{self, ClientApi},
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
     storage::{
         ContractsTable, EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
@@ -37,6 +37,7 @@ use pathfinder_common::{
     TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::StarkHash;
+use starknet_gateway_types::request::add_transaction::ContractDefinition;
 use std::convert::TryInto;
 use std::sync::Arc;
 
@@ -1314,7 +1315,8 @@ impl RpcApi {
                 call.entry_point_selector,
                 call.calldata,
             )
-            .await?;
+            .await
+            .map_err(into_rpc_error)?;
         Ok(InvokeTransactionResult {
             transaction_hash: result.transaction_hash,
         })
@@ -1351,7 +1353,8 @@ impl RpcApi {
                 sender_address,
                 token,
             )
-            .await?;
+            .await
+            .map_err(into_rpc_error)?;
         Ok(DeclareTransactionResult {
             transaction_hash: result.transaction_hash,
             class_hash: result.class_hash,
@@ -1379,7 +1382,8 @@ impl RpcApi {
                 contract_definition,
                 token,
             )
-            .await?;
+            .await
+            .map_err(into_rpc_error)?;
         Ok(DeployTransactionResult {
             transaction_hash: result.transaction_hash,
             contract_address: result.address,
@@ -1470,7 +1474,7 @@ impl RpcApi {
         (
             BlockHashNumberOrLatest,
             Option<StarknetBlockTimestamp>,
-            Option<Arc<sequencer::reply::StateUpdate>>,
+            Option<Arc<starknet_gateway_types::reply::StateUpdate>>,
         ),
         anyhow::Error,
     > {
@@ -1553,4 +1557,37 @@ fn static_internal_server_error() -> jsonrpsee::core::Error {
     Error::Call(CallError::Custom(ErrorObject::from(
         jsonrpsee::types::error::ErrorCode::InternalError,
     )))
+}
+
+/// Helper to avoid circular dependency between [`starknet_gateway_types`] and v01 rpc types
+fn into_rpc_error(e: starknet_gateway_types::error::SequencerError) -> Error {
+    use starknet_gateway_types::error::{SequencerError::*, StarknetErrorCode::*};
+
+    match e {
+        ReqwestError(e) => Error::Call(CallError::Failed(e.into())),
+        InvalidStarknetErrorVariant => Error::Call(CallError::Failed(e.into())),
+        StarknetError(e) => match e.code {
+            OutOfRangeBlockHash | BlockNotFound if e.message.contains("Block hash") => {
+                ErrorCode::InvalidBlockId.into()
+            }
+            OutOfRangeContractAddress | UninitializedContract => ErrorCode::ContractNotFound.into(),
+            OutOfRangeTransactionHash => ErrorCode::InvalidTransactionHash.into(),
+            TransactionFailed => ErrorCode::InvalidCallData.into(),
+            TransactionLimitExceeded => Error::Call(CallError::Failed(e.into())),
+            EntryPointNotFound => ErrorCode::InvalidMessageSelector.into(),
+            BlockNotFound if e.message.contains("Block number") => ErrorCode::InvalidBlockId.into(),
+            InvalidContractDefinition => ErrorCode::ContractError.into(),
+            BlockNotFound
+            | SchemaValidationError
+            | MalformedRequest
+            | UnsupportedSelectorForFee
+            | OutOfRangeBlockHash
+            | NotPermittedContract
+            | InvalidTransactionNonce
+            | OutOfRangeFee
+            | InvalidTransactionVersion
+            | InvalidProgram => Error::Call(CallError::Failed(e.into())),
+            UndeclaredClass => ErrorCode::InvalidContractClassHash.into(),
+        },
+    }
 }

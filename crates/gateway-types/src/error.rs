@@ -1,7 +1,4 @@
 //! Sequencer related error types.
-// FIXME
-// use crate::rpc::v01::types::reply::ErrorCode as RpcErrorCode;
-use jsonrpsee::{core::error::Error, types::error::CallError};
 use serde::{Deserialize, Serialize};
 
 /// Sequencer errors.
@@ -18,50 +15,6 @@ pub enum SequencerError {
     #[error("error decoding response body: invalid error variant")]
     InvalidStarknetErrorVariant,
 }
-
-// FIXME
-// impl From<SequencerError> for Error {
-//     fn from(e: SequencerError) -> Self {
-//         match e {
-//             SequencerError::ReqwestError(e) => Error::Call(CallError::Failed(e.into())),
-//             SequencerError::InvalidStarknetErrorVariant => Error::Call(CallError::Failed(e.into())),
-//             SequencerError::StarknetError(e) => match e.code {
-//                 StarknetErrorCode::OutOfRangeBlockHash | StarknetErrorCode::BlockNotFound
-//                     if e.message.contains("Block hash") =>
-//                 {
-//                     RpcErrorCode::InvalidBlockId.into()
-//                 }
-//                 StarknetErrorCode::OutOfRangeContractAddress
-//                 | StarknetErrorCode::UninitializedContract => RpcErrorCode::ContractNotFound.into(),
-//                 StarknetErrorCode::OutOfRangeTransactionHash => {
-//                     RpcErrorCode::InvalidTransactionHash.into()
-//                 }
-//                 StarknetErrorCode::TransactionFailed => RpcErrorCode::InvalidCallData.into(),
-//                 StarknetErrorCode::TransactionLimitExceeded => {
-//                     Error::Call(CallError::Failed(e.into()))
-//                 }
-//                 StarknetErrorCode::EntryPointNotFound => {
-//                     RpcErrorCode::InvalidMessageSelector.into()
-//                 }
-//                 StarknetErrorCode::BlockNotFound if e.message.contains("Block number") => {
-//                     RpcErrorCode::InvalidBlockId.into()
-//                 }
-//                 StarknetErrorCode::InvalidContractDefinition => RpcErrorCode::ContractError.into(),
-//                 StarknetErrorCode::BlockNotFound
-//                 | StarknetErrorCode::SchemaValidationError
-//                 | StarknetErrorCode::MalformedRequest
-//                 | StarknetErrorCode::UnsupportedSelectorForFee
-//                 | StarknetErrorCode::OutOfRangeBlockHash
-//                 | StarknetErrorCode::NotPermittedContract
-//                 | StarknetErrorCode::InvalidTransactionNonce
-//                 | StarknetErrorCode::OutOfRangeFee
-//                 | StarknetErrorCode::InvalidTransactionVersion
-//                 | StarknetErrorCode::InvalidProgram => Error::Call(CallError::Failed(e.into())),
-//                 StarknetErrorCode::UndeclaredClass => RpcErrorCode::InvalidContractClassHash.into(),
-//             },
-//         }
-//     }
-// }
 
 /// Used for deserializing specific Starknet sequencer error data.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-use crate::{rpc::v01::types::reply::StateUpdate, sequencer::reply::transaction};
+use crate::rpc::v01::types::reply::StateUpdate;
 use anyhow::Context;
 use pathfinder_common::{
     consts::{
@@ -12,6 +12,7 @@ use pathfinder_common::{
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::StarkHash;
+use starknet_gateway_types::reply::transaction;
 use web3::types::H256;
 
 /// Contains the [L1 Starknet update logs](StateUpdateLog).
@@ -2033,7 +2034,6 @@ mod tests {
 
     mod starknet_events {
         use super::*;
-        use crate::sequencer::reply::transaction;
         use crate::storage::test_utils;
         use pathfinder_common::starkhash;
         use pathfinder_common::{EntryPoint, EventData, Fee};
@@ -2117,12 +2117,11 @@ mod tests {
             // instead of transaction index.
             //
             // Events should be ordered by block number, transaction index, event index.
-            use crate::sequencer::reply::transaction::Event;
             use pathfinder_common::StarknetTransactionHash;
 
             // All events we are storing, arbitrarily use from_address to distinguish them.
             let expected_events = (0u8..5)
-                .map(|idx| Event {
+                .map(|idx| transaction::Event {
                     data: Vec::new(),
                     keys: Vec::new(),
                     from_address: ContractAddress::new_or_panic(

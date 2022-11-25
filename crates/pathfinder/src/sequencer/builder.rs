@@ -10,13 +10,11 @@
 //!   3. [Method](stage::Method) where you select the REST API method.
 //!   4. [Params](stage::Params) where you select the retry behavior.
 //!   5. [Final](stage::Final) where you select the REST operation type, which is then executed.
-use crate::sequencer::{
-    error::SequencerError,
-    metrics::{with_metrics, BlockTag, RequestMetadata},
-};
+use crate::sequencer::metrics::{with_metrics, BlockTag, RequestMetadata};
 use pathfinder_common::{
     BlockId, ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress,
 };
+use starknet_gateway_types::error::SequencerError;
 
 /// A Sequencer Request builder.
 pub struct Request<'a, S: RequestState> {
@@ -382,7 +380,7 @@ where
 
 /// Helper function which allows skipping deserialization when required.
 async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, SequencerError> {
-    use crate::sequencer::error::StarknetError;
+    use starknet_gateway_types::error::StarknetError;
 
     // Starknet specific errors end with a 500 status code
     // but the body contains a JSON object with the error description
@@ -542,7 +540,7 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn stop_on_fatal() {
             use crate::sequencer::builder;
-            use crate::sequencer::error::{SequencerError, StarknetErrorCode};
+            use starknet_gateway_types::error::{SequencerError, StarknetErrorCode};
 
             tokio::time::pause();
 

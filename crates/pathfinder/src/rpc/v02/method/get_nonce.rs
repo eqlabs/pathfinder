@@ -229,11 +229,11 @@ mod tests {
         let invalid = ContractAddress::new_or_panic(starkhash_bytes!(b"not valid"));
 
         // We don't care about this data, but it is required for setting up pending data.
-        let block = crate::sequencer::reply::PendingBlock {
+        let block = starknet_gateway_types::reply::PendingBlock {
             gas_price: GasPrice(0),
             parent_hash: StarknetBlockHash(starkhash_bytes!(b"dont care")),
             sequencer_address: SequencerAddress(starkhash_bytes!(b"dont care")),
-            status: crate::sequencer::reply::Status::Pending,
+            status: starknet_gateway_types::reply::Status::Pending,
             timestamp: StarknetBlockTimestamp::new_or_panic(1234),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
@@ -242,11 +242,11 @@ mod tests {
         let block = Arc::new(block);
 
         // We only care about the nonce data, but the rest is required for setting up pending data.
-        let state_update = crate::sequencer::reply::StateUpdate {
+        let state_update = starknet_gateway_types::reply::StateUpdate {
             block_hash: None,
             new_root: GlobalRoot(starkhash_bytes!(b"dont care")),
             old_root: GlobalRoot(starkhash_bytes!(b"dont care")),
-            state_diff: crate::sequencer::reply::state_update::StateDiff {
+            state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: Vec::new(),
                 declared_contracts: Vec::new(),

@@ -79,7 +79,6 @@ pub async fn get_transaction_receipt(
 
 mod types {
     use crate::rpc::v02::types::reply::BlockStatus;
-    use crate::sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message};
     use pathfinder_common::{
         ContractAddress, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
@@ -87,6 +86,7 @@ mod types {
     use pathfinder_serde::{EthereumAddressAsHexStr, FeeAsHexStr};
     use serde::Serialize;
     use serde_with::serde_as;
+    use starknet_gateway_types::reply::transaction::{L1ToL2Message, L2ToL1Message};
 
     /// L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -169,11 +169,11 @@ mod types {
 
     impl TransactionReceipt {
         pub fn with_block_data(
-            receipt: crate::sequencer::reply::transaction::Receipt,
+            receipt: starknet_gateway_types::reply::transaction::Receipt,
             status: BlockStatus,
             block_hash: StarknetBlockHash,
             block_number: StarknetBlockNumber,
-            transaction: crate::sequencer::reply::transaction::Transaction,
+            transaction: starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
@@ -191,7 +191,7 @@ mod types {
                 events: receipt.events.into_iter().map(Event::from).collect(),
             };
 
-            use crate::sequencer::reply::transaction::Transaction::*;
+            use starknet_gateway_types::reply::transaction::Transaction::*;
             match transaction {
                 Declare(_) => Self::Declare(DeclareTransactionReceipt { common }),
                 Deploy(tx) => Self::Deploy(DeployTransactionReceipt {
@@ -279,8 +279,8 @@ mod types {
 
     impl PendingTransactionReceipt {
         pub fn from(
-            receipt: crate::sequencer::reply::transaction::Receipt,
-            transaction: &crate::sequencer::reply::transaction::Transaction,
+            receipt: starknet_gateway_types::reply::transaction::Receipt,
+            transaction: &starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
@@ -295,7 +295,7 @@ mod types {
                 events: receipt.events.into_iter().map(Event::from).collect(),
             };
 
-            use crate::sequencer::reply::transaction::Transaction::*;
+            use starknet_gateway_types::reply::transaction::Transaction::*;
             match transaction {
                 Declare(_) => Self::Declare(PendingDeclareTransactionReceipt { common }),
                 Deploy(tx) => Self::Deploy(PendingDeployTransactionReceipt {
@@ -362,8 +362,8 @@ mod types {
         pub data: Vec<EventData>,
     }
 
-    impl From<crate::sequencer::reply::transaction::Event> for Event {
-        fn from(e: crate::sequencer::reply::transaction::Event) -> Self {
+    impl From<starknet_gateway_types::reply::transaction::Event> for Event {
+        fn from(e: starknet_gateway_types::reply::transaction::Event) -> Self {
             Self {
                 from_address: e.from_address,
                 keys: e.keys,

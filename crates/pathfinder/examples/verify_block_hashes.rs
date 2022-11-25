@@ -1,13 +1,13 @@
 use anyhow::Context;
 use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_lib::{
-    sequencer::reply::{Block, Status},
     state::block_hash::{verify_block_hash, VerifyResult},
     storage::{
         JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     },
 };
 use stark_hash::StarkHash;
+use starknet_gateway_types::reply::{Block, Status};
 
 /// Verify block hashes in a pathfinder database.
 ///

@@ -47,6 +47,53 @@ impl ContractClass {
     }
 }
 
+impl TryFrom<ContractClass>
+    for starknet_gateway_types::request::add_transaction::ContractDefinition
+{
+    type Error = serde_json::Error;
+
+    fn try_from(c: ContractClass) -> Result<Self, Self::Error> {
+        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
+        use std::collections::HashMap;
+
+        let abi = match c.abi {
+            Some(abi) => Some(serde_json::to_value(abi)?),
+            None => None,
+        };
+        let mut entry_points: HashMap<EntryPointType, Vec<SelectorAndOffset>> = Default::default();
+        entry_points.insert(
+            EntryPointType::Constructor,
+            c.entry_points_by_type
+                .constructor
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        );
+        entry_points.insert(
+            EntryPointType::External,
+            c.entry_points_by_type
+                .external
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        );
+        entry_points.insert(
+            EntryPointType::L1Handler,
+            c.entry_points_by_type
+                .l1_handler
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        );
+
+        Ok(Self {
+            program: c.program,
+            entry_points_by_type: entry_points,
+            abi,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ContractClass {
     pub program: String,
@@ -70,6 +117,15 @@ pub struct ContractEntryPoint {
     #[serde_as(as = "U64AsHexStr")]
     pub offset: u64,
     pub selector: StarkHash,
+}
+
+impl From<ContractEntryPoint> for starknet_gateway_types::request::contract::SelectorAndOffset {
+    fn from(entry_point: ContractEntryPoint) -> Self {
+        Self {
+            selector: pathfinder_common::EntryPoint(entry_point.selector),
+            offset: pathfinder_common::ByteCodeOffset(StarkHash::from_u64(entry_point.offset)),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

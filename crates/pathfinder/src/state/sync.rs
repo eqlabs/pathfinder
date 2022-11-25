@@ -4,10 +4,7 @@ mod pending;
 
 use crate::{
     rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
-    sequencer::{
-        self,
-        reply::{Block, MaybePendingBlock, PendingBlock, StateUpdate},
-    },
+    sequencer,
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
@@ -23,6 +20,9 @@ use pathfinder_common::{
 use pathfinder_ethereum::{log::StateUpdateLog, transport::EthereumTransport};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::StarkHash;
+use starknet_gateway_types::reply::{
+    state_update::DeployedContract, Block, MaybePendingBlock, PendingBlock, StateUpdate,
+};
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
@@ -41,7 +41,7 @@ impl Default for State {
 
 struct PendingInner {
     pub block: Arc<PendingBlock>,
-    pub state_update: Arc<sequencer::reply::StateUpdate>,
+    pub state_update: Arc<StateUpdate>,
 }
 
 #[derive(Default, Clone)]
@@ -50,11 +50,7 @@ pub struct PendingData {
 }
 
 impl PendingData {
-    pub async fn set(
-        &self,
-        block: Arc<PendingBlock>,
-        state_update: Arc<sequencer::reply::StateUpdate>,
-    ) {
+    pub async fn set(&self, block: Arc<PendingBlock>, state_update: Arc<StateUpdate>) {
         *self.inner.write().await = Some(PendingInner {
             block,
             state_update,
@@ -73,7 +69,7 @@ impl PendingData {
             .map(|inner| inner.block.clone())
     }
 
-    pub async fn state_update(&self) -> Option<Arc<sequencer::reply::StateUpdate>> {
+    pub async fn state_update(&self) -> Option<Arc<StateUpdate>> {
         self.inner
             .read()
             .await
@@ -83,11 +79,7 @@ impl PendingData {
 
     pub async fn state_update_on_parent_block(
         &self,
-    ) -> Option<(
-        StarknetBlockHash,
-        StarknetBlockTimestamp,
-        Arc<sequencer::reply::StateUpdate>,
-    )> {
+    ) -> Option<(StarknetBlockHash, StarknetBlockTimestamp, Arc<StateUpdate>)> {
         let g = self.inner.read().await;
         let inner = g.as_ref()?;
 
@@ -384,7 +376,7 @@ where
                         .transactions
                         .iter()
                         .filter_map(|tx| {
-                            use sequencer::reply::transaction::Transaction::*;
+                            use starknet_gateway_types::reply::transaction::Transaction::*;
                             match tx {
                                 Declare(tx) => Some(tx.class_hash),
                                 Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
@@ -792,7 +784,7 @@ fn update_starknet_state(
 fn deploy_contract(
     transaction: &Transaction<'_>,
     global_tree: &mut GlobalStateTree<'_, '_>,
-    contract: &sequencer::reply::state_update::DeployedContract,
+    contract: &DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.
     let contract_root = ContractRoot::ZERO;
@@ -937,9 +929,7 @@ mod tests {
     use super::{l1, l2};
     use crate::{
         rpc::v01::types::BlockHashOrTag,
-        sequencer::{
-            self, error::SequencerError, reply, request::add_transaction::ContractDefinition,
-        },
+        sequencer,
         state::{self, sync::PendingData},
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
@@ -953,6 +943,9 @@ mod tests {
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use stark_hash::StarkHash;
+    use starknet_gateway_types::{
+        error::SequencerError, reply, request::add_transaction::ContractDefinition,
+    };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
     use web3::types::H256;
@@ -1199,11 +1192,11 @@ mod tests {
             sequencer_address: SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap()),
         };
         // Causes root to remain 0
-        pub static ref STATE_UPDATE0: sequencer::reply::StateUpdate = sequencer::reply::StateUpdate {
+        pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
             block_hash: Some(StarknetBlockHash(*A)),
             new_root: GlobalRoot(StarkHash::ZERO),
             old_root: GlobalRoot(StarkHash::ZERO),
-            state_diff: sequencer::reply::state_update::StateDiff{
+            state_diff: reply::state_update::StateDiff{
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: vec![],
                 declared_contracts: vec![],

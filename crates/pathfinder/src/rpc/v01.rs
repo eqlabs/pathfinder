@@ -56,7 +56,6 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
 pub fn register_all_methods(
     module: &mut RpcModuleWrapper<RpcApi>,
 ) -> Result<(), jsonrpsee::core::Error> {
-    use crate::sequencer::request::add_transaction::ContractDefinition;
     use api::BlockResponseScope;
     use pathfinder_common::{
         BlockId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
@@ -68,6 +67,7 @@ pub fn register_all_methods(
     };
     use serde::Deserialize;
     use stark_hash::StarkHash;
+    use starknet_gateway_types::request::add_transaction::ContractDefinition;
     use types::request::{Call, ContractCall, EventFilter};
 
     module.register_async_method(
@@ -352,7 +352,6 @@ mod tests {
             types::reply::{Block, Transactions},
         },
     };
-    use crate::sequencer::reply::PendingBlock;
     use crate::{
         sequencer::{test_utils::*, Client},
         state::{state_tree::GlobalStateTree, PendingData, SyncState},
@@ -368,6 +367,7 @@ mod tests {
     };
     use serde_json::json;
     use stark_hash::StarkHash;
+    use starknet_gateway_types::reply::PendingBlock;
     use std::sync::Arc;
 
     mod get_block {
@@ -1417,15 +1417,13 @@ mod tests {
 
     mod contract_setup {
         use super::*;
-        use crate::{
-            sequencer::reply::state_update::StorageDiff, state::update_contract_state,
-            storage::StarknetBlocksBlockId,
-        };
+        use crate::{state::update_contract_state, storage::StarknetBlocksBlockId};
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
         use pathfinder_common::{starkhash, StorageValue};
         use pretty_assertions::assert_eq;
+        use starknet_gateway_types::reply::state_update::StorageDiff;
 
         pub fn setup_class_and_contract(
             transaction: &rusqlite::Transaction<'_>,
@@ -2571,18 +2569,16 @@ mod tests {
 
         mod positional_args {
             use super::*;
-            use crate::{
-                rpc::v01::types::request::ContractCall,
-                sequencer::request::{
-                    add_transaction::ContractDefinition,
-                    contract::{EntryPointType, SelectorAndOffset},
-                },
-            };
+            use crate::rpc::v01::types::request::ContractCall;
             use pathfinder_common::{
                 starkhash, ByteCodeOffset, CallParam, ClassHash, ConstructorParam,
                 ContractAddressSalt, EntryPoint, Fee, TransactionSignatureElem, TransactionVersion,
             };
             use pretty_assertions::assert_eq;
+            use starknet_gateway_types::request::{
+                add_transaction::ContractDefinition,
+                contract::{EntryPointType, SelectorAndOffset},
+            };
             use std::collections::HashMap;
             use web3::types::H256;
 

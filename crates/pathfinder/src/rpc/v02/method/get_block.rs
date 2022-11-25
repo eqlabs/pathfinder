@@ -160,7 +160,6 @@ fn get_block_transactions(
 
 mod types {
     use crate::rpc::v02::types::reply::{BlockStatus, Transaction};
-    use crate::sequencer;
     use pathfinder_common::{
         GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash,
@@ -233,7 +232,7 @@ mod types {
 
         /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
         pub fn from_sequencer_scoped(
-            block: sequencer::reply::MaybePendingBlock,
+            block: starknet_gateway_types::reply::MaybePendingBlock,
             scope: BlockResponseScope,
         ) -> Self {
             let transactions = match scope {
@@ -248,7 +247,7 @@ mod types {
                 }
             };
 
-            use sequencer::reply::MaybePendingBlock;
+            use starknet_gateway_types::reply::MaybePendingBlock;
             match block {
                 MaybePendingBlock::Block(block) => Self {
                     status: block.status.into(),

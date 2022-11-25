@@ -1,5 +1,4 @@
 use crate::{
-    sequencer::reply::state_update::StorageDiff,
     state::state_tree::{ContractsStateTree, GlobalStateTree},
     storage::{ContractsStateTable, ContractsTable},
 };
@@ -9,6 +8,7 @@ use pathfinder_common::{
 };
 use rusqlite::Transaction;
 use stark_hash::{stark_hash, StarkHash};
+use starknet_gateway_types::reply::state_update::StorageDiff;
 
 pub mod block_hash;
 pub(crate) mod class_hash;

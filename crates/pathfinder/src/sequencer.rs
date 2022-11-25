@@ -1,20 +1,22 @@
 //! StarkNet L2 sequencer client.
-use crate::{rpc::v01::types::BlockHashOrTag, sequencer::error::SequencerError};
+use crate::rpc::v01::types::BlockHashOrTag;
 use pathfinder_common::{
     BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
     EntryPoint, Fee, StarknetBlockNumber, StarknetTransactionHash, StorageAddress, StorageValue,
     TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
+use starknet_gateway_types::{
+    error::SequencerError,
+    reply,
+    request::add_transaction::{
+        AddTransaction, ContractDefinition, Declare, Deploy, DeployAccount, InvokeFunction,
+    },
+};
 use std::{fmt::Debug, result::Result, time::Duration};
 
 mod builder;
-pub mod error;
 mod metrics;
-pub mod reply;
-pub mod request;
-
-use self::request::add_transaction::ContractDefinition;
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
@@ -315,17 +317,15 @@ impl ClientApi for Client {
         entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
-        let req = request::add_transaction::AddTransaction::Invoke(
-            request::add_transaction::InvokeFunction {
-                contract_address,
-                entry_point_selector,
-                calldata,
-                max_fee,
-                version,
-                signature,
-                nonce,
-            },
-        );
+        let req = AddTransaction::Invoke(InvokeFunction {
+            contract_address,
+            entry_point_selector,
+            calldata,
+            max_fee,
+            version,
+            signature,
+            nonce,
+        });
 
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -351,15 +351,14 @@ impl ClientApi for Client {
         sender_address: ContractAddress,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
-        let req =
-            request::add_transaction::AddTransaction::Declare(request::add_transaction::Declare {
-                contract_class: contract_definition,
-                sender_address,
-                max_fee,
-                signature,
-                nonce,
-                version,
-            });
+        let req = AddTransaction::Declare(Declare {
+            contract_class: contract_definition,
+            sender_address,
+            max_fee,
+            signature,
+            nonce,
+            version,
+        });
 
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -385,13 +384,12 @@ impl ClientApi for Client {
         contract_definition: ContractDefinition,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
-        let req =
-            request::add_transaction::AddTransaction::Deploy(request::add_transaction::Deploy {
-                version,
-                contract_address_salt,
-                contract_definition,
-                constructor_calldata,
-            });
+        let req = AddTransaction::Deploy(Deploy {
+            version,
+            contract_address_salt,
+            contract_definition,
+            constructor_calldata,
+        });
 
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -419,17 +417,15 @@ impl ClientApi for Client {
         class_hash: ClassHash,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
-        let req = request::add_transaction::AddTransaction::DeployAccount(
-            request::add_transaction::DeployAccount {
-                version,
-                max_fee,
-                signature,
-                nonce,
-                class_hash,
-                contract_address_salt,
-                constructor_calldata: calldata,
-            },
-        );
+        let req = AddTransaction::DeployAccount(DeployAccount {
+            version,
+            max_fee,
+            signature,
+            nonce,
+            class_hash,
+            contract_address_salt,
+            constructor_calldata: calldata,
+        });
 
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -505,13 +501,13 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::VecDeque;
-
-    use super::{error::StarknetErrorCode, test_utils::*, *};
+    use super::{test_utils::*, *};
     use crate::rpc::v01::types::Tag;
     use assert_matches::assert_matches;
     use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
     use stark_hash::StarkHash;
+    use starknet_gateway_types::error::StarknetErrorCode;
+    use std::collections::VecDeque;
 
     /// Helper macro which creates a successful response tuple
     /// which can then be used by the [setup] function.
@@ -539,23 +535,21 @@ mod tests {
         };
     }
 
-    impl StarknetErrorCode {
-        /// Helper funtion which allows for easy creation of a response tuple
-        /// that contains a [StarknetError] for a given [StarknetErrorCode].
-        ///
-        /// The response tuple can then be used by the [setup] function.
-        ///
-        /// The `message` field is always an empty string.
-        /// The HTTP status code for this response is always `500` (`Internal Server Error`).
-        fn into_response(self) -> (String, u16) {
-            use crate::sequencer::error::StarknetError;
+    /// Helper funtion which allows for easy creation of a response tuple
+    /// that contains a [StarknetError] for a given [StarknetErrorCode].
+    ///
+    /// The response tuple can then be used by the [setup] function.
+    ///
+    /// The `message` field is always an empty string.
+    /// The HTTP status code for this response is always `500` (`Internal Server Error`).
+    fn response_from(code: StarknetErrorCode) -> (String, u16) {
+        use starknet_gateway_types::error::StarknetError;
 
-            let e = StarknetError {
-                code: self,
-                message: "".to_string(),
-            };
-            (serde_json::to_string(&e).unwrap(), 500)
-        }
+        let e = StarknetError {
+            code,
+            message: "".to_string(),
+        };
+        (serde_json::to_string(&e).unwrap(), 500)
     }
 
     /// # Usage
@@ -840,7 +834,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_block?blockHash={}", INVALID_BLOCK_HASH),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .block(BlockId::from(INVALID_BLOCK_HASH))
@@ -860,7 +854,7 @@ mod tests {
                     "/feeder_gateway/get_block?blockNumber={}",
                     INVALID_BLOCK_NUMBER
                 ),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .block(BlockId::from(INVALID_BLOCK_NUMBER))
@@ -924,7 +918,7 @@ mod tests {
                     "/feeder_gateway/get_full_contract?contractAddress={}",
                     INVALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
-                StarknetErrorCode::UninitializedContract.into_response(),
+                response_from(StarknetErrorCode::UninitializedContract),
             )]);
             let error = client
                 .full_contract(INVALID_CONTRACT_ADDR)
@@ -961,7 +955,7 @@ mod tests {
                     "/feeder_gateway/get_class_by_hash?classHash={}",
                     INVALID_CLASS_HASH.0.to_hex_str()
                 ),
-                StarknetErrorCode::UndeclaredClass.into_response(),
+                response_from(StarknetErrorCode::UndeclaredClass),
             )]);
             let error = client.class_by_hash(INVALID_CLASS_HASH).await.unwrap_err();
             assert_matches!(
@@ -995,7 +989,7 @@ mod tests {
                     "/feeder_gateway/get_class_hash_at?contractAddress={}",
                     INVALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
-                StarknetErrorCode::UninitializedContract.into_response(),
+                response_from(StarknetErrorCode::UninitializedContract),
             )]);
             let error = client
                 .class_hash_at(INVALID_CONTRACT_ADDR)
@@ -1075,7 +1069,7 @@ mod tests {
                     *VALID_KEY_DEC,
                     INVALID_BLOCK_HASH
                 ),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .storage(VALID_CONTRACT_ADDR, VALID_KEY, INVALID_BLOCK_HASH)
@@ -1384,7 +1378,7 @@ mod tests {
                     "/feeder_gateway/get_state_update?blockNumber={}",
                     INVALID_BLOCK_NUMBER
                 ),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .state_update(BlockId::from(INVALID_BLOCK_NUMBER))
@@ -1404,7 +1398,7 @@ mod tests {
                     "/feeder_gateway/get_state_update?blockHash={}",
                     INVALID_BLOCK_HASH
                 ),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .state_update(BlockId::from(INVALID_BLOCK_HASH))
@@ -1451,8 +1445,8 @@ mod tests {
 
     mod add_transaction {
         use super::*;
-        use crate::sequencer::request::contract::{EntryPointType, SelectorAndOffset};
         use pathfinder_common::{starkhash, ByteCodeOffset, ContractAddress};
+        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
         use std::collections::HashMap;
 
         #[tokio::test]
@@ -1461,7 +1455,7 @@ mod tests {
             // except for an invalid entry point value
             let (_jh, client) = setup([(
                 "/gateway/add_transaction",
-                StarknetErrorCode::UnsupportedSelectorForFee.into_response(),
+                response_from(StarknetErrorCode::UnsupportedSelectorForFee),
             )]);
             let error = client
                 .add_invoke_transaction(
@@ -1627,6 +1621,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_deploy_account() {
+            use starknet_gateway_types::request::add_transaction::AddTransaction;
             let (_jh, client) = setup([(
                 "/gateway/add_transaction",
                 response!("0.10.1/add_transaction/deploy_account_response.json"),
@@ -1635,12 +1630,9 @@ mod tests {
             let json = include_str!(
                 "../fixtures/sequencer/0.10.1/add_transaction/deploy_account_request.json"
             );
-            let req: request::add_transaction::AddTransaction =
-                serde_json::from_str(json).expect("Request parsed from JSON");
+            let req: AddTransaction = serde_json::from_str(json).expect("Request parsed from JSON");
             let req = match req {
-                request::add_transaction::AddTransaction::DeployAccount(deploy_account) => {
-                    Some(deploy_account)
-                }
+                AddTransaction::DeployAccount(deploy_account) => Some(deploy_account),
                 _ => None,
             };
             let req = req.expect("Request matched as DEPLOY_ACCOUNT");
@@ -1939,7 +1931,7 @@ mod tests {
                 // Any valid fixture
                 response,
                 // 1 StarkNet error
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
                 // 2 decode errors
                 (r#"{"not":"valid"}"#.to_owned(), 200),
                 (r#"{"not":"valid, again"}"#.to_owned(), 200),

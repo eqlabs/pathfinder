@@ -1,10 +1,16 @@
 //! The json serializable types
 
 use crate::rpc::v01::types::BlockHashOrTag;
-use crate::sequencer::reply::state_update::{DeployedContract, StorageDiff};
 use pathfinder_common::{
     BlockId, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint, StarknetBlockHash,
     StarknetBlockNumber,
+};
+use starknet_gateway_types::{
+    reply::{
+        state_update::{DeployedContract, StorageDiff},
+        StateUpdate,
+    },
+    request::add_transaction::AddTransaction,
 };
 use std::collections::HashMap;
 
@@ -28,7 +34,7 @@ pub(crate) enum ChildCommand<'a> {
         // zero means use the gas price from the block.
         #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
         gas_price: &'a web3::types::H256,
-        transaction: &'a crate::sequencer::request::add_transaction::AddTransaction,
+        transaction: &'a AddTransaction,
     },
 }
 
@@ -71,8 +77,8 @@ impl From<Chain> for UsedChain {
 #[derive(Debug)]
 pub struct ContractUpdatesWrapper<'a>(Option<&'a HashMap<ContractAddress, Vec<StorageDiff>>>);
 
-impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for ContractUpdatesWrapper<'a> {
-    fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
+impl<'a> From<Option<&'a StateUpdate>> for ContractUpdatesWrapper<'a> {
+    fn from(u: Option<&'a StateUpdate>) -> Self {
         let map = u.map(|x| &x.state_diff.storage_diffs);
         ContractUpdatesWrapper(map)
     }
@@ -135,8 +141,8 @@ impl<'a> serde::Serialize for DiffElement<'a> {
 #[derive(Debug)]
 pub struct DeployedContractsWrapper<'a>(Option<&'a [DeployedContract]>);
 
-impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for DeployedContractsWrapper<'a> {
-    fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
+impl<'a> From<Option<&'a StateUpdate>> for DeployedContractsWrapper<'a> {
+    fn from(u: Option<&'a StateUpdate>) -> Self {
         let cs = u.map(|u| u.state_diff.deployed_contracts.as_slice());
         DeployedContractsWrapper(cs)
     }
@@ -161,7 +167,7 @@ impl<'a> serde::Serialize for DeployedContractsWrapper<'a> {
     }
 }
 
-struct DeployedContractElement<'a>(&'a crate::sequencer::reply::state_update::DeployedContract);
+struct DeployedContractElement<'a>(&'a DeployedContract);
 
 impl<'a> serde::Serialize for DeployedContractElement<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -182,8 +188,8 @@ impl<'a> serde::Serialize for DeployedContractElement<'a> {
 #[derive(Debug)]
 pub struct NoncesWrapper<'a>(Option<&'a HashMap<ContractAddress, ContractNonce>>);
 
-impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for NoncesWrapper<'a> {
-    fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
+impl<'a> From<Option<&'a StateUpdate>> for NoncesWrapper<'a> {
+    fn from(u: Option<&'a StateUpdate>) -> Self {
         let ns = u.map(|u| &u.state_diff.nonces);
         NoncesWrapper(ns)
     }
@@ -297,17 +303,15 @@ impl TryFrom<BlockId> for BlockHashNumberOrLatest {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use crate::cairo::ext_py::ser::NoncesWrapper;
     use pathfinder_common::{
         starkhash, {ContractAddress, ContractNonce},
     };
+    use std::collections::HashMap;
 
     #[test]
     fn serialize_some_updates() {
-        use super::ContractUpdatesWrapper;
-        use crate::sequencer::reply::state_update::StorageDiff;
+        use super::{ContractUpdatesWrapper, StorageDiff};
         use pathfinder_common::{StorageAddress, StorageValue};
         use std::collections::HashMap;
 
@@ -344,8 +348,7 @@ mod tests {
 
     #[test]
     fn serialize_some_deployed_contracts() {
-        use super::DeployedContractsWrapper;
-        use crate::sequencer::reply::state_update::DeployedContract;
+        use super::{DeployedContract, DeployedContractsWrapper};
         use pathfinder_common::ClassHash;
 
         let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;

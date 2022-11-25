@@ -1,7 +1,3 @@
-use crate::sequencer::reply::{
-    transaction::{Event, Receipt, Transaction},
-    Block,
-};
 use crate::state::merkle_tree::MerkleTree;
 use anyhow::{Context, Error, Result};
 use bitvec::prelude::BitView;
@@ -10,6 +6,10 @@ use pathfinder_common::{
     StarknetBlockTimestamp,
 };
 use stark_hash::{stark_hash, HashChain, StarkHash};
+use starknet_gateway_types::reply::{
+    transaction::{Event, Receipt, Transaction},
+    Block,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
@@ -420,10 +420,11 @@ fn number_of_events_in_block(block: &Block) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sequencer::reply::transaction::{
-        EntryPointType, InvokeTransaction, InvokeTransactionV0,
-    };
     use pathfinder_common::{starkhash, EntryPoint, Fee};
+    use starknet_gateway_types::reply::{
+        transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
+        Block,
+    };
 
     #[test]
     fn test_event_hash() {
@@ -504,8 +505,6 @@ mod tests {
 
     #[test]
     fn test_number_of_events_in_block() {
-        use crate::sequencer::reply::Block;
-
         let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/156000.json");
         let block: Block = serde_json::from_slice(json).unwrap();
 
@@ -516,8 +515,6 @@ mod tests {
 
     #[test]
     fn test_block_hash_without_sequencer_address() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a post-0.7, pre-0.8.0 block where zero is used as the sequencer address.
         let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/90000.json");
         let block: Block = serde_json::from_slice(json).unwrap();
@@ -530,8 +527,6 @@ mod tests {
 
     #[test]
     fn test_block_hash_with_sequencer_address() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a post-0.8.2 block where we have correct sequencer address
         // information in the block itself.
         let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/231579.json");
@@ -545,8 +540,6 @@ mod tests {
 
     #[test]
     fn test_block_hash_with_sequencer_address_unavailable_but_not_zero() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a post-0.8.0 pre-0.8.2 block where we don't have the sequencer
         // address in the JSON but the block hash was calculated with the magic value below
         // instead of zero.
@@ -561,8 +554,6 @@ mod tests {
 
     #[test]
     fn test_block_hash_0() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a pre-0.7 block where the chain ID was hashed into
         // the block hash.
         let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/genesis.json");
