@@ -1,0 +1,29 @@
+[package]
+name = "pathfinder-ethereum"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.62"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.44"
+async-trait = "0.1.52"
+futures = { version = "0.3", default-features = false, features = ["std"] }
+lazy_static = "1.4.0"
+pathfinder-common = { path = "../common" }
+pathfinder-config = { path = "../config" }
+pathfinder-retry = { path = "../retry" }
+reqwest = { version = "0.11.4", features = ["json"] }
+stark_hash = { path = "../stark_hash" }
+thiserror = "1.0.30"
+tokio = "1.11.0"
+tracing = "0.1.31"
+web3 = "0.18.0"
+
+[dev-dependencies]
+assert_matches = "1.5.0"
+hex = "0.4.3"
+hex-literal = "0.3"
+pretty_assertions = "1.0.0"
