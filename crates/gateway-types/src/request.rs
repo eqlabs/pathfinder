@@ -155,25 +155,23 @@ pub mod add_transaction {
     #[cfg(test)]
     mod test {
         use super::*;
+        use starknet_gateway_test_fixtures::add_transaction::{
+            DEPLOY_OPENZEPPELIN_ACCOUNT, DEPLOY_TRANSACTION, INVOKE_CONTRACT_WITH_SIGNATURE,
+        };
 
         #[test]
         fn test_deploy() {
-            let json = include_bytes!("../fixtures/add-transaction/deploy_transaction.json");
-            let _deploy = serde_json::from_slice::<AddTransaction>(json).unwrap();
+            serde_json::from_str::<AddTransaction>(DEPLOY_TRANSACTION).unwrap();
         }
 
         #[test]
         fn test_deploy_openzeppelin_account() {
-            let json =
-                include_bytes!("../fixtures/add-transaction/deploy_openzeppelin_account.json");
-            let _deploy = serde_json::from_slice::<AddTransaction>(json).unwrap();
+            serde_json::from_str::<AddTransaction>(DEPLOY_OPENZEPPELIN_ACCOUNT).unwrap();
         }
 
         #[test]
         fn test_invoke_with_signature() {
-            let json =
-                include_bytes!("../fixtures/add-transaction/invoke_contract_with_signature.json");
-            let _invoke = serde_json::from_slice::<AddTransaction>(json).unwrap();
+            serde_json::from_str::<AddTransaction>(INVOKE_CONTRACT_WITH_SIGNATURE).unwrap();
         }
     }
 }

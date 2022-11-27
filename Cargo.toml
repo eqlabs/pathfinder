@@ -9,6 +9,7 @@ members = [
     "crates/config",
     "crates/ethereum",
     "crates/gateway-types",
+    "crates/gateway-test-fixtures",
     "crates/load-test",
     "crates/pathfinder",
     "crates/retry",

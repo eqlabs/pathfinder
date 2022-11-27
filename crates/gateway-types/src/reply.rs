@@ -748,33 +748,22 @@ mod tests {
     /// previous version of cairo while at the same time the goerli sequencer is
     /// already using a newer version.
     mod backward_compatibility {
-
         use super::super::{StateUpdate, Transaction};
-
-        macro_rules! fixture {
-            ($file_name:literal) => {
-                include_str!(concat!("../fixtures/", $file_name))
-            };
-        }
+        use starknet_gateway_test_fixtures::*;
 
         #[test]
         fn block() {
             use super::super::MaybePendingBlock;
 
-            serde_json::from_str::<MaybePendingBlock>(fixture!("0.8.2/block/genesis.json"))
-                .unwrap();
-            serde_json::from_str::<MaybePendingBlock>(fixture!("0.8.2/block/1716.json")).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(fixture!("0.8.2/block/pending.json"))
-                .unwrap();
+            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::GENESIS).unwrap();
+            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::NUMBER_1716).unwrap();
+            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::PENDING).unwrap();
             // This is from integration starknet_version 0.10 and contains the new version 1 invoke transaction.
-            serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/216591.json"))
-                .unwrap();
+            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216591).unwrap();
             // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
-            serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/216171.json"))
-                .unwrap();
+            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216171).unwrap();
             // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
-            serde_json::from_str::<MaybePendingBlock>(fixture!("integration/block/228457.json"))
-                .unwrap();
+            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_228457).unwrap();
         }
 
         #[test]
@@ -782,18 +771,15 @@ mod tests {
             // FIXME(0.10): update these fixtures once 0.10 is on mainnet
 
             // These fixtures do not contain nonces property (0.10 owards).
-            serde_json::from_str::<StateUpdate>(fixture!("0.9.1/state_update/genesis.json"))
-                .unwrap();
-            serde_json::from_str::<StateUpdate>(fixture!("0.9.1/state_update/pending.json"))
-                .unwrap();
+            serde_json::from_str::<StateUpdate>(v0_9_1::state_update::GENESIS).unwrap();
+            serde_json::from_str::<StateUpdate>(v0_9_1::state_update::PENDING).unwrap();
             // This is from integration starknet_version 0.10 and contains the new nonces field.
-            serde_json::from_str::<StateUpdate>(fixture!("integration/state_update/216572.json"))
-                .unwrap();
+            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_216572).unwrap();
         }
 
         #[test]
         fn transaction() {
-            serde_json::from_str::<Transaction>(fixture!("0.8.2/txn/invoke.json")).unwrap();
+            serde_json::from_str::<Transaction>(v0_8_2::transaction::INVOKE).unwrap();
         }
     }
 }

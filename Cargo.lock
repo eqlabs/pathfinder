@@ -3256,6 +3256,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "starknet-gateway-test-fixtures"
+version = "0.1.0"
+
+[[package]]
 name = "starknet-gateway-types"
 version = "0.1.0"
 dependencies = [
@@ -3268,6 +3272,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "stark_hash",
+ "starknet-gateway-test-fixtures",
  "thiserror",
  "web3",
 ]

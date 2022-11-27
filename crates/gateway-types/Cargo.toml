@@ -24,3 +24,4 @@ web3 = "0.18.0"
 [dev-dependencies]
 # Due to pathfinder_common::starkhash!() usage
 hex-literal = "0.3"
+starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
