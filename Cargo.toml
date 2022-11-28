@@ -5,6 +5,7 @@ strip = "debuginfo"
 
 [workspace]
 members = [
+    "crates/build",
     "crates/common",
     "crates/config",
     "crates/ethereum",

@@ -19,4 +19,4 @@ tracing = "0.1.31"
 assert_matches = "1.5.0"
 
 [build-dependencies]
-vergen = { version = "7", default-features = false, features = ["git"] }
+pathfinder-build = { path = "../build" }

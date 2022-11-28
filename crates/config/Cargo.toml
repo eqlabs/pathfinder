@@ -15,4 +15,4 @@ serde = { version = "1.0.130", features = ["derive"] }
 toml = "0.5.8"
 
 [build-dependencies]
-vergen = { version = "7", default-features = false, features = ["git"] }
+pathfinder-build = { path = "../build" }

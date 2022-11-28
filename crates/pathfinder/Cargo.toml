@@ -82,7 +82,7 @@ test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tokio = { version = "1.11.0", features = ["test-util"] }
 
 [build-dependencies]
-vergen = { version = "7", default-features = false, features = ["git"] }
+pathfinder-build = { path = "../build" }
 
 [[bench]]
 name = "merkle_tree"

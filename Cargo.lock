@@ -2291,6 +2291,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "mockall",
  "num-bigint 0.4.3",
+ "pathfinder-build",
  "pathfinder-common",
  "pathfinder-config",
  "pathfinder-ethereum",
@@ -2319,10 +2320,16 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "vergen",
  "warp",
  "web3",
  "zstd",
+]
+
+[[package]]
+name = "pathfinder-build"
+version = "0.1.0"
+dependencies = [
+ "vergen",
 ]
 
 [[package]]
@@ -2331,13 +2338,13 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "hex-literal",
+ "pathfinder-build",
  "rusqlite",
  "serde",
  "serde_json",
  "sha3",
  "stark_hash",
  "thiserror",
- "vergen",
  "web3",
 ]
 
@@ -2348,10 +2355,10 @@ dependencies = [
  "clap 3.2.23",
  "enum-iterator 0.7.0",
  "lazy_static",
+ "pathfinder-build",
  "reqwest",
  "serde",
  "toml",
- "vergen",
 ]
 
 [[package]]
@@ -2406,13 +2413,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "pathfinder-build",
  "pathfinder-common",
  "reqwest",
  "semver",
  "serde",
  "tokio",
  "tracing",
- "vergen",
 ]
 
 [[package]]
