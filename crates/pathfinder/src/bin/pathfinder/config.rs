@@ -121,6 +121,10 @@ impl Configuration {
         // users config filepath (if supplied).
         let (cfg_filepath, cli_cfg) = cli::parse_cmd_line();
 
+        if cfg_filepath.is_some() {
+            tracing::warn!("'--config' is deprecated. Consider using script files to retain the same functionality.");
+        }
+
         // Parse configuration file if specified.
         let file_cfg = match cfg_filepath {
             Some(filepath) => {
@@ -138,6 +142,21 @@ impl Configuration {
         };
 
         let cfg = cfg.try_build()?;
+
+        // Emit warning logs for deprecated configuration options.
+        if cfg.sequencer_url.is_some() {
+            tracing::warn!("'--sequencer-url' is deprecated, please use '--gateway' instead");
+        }
+
+        if cfg.integration {
+            tracing::warn!(
+                "'--integration' is deprecated, please use '--network integration' instead"
+            );
+        }
+
+        if cfg.testnet2 {
+            tracing::warn!("'--testnet2' is deprecated, please use '--network testnet2' instead");
+        }
 
         Ok(cfg)
     }
