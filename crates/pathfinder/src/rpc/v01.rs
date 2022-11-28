@@ -2562,8 +2562,8 @@ mod tests {
 
         lazy_static::lazy_static! {
             pub static ref CONTRACT_DEFINITION_JSON: serde_json::Value = {
-                let json = include_bytes!("../../resources/deploy_transaction.json");
-                let mut json: serde_json::Value = serde_json::from_slice(json).unwrap();
+                let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
+                let mut json: serde_json::Value = serde_json::from_str(json).unwrap();
                 json["contract_definition"].take()
             };
         }

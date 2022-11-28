@@ -1528,8 +1528,8 @@ mod tests {
             use flate2::write::GzDecoder;
             use std::io::Write;
 
-            let json = include_bytes!("../resources/deploy_transaction.json");
-            let json: serde_json::Value = serde_json::from_slice(json).unwrap();
+            let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
+            let json: serde_json::Value = serde_json::from_str(json).unwrap();
             let program = json["contract_definition"]["program"].as_str().unwrap();
             let gzipped_program = base64::decode(program).unwrap();
 
@@ -1642,8 +1642,8 @@ mod tests {
 
         /// Return a contract definition that was dumped from a `starknet deploy`.
         fn get_contract_class_from_fixture() -> ContractDefinition {
-            let json = include_bytes!("../resources/deploy_transaction.json");
-            let json: serde_json::Value = serde_json::from_slice(json).unwrap();
+            let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
+            let json: serde_json::Value = serde_json::from_str(json).unwrap();
             let program = json["contract_definition"]["program"].as_str().unwrap();
             let entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
                 HashMap::from([
