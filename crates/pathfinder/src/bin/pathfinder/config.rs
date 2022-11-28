@@ -144,6 +144,7 @@ impl Configuration {
         let cfg = cfg.try_build()?;
 
         // Emit warning logs for deprecated configuration options.
+        // TODO: remove warnings and the options in next major release.
         if cfg.sequencer_url.is_some() {
             tracing::warn!("'--sequencer-url' is deprecated, please use '--gateway' instead");
         }
@@ -156,6 +157,12 @@ impl Configuration {
 
         if cfg.testnet2 {
             tracing::warn!("'--testnet2' is deprecated, please use '--network testnet2' instead");
+        }
+
+        // Emit warning if network option is not provided.
+        // TODO: remove warning and make option required in next major release.
+        if cfg.network.is_none() {
+            tracing::warn!("'--network' configuration not specified - this will be a required item in a future version of pathfinder.");
         }
 
         Ok(cfg)
