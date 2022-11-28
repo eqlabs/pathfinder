@@ -19,6 +19,7 @@ const MONITOR_ADDRESS: &str = "monitor-address";
 const INTEGRATION: &str = "integration";
 const TESTNET2: &str = "testnet2";
 const NETWORK: &str = "network";
+const GATEWAY: &str = "gateway";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -54,6 +55,7 @@ where
     let poll_pending = args.value_of(POLL_PENDING).map(|s| s.to_owned());
     let monitor_address = args.value_of(MONITOR_ADDRESS).map(|s| s.to_owned());
     let network = args.value_of(NETWORK).map(|s| s.to_owned());
+    let gateway = args.value_of(GATEWAY).map(|s| s.to_owned());
     // Hack around our builder requiring Strings, but these args just needs to be present.
     let integration = args.is_present(INTEGRATION).then_some(String::new());
     let testnet2: Option<String> = args.is_present(TESTNET2).then_some(String::new());
@@ -71,6 +73,7 @@ where
         .with(ConfigOption::Integration, integration)
         .with(ConfigOption::Testnet2, testnet2)
         .with(ConfigOption::Network, network)
+        .with(ConfigOption::Gateway, gateway);
 
     Ok((config_filepath, cfg))
 }
@@ -196,6 +199,18 @@ Examples:
             )
             .takes_value(true)
             .env("PATHFINDER_NETWORK")
+        )
+        .arg(
+            Arg::new(GATEWAY)
+            .long(GATEWAY)
+            .help("Set a custom StarkNet gateway url")
+            .long_help(
+                r"Specify a custom StarkNet gateway url.
+                Can be used to run pathfinder on a custom StarkNet network, or to
+                use a gateway proxy."
+            )
+            .takes_value(true)
+            .env("PATHFINDER_GATEWAY")
         )
 }
 
@@ -460,6 +475,21 @@ mod tests {
         env::set_var("PATHFINDER_NETWORK", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::Network), Some(value));
+    }
+
+    #[test]
+    fn gateway() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--gateway", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::Gateway), Some(value));
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_GATEWAY", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::Gateway), Some(value));
     }
 
     #[test]

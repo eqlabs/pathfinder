@@ -37,6 +37,8 @@ pub enum ConfigOption {
     Testnet2,
     /// Specify the network.
     Network,
+    /// Specify the StarkNet gateway URL.
+    Gateway,
 }
 
 impl Display for ConfigOption {
@@ -56,6 +58,7 @@ impl Display for ConfigOption {
             ConfigOption::Integration => f.write_str("Select integration network"),
             ConfigOption::Testnet2 => f.write_str("Select Testnet 2 network"),
             ConfigOption::Network => f.write_str("Specify the StarkNet network"),
+            ConfigOption::Gateway => f.write_str("Specify the StarkNet gateway URL"),
         }
     }
 }
@@ -94,6 +97,8 @@ pub struct Configuration {
     pub testnet2: bool,
     /// The StarkNet network.
     pub network: Option<String>,
+    /// The StarkNet gateway.
+    pub gateway: Option<Url>,
 }
 
 impl Configuration {

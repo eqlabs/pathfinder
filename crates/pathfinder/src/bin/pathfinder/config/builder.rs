@@ -101,6 +101,21 @@ Hint: Register your own account or run your own Ethereum node and put the real U
         }
 
         let network = self.take(ConfigOption::Network);
+
+        let gateway = match self.take(ConfigOption::Gateway) {
+            Some(url) => {
+                let url = url.parse::<Url>().map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Invalid StarkNet gateway URL ({}): {}", url, err),
+                    )
+                })?;
+
+                Some(url)
+            }
+            None => None,
+        };
+
         // Optional parameters with defaults.
         let data_directory = self
             .take(ConfigOption::DataDirectory)
@@ -188,6 +203,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             integration,
             testnet2,
             network,
+            gateway,
         })
     }
 
