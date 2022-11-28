@@ -140,6 +140,26 @@ impl Client {
         Self::with_url(url)
     }
 
+    /// Creates a [Client] for [Chain::Mainnet].
+    pub fn mainnet() -> Self {
+        Self::with_url(Url::parse("https://alpha-mainnet.starknet.io/").unwrap()).unwrap()
+    }
+
+    /// Creates a [Client] for [Chain::Testnet].
+    pub fn testnet() -> Self {
+        Self::with_url(Url::parse("https://alpha4.starknet.io/").unwrap()).unwrap()
+    }
+
+    /// Creates a [Client] for [Chain::Testnet2].
+    pub fn testnet2() -> Self {
+        Self::with_url(Url::parse("https://alpha4-2.starknet.io/").unwrap()).unwrap()
+    }
+
+    /// Creates a [Client] for [Chain::Integration].
+    pub fn integration() -> Self {
+        Self::with_url(Url::parse("https://external.integration.starknet.io").unwrap()).unwrap()
+    }
+
     /// Create a Sequencer client for the given [Url].
     pub fn with_url(url: Url) -> reqwest::Result<Self> {
         metrics::register();

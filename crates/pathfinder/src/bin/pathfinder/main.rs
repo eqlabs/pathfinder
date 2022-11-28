@@ -2,6 +2,7 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use pathfinder_lib::sequencer::ClientApi;
 use pathfinder_common::{self, Chain, EthereumChain};
 use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
 use pathfinder_lib::{
@@ -48,7 +49,105 @@ async fn main() -> anyhow::Result<()> {
         None => None,
     };
 
-    let (storage, starknet_chain, sequencer, eth_transport) = old_config(&mut config).await?;
+    let (storage, starknet_chain, sequencer, eth_transport) = match config.network {
+        Some(network) => {
+            let network = match network.as_str() {
+                "mainnet" => Chain::Mainnet,
+                "testnet" => Chain::Testnet,
+                "testnet2" => Chain::Testnet2,
+                "integration" => Chain::Integration,
+                "custom" => {
+                    todo!("Support custom network")
+                }
+                other => {
+                    anyhow::bail!("{other} is not a valid network selection. Please specify one of: mainnet, testnet, testnet2, integration or custom.")
+                }
+            };
+
+            // Gateway check
+            let gateway_client = match config.sequencer_url.or(config.gateway) {
+                Some(url) => sequencer::Client::with_url(url).unwrap(),
+                None => match network {
+                    Chain::Mainnet => sequencer::Client::mainnet(),
+                    Chain::Testnet => sequencer::Client::testnet(),
+                    Chain::Testnet2 => sequencer::Client::testnet2(),
+                    Chain::Integration => sequencer::Client::integration(),
+                    // Chain::Custom => todo!("Throw error -- gateway url must be specified"),
+                },
+            };
+
+            // Database check
+            let database_path = config.data_directory.join(match network {
+                Chain::Mainnet => "mainnet.sqlite",
+                Chain::Testnet => "goerli.sqlite",
+                Chain::Testnet2 => "testnet2.sqlite",
+                Chain::Integration => "integration.sqlite",
+            });
+            let journal_mode = match config.sqlite_wal {
+                false => JournalMode::Rollback,
+                true => JournalMode::WAL,
+            };
+            let storage = Storage::migrate(database_path.clone(), journal_mode).unwrap();
+            info!(location=?database_path, "Database migrated.");
+            if let Some(database_genesis) = database_genesis_hash(&storage).await? {
+                let db_network = match database_genesis {
+                    pathfinder_common::consts::TESTNET_GENESIS_HASH => Chain::Testnet,
+                    pathfinder_common::consts::TESTNET2_GENESIS_HASH => Chain::Testnet2,
+                    pathfinder_common::consts::MAINNET_GENESIS_HASH => Chain::Mainnet,
+                    pathfinder_common::consts::INTEGRATION_GENESIS_HASH => Chain::Integration,
+                    other => {
+                        todo!("Chain::Custom")
+                //         // let gateway_block = gateway_client
+                //         // .block(database_genesis.into())
+                //         // .await
+                //         // .context("Downloading genesis block from gateway")?
+                //         // .as_block()
+                //         // .context("Genesis block should not be pending")?;
+
+                //         // anyhow::ensure!(
+                //         //     database_genesis == gateway_block.block_hash,
+                //         //     "Database genesis block does not match gateway. {} != {}",
+                //         //     database_genesis,
+                //         //     gateway_block.block_hash
+                //         // );
+                    }
+                };
+
+                anyhow::ensure!(
+                    db_network == network, 
+                    "Database genesis hash does not match selected network. Database hash is from {} network but you selected {}", 
+                    db_network, 
+                    network
+                );
+            }
+
+            // Ethereum check.
+            let eth_transport = HttpTransport::from_config(
+                config.ethereum.url.clone(),
+                config.ethereum.password.clone(),
+            ).context("Creating Ethereum transport")?;
+            let ethereum_chain = eth_transport.chain().await.context(
+r"Determine Ethereum chain.
+                                
+Hint: Make sure the provided ethereum.url and ethereum.password are good.",
+            )?;
+                
+            use Chain::*;
+            match (network, ethereum_chain) {
+                // Chain::Custom => todo!("Verify state root somehow"),
+                (Mainnet, EthereumChain::Mainnet) => {}
+                (Testnet | Testnet2 | Integration, EthereumChain::Goerli) => {}
+                (network, ethereum) => {
+                    anyhow::bail!("StarkNet's {} chain does not run on the provided Ethereum URL which is {:?}", network, ethereum);
+                }
+            }
+
+            (storage, network, gateway_client, eth_transport)
+        }
+        None => {
+            old_config(&mut config).await?
+        }
+    };
 
     let sync_state = Arc::new(state::SyncState::default());
     let pending_state = state::PendingData::default();
@@ -160,6 +259,23 @@ fn verify_database_chain(storage: &Storage, expected: Chain) -> anyhow::Result<(
     );
 
     Ok(())
+}
+
+async fn database_genesis_hash(
+    storage: &Storage,
+) -> anyhow::Result<Option<pathfinder_common::StarknetBlockHash>> {
+    use pathfinder_common::StarknetBlockNumber;
+    use pathfinder_lib::storage::StarknetBlocksTable;
+
+    let storage = storage.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = storage.connection().context("Create database connection")?;
+        let tx = conn.transaction().context("Create database transaction")?;
+
+        StarknetBlocksTable::get_hash(&tx, StarknetBlockNumber::GENESIS.into())
+    })
+    .await
+    .context("Fetching genesis hash from database")?
 }
 
 #[cfg(feature = "tokio-console")]
