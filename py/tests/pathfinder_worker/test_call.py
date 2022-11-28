@@ -234,7 +234,7 @@ def populate_test_contract_with_132_on_3(con):
     cur = con.execute("BEGIN")
 
     path = test_relative_path(
-        "../../../crates/pathfinder/fixtures/contract_definition.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contract_definition.json.zst"
     )
 
     with open(path, "rb") as file:
@@ -539,7 +539,7 @@ def test_fee_estimate_for_declare_transaction_directly():
     contract_address = populate_test_contract_with_132_on_3(con)
 
     path = test_relative_path(
-        "../../../crates/pathfinder/fixtures/contract_definition.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contract_definition.json.zst"
     )
 
     with open(path, "rb") as file:
@@ -892,7 +892,7 @@ def test_nonce_with_dummy():
     test_contract = populate_test_contract_with_132_on_3(con)
 
     path = test_relative_path(
-        "../../../crates/pathfinder/fixtures/dummy_account.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/dummy_account.json.zst"
     )
 
     cur = con.execute("BEGIN")
