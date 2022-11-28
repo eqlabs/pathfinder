@@ -116,6 +116,14 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             None => None,
         };
 
+        if gateway.is_some() && sequencer_url.is_some() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Cannot use both gateway and sequencer-url at the same time. Please use gateway only."
+                    .to_string(),
+            ));
+        }
+
         // Optional parameters with defaults.
         let data_directory = self
             .take(ConfigOption::DataDirectory)
