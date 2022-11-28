@@ -107,7 +107,7 @@ pub trait ClientApi {
 /// StarkNet sequencer client using REST API.
 ///
 /// Retry is performed on __all__ types of errors __except for__
-/// [StarkNet specific errors](crate::sequencer::error::StarknetError).
+/// [StarkNet specific errors](starknet_gateway_types::error::StarknetError).
 ///
 /// Initial backoff time is 30 seconds and saturates at 1 hour:
 ///

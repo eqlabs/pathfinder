@@ -3,7 +3,7 @@
 ///
 /// This disconnect is detected whenever
 /// - `pending.parent_hash != head`, or
-/// - `pending` is a fully formed block and not [PendingBlock](crate::sequencer::reply::MaybePendingBlock::Pending), or
+/// - `pending` is a fully formed block and not [PendingBlock](starknet_gateway_types::reply::MaybePendingBlock::Pending), or
 /// - the state update parent root does not match head.
 pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,

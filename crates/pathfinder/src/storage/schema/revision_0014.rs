@@ -2,7 +2,7 @@ use anyhow::Context;
 use rusqlite::Transaction;
 
 /// Adds the `starknet_versions` table following introduction of
-/// [`crate::sequencer::reply::Block::starknet_version`].
+/// [`starknet_gateway_types::reply::Block::starknet_version`].
 pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     // using UNIQUE on the column does have the downside of it not being droppable
     // but assuming we will not need this table for anything else, it might be ok

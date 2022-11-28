@@ -219,7 +219,7 @@ pub struct StarknetBlocksTable {}
 impl StarknetBlocksTable {
     /// Insert a new [StarknetBlock]. Fails if the block number is not unique.
     ///
-    /// Version is the [`crate::sequencer::reply::Block::starknet_version`].
+    /// Version is the [`starknet_gateway_types::reply::Block::starknet_version`].
     pub fn insert(
         tx: &Transaction<'_>,
         block: &StarknetBlock,

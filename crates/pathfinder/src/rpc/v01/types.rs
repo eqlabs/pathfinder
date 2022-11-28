@@ -197,7 +197,7 @@ pub mod reply {
             }
         }
 
-        /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
+        /// Constructs [Block] from [sequencer's block representation](starknet_gateway_types::reply::Block)
         pub fn from_sequencer_scoped(
             block: starknet_gateway_types::reply::MaybePendingBlock,
             scope: BlockResponseScope,

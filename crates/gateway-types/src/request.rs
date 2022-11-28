@@ -45,7 +45,7 @@ pub enum BlockHashOrTag {
     /// when passed as an RPC method argument, for example:
     /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
     Hash(StarknetBlockHash),
-    /// Special [Tag](crate::rpc::v01::types::Tag) describing a block
+    /// Special [`Tag`] describing a block
     Tag(Tag),
 }
 
@@ -81,7 +81,7 @@ impl From<BlockHashOrTag> for pathfinder_common::BlockId {
 pub enum BlockNumberOrTag {
     /// Number (height) of a block
     Number(StarknetBlockNumber),
-    /// Special [Tag](crate::rpc::v01::types::Tag) describing a block
+    /// Special [`Tag`] describing a block
     Tag(Tag),
 }
 

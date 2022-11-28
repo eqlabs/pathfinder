@@ -7,7 +7,7 @@ use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::Deserialize;
 use serde_with::serde_as;
 
-/// Used to deserialize replies to [ClientApi::block](crate::sequencer::ClientApi::block).
+/// Used to deserialize replies to StarkNet block requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
@@ -152,7 +152,7 @@ pub mod call {
     }
 }
 
-/// Used to deserialize replies to [ClientApi::transaction](crate::sequencer::ClientApi::transaction).
+/// Used to deserialize replies to StarkNet transaction requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -168,7 +168,7 @@ pub struct Transaction {
     pub transaction_index: Option<u64>,
 }
 
-/// Used to deserialize replies to [ClientApi::transaction_status](crate::sequencer::ClientApi::transaction_status).
+/// Used to deserialize replies to StarkNet transaction status requests.
 #[serde_as]
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -570,8 +570,7 @@ pub mod transaction {
     }
 }
 
-/// Used to deserialize a reply from
-/// [ClientApi::state_update](crate::sequencer::ClientApi::state_update).
+/// Used to deserialize replies to StarkNet state update requests.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
@@ -656,7 +655,7 @@ pub mod state_update {
     }
 }
 
-/// Used to deserialize a reply from [ClientApi::eth_contract_addresses](crate::sequencer::ClientApi::eth_contract_addresses).
+/// Used to deserialize replies to StarkNet Ethereum contract requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
