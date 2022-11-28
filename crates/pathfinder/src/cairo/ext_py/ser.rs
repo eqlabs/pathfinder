@@ -1,6 +1,5 @@
 //! The json serializable types
 
-use crate::rpc::v01::types::BlockHashOrTag;
 use pathfinder_common::{
     BlockId, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint, StarknetBlockHash,
     StarknetBlockNumber,
@@ -10,7 +9,7 @@ use starknet_gateway_types::{
         state_update::{DeployedContract, StorageDiff},
         StateUpdate,
     },
-    request::add_transaction::AddTransaction,
+    request::{add_transaction::AddTransaction, BlockHashOrTag, BlockNumberOrTag, Tag},
 };
 use std::collections::HashMap;
 
@@ -254,11 +253,10 @@ impl From<StarknetBlockNumber> for BlockHashNumberOrLatest {
 #[derive(Debug)]
 pub struct Pending;
 
-impl TryFrom<crate::rpc::v01::types::Tag> for BlockHashNumberOrLatest {
+impl TryFrom<Tag> for BlockHashNumberOrLatest {
     type Error = Pending;
 
-    fn try_from(value: crate::rpc::v01::types::Tag) -> Result<Self, Self::Error> {
-        use crate::rpc::v01::types::Tag;
+    fn try_from(value: Tag) -> Result<Self, Self::Error> {
         match value {
             Tag::Latest => Ok(BlockHashNumberOrLatest::Latest),
             Tag::Pending => Err(Pending),
@@ -266,10 +264,10 @@ impl TryFrom<crate::rpc::v01::types::Tag> for BlockHashNumberOrLatest {
     }
 }
 
-impl TryFrom<crate::rpc::v01::types::BlockHashOrTag> for BlockHashNumberOrLatest {
+impl TryFrom<BlockHashOrTag> for BlockHashNumberOrLatest {
     type Error = Pending;
 
-    fn try_from(value: crate::rpc::v01::types::BlockHashOrTag) -> Result<Self, Self::Error> {
+    fn try_from(value: BlockHashOrTag) -> Result<Self, Self::Error> {
         match value {
             BlockHashOrTag::Hash(h) => Ok(h.into()),
             BlockHashOrTag::Tag(x) => x.try_into(),
@@ -277,13 +275,13 @@ impl TryFrom<crate::rpc::v01::types::BlockHashOrTag> for BlockHashNumberOrLatest
     }
 }
 
-impl TryFrom<crate::rpc::v01::types::BlockNumberOrTag> for BlockHashNumberOrLatest {
+impl TryFrom<BlockNumberOrTag> for BlockHashNumberOrLatest {
     type Error = Pending;
 
-    fn try_from(value: crate::rpc::v01::types::BlockNumberOrTag) -> Result<Self, Self::Error> {
+    fn try_from(value: BlockNumberOrTag) -> Result<Self, Self::Error> {
         match value {
-            crate::rpc::v01::types::BlockNumberOrTag::Number(n) => Ok(n.into()),
-            crate::rpc::v01::types::BlockNumberOrTag::Tag(x) => x.try_into(),
+            BlockNumberOrTag::Number(n) => Ok(n.into()),
+            BlockNumberOrTag::Tag(x) => x.try_into(),
         }
     }
 }

@@ -705,7 +705,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn call_with_pending_updates() {
-        use starknet_gateway_types::reply::StateUpdate;
+        use starknet_gateway_types::{reply::StateUpdate, request::Tag};
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -754,12 +754,7 @@ mod tests {
         };
 
         let res = handle
-            .call(
-                call.clone(),
-                crate::rpc::v01::types::Tag::Latest.try_into().unwrap(),
-                None,
-                None,
-            )
+            .call(call.clone(), Tag::Latest.try_into().unwrap(), None, None)
             .await
             .unwrap();
 
@@ -788,12 +783,7 @@ mod tests {
         });
 
         let res = handle
-            .call(
-                call,
-                crate::rpc::v01::types::Tag::Latest.try_into().unwrap(),
-                Some(update),
-                None,
-            )
+            .call(call, Tag::Latest.try_into().unwrap(), Some(update), None)
             .await
             .unwrap();
 

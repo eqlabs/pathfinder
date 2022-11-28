@@ -1,5 +1,4 @@
 //! StarkNet L2 sequencer client.
-use crate::rpc::v01::types::BlockHashOrTag;
 use pathfinder_common::{
     BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
     EntryPoint, Fee, StarknetBlockNumber, StarknetTransactionHash, StorageAddress, StorageValue,
@@ -9,8 +8,11 @@ use reqwest::Url;
 use starknet_gateway_types::{
     error::SequencerError,
     reply,
-    request::add_transaction::{
-        AddTransaction, ContractDefinition, Declare, Deploy, DeployAccount, InvokeFunction,
+    request::{
+        add_transaction::{
+            AddTransaction, ContractDefinition, Declare, Deploy, DeployAccount, InvokeFunction,
+        },
+        BlockHashOrTag,
     },
 };
 use std::{fmt::Debug, result::Result, time::Duration};
@@ -443,12 +445,12 @@ impl ClientApi for Client {
 
 #[cfg(test)]
 pub mod test_utils {
-    use crate::rpc::v01::types::{BlockHashOrTag, BlockNumberOrTag};
     use pathfinder_common::{
         starkhash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
         StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
     };
     use stark_hash::StarkHash;
+    use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
 
     pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
         BlockNumberOrTag::Number(StarknetBlockNumber::GENESIS);
@@ -502,12 +504,12 @@ pub mod test_utils {
 #[cfg(test)]
 mod tests {
     use super::{test_utils::*, *};
-    use crate::rpc::v01::types::Tag;
     use assert_matches::assert_matches;
     use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
     use stark_hash::StarkHash;
     use starknet_gateway_test_fixtures::*;
     use starknet_gateway_types::error::StarknetErrorCode;
+    use starknet_gateway_types::request::Tag;
     use std::collections::VecDeque;
 
     /// Helper funtion which allows for easy creation of a response tuple

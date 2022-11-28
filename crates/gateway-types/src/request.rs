@@ -1,5 +1,114 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
-use pathfinder_common::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
+use pathfinder_common::{
+    CallParam, ContractAddress, EntryPoint, Fee, StarknetBlockHash, StarknetBlockNumber,
+    TransactionSignatureElem,
+};
+use serde::{Deserialize, Serialize};
+
+/// Special tag used when specifying the `latest` or `pending` block.
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub enum Tag {
+    /// The most recent fully constructed block
+    ///
+    /// Represented as the JSON string `"latest"` when passed as an RPC method argument,
+    /// for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["latest"]}`
+    #[serde(rename = "latest")]
+    Latest,
+    /// Currently constructed block
+    ///
+    /// Represented as the JSON string `"pending"` when passed as an RPC method argument,
+    /// for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["pending"]}`
+    #[serde(rename = "pending")]
+    Pending,
+}
+
+impl std::fmt::Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Tag::Latest => f.write_str("latest"),
+            Tag::Pending => f.write_str("pending"),
+        }
+    }
+}
+
+/// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a [Tag](self::BlockHashOrTag::Tag).
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+#[serde(deny_unknown_fields)]
+pub enum BlockHashOrTag {
+    /// Hash of a block
+    ///
+    /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64 characters
+    /// when passed as an RPC method argument, for example:
+    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
+    Hash(StarknetBlockHash),
+    /// Special [Tag](crate::rpc::v01::types::Tag) describing a block
+    Tag(Tag),
+}
+
+impl std::fmt::Display for BlockHashOrTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Hash(StarknetBlockHash(h)) => f.write_str(&h.to_hex_str()),
+            Self::Tag(t) => std::fmt::Display::fmt(t, f),
+        }
+    }
+}
+
+impl From<StarknetBlockHash> for BlockHashOrTag {
+    fn from(hash: StarknetBlockHash) -> Self {
+        Self::Hash(hash)
+    }
+}
+
+impl From<BlockHashOrTag> for pathfinder_common::BlockId {
+    fn from(x: BlockHashOrTag) -> Self {
+        match x {
+            BlockHashOrTag::Hash(h) => Self::Hash(h),
+            BlockHashOrTag::Tag(Tag::Latest) => Self::Latest,
+            BlockHashOrTag::Tag(Tag::Pending) => Self::Pending,
+        }
+    }
+}
+
+/// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+#[serde(deny_unknown_fields)]
+pub enum BlockNumberOrTag {
+    /// Number (height) of a block
+    Number(StarknetBlockNumber),
+    /// Special [Tag](crate::rpc::v01::types::Tag) describing a block
+    Tag(Tag),
+}
+
+impl std::fmt::Display for BlockNumberOrTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Number(n) => std::fmt::Display::fmt(n, f),
+            Self::Tag(t) => std::fmt::Display::fmt(t, f),
+        }
+    }
+}
+
+impl From<StarknetBlockNumber> for BlockNumberOrTag {
+    fn from(number: StarknetBlockNumber) -> Self {
+        Self::Number(number)
+    }
+}
+
+impl From<BlockNumberOrTag> for pathfinder_common::BlockId {
+    fn from(x: BlockNumberOrTag) -> Self {
+        match x {
+            BlockNumberOrTag::Number(n) => Self::Number(n),
+            BlockNumberOrTag::Tag(Tag::Latest) => Self::Latest,
+            BlockNumberOrTag::Tag(Tag::Pending) => Self::Pending,
+        }
+    }
+}
 
 pub mod contract {
     use pathfinder_common::{ByteCodeOffset, EntryPoint};

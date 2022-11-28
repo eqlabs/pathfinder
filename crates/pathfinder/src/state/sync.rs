@@ -928,7 +928,6 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 mod tests {
     use super::{l1, l2};
     use crate::{
-        rpc::v01::types::BlockHashOrTag,
         sequencer,
         state::{self, sync::PendingData},
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
@@ -944,7 +943,9 @@ mod tests {
     };
     use stark_hash::StarkHash;
     use starknet_gateway_types::{
-        error::SequencerError, reply, request::add_transaction::ContractDefinition,
+        error::SequencerError,
+        reply,
+        request::{add_transaction::ContractDefinition, BlockHashOrTag},
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;

@@ -604,9 +604,9 @@ mod tests {
 
     mod get_storage_at {
         use super::*;
-        use crate::rpc::v01::types::{BlockHashOrTag, Tag};
         use pathfinder_common::StorageValue;
         use pretty_assertions::assert_eq;
+        use starknet_gateway_types::request::{BlockHashOrTag, Tag};
 
         #[tokio::test]
         async fn non_existent_contract_address() {
