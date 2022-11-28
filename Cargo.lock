@@ -3265,7 +3265,6 @@ name = "starknet-gateway-types"
 version = "0.1.0"
 dependencies = [
  "hex-literal",
- "jsonrpsee",
  "pathfinder-common",
  "pathfinder-serde",
  "reqwest",

@@ -9,3 +9,6 @@ rust-version = "1.62"
 [dependencies]
 tokio = "1.11.0"
 tokio-retry = "0.3.0"
+
+[dev-dependencies]
+tokio = { version = "1.11.0", features = ["macros", "test-util"] }
