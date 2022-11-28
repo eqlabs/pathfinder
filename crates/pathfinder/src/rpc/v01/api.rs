@@ -895,9 +895,12 @@ impl RpcApi {
             .as_ref()
             .ok_or_else(|| internal_server_error("Unsupported configuration"))?;
 
-        let (when, pending_update) = self.base_block_and_pending_for_call(block_id).await?;
+        let (when, pending_timestamp, pending_update) =
+            self.base_block_and_pending_for_call(block_id).await?;
 
-        Ok(handle.call(request, when, pending_update).await?)
+        Ok(handle
+            .call(request, when, pending_update, pending_timestamp)
+            .await?)
     }
 
     /// Get the latest local block's number.
@@ -1444,10 +1447,17 @@ impl RpcApi {
             GasPriceSource::PastBlock
         };
 
-        let (when, pending_update) = self.base_block_and_pending_for_call(block_id).await?;
+        let (when, pending_timestamp, pending_update) =
+            self.base_block_and_pending_for_call(block_id).await?;
 
         Ok(handle
-            .estimate_fee(transaction, when, gas_price, pending_update)
+            .estimate_fee(
+                transaction,
+                when,
+                gas_price,
+                pending_update,
+                pending_timestamp,
+            )
             .await?)
     }
 
@@ -1461,6 +1471,7 @@ impl RpcApi {
     ) -> Result<
         (
             BlockHashNumberOrLatest,
+            Option<StarknetBlockTimestamp>,
             Option<Arc<sequencer::reply::StateUpdate>>,
         ),
         anyhow::Error,
@@ -1468,7 +1479,7 @@ impl RpcApi {
         use crate::cairo::ext_py::Pending;
 
         match BlockHashNumberOrLatest::try_from(at_block) {
-            Ok(when) => Ok((when, None)),
+            Ok(when) => Ok((when, None, None)),
             Err(Pending) => {
                 // we must have pending_data configured for pending requests, otherwise we fail
                 // fast.
@@ -1476,16 +1487,21 @@ impl RpcApi {
 
                 // call on this particular parent block hash; if it's not found at query time over
                 // at python, it should fall back to latest and **disregard** the pending data.
-                let pending_on_top_of_a_block = pending
-                    .state_update_on_parent_block()
-                    .await
-                    .map(|(parent_block, data)| (parent_block.into(), Some(data)));
+                let pending_on_top_of_a_block = pending.state_update_on_parent_block().await.map(
+                    |(parent_block, timestamp, data)| {
+                        (parent_block.into(), Some(timestamp), Some(data))
+                    },
+                );
 
                 // if there is no pending data available, just execute on whatever latest. this is
                 // the "intent" of the pending functinality other rpc methods should follow as
                 // well, that "pending" is just an emphemeral view of the latest, when it's not
                 // available one is supposed to use latest (for example: testnet).
-                Ok(pending_on_top_of_a_block.unwrap_or((BlockHashNumberOrLatest::Latest, None)))
+                Ok(pending_on_top_of_a_block.unwrap_or((
+                    BlockHashNumberOrLatest::Latest,
+                    None,
+                    None,
+                )))
             }
         }
     }

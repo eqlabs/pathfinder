@@ -15,7 +15,7 @@
 //! global_state, and after that, calls can be made to it's `block_hash` for which we probably need
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
-use crate::core::CallResultValue;
+use crate::core::{CallResultValue, StarknetBlockTimestamp};
 use crate::rpc::v01::types::{reply::FeeEstimate, request::Call};
 use crate::rpc::v02::types::request::{BroadcastedInvokeTransaction, BroadcastedTransaction};
 use crate::sequencer::reply::StateUpdate;
@@ -52,6 +52,7 @@ impl Handle {
         call: Call,
         at_block: BlockHashNumberOrLatest,
         diffs: Option<Arc<StateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -65,6 +66,7 @@ impl Handle {
                     at_block,
                     chain: self.chain,
                     diffs,
+                    block_timestamp,
                     response,
                 },
                 continued_span,
@@ -87,6 +89,7 @@ impl Handle {
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
         diffs: Option<Arc<StateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
     ) -> Result<FeeEstimate, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -157,6 +160,7 @@ impl Handle {
                     gas_price,
                     chain: self.chain,
                     diffs,
+                    block_timestamp,
                     response,
                 },
                 continued_span,
@@ -242,6 +246,7 @@ enum Command {
         at_block: BlockHashNumberOrLatest,
         chain: UsedChain,
         diffs: Option<Arc<StateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
@@ -251,6 +256,7 @@ enum Command {
         gas_price: GasPriceSource,
         chain: UsedChain,
         diffs: Option<Arc<StateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
         response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
     },
 }
@@ -448,6 +454,7 @@ mod tests {
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                             ).into(),
                             None,
+                            None,
                         ).await.unwrap();
                     }
                 })
@@ -517,6 +524,7 @@ mod tests {
                 crate::core::StarknetBlockNumber::new_or_panic(1).into(),
                 super::GasPriceSource::PastBlock,
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -540,6 +548,7 @@ mod tests {
                 )
                 .into(),
                 super::GasPriceSource::Current(H256::from_low_u64_be(10)),
+                None,
                 None,
             )
             .await
@@ -609,6 +618,7 @@ mod tests {
                 transaction.clone(),
                 crate::core::StarknetBlockNumber::new_or_panic(1).into(),
                 super::GasPriceSource::PastBlock,
+                None,
                 None,
             )
             .await
@@ -683,6 +693,7 @@ mod tests {
                 )
                 .into(),
                 None,
+                None,
             )
             .await
             .unwrap_err();
@@ -748,6 +759,7 @@ mod tests {
                 call.clone(),
                 crate::rpc::v01::types::Tag::Latest.try_into().unwrap(),
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -781,6 +793,7 @@ mod tests {
                 call,
                 crate::rpc::v01::types::Tag::Latest.try_into().unwrap(),
                 Some(update),
+                None,
             )
             .await
             .unwrap();

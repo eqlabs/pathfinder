@@ -39,6 +39,7 @@ pub(crate) struct CommonProperties<'a> {
     pub pending_updates: ContractUpdatesWrapper<'a>,
     pub pending_deployed: DeployedContractsWrapper<'a>,
     pub pending_nonces: NoncesWrapper<'a>,
+    pub pending_timestamp: u64,
 }
 
 /// Private version of [`crate::core::Chain`] for serialization.

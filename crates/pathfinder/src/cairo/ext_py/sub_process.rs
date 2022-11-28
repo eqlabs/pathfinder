@@ -335,6 +335,7 @@ async fn process(
             at_block,
             chain,
             diffs: maybe_diffs,
+            block_timestamp,
             ..
         } => ChildCommand::Call {
             common: CommonProperties {
@@ -343,6 +344,7 @@ async fn process(
                 pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
                 pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
                 pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_timestamp: block_timestamp.map(|t| t.get()).unwrap_or_default(),
             },
             contract_address: &call.contract_address,
             calldata: &call.calldata,
@@ -354,6 +356,7 @@ async fn process(
             gas_price,
             chain,
             diffs: maybe_diffs,
+            block_timestamp,
             ..
         } => ChildCommand::EstimateFee {
             common: CommonProperties {
@@ -362,6 +365,7 @@ async fn process(
                 pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
                 pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
                 pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_timestamp: block_timestamp.map(|t| t.get()).unwrap_or_default(),
             },
             gas_price: gas_price.as_price(),
             transaction,

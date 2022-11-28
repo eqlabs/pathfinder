@@ -5,7 +5,7 @@ use serde_with::serde_as;
 
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
-    core::BlockId,
+    core::{BlockId, StarknetBlockTimestamp},
     rpc::v02::types::request::BroadcastedTransaction,
     rpc::v02::RpcContext,
     state::PendingData,
@@ -69,11 +69,17 @@ pub async fn estimate_fee(
         GasPriceSource::PastBlock
     };
 
-    let (when, pending_update) =
+    let (when, pending_timestamp, pending_update) =
         base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
     let result = handle
-        .estimate_fee(input.request, when, gas_price, pending_update)
+        .estimate_fee(
+            input.request,
+            when,
+            gas_price,
+            pending_update,
+            pending_timestamp,
+        )
         .await?;
 
     Ok(result.into())
@@ -87,6 +93,7 @@ pub(super) async fn base_block_and_pending_for_call(
 ) -> Result<
     (
         BlockHashNumberOrLatest,
+        Option<StarknetBlockTimestamp>,
         Option<Arc<crate::sequencer::reply::StateUpdate>>,
     ),
     anyhow::Error,
@@ -94,7 +101,7 @@ pub(super) async fn base_block_and_pending_for_call(
     use crate::cairo::ext_py::Pending;
 
     match BlockHashNumberOrLatest::try_from(at_block) {
-        Ok(when) => Ok((when, None)),
+        Ok(when) => Ok((when, None, None)),
         Err(Pending) => {
             // we must have pending_data configured for pending requests, otherwise we fail
             // fast.
@@ -105,13 +112,16 @@ pub(super) async fn base_block_and_pending_for_call(
                     let pending_on_top_of_a_block = pending
                         .state_update_on_parent_block()
                         .await
-                        .map(|(parent_block, data)| (parent_block.into(), Some(data)));
+                        .map(|(parent_block, timestamp, data)| {
+                            (parent_block.into(), Some(timestamp), Some(data))
+                        });
 
                     // if there is no pending data available, just execute on whatever latest.
-                    Ok(
-                        pending_on_top_of_a_block
-                            .unwrap_or((BlockHashNumberOrLatest::Latest, None)),
-                    )
+                    Ok(pending_on_top_of_a_block.unwrap_or((
+                        BlockHashNumberOrLatest::Latest,
+                        None,
+                        None,
+                    )))
                 }
                 None => Err(anyhow::anyhow!(
                     "Pending data not supported in this configuration"
