@@ -100,6 +100,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             ));
         }
 
+        let network = self.take(ConfigOption::Network);
         // Optional parameters with defaults.
         let data_directory = self
             .take(ConfigOption::DataDirectory)
@@ -186,6 +187,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             monitoring_addr,
             integration,
             testnet2,
+            network,
         })
     }
 

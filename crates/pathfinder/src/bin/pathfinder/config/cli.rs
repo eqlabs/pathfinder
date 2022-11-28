@@ -18,6 +18,7 @@ const POLL_PENDING: &str = "poll-pending";
 const MONITOR_ADDRESS: &str = "monitor-address";
 const INTEGRATION: &str = "integration";
 const TESTNET2: &str = "testnet2";
+const NETWORK: &str = "network";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -52,6 +53,7 @@ where
     let sqlite_wal = args.value_of(SQLITE_WAL).map(|s| s.to_owned());
     let poll_pending = args.value_of(POLL_PENDING).map(|s| s.to_owned());
     let monitor_address = args.value_of(MONITOR_ADDRESS).map(|s| s.to_owned());
+    let network = args.value_of(NETWORK).map(|s| s.to_owned());
     // Hack around our builder requiring Strings, but these args just needs to be present.
     let integration = args.is_present(INTEGRATION).then_some(String::new());
     let testnet2: Option<String> = args.is_present(TESTNET2).then_some(String::new());
@@ -67,7 +69,8 @@ where
         .with(ConfigOption::PollPending, poll_pending)
         .with(ConfigOption::MonitorAddress, monitor_address)
         .with(ConfigOption::Integration, integration)
-        .with(ConfigOption::Testnet2, testnet2);
+        .with(ConfigOption::Testnet2, testnet2)
+        .with(ConfigOption::Network, network)
 
     Ok((config_filepath, cfg))
 }
@@ -182,6 +185,17 @@ Examples:
             .long(TESTNET2)
             .help("Use Testnet 2 on Ethereum Goerli")
             .takes_value(false)
+        )
+        .arg(
+            Arg::new(NETWORK)
+            .long(NETWORK)
+            .help("Specify the StarkNet network")
+            .long_help(
+                r"Specify the StarkNet network for pathfinder to operate on.
+                Note that 'custom' requires also setting the --gateway option."
+            )
+            .takes_value(true)
+            .env("PATHFINDER_NETWORK")
         )
 }
 
@@ -431,6 +445,21 @@ mod tests {
 
         let (_, mut cfg) = parse_args(vec!["bin name", "--testnet2"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::Testnet2), Some("".to_owned()));
+    }
+
+    #[test]
+    fn network() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--network", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::Network), Some(value));
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_NETWORK", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::Network), Some(value));
     }
 
     #[test]

@@ -35,6 +35,8 @@ pub enum ConfigOption {
     Integration,
     /// Chooses Testnet 2 network.
     Testnet2,
+    /// Specify the network.
+    Network,
 }
 
 impl Display for ConfigOption {
@@ -53,6 +55,7 @@ impl Display for ConfigOption {
             ConfigOption::MonitorAddress => f.write_str("Pathfinder monitoring address"),
             ConfigOption::Integration => f.write_str("Select integration network"),
             ConfigOption::Testnet2 => f.write_str("Select Testnet 2 network"),
+            ConfigOption::Network => f.write_str("Specify the StarkNet network"),
         }
     }
 }
@@ -89,6 +92,8 @@ pub struct Configuration {
     pub integration: bool,
     /// Select testnet 2 network.
     pub testnet2: bool,
+    /// The StarkNet network.
+    pub network: Option<String>,
 }
 
 impl Configuration {
