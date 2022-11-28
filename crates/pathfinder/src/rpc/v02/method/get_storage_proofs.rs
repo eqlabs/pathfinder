@@ -20,10 +20,7 @@ pub struct GetStorageProofInput {
     pub block_id: BlockId,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(
-    GetStorageProofError: ContractNotFound,
-    BlockNotFound
-);
+crate::rpc::error::generate_rpc_error_subset!(GetStorageProofError: BlockNotFound);
 
 /// Holds the data and proofs for a specific contract.
 #[derive(Debug, Serialize)]
