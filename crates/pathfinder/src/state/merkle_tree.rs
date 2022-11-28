@@ -101,7 +101,6 @@ impl From<&BinaryNode> for ProofNode {
 /// Ligthtweight representation of [EdgeNode]. Only holds its path and its child's hash.
 #[derive(Debug, PartialEq, Serialize)]
 pub struct EdgeProofNode {
-    #[serde(skip)]
     pub path: BitVec<Msb0, u8>,
     pub child_hash: StarkHash,
 }
