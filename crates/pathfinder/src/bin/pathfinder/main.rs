@@ -86,7 +86,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     info!(location=?database_path, "Database migrated.");
     verify_database_chain(&storage, starknet_chain).context("Verifying database")?;
 
-    let sequencer = match config.sequencer_url {
+    let sequencer = match config.sequencer_url.or(config.gateway) {
         Some(url) => {
             info!(?url, "Using custom Sequencer address");
             let client = sequencer::Client::with_url(url).unwrap();
