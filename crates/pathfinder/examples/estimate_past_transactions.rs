@@ -243,7 +243,7 @@ async fn estimate(
                 match next_work {
                     Some(Work {transaction, at_block, gas_price, actual_fee, span}) => {
                         let outer = span.clone();
-                        let fut = handle.estimate_fee(transaction, at_block.into(), gas_price, None);
+                        let fut = handle.estimate_fee(transaction, at_block.into(), gas_price, None, None);
                         waiting.push(async move {
                             ReadyResult {
                                 actual_fee,

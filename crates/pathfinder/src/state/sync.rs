@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::{
     core::{
         Chain, ClassHash, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber,
+        StarknetBlockNumber, StarknetBlockTimestamp,
     },
     ethereum::{log::StateUpdateLog, transport::EthereumTransport},
     rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
@@ -85,11 +85,19 @@ impl PendingData {
 
     pub async fn state_update_on_parent_block(
         &self,
-    ) -> Option<(StarknetBlockHash, Arc<sequencer::reply::StateUpdate>)> {
+    ) -> Option<(
+        StarknetBlockHash,
+        StarknetBlockTimestamp,
+        Arc<sequencer::reply::StateUpdate>,
+    )> {
         let g = self.inner.read().await;
         let inner = g.as_ref()?;
 
-        Some((inner.block.parent_hash, inner.state_update.clone()))
+        Some((
+            inner.block.parent_hash,
+            inner.block.timestamp,
+            inner.state_update.clone(),
+        ))
     }
 }
 

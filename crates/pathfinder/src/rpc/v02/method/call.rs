@@ -64,12 +64,17 @@ pub async fn call(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
 
-    let (when, pending_update) =
+    let (when, pending_timestamp, pending_update) =
         super::estimate_fee::base_block_and_pending_for_call(input.block_id, &context.pending_data)
             .await?;
 
     let result = handle
-        .call(input.request.into(), when, pending_update)
+        .call(
+            input.request.into(),
+            when,
+            pending_update,
+            pending_timestamp,
+        )
         .await?;
 
     Ok(result)
