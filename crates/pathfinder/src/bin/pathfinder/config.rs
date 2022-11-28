@@ -143,6 +143,38 @@ impl Configuration {
 
         let cfg = cfg.try_build()?;
 
+        if cfg.integration && cfg.testnet2 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Cannot use both integration and testnet 2 at the same time. Please choose one."
+                    .to_string(),
+            ));
+        }
+
+        if cfg.gateway.is_some() && cfg.sequencer_url.is_some() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Cannot use both gateway and sequencer-url at the same time. Please use gateway only."
+                    .to_string(),
+            ));
+        }
+
+        if cfg.network.is_some() && cfg.integration {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Cannot specify both network and integration options at the same time. Please use network only."
+                    .to_string(),
+            ));
+        }
+
+        if cfg.network.is_some() && cfg.testnet2 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Cannot specify both network and testnet2 options at the same time. Please use network only."
+                    .to_string(),
+            ));
+        }
+
         // Emit warning logs for deprecated configuration options.
         // TODO: remove warnings and the options in next major release.
         if cfg.sequencer_url.is_some() {
@@ -163,6 +195,22 @@ impl Configuration {
         // TODO: remove warning and make option required in next major release.
         if cfg.network.is_none() {
             tracing::warn!("'--network' configuration not specified - this will be a required item in a future version of pathfinder.");
+        }
+
+        if cfg.network.is_some() && cfg.integration {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Cannot specify both --network and --integration. Please use --network only."
+                    .to_string(),
+            ));
+        }
+
+        if cfg.network.is_some() && cfg.testnet2 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Cannot specify both --network and --testnet2. Please use --network only."
+                    .to_string(),
+            ));
         }
 
         Ok(cfg)
