@@ -33,17 +33,17 @@ jobs:
           key: "mold"
 
       - name: Compile tests
+        id: compile-tests
         # Note: profile changed because otherwise test binary is 1GB+ in size..
-        run: cargo test --no-run --lib pathfinder -p pathfinder --locked --profile stripdebuginfo
+        run: |
+          cargo test --no-run --lib pathfinder -p pathfinder --locked --profile stripdebuginfo --message-format=json > /tmp/cargo-output.json
+          echo -n "TEST_EXECUTABLE=" >> $GITHUB_OUTPUT
+          jq -r 'select(.reason=="compiler-artifact" and .target.name=="pathfinder_lib") | .executable' /tmp/cargo-output.json >> $GITHUB_OUTPUT
 
       # Finds the pathfinder_lib- test binary, and renames it and the .d file to something simpler to use.
       # Essentially removing the hash to make running the file simpler (as it is used in other jobs).
       - name: Rename test binary
-        run: |
-          filepath=`find target/stripdebuginfo/deps/ -type f -regextype grep -regex '.*pathfinder_lib.*[^\.][^d]'`; \
-          filepathd="${filepath}.d"; \
-          mv $filepath pathfinder_test; \
-          mv $filepathd pathfinder_test.d;
+        run: mv ${{ steps.compile-tests.outputs.TEST_EXECUTABLE}} pathfinder_test
 
       - name: Archive test binary
         uses: actions/upload-artifact@v3
@@ -51,7 +51,6 @@ jobs:
           name: test-binary
           path: |
             pathfinder_test
-            pathfinder_test.d
           if-no-files-found: error
 
   test_pathfinder:
