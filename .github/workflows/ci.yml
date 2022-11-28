@@ -40,7 +40,7 @@ jobs:
       # Essentially removing the hash to make running the file simpler (as it is used in other jobs).
       - name: Rename test binary
         run: |
-          filepath=`find target/stripdebuginfo/deps/ -type f -name pathfinder_lib-* | head -n 1`; \
+          filepath=`find target/stripdebuginfo/deps/ -type f -regextype grep -regex '.*pathfinder_lib.*[^\.][^d]'`; \
           filepathd="${filepath}.d"; \
           mv $filepath pathfinder_test; \
           mv $filepathd pathfinder_test.d;
