@@ -76,8 +76,7 @@ mod tests {
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {
-            let compressed_json = include_bytes!("../../../../fixtures/contract_definition.json.zst");
-            zstd::decode_all(std::io::Cursor::new(compressed_json)).unwrap()
+            zstd::decode_all(std::io::Cursor::new(starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION)).unwrap()
         };
 
         pub static ref CONTRACT_CLASS: ContractClass = {

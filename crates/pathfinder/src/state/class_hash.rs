@@ -444,7 +444,7 @@ mod json {
         fn second() {
             let contract_definition = zstd::decode_all(
                 // opening up a file requires a path relative to the test running
-                &include_bytes!("../../fixtures/contract_definition.json.zst")[..],
+                starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
             )
             .unwrap();
 

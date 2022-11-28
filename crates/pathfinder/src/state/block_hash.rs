@@ -505,8 +505,8 @@ mod tests {
 
     #[test]
     fn test_number_of_events_in_block() {
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/156000.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         // this expected value comes from processing the raw JSON and counting the number of events
         const EXPECTED_NUMBER_OF_EVENTS: usize = 55;
@@ -516,8 +516,8 @@ mod tests {
     #[test]
     fn test_block_hash_without_sequencer_address() {
         // This tests with a post-0.7, pre-0.8.0 block where zero is used as the sequencer address.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/90000.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_90000;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
@@ -529,8 +529,8 @@ mod tests {
     fn test_block_hash_with_sequencer_address() {
         // This tests with a post-0.8.2 block where we have correct sequencer address
         // information in the block itself.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/231579.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_231579;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
@@ -543,8 +543,8 @@ mod tests {
         // This tests with a post-0.8.0 pre-0.8.2 block where we don't have the sequencer
         // address in the JSON but the block hash was calculated with the magic value below
         // instead of zero.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/156000.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash,).unwrap(),
@@ -556,8 +556,8 @@ mod tests {
     fn test_block_hash_0() {
         // This tests with a pre-0.7 block where the chain ID was hashed into
         // the block hash.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/genesis.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::GENESIS;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),

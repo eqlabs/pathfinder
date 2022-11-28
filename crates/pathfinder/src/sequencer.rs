@@ -506,34 +506,9 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
     use stark_hash::StarkHash;
+    use starknet_gateway_test_fixtures::*;
     use starknet_gateway_types::error::StarknetErrorCode;
     use std::collections::VecDeque;
-
-    /// Helper macro which creates a successful response tuple
-    /// which can then be used by the [setup] function.
-    ///
-    /// The macro takes the name of the fixture file.
-    /// The fixture file should be a text file containing valid UTF8 characters.
-    ///
-    /// The HTTP status code value of the tuple is `200` (`OK`).
-    macro_rules! response {
-        ($file_name:literal) => {
-            (
-                include_str!(concat!("../fixtures/sequencer/", $file_name)),
-                200,
-            )
-        };
-    }
-
-    /// Same as [`response`] except for the body being a [`String`].
-    macro_rules! response_owned {
-        ($file_name:literal) => {
-            (
-                include_str!(concat!("../fixtures/sequencer/", $file_name)).to_owned(),
-                200,
-            )
-        };
-    }
 
     /// Helper funtion which allows for easy creation of a response tuple
     /// that contains a [StarknetError] for a given [StarknetErrorCode].
@@ -752,14 +727,14 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     format!("/feeder_gateway/get_block?blockHash={}", GENESIS_BLOCK_HASH),
-                    response!("0.9.0/block/genesis.json"),
+                    (v0_9_0::block::GENESIS, 200),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_block?blockNumber={}",
                         GENESIS_BLOCK_NUMBER
                     ),
-                    response!("0.9.0/block/genesis.json"),
+                    (v0_9_0::block::GENESIS, 200),
                 ),
             ]);
             let by_hash = client
@@ -779,11 +754,11 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_block?blockHash=0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
-                    response!("0.9.0/block/231579.json")
+                    (v0_9_0::block::NUMBER_231579, 200)
                 ),
                 (
                     "/feeder_gateway/get_block?blockNumber=231579",
-                    response!("0.9.0/block/231579.json")
+                    (v0_9_0::block::NUMBER_231579, 200)
                 ),
             ]);
             let by_hash = client
@@ -814,7 +789,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
-                response!("0.9.0/block/231579.json"),
+                (v0_9_0::block::NUMBER_231579, 200),
             )]);
             client.block(BlockId::Latest).await.unwrap();
         }
@@ -824,7 +799,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
-                response!("0.9.0/block/pending.json"),
+                (v0_9_0::block::PENDING, 200),
             )]);
             client.block(BlockId::Pending).await.unwrap();
         }
@@ -871,13 +846,14 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             use crate::sequencer::reply::MaybePendingBlock;
             let (_jh, client) = setup([
+                // TODO move these fixtures to v0_9_1
                 (
                     "/feeder_gateway/get_block?blockNumber=192844",
-                    response!("integration/block/192844.json"),
+                    (integration::block::NUMBER_192844, 200),
                 ),
                 (
                     "/feeder_gateway/get_block?blockNumber=pending",
-                    response!("integration/block/pending.json"),
+                    (integration::block::PENDING, 200),
                 ),
             ]);
 
@@ -1151,7 +1127,7 @@ mod tests {
         async fn declare() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
-                response!("0.9.0/txn/invoke.json"),
+                (v0_9_0::transaction::INVOKE, 200)
             )]);
             assert_eq!(
                 client
@@ -1169,7 +1145,7 @@ mod tests {
         async fn deploy() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction?transactionHash=0x3d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8",
-                response!("0.9.0/txn/deploy.json"),
+                (v0_9_0::transaction::DEPLOY, 200)
             )]);
             assert_eq!(
                 client
@@ -1187,7 +1163,7 @@ mod tests {
         async fn invoke() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
-                response!("0.9.0/txn/invoke.json"),
+                (v0_9_0::transaction::INVOKE, 200)
             )]);
             assert_eq!(
                 client
@@ -1225,7 +1201,7 @@ mod tests {
         async fn accepted() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction_status?transactionHash=0x79cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205",
-                response!("0.9.0/txn/status.json"),
+                (v0_9_0::transaction::STATUS, 200)
             )]);
             assert_eq!(
                 client
@@ -1309,14 +1285,14 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
-                    response!("0.9.1/state_update/genesis.json"),
+                    (v0_9_1::state_update::GENESIS, 200),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_state_update?blockHash={}",
                         GENESIS_BLOCK_HASH
                     ),
-                    response!("0.9.1/state_update/genesis.json"),
+                    (v0_9_1::state_update::GENESIS, 200),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1339,11 +1315,11 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=315700",
-                    response!("0.9.1/state_update/315700.json"),
+                    (v0_9_1::state_update::NUMBER_315700, 200)
                 ),
                 (
                     "/feeder_gateway/get_state_update?blockHash=0x17e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03",
-                    response!("0.9.1/state_update/315700.json"),
+                    (v0_9_1::state_update::NUMBER_315700, 200)
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1415,7 +1391,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
-                response!("0.9.1/state_update/315700.json"),
+                (v0_9_1::state_update::NUMBER_315700, 200),
             )]);
             client.state_update(BlockId::Latest).await.unwrap();
         }
@@ -1425,7 +1401,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                response!("0.9.1/state_update/pending.json"),
+                (v0_9_1::state_update::PENDING, 200),
             )]);
             client.state_update(BlockId::Pending).await.unwrap();
         }
@@ -1624,12 +1600,11 @@ mod tests {
             use starknet_gateway_types::request::add_transaction::AddTransaction;
             let (_jh, client) = setup([(
                 "/gateway/add_transaction",
-                response!("0.10.1/add_transaction/deploy_account_response.json"),
+                (v0_10_1::add_transaction::DEPLOY_ACCOUNT_RESPONSE, 200),
             )]);
 
-            let json = include_str!(
-                "../fixtures/sequencer/0.10.1/add_transaction/deploy_account_request.json"
-            );
+            let json =
+                starknet_gateway_test_fixtures::v0_10_1::add_transaction::DEPLOY_ACCOUNT_REQUEST;
             let req: AddTransaction = serde_json::from_str(json).expect("Request parsed from JSON");
             let req = match req {
                 AddTransaction::DeployAccount(deploy_account) => Some(deploy_account),
@@ -1831,8 +1806,7 @@ mod tests {
                     .and(warp::query::<Params>())
                     .map(move |params: Params| match params.block_number {
                         0 => {
-                            const GOERLI_GENESIS: &str =
-                                include_str!("../fixtures/sequencer/0.9.0/block/genesis.json");
+                            const GOERLI_GENESIS: &str = starknet_gateway_test_fixtures::v0_9_0::block::GENESIS;
 
                             let data = match target {
                                 TargetChain::Testnet => GOERLI_GENESIS.to_owned(),
@@ -1903,7 +1877,7 @@ mod tests {
                 |client, x| async move {
                     let _ = client.block(x).await;
                 },
-                response_owned!("0.9.0/block/genesis.json"),
+                (v0_9_0::block::GENESIS.to_owned(), 200),
             )
             .await;
             with_method(
@@ -1911,7 +1885,7 @@ mod tests {
                 |client, x| async move {
                     let _ = client.state_update(x).await;
                 },
-                response_owned!("0.9.1/state_update/genesis.json"),
+                (v0_9_1::state_update::GENESIS.to_owned(), 200),
             )
             .await;
         }
