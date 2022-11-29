@@ -41,14 +41,24 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     let handle = tokio::runtime::Handle::current();
 
     let downloader = std::thread::spawn(move || {
+        use crate::core::Chain;
+        use crate::sequencer::Client;
         use crate::sequencer::ClientApi;
 
-        let client = crate::sequencer::Client::new(chain).unwrap();
+        let client = match chain {
+            Chain::Mainnet => Client::mainnet(),
+            Chain::Testnet => Client::testnet(),
+            Chain::Testnet2 => Client::testnet2(),
+            Chain::Integration => Client::integration(),
+            Chain::Custom => anyhow::bail!("Migration is not applicable for custom networks"),
+        };
 
         for class_hash in work_rx.iter() {
             let class = handle.block_on(client.class_by_hash(class_hash)).unwrap();
             downloaded_tx.send(class).unwrap();
         }
+
+        Ok(())
     });
 
     let extract_compress = std::thread::spawn(move || {
@@ -146,7 +156,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
             .with_context(|| format!("Failed to save class {}", cc.hash.0))?;
     }
 
-    downloader.join().unwrap();
+    downloader.join().unwrap()?;
     extract_compress.join().unwrap();
 
     Ok(())

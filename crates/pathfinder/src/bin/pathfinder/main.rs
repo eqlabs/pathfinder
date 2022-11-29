@@ -56,9 +56,7 @@ async fn main() -> anyhow::Result<()> {
                 "testnet" => Chain::Testnet,
                 "testnet2" => Chain::Testnet2,
                 "integration" => Chain::Integration,
-                "custom" => {
-                    todo!("Support custom network")
-                }
+                "custom" => Chain::Custom,
                 other => {
                     anyhow::bail!("{other} is not a valid network selection. Please specify one of: mainnet, testnet, testnet2, integration or custom.")
                 }
@@ -374,7 +372,13 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
             }
             client
         }
-        None => sequencer::Client::new(starknet_chain).unwrap(),
+        None => match starknet_chain {
+            Chain::Mainnet => sequencer::Client::mainnet(),
+            Chain::Testnet => sequencer::Client::testnet(),
+            Chain::Integration => sequencer::Client::integration(),
+            Chain::Testnet2 => sequencer::Client::testnet2(),
+            Chain::Custom => unreachable!("old config should not be reached by custom network"),
+        }
     };
 
     Ok((storage, starknet_chain, sequencer, eth_transport))

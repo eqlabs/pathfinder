@@ -129,13 +129,14 @@ impl Client {
     const RETRY: builder::Retry = builder::Retry::Disabled;
 
     /// Creates a new Sequencer client for the given chain.
+    #[cfg(test)]
     pub fn new(chain: Chain) -> anyhow::Result<Self> {
         let url = match chain {
             Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
             Chain::Testnet => Url::parse("https://alpha4.starknet.io/").unwrap(),
             Chain::Testnet2 => Url::parse("https://alpha4-2.starknet.io/").unwrap(),
             Chain::Integration => Url::parse("https://external.integration.starknet.io").unwrap(),
-            Chain::Custom => todo!("FIXME: custom chain"),
+            Chain::Custom => panic!("Not supported for Chain::Custom"),
         };
 
         Self::with_url(url)
