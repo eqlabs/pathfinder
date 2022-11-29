@@ -1,18 +1,14 @@
-use std::{num::NonZeroU64, sync::Arc, time::Duration};
-
 use anyhow::Context;
 use futures::Future;
-use tokio::sync::{mpsc, oneshot, RwLock};
-
-use crate::{
-    core::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber},
-    ethereum::{
-        log::{FetchError, StateUpdateLog},
-        state_update::state_root::StateRootFetcher,
-        transport::EthereumTransport,
-    },
-    retry::Retry,
+use pathfinder_common::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber};
+use pathfinder_ethereum::{
+    log::{FetchError, StateUpdateLog},
+    state_update::state_root::StateRootFetcher,
+    transport::EthereumTransport,
 };
+use pathfinder_retry::Retry;
+use std::{num::NonZeroU64, sync::Arc, time::Duration};
+use tokio::sync::{mpsc, oneshot, RwLock};
 
 /// Events and queries emitted by L1 sync process.
 #[derive(Debug)]
@@ -266,18 +262,14 @@ mod tests {
     use super::*;
 
     mod sync_ethereum_state_impl {
+        use super::*;
+        use pathfinder_common::{
+            starkhash, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
+            GlobalRoot,
+        };
+        use pathfinder_ethereum::{BlockOrigin, EthOrigin, TransactionOrigin};
         use stark_hash::StarkHash;
         use web3::types::H256;
-
-        use crate::{
-            core::{
-                EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
-            },
-            ethereum::{BlockOrigin, EthOrigin, TransactionOrigin},
-            starkhash,
-        };
-
-        use super::*;
 
         #[tokio::test]
         async fn happy_path() {

@@ -36,6 +36,12 @@ lazy_static = "1.4.0"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 num-bigint = { version = "0.4.3", features = ["serde"] }
+pathfinder-common = { path = "../common" }
+pathfinder-config = { path = "../config" }
+pathfinder-ethereum = { path = "../ethereum" }
+pathfinder-retry = { path = "../retry" }
+pathfinder-serde = { path = "../serde" }
+pathfinder-update = { path = "../update" }
 r2d2 = "0.8.9"
 r2d2_sqlite = "0.20.0"
 reqwest = { version = "0.11.4", features = ["json"] }
@@ -46,6 +52,7 @@ serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value
 serde_with = "1.9.4"
 sha3 = "0.9"
 stark_hash = { path = "../stark_hash" }
+starknet-gateway-types = { path = "../gateway-types" }
 tempfile = "3"
 thiserror = "1.0.30"
 tokio = "1.11.0"
@@ -67,13 +74,15 @@ jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_
     "async-client",
 ] }
 mockall = "0.11.0"
+pathfinder-common = { path = "../common", features = ["full-serde"] }
 pretty_assertions = "1.0.0"
 rand = "0.8"
+starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tokio = { version = "1.11.0", features = ["test-util"] }
 
 [build-dependencies]
-vergen = { version = "7", default-features = false, features = ["git"] }
+pathfinder-build = { path = "../build" }
 
 [[bench]]
 name = "merkle_tree"

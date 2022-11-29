@@ -1,15 +1,15 @@
-use crate::core::{ClassHash, StarknetTransactionHash};
 use crate::rpc::v02::types::request::BroadcastedDeclareTransaction;
 use crate::rpc::v02::RpcContext;
-use crate::sequencer::error::SequencerError;
-use crate::sequencer::request::add_transaction::ContractDefinition;
 use crate::sequencer::ClientApi;
+use pathfinder_common::{ClassHash, StarknetTransactionHash};
+use starknet_gateway_types::error::SequencerError;
+use starknet_gateway_types::request::add_transaction::ContractDefinition;
 
 crate::rpc::error::generate_rpc_error_subset!(AddDeclareTransactionError: InvalidContractClass);
 
 impl From<SequencerError> for AddDeclareTransactionError {
     fn from(e: SequencerError) -> Self {
-        use crate::sequencer::error::StarknetErrorCode::InvalidProgram;
+        use starknet_gateway_types::error::StarknetErrorCode::InvalidProgram;
         match e {
             SequencerError::StarknetError(e) if e.code == InvalidProgram => {
                 Self::InvalidContractClass
@@ -72,19 +72,17 @@ pub async fn add_declare_transaction(
 
 #[cfg(test)]
 mod tests {
-    use stark_hash::StarkHash;
-
-    use crate::core::{ContractAddress, Fee, TransactionNonce, TransactionVersion};
+    use super::*;
     use crate::rpc::v02::types::request::BroadcastedDeclareTransaction;
     use crate::rpc::v02::types::ContractClass;
-    use crate::starkhash;
-
-    use super::*;
+    use pathfinder_common::{
+        starkhash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
+    };
+    use stark_hash::StarkHash;
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {
-            let compressed_json = include_bytes!("../../../../fixtures/contract_definition.json.zst");
-            zstd::decode_all(std::io::Cursor::new(compressed_json)).unwrap()
+            zstd::decode_all(std::io::Cursor::new(starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION)).unwrap()
         };
 
         pub static ref CONTRACT_CLASS: ContractClass = {

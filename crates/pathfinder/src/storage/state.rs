@@ -1,22 +1,19 @@
+use crate::rpc::v01::types::reply::StateUpdate;
 use anyhow::Context;
-use rusqlite::{named_params, params, OptionalExtension, Transaction};
-use stark_hash::StarkHash;
-use web3::types::H256;
-
-use crate::{
+use pathfinder_common::{
     consts::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
     },
-    core::{
-        Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
-        EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-        EthereumTransactionIndex, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
-        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-    },
-    ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin},
-    rpc::v01::types::reply::StateUpdate,
-    sequencer::reply::transaction,
+    Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
+    EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
+    EthereumTransactionIndex, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
 };
+use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
+use rusqlite::{named_params, params, OptionalExtension, Transaction};
+use stark_hash::StarkHash;
+use starknet_gateway_types::reply::transaction;
+use web3::types::H256;
 
 /// Contains the [L1 Starknet update logs](StateUpdateLog).
 pub struct L1StateTable {}
@@ -222,7 +219,7 @@ pub struct StarknetBlocksTable {}
 impl StarknetBlocksTable {
     /// Insert a new [StarknetBlock]. Fails if the block number is not unique.
     ///
-    /// Version is the [`crate::sequencer::reply::Block::starknet_version`].
+    /// Version is the [`starknet_gateway_types::reply::Block::starknet_version`].
     pub fn insert(
         tx: &Transaction<'_>,
         block: &StarknetBlock,
@@ -388,7 +385,7 @@ impl StarknetBlocksTable {
         .map_err(|e| e.into())
     }
 
-    /// Returns the [chain](crate::core::Chain) based on genesis block hash stored in the DB.
+    /// Returns the [chain](pathfinder_common::Chain) based on genesis block hash stored in the DB.
     pub fn get_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
         let genesis = Self::get_hash(tx, StarknetBlockNumber::GENESIS.into())
             .context("Read genesis block from database")?;
@@ -1323,7 +1320,7 @@ mod tests {
 
     mod contracts {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_common::starkhash;
 
         #[test]
         fn get() {
@@ -2036,14 +2033,11 @@ mod tests {
     }
 
     mod starknet_events {
-        use web3::types::H128;
-
         use super::*;
-
-        use crate::core::{EntryPoint, EventData, Fee};
-        use crate::sequencer::reply::transaction;
-        use crate::starkhash;
         use crate::storage::test_utils;
+        use pathfinder_common::starkhash;
+        use pathfinder_common::{EntryPoint, EventData, Fee};
+        use web3::types::H128;
 
         #[test]
         fn event_data_serialization() {
@@ -2123,12 +2117,11 @@ mod tests {
             // instead of transaction index.
             //
             // Events should be ordered by block number, transaction index, event index.
-            use crate::core::StarknetTransactionHash;
-            use crate::sequencer::reply::transaction::Event;
+            use pathfinder_common::StarknetTransactionHash;
 
             // All events we are storing, arbitrarily use from_address to distinguish them.
             let expected_events = (0u8..5)
-                .map(|idx| Event {
+                .map(|idx| transaction::Event {
                     data: Vec::new(),
                     keys: Vec::new(),
                     from_address: ContractAddress::new_or_panic(
@@ -2189,7 +2182,7 @@ mod tests {
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[0].hash(),
-                    transaction_index: crate::core::StarknetTransactionIndex::new_or_panic(0),
+                    transaction_index: pathfinder_common::StarknetTransactionIndex::new_or_panic(0),
                 },
                 transaction::Receipt {
                     actual_fee: None,
@@ -2205,7 +2198,7 @@ mod tests {
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[1].hash(),
-                    transaction_index: crate::core::StarknetTransactionIndex::new_or_panic(1),
+                    transaction_index: pathfinder_common::StarknetTransactionIndex::new_or_panic(1),
                 },
             ];
 
@@ -2674,7 +2667,7 @@ mod tests {
 
             #[test]
             fn none() {
-                use crate::starkhash;
+                use pathfinder_common::starkhash;
                 with_n_state_updates(1, |_, tx, _| {
                     let non_existent = StarknetBlockHash(starkhash!("ff"));
                     let actual = StarknetStateUpdatesTable::get(tx, non_existent).unwrap();

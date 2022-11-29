@@ -1,8 +1,16 @@
 //! The json serializable types
 
-use crate::core::{CallParam, ContractAddress, ContractNonce, EntryPoint};
-use crate::rpc::v01::types::BlockHashOrTag;
-use crate::sequencer::reply::state_update::{DeployedContract, StorageDiff};
+use pathfinder_common::{
+    BlockId, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint, StarknetBlockHash,
+    StarknetBlockNumber,
+};
+use starknet_gateway_types::{
+    reply::{
+        state_update::{DeployedContract, StorageDiff},
+        StateUpdate,
+    },
+    request::{add_transaction::AddTransaction, BlockHashOrTag, BlockNumberOrTag, Tag},
+};
 use std::collections::HashMap;
 
 /// The command we send to the Python loop.
@@ -23,9 +31,9 @@ pub(crate) enum ChildCommand<'a> {
         common: CommonProperties<'a>,
 
         // zero means use the gas price from the block.
-        #[serde_as(as = "&crate::rpc::serde::H256AsHexStr")]
+        #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
         gas_price: &'a web3::types::H256,
-        transaction: &'a crate::sequencer::request::add_transaction::AddTransaction,
+        transaction: &'a AddTransaction,
     },
 }
 
@@ -42,7 +50,7 @@ pub(crate) struct CommonProperties<'a> {
     pub pending_timestamp: u64,
 }
 
-/// Private version of [`crate::core::Chain`] for serialization.
+/// Private version of [`pathfinder_common::Chain`] for serialization.
 #[derive(serde::Serialize, Debug, Clone, Copy)]
 pub(crate) enum UsedChain {
     #[serde(rename = "MAINNET")]
@@ -51,13 +59,13 @@ pub(crate) enum UsedChain {
     Goerli,
 }
 
-impl From<crate::core::Chain> for UsedChain {
-    fn from(c: crate::core::Chain) -> Self {
+impl From<Chain> for UsedChain {
+    fn from(c: Chain) -> Self {
         match c {
-            crate::core::Chain::Mainnet => UsedChain::Mainnet,
-            crate::core::Chain::Testnet => UsedChain::Goerli,
-            crate::core::Chain::Testnet2 => UsedChain::Goerli,
-            crate::core::Chain::Integration => UsedChain::Goerli,
+            Chain::Mainnet => UsedChain::Mainnet,
+            Chain::Testnet => UsedChain::Goerli,
+            Chain::Testnet2 => UsedChain::Goerli,
+            Chain::Integration => UsedChain::Goerli,
         }
     }
 }
@@ -68,8 +76,8 @@ impl From<crate::core::Chain> for UsedChain {
 #[derive(Debug)]
 pub struct ContractUpdatesWrapper<'a>(Option<&'a HashMap<ContractAddress, Vec<StorageDiff>>>);
 
-impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for ContractUpdatesWrapper<'a> {
-    fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
+impl<'a> From<Option<&'a StateUpdate>> for ContractUpdatesWrapper<'a> {
+    fn from(u: Option<&'a StateUpdate>) -> Self {
         let map = u.map(|x| &x.state_diff.storage_diffs);
         ContractUpdatesWrapper(map)
     }
@@ -132,8 +140,8 @@ impl<'a> serde::Serialize for DiffElement<'a> {
 #[derive(Debug)]
 pub struct DeployedContractsWrapper<'a>(Option<&'a [DeployedContract]>);
 
-impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for DeployedContractsWrapper<'a> {
-    fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
+impl<'a> From<Option<&'a StateUpdate>> for DeployedContractsWrapper<'a> {
+    fn from(u: Option<&'a StateUpdate>) -> Self {
         let cs = u.map(|u| u.state_diff.deployed_contracts.as_slice());
         DeployedContractsWrapper(cs)
     }
@@ -158,7 +166,7 @@ impl<'a> serde::Serialize for DeployedContractsWrapper<'a> {
     }
 }
 
-struct DeployedContractElement<'a>(&'a crate::sequencer::reply::state_update::DeployedContract);
+struct DeployedContractElement<'a>(&'a DeployedContract);
 
 impl<'a> serde::Serialize for DeployedContractElement<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -179,8 +187,8 @@ impl<'a> serde::Serialize for DeployedContractElement<'a> {
 #[derive(Debug)]
 pub struct NoncesWrapper<'a>(Option<&'a HashMap<ContractAddress, ContractNonce>>);
 
-impl<'a> From<Option<&'a crate::sequencer::reply::StateUpdate>> for NoncesWrapper<'a> {
-    fn from(u: Option<&'a crate::sequencer::reply::StateUpdate>) -> Self {
+impl<'a> From<Option<&'a StateUpdate>> for NoncesWrapper<'a> {
+    fn from(u: Option<&'a StateUpdate>) -> Self {
         let ns = u.map(|u| &u.state_diff.nonces);
         NoncesWrapper(ns)
     }
@@ -206,8 +214,8 @@ impl<'a> serde::Serialize for NoncesWrapper<'a> {
 /// Custom "when" without the Pending tag, which has no meaning crossing process boundaries.
 #[derive(Debug)]
 pub enum BlockHashNumberOrLatest {
-    Hash(crate::core::StarknetBlockHash),
-    Number(crate::core::StarknetBlockNumber),
+    Hash(StarknetBlockHash),
+    Number(StarknetBlockNumber),
     Latest,
 }
 
@@ -228,28 +236,27 @@ impl serde::Serialize for BlockHashNumberOrLatest {
     }
 }
 
-impl From<crate::core::StarknetBlockHash> for BlockHashNumberOrLatest {
-    fn from(h: crate::core::StarknetBlockHash) -> Self {
+impl From<StarknetBlockHash> for BlockHashNumberOrLatest {
+    fn from(h: StarknetBlockHash) -> Self {
         BlockHashNumberOrLatest::Hash(h)
     }
 }
 
-impl From<crate::core::StarknetBlockNumber> for BlockHashNumberOrLatest {
-    fn from(n: crate::core::StarknetBlockNumber) -> Self {
+impl From<StarknetBlockNumber> for BlockHashNumberOrLatest {
+    fn from(n: StarknetBlockNumber) -> Self {
         BlockHashNumberOrLatest::Number(n)
     }
 }
 
-/// The type representing [`crate::rpc::v01::types::Tag::Pending`] value, which cannot be accepted as
+/// The type representing [`starknet_gateway_types::request::Tag::Pending`] value, which cannot be accepted as
 /// [`BlockHashNumberOrLatest`].
 #[derive(Debug)]
 pub struct Pending;
 
-impl TryFrom<crate::rpc::v01::types::Tag> for BlockHashNumberOrLatest {
+impl TryFrom<Tag> for BlockHashNumberOrLatest {
     type Error = Pending;
 
-    fn try_from(value: crate::rpc::v01::types::Tag) -> Result<Self, Self::Error> {
-        use crate::rpc::v01::types::Tag;
+    fn try_from(value: Tag) -> Result<Self, Self::Error> {
         match value {
             Tag::Latest => Ok(BlockHashNumberOrLatest::Latest),
             Tag::Pending => Err(Pending),
@@ -257,10 +264,10 @@ impl TryFrom<crate::rpc::v01::types::Tag> for BlockHashNumberOrLatest {
     }
 }
 
-impl TryFrom<crate::rpc::v01::types::BlockHashOrTag> for BlockHashNumberOrLatest {
+impl TryFrom<BlockHashOrTag> for BlockHashNumberOrLatest {
     type Error = Pending;
 
-    fn try_from(value: crate::rpc::v01::types::BlockHashOrTag) -> Result<Self, Self::Error> {
+    fn try_from(value: BlockHashOrTag) -> Result<Self, Self::Error> {
         match value {
             BlockHashOrTag::Hash(h) => Ok(h.into()),
             BlockHashOrTag::Tag(x) => x.try_into(),
@@ -268,45 +275,42 @@ impl TryFrom<crate::rpc::v01::types::BlockHashOrTag> for BlockHashNumberOrLatest
     }
 }
 
-impl TryFrom<crate::rpc::v01::types::BlockNumberOrTag> for BlockHashNumberOrLatest {
+impl TryFrom<BlockNumberOrTag> for BlockHashNumberOrLatest {
     type Error = Pending;
 
-    fn try_from(value: crate::rpc::v01::types::BlockNumberOrTag) -> Result<Self, Self::Error> {
+    fn try_from(value: BlockNumberOrTag) -> Result<Self, Self::Error> {
         match value {
-            crate::rpc::v01::types::BlockNumberOrTag::Number(n) => Ok(n.into()),
-            crate::rpc::v01::types::BlockNumberOrTag::Tag(x) => x.try_into(),
+            BlockNumberOrTag::Number(n) => Ok(n.into()),
+            BlockNumberOrTag::Tag(x) => x.try_into(),
         }
     }
 }
 
-impl TryFrom<crate::core::BlockId> for BlockHashNumberOrLatest {
+impl TryFrom<BlockId> for BlockHashNumberOrLatest {
     type Error = Pending;
 
-    fn try_from(value: crate::core::BlockId) -> Result<Self, Self::Error> {
+    fn try_from(value: BlockId) -> Result<Self, Self::Error> {
         match value {
-            crate::core::BlockId::Number(n) => Ok(n.into()),
-            crate::core::BlockId::Hash(h) => Ok(h.into()),
-            crate::core::BlockId::Latest => Ok(BlockHashNumberOrLatest::Latest),
-            crate::core::BlockId::Pending => Err(Pending),
+            BlockId::Number(n) => Ok(n.into()),
+            BlockId::Hash(h) => Ok(h.into()),
+            BlockId::Latest => Ok(BlockHashNumberOrLatest::Latest),
+            BlockId::Pending => Err(Pending),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use crate::{
-        cairo::ext_py::ser::NoncesWrapper,
-        core::{ContractAddress, ContractNonce},
-        starkhash,
+    use crate::cairo::ext_py::ser::NoncesWrapper;
+    use pathfinder_common::{
+        starkhash, {ContractAddress, ContractNonce},
     };
+    use std::collections::HashMap;
 
     #[test]
     fn serialize_some_updates() {
-        use super::ContractUpdatesWrapper;
-        use crate::core::{ContractAddress, StorageAddress, StorageValue};
-        use crate::sequencer::reply::state_update::StorageDiff;
+        use super::{ContractUpdatesWrapper, StorageDiff};
+        use pathfinder_common::{StorageAddress, StorageValue};
         use std::collections::HashMap;
 
         let expected = r#"{"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0x0"}]}"#;
@@ -342,9 +346,8 @@ mod tests {
 
     #[test]
     fn serialize_some_deployed_contracts() {
-        use super::DeployedContractsWrapper;
-        use crate::core::{ClassHash, ContractAddress};
-        use crate::sequencer::reply::state_update::DeployedContract;
+        use super::{DeployedContract, DeployedContractsWrapper};
+        use pathfinder_common::ClassHash;
 
         let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
         let contracts = vec![DeployedContract {
@@ -377,7 +380,7 @@ mod tests {
     #[test]
     fn serialize_block_hash_num_latest() {
         use super::BlockHashNumberOrLatest;
-        use crate::core::{StarknetBlockHash, StarknetBlockNumber};
+        use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
         use stark_hash::StarkHash;
 
         let data = &[

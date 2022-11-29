@@ -1,16 +1,15 @@
+use crate::state::merkle_tree::MerkleTree;
 use anyhow::{Context, Error, Result};
 use bitvec::prelude::BitView;
-use stark_hash::{stark_hash, HashChain, StarkHash};
-
-use crate::core::{
+use pathfinder_common::{
     Chain, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
     StarknetBlockTimestamp,
 };
-use crate::sequencer::reply::{
+use stark_hash::{stark_hash, HashChain, StarkHash};
+use starknet_gateway_types::reply::{
     transaction::{Event, Receipt, Transaction},
     Block,
 };
-use crate::state::merkle_tree::MerkleTree;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
@@ -94,10 +93,8 @@ pub fn verify_block_hash(
 }
 
 mod meta {
+    use pathfinder_common::{starkhash, Chain, SequencerAddress, StarknetBlockNumber};
     use std::ops::Range;
-
-    use crate::core::{Chain, SequencerAddress, StarknetBlockNumber};
-    use crate::starkhash;
 
     /// Metadata about Starknet chains we use for block hash calculation
     ///
@@ -422,17 +419,16 @@ fn number_of_events_in_block(block: &Block) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        core::{EntryPoint, Fee},
-        sequencer::reply::transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
-        starkhash,
-    };
-
     use super::*;
+    use pathfinder_common::{starkhash, EntryPoint, Fee};
+    use starknet_gateway_types::reply::{
+        transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
+        Block,
+    };
 
     #[test]
     fn test_event_hash() {
-        use crate::core::{ContractAddress, EventData, EventKey};
+        use pathfinder_common::{ContractAddress, EventData, EventKey};
 
         let event = Event {
             from_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
@@ -461,7 +457,9 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        use crate::core::{ContractAddress, StarknetTransactionHash, TransactionSignatureElem};
+        use pathfinder_common::{
+            ContractAddress, StarknetTransactionHash, TransactionSignatureElem,
+        };
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
@@ -507,10 +505,8 @@ mod tests {
 
     #[test]
     fn test_number_of_events_in_block() {
-        use crate::sequencer::reply::Block;
-
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/156000.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         // this expected value comes from processing the raw JSON and counting the number of events
         const EXPECTED_NUMBER_OF_EVENTS: usize = 55;
@@ -519,11 +515,9 @@ mod tests {
 
     #[test]
     fn test_block_hash_without_sequencer_address() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a post-0.7, pre-0.8.0 block where zero is used as the sequencer address.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/90000.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_90000;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
@@ -533,12 +527,10 @@ mod tests {
 
     #[test]
     fn test_block_hash_with_sequencer_address() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a post-0.8.2 block where we have correct sequencer address
         // information in the block itself.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/231579.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_231579;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
@@ -548,13 +540,11 @@ mod tests {
 
     #[test]
     fn test_block_hash_with_sequencer_address_unavailable_but_not_zero() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a post-0.8.0 pre-0.8.2 block where we don't have the sequencer
         // address in the JSON but the block hash was calculated with the magic value below
         // instead of zero.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/156000.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash,).unwrap(),
@@ -564,12 +554,10 @@ mod tests {
 
     #[test]
     fn test_block_hash_0() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a pre-0.7 block where the chain ID was hashed into
         // the block hash.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/genesis.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::GENESIS;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),

@@ -83,7 +83,7 @@ pub(super) async fn launch_python(
             continue;
         }
 
-        span.record("pid", &pid);
+        span.record("pid", pid);
 
         {
             let op = process(
@@ -195,7 +195,7 @@ async fn spawn(
 
     {
         let span = tracing::Span::current();
-        span.record("pid", &pid);
+        span.record("pid", pid);
     }
 
     let stdin = child.stdin.take().expect("stdin was piped");

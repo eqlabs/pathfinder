@@ -1,10 +1,9 @@
-use crate::core::{BlockId, ClassHash, ContractAddress};
 use crate::rpc::v02::types::ContractClass;
 use crate::rpc::v02::RpcContext;
 use crate::state::state_tree::GlobalStateTree;
 use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable};
-
 use anyhow::Context;
+use pathfinder_common::{BlockId, ClassHash, ContractAddress};
 use rusqlite::OptionalExtension;
 
 crate::rpc::error::generate_rpc_error_subset!(GetClassAtError: BlockNotFound, ContractNotFound);
@@ -147,15 +146,13 @@ async fn get_pending_class_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
+    use pathfinder_common::{starkhash, starkhash_bytes};
 
     mod parsing {
-        use crate::core::StarknetBlockHash;
-
         use super::*;
-
         use jsonrpsee::types::Params;
+        use pathfinder_common::StarknetBlockHash;
 
         #[test]
         fn positional_args() {
@@ -217,7 +214,7 @@ mod tests {
 
     #[test]
     fn number() {
-        use crate::core::StarknetBlockNumber;
+        use pathfinder_common::StarknetBlockNumber;
 
         let context = RpcContext::for_tests();
         let mut conn = context.storage.connection().unwrap();
@@ -244,7 +241,7 @@ mod tests {
 
     #[test]
     fn hash() {
-        use crate::core::StarknetBlockHash;
+        use pathfinder_common::StarknetBlockHash;
 
         let context = RpcContext::for_tests();
         let mut conn = context.storage.connection().unwrap();

@@ -3,19 +3,17 @@
 //!
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 
-use bitvec::{prelude::Msb0, slice::BitSlice};
-use rusqlite::Transaction;
-use std::ops::ControlFlow;
-
+use super::merkle_node::Node;
 use crate::{
-    core::{
-        ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
-    },
     state::merkle_tree::{MerkleTree, Visit},
     storage::merkle_tree::RcNodeStorage,
 };
-
-use super::merkle_node::Node;
+use bitvec::{prelude::Msb0, slice::BitSlice};
+use pathfinder_common::{
+    ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
+};
+use rusqlite::Transaction;
+use std::ops::ControlFlow;
 
 /// A Binary Merkle-Patricia Tree which contains
 /// the storage state of all StarkNet contracts.

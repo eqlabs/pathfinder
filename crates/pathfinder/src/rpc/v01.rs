@@ -56,21 +56,18 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
 pub fn register_all_methods(
     module: &mut RpcModuleWrapper<RpcApi>,
 ) -> Result<(), jsonrpsee::core::Error> {
-    use crate::{
-        core::{
-            BlockId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
-            StarknetTransactionHash, StarknetTransactionIndex, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
-        rpc::serde::{
-            FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-        },
-        sequencer::request::add_transaction::ContractDefinition,
-    };
-    use ::serde::Deserialize;
-    use stark_hash::StarkHash;
-
     use api::BlockResponseScope;
+    use pathfinder_common::{
+        BlockId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
+    };
+    use pathfinder_serde::{
+        FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+    };
+    use serde::Deserialize;
+    use stark_hash::StarkHash;
+    use starknet_gateway_types::request::add_transaction::ContractDefinition;
     use types::request::{Call, ContractCall, EventFilter};
 
     module.register_async_method(
@@ -108,7 +105,7 @@ pub fn register_all_methods(
         #[derive(Debug, Deserialize)]
         struct NamedArgs {
             contract_address: ContractAddress,
-            key: crate::core::StorageAddress,
+            key: StorageAddress,
             block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
@@ -296,7 +293,7 @@ pub fn register_all_methods(
             const NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
             // actual address dumped from a `starknet declare` call
             const SENDER_ADDRESS: ContractAddress =
-                ContractAddress::new_or_panic(crate::starkhash!("01"));
+                ContractAddress::new_or_panic(pathfinder_common::starkhash!("01"));
 
             context
                 .add_declare_transaction(
@@ -348,32 +345,29 @@ mod tests {
     use crate::rpc::test_client::TestClient;
     use crate::rpc::v01::types::reply::BlockHashAndNumber;
     use crate::rpc::{tests::by_name, RpcServer};
-    use crate::sequencer::reply::PendingBlock;
-    use crate::{
-        core::BlockId,
-        rpc::{
-            tests::{create_pending_data, run_server, setup_storage, LOCALHOST},
-            v01::{
-                api::RpcApi,
-                types::reply::{Block, Transactions},
-            },
+    use crate::rpc::{
+        tests::{create_pending_data, run_server, setup_storage, LOCALHOST},
+        v01::{
+            api::RpcApi,
+            types::reply::{Block, Transactions},
         },
     };
     use crate::{
-        core::{
-            Chain, ClassHash, ContractAddress, EventKey, GasPrice, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress,
-        },
         sequencer::{test_utils::*, Client},
-        starkhash, starkhash_bytes,
         state::{state_tree::GlobalStateTree, PendingData, SyncState},
         storage::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage},
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};
+    use pathfinder_common::{
+        starkhash, starkhash_bytes, BlockId, Chain, ClassHash, ContractAddress, ContractClass,
+        ContractNonce, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
+        TransactionNonce,
+    };
     use serde_json::json;
     use stark_hash::StarkHash;
+    use starknet_gateway_types::reply::PendingBlock;
     use std::sync::Arc;
 
     mod get_block {
@@ -610,9 +604,9 @@ mod tests {
 
     mod get_storage_at {
         use super::*;
-        use crate::core::StorageValue;
-        use crate::rpc::v01::types::{BlockHashOrTag, Tag};
+        use pathfinder_common::StorageValue;
         use pretty_assertions::assert_eq;
+        use starknet_gateway_types::request::{BlockHashOrTag, Tag};
 
         #[tokio::test]
         async fn non_existent_contract_address() {
@@ -772,7 +766,7 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         mod accepted {
-            use crate::core::StarknetTransactionHash;
+            use pathfinder_common::StarknetTransactionHash;
 
             use super::*;
             use pretty_assertions::assert_eq;
@@ -852,7 +846,8 @@ mod tests {
 
     mod get_transaction_by_block_id_and_index {
         use super::*;
-        use crate::{core::StarknetTransactionHash, rpc::v01::types::reply::Transaction};
+        use crate::rpc::v01::types::reply::Transaction;
+        use pathfinder_common::StarknetTransactionHash;
         use pretty_assertions::assert_eq;
 
         async fn check_result<F: Fn(&Transaction)>(params: Option<ParamsSer<'_>>, check_fn: F) {
@@ -1067,7 +1062,7 @@ mod tests {
                 assert_matches!(
                     receipt,
                     TransactionReceipt::PendingInvoke(invoke) => {
-                        assert_eq!(invoke.common.actual_fee, crate::core::Fee(Default::default()));
+                        assert_eq!(invoke.common.actual_fee, pathfinder_common::Fee(Default::default()));
                         assert_eq!(invoke.events.len(), 3);
                     }
                 );
@@ -1097,7 +1092,6 @@ mod tests {
     mod get_class {
         use super::contract_setup::setup_class_and_contract;
         use super::*;
-        use crate::core::ContractClass;
         use crate::rpc::v01::types::reply::ErrorCode;
 
         mod positional_args {
@@ -1292,7 +1286,6 @@ mod tests {
     mod get_class_at {
         use super::contract_setup::setup_class_and_contract;
         use super::*;
-        use crate::core::ContractClass;
         use crate::rpc::v01::types::reply::ErrorCode;
         use pretty_assertions::assert_eq;
 
@@ -1335,7 +1328,6 @@ mod tests {
 
         #[tokio::test]
         async fn returns_program_and_entry_points_for_known_class() {
-            use crate::core::ContractClass;
             use futures::stream::TryStreamExt;
 
             let storage = setup_storage();
@@ -1376,8 +1368,6 @@ mod tests {
 
         #[tokio::test]
         async fn returns_not_found_for_existing_contract_that_is_not_yet_deployed() {
-            use crate::core::ContractClass;
-
             let storage = setup_storage();
             let mut conn = storage.connection().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -1426,22 +1416,21 @@ mod tests {
     }
 
     mod contract_setup {
-        use crate::{
-            core::StorageValue, sequencer::reply::state_update::StorageDiff, starkhash,
-            state::update_contract_state, storage::StarknetBlocksBlockId,
-        };
-
         use super::*;
+        use crate::{state::update_contract_state, storage::StarknetBlocksBlockId};
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
+        use pathfinder_common::{starkhash, StorageValue};
         use pretty_assertions::assert_eq;
+        use starknet_gateway_types::reply::state_update::StorageDiff;
 
         pub fn setup_class_and_contract(
             transaction: &rusqlite::Transaction<'_>,
         ) -> anyhow::Result<(ContractAddress, ClassHash, String, serde_json::Value)> {
-            let contract_definition = include_bytes!("../../fixtures/contract_definition.json.zst");
-            let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition))?;
+            let buffer = zstd::decode_all(std::io::Cursor::new(
+                starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
+            ))?;
             let contract_definition = Bytes::from(buffer);
 
             let contract_address = ContractAddress::new_or_panic(starkhash!(
@@ -1692,8 +1681,6 @@ mod tests {
 
     #[tokio::test]
     async fn get_nonce() {
-        use crate::core::ContractNonce;
-
         let storage = setup_storage();
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
@@ -1723,10 +1710,7 @@ mod tests {
     mod call {
         use super::*;
         use crate::rpc::v01::types::request::Call;
-        use crate::{
-            core::{CallParam, CallResultValue},
-            starkhash,
-        };
+        use pathfinder_common::{starkhash, CallParam, CallResultValue};
         use pretty_assertions::assert_eq;
 
         const INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
@@ -2124,8 +2108,8 @@ mod tests {
 
         mod positional_args {
             use super::*;
-            use crate::{rpc::v01::types::request::EventFilter, starkhash};
-
+            use crate::rpc::v01::types::request::EventFilter;
+            use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -2578,30 +2562,25 @@ mod tests {
 
         lazy_static::lazy_static! {
             pub static ref CONTRACT_DEFINITION_JSON: serde_json::Value = {
-                let json = include_bytes!("../../resources/deploy_transaction.json");
-                let mut json: serde_json::Value = serde_json::from_slice(json).unwrap();
+                let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
+                let mut json: serde_json::Value = serde_json::from_str(json).unwrap();
                 json["contract_definition"].take()
             };
         }
 
         mod positional_args {
-            use std::collections::HashMap;
-
             use super::*;
-            use crate::{
-                core::{
-                    ByteCodeOffset, CallParam, ClassHash, ConstructorParam, ContractAddressSalt,
-                    EntryPoint, Fee, TransactionSignatureElem, TransactionVersion,
-                },
-                rpc::v01::types::request::ContractCall,
-                sequencer::request::{
-                    add_transaction::ContractDefinition,
-                    contract::{EntryPointType, SelectorAndOffset},
-                },
-                starkhash,
+            use crate::rpc::v01::types::request::ContractCall;
+            use pathfinder_common::{
+                starkhash, ByteCodeOffset, CallParam, ClassHash, ConstructorParam,
+                ContractAddressSalt, EntryPoint, Fee, TransactionSignatureElem, TransactionVersion,
             };
-
             use pretty_assertions::assert_eq;
+            use starknet_gateway_types::request::{
+                add_transaction::ContractDefinition,
+                contract::{EntryPointType, SelectorAndOffset},
+            };
+            use std::collections::HashMap;
             use web3::types::H256;
 
             lazy_static::lazy_static! {
@@ -2688,8 +2667,6 @@ mod tests {
 
             #[tokio::test]
             async fn invoke_transaction_v1() {
-                use crate::core::TransactionNonce;
-
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
@@ -2812,10 +2789,8 @@ mod tests {
         }
 
         mod named_args {
-            use crate::{core::ClassHash, starkhash};
-
             use super::*;
-
+            use pathfinder_common::{starkhash, ClassHash};
             use pretty_assertions::assert_eq;
 
             #[tokio::test]

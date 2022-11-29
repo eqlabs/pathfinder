@@ -1,7 +1,7 @@
-use crate::core::BlockId;
 use crate::rpc::v02::RpcContext;
 use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable};
 use anyhow::{anyhow, Context};
+use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -68,15 +68,13 @@ pub async fn get_state_update(
 }
 
 mod types {
-    use serde::Serialize;
-    use serde_with::skip_serializing_none;
-
-    use std::collections::HashMap;
-
-    use crate::core::{
+    use pathfinder_common::{
         ClassHash, ContractAddress, ContractNonce, GlobalRoot, StarknetBlockHash, StorageAddress,
         StorageValue,
     };
+    use serde::Serialize;
+    use serde_with::skip_serializing_none;
+    use std::collections::HashMap;
 
     #[skip_serializing_none]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -91,8 +89,8 @@ mod types {
         pub state_diff: StateDiff,
     }
 
-    impl From<crate::sequencer::reply::StateUpdate> for StateUpdate {
-        fn from(x: crate::sequencer::reply::StateUpdate) -> Self {
+    impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
+        fn from(x: starknet_gateway_types::reply::StateUpdate) -> Self {
             Self {
                 block_hash: x.block_hash,
                 new_root: x.new_root,
@@ -124,8 +122,8 @@ mod types {
         pub nonces: Vec<Nonce>,
     }
 
-    impl From<crate::sequencer::reply::state_update::StateDiff> for StateDiff {
-        fn from(state_diff: crate::sequencer::reply::state_update::StateDiff) -> Self {
+    impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
+        fn from(state_diff: starknet_gateway_types::reply::state_update::StateDiff) -> Self {
             let storage_diffs: Vec<StorageDiff> = state_diff
                 .storage_diffs
                 .into_iter()
@@ -222,8 +220,8 @@ mod types {
         pub value: StorageValue,
     }
 
-    impl From<crate::sequencer::reply::state_update::StorageDiff> for StorageEntry {
-        fn from(diff: crate::sequencer::reply::state_update::StorageDiff) -> Self {
+    impl From<starknet_gateway_types::reply::state_update::StorageDiff> for StorageEntry {
+        fn from(diff: starknet_gateway_types::reply::state_update::StorageDiff) -> Self {
             Self {
                 key: diff.key,
                 value: diff.value,
@@ -240,8 +238,8 @@ mod types {
         pub class_hash: ClassHash,
     }
 
-    impl From<crate::sequencer::reply::state_update::DeployedContract> for DeployedContract {
-        fn from(d: crate::sequencer::reply::state_update::DeployedContract) -> Self {
+    impl From<starknet_gateway_types::reply::state_update::DeployedContract> for DeployedContract {
+        fn from(d: starknet_gateway_types::reply::state_update::DeployedContract) -> Self {
             Self {
                 address: d.address,
                 class_hash: d.class_hash,
@@ -279,8 +277,7 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
-
-        use crate::starkhash;
+        use pathfinder_common::starkhash;
 
         #[test]
         fn receipt() {
@@ -334,13 +331,13 @@ mod types {
 mod tests {
     use super::types::{DeployedContract, StateDiff, StateUpdate, StorageDiff, StorageEntry};
     use super::*;
-    use crate::core::{
-        ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
-        StorageAddress, StorageValue,
-    };
-    use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
+    use pathfinder_common::{starkhash, starkhash_bytes};
+    use pathfinder_common::{
+        Chain, ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        StorageAddress, StorageValue,
+    };
     use stark_hash::StarkHash;
 
     #[test]
@@ -383,7 +380,7 @@ mod tests {
         tx.commit().unwrap();
 
         let sync_state = std::sync::Arc::new(crate::state::SyncState::default());
-        let chain = crate::core::Chain::Testnet;
+        let chain = Chain::Testnet;
         let sequencer = crate::sequencer::Client::new(chain).unwrap();
         let context = RpcContext::new(storage, sync_state, chain, sequencer);
         let state_updates = state_updates.into_iter().map(Into::into).collect();
@@ -464,7 +461,9 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"non-existent"))),
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash_bytes!(
+                    b"non-existent"
+                ))),
                 assert_error(GetStateUpdateError::BlockNotFound),
             ),
             (

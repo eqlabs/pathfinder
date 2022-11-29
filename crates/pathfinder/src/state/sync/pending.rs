@@ -3,21 +3,23 @@
 ///
 /// This disconnect is detected whenever
 /// - `pending.parent_hash != head`, or
-/// - `pending` is a fully formed block and not [PendingBlock](crate::sequencer::reply::MaybePendingBlock::Pending), or
+/// - `pending` is a fully formed block and not [PendingBlock](starknet_gateway_types::reply::MaybePendingBlock::Pending), or
 /// - the state update parent root does not match head.
 pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
     sequencer: &impl crate::sequencer::ClientApi,
-    head: (crate::core::StarknetBlockHash, crate::core::GlobalRoot),
+    head: (
+        pathfinder_common::StarknetBlockHash,
+        pathfinder_common::GlobalRoot,
+    ),
     poll_interval: std::time::Duration,
 ) -> anyhow::Result<()> {
-    use crate::core::BlockId;
     use anyhow::Context;
-
+    use pathfinder_common::BlockId;
     use std::sync::Arc;
 
     loop {
-        use crate::sequencer::reply::MaybePendingBlock;
+        use starknet_gateway_types::reply::MaybePendingBlock;
 
         let pending_block = match sequencer
             .block(BlockId::Pending)
@@ -72,40 +74,39 @@ pub async fn poll_pending(
 #[cfg(test)]
 mod tests {
     use super::poll_pending;
-    use crate::{
-        core::{
-            GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp,
-        },
-        sequencer,
-    };
-
-    use crate::{starkhash, starkhash_bytes};
+    use crate::sequencer;
     use assert_matches::assert_matches;
+    use pathfinder_common::{
+        starkhash, starkhash_bytes, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp,
+    };
+    use starknet_gateway_types::reply::{
+        state_update::StateDiff, Block, MaybePendingBlock, PendingBlock, StateUpdate, Status,
+    };
 
     lazy_static::lazy_static!(
         pub static ref PARENT_HASH: StarknetBlockHash =  StarknetBlockHash(starkhash!("1234"));
         pub static ref PARENT_ROOT: GlobalRoot = GlobalRoot(starkhash_bytes!(b"parent root"));
 
-        pub static ref NEXT_BLOCK: sequencer::reply::Block = sequencer::reply::Block{
+        pub static ref NEXT_BLOCK: Block = Block{
             block_hash: StarknetBlockHash(starkhash!("abcd")),
             block_number: StarknetBlockNumber::new_or_panic(1),
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
             sequencer_address: None,
             state_root: *PARENT_ROOT,
-            status: sequencer::reply::Status::AcceptedOnL2,
+            status: Status::AcceptedOnL2,
             timestamp: StarknetBlockTimestamp::new_or_panic(10),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: None,
         };
 
-        pub static ref PENDING_DIFF: sequencer::reply::StateUpdate = sequencer::reply::StateUpdate {
+        pub static ref PENDING_DIFF: StateUpdate = StateUpdate {
             block_hash: None,
             new_root: GlobalRoot(starkhash_bytes!(b"new root")),
             old_root: *PARENT_ROOT,
-            state_diff: sequencer::reply::state_update::StateDiff {
+            state_diff: StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: Vec::new(),
                 declared_contracts: Vec::new(),
@@ -113,11 +114,11 @@ mod tests {
             }
         };
 
-        pub static ref PENDING_BLOCK: sequencer::reply::PendingBlock = sequencer::reply::PendingBlock {
+        pub static ref PENDING_BLOCK: PendingBlock = PendingBlock {
             gas_price: GasPrice(11),
             parent_hash: NEXT_BLOCK.parent_block_hash,
             sequencer_address: SequencerAddress(starkhash_bytes!(b"seqeunecer address")),
-            status: sequencer::reply::Status::Pending,
+            status: Status::Pending,
             timestamp: StarknetBlockTimestamp::new_or_panic(20),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
@@ -135,11 +136,9 @@ mod tests {
         let mut sequencer = sequencer::MockClientApi::new();
 
         // Give a pending state update and full block.
-        sequencer.expect_block().returning(move |_| {
-            Ok(sequencer::reply::MaybePendingBlock::Block(
-                NEXT_BLOCK.clone(),
-            ))
-        });
+        sequencer
+            .expect_block()
+            .returning(move |_| Ok(MaybePendingBlock::Block(NEXT_BLOCK.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_DIFF.clone()));
@@ -170,11 +169,9 @@ mod tests {
         let mut full_diff = PENDING_DIFF.clone();
         full_diff.block_hash = Some(NEXT_BLOCK.block_hash);
 
-        sequencer.expect_block().returning(move |_| {
-            Ok(sequencer::reply::MaybePendingBlock::Pending(
-                PENDING_BLOCK.clone(),
-            ))
-        });
+        sequencer
+            .expect_block()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(full_diff.clone()));
@@ -203,11 +200,9 @@ mod tests {
 
         let mut pending_block = PENDING_BLOCK.clone();
         pending_block.parent_hash = StarknetBlockHash(starkhash!("FFFFFF"));
-        sequencer.expect_block().returning(move |_| {
-            Ok(sequencer::reply::MaybePendingBlock::Pending(
-                pending_block.clone(),
-            ))
-        });
+        sequencer
+            .expect_block()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_DIFF.clone()));
@@ -234,11 +229,9 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let mut sequencer = sequencer::MockClientApi::new();
 
-        sequencer.expect_block().returning(move |_| {
-            Ok(sequencer::reply::MaybePendingBlock::Pending(
-                PENDING_BLOCK.clone(),
-            ))
-        });
+        sequencer
+            .expect_block()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
 
         let mut disconnected_diff = PENDING_DIFF.clone();
         disconnected_diff.old_root = GlobalRoot(starkhash_bytes!(b"different old root"));
@@ -268,11 +261,9 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let mut sequencer = sequencer::MockClientApi::new();
 
-        sequencer.expect_block().returning(move |_| {
-            Ok(sequencer::reply::MaybePendingBlock::Pending(
-                PENDING_BLOCK.clone(),
-            ))
-        });
+        sequencer
+            .expect_block()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_DIFF.clone()));

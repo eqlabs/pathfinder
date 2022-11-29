@@ -279,12 +279,12 @@ where
     where
         <ParamsIter as Iterator>::Item: ::serde::Serialize,
     {
-        use crate::core::Chain;
         use crate::rpc::{RpcApi, RpcServer};
         use crate::sequencer::Client;
         use crate::state::SyncState;
         use futures::stream::StreamExt;
         use jsonrpsee::rpc_params;
+        use pathfinder_common::Chain;
         use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
         use std::sync::Arc;
 

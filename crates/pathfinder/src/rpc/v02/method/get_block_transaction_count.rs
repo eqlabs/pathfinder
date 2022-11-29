@@ -1,10 +1,9 @@
-use anyhow::Context;
-
 use crate::{
-    core::BlockId,
     rpc::v02::RpcContext,
     storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable},
 };
+use anyhow::Context;
+use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetBlockTransactionCountInput {
@@ -67,12 +66,9 @@ pub async fn get_block_transaction_count(
 
 #[cfg(test)]
 mod tests {
-    use stark_hash::StarkHash;
-
-    use crate::core::StarknetBlockHash;
-    use crate::core::StarknetBlockNumber;
-
     use super::*;
+    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use stark_hash::StarkHash;
 
     mod json {
         use super::*;
@@ -106,7 +102,7 @@ mod tests {
         fn test_block_hash() {
             check(
                 "{ \"block_hash\": \"0xFACE\" }",
-                BlockId::Hash(StarknetBlockHash(crate::starkhash!("face"))),
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash!("face"))),
             );
         }
     }
@@ -137,7 +133,9 @@ mod tests {
     #[tokio::test]
     async fn test_genesis() {
         let context = RpcContext::for_tests();
-        let block_id = BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"genesis")));
+        let block_id = BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash_bytes!(
+            b"genesis"
+        )));
         check_count(context, block_id, 1).await;
     }
 

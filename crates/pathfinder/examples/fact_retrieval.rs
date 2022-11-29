@@ -22,17 +22,14 @@
 //! only searches an L1 block range of `N-10_000` : `N` where `N` is the block containing the state
 //! update (3).
 
-use std::str::FromStr;
-
 use clap::Arg;
-use pathfinder_lib::{
-    core::{Chain, EthereumBlockHash, EthereumChain, StarknetBlockNumber},
-    ethereum::{
-        log::{MetaLog, StateUpdateLog},
-        state_update::StateUpdate,
-        transport::{EthereumTransport, HttpTransport},
-    },
+use pathfinder_common::{Chain, EthereumBlockHash, EthereumChain, StarknetBlockNumber};
+use pathfinder_ethereum::{
+    log::{MetaLog, StateUpdateLog},
+    state_update::StateUpdate,
+    transport::{EthereumTransport, HttpTransport},
 };
+use std::str::FromStr;
 use web3::types::{H256, U256};
 use web3::{transports::Http, types::FilterBuilder, Web3};
 

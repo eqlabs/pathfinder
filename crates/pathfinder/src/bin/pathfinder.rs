@@ -2,10 +2,10 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use pathfinder_common::{self, Chain, EthereumChain};
+use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
 use pathfinder_lib::{
-    cairo, config,
-    core::{self, Chain, EthereumChain},
-    ethereum::transport::{EthereumTransport, HttpTransport},
+    cairo,
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
     rpc, sequencer, state,
     storage::{JournalMode, Storage},
@@ -21,8 +21,8 @@ async fn main() -> anyhow::Result<()> {
 
     setup_tracing();
 
-    let config =
-        config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
+    let config = pathfinder_config::Configuration::parse_cmd_line_and_cfg_file()
+        .context("Parsing configuration")?;
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -146,7 +146,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
-    let update_handle = tokio::spawn(pathfinder_lib::update::poll_github_for_releases());
+    let update_handle = tokio::spawn(pathfinder_update::poll_github_for_releases());
 
     // We are now ready.
     if let Some(ready) = pathfinder_ready {
@@ -183,7 +183,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 }
 
 /// Verifies that the database matches the expected chain; throws an error if it does not.
-fn verify_database_chain(storage: &Storage, expected: core::Chain) -> anyhow::Result<()> {
+fn verify_database_chain(storage: &Storage, expected: Chain) -> anyhow::Result<()> {
     use pathfinder_lib::storage::StarknetBlocksTable;
 
     let mut connection = storage.connection().context("Create database connection")?;

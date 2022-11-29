@@ -1,90 +1,13 @@
 //! Data structures used by the JSON-RPC API methods.
-use crate::core::{StarknetBlockHash, StarknetBlockNumber};
-use serde::{Deserialize, Serialize};
-
-/// Special tag used when specifying the `latest` or `pending` block.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub enum Tag {
-    /// The most recent fully constructed block
-    ///
-    /// Represented as the JSON string `"latest"` when passed as an RPC method argument,
-    /// for example:
-    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["latest"]}`
-    #[serde(rename = "latest")]
-    Latest,
-    /// Currently constructed block
-    ///
-    /// Represented as the JSON string `"pending"` when passed as an RPC method argument,
-    /// for example:
-    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["pending"]}`
-    #[serde(rename = "pending")]
-    Pending,
-}
-
-impl std::fmt::Display for Tag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Tag::Latest => f.write_str("latest"),
-            Tag::Pending => f.write_str("pending"),
-        }
-    }
-}
-
-/// A wrapper that contains either a [Hash](self::BlockHashOrTag::Hash) or a [Tag](self::BlockHashOrTag::Tag).
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum BlockHashOrTag {
-    /// Hash of a block
-    ///
-    /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64 characters
-    /// when passed as an RPC method argument, for example:
-    /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
-    Hash(StarknetBlockHash),
-    /// Special [Tag](crate::rpc::v01::types::Tag) describing a block
-    Tag(Tag),
-}
-
-impl std::fmt::Display for BlockHashOrTag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BlockHashOrTag::Hash(StarknetBlockHash(h)) => f.write_str(&h.to_hex_str()),
-            BlockHashOrTag::Tag(t) => std::fmt::Display::fmt(t, f),
-        }
-    }
-}
-
-/// A wrapper that contains either a block [Number](self::BlockNumberOrTag::Number) or a [Tag](self::BlockNumberOrTag::Tag).
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-pub enum BlockNumberOrTag {
-    /// Number (height) of a block
-    Number(StarknetBlockNumber),
-    /// Special [Tag](crate::rpc::v01::types::Tag) describing a block
-    Tag(Tag),
-}
-
-impl std::fmt::Display for BlockNumberOrTag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BlockNumberOrTag::Number(n) => std::fmt::Display::fmt(n, f),
-            BlockNumberOrTag::Tag(t) => std::fmt::Display::fmt(t, f),
-        }
-    }
-}
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use crate::{
-        core::{
-            CallParam, ContractAddress, EntryPoint, EventKey, Fee, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
-        rpc::serde::{
-            FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-        },
+    use pathfinder_common::{
+        BlockId, CallParam, ContractAddress, EntryPoint, EventKey, Fee, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
+    };
+    use pathfinder_serde::{
+        FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde::Deserialize;
     use serde_with::{serde_as, skip_serializing_none};
@@ -157,9 +80,9 @@ pub mod request {
     #[serde(deny_unknown_fields)]
     pub struct EventFilter {
         #[serde(default, alias = "fromBlock")]
-        pub from_block: Option<crate::core::BlockId>,
+        pub from_block: Option<BlockId>,
         #[serde(default, alias = "toBlock")]
-        pub to_block: Option<crate::core::BlockId>,
+        pub to_block: Option<BlockId>,
         #[serde(default)]
         pub address: Option<ContractAddress>,
         #[serde(default)]
@@ -175,16 +98,13 @@ pub mod request {
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
-    use crate::{
-        core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, EventData, EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash,
-            StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
-        rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
-        sequencer,
+    use pathfinder_common::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        EventData, EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
     use stark_hash::StarkHash;
@@ -207,18 +127,20 @@ pub mod reply {
         Rejected,
     }
 
-    impl From<sequencer::reply::Status> for BlockStatus {
-        fn from(status: sequencer::reply::Status) -> Self {
+    impl From<starknet_gateway_types::reply::Status> for BlockStatus {
+        fn from(status: starknet_gateway_types::reply::Status) -> Self {
+            use starknet_gateway_types::reply::Status::*;
+
             match status {
                 // TODO verify this mapping with Starkware
-                sequencer::reply::Status::AcceptedOnL1 => BlockStatus::AcceptedOnL1,
-                sequencer::reply::Status::AcceptedOnL2 => BlockStatus::AcceptedOnL2,
-                sequencer::reply::Status::NotReceived => BlockStatus::Rejected,
-                sequencer::reply::Status::Pending => BlockStatus::Pending,
-                sequencer::reply::Status::Received => BlockStatus::Pending,
-                sequencer::reply::Status::Rejected => BlockStatus::Rejected,
-                sequencer::reply::Status::Reverted => BlockStatus::Rejected,
-                sequencer::reply::Status::Aborted => BlockStatus::Rejected,
+                AcceptedOnL1 => BlockStatus::AcceptedOnL1,
+                AcceptedOnL2 => BlockStatus::AcceptedOnL2,
+                NotReceived => BlockStatus::Rejected,
+                Pending => BlockStatus::Pending,
+                Received => BlockStatus::Pending,
+                Rejected => BlockStatus::Rejected,
+                Reverted => BlockStatus::Rejected,
+                Aborted => BlockStatus::Rejected,
             }
         }
     }
@@ -275,9 +197,9 @@ pub mod reply {
             }
         }
 
-        /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
+        /// Constructs [Block] from [sequencer's block representation](starknet_gateway_types::reply::Block)
         pub fn from_sequencer_scoped(
-            block: sequencer::reply::MaybePendingBlock,
+            block: starknet_gateway_types::reply::MaybePendingBlock,
             scope: BlockResponseScope,
         ) -> Self {
             let transactions = match scope {
@@ -292,7 +214,7 @@ pub mod reply {
                 }
             };
 
-            use sequencer::reply::MaybePendingBlock;
+            use starknet_gateway_types::reply::MaybePendingBlock;
             match block {
                 MaybePendingBlock::Block(block) => Self {
                     status: block.status.into(),
@@ -463,8 +385,8 @@ pub mod reply {
         pub state_diff: state_update::StateDiff,
     }
 
-    impl From<sequencer::reply::StateUpdate> for StateUpdate {
-        fn from(x: sequencer::reply::StateUpdate) -> Self {
+    impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
+        fn from(x: starknet_gateway_types::reply::StateUpdate) -> Self {
             Self {
                 block_hash: x.block_hash,
                 new_root: x.new_root,
@@ -482,10 +404,9 @@ pub mod reply {
     /// on the `rpc-full-serde` feature because state updates are
     /// stored in the DB as compressed raw JSON bytes.
     pub mod state_update {
-        use crate::core::{
+        use pathfinder_common::{
             ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
         };
-        use crate::sequencer;
         use serde::{Deserialize, Serialize};
 
         /// L2 state diff.
@@ -498,8 +419,8 @@ pub mod reply {
             pub nonces: Vec<Nonce>,
         }
 
-        impl From<sequencer::reply::state_update::StateDiff> for StateDiff {
-            fn from(x: sequencer::reply::state_update::StateDiff) -> Self {
+        impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
+            fn from(x: starknet_gateway_types::reply::state_update::StateDiff) -> Self {
                 Self {
                     storage_diffs: x
                         .storage_diffs
@@ -539,15 +460,6 @@ pub mod reply {
             pub key: StorageAddress,
             pub value: StorageValue,
         }
-
-        // impl From<sequencer::reply::state_update::StorageDiff> for StorageItem {
-        //     fn from(x: sequencer::reply::state_update::StorageDiff) -> Self {
-        //         Self {
-        //             key: x.key,
-        //             value: x.value,
-        //         }
-        //     }
-        // }
 
         /// L2 state diff declared contract item.
         #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -691,10 +603,10 @@ pub mod reply {
         pub calldata: Vec<CallParam>,
     }
 
-    impl TryFrom<sequencer::reply::Transaction> for Transaction {
+    impl TryFrom<starknet_gateway_types::reply::Transaction> for Transaction {
         type Error = anyhow::Error;
 
-        fn try_from(txn: sequencer::reply::Transaction) -> Result<Self, Self::Error> {
+        fn try_from(txn: starknet_gateway_types::reply::Transaction) -> Result<Self, Self::Error> {
             let txn = txn
                 .transaction
                 .ok_or_else(|| anyhow::anyhow!("Transaction not found."))?;
@@ -703,19 +615,21 @@ pub mod reply {
         }
     }
 
-    impl From<sequencer::reply::transaction::Transaction> for Transaction {
-        fn from(txn: sequencer::reply::transaction::Transaction) -> Self {
+    impl From<starknet_gateway_types::reply::transaction::Transaction> for Transaction {
+        fn from(txn: starknet_gateway_types::reply::transaction::Transaction) -> Self {
             Self::from(&txn)
         }
     }
 
-    impl From<&sequencer::reply::transaction::Transaction> for Transaction {
-        fn from(txn: &sequencer::reply::transaction::Transaction) -> Self {
+    impl From<&starknet_gateway_types::reply::transaction::Transaction> for Transaction {
+        fn from(txn: &starknet_gateway_types::reply::transaction::Transaction) -> Self {
+            use starknet_gateway_types::reply::transaction::{InvokeTransaction, Transaction::*};
+
             match txn {
-                sequencer::reply::transaction::Transaction::Invoke(txn) => {
+                Invoke(txn) => {
                     match txn {
-                        sequencer::reply::transaction::InvokeTransaction::V0(txn) => {
-                            Self::Invoke(InvokeTransaction {
+                        InvokeTransaction::V0(txn) => {
+                            Self::Invoke(self::InvokeTransaction {
                                 common: CommonTransactionProperties {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
@@ -729,9 +643,9 @@ pub mod reply {
                                 calldata: txn.calldata.clone(),
                             })
                         }
-                        sequencer::reply::transaction::InvokeTransaction::V1(txn) => {
+                        InvokeTransaction::V1(txn) => {
                             // FIXME: use V1 RPC type here
-                            Self::Invoke(InvokeTransaction {
+                            Self::Invoke(self::InvokeTransaction {
                                 common: CommonTransactionProperties {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
@@ -748,53 +662,45 @@ pub mod reply {
                         }
                     }
                 }
-                sequencer::reply::transaction::Transaction::Declare(txn) => {
-                    Self::Declare(DeclareTransaction {
-                        common: CommonTransactionProperties {
-                            hash: txn.transaction_hash,
-                            max_fee: txn.max_fee,
-                            version: txn.version,
-                            signature: txn.signature.clone(),
-                            nonce: txn.nonce,
-                        },
-                        class_hash: txn.class_hash,
-                        sender_address: txn.sender_address,
-                    })
-                }
-                sequencer::reply::transaction::Transaction::Deploy(txn) => {
-                    Self::Deploy(DeployTransaction {
+                Declare(txn) => Self::Declare(DeclareTransaction {
+                    common: CommonTransactionProperties {
                         hash: txn.transaction_hash,
+                        max_fee: txn.max_fee,
                         version: txn.version,
-                        contract_address: txn.contract_address,
-                        contract_address_salt: txn.contract_address_salt,
-                        class_hash: txn.class_hash,
-                        constructor_calldata: txn.constructor_calldata.clone(),
-                    })
-                }
-                sequencer::reply::transaction::Transaction::DeployAccount(txn) => {
-                    Self::DeployAccount(DeployAccountTransaction {
-                        common: CommonTransactionProperties {
-                            hash: txn.transaction_hash,
-                            max_fee: txn.max_fee,
-                            version: txn.version,
-                            signature: txn.signature.clone(),
-                            nonce: txn.nonce,
-                        },
-                        contract_address_salt: txn.contract_address_salt,
-                        constructor_calldata: txn.constructor_calldata.clone(),
-                        class_hash: txn.class_hash,
-                    })
-                }
-                sequencer::reply::transaction::Transaction::L1Handler(txn) => {
-                    Self::L1Handler(L1HandlerTransaction {
-                        hash: txn.transaction_hash,
-                        version: txn.version,
+                        signature: txn.signature.clone(),
                         nonce: txn.nonce,
-                        contract_address: txn.contract_address,
-                        entry_point_selector: txn.entry_point_selector,
-                        calldata: txn.calldata.clone(),
-                    })
-                }
+                    },
+                    class_hash: txn.class_hash,
+                    sender_address: txn.sender_address,
+                }),
+                Deploy(txn) => Self::Deploy(DeployTransaction {
+                    hash: txn.transaction_hash,
+                    version: txn.version,
+                    contract_address: txn.contract_address,
+                    contract_address_salt: txn.contract_address_salt,
+                    class_hash: txn.class_hash,
+                    constructor_calldata: txn.constructor_calldata.clone(),
+                }),
+                DeployAccount(txn) => Self::DeployAccount(DeployAccountTransaction {
+                    common: CommonTransactionProperties {
+                        hash: txn.transaction_hash,
+                        max_fee: txn.max_fee,
+                        version: txn.version,
+                        signature: txn.signature.clone(),
+                        nonce: txn.nonce,
+                    },
+                    contract_address_salt: txn.contract_address_salt,
+                    constructor_calldata: txn.constructor_calldata.clone(),
+                    class_hash: txn.class_hash,
+                }),
+                L1Handler(txn) => Self::L1Handler(L1HandlerTransaction {
+                    hash: txn.transaction_hash,
+                    version: txn.version,
+                    nonce: txn.nonce,
+                    contract_address: txn.contract_address,
+                    entry_point_selector: txn.entry_point_selector,
+                    calldata: txn.calldata.clone(),
+                }),
             }
         }
     }
@@ -888,14 +794,13 @@ pub mod reply {
 
     impl TransactionReceipt {
         pub fn pending_from(
-            receipt: sequencer::reply::transaction::Receipt,
-            transaction: &sequencer::reply::transaction::Transaction,
+            receipt: starknet_gateway_types::reply::transaction::Receipt,
+            transaction: &starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
+            use starknet_gateway_types::reply::transaction::Transaction::*;
+
             match transaction {
-                sequencer::reply::transaction::Transaction::Declare(_)
-                | sequencer::reply::transaction::Transaction::Deploy(_)
-                | sequencer::reply::transaction::Transaction::DeployAccount(_)
-                | sequencer::reply::transaction::Transaction::L1Handler(_) => {
+                Declare(_) | Deploy(_) | DeployAccount(_) | L1Handler(_) => {
                     Self::PendingDeclareOrDeployOrL1Handler(
                         PendingDeclareOrDeployOrL1HandlerTransactionReceipt {
                             common: CommonPendingTransactionReceiptProperties {
@@ -907,40 +812,38 @@ pub mod reply {
                         },
                     )
                 }
-                sequencer::reply::transaction::Transaction::Invoke(_) => {
-                    Self::PendingInvoke(PendingInvokeTransactionReceipt {
-                        common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: receipt.transaction_hash,
-                            actual_fee: receipt
-                                .actual_fee
-                                .unwrap_or_else(|| Fee(Default::default())),
-                        },
-                        messages_sent: receipt
-                            .l2_to_l1_messages
-                            .into_iter()
-                            .map(transaction_receipt::MessageToL1::from)
-                            .collect(),
-                        l1_origin_message: receipt
-                            .l1_to_l2_consumed_message
-                            .map(transaction_receipt::MessageToL2::from),
-                        events: receipt
-                            .events
-                            .into_iter()
-                            .map(transaction_receipt::Event::from)
-                            .collect(),
-                    })
-                }
+                Invoke(_) => Self::PendingInvoke(PendingInvokeTransactionReceipt {
+                    common: CommonPendingTransactionReceiptProperties {
+                        transaction_hash: receipt.transaction_hash,
+                        actual_fee: receipt
+                            .actual_fee
+                            .unwrap_or_else(|| Fee(Default::default())),
+                    },
+                    messages_sent: receipt
+                        .l2_to_l1_messages
+                        .into_iter()
+                        .map(transaction_receipt::MessageToL1::from)
+                        .collect(),
+                    l1_origin_message: receipt
+                        .l1_to_l2_consumed_message
+                        .map(transaction_receipt::MessageToL2::from),
+                    events: receipt
+                        .events
+                        .into_iter()
+                        .map(transaction_receipt::Event::from)
+                        .collect(),
+                }),
             }
         }
 
         pub fn with_block_data(
-            receipt: sequencer::reply::transaction::Receipt,
+            receipt: starknet_gateway_types::reply::transaction::Receipt,
             status: BlockStatus,
             block_hash: StarknetBlockHash,
             block_number: StarknetBlockNumber,
-            transaction: sequencer::reply::transaction::Transaction,
+            transaction: starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
-            use sequencer::reply::transaction::Transaction::*;
+            use starknet_gateway_types::reply::transaction::Transaction::*;
             match transaction {
                 Declare(_) | Deploy(_) | DeployAccount(_) | L1Handler(_) => {
                     Self::DeclareOrDeployOrL1Handler(DeclareOrDeployOrL1HandlerTransactionReceipt {
@@ -991,16 +894,14 @@ pub mod reply {
 
     /// Transaction receipt related substructures.
     pub mod transaction_receipt {
-        use crate::{
-            core::{
-                ContractAddress, EthereumAddress, EventData, EventKey, L1ToL2MessagePayloadElem,
-                L2ToL1MessagePayloadElem,
-            },
-            rpc::serde::EthereumAddressAsHexStr,
-            sequencer::reply::transaction::{L1ToL2Message, L2ToL1Message},
+        use pathfinder_common::{
+            ContractAddress, EthereumAddress, EventData, EventKey, L1ToL2MessagePayloadElem,
+            L2ToL1MessagePayloadElem,
         };
+        use pathfinder_serde::EthereumAddressAsHexStr;
         use serde::Serialize;
         use serde_with::serde_as;
+        use starknet_gateway_types::reply::transaction::{L1ToL2Message, L2ToL1Message};
         use std::convert::From;
 
         /// Message sent from L2 to L1.
@@ -1053,8 +954,8 @@ pub mod reply {
             pub data: Vec<EventData>,
         }
 
-        impl From<crate::sequencer::reply::transaction::Event> for Event {
-            fn from(e: crate::sequencer::reply::transaction::Event) -> Self {
+        impl From<starknet_gateway_types::reply::transaction::Event> for Event {
+            fn from(e: starknet_gateway_types::reply::transaction::Event) -> Self {
                 Self {
                     from_address: e.from_address,
                     keys: e.keys,
@@ -1112,10 +1013,8 @@ pub mod reply {
 
     /// Starknet's syncing status substructures.
     pub mod syncing {
-        use crate::{
-            core::{StarknetBlockHash, StarknetBlockNumber},
-            rpc::serde::StarknetBlockNumberAsHexStr,
-        };
+        use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+        use pathfinder_serde::StarknetBlockNumberAsHexStr;
         use serde::Serialize;
         use serde_with::serde_as;
 
@@ -1279,14 +1178,14 @@ pub mod reply {
     #[serde(deny_unknown_fields)]
     pub struct FeeEstimate {
         /// The Ethereum gas cost of the transaction
-        #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         #[serde(rename = "gas_consumed")]
         pub consumed: web3::types::H256,
         /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
-        #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         pub gas_price: web3::types::H256,
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
-        #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         #[serde(rename = "overall_fee")]
         pub fee: web3::types::H256,
     }
@@ -1311,7 +1210,7 @@ pub mod reply {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use crate::starkhash;
+            use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]
@@ -1419,20 +1318,20 @@ pub mod reply {
                         Self {
                             common: CommonTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
-                                to_address: crate::core::EthereumAddress(
+                                to_address: pathfinder_common::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x2),
                                 ),
-                                payload: vec![crate::core::L2ToL1MessagePayloadElem(starkhash!(
-                                    "03"
-                                ))],
+                                payload: vec![pathfinder_common::L2ToL1MessagePayloadElem(
+                                    starkhash!("03"),
+                                )],
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
-                                from_address: crate::core::EthereumAddress(
+                                from_address: pathfinder_common::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x4),
                                 ),
-                                payload: vec![crate::core::L1ToL2MessagePayloadElem(starkhash!(
-                                    "05"
-                                ))],
+                                payload: vec![pathfinder_common::L1ToL2MessagePayloadElem(
+                                    starkhash!("05"),
+                                )],
                             }),
                             events: vec![transaction_receipt::Event {
                                 from_address: ContractAddress::new_or_panic(starkhash!("06")),
@@ -1448,20 +1347,20 @@ pub mod reply {
                         Self {
                             common: CommonPendingTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
-                                to_address: crate::core::EthereumAddress(
+                                to_address: pathfinder_common::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x5),
                                 ),
-                                payload: vec![crate::core::L2ToL1MessagePayloadElem(starkhash!(
-                                    "06"
-                                ))],
+                                payload: vec![pathfinder_common::L2ToL1MessagePayloadElem(
+                                    starkhash!("06"),
+                                )],
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
-                                from_address: crate::core::EthereumAddress(
+                                from_address: pathfinder_common::EthereumAddress(
                                     web3::types::H160::from_low_u64_be(0x77),
                                 ),
-                                payload: vec![crate::core::L1ToL2MessagePayloadElem(starkhash!(
-                                    "07"
-                                ))],
+                                payload: vec![pathfinder_common::L1ToL2MessagePayloadElem(
+                                    starkhash!("07"),
+                                )],
                             }),
                             events: vec![transaction_receipt::Event {
                                 from_address: ContractAddress::new_or_panic(starkhash!("a6")),

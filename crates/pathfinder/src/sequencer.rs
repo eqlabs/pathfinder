@@ -1,22 +1,24 @@
 //! StarkNet L2 sequencer client.
-mod builder;
-pub mod error;
-mod metrics;
-pub mod reply;
-pub mod request;
-
-use self::request::add_transaction::ContractDefinition;
-use crate::{
-    core::{
-        BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
-        ContractAddressSalt, EntryPoint, Fee, StarknetTransactionHash, StorageAddress,
-        StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
-    },
-    rpc::v01::types::BlockHashOrTag,
-    sequencer::error::SequencerError,
+use pathfinder_common::{
+    BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+    EntryPoint, Fee, StarknetBlockNumber, StarknetTransactionHash, StorageAddress, StorageValue,
+    TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
+use starknet_gateway_types::{
+    error::SequencerError,
+    reply,
+    request::{
+        add_transaction::{
+            AddTransaction, ContractDefinition, Declare, Deploy, DeployAccount, InvokeFunction,
+        },
+        BlockHashOrTag,
+    },
+};
 use std::{fmt::Debug, result::Result, time::Duration};
+
+mod builder;
+mod metrics;
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
@@ -105,7 +107,7 @@ pub trait ClientApi {
 /// StarkNet sequencer client using REST API.
 ///
 /// Retry is performed on __all__ types of errors __except for__
-/// [StarkNet specific errors](crate::sequencer::error::StarknetError).
+/// [StarkNet specific errors](starknet_gateway_types::error::StarknetError).
 ///
 /// Initial backoff time is 30 seconds and saturates at 1 hour:
 ///
@@ -145,7 +147,7 @@ impl Client {
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120))
-                .user_agent(crate::consts::USER_AGENT)
+                .user_agent(pathfinder_common::consts::USER_AGENT)
                 .build()?,
             sequencer_url: url,
         })
@@ -157,12 +159,10 @@ impl Client {
 
     /// Returns the [network chain](Chain) this client is operating on.
     pub async fn chain(&self) -> anyhow::Result<Chain> {
-        use crate::consts::{
+        use pathfinder_common::consts::{
             INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
             TESTNET_GENESIS_HASH,
         };
-        use crate::core::StarknetBlockNumber;
-
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
             .block(StarknetBlockNumber::GENESIS.into())
@@ -319,17 +319,15 @@ impl ClientApi for Client {
         entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
-        let req = request::add_transaction::AddTransaction::Invoke(
-            request::add_transaction::InvokeFunction {
-                contract_address,
-                entry_point_selector,
-                calldata,
-                max_fee,
-                version,
-                signature,
-                nonce,
-            },
-        );
+        let req = AddTransaction::Invoke(InvokeFunction {
+            contract_address,
+            entry_point_selector,
+            calldata,
+            max_fee,
+            version,
+            signature,
+            nonce,
+        });
 
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -355,15 +353,14 @@ impl ClientApi for Client {
         sender_address: ContractAddress,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
-        let req =
-            request::add_transaction::AddTransaction::Declare(request::add_transaction::Declare {
-                contract_class: contract_definition,
-                sender_address,
-                max_fee,
-                signature,
-                nonce,
-                version,
-            });
+        let req = AddTransaction::Declare(Declare {
+            contract_class: contract_definition,
+            sender_address,
+            max_fee,
+            signature,
+            nonce,
+            version,
+        });
 
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -389,13 +386,12 @@ impl ClientApi for Client {
         contract_definition: ContractDefinition,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
-        let req =
-            request::add_transaction::AddTransaction::Deploy(request::add_transaction::Deploy {
-                version,
-                contract_address_salt,
-                contract_definition,
-                constructor_calldata,
-            });
+        let req = AddTransaction::Deploy(Deploy {
+            version,
+            contract_address_salt,
+            contract_definition,
+            constructor_calldata,
+        });
 
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -423,17 +419,15 @@ impl ClientApi for Client {
         class_hash: ClassHash,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
-        let req = request::add_transaction::AddTransaction::DeployAccount(
-            request::add_transaction::DeployAccount {
-                version,
-                max_fee,
-                signature,
-                nonce,
-                class_hash,
-                contract_address_salt,
-                constructor_calldata: calldata,
-            },
-        );
+        let req = AddTransaction::DeployAccount(DeployAccount {
+            version,
+            max_fee,
+            signature,
+            nonce,
+            class_hash,
+            contract_address_salt,
+            constructor_calldata: calldata,
+        });
 
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
@@ -451,15 +445,12 @@ impl ClientApi for Client {
 
 #[cfg(test)]
 pub mod test_utils {
-    use crate::rpc::v01::types::{BlockHashOrTag, BlockNumberOrTag};
-    use crate::{
-        core::{
-            CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
-            StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
-        },
-        starkhash,
+    use pathfinder_common::{
+        starkhash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
+        StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
     };
     use stark_hash::StarkHash;
+    use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
 
     pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
         BlockNumberOrTag::Number(StarknetBlockNumber::GENESIS);
@@ -498,7 +489,7 @@ pub mod test_utils {
         "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
     ));
     lazy_static::lazy_static! {
-        pub static ref VALID_KEY_DEC: String = crate::rpc::serde::starkhash_to_dec_str(VALID_KEY.get());
+        pub static ref VALID_KEY_DEC: String = pathfinder_serde::starkhash_to_dec_str(VALID_KEY.get());
     }
     pub const VALID_CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("04d2"))];
     /// Class hash for VALID_CONTRACT_ADDR
@@ -512,81 +503,30 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use super::{test_utils::*, *};
+    use assert_matches::assert_matches;
+    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use stark_hash::StarkHash;
+    use starknet_gateway_test_fixtures::*;
+    use starknet_gateway_types::error::StarknetErrorCode;
+    use starknet_gateway_types::request::Tag;
     use std::collections::VecDeque;
 
-    use super::{error::StarknetErrorCode, test_utils::*, *};
-    use crate::core::{StarknetBlockHash, StarknetBlockNumber};
-    use crate::rpc::v01::types::Tag;
-    use assert_matches::assert_matches;
-    use stark_hash::StarkHash;
-
-    impl std::fmt::Display for crate::core::ContractAddress {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let mut buf = [0u8; 2 + 64];
-            let s = self.get().as_hex_str(&mut buf);
-            f.write_str(s)
-        }
-    }
-
-    impl std::fmt::Display for crate::core::StarknetTransactionHash {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let mut buf = [0u8; 2 + 64];
-            let s = self.0.as_hex_str(&mut buf);
-            f.write_str(s)
-        }
-    }
-
-    impl std::fmt::Display for crate::core::ClassHash {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let mut buf = [0u8; 2 + 64];
-            let s = self.0.as_hex_str(&mut buf);
-            f.write_str(s)
-        }
-    }
-
-    /// Helper macro which creates a successful response tuple
-    /// which can then be used by the [setup] function.
+    /// Helper funtion which allows for easy creation of a response tuple
+    /// that contains a [StarknetError] for a given [StarknetErrorCode].
     ///
-    /// The macro takes the name of the fixture file.
-    /// The fixture file should be a text file containing valid UTF8 characters.
+    /// The response tuple can then be used by the [setup] function.
     ///
-    /// The HTTP status code value of the tuple is `200` (`OK`).
-    macro_rules! response {
-        ($file_name:literal) => {
-            (
-                include_str!(concat!("../fixtures/sequencer/", $file_name)),
-                200,
-            )
+    /// The `message` field is always an empty string.
+    /// The HTTP status code for this response is always `500` (`Internal Server Error`).
+    fn response_from(code: StarknetErrorCode) -> (String, u16) {
+        use starknet_gateway_types::error::StarknetError;
+
+        let e = StarknetError {
+            code,
+            message: "".to_string(),
         };
-    }
-
-    /// Same as [`response`] except for the body being a [`String`].
-    macro_rules! response_owned {
-        ($file_name:literal) => {
-            (
-                include_str!(concat!("../fixtures/sequencer/", $file_name)).to_owned(),
-                200,
-            )
-        };
-    }
-
-    impl StarknetErrorCode {
-        /// Helper funtion which allows for easy creation of a response tuple
-        /// that contains a [StarknetError] for a given [StarknetErrorCode].
-        ///
-        /// The response tuple can then be used by the [setup] function.
-        ///
-        /// The `message` field is always an empty string.
-        /// The HTTP status code for this response is always `500` (`Internal Server Error`).
-        fn into_response(self) -> (String, u16) {
-            use crate::sequencer::error::StarknetError;
-
-            let e = StarknetError {
-                code: self,
-                message: "".to_string(),
-            };
-            (serde_json::to_string(&e).unwrap(), 500)
-        }
+        (serde_json::to_string(&e).unwrap(), 500)
     }
 
     /// # Usage
@@ -731,9 +671,9 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
-        use crate::core::StarknetBlockTimestamp;
         use crate::monitoring::metrics::test::RecorderGuard;
         use crate::sequencer::reply::{Block, Status};
+        use pathfinder_common::StarknetBlockTimestamp;
         use std::convert::Infallible;
         use warp::Filter;
 
@@ -752,7 +692,7 @@ mod tests {
                     gas_price: None,
                     parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
                     sequencer_address: None,
-                    state_root: crate::core::GlobalRoot(StarkHash::ZERO),
+                    state_root: pathfinder_common::GlobalRoot(StarkHash::ZERO),
                     status: Status::NotReceived,
                     timestamp: StarknetBlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
@@ -781,7 +721,7 @@ mod tests {
     mod block_matches_by_hash_on {
         use super::*;
         use crate::monitoring::metrics::test::RecorderGuard;
-        use crate::starkhash;
+        use pathfinder_common::starkhash;
 
         #[tokio::test]
         async fn genesis() {
@@ -789,14 +729,14 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     format!("/feeder_gateway/get_block?blockHash={}", GENESIS_BLOCK_HASH),
-                    response!("0.9.0/block/genesis.json"),
+                    (v0_9_0::block::GENESIS, 200),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_block?blockNumber={}",
                         GENESIS_BLOCK_NUMBER
                     ),
-                    response!("0.9.0/block/genesis.json"),
+                    (v0_9_0::block::GENESIS, 200),
                 ),
             ]);
             let by_hash = client
@@ -816,11 +756,11 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_block?blockHash=0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
-                    response!("0.9.0/block/231579.json")
+                    (v0_9_0::block::NUMBER_231579, 200)
                 ),
                 (
                     "/feeder_gateway/get_block?blockNumber=231579",
-                    response!("0.9.0/block/231579.json")
+                    (v0_9_0::block::NUMBER_231579, 200)
                 ),
             ]);
             let by_hash = client
@@ -843,28 +783,25 @@ mod tests {
     mod block {
         use super::*;
         use crate::monitoring::metrics::test::RecorderGuard;
+        use pathfinder_common::BlockId;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn latest() {
-            use crate::core::BlockId;
-
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
-                response!("0.9.0/block/231579.json"),
+                (v0_9_0::block::NUMBER_231579, 200),
             )]);
             client.block(BlockId::Latest).await.unwrap();
         }
 
         #[tokio::test]
         async fn pending() {
-            use crate::core::BlockId;
-
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
-                response!("0.9.0/block/pending.json"),
+                (v0_9_0::block::PENDING, 200),
             )]);
             client.block(BlockId::Pending).await.unwrap();
         }
@@ -874,7 +811,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_block?blockHash={}", INVALID_BLOCK_HASH),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .block(BlockId::from(INVALID_BLOCK_HASH))
@@ -894,7 +831,7 @@ mod tests {
                     "/feeder_gateway/get_block?blockNumber={}",
                     INVALID_BLOCK_NUMBER
                 ),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .block(BlockId::from(INVALID_BLOCK_NUMBER))
@@ -911,13 +848,14 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             use crate::sequencer::reply::MaybePendingBlock;
             let (_jh, client) = setup([
+                // TODO move these fixtures to v0_9_1
                 (
                     "/feeder_gateway/get_block?blockNumber=192844",
-                    response!("integration/block/192844.json"),
+                    (integration::block::NUMBER_192844, 200),
                 ),
                 (
                     "/feeder_gateway/get_block?blockNumber=pending",
-                    response!("integration/block/pending.json"),
+                    (integration::block::PENDING, 200),
                 ),
             ]);
 
@@ -956,9 +894,9 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_full_contract?contractAddress={}",
-                    INVALID_CONTRACT_ADDR
+                    INVALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
-                StarknetErrorCode::UninitializedContract.into_response(),
+                response_from(StarknetErrorCode::UninitializedContract),
             )]);
             let error = client
                 .full_contract(INVALID_CONTRACT_ADDR)
@@ -975,7 +913,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_full_contract?contractAddress={}",
-                    VALID_CONTRACT_ADDR
+                    VALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
                 (r#"{"hello":"world"}"#, 200),
             )]);
@@ -993,9 +931,9 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_by_hash?classHash={}",
-                    INVALID_CLASS_HASH
+                    INVALID_CLASS_HASH.0.to_hex_str()
                 ),
-                StarknetErrorCode::UndeclaredClass.into_response(),
+                response_from(StarknetErrorCode::UndeclaredClass),
             )]);
             let error = client.class_by_hash(INVALID_CLASS_HASH).await.unwrap_err();
             assert_matches!(
@@ -1009,7 +947,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_by_hash?classHash={}",
-                    VALID_CLASS_HASH
+                    VALID_CLASS_HASH.0.to_hex_str()
                 ),
                 (r#"{"hello":"world"}"#, 200),
             )]);
@@ -1027,9 +965,9 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_hash_at?contractAddress={}",
-                    INVALID_CONTRACT_ADDR
+                    INVALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
-                StarknetErrorCode::UninitializedContract.into_response(),
+                response_from(StarknetErrorCode::UninitializedContract),
             )]);
             let error = client
                 .class_hash_at(INVALID_CONTRACT_ADDR)
@@ -1046,7 +984,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_class_hash_at?contractAddress={}",
-                    VALID_CONTRACT_ADDR
+                    VALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
                 (r#""0x01""#, 200),
             )]);
@@ -1056,7 +994,7 @@ mod tests {
 
     mod storage {
         use super::*;
-        use crate::starkhash;
+        use pathfinder_common::starkhash;
         use pretty_assertions::assert_eq;
 
         #[test_log::test(tokio::test)]
@@ -1064,7 +1002,8 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
-                    INVALID_CONTRACT_ADDR, *VALID_KEY_DEC
+                    INVALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC
                 ),
                 (r#""0x0""#, 200),
             )]);
@@ -1084,7 +1023,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key=0&blockNumber=latest",
-                    VALID_CONTRACT_ADDR
+                    VALID_CONTRACT_ADDR.get().to_hex_str()
                 ),
                 (r#""0x0""#, 200),
             )]);
@@ -1104,9 +1043,11 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
-                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC, INVALID_BLOCK_HASH
+                    VALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC,
+                    INVALID_BLOCK_HASH
                 ),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .storage(VALID_CONTRACT_ADDR, VALID_KEY, INVALID_BLOCK_HASH)
@@ -1123,7 +1064,9 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
-                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC, INVOKE_CONTRACT_BLOCK_HASH
+                    VALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC,
+                    INVOKE_CONTRACT_BLOCK_HASH
                 ),
                 (r#""0x1e240""#, 200),
             )]);
@@ -1139,7 +1082,8 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
-                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC,
+                    VALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC,
                 ),
                 (r#""0x1e240""#, 200),
             )]);
@@ -1159,7 +1103,8 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=pending",
-                    VALID_CONTRACT_ADDR, *VALID_KEY_DEC
+                    VALID_CONTRACT_ADDR.get().to_hex_str(),
+                    *VALID_KEY_DEC
                 ),
                 (r#""0x1e240""#, 200),
             )]);
@@ -1177,14 +1122,14 @@ mod tests {
 
     mod transaction {
         use super::{reply::Status, *};
-        use crate::starkhash;
+        use pathfinder_common::starkhash;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn declare() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
-                response!("0.9.0/txn/invoke.json"),
+                (v0_9_0::transaction::INVOKE, 200)
             )]);
             assert_eq!(
                 client
@@ -1202,7 +1147,7 @@ mod tests {
         async fn deploy() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction?transactionHash=0x3d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8",
-                response!("0.9.0/txn/deploy.json"),
+                (v0_9_0::transaction::DEPLOY, 200)
             )]);
             assert_eq!(
                 client
@@ -1220,7 +1165,7 @@ mod tests {
         async fn invoke() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction?transactionHash=0x587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe",
-                response!("0.9.0/txn/invoke.json"),
+                (v0_9_0::transaction::INVOKE, 200)
             )]);
             assert_eq!(
                 client
@@ -1239,7 +1184,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_transaction?transactionHash={}",
-                    INVALID_TX_HASH
+                    INVALID_TX_HASH.0.to_hex_str()
                 ),
                 (r#"{"status": "NOT_RECEIVED"}"#, 200),
             )]);
@@ -1252,13 +1197,13 @@ mod tests {
 
     mod transaction_status {
         use super::{reply::Status, *};
-        use crate::starkhash;
+        use pathfinder_common::starkhash;
 
         #[tokio::test]
         async fn accepted() {
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_transaction_status?transactionHash=0x79cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205",
-                response!("0.9.0/txn/status.json"),
+                (v0_9_0::transaction::STATUS, 200)
             )]);
             assert_eq!(
                 client
@@ -1277,7 +1222,7 @@ mod tests {
             let (_jh, client) = setup([(
                 format!(
                     "/feeder_gateway/get_transaction_status?transactionHash={}",
-                    INVALID_TX_HASH
+                    INVALID_TX_HASH.0.to_hex_str()
                 ),
                 (r#"{"tx_status": "NOT_RECEIVED"}"#, 200),
             )]);
@@ -1301,10 +1246,7 @@ mod tests {
             *,
         };
         use crate::monitoring::metrics::test::RecorderGuard;
-        use crate::{
-            core::{ContractAddress, GlobalRoot},
-            starkhash,
-        };
+        use pathfinder_common::{starkhash, ContractAddress, GlobalRoot};
         use pretty_assertions::assert_eq;
         use std::collections::{BTreeSet, HashMap};
 
@@ -1345,14 +1287,14 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
-                    response!("0.9.1/state_update/genesis.json"),
+                    (v0_9_1::state_update::GENESIS, 200),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_state_update?blockHash={}",
                         GENESIS_BLOCK_HASH
                     ),
-                    response!("0.9.1/state_update/genesis.json"),
+                    (v0_9_1::state_update::GENESIS, 200),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1375,11 +1317,11 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=315700",
-                    response!("0.9.1/state_update/315700.json"),
+                    (v0_9_1::state_update::NUMBER_315700, 200)
                 ),
                 (
                     "/feeder_gateway/get_state_update?blockHash=0x17e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03",
-                    response!("0.9.1/state_update/315700.json"),
+                    (v0_9_1::state_update::NUMBER_315700, 200)
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1414,7 +1356,7 @@ mod tests {
                     "/feeder_gateway/get_state_update?blockNumber={}",
                     INVALID_BLOCK_NUMBER
                 ),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .state_update(BlockId::from(INVALID_BLOCK_NUMBER))
@@ -1434,7 +1376,7 @@ mod tests {
                     "/feeder_gateway/get_state_update?blockHash={}",
                     INVALID_BLOCK_HASH
                 ),
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .state_update(BlockId::from(INVALID_BLOCK_HASH))
@@ -1451,7 +1393,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
-                response!("0.9.1/state_update/315700.json"),
+                (v0_9_1::state_update::NUMBER_315700, 200),
             )]);
             client.state_update(BlockId::Latest).await.unwrap();
         }
@@ -1461,7 +1403,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                response!("0.9.1/state_update/pending.json"),
+                (v0_9_1::state_update::PENDING, 200),
             )]);
             client.state_update(BlockId::Pending).await.unwrap();
         }
@@ -1480,14 +1422,10 @@ mod tests {
     }
 
     mod add_transaction {
-        use std::collections::HashMap;
-
         use super::*;
-        use crate::{
-            core::{ByteCodeOffset, CallParam, EntryPoint},
-            sequencer::request::contract::{EntryPointType, SelectorAndOffset},
-            starkhash,
-        };
+        use pathfinder_common::{starkhash, ByteCodeOffset, ContractAddress};
+        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
+        use std::collections::HashMap;
 
         #[tokio::test]
         async fn invalid_entry_point_selector() {
@@ -1495,7 +1433,7 @@ mod tests {
             // except for an invalid entry point value
             let (_jh, client) = setup([(
                 "/gateway/add_transaction",
-                StarknetErrorCode::UnsupportedSelectorForFee.into_response(),
+                response_from(StarknetErrorCode::UnsupportedSelectorForFee),
             )]);
             let error = client
                 .add_invoke_transaction(
@@ -1590,8 +1528,8 @@ mod tests {
             use flate2::write::GzDecoder;
             use std::io::Write;
 
-            let json = include_bytes!("../resources/deploy_transaction.json");
-            let json: serde_json::Value = serde_json::from_slice(json).unwrap();
+            let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
+            let json: serde_json::Value = serde_json::from_str(json).unwrap();
             let program = json["contract_definition"]["program"].as_str().unwrap();
             let gzipped_program = base64::decode(program).unwrap();
 
@@ -1661,20 +1599,17 @@ mod tests {
 
         #[tokio::test]
         async fn test_deploy_account() {
+            use starknet_gateway_types::request::add_transaction::AddTransaction;
             let (_jh, client) = setup([(
                 "/gateway/add_transaction",
-                response!("0.10.1/add_transaction/deploy_account_response.json"),
+                (v0_10_1::add_transaction::DEPLOY_ACCOUNT_RESPONSE, 200),
             )]);
 
-            let json = include_str!(
-                "../fixtures/sequencer/0.10.1/add_transaction/deploy_account_request.json"
-            );
-            let req: request::add_transaction::AddTransaction =
-                serde_json::from_str(json).expect("Request parsed from JSON");
+            let json =
+                starknet_gateway_test_fixtures::v0_10_1::add_transaction::DEPLOY_ACCOUNT_REQUEST;
+            let req: AddTransaction = serde_json::from_str(json).expect("Request parsed from JSON");
             let req = match req {
-                request::add_transaction::AddTransaction::DeployAccount(deploy_account) => {
-                    Some(deploy_account)
-                }
+                AddTransaction::DeployAccount(deploy_account) => Some(deploy_account),
                 _ => None,
             };
             let req = req.expect("Request matched as DEPLOY_ACCOUNT");
@@ -1694,10 +1629,10 @@ mod tests {
 
             let expected = reply::add_transaction::DeployAccountResponse {
                 code: "TRANSACTION_RECEIVED".to_string(),
-                transaction_hash: StarknetTransactionHash(crate::starkhash!(
+                transaction_hash: StarknetTransactionHash(pathfinder_common::starkhash!(
                     "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
                 )),
-                address: crate::core::ContractAddress::new_or_panic(crate::starkhash!(
+                address: ContractAddress::new_or_panic(pathfinder_common::starkhash!(
                     "04e574ea2abd76d3105b3d29de28af0c5a28b889aa465903080167f6b48b1acc"
                 )),
             };
@@ -1707,8 +1642,8 @@ mod tests {
 
         /// Return a contract definition that was dumped from a `starknet deploy`.
         fn get_contract_class_from_fixture() -> ContractDefinition {
-            let json = include_bytes!("../resources/deploy_transaction.json");
-            let json: serde_json::Value = serde_json::from_slice(json).unwrap();
+            let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
+            let json: serde_json::Value = serde_json::from_str(json).unwrap();
             let program = json["contract_definition"]["program"].as_str().unwrap();
             let entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
                 HashMap::from([
@@ -1825,8 +1760,8 @@ mod tests {
     }
 
     mod chain {
-        use crate::core::Chain;
         use crate::sequencer;
+        use pathfinder_common::Chain;
 
         #[derive(Copy, Clone, PartialEq, Eq)]
         /// Used by [setup_server] to determine which block to return.
@@ -1873,8 +1808,7 @@ mod tests {
                     .and(warp::query::<Params>())
                     .map(move |params: Params| match params.block_number {
                         0 => {
-                            const GOERLI_GENESIS: &str =
-                                include_str!("../fixtures/sequencer/0.9.0/block/genesis.json");
+                            const GOERLI_GENESIS: &str = starknet_gateway_test_fixtures::v0_9_0::block::GENESIS;
 
                             let data = match target {
                                 TargetChain::Testnet => GOERLI_GENESIS.to_owned(),
@@ -1912,14 +1846,14 @@ mod tests {
         async fn testnet() {
             let (_server_handle, sequencer) = setup_server(TargetChain::Testnet);
             let chain = sequencer.chain().await.unwrap();
-            assert_eq!(chain, crate::core::Chain::Testnet);
+            assert_eq!(chain, Chain::Testnet);
         }
 
         #[tokio::test]
         async fn mainnet() {
             let (_server_handle, sequencer) = setup_server(TargetChain::Mainnet);
             let chain = sequencer.chain().await.unwrap();
-            assert_eq!(chain, crate::core::Chain::Mainnet);
+            assert_eq!(chain, Chain::Mainnet);
         }
 
         #[tokio::test]
@@ -1931,8 +1865,8 @@ mod tests {
 
     mod metrics {
         use super::*;
-        use crate::core::BlockId;
         use futures::stream::StreamExt;
+        use pathfinder_common::BlockId;
         use pretty_assertions::assert_eq;
         use std::future::Future;
 
@@ -1945,7 +1879,7 @@ mod tests {
                 |client, x| async move {
                     let _ = client.block(x).await;
                 },
-                response_owned!("0.9.0/block/genesis.json"),
+                (v0_9_0::block::GENESIS.to_owned(), 200),
             )
             .await;
             with_method(
@@ -1953,7 +1887,7 @@ mod tests {
                 |client, x| async move {
                     let _ = client.state_update(x).await;
                 },
-                response_owned!("0.9.1/state_update/genesis.json"),
+                (v0_9_1::state_update::GENESIS.to_owned(), 200),
             )
             .await;
         }
@@ -1973,7 +1907,7 @@ mod tests {
                 // Any valid fixture
                 response,
                 // 1 StarkNet error
-                StarknetErrorCode::BlockNotFound.into_response(),
+                response_from(StarknetErrorCode::BlockNotFound),
                 // 2 decode errors
                 (r#"{"not":"valid"}"#.to_owned(), 200),
                 (r#"{"not":"valid, again"}"#.to_owned(), 200),

@@ -1,8 +1,8 @@
 //! The json deserializable types
 
 use super::{CallFailure, SubprocessError};
-use crate::core::CallResultValue;
 use crate::rpc::v01::types::reply::FeeEstimate;
+use pathfinder_common::CallResultValue;
 
 /// The python loop currently responds with these four possibilities. An enum would be more
 /// appropriate.

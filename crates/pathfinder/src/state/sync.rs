@@ -2,20 +2,9 @@ pub mod l1;
 pub mod l2;
 mod pending;
 
-use std::future::Future;
-use std::sync::Arc;
-
 use crate::{
-    core::{
-        Chain, ClassHash, ContractRoot, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp,
-    },
-    ethereum::{log::StateUpdateLog, transport::EthereumTransport},
     rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
-    sequencer::{
-        self,
-        reply::{Block, MaybePendingBlock, PendingBlock, StateUpdate},
-    },
+    sequencer,
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
     storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
@@ -23,10 +12,19 @@ use crate::{
         StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
     },
 };
-
 use anyhow::Context;
+use pathfinder_common::{
+    Chain, ClassHash, ContractNonce, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+};
+use pathfinder_ethereum::{log::StateUpdateLog, transport::EthereumTransport};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::StarkHash;
+use starknet_gateway_types::reply::{
+    state_update::DeployedContract, Block, MaybePendingBlock, PendingBlock, StateUpdate,
+};
+use std::future::Future;
+use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 
 pub struct State {
@@ -43,7 +41,7 @@ impl Default for State {
 
 struct PendingInner {
     pub block: Arc<PendingBlock>,
-    pub state_update: Arc<sequencer::reply::StateUpdate>,
+    pub state_update: Arc<StateUpdate>,
 }
 
 #[derive(Default, Clone)]
@@ -52,11 +50,7 @@ pub struct PendingData {
 }
 
 impl PendingData {
-    pub async fn set(
-        &self,
-        block: Arc<PendingBlock>,
-        state_update: Arc<sequencer::reply::StateUpdate>,
-    ) {
+    pub async fn set(&self, block: Arc<PendingBlock>, state_update: Arc<StateUpdate>) {
         *self.inner.write().await = Some(PendingInner {
             block,
             state_update,
@@ -75,7 +69,7 @@ impl PendingData {
             .map(|inner| inner.block.clone())
     }
 
-    pub async fn state_update(&self) -> Option<Arc<sequencer::reply::StateUpdate>> {
+    pub async fn state_update(&self) -> Option<Arc<StateUpdate>> {
         self.inner
             .read()
             .await
@@ -85,11 +79,7 @@ impl PendingData {
 
     pub async fn state_update_on_parent_block(
         &self,
-    ) -> Option<(
-        StarknetBlockHash,
-        StarknetBlockTimestamp,
-        Arc<sequencer::reply::StateUpdate>,
-    )> {
+    ) -> Option<(StarknetBlockHash, StarknetBlockTimestamp, Arc<StateUpdate>)> {
         let g = self.inner.read().await;
         let inner = g.as_ref()?;
 
@@ -386,7 +376,7 @@ where
                         .transactions
                         .iter()
                         .filter_map(|tx| {
-                            use sequencer::reply::transaction::Transaction::*;
+                            use starknet_gateway_types::reply::transaction::Transaction::*;
                             match tx {
                                 Declare(tx) => Some(tx.class_hash),
                                 Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
@@ -471,7 +461,7 @@ async fn update_sync_status_latest(
     starting_block_num: StarknetBlockNumber,
     chain: Chain,
 ) -> anyhow::Result<()> {
-    use crate::core::BlockId;
+    use pathfinder_common::BlockId;
 
     let poll_interval = head_poll_interval(chain);
 
@@ -794,12 +784,12 @@ fn update_starknet_state(
 fn deploy_contract(
     transaction: &Transaction<'_>,
     global_tree: &mut GlobalStateTree<'_, '_>,
-    contract: &sequencer::reply::state_update::DeployedContract,
+    contract: &DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.
     let contract_root = ContractRoot::ZERO;
     // The initial value of a contract nonce is ZERO.
-    let contract_nonce = crate::core::ContractNonce::ZERO;
+    let contract_nonce = ContractNonce::ZERO;
     // sequencer::reply::state_update::Contract::contract_hash is the old (pre cairo 0.9.0)
     // name for `class_hash`.
     let class_hash = contract.class_hash;
@@ -922,8 +912,8 @@ async fn download_verify_and_insert_missing_classes<
 /// interval is chosen to provide a good balance between spamming and getting new
 /// block information as it is available. The interval is based on the block creation
 /// time, which is 2 minutes for Goerlie and 2 hours for Mainnet.
-pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
-    use crate::core::Chain::*;
+pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
+    use pathfinder_common::Chain::*;
     use std::time::Duration;
 
     match chain {
@@ -938,24 +928,25 @@ pub fn head_poll_interval(chain: crate::core::Chain) -> std::time::Duration {
 mod tests {
     use super::{l1, l2};
     use crate::{
-        core::{
-            CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice, GlobalRoot,
-            SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress, StorageValue, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
-        ethereum,
-        rpc::v01::types::BlockHashOrTag,
-        sequencer::{
-            self, error::SequencerError, reply, request::add_transaction::ContractDefinition,
-        },
+        sequencer,
         state::{self, sync::PendingData},
         storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
     use futures::stream::{StreamExt, TryStreamExt};
+    use pathfinder_common::{
+        BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
+        ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
+        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
+        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    };
     use stark_hash::StarkHash;
+    use starknet_gateway_types::{
+        error::SequencerError,
+        reply,
+        request::{add_transaction::ContractDefinition, BlockHashOrTag},
+    };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
     use web3::types::H256;
@@ -964,7 +955,7 @@ mod tests {
     struct FakeTransport;
 
     #[async_trait::async_trait]
-    impl ethereum::transport::EthereumTransport for FakeTransport {
+    impl pathfinder_ethereum::transport::EthereumTransport for FakeTransport {
         async fn block(
             &self,
             _: web3::types::BlockId,
@@ -976,14 +967,15 @@ mod tests {
             unimplemented!()
         }
 
-        async fn chain(&self) -> anyhow::Result<crate::core::EthereumChain> {
+        async fn chain(&self) -> anyhow::Result<EthereumChain> {
             unimplemented!()
         }
 
         async fn logs(
             &self,
             _: web3::types::Filter,
-        ) -> std::result::Result<Vec<web3::types::Log>, ethereum::transport::LogsError> {
+        ) -> std::result::Result<Vec<web3::types::Log>, pathfinder_ethereum::transport::LogsError>
+        {
             unimplemented!()
         }
 
@@ -1007,14 +999,9 @@ mod tests {
 
     #[async_trait::async_trait]
     impl sequencer::ClientApi for FakeSequencer {
-        async fn block(
-            &self,
-            block: crate::core::BlockId,
-        ) -> Result<reply::MaybePendingBlock, SequencerError> {
+        async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
             match block {
-                crate::core::BlockId::Number(_) => {
-                    Ok(reply::MaybePendingBlock::Block(BLOCK0.clone()))
-                }
+                BlockId::Number(_) => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
                 _ => unimplemented!(),
             }
         }
@@ -1054,10 +1041,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn state_update(
-            &self,
-            _: crate::core::BlockId,
-        ) -> Result<reply::StateUpdate, SequencerError> {
+        async fn state_update(&self, _: BlockId) -> Result<reply::StateUpdate, SequencerError> {
             unimplemented!()
         }
 
@@ -1122,7 +1106,7 @@ mod tests {
         _: mpsc::Sender<l1::Event>,
         _: FakeTransport,
         _: Chain,
-        _: Option<ethereum::log::StateUpdateLog>,
+        _: Option<pathfinder_ethereum::log::StateUpdateLog>,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -1144,24 +1128,24 @@ mod tests {
     lazy_static::lazy_static! {
         static ref A: StarkHash = StarkHash::from_be_slice(&[0xA]).unwrap();
         static ref B: StarkHash = StarkHash::from_be_slice(&[0xB]).unwrap();
-        static ref ETH_ORIG: ethereum::EthOrigin = ethereum::EthOrigin {
-            block: ethereum::BlockOrigin {
+        static ref ETH_ORIG: pathfinder_ethereum::EthOrigin = pathfinder_ethereum::EthOrigin {
+            block: pathfinder_ethereum::BlockOrigin {
                 hash: EthereumBlockHash(H256::zero()),
                 number: EthereumBlockNumber(0),
             },
             log_index: EthereumLogIndex(0),
-            transaction: ethereum::TransactionOrigin {
+            transaction: pathfinder_ethereum::TransactionOrigin {
                 hash: EthereumTransactionHash(H256::zero()),
                 index: EthereumTransactionIndex(0),
             },
         };
-        pub static ref STATE_UPDATE_LOG0: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
+        pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber::GENESIS,
             // State update actually doesn't change the state hence 0 root
             global_root: GlobalRoot(StarkHash::ZERO),
             origin: ETH_ORIG.clone(),
         };
-        pub static ref STATE_UPDATE_LOG1: ethereum::log::StateUpdateLog = ethereum::log::StateUpdateLog {
+        pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber::new_or_panic(1),
             global_root: GlobalRoot(*B),
             origin: ETH_ORIG.clone(),
@@ -1174,7 +1158,7 @@ mod tests {
             sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
             state_root: GlobalRoot(StarkHash::ZERO),
             status: reply::Status::AcceptedOnL1,
-            timestamp: crate::core::StarknetBlockTimestamp::new_or_panic(0),
+            timestamp: StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: None,
@@ -1187,7 +1171,7 @@ mod tests {
             sequencer_address: Some(SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap())),
             state_root: GlobalRoot(*B),
             status: reply::Status::AcceptedOnL2,
-            timestamp: crate::core::StarknetBlockTimestamp::new_or_panic(1),
+            timestamp: StarknetBlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: None,
@@ -1209,11 +1193,11 @@ mod tests {
             sequencer_address: SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap()),
         };
         // Causes root to remain 0
-        pub static ref STATE_UPDATE0: sequencer::reply::StateUpdate = sequencer::reply::StateUpdate {
+        pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
             block_hash: Some(StarknetBlockHash(*A)),
             new_root: GlobalRoot(StarkHash::ZERO),
             old_root: GlobalRoot(StarkHash::ZERO),
-            state_diff: sequencer::reply::state_update::StateDiff{
+            state_diff: reply::state_update::StateDiff{
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: vec![],
                 declared_contracts: vec![],
@@ -1228,7 +1212,7 @@ mod tests {
         let sync_state = Arc::new(state::SyncState::default());
 
         lazy_static::lazy_static! {
-            static ref UPDATES: Arc<tokio::sync::RwLock<Vec<Vec<ethereum::log::StateUpdateLog>>>> =
+            static ref UPDATES: Arc<tokio::sync::RwLock<Vec<Vec<pathfinder_ethereum::log::StateUpdateLog>>>> =
             Arc::new(tokio::sync::RwLock::new(vec![
                 vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
                 vec![STATE_UPDATE_LOG0.clone()],
@@ -1397,7 +1381,7 @@ mod tests {
         // A simple L1 sync task which does the request and checks he result
         let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
             let (tx1, rx1) =
-                tokio::sync::oneshot::channel::<Option<ethereum::log::StateUpdateLog>>();
+                tokio::sync::oneshot::channel::<Option<pathfinder_ethereum::log::StateUpdateLog>>();
 
             tx.send(l1::Event::QueryUpdate(StarknetBlockNumber::GENESIS, tx1))
                 .await

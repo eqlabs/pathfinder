@@ -10,13 +10,11 @@
 //!   3. [Method](stage::Method) where you select the REST API method.
 //!   4. [Params](stage::Params) where you select the retry behavior.
 //!   5. [Final](stage::Final) where you select the REST operation type, which is then executed.
-use crate::{
-    core::{ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress},
-    sequencer::{
-        error::SequencerError,
-        metrics::{with_metrics, BlockTag, RequestMetadata},
-    },
+use crate::sequencer::metrics::{with_metrics, BlockTag, RequestMetadata};
+use pathfinder_common::{
+    BlockId, ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress,
 };
+use starknet_gateway_types::error::SequencerError;
 
 /// A Sequencer Request builder.
 pub struct Request<'a, S: RequestState> {
@@ -198,8 +196,7 @@ impl<'a> Request<'a, stage::Method> {
 }
 
 impl<'a> Request<'a, stage::Params> {
-    pub fn with_block<B: Into<crate::core::BlockId>>(self, block: B) -> Self {
-        use crate::core::BlockId;
+    pub fn with_block<B: Into<BlockId>>(self, block: B) -> Self {
         use std::borrow::Cow;
 
         let block: BlockId = block.into();
@@ -234,7 +231,7 @@ impl<'a> Request<'a, stage::Params> {
     }
 
     pub fn with_storage_address(self, address: StorageAddress) -> Self {
-        use crate::rpc::serde::starkhash_to_dec_str;
+        use pathfinder_serde::starkhash_to_dec_str;
         self.add_param("key", &starkhash_to_dec_str(address.get()))
     }
 
@@ -383,7 +380,7 @@ where
 
 /// Helper function which allows skipping deserialization when required.
 async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, SequencerError> {
-    use crate::sequencer::error::StarknetError;
+    use starknet_gateway_types::error::StarknetError;
 
     // Starknet specific errors end with a 500 status code
     // but the body contains a JSON object with the error description
@@ -412,7 +409,7 @@ where
     FutureFactory: FnMut() -> Fut,
     Ret: FnMut(&SequencerError) -> bool,
 {
-    use crate::retry::Retry;
+    use pathfinder_retry::Retry;
     use std::num::NonZeroU64;
 
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
@@ -512,6 +509,8 @@ mod tests {
         async fn stop_on_ok() {
             use crate::sequencer::builder;
 
+            tokio::time::pause();
+
             let statuses = VecDeque::from([
                 (StatusCode::TOO_MANY_REQUESTS, ""),
                 (StatusCode::BAD_GATEWAY, ""),
@@ -541,7 +540,9 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn stop_on_fatal() {
             use crate::sequencer::builder;
-            use crate::sequencer::error::{SequencerError, StarknetErrorCode};
+            use starknet_gateway_types::error::{SequencerError, StarknetErrorCode};
+
+            tokio::time::pause();
 
             let statuses = VecDeque::from([
                 (StatusCode::TOO_MANY_REQUESTS, ""),
@@ -575,11 +576,13 @@ mod tests {
             );
         }
 
-        #[tokio::test(flavor = "current_thread", start_paused = true)]
+        #[tokio::test(flavor = "current_thread")]
         async fn request_timeout() {
             use crate::sequencer::builder;
 
             use std::sync::atomic::{AtomicUsize, Ordering};
+
+            tokio::time::pause();
 
             let (_jh, addr) = slow_server();
             static CNT: AtomicUsize = AtomicUsize::new(0);
@@ -605,11 +608,14 @@ mod tests {
             );
 
             // The retry loops forever, so wrap it in a timeout and check the counter.
-            tokio::time::timeout(Duration::from_millis(250), fut)
+            // 5 retries = 465s
+            // 6 retries = 945s
+            tokio::time::timeout(Duration::from_secs(500), fut)
                 .await
                 .unwrap_err();
-            // 4th try should have timedout if this is really exponential backoff
-            assert_eq!(CNT.load(Ordering::Relaxed), 4);
+
+            // 5th try should have timedout if this is really exponential backoff
+            assert_eq!(CNT.load(Ordering::Relaxed), 5);
         }
     }
 
