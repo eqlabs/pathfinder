@@ -2,7 +2,7 @@
 use clap::Arg;
 use std::ffi::OsString;
 
-use crate::builder::ConfigBuilder;
+use crate::config::builder::ConfigBuilder;
 
 use super::ConfigOption;
 

@@ -7,7 +7,6 @@ strip = "debuginfo"
 members = [
     "crates/build",
     "crates/common",
-    "crates/config",
     "crates/ethereum",
     "crates/gateway-test-fixtures",
     "crates/gateway-types",

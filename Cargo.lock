@@ -2293,7 +2293,6 @@ dependencies = [
  "num-bigint 0.4.3",
  "pathfinder-build",
  "pathfinder-common",
- "pathfinder-config",
  "pathfinder-ethereum",
  "pathfinder-retry",
  "pathfinder-serde",
@@ -2346,19 +2345,6 @@ dependencies = [
  "stark_hash",
  "thiserror",
  "web3",
-]
-
-[[package]]
-name = "pathfinder-config"
-version = "0.1.0"
-dependencies = [
- "clap 3.2.23",
- "enum-iterator 0.7.0",
- "lazy_static",
- "pathfinder-build",
- "reqwest",
- "serde",
- "toml",
 ]
 
 [[package]]

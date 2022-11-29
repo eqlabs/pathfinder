@@ -1,7 +1,7 @@
 //! Provides [ConfigBuilder] which is a convenient and safe way of collecting
 //! configuration parameters from various sources and combining them into one.
 
-use crate::{ConfigOption, Configuration, EthereumConfig};
+use crate::config::{ConfigOption, Configuration, EthereumConfig};
 use reqwest::Url;
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, str::FromStr};
 
@@ -359,7 +359,7 @@ mod tests {
 
             #[test]
             fn http_rpc_addr() {
-                use crate::DEFAULT_HTTP_RPC_ADDR;
+                use crate::config::DEFAULT_HTTP_RPC_ADDR;
                 use std::net::SocketAddr;
 
                 let expected = DEFAULT_HTTP_RPC_ADDR.parse::<SocketAddr>().unwrap();

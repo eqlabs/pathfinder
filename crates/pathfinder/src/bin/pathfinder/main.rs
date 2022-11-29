@@ -13,6 +13,8 @@ use pathfinder_lib::{
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
+mod config;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -21,8 +23,8 @@ async fn main() -> anyhow::Result<()> {
 
     setup_tracing();
 
-    let config = pathfinder_config::Configuration::parse_cmd_line_and_cfg_file()
-        .context("Parsing configuration")?;
+    let config =
+        config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
