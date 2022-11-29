@@ -372,6 +372,7 @@ pub enum Chain {
     Testnet,
     Integration,
     Testnet2,
+    Custom,
 }
 
 impl Chain {
@@ -385,6 +386,8 @@ impl Chain {
             Chain::Testnet2 => StarkHash::from_u128(0x534e5f474f45524c4932),
             // SN_INTEGRATION
             Chain::Integration => StarkHash::from_u128(0x534E5F494E544547524154494F4E),
+            // SN_GOERLI
+            Chain::Custom => StarkHash::from_u128(0x534e5f474f45524c49u128),
         }
     }
 }
@@ -396,6 +399,7 @@ impl std::fmt::Display for Chain {
             Chain::Testnet => f.write_str("Görli"),
             Chain::Testnet2 => f.write_str("Görli2"),
             Chain::Integration => f.write_str("Integration"),
+            Chain::Custom => f.write_str("Custom"),
         }
     }
 }

@@ -21,6 +21,7 @@ impl StateRootFetcher {
             Chain::Testnet => TESTNET_GENESIS,
             Chain::Testnet2 => TESTNET2_GENESIS,
             Chain::Integration => INTEGRATION_GENESIS,
+            Chain::Custom => EthereumBlockNumber(0),
         };
 
         let inner = LogFetcher::<StateUpdateLog>::new(head, chain, genesis);

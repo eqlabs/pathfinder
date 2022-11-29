@@ -129,12 +129,13 @@ impl Client {
     const RETRY: builder::Retry = builder::Retry::Disabled;
 
     /// Creates a new Sequencer client for the given chain.
-    pub fn new(chain: Chain) -> reqwest::Result<Self> {
+    pub fn new(chain: Chain) -> anyhow::Result<Self> {
         let url = match chain {
             Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
             Chain::Testnet => Url::parse("https://alpha4.starknet.io/").unwrap(),
             Chain::Testnet2 => Url::parse("https://alpha4-2.starknet.io/").unwrap(),
             Chain::Integration => Url::parse("https://external.integration.starknet.io").unwrap(),
+            Chain::Custom => todo!("FIXME: custom chain"),
         };
 
         Self::with_url(url)
@@ -161,7 +162,7 @@ impl Client {
     }
 
     /// Create a Sequencer client for the given [Url].
-    pub fn with_url(url: Url) -> reqwest::Result<Self> {
+    pub fn with_url(url: Url) -> anyhow::Result<Self> {
         metrics::register();
 
         Ok(Self {

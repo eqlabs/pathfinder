@@ -72,7 +72,9 @@ async fn main() -> anyhow::Result<()> {
                     Chain::Testnet => sequencer::Client::testnet(),
                     Chain::Testnet2 => sequencer::Client::testnet2(),
                     Chain::Integration => sequencer::Client::integration(),
-                    // Chain::Custom => todo!("Throw error -- gateway url must be specified"),
+                    Chain::Custom => {
+                        anyhow::bail!("Custom network requires that gateway URL is specified");
+                    }
                 },
             };
 
@@ -82,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
                 Chain::Testnet => "goerli.sqlite",
                 Chain::Testnet2 => "testnet2.sqlite",
                 Chain::Integration => "integration.sqlite",
+                Chain::Custom => "custom.sqlite",
             });
             let journal_mode = match config.sqlite_wal {
                 false => JournalMode::Rollback,
@@ -350,6 +353,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         Chain::Testnet => "goerli.sqlite",
         Chain::Testnet2 => "testnet2.sqlite",
         Chain::Integration => "integration.sqlite",
+        Chain::Custom => "custom.sqlite",
     });
     let journal_mode = match config.sqlite_wal {
         false => JournalMode::Rollback,

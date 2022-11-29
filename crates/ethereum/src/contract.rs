@@ -72,6 +72,7 @@ pub fn addresses(chain: Chain) -> ContractAddresses {
         Chain::Testnet => TESTNET_ADDRESSES,
         Chain::Testnet2 => TESTNET2_ADDRESSES,
         Chain::Integration => INTEGRATION_ADDRESSES,
+        Chain::Custom => todo!("FIXME custom chain"),
     }
 }
 

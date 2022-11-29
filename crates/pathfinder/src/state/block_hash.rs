@@ -181,6 +181,7 @@ mod meta {
             Chain::Testnet => &TESTNET_METAINFO,
             Chain::Testnet2 => &TESTNET2_METAINFO,
             Chain::Integration => &INTEGRATION_METAINFO,
+            Chain::Custom => todo!("FIXME custom chain"),
         }
     }
 }
