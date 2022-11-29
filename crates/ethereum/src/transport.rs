@@ -57,7 +57,7 @@ impl HttpTransport {
         Self(http)
     }
 
-    /// Creates new [`HttpTransport`] from [configuration](EthereumConfig)
+    /// Creates new [`HttpTransport`] from url and optional password
     ///
     /// This includes setting:
     /// - the [Url](reqwest::Url)
