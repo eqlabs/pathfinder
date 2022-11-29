@@ -12,7 +12,8 @@ use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, Kademlia
 use libp2p::ping;
 use libp2p::relay::v2::client as relay_client;
 use libp2p::request_response::{ProtocolSupport, RequestResponse, RequestResponseEvent};
-use libp2p::{identity, kad, NetworkBehaviour};
+use libp2p::swarm::NetworkBehaviour;
+use libp2p::{identity, kad};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "Event", event_process = false)]

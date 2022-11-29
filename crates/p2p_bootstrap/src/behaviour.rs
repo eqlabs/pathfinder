@@ -2,10 +2,11 @@ use std::time::Duration;
 
 use libp2p::autonat;
 use libp2p::identify;
+use libp2p::identity;
 use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping;
 use libp2p::relay::v2::relay;
-use libp2p::{identity, NetworkBehaviour};
+use libp2p::swarm::NetworkBehaviour;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "BootstrapEvent", event_process = false)]

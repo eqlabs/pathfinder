@@ -34,12 +34,12 @@ pub fn new(
 
     let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair);
 
-    let swarm = SwarmBuilder::new(
+    let swarm = SwarmBuilder::with_executor(
         transport::create(&keypair, relay_transport),
         behaviour,
         peer_id,
+        executor::TokioExecutor(),
     )
-    .executor(Box::new(executor::TokioExecutor()))
     .build();
 
     let (command_sender, command_receiver) = mpsc::channel(1);
@@ -423,12 +423,14 @@ impl MainLoop {
             // Discovery
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
-                if let KademliaEvent::OutboundQueryCompleted { .. } = e {
-                    let network_info = self.swarm.network_info();
-                    let num_peers = network_info.num_peers();
-                    let connection_counters = network_info.connection_counters();
-                    let num_connections = connection_counters.num_connections();
-                    tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+                if let KademliaEvent::OutboundQueryProgressed { step, .. } = e {
+                    if step.last {
+                        let network_info = self.swarm.network_info();
+                        let num_peers = network_info.num_peers();
+                        let connection_counters = network_info.connection_counters();
+                        let num_connections = connection_counters.num_connections();
+                        tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+                    }
                 }
                 Ok(())
             }

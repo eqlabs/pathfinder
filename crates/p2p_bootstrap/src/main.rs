@@ -9,7 +9,6 @@ use libp2p::core::upgrade;
 use libp2p::identify::{Event as IdentifyEvent, Info as IdentifyInfo};
 use libp2p::identity::Keypair;
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
-use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::Transport;
 use libp2p::{dns, noise, Multiaddr};
 use serde_derive::Deserialize;
@@ -44,7 +43,7 @@ impl zeroize::Zeroize for IdentityConfig {
 
 pub struct TokioExecutor();
 
-impl libp2p::core::Executor for TokioExecutor {
+impl libp2p::swarm::Executor for TokioExecutor {
     fn exec(
         &self,
         future: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'static + Send>>,
@@ -77,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
     let peer_id = keypair.public().to_peer_id();
     tracing::info!(%peer_id, "Starting up");
 
-    let transport = TokioTcpTransport::new(GenTcpConfig::new());
+    let transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::new());
     let transport = dns::TokioDnsConfig::system(transport).unwrap();
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
         .into_authentic(&keypair)
@@ -88,12 +87,12 @@ async fn main() -> anyhow::Result<()> {
         .multiplex(libp2p::yamux::YamuxConfig::default())
         .boxed();
 
-    let mut swarm = SwarmBuilder::new(
+    let mut swarm = SwarmBuilder::with_executor(
         transport,
         behaviour::BootstrapBehaviour::new(keypair.public()),
         keypair.public().to_peer_id(),
+        TokioExecutor(),
     )
-    .executor(Box::new(TokioExecutor()))
     .build();
 
     swarm.listen_on(args.listen_on)?;
