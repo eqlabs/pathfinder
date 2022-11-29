@@ -2296,7 +2296,6 @@ dependencies = [
  "pathfinder-ethereum",
  "pathfinder-retry",
  "pathfinder-serde",
- "pathfinder-update",
  "pretty_assertions",
  "r2d2",
  "r2d2_sqlite",
@@ -2390,21 +2389,6 @@ dependencies = [
  "serde_with",
  "stark_hash",
  "web3",
-]
-
-[[package]]
-name = "pathfinder-update"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_matches",
- "pathfinder-build",
- "pathfinder-common",
- "reqwest",
- "semver",
- "serde",
- "tokio",
- "tracing",
 ]
 
 [[package]]

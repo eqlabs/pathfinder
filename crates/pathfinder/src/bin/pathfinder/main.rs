@@ -14,6 +14,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
 mod config;
+mod update;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -148,7 +149,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
-    let update_handle = tokio::spawn(pathfinder_update::poll_github_for_releases());
+    let update_handle = tokio::spawn(update::poll_github_for_releases());
 
     // We are now ready.
     if let Some(ready) = pathfinder_ready {
