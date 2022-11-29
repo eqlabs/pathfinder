@@ -97,20 +97,21 @@ async fn main() -> anyhow::Result<()> {
                     pathfinder_common::consts::MAINNET_GENESIS_HASH => Chain::Mainnet,
                     pathfinder_common::consts::INTEGRATION_GENESIS_HASH => Chain::Integration,
                     other => {
-                        todo!("Chain::Custom")
-                //         // let gateway_block = gateway_client
-                //         // .block(database_genesis.into())
-                //         // .await
-                //         // .context("Downloading genesis block from gateway")?
-                //         // .as_block()
-                //         // .context("Genesis block should not be pending")?;
+                        let gateway_block = gateway_client
+                            .block(database_genesis.into())
+                            .await
+                            .context("Downloading genesis block from gateway")?
+                            .as_block()
+                            .context("Genesis block should not be pending")?;
 
-                //         // anyhow::ensure!(
-                //         //     database_genesis == gateway_block.block_hash,
-                //         //     "Database genesis block does not match gateway. {} != {}",
-                //         //     database_genesis,
-                //         //     gateway_block.block_hash
-                //         // );
+                            anyhow::ensure!(
+                                other == gateway_block.block_hash,
+                                "Database genesis block does not match gateway. {} != {}",
+                                database_genesis,
+                                gateway_block.block_hash
+                            );
+
+                        Chain::Custom
                     }
                 };
 
