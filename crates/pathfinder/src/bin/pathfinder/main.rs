@@ -3,17 +3,17 @@
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{Chain, EthereumChain};
-use pathfinder_lib::sequencer::ClientApi;
 use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
+use pathfinder_lib::sequencer::ClientApi;
 use pathfinder_lib::{
     cairo,
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
     rpc, sequencer, state,
     storage::{JournalMode, Storage},
 };
-use web3::types::H160;
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
+use web3::types::H160;
 
 mod config;
 mod update;
@@ -105,21 +105,21 @@ async fn main() -> anyhow::Result<()> {
                             .as_block()
                             .context("Genesis block should not be pending")?;
 
-                            anyhow::ensure!(
-                                other == gateway_block.block_hash,
-                                "Database genesis block does not match gateway. {} != {}",
-                                database_genesis,
-                                gateway_block.block_hash
-                            );
+                        anyhow::ensure!(
+                            other == gateway_block.block_hash,
+                            "Database genesis block does not match gateway. {} != {}",
+                            database_genesis,
+                            gateway_block.block_hash
+                        );
 
                         Chain::Custom
                     }
                 };
 
                 anyhow::ensure!(
-                    db_network == network, 
+                    db_network == network,
                     "Database genesis hash does not match selected network. Database hash is from {} network but you selected {}", 
-                    db_network, 
+                    db_network,
                     network
                 );
             }
@@ -128,9 +128,10 @@ async fn main() -> anyhow::Result<()> {
             let eth_transport = HttpTransport::from_config(
                 config.ethereum.url.clone(),
                 config.ethereum.password.clone(),
-            ).context("Creating Ethereum transport")?;
+            )
+            .context("Creating Ethereum transport")?;
             let ethereum_chain = eth_transport.chain().await.context(
-r"Determine Ethereum chain.
+                r"Determine Ethereum chain.
                                 
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
             )?;
@@ -141,10 +142,13 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                 Chain::Integration => pathfinder_ethereum::contract::TESTNET2_ADDRESSES.core,
                 Chain::Testnet2 => pathfinder_ethereum::contract::INTEGRATION_ADDRESSES.core,
                 Chain::Custom => {
-                    let addresses = gateway_client.eth_contract_addresses().await.context("Fetching StarkNet contract addresses for custom network")?;
+                    let addresses = gateway_client
+                        .eth_contract_addresses()
+                        .await
+                        .context("Fetching StarkNet contract addresses for custom network")?;
 
                     addresses.starknet.0
-                },
+                }
             };
 
             match (network, ethereum_chain) {
@@ -158,11 +162,15 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                 }
             }
 
-            (storage, network, gateway_client, eth_transport, core_address)
+            (
+                storage,
+                network,
+                gateway_client,
+                eth_transport,
+                core_address,
+            )
         }
-        None => {
-            old_config(&mut config).await?
-        }
+        None => old_config(&mut config).await?,
     };
 
     let sync_state = Arc::new(state::SyncState::default());
@@ -189,7 +197,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         storage.clone(),
         eth_transport.clone(),
         starknet_chain,
-        core_address, 
+        core_address,
         sequencer.clone(),
         sync_state.clone(),
         state::l1::sync,
@@ -394,7 +402,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
             Chain::Integration => sequencer::Client::integration(),
             Chain::Testnet2 => sequencer::Client::testnet2(),
             Chain::Custom => unreachable!("old config should not be reached by custom network"),
-        }
+        },
     };
 
     let core_address = match starknet_chain {
@@ -405,5 +413,11 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         Chain::Custom => unreachable!("old config should not be reached by custom network"),
     };
 
-    Ok((storage, starknet_chain, sequencer, eth_transport, core_address))
+    Ok((
+        storage,
+        starknet_chain,
+        sequencer,
+        eth_transport,
+        core_address,
+    ))
 }

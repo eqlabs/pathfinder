@@ -1,5 +1,5 @@
-use web3::types::H160;
 use pathfinder_common::{Chain, EthereumBlockNumber};
+use web3::types::H160;
 
 use crate::log::{LogFetcher, StateUpdateLog};
 

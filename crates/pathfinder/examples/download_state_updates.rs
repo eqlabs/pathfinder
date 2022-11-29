@@ -61,7 +61,6 @@ async fn main() {
             Chain::Integration => Client::integration(),
             Chain::Custom => panic!("Not supported for custom networks"),
         };
-        
 
         let mut con = storage.connection()?;
         let tx = con.transaction()?;

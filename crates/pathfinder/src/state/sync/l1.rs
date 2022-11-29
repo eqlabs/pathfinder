@@ -7,9 +7,9 @@ use pathfinder_ethereum::{
     transport::EthereumTransport,
 };
 use pathfinder_retry::Retry;
-use web3::types::H160;
 use std::{num::NonZeroU64, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot, RwLock};
+use web3::types::H160;
 
 /// Events and queries emitted by L1 sync process.
 #[derive(Debug)]
