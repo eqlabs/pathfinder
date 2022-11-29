@@ -7,6 +7,7 @@ use pathfinder_ethereum::{
     transport::EthereumTransport,
 };
 use pathfinder_retry::Retry;
+use web3::types::H160;
 use std::{num::NonZeroU64, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot, RwLock};
 
@@ -32,13 +33,18 @@ pub async fn sync<T>(
     tx_event: mpsc::Sender<Event>,
     transport: T,
     chain: Chain,
+    core_address: H160,
     head: Option<StateUpdateLog>,
 ) -> anyhow::Result<()>
 where
     T: EthereumTransport + Send + Sync + Clone,
 {
     let eth_api = EthereumImpl {
-        logs: Arc::new(RwLock::new(StateRootFetcher::new(head, chain))),
+        logs: Arc::new(RwLock::new(StateRootFetcher::new(
+            head,
+            chain,
+            core_address,
+        ))),
         transport,
     };
 

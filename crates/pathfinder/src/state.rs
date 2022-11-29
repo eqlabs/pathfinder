@@ -489,6 +489,7 @@ mod tests {
             storage,
             transport,
             chain,
+            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             sequencer,
             state,
             sync::l1::sync,

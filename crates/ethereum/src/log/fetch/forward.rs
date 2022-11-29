@@ -1,6 +1,7 @@
 use anyhow::Context;
-use pathfinder_common::EthereumBlockNumber;
 use web3::types::{BlockNumber, FilterBuilder, H160};
+
+use pathfinder_common::EthereumBlockNumber;
 
 use crate::{
     log::fetch::MetaLog,

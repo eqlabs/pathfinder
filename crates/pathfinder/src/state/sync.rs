@@ -26,6 +26,7 @@ use starknet_gateway_types::reply::{
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
+use web3::types::H160;
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
@@ -97,6 +98,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
     transport: Transport,
     chain: Chain,
+    core_address: H160,
     sequencer: SequencerClient,
     state: Arc<State>,
     mut l1_sync: L1Sync,
@@ -109,7 +111,7 @@ where
     SequencerClient: sequencer::ClientApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, Option<StateUpdateLog>) -> F1,
+    L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, H160, Option<StateUpdateLog>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
@@ -153,7 +155,13 @@ where
     ));
 
     // Start L1 and L2 sync processes.
-    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, transport.clone(), chain, l1_head));
+    let mut l1_handle = tokio::spawn(l1_sync(
+        tx_l1,
+        transport.clone(),
+        chain,
+        core_address,
+        l1_head,
+    ));
     let mut l2_handle = tokio::spawn(l2_sync(
         tx_l2,
         sequencer.clone(),
@@ -245,7 +253,7 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    let fut = l1_sync(new_tx, transport.clone(), chain, l1_head);
+                    let fut = l1_sync(new_tx, transport.clone(), chain, core_address, l1_head);
 
                     l1_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
@@ -1106,6 +1114,7 @@ mod tests {
         _: mpsc::Sender<l1::Event>,
         _: FakeTransport,
         _: Chain,
+        _: web3::types::H160,
         _: Option<pathfinder_ethereum::log::StateUpdateLog>,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
@@ -1210,6 +1219,7 @@ mod tests {
     async fn l1_update() {
         let chain = Chain::Testnet;
         let sync_state = Arc::new(state::SyncState::default());
+        let core_address = pathfinder_ethereum::contract::TESTNET_ADDRESSES.core;
 
         lazy_static::lazy_static! {
             static ref UPDATES: Arc<tokio::sync::RwLock<Vec<Vec<pathfinder_ethereum::log::StateUpdateLog>>>> =
@@ -1221,7 +1231,7 @@ mod tests {
         }
 
         // A simple L1 sync task
-        let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
+        let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _, _| async move {
             let mut update = UPDATES.write().await;
             if let Some(some_update) = update.pop() {
                 tx.send(l1::Event::Update(some_update)).await.unwrap();
@@ -1257,6 +1267,7 @@ mod tests {
                 storage.clone(),
                 FakeTransport,
                 chain,
+                core_address,
                 FakeSequencer,
                 sync_state.clone(),
                 l1,
@@ -1307,7 +1318,7 @@ mod tests {
             let tx = connection.transaction().unwrap();
 
             // A simple L1 sync task
-            let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
+            let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _, _| async move {
                 tx.send(l1::Event::Reorg(StarknetBlockNumber::new_or_panic(
                     reorg_on_block,
                 )))
@@ -1330,6 +1341,7 @@ mod tests {
                 storage.clone(),
                 FakeTransport,
                 Chain::Testnet,
+                pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
                 FakeSequencer,
                 Arc::new(state::SyncState::default()),
                 l1,
@@ -1379,7 +1391,7 @@ mod tests {
         tx.commit().unwrap();
 
         // A simple L1 sync task which does the request and checks he result
-        let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _| async move {
+        let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _, _| async move {
             let (tx1, rx1) =
                 tokio::sync::oneshot::channel::<Option<pathfinder_ethereum::log::StateUpdateLog>>();
 
@@ -1399,6 +1411,7 @@ mod tests {
             storage,
             FakeTransport,
             Chain::Testnet,
+            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1,
@@ -1417,7 +1430,7 @@ mod tests {
 
         let (starts_tx, mut starts_rx) = tokio::sync::mpsc::channel(1);
 
-        let l1 = move |_, _, _, _| {
+        let l1 = move |_, _, _, _, _| {
             let starts_tx = starts_tx.clone();
             async move {
                 // signal we've (re)started
@@ -1434,6 +1447,7 @@ mod tests {
             storage,
             FakeTransport,
             Chain::Testnet,
+            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1,
@@ -1508,6 +1522,7 @@ mod tests {
                 storage.clone(),
                 FakeTransport,
                 chain,
+                pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
                 FakeSequencer,
                 sync_state.clone(),
                 l1_noop,
@@ -1576,6 +1591,7 @@ mod tests {
                 storage.clone(),
                 FakeTransport,
                 Chain::Testnet,
+                pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
                 FakeSequencer,
                 Arc::new(state::SyncState::default()),
                 l1_noop,
@@ -1639,6 +1655,7 @@ mod tests {
             storage,
             FakeTransport,
             Chain::Testnet,
+            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,
@@ -1686,6 +1703,7 @@ mod tests {
             storage,
             FakeTransport,
             Chain::Testnet,
+            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,
@@ -1733,6 +1751,7 @@ mod tests {
             storage,
             FakeTransport,
             Chain::Testnet,
+            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,
@@ -1761,6 +1780,7 @@ mod tests {
             storage,
             FakeTransport,
             Chain::Testnet,
+            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
             Arc::new(state::SyncState::default()),
             l1_noop,

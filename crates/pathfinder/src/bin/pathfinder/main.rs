@@ -2,8 +2,8 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use pathfinder_common::{Chain, EthereumChain};
 use pathfinder_lib::sequencer::ClientApi;
-use pathfinder_common::{self, Chain, EthereumChain};
 use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
 use pathfinder_lib::{
     cairo,
@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
         None => None,
     };
 
-    let (storage, starknet_chain, sequencer, eth_transport) = match config.network {
+    let (storage, starknet_chain, sequencer, eth_transport, core_address) = match config.network {
         Some(network) => {
             let network = match network.as_str() {
                 "mainnet" => Chain::Mainnet,
@@ -143,7 +143,19 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                 }
             }
 
-            (storage, network, gateway_client, eth_transport)
+            let core_address = match network {
+                Chain::Mainnet => pathfinder_ethereum::contract::MAINNET_ADDRESSES.core,
+                Chain::Testnet => pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
+                Chain::Integration => pathfinder_ethereum::contract::TESTNET2_ADDRESSES.core,
+                Chain::Testnet2 => pathfinder_ethereum::contract::INTEGRATION_ADDRESSES.core,
+                Chain::Custom => {
+                    let addresses = gateway_client.eth_contract_addresses().await.context("Fetching StarkNet contract addresses for custom network")?;
+
+                    addresses.starknet.0
+                },
+            };
+
+            (storage, network, gateway_client, eth_transport, core_address)
         }
         None => {
             old_config(&mut config).await?
@@ -174,6 +186,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         storage.clone(),
         eth_transport.clone(),
         starknet_chain,
+        core_address, 
         sequencer.clone(),
         sync_state.clone(),
         state::l1::sync,
@@ -381,5 +394,13 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         }
     };
 
-    Ok((storage, starknet_chain, sequencer, eth_transport))
+    let core_address = match starknet_chain {
+        Chain::Mainnet => pathfinder_ethereum::contract::MAINNET_ADDRESSES.core,
+        Chain::Testnet => pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
+        Chain::Integration => pathfinder_ethereum::contract::TESTNET2_ADDRESSES.core,
+        Chain::Testnet2 => pathfinder_ethereum::contract::INTEGRATION_ADDRESSES.core,
+        Chain::Custom => unreachable!("old config should not be reached by custom network"),
+    };
+
+    Ok((storage, starknet_chain, sequencer, eth_transport, core_address))
 }
