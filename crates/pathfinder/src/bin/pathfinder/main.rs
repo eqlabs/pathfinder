@@ -11,6 +11,7 @@ use pathfinder_lib::{
     rpc, sequencer, state,
     storage::{JournalMode, Storage},
 };
+use web3::types::H160;
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
@@ -334,7 +335,7 @@ fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
 
 async fn old_config(
     config: &mut config::Configuration,
-) -> anyhow::Result<(Storage, Chain, sequencer::Client, HttpTransport)> {
+) -> anyhow::Result<(Storage, Chain, sequencer::Client, HttpTransport, H160)> {
     let eth_transport = HttpTransport::from_config(
         config.ethereum.url.clone(),
         config.ethereum.password.clone(),

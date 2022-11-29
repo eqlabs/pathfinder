@@ -1,6 +1,6 @@
 //! Simple tool for downloading missing state updates of a given pathfinder db.
 
-use pathfinder_lib::core::Chain;
+use pathfinder_common::Chain;
 
 #[tokio::main]
 async fn main() {
