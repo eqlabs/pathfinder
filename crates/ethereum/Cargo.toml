@@ -12,7 +12,6 @@ async-trait = "0.1.52"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
-pathfinder-config = { path = "../config" }
 pathfinder-retry = { path = "../retry" }
 reqwest = { version = "0.11.4", features = ["json"] }
 stark_hash = { path = "../stark_hash" }

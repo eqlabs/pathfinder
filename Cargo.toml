@@ -7,7 +7,6 @@ strip = "debuginfo"
 members = [
     "crates/build",
     "crates/common",
-    "crates/config",
     "crates/ethereum",
     "crates/gateway-test-fixtures",
     "crates/gateway-types",
@@ -17,6 +16,5 @@ members = [
     "crates/serde",
     "crates/stark_curve",
     "crates/stark_hash",
-    "crates/update",
 ]
 resolver = "2"

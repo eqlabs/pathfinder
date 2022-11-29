@@ -1,7 +1,7 @@
 //! TOML configuration file parsing
 use serde::Deserialize;
 
-use crate::builder::ConfigBuilder;
+use crate::config::builder::ConfigBuilder;
 
 #[derive(Deserialize, Debug, PartialEq)]
 struct EthereumConfig {
@@ -30,7 +30,7 @@ struct FileConfig {
 
 impl FileConfig {
     fn into_config_options(self) -> ConfigBuilder {
-        use crate::ConfigOption;
+        use crate::config::ConfigOption;
         match self.ethereum {
             Some(eth) => ConfigBuilder::default()
                 .with(ConfigOption::EthereumHttpUrl, eth.url)
@@ -62,7 +62,7 @@ fn config_from_str(s: &str) -> std::io::Result<ConfigBuilder> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ConfigOption;
+    use crate::config::ConfigOption;
 
     #[test]
     fn ethereum_url() {

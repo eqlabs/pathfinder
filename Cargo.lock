@@ -2293,11 +2293,9 @@ dependencies = [
  "num-bigint 0.4.3",
  "pathfinder-build",
  "pathfinder-common",
- "pathfinder-config",
  "pathfinder-ethereum",
  "pathfinder-retry",
  "pathfinder-serde",
- "pathfinder-update",
  "pretty_assertions",
  "r2d2",
  "r2d2_sqlite",
@@ -2349,19 +2347,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pathfinder-config"
-version = "0.1.0"
-dependencies = [
- "clap 3.2.23",
- "enum-iterator 0.7.0",
- "lazy_static",
- "pathfinder-build",
- "reqwest",
- "serde",
- "toml",
-]
-
-[[package]]
 name = "pathfinder-ethereum"
 version = "0.1.0"
 dependencies = [
@@ -2373,7 +2358,6 @@ dependencies = [
  "hex-literal",
  "lazy_static",
  "pathfinder-common",
- "pathfinder-config",
  "pathfinder-retry",
  "pretty_assertions",
  "reqwest",
@@ -2405,21 +2389,6 @@ dependencies = [
  "serde_with",
  "stark_hash",
  "web3",
-]
-
-[[package]]
-name = "pathfinder-update"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_matches",
- "pathfinder-build",
- "pathfinder-common",
- "reqwest",
- "semver",
- "serde",
- "tokio",
- "tracing",
 ]
 
 [[package]]

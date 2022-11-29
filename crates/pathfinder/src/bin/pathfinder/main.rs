@@ -13,6 +13,9 @@ use pathfinder_lib::{
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
+mod config;
+mod update;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -21,8 +24,8 @@ async fn main() -> anyhow::Result<()> {
 
     setup_tracing();
 
-    let config = pathfinder_config::Configuration::parse_cmd_line_and_cfg_file()
-        .context("Parsing configuration")?;
+    let config =
+        config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -45,8 +48,8 @@ async fn main() -> anyhow::Result<()> {
         None => None,
     };
 
-    let eth_transport =
-        HttpTransport::from_config(config.ethereum).context("Creating Ethereum transport")?;
+    let eth_transport = HttpTransport::from_config(config.ethereum.url, config.ethereum.password)
+        .context("Creating Ethereum transport")?;
 
     // have a special long form hint here because there should be a lot of questions coming up
     // about this one.
@@ -146,7 +149,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
-    let update_handle = tokio::spawn(pathfinder_update::poll_github_for_releases());
+    let update_handle = tokio::spawn(update::poll_github_for_releases());
 
     // We are now ready.
     if let Some(ready) = pathfinder_ready {
