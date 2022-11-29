@@ -2,8 +2,8 @@
 use anyhow::Context;
 use futures::TryFutureExt;
 use pathfinder_common::EthereumChain;
-use pathfinder_config::EthereumConfig;
 use pathfinder_retry::Retry;
+use reqwest::Url;
 use std::future::Future;
 use std::num::NonZeroU64;
 use std::time::Duration;
@@ -62,7 +62,7 @@ impl HttpTransport {
     /// This includes setting:
     /// - the [Url](reqwest::Url)
     /// - the password (if provided)
-    pub fn from_config(config: EthereumConfig) -> anyhow::Result<Self> {
+    pub fn from_config(url: Url, password: Option<String>) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder();
 
         let client = client
@@ -70,8 +70,8 @@ impl HttpTransport {
             .build()
             .context("Creating HTTP client")?;
 
-        let mut url = config.url;
-        url.set_password(config.password.as_deref())
+        let mut url = url;
+        url.set_password(password.as_deref())
             .map_err(|_| anyhow::anyhow!("Setting password"))?;
 
         let client = Http::with_client(client, url);

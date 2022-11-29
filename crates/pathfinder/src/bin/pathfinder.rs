@@ -45,8 +45,8 @@ async fn main() -> anyhow::Result<()> {
         None => None,
     };
 
-    let eth_transport =
-        HttpTransport::from_config(config.ethereum).context("Creating Ethereum transport")?;
+    let eth_transport = HttpTransport::from_config(config.ethereum.url, config.ethereum.password)
+        .context("Creating Ethereum transport")?;
 
     // have a special long form hint here because there should be a lot of questions coming up
     // about this one.
