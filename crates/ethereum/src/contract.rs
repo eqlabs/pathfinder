@@ -1,4 +1,3 @@
-use pathfinder_common::Chain;
 use web3::ethabi::{Contract, Event, Function};
 use web3::types::H160;
 
@@ -10,7 +9,7 @@ pub struct ContractAddresses {
 }
 
 /// Starknet contract addresses on L1 Mainnet.
-const MAINNET_ADDRESSES: ContractAddresses = ContractAddresses {
+pub const MAINNET_ADDRESSES: ContractAddresses = ContractAddresses {
     // `core` and `gps` addresses can be fetched from https://alpha-mainnet.starknet.io/feeder_gateway/get_contract_addresses
     core: H160([
         198, 98, 196, 16, 192, 236, 247, 71, 84, 63, 91, 169, 6, 96, 246, 171, 235, 217, 200, 196,
@@ -24,7 +23,7 @@ const MAINNET_ADDRESSES: ContractAddresses = ContractAddresses {
 };
 
 /// Starknet contract addresses on L1 Goerli for testnet.
-const TESTNET_ADDRESSES: ContractAddresses = ContractAddresses {
+pub const TESTNET_ADDRESSES: ContractAddresses = ContractAddresses {
     core: H160([
         222, 41, 208, 96, 212, 89, 1, 251, 25, 237, 108, 110, 149, 158, 178, 45, 134, 38, 112, 142,
     ]),
@@ -37,7 +36,7 @@ const TESTNET_ADDRESSES: ContractAddresses = ContractAddresses {
 };
 
 /// Starknet contract addresses on L1 Goerli for testnet 2.
-const TESTNET2_ADDRESSES: ContractAddresses = ContractAddresses {
+pub const TESTNET2_ADDRESSES: ContractAddresses = ContractAddresses {
     core: H160([
         0xa4, 0xed, 0x3a, 0xd2, 0x7c, 0x29, 0x45, 0x65, 0xcb, 0x0d, 0xcc, 0x99, 0x3b, 0xdd, 0xcc,
         0x75, 0x43, 0x2d, 0x49, 0x8c,
@@ -52,7 +51,7 @@ const TESTNET2_ADDRESSES: ContractAddresses = ContractAddresses {
 };
 
 /// Starknet contract addresses on L1 Goerli for integration.
-const INTEGRATION_ADDRESSES: ContractAddresses = ContractAddresses {
+pub const INTEGRATION_ADDRESSES: ContractAddresses = ContractAddresses {
     core: H160([
         213, 195, 37, 209, 131, 197, 146, 201, 73, 152, 0, 12, 94, 14, 237, 158, 102, 85, 192, 32,
     ]),
@@ -64,17 +63,6 @@ const INTEGRATION_ADDRESSES: ContractAddresses = ContractAddresses {
     //        Currently not important as it is not used.
     mempage: TESTNET_ADDRESSES.mempage,
 };
-
-/// Returns the Starknet contract addresses for the given L2 chain.
-pub fn addresses(chain: Chain) -> ContractAddresses {
-    match chain {
-        Chain::Mainnet => MAINNET_ADDRESSES,
-        Chain::Testnet => TESTNET_ADDRESSES,
-        Chain::Testnet2 => TESTNET2_ADDRESSES,
-        Chain::Integration => INTEGRATION_ADDRESSES,
-        Chain::Custom => todo!("FIXME custom chain"),
-    }
-}
 
 const CORE_IMPL_ABI: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -123,13 +111,15 @@ mod tests {
     use std::str::FromStr;
 
     mod contract {
-        use super::*;
-        use crate::transport::HttpTransport;
-        use pathfinder_common::Chain;
         use web3::{
             contract::Options,
             types::{BlockId, BlockNumber},
         };
+
+        use crate::transport::HttpTransport;
+        use pathfinder_common::Chain;
+
+        use super::*;
 
         #[test]
         fn core() {

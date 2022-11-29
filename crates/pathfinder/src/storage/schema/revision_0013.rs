@@ -41,7 +41,6 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     let handle = tokio::runtime::Handle::current();
 
     let downloader = std::thread::spawn(move || {
-        use crate::core::Chain;
         use crate::sequencer::Client;
         use crate::sequencer::ClientApi;
 
