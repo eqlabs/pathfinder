@@ -133,16 +133,6 @@ r"Determine Ethereum chain.
                                 
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
             )?;
-                
-            use Chain::*;
-            match (network, ethereum_chain) {
-                // Chain::Custom => todo!("Verify state root somehow"),
-                (Mainnet, EthereumChain::Mainnet) => {}
-                (Testnet | Testnet2 | Integration, EthereumChain::Goerli) => {}
-                (network, ethereum) => {
-                    anyhow::bail!("StarkNet's {} chain does not run on the provided Ethereum URL which is {:?}", network, ethereum);
-                }
-            }
 
             let core_address = match network {
                 Chain::Mainnet => pathfinder_ethereum::contract::MAINNET_ADDRESSES.core,
@@ -155,6 +145,17 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                     addresses.starknet.0
                 },
             };
+
+            match (network, ethereum_chain) {
+                (Chain::Custom, _) => {
+                    // FIXME: compare the latest L1 root and the L2 root at that block number for verification.
+                }
+                (Chain::Mainnet, EthereumChain::Mainnet) => {}
+                (Chain::Testnet | Chain::Testnet2 | Chain::Integration, EthereumChain::Goerli) => {}
+                (network, ethereum) => {
+                    anyhow::bail!("StarkNet's {} chain does not run on the provided Ethereum URL which is {:?}", network, ethereum);
+                }
+            }
 
             (storage, network, gateway_client, eth_transport, core_address)
         }
