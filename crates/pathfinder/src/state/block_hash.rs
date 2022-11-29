@@ -66,24 +66,22 @@ pub fn verify_block_hash(
             .sequencer_address
             .unwrap_or(SequencerAddress(StarkHash::ZERO));
 
-        let sequencer_addresses_to_try = &[
-            &block_sequencer_address,
-            &meta_info.fallback_sequencer_address,
-        ];
-        sequencer_addresses_to_try.iter().any(|address| {
-            let block_hash = compute_final_hash(
-                block.block_number,
-                block.state_root,
-                address,
-                block.timestamp,
-                num_transactions,
-                transaction_commitment,
-                num_events,
-                event_commitment,
-                block.parent_block_hash,
-            );
-            block_hash == expected_block_hash
-        })
+        std::iter::once(&block_sequencer_address)
+            .chain(meta_info.fallback_sequencer_address.iter())
+            .any(|address| {
+                let block_hash = compute_final_hash(
+                    block.block_number,
+                    block.state_root,
+                    address,
+                    block.timestamp,
+                    num_transactions,
+                    transaction_commitment,
+                    num_events,
+                    event_commitment,
+                    block.parent_block_hash,
+                );
+                block_hash == expected_block_hash
+            })
     };
 
     Ok(match verified {
@@ -123,7 +121,7 @@ mod meta {
         /// The range of block numbers that can't be verified because of an unknown sequencer address.
         pub not_verifiable_range: Option<Range<StarknetBlockNumber>>,
         /// Fallback sequencer address to use for blocks that don't include the address.
-        pub fallback_sequencer_address: SequencerAddress,
+        pub fallback_sequencer_address: Option<SequencerAddress>,
     }
 
     impl BlockHashMetaInfo {
@@ -144,25 +142,25 @@ mod meta {
         not_verifiable_range: Some(
             StarknetBlockNumber::new_or_panic(119802)..StarknetBlockNumber::new_or_panic(148428),
         ),
-        fallback_sequencer_address: SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        )),
+        ))),
     };
 
     const TESTNET2_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: StarknetBlockNumber::new_or_panic(0),
         not_verifiable_range: None,
-        fallback_sequencer_address: SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        )),
+        ))),
     };
 
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: StarknetBlockNumber::new_or_panic(833),
         not_verifiable_range: None,
-        fallback_sequencer_address: SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
-        )),
+        ))),
     };
 
     const INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
@@ -170,9 +168,15 @@ mod meta {
         not_verifiable_range: Some(
             StarknetBlockNumber::new_or_panic(0)..StarknetBlockNumber::new_or_panic(110511),
         ),
-        fallback_sequencer_address: SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        )),
+        ))),
+    };
+
+    const CUSTOM_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
+        first_0_7_block: StarknetBlockNumber::new_or_panic(0),
+        not_verifiable_range: None,
+        fallback_sequencer_address: None,
     };
 
     pub fn for_chain(chain: Chain) -> &'static BlockHashMetaInfo {
@@ -181,7 +185,7 @@ mod meta {
             Chain::Testnet => &TESTNET_METAINFO,
             Chain::Testnet2 => &TESTNET2_METAINFO,
             Chain::Integration => &INTEGRATION_METAINFO,
-            Chain::Custom => todo!("FIXME custom chain"),
+            Chain::Custom => &CUSTOM_METAINFO,
         }
     }
 }
