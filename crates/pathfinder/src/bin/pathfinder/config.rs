@@ -191,28 +191,6 @@ impl Configuration {
             tracing::warn!("'--testnet2' is deprecated, please use '--network testnet2' instead");
         }
 
-        // Emit warning if network option is not provided.
-        // TODO: remove warning and make option required in next major release.
-        if cfg.network.is_none() {
-            tracing::warn!("'--network' configuration not specified - this will be a required item in a future version of pathfinder.");
-        }
-
-        if cfg.network.is_some() && cfg.integration {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Cannot specify both --network and --integration. Please use --network only."
-                    .to_string(),
-            ));
-        }
-
-        if cfg.network.is_some() && cfg.testnet2 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Cannot specify both --network and --testnet2. Please use --network only."
-                    .to_string(),
-            ));
-        }
-
         Ok(cfg)
     }
 }
