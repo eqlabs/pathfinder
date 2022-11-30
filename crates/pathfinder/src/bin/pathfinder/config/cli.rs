@@ -21,6 +21,7 @@ const TESTNET2: &str = "testnet2";
 const NETWORK: &str = "network";
 const GATEWAY: &str = "gateway-url";
 const FEEDER_GATEWAY: &str = "feeder-gateway-url";
+const CHAIN_ID: &str = "chain-id";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -58,6 +59,7 @@ where
     let network = args.value_of(NETWORK).map(|s| s.to_owned());
     let gateway = args.value_of(GATEWAY).map(|s| s.to_owned());
     let feeder_gateway = args.value_of(FEEDER_GATEWAY).map(|s| s.to_owned());
+    let chain_id = args.value_of(CHAIN_ID).map(|s| s.to_owned());
     // Hack around our builder requiring Strings, but these args just needs to be present.
     let integration = args.is_present(INTEGRATION).then_some(String::new());
     let testnet2: Option<String> = args.is_present(TESTNET2).then_some(String::new());
@@ -76,7 +78,8 @@ where
         .with(ConfigOption::Testnet2, testnet2)
         .with(ConfigOption::Network, network)
         .with(ConfigOption::GatewayUrl, gateway)
-        .with(ConfigOption::FeederGatewayUrl, feeder_gateway);
+        .with(ConfigOption::FeederGatewayUrl, feeder_gateway)
+        .with(ConfigOption::ChainId, chain_id);
 
     Ok((config_filepath, cfg))
 }
@@ -228,6 +231,13 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
             .takes_value(true)
             .env("PATHFINDER_FEEDER_GATEWAY_URL")
         )
+        .arg(
+            Arg::new(CHAIN_ID)
+            .long(CHAIN_ID)
+            .help("Set a custom StarkNet chain ID")
+            .takes_value(true)
+            .env("PATHFINDER_CHAIN_ID")
+        )
 }
 
 #[cfg(test)]
@@ -252,6 +262,10 @@ mod tests {
         env::remove_var("PATHFINDER_SQLITE_WAL");
         env::remove_var("PATHFINDER_POLL_PENDING");
         env::remove_var("PATHFINDER_MONITOR_ADDRESS");
+        env::remove_var("PATHFINDER_NETWORK");
+        env::remove_var("PATHFINDER_GATEWAY_URL");
+        env::remove_var("PATHFINDER_FEEDER_GATEWAY_URL");
+        env::remove_var("PATHFINDER_CHAIN_ID");
     }
 
     #[test]
@@ -499,11 +513,11 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--gateway", &value]).unwrap();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--gateway-url", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
 
         let value = "value".to_owned();
-        env::set_var("PATHFINDER_GATEWAY", &value);
+        env::set_var("PATHFINDER_GATEWAY_URL", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
     }
@@ -514,13 +528,28 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--feeder_gateway", &value]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
+        let (_, mut cfg) = parse_args(vec!["bin name", "--feeder-gateway-url", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::FeederGatewayUrl), Some(value));
 
         let value = "value".to_owned();
-        env::set_var("PATHFINDER_FEEDER_GATEWAY", &value);
+        env::set_var("PATHFINDER_FEEDER_GATEWAY_URL", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
+        assert_eq!(cfg.take(ConfigOption::FeederGatewayUrl), Some(value));
+    }
+
+    #[test]
+    fn chain_id() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--chain-id", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::ChainId), Some(value));
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_CHAIN_ID", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::ChainId), Some(value));
     }
 
     #[test]

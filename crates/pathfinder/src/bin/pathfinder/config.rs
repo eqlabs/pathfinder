@@ -42,6 +42,8 @@ pub enum ConfigOption {
     GatewayUrl,
     /// Specify the StarkNet feeder gateway URL.
     FeederGatewayUrl,
+    /// Specify the StarkNet chain ID for custom gateways.
+    ChainId,
 }
 
 impl Display for ConfigOption {
@@ -65,6 +67,7 @@ impl Display for ConfigOption {
             ConfigOption::FeederGatewayUrl => {
                 f.write_str("Specify the StarkNet feeder gateway URL")
             }
+            ConfigOption::ChainId => f.write_str("Specify the StarkNet chain ID"),
         }
     }
 }
@@ -103,8 +106,10 @@ pub struct Configuration {
     pub testnet2: bool,
     /// The StarkNet network.
     pub network: Option<String>,
-    /// Custom StarkNet gateway URLs. TODO: replace with struct.
-    pub custom_gateway: Option<(Url, Url)>,
+    /// Custom StarkNet gateway URLs.
+    ///
+    /// Args are: (gateway, feeder gateway, chain ID)
+    pub custom_gateway: Option<(Url, Url, String)>,
 }
 
 impl Configuration {

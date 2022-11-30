@@ -162,6 +162,8 @@ mod tests {
         }
 
         async fn test_context_with_call_handling() -> (RpcContext, tokio::task::JoinHandle<()>) {
+            use pathfinder_common::ChainId;
+
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             database_path.push("fixtures/mainnet.sqlite");
             let storage =
@@ -176,10 +178,9 @@ mod tests {
             .await
             .unwrap();
 
-            let chain = Chain::Mainnet;
-            let sequencer = crate::sequencer::Client::new(chain).unwrap();
+            let sequencer = crate::sequencer::Client::new(Chain::Mainnet).unwrap();
 
-            let context = RpcContext::new(storage, sync_state, chain, sequencer);
+            let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (context.with_call_handling(call_handle), cairo_handle)
         }
 

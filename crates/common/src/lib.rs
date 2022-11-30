@@ -376,21 +376,26 @@ pub enum Chain {
     Custom,
 }
 
-impl Chain {
-    pub const fn starknet_chain_id(&self) -> StarkHash {
-        match self {
-            // SN_MAIN
-            Chain::Mainnet => StarkHash::from_u128(0x534e5f4d41494eu128),
-            // SN_GOERLI
-            Chain::Testnet => StarkHash::from_u128(0x534e5f474f45524c49u128),
-            // SN_GOERLI2
-            Chain::Testnet2 => StarkHash::from_u128(0x534e5f474f45524c4932),
-            // SN_INTEGRATION
-            Chain::Integration => StarkHash::from_u128(0x534E5F494E544547524154494F4E),
-            // SN_GOERLI
-            Chain::Custom => StarkHash::from_u128(0x534e5f474f45524c49u128),
-        }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ChainId(pub StarkHash);
+
+impl ChainId {
+    /// Convenience function for the constants because unwrap() is not const.
+    const fn from_slice_unwrap(slice: &[u8]) -> Self {
+        Self(match StarkHash::from_be_slice(slice) {
+            Ok(v) => v,
+            Err(_) => panic!("Bad value"),
+        })
     }
+
+    pub fn to_hex_str(&self) -> std::borrow::Cow<'static, str> {
+        self.0.to_hex_str()
+    }
+
+    pub const MAINNET: Self = Self::from_slice_unwrap(b"SN_MAIN");
+    pub const TESTNET: Self = Self::from_slice_unwrap(b"SN_GOERLI");
+    pub const TESTNET2: Self = Self::from_slice_unwrap(b"SN_GOERLI2");
+    pub const INTEGRATION: Self = Self::from_slice_unwrap(b"SN_GOERLI");
 }
 
 impl std::fmt::Display for Chain {

@@ -2,7 +2,7 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use pathfinder_common::{Chain, EthereumChain, StarknetBlockNumber};
+use pathfinder_common::{Chain, ChainId, EthereumChain, StarknetBlockNumber};
 use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
 use pathfinder_lib::sequencer::ClientApi;
 use pathfinder_lib::{
@@ -84,7 +84,13 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         },
     };
 
-    let gateway_client = match (network, config.custom_gateway, config.sequencer_url) {
+    // Split custom config as they're required by separate parts.
+    let (custom_gateway_urls, custom_chain_id) = match config.custom_gateway {
+        Some((gateway, feeder, chain_id)) => (Some((gateway, feeder)), Some(chain_id)),
+        None => (None, None),
+    };
+
+    let gateway_client = match (network, custom_gateway_urls, config.sequencer_url) {
         (Chain::Custom, None, _) => {
             anyhow::bail!(
                 "'--network custom' requires setting '--gateway-url' and '--feeder-gateway-url'."
@@ -213,7 +219,22 @@ If you are trying to setup a custom StarkNet please use '--network custom',
 
     let shared = rpc::gas_price::Cached::new(Arc::new(eth_transport));
 
-    let api = rpc::v01::api::RpcApi::new(storage, gateway_client, network, sync_state)
+    let chain_id = match network {
+        Chain::Mainnet => ChainId::MAINNET,
+        Chain::Testnet => ChainId::TESTNET,
+        Chain::Testnet2 => ChainId::TESTNET2,
+        Chain::Integration => ChainId::INTEGRATION,
+        Chain::Custom => {
+            let chain_id =
+                custom_chain_id.expect("Custom chain ID must be set for --network custom");
+            let chain_id = stark_hash::StarkHash::from_be_slice(chain_id.as_bytes())
+                .context("Parsing chain ID")?;
+
+            ChainId(chain_id)
+        }
+    };
+
+    let api = rpc::v01::api::RpcApi::new(storage, gateway_client, chain_id, sync_state)
         .with_call_handling(call_handle)
         .with_eth_gas_price(shared);
     let api = match config.poll_pending {
