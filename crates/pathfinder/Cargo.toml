@@ -4,7 +4,6 @@ version = "0.4.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.62"
-build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
@@ -78,9 +77,6 @@ rand = "0.8"
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tokio = { version = "1.11.0", features = ["test-util"] }
-
-[build-dependencies]
-pathfinder-build = { path = "../build" }
 
 [[bench]]
 name = "merkle_tree"
