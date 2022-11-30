@@ -120,20 +120,27 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             }
             None => None,
         };
+        let chain_id = self.take(ConfigOption::ChainId);
 
-        let custom_gateway = match (gateway, feeder) {
-            (None, None) => None,
-            (Some(gateway), Some(feeder)) => Some((gateway, feeder)),
-            (None, Some(_)) => {
+        let custom_gateway = match (gateway, feeder, chain_id) {
+            (None, None, None) => None,
+            (Some(gateway), Some(feeder), Some(chain_id)) => Some((gateway, feeder, chain_id)),
+            (None, _, _) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     "Missing gateway URL configuration",
                 ))
             }
-            (Some(_), None) => {
+            (_, None, _) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     "Missing feeder gateway URL configuration",
+                ))
+            }
+            (_, _, None) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Missing chain ID configuration",
                 ))
             }
         };

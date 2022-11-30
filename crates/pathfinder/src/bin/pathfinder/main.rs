@@ -90,7 +90,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
                 "'--network custom' requires setting '--gateway-url' and '--feeder-gateway-url'."
             );
         }
-        (Chain::Custom, Some((gateway, feeder)), _) => {
+        (Chain::Custom, Some((gateway, feeder, _)), _) => {
             pathfinder_lib::sequencer::Client::with_urls(gateway, feeder)
                 .context("Creating gateway client")?
         }
