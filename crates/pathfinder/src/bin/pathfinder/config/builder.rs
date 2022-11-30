@@ -124,14 +124,18 @@ Hint: Register your own account or run your own Ethereum node and put the real U
         let custom_gateway = match (gateway, feeder) {
             (None, None) => None,
             (Some(gateway), Some(feeder)) => Some((gateway, feeder)),
-            (None, Some(_)) => return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Missing gateway URL configuration"),
-            )),
-            (Some(_), None) => return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Missing feeder gateway URL configuration"),
-            )),
+            (None, Some(_)) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Missing gateway URL configuration",
+                ))
+            }
+            (Some(_), None) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Missing feeder gateway URL configuration",
+                ))
+            }
         };
 
         // Optional parameters with defaults.
