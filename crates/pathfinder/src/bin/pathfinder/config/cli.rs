@@ -198,7 +198,7 @@ Examples:
             .help("Specify the StarkNet network")
             .long_help(
                 r"Specify the StarkNet network for pathfinder to operate on.
-                Note that 'custom' requires also setting the --gateway-url and --feeder_gateway-url options."
+                Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-url options."
             )
             .value_names(&["mainnet", "testnet", "testnet2", "integration", "custom"])
             .takes_value(true)
