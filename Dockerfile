@@ -14,7 +14,7 @@
 # Note that we're explicitly using the Debian bullseye image to make sure we're
 # compatible with the Python container we'll be copying the pathfinder
 # executable to.
-FROM rust:1.64-bullseye AS rust-builder
+FROM rust:1.65-bullseye AS rust-builder
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev && rm -rf /var/lib/apt/lists/*
 
@@ -25,16 +25,31 @@ WORKDIR /usr/src/pathfinder
 RUN mkdir crates \
     && cargo new --lib --vcs none crates/stark_curve \
     && cargo new --lib --vcs none crates/stark_hash \
+    && cargo new --lib --vcs none crates/common \
+    && cargo new --lib --vcs none crates/ethereum \
+    && cargo new --lib --vcs none crates/gateway-test-fixtures \
+    && cargo new --lib --vcs none crates/gateway-types \
+    && cargo new --lib --vcs none crates/retry \
+    && cargo new --lib --vcs none crates/serde \
     && cargo new --lib --vcs none crates/pathfinder \
     && cargo new --lib --vcs none crates/load-test
 
 COPY Cargo.toml Cargo.lock ./
 
+COPY crates/stark_curve/Cargo.toml crates/stark_curve/Cargo.toml
+COPY crates/stark_hash/Cargo.toml crates/stark_hash/
+COPY crates/stark_hash/benches crates/stark_hash/benches
+
+COPY crates/build/ crates/build/
+COPY crates/common/Cargo.toml crates/common/build.rs crates/common/
+COPY crates/ethereum/Cargo.toml crates/ethereum/Cargo.toml
+COPY crates/gateway-test-fixtures/Cargo.toml crates/gateway-test-fixtures/Cargo.toml
+COPY crates/gateway-types/Cargo.toml crates/gateway-types/Cargo.toml
+COPY crates/retry/Cargo.toml crates/retry/Cargo.toml
+COPY crates/serde/Cargo.toml crates/serde/Cargo.toml
+
 COPY crates/pathfinder/Cargo.toml crates/pathfinder/build.rs crates/pathfinder/
 COPY crates/pathfinder/benches crates/pathfinder/benches
-COPY crates/stark_curve/Cargo.toml crates/stark_curve/Cargo.toml
-COPY crates/stark_hash/Cargo.toml crates/stark_hash/Cargo.toml
-COPY crates/stark_hash/benches crates/stark_hash/benches
 
 # refresh indices, do it with cli git for much better ram usage
 RUN CARGO_NET_GIT_FETCH_WITH_CLI=true cargo search --limit 0
@@ -47,7 +62,7 @@ COPY . .
 COPY ./.git /usr/src/pathfinder/.git
 
 # Mark these for re-compilation
-RUN touch crates/pathfinder/src/lib.rs crates/pathfinder/src/build.rs crates/stark_curve/src/lib.rs crates/stark_hash/src/lib.rs
+RUN touch crates/*/src/lib.rs crates/*/build.rs
 
 RUN CARGO_INCREMENTAL=0 cargo build --release -p pathfinder --bin pathfinder
 
