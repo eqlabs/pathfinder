@@ -19,8 +19,8 @@ const MONITOR_ADDRESS: &str = "monitor-address";
 const INTEGRATION: &str = "integration";
 const TESTNET2: &str = "testnet2";
 const NETWORK: &str = "network";
-const GATEWAY: &str = "gateway_url";
-const FEEDER_GATEWAY: &str = "feeder_gateway_url";
+const GATEWAY: &str = "gateway-url";
+const FEEDER_GATEWAY: &str = "feeder-gateway-url";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -198,7 +198,7 @@ Examples:
             .help("Specify the StarkNet network")
             .long_help(
                 r"Specify the StarkNet network for pathfinder to operate on.
-                Note that 'custom' requires also setting the --gateway_url and --feeder_gateway_url options."
+                Note that 'custom' requires also setting the --gateway-url and --feeder_gateway-url options."
             )
             .value_names(&["mainnet", "testnet", "testnet2", "integration", "custom"])
             .takes_value(true)

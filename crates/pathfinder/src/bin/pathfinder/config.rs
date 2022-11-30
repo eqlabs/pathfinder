@@ -158,7 +158,7 @@ impl Configuration {
 
         match (&cfg.custom_gateway, &cfg.sequencer_url) {
             (None, Some(_)) => tracing::warn!(
-                "'--sequencer-url' is deprecated, please use '--network custom' instead"
+                "'--sequencer-url' is deprecated, please use '--network custom' instead. Note that you'll need to rename your database to 'custom.sqlite' for this."
             ),
             (Some(_), Some(_)) => anyhow::bail!("Cannot use both custom gateway and sequencer-url at the same time. Please use gateway only."),
             _ => {},
