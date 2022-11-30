@@ -363,6 +363,7 @@ impl From<StarknetBlockHash> for BlockId {
 pub enum EthereumChain {
     Mainnet,
     Goerli,
+    Other(web3::types::U256),
 }
 
 /// Starknet chain.

@@ -13,7 +13,6 @@ use pathfinder_lib::{
 };
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
-use web3::types::H160;
 
 mod config;
 mod update;
@@ -26,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
 
     setup_tracing();
 
-    let mut config =
+    let config =
         config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
 
     info!(
@@ -50,128 +49,132 @@ async fn main() -> anyhow::Result<()> {
         None => None,
     };
 
-    let (storage, starknet_chain, sequencer, eth_transport, core_address) = match config.network {
-        Some(network) => {
-            let network = match network.as_str() {
-                "mainnet" => Chain::Mainnet,
-                "testnet" => Chain::Testnet,
-                "testnet2" => Chain::Testnet2,
-                "integration" => Chain::Integration,
-                "custom" => Chain::Custom,
-                other => {
-                    anyhow::bail!("{other} is not a valid network selection. Please specify one of: mainnet, testnet, testnet2, integration or custom.")
-                }
-            };
+    let eth_transport = HttpTransport::from_config(
+        config.ethereum.url.clone(),
+        config.ethereum.password.clone(),
+    )
+    .context("Creating Ethereum transport")?;
+    let ethereum_chain = eth_transport.chain().await.context(
+        r"Determine Ethereum chain.
+                        
+Hint: Make sure the provided ethereum.url and ethereum.password are good.",
+    )?;
 
-            // Gateway check
-            let gateway_client = match config.sequencer_url.or(config.custom_gateway.map(|g| g.0)) {
-                Some(url) => sequencer::Client::with_url(url).unwrap(),
-                None => match network {
-                    Chain::Mainnet => sequencer::Client::mainnet(),
-                    Chain::Testnet => sequencer::Client::testnet(),
-                    Chain::Testnet2 => sequencer::Client::testnet2(),
-                    Chain::Integration => sequencer::Client::integration(),
-                    Chain::Custom => {
-                        anyhow::bail!("Custom network requires that gateway URL is specified");
-                    }
-                },
-            };
+    let network = match config.network {
+        Some(network) => match network.as_str() {
+            "mainnet" => Chain::Mainnet,
+            "testnet" => Chain::Testnet,
+            "testnet2" => Chain::Testnet2,
+            "integration" => Chain::Integration,
+            "custom" => Chain::Custom,
+            other => {
+                anyhow::bail!("{other} is not a valid network selection. Please specify one of: mainnet, testnet, testnet2, integration or custom.")
+            }
+        },
+        // Defaults if --network is not specified
+        None => match ethereum_chain {
+            EthereumChain::Mainnet => Chain::Mainnet,
+            EthereumChain::Goerli => Chain::Testnet,
+            EthereumChain::Other(id) => anyhow::bail!(
+                r"Ethereum url must be from mainnet or goerli chains. The given url has chain ID {id}.
+    
+If you are trying to setup a custom StarkNet please use '--network custom',
+            "
+            ),
+        },
+    };
 
-            // Database check
-            let database_path = config.data_directory.join(match network {
-                Chain::Mainnet => "mainnet.sqlite",
-                Chain::Testnet => "goerli.sqlite",
-                Chain::Testnet2 => "testnet2.sqlite",
-                Chain::Integration => "integration.sqlite",
-                Chain::Custom => "custom.sqlite",
-            });
-            let journal_mode = match config.sqlite_wal {
-                false => JournalMode::Rollback,
-                true => JournalMode::WAL,
-            };
-            let storage = Storage::migrate(database_path.clone(), journal_mode).unwrap();
-            info!(location=?database_path, "Database migrated.");
-            if let Some(database_genesis) = database_genesis_hash(&storage).await? {
-                let db_network = match database_genesis {
-                    pathfinder_common::consts::TESTNET_GENESIS_HASH => Chain::Testnet,
-                    pathfinder_common::consts::TESTNET2_GENESIS_HASH => Chain::Testnet2,
-                    pathfinder_common::consts::MAINNET_GENESIS_HASH => Chain::Mainnet,
-                    pathfinder_common::consts::INTEGRATION_GENESIS_HASH => Chain::Integration,
-                    other => {
-                        let gateway_block = gateway_client
-                            .block(database_genesis.into())
-                            .await
-                            .context("Downloading genesis block from gateway")?
-                            .as_block()
-                            .context("Genesis block should not be pending")?;
+    let gateway_client = match (network, config.custom_gateway, config.sequencer_url) {
+        (Chain::Custom, None, _) => {
+            anyhow::bail!(
+                "'--network custom' requires setting '--gateway-url' and '--feeder-gateway-url'."
+            );
+        }
+        (Chain::Custom, Some((gateway, _feeder)), _) => {
+            pathfinder_lib::sequencer::Client::with_url(gateway)
+                .context("Creating gateway client")?
+        }
+        (_, Some(_), _) => anyhow::bail!(
+            "'--gateway-url' and '--feeder-gateway-url' are only valid with '--network custom'"
+        ),
+        (Chain::Mainnet, None, None) => sequencer::Client::mainnet(),
+        (Chain::Testnet, None, None) => sequencer::Client::testnet(),
+        (Chain::Testnet2, None, None) => sequencer::Client::testnet2(),
+        (Chain::Integration, None, None) => sequencer::Client::integration(),
+        (_, _, Some(sequencer_url)) => pathfinder_lib::sequencer::Client::with_url(sequencer_url)
+            .context("Creating gateway client")?,
+    };
 
-                        anyhow::ensure!(
-                            other == gateway_block.block_hash,
-                            "Database genesis block does not match gateway. {} != {}",
-                            database_genesis,
-                            gateway_block.block_hash
-                        );
+    // Setup and verify database
+    let database_path = config.data_directory.join(match network {
+        Chain::Mainnet => "mainnet.sqlite",
+        Chain::Testnet => "goerli.sqlite",
+        Chain::Testnet2 => "testnet2.sqlite",
+        Chain::Integration => "integration.sqlite",
+        Chain::Custom => "custom.sqlite",
+    });
+    let journal_mode = match config.sqlite_wal {
+        false => JournalMode::Rollback,
+        true => JournalMode::WAL,
+    };
+    let storage = Storage::migrate(database_path.clone(), journal_mode).unwrap();
+    info!(location=?database_path, "Database migrated.");
+    if let Some(database_genesis) = database_genesis_hash(&storage).await? {
+        use pathfinder_common::consts::{
+            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
+            TESTNET_GENESIS_HASH,
+        };
 
-                        Chain::Custom
-                    }
-                };
+        let db_network = match database_genesis {
+            MAINNET_GENESIS_HASH => Chain::Mainnet,
+            TESTNET_GENESIS_HASH => Chain::Testnet,
+            TESTNET2_GENESIS_HASH => Chain::Testnet2,
+            INTEGRATION_GENESIS_HASH => Chain::Integration,
+            _other => Chain::Custom,
+        };
+
+        match (network, db_network) {
+            (Chain::Custom, _) => {
+                // Verify against gateway.
+                let gateway_block = gateway_client
+                    .block(database_genesis.into())
+                    .await
+                    .context("Downloading genesis block from gateway")?
+                    .as_block()
+                    .context("Genesis block should not be pending")?;
 
                 anyhow::ensure!(
-                    db_network == network,
-                    "Database genesis hash does not match selected network. Database hash is from {} network but you selected {}", 
-                    db_network,
-                    network
+                    database_genesis == gateway_block.block_hash,
+                    "Database genesis block does not match gateway. {} != {}",
+                    database_genesis,
+                    gateway_block.block_hash
                 );
             }
-
-            // Ethereum check.
-            let eth_transport = HttpTransport::from_config(
-                config.ethereum.url.clone(),
-                config.ethereum.password.clone(),
-            )
-            .context("Creating Ethereum transport")?;
-            let ethereum_chain = eth_transport.chain().await.context(
-                r"Determine Ethereum chain.
-                                
-Hint: Make sure the provided ethereum.url and ethereum.password are good.",
-            )?;
-
-            let core_address = match network {
-                Chain::Mainnet => pathfinder_ethereum::contract::MAINNET_ADDRESSES.core,
-                Chain::Testnet => pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-                Chain::Integration => pathfinder_ethereum::contract::TESTNET2_ADDRESSES.core,
-                Chain::Testnet2 => pathfinder_ethereum::contract::INTEGRATION_ADDRESSES.core,
-                Chain::Custom => {
-                    let addresses = gateway_client
-                        .eth_contract_addresses()
-                        .await
-                        .context("Fetching StarkNet contract addresses for custom network")?;
-
-                    addresses.starknet.0
-                }
-            };
-
-            match (network, ethereum_chain) {
-                (Chain::Custom, _) => {
-                    // FIXME: compare the latest L1 root and the L2 root at that block number for verification.
-                }
-                (Chain::Mainnet, EthereumChain::Mainnet) => {}
-                (Chain::Testnet | Chain::Testnet2 | Chain::Integration, EthereumChain::Goerli) => {}
-                (network, ethereum) => {
-                    anyhow::bail!("StarkNet's {} chain does not run on the provided Ethereum URL which is {:?}", network, ethereum);
-                }
-            }
-
-            (
-                storage,
-                network,
-                gateway_client,
-                eth_transport,
-                core_address,
-            )
+            (network, db_network) => anyhow::ensure!(
+                network == db_network,
+                "Database ({}) does not match the expected network ({})",
+                db_network,
+                network
+            ),
         }
-        None => old_config(&mut config).await?,
+    }
+
+    let core_address = match network {
+        Chain::Mainnet => pathfinder_ethereum::contract::MAINNET_ADDRESSES.core,
+        Chain::Testnet => pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
+        Chain::Integration => pathfinder_ethereum::contract::TESTNET2_ADDRESSES.core,
+        Chain::Testnet2 => pathfinder_ethereum::contract::INTEGRATION_ADDRESSES.core,
+        Chain::Custom => {
+            let addresses = gateway_client
+                .eth_contract_addresses()
+                .await
+                .context("Fetching StarkNet contract addresses for custom network")?;
+
+            addresses.starknet.0
+        }
     };
+
+    // TODO: verify Ethereum core contract matches if we are on a custom network.
 
     let sync_state = Arc::new(state::SyncState::default());
     let pending_state = state::PendingData::default();
@@ -186,7 +189,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         storage.path().into(),
         config.python_subprocesses,
         futures::future::pending(),
-        starknet_chain,
+        network,
     )
     .await
     .context(
@@ -196,9 +199,9 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
         eth_transport.clone(),
-        starknet_chain,
+        network,
         core_address,
-        sequencer.clone(),
+        gateway_client.clone(),
         sync_state.clone(),
         state::l1::sync,
         state::l2::sync,
@@ -208,7 +211,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     let shared = rpc::gas_price::Cached::new(Arc::new(eth_transport));
 
-    let api = rpc::v01::api::RpcApi::new(storage, sequencer, starknet_chain, sync_state)
+    let api = rpc::v01::api::RpcApi::new(storage, gateway_client, network, sync_state)
         .with_call_handling(call_handle)
         .with_eth_gas_price(shared);
     let api = match config.poll_pending {
@@ -256,32 +259,6 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
             }
         }
     }
-
-    Ok(())
-}
-
-/// Verifies that the database matches the expected chain; throws an error if it does not.
-fn verify_database_chain(storage: &Storage, expected: Chain) -> anyhow::Result<()> {
-    use pathfinder_lib::storage::StarknetBlocksTable;
-
-    let mut connection = storage.connection().context("Create database connection")?;
-    let transaction = connection
-        .transaction()
-        .context("Create database transaction")?;
-
-    let db_chain = match StarknetBlocksTable::get_chain(&transaction)
-        .context("Get chain from genesis block in the DB")?
-    {
-        Some(chain) => chain,
-        None => return Ok(()),
-    };
-
-    anyhow::ensure!(
-        db_chain == expected,
-        "Database ({}) does not match the expected network ({})",
-        db_chain,
-        expected
-    );
 
     Ok(())
 }
@@ -339,89 +316,4 @@ fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
     // well, don't really know what else to check
 
     Ok(())
-}
-
-async fn old_config(
-    config: &mut config::Configuration,
-) -> anyhow::Result<(Storage, Chain, sequencer::Client, HttpTransport, H160)> {
-    let eth_transport = HttpTransport::from_config(
-        config.ethereum.url.clone(),
-        config.ethereum.password.clone(),
-    )
-    .context("Creating Ethereum transport")?;
-    // have a special long form hint here because there should be a lot of questions coming up
-    // about this one.
-    let ethereum_chain = eth_transport.chain().await.context(
-        "Determine Ethereum chain.
-
-Hint: Make sure the provided ethereum.url and ethereum.password are good.",
-    )?;
-
-    let starknet_chain = match (ethereum_chain, config.integration, config.testnet2) {
-        (EthereumChain::Mainnet, false, false) => Chain::Mainnet,
-        (EthereumChain::Mainnet, _, _) => {
-            anyhow::bail!("'--integration' and '--testnet2' flags are invalid on Ethereum mainnet");
-        }
-        (EthereumChain::Goerli, false, false) => Chain::Testnet,
-        (EthereumChain::Goerli, false, true) => Chain::Testnet2,
-        (EthereumChain::Goerli, true, true) => {
-            anyhow::bail!("'--integration' and '--testnet2' flags cannot be used together")
-        }
-        (EthereumChain::Goerli, true, false) => Chain::Integration,
-    };
-
-    let database_path = config.data_directory.join(match starknet_chain {
-        Chain::Mainnet => "mainnet.sqlite",
-        Chain::Testnet => "goerli.sqlite",
-        Chain::Testnet2 => "testnet2.sqlite",
-        Chain::Integration => "integration.sqlite",
-        Chain::Custom => "custom.sqlite",
-    });
-    let journal_mode = match config.sqlite_wal {
-        false => JournalMode::Rollback,
-        true => JournalMode::WAL,
-    };
-    let storage = Storage::migrate(database_path.clone(), journal_mode).unwrap();
-    info!(location=?database_path, "Database migrated.");
-    verify_database_chain(&storage, starknet_chain).context("Verifying database")?;
-
-    let sequencer = match config
-        .sequencer_url
-        .as_ref()
-        .or(config.custom_gateway.as_ref().map(|g| &g.0))
-    {
-        Some(url) => {
-            info!(?url, "Using custom Sequencer address");
-            let client = sequencer::Client::with_url(url.clone()).unwrap();
-            let sequencer_chain = client.chain().await.unwrap();
-            if sequencer_chain != starknet_chain {
-                tracing::error!(sequencer=%sequencer_chain, ethereum=%starknet_chain, "Sequencer and Ethereum network mismatch");
-                anyhow::bail!("Sequencer and Ethereum network mismatch. Sequencer is on {sequencer_chain} but Ethereum is on {starknet_chain}");
-            }
-            client
-        }
-        None => match starknet_chain {
-            Chain::Mainnet => sequencer::Client::mainnet(),
-            Chain::Testnet => sequencer::Client::testnet(),
-            Chain::Integration => sequencer::Client::integration(),
-            Chain::Testnet2 => sequencer::Client::testnet2(),
-            Chain::Custom => unreachable!("old config should not be reached by custom network"),
-        },
-    };
-
-    let core_address = match starknet_chain {
-        Chain::Mainnet => pathfinder_ethereum::contract::MAINNET_ADDRESSES.core,
-        Chain::Testnet => pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-        Chain::Integration => pathfinder_ethereum::contract::TESTNET2_ADDRESSES.core,
-        Chain::Testnet2 => pathfinder_ethereum::contract::INTEGRATION_ADDRESSES.core,
-        Chain::Custom => unreachable!("old config should not be reached by custom network"),
-    };
-
-    Ok((
-        storage,
-        starknet_chain,
-        sequencer,
-        eth_transport,
-        core_address,
-    ))
 }
