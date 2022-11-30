@@ -90,8 +90,8 @@ If you are trying to setup a custom StarkNet please use '--network custom',
                 "'--network custom' requires setting '--gateway-url' and '--feeder-gateway-url'."
             );
         }
-        (Chain::Custom, Some((gateway, _feeder)), _) => {
-            pathfinder_lib::sequencer::Client::with_url(gateway)
+        (Chain::Custom, Some((gateway, feeder)), _) => {
+            pathfinder_lib::sequencer::Client::with_urls(gateway, feeder)
                 .context("Creating gateway client")?
         }
         (_, Some(_), _) => anyhow::bail!(
@@ -101,8 +101,10 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         (Chain::Testnet, None, None) => sequencer::Client::testnet(),
         (Chain::Testnet2, None, None) => sequencer::Client::testnet2(),
         (Chain::Integration, None, None) => sequencer::Client::integration(),
-        (_, _, Some(sequencer_url)) => pathfinder_lib::sequencer::Client::with_url(sequencer_url)
-            .context("Creating gateway client")?,
+        (_, _, Some(sequencer_url)) => {
+            pathfinder_lib::sequencer::Client::with_base_url(sequencer_url)
+                .context("Creating gateway client")?
+        }
     };
 
     // Setup and verify database

@@ -3,13 +3,12 @@
 //! This builder utilises a type state builder pattern with generics to only allow valid operations at each stage of the build process.
 //! Each stage is consumed to generate the next stage and the final stage executes the query.
 //!
-//! Here is an overview of the five builder stages.
+//! Here is an overview of the four builder stages.
 //!
 //!   1. [Init](stage::Init) which provides the entry point of the [builder](Request).
-//!   2. [Gateway](stage::Gateway) where you select between the read and write gateways.
-//!   3. [Method](stage::Method) where you select the REST API method.
-//!   4. [Params](stage::Params) where you select the retry behavior.
-//!   5. [Final](stage::Final) where you select the REST operation type, which is then executed.
+//!   2. [Method](stage::Method) where you select the REST API method.
+//!   3. [Params](stage::Params) where you select the retry behavior.
+//!   4. [Final](stage::Final) where you select the REST operation type, which is then executed.
 use crate::sequencer::metrics::{with_metrics, BlockTag, RequestMetadata};
 use pathfinder_common::{
     BlockId, ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress,
@@ -35,9 +34,6 @@ pub mod stage {
 
     /// Provides the [builder](super::Request::builder) entry-point.
     pub struct Init;
-
-    /// Select between the [read](super::Request::feeder_gateway) and [write](super::Request::gateway) Sequencer gateways.
-    pub struct Gateway;
 
     /// Select the Sequencer API method to call:
     /// - [add_transaction](super::Request::add_transaction)
@@ -76,7 +72,6 @@ pub mod stage {
     }
 
     impl super::RequestState for Init {}
-    impl super::RequestState for Gateway {}
     impl super::RequestState for Method {}
     impl super::RequestState for Params {}
     impl super::RequestState for Final {}
@@ -84,34 +79,10 @@ pub mod stage {
 
 impl<'a> Request<'a, stage::Init> {
     /// Initialize a [Request] builder.
-    pub fn builder(client: &'a reqwest::Client, url: reqwest::Url) -> Request<'a, stage::Gateway> {
+    pub fn builder(client: &'a reqwest::Client, url: reqwest::Url) -> Request<'a, stage::Method> {
         Request {
             url,
             client,
-            state: stage::Gateway,
-        }
-    }
-}
-
-impl<'a> Request<'a, stage::Gateway> {
-    /// The Sequencer write gateway, typically only used for submitting StarkNet transactions.
-    pub fn gateway(self) -> Request<'a, stage::Method> {
-        self.with_gateway("gateway")
-    }
-
-    /// The Sequencer read gateway, used for all queries which are not submitting transactions.
-    pub fn feeder_gateway(self) -> Request<'a, stage::Method> {
-        self.with_gateway("feeder_gateway")
-    }
-
-    fn with_gateway(mut self, gateway: &str) -> Request<'a, stage::Method> {
-        self.url
-            .path_segments_mut()
-            .expect("Base URL is valid")
-            .push(gateway);
-        Request {
-            url: self.url,
-            client: self.client,
             state: stage::Method,
         }
     }
@@ -636,7 +607,7 @@ mod tests {
             let (_jh, addr) = server();
             let mut url = reqwest::Url::parse("http://localhost/").unwrap();
             url.set_port(Some(addr.port())).unwrap();
-            let client = Client::with_url(url).unwrap();
+            let client = Client::with_base_url(url).unwrap();
             let error = client.chain().await.unwrap_err();
             assert_eq!(
                 error.to_string(),

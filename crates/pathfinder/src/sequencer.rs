@@ -118,8 +118,10 @@ pub trait ClientApi {
 pub struct Client {
     /// This client is internally refcounted
     inner: reqwest::Client,
-    /// StarkNet sequencer URL.
-    sequencer_url: Url,
+    /// StarkNet gateway URL.
+    gateway: Url,
+    /// StarkNet feeder gateway URL.
+    feeder_gateway: Url,
 }
 
 impl Client {
@@ -131,39 +133,45 @@ impl Client {
     /// Creates a new Sequencer client for the given chain.
     #[cfg(test)]
     pub fn new(chain: Chain) -> anyhow::Result<Self> {
-        let url = match chain {
-            Chain::Mainnet => Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
-            Chain::Testnet => Url::parse("https://alpha4.starknet.io/").unwrap(),
-            Chain::Testnet2 => Url::parse("https://alpha4-2.starknet.io/").unwrap(),
-            Chain::Integration => Url::parse("https://external.integration.starknet.io").unwrap(),
+        match chain {
+            Chain::Mainnet => Ok(Self::mainnet()),
+            Chain::Testnet => Ok(Self::testnet()),
+            Chain::Testnet2 => Ok(Self::testnet2()),
+            Chain::Integration => Ok(Self::integration()),
             Chain::Custom => panic!("Not supported for Chain::Custom"),
-        };
-
-        Self::with_url(url)
+        }
     }
 
     /// Creates a [Client] for [Chain::Mainnet].
     pub fn mainnet() -> Self {
-        Self::with_url(Url::parse("https://alpha-mainnet.starknet.io/").unwrap()).unwrap()
+        Self::with_base_url(Url::parse("https://alpha-mainnet.starknet.io/").unwrap()).unwrap()
     }
 
     /// Creates a [Client] for [Chain::Testnet].
     pub fn testnet() -> Self {
-        Self::with_url(Url::parse("https://alpha4.starknet.io/").unwrap()).unwrap()
+        Self::with_base_url(Url::parse("https://alpha4.starknet.io/").unwrap()).unwrap()
     }
 
     /// Creates a [Client] for [Chain::Testnet2].
     pub fn testnet2() -> Self {
-        Self::with_url(Url::parse("https://alpha4-2.starknet.io/").unwrap()).unwrap()
+        Self::with_base_url(Url::parse("https://alpha4-2.starknet.io/").unwrap()).unwrap()
     }
 
     /// Creates a [Client] for [Chain::Integration].
     pub fn integration() -> Self {
-        Self::with_url(Url::parse("https://external.integration.starknet.io").unwrap()).unwrap()
+        Self::with_base_url(Url::parse("https://external.integration.starknet.io").unwrap())
+            .unwrap()
     }
 
-    /// Create a Sequencer client for the given [Url].
-    pub fn with_url(url: Url) -> anyhow::Result<Self> {
+    /// Creates a [Client] with a shared feeder gateway and gateway base url.
+    pub fn with_base_url(base: Url) -> anyhow::Result<Self> {
+        let gateway = base.join("gateway")?;
+        let feeder_gateway = base.join("feeder_gateway")?;
+        Self::with_urls(gateway, feeder_gateway)
+    }
+
+    /// Create a Sequencer client for the given [Url]s.
+    pub fn with_urls(gateway: Url, feeder_gateway: Url) -> anyhow::Result<Self> {
         metrics::register();
 
         Ok(Self {
@@ -171,12 +179,17 @@ impl Client {
                 .timeout(Duration::from_secs(120))
                 .user_agent(pathfinder_common::consts::USER_AGENT)
                 .build()?,
-            sequencer_url: url,
+            gateway,
+            feeder_gateway,
         })
     }
 
-    fn request(&self) -> builder::Request<'_, builder::stage::Gateway> {
-        builder::Request::builder(&self.inner, self.sequencer_url.clone())
+    fn gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
+        builder::Request::builder(&self.inner, self.gateway.clone())
+    }
+
+    fn feeder_gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
+        builder::Request::builder(&self.inner, self.feeder_gateway.clone())
     }
 
     /// Returns the [network chain](Chain) this client is operating on.
@@ -207,8 +220,7 @@ impl Client {
 impl ClientApi for Client {
     #[tracing::instrument(skip(self))]
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.request()
-            .feeder_gateway()
+        self.feeder_gateway_request()
             .get_block()
             .with_block(block)
             .with_retry(Self::RETRY)
@@ -222,8 +234,7 @@ impl ClientApi for Client {
         &self,
         contract_addr: ContractAddress,
     ) -> Result<bytes::Bytes, SequencerError> {
-        self.request()
-            .feeder_gateway()
+        self.feeder_gateway_request()
             .get_full_contract()
             .with_contract_address(contract_addr)
             .with_retry(Self::RETRY)
@@ -234,8 +245,7 @@ impl ClientApi for Client {
     /// Gets class for a particular class hash.
     #[tracing::instrument(skip(self))]
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
-        self.request()
-            .feeder_gateway()
+        self.feeder_gateway_request()
             .get_class_by_hash()
             .with_class_hash(class_hash)
             .with_retry(Self::RETRY)
@@ -249,8 +259,7 @@ impl ClientApi for Client {
         &self,
         contract_address: ContractAddress,
     ) -> Result<ClassHash, SequencerError> {
-        self.request()
-            .feeder_gateway()
+        self.feeder_gateway_request()
             .get_class_hash_at()
             .with_contract_address(contract_address)
             .with_retry(Self::RETRY)
@@ -266,8 +275,7 @@ impl ClientApi for Client {
         key: StorageAddress,
         block_hash: BlockHashOrTag,
     ) -> Result<StorageValue, SequencerError> {
-        self.request()
-            .feeder_gateway()
+        self.feeder_gateway_request()
             .get_storage_at()
             .with_contract_address(contract_addr)
             .with_storage_address(key)
@@ -283,8 +291,7 @@ impl ClientApi for Client {
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError> {
-        self.request()
-            .feeder_gateway()
+        self.feeder_gateway_request()
             .get_transaction()
             .with_transaction_hash(transaction_hash)
             .with_retry(Self::RETRY)
@@ -298,8 +305,7 @@ impl ClientApi for Client {
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::TransactionStatus, SequencerError> {
-        self.request()
-            .feeder_gateway()
+        self.feeder_gateway_request()
             .get_transaction_status()
             .with_transaction_hash(transaction_hash)
             .with_retry(Self::RETRY)
@@ -309,8 +315,7 @@ impl ClientApi for Client {
 
     #[tracing::instrument(skip(self))]
     async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError> {
-        self.request()
-            .feeder_gateway()
+        self.feeder_gateway_request()
             .get_state_update()
             .with_block(block)
             .with_retry(Self::RETRY)
@@ -321,8 +326,7 @@ impl ClientApi for Client {
     /// Gets addresses of the Ethereum contracts crucial to Starknet operation.
     #[tracing::instrument(skip(self))]
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
-        self.request()
-            .feeder_gateway()
+        self.feeder_gateway_request()
             .get_contract_addresses()
             .with_retry(Self::RETRY)
             .get()
@@ -355,8 +359,7 @@ impl ClientApi for Client {
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
-        self.request()
-            .gateway()
+        self.gateway_request()
             .add_transaction()
             .with_retry(builder::Retry::Disabled)
             .post_with_json(&req)
@@ -388,8 +391,7 @@ impl ClientApi for Client {
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
-        self.request()
-            .gateway()
+        self.gateway_request()
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
             .with_optional_token(token.as_deref())
@@ -420,8 +422,7 @@ impl ClientApi for Client {
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
 
-        self.request()
-            .gateway()
+        self.gateway_request()
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
             .with_optional_token(token.as_deref())
@@ -456,8 +457,7 @@ impl ClientApi for Client {
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
 
-        self.request()
-            .gateway()
+        self.gateway_request()
             .add_transaction()
             .with_retry(builder::Retry::Disabled)
             .post_with_json(&req)
@@ -616,7 +616,7 @@ mod tests {
             let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
             let server_handle = tokio::spawn(serve_fut);
             let client =
-                Client::with_url(reqwest::Url::parse(&format!("http://{}", addr)).unwrap())
+                Client::with_base_url(reqwest::Url::parse(&format!("http://{}", addr)).unwrap())
                     .unwrap();
             (Some(server_handle), client)
         }
@@ -687,7 +687,8 @@ mod tests {
         let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
         let server_handle = tokio::spawn(serve_fut);
         let client =
-            Client::with_url(reqwest::Url::parse(&format!("http://{}", addr)).unwrap()).unwrap();
+            Client::with_base_url(reqwest::Url::parse(&format!("http://{}", addr)).unwrap())
+                .unwrap();
         (Some(server_handle), client)
     }
 
@@ -733,7 +734,7 @@ mod tests {
 
         let url = format!("http://{}", addr);
         let url = Url::parse(&url).unwrap();
-        let client = Client::with_url(url).unwrap();
+        let client = Client::with_base_url(url).unwrap();
 
         let _ = client.block(BlockId::Latest).await;
         shutdown_tx.send(()).unwrap();
@@ -1733,7 +1734,7 @@ mod tests {
                 let (_jh, addr) = test_server();
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
-                let client = Client::with_url(url).unwrap();
+                let client = Client::with_base_url(url).unwrap();
 
                 client
                     .add_deploy_transaction(
@@ -1756,7 +1757,7 @@ mod tests {
                 let (_jh, addr) = test_server();
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
-                let client = Client::with_url(url).unwrap();
+                let client = Client::with_base_url(url).unwrap();
 
                 let err = client
                     .add_deploy_transaction(
@@ -1855,7 +1856,7 @@ mod tests {
 
                 let (addr, serve_fut) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
                 let server_handle = tokio::spawn(serve_fut);
-                let client = sequencer::Client::with_url(
+                let client = sequencer::Client::with_base_url(
                     reqwest::Url::parse(&format!("http://{}", addr)).unwrap(),
                 )
                 .unwrap();
