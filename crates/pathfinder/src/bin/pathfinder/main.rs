@@ -2,7 +2,7 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use pathfinder_common::{Chain, EthereumChain};
+use pathfinder_common::{Chain, EthereumChain, StarknetBlockNumber};
 use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
 use pathfinder_lib::sequencer::ClientApi;
 use pathfinder_lib::{
@@ -139,7 +139,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
             (Chain::Custom, _) => {
                 // Verify against gateway.
                 let gateway_block = gateway_client
-                    .block(database_genesis.into())
+                    .block(StarknetBlockNumber::GENESIS.into())
                     .await
                     .context("Downloading genesis block from gateway")?
                     .as_block()
@@ -268,7 +268,6 @@ If you are trying to setup a custom StarkNet please use '--network custom',
 async fn database_genesis_hash(
     storage: &Storage,
 ) -> anyhow::Result<Option<pathfinder_common::StarknetBlockHash>> {
-    use pathfinder_common::StarknetBlockNumber;
     use pathfinder_lib::storage::StarknetBlocksTable;
 
     let storage = storage.clone();
