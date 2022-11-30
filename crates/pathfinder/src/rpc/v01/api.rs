@@ -30,7 +30,7 @@ use jsonrpsee::{
     types::{error::CallError, ErrorObject},
 };
 use pathfinder_common::{
-    BlockId, CallResultValue, Chain, ClassHash, ConstructorParam, ContractAddress,
+    BlockId, CallResultValue, ChainId, ClassHash, ConstructorParam, ContractAddress,
     ContractAddressSalt, ContractClass, ContractNonce, EventKey, Fee, GasPrice, GlobalRoot,
     SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
     StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
@@ -45,7 +45,7 @@ use std::sync::Arc;
 pub struct RpcApi {
     pub storage: Storage,
     pub sequencer: sequencer::Client,
-    pub chain: Chain,
+    pub chain_id: ChainId,
     pub call_handle: Option<ext_py::Handle>,
     pub shared_gas_price: Option<gas_price::Cached>,
     pub sync_state: Arc<SyncState>,
@@ -77,13 +77,13 @@ impl RpcApi {
     pub fn new(
         storage: Storage,
         sequencer: sequencer::Client,
-        chain: Chain,
+        chain_id: ChainId,
         sync_state: Arc<SyncState>,
     ) -> Self {
         Self {
             storage,
             sequencer,
-            chain,
+            chain_id,
             call_handle: None,
             shared_gas_price: None,
             sync_state,
@@ -961,8 +961,8 @@ impl RpcApi {
     }
 
     /// Return the currently configured StarkNet chain id.
-    pub async fn chain_id(&self) -> RpcResult<String> {
-        Ok(self.chain.starknet_chain_id().to_hex_str().into_owned())
+    pub async fn chain_id(&self) -> RpcResult<ChainId> {
+        Ok(self.chain_id)
     }
 
     /// Returns the current pending transactions.

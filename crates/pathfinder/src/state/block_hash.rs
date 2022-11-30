@@ -48,13 +48,24 @@ pub fn verify_block_hash(
     let transaction_commitment = calculate_transaction_commitment(&block.transactions)?;
 
     let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
+        use pathfinder_common::ChainId;
+        let chain_id = match chain {
+            Chain::Mainnet => ChainId::MAINNET,
+            Chain::Testnet => ChainId::TESTNET,
+            Chain::Integration => ChainId::INTEGRATION,
+            Chain::Testnet2 => ChainId::TESTNET2,
+            Chain::Custom => {
+                anyhow::bail!("Chain::Custom should not have any pre 0.7 block hashes")
+            }
+        };
+
         let block_hash = compute_final_hash_pre_0_7(
             block.block_number,
             block.state_root,
             num_transactions,
             transaction_commitment,
             block.parent_block_hash,
-            chain.starknet_chain_id(),
+            chain_id,
         );
         block_hash == expected_block_hash
     } else {
@@ -205,7 +216,7 @@ fn compute_final_hash_pre_0_7(
     num_transactions: u64,
     transaction_commitment: StarkHash,
     parent_block_hash: StarknetBlockHash,
-    chain_id: StarkHash,
+    chain_id: pathfinder_common::ChainId,
 ) -> StarknetBlockHash {
     let mut chain = HashChain::default();
 
@@ -230,7 +241,7 @@ fn compute_final_hash_pre_0_7(
     // reserved: extra data
     chain.update(StarkHash::ZERO);
     // EXTRA FIELD: chain id
-    chain.update(chain_id);
+    chain.update(chain_id.0);
     // parent block hash
     chain.update(parent_block_hash.0);
 

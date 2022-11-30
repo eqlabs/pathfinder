@@ -373,6 +373,8 @@ mod tests {
 
     /// Add some dummy state updates to the context for testing
     fn context_with_state_updates() -> (Vec<types::StateUpdate>, RpcContext) {
+        use pathfinder_common::ChainId;
+
         let storage = crate::storage::Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
@@ -380,9 +382,8 @@ mod tests {
         tx.commit().unwrap();
 
         let sync_state = std::sync::Arc::new(crate::state::SyncState::default());
-        let chain = Chain::Testnet;
-        let sequencer = crate::sequencer::Client::new(chain).unwrap();
-        let context = RpcContext::new(storage, sync_state, chain, sequencer);
+        let sequencer = crate::sequencer::Client::new(Chain::Testnet).unwrap();
+        let context = RpcContext::new(storage, sync_state, ChainId::TESTNET, sequencer);
         let state_updates = state_updates.into_iter().map(Into::into).collect();
 
         (state_updates, context)
