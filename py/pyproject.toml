@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Pathfinder Python worker subprocess"
 readme = "README.md"
 dependencies = [
-    "cairo-lang == 0.10.2a0",
+    "cairo-lang == 0.10.2",
     "zstandard == 0.18.0",
     "cachetools == 5.0.0",
 ]
