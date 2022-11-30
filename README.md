@@ -258,7 +258,7 @@ If `--network` is not specified, network selection will default to match your Et
 
 #### Custom networks & gateway proxies
 
-You can specify a custom network with `--network custom` and specifying the `--gateway_url` and `feeder_gateway_url` options.
+You can specify a custom network with `--network custom` and specifying the `--gateway-url`, `feeder-gateway-url` and `chain-id` options.
 
 This can be used to interact with a custom StarkNet gateway, or to use a gateway proxy.
 
@@ -337,7 +337,7 @@ The `path` of the URL used to access the JSON-RPC server determines which versio
 - the `v0.1.0` API is exposed on the `/rpc/v0.1` path
 - the `v0.2.1-rc1` API is exposed on the `/` and `/rpc/v0.2` paths
 
-### API `v1.0.0`
+### API `v0.1.0`
 
 Pathfinder supports version `v0.1.0` of the StarkNet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_api_openrpc.json), with the following changes:
 
