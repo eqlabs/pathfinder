@@ -1,10 +1,12 @@
+use anyhow::Context;
+use web3::types::{BlockNumber, FilterBuilder, H160};
+
+use pathfinder_common::EthereumBlockNumber;
+
 use crate::{
     log::fetch::MetaLog,
     transport::{EthereumTransport, LogsError},
 };
-use anyhow::Context;
-use pathfinder_common::{Chain, EthereumBlockNumber};
-use web3::types::{BlockNumber, FilterBuilder};
 
 /// Fetches consecutive logs of type T from L1, accounting for chain
 /// reorganisations.
@@ -41,9 +43,9 @@ where
     /// If `head` is [None] then the starting point is genesis.
     ///
     /// In other words, the first log returned will be the one after `head`.
-    pub fn new(head: Option<T>, chain: Chain, genesis: EthereumBlockNumber) -> Self {
+    pub fn new(head: Option<T>, contract_address: H160, genesis: EthereumBlockNumber) -> Self {
         let base_filter = FilterBuilder::default()
-            .address(vec![T::contract_address(chain)])
+            .address(vec![contract_address])
             .topics(Some(vec![T::signature()]), None, None, None);
 
         Self {
@@ -191,6 +193,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::str::FromStr;
+
+    use stark_hash::StarkHash;
+    use web3::types::H256;
+
     use crate::{
         log::StateUpdateLog, transport::HttpTransport, BlockOrigin, EthOrigin, TransactionOrigin,
     };
@@ -198,9 +206,6 @@ mod tests {
         EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
         EthereumTransactionIndex, GlobalRoot, StarknetBlockNumber,
     };
-    use stark_hash::StarkHash;
-    use std::str::FromStr;
-    use web3::types::H256;
 
     #[tokio::test]
     async fn consistency() {
@@ -240,9 +245,10 @@ mod tests {
 
         let genesis_block = starknet_genesis_log.origin.block.number;
 
-        let chain = Chain::Testnet;
+        let chain = pathfinder_common::Chain::Testnet;
+        let address = crate::contract::TESTNET_ADDRESSES.core;
         let mut root_fetcher =
-            LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), chain, genesis_block);
+            LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), address, genesis_block);
         let transport = HttpTransport::test_transport(chain);
         let mut block_number = 1;
 

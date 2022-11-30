@@ -97,6 +97,7 @@ impl HttpTransport {
             Chain::Testnet | Chain::Testnet2 | Chain::Integration => {
                 "PATHFINDER_ETHEREUM_HTTP_GOERLI"
             }
+            Chain::Custom => unreachable!("Chain::Custom should not be used in testing"),
         };
 
         let url_key = format!("{}_URL", key_prefix);

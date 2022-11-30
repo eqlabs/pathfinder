@@ -62,10 +62,11 @@ pub(crate) enum UsedChain {
 impl From<Chain> for UsedChain {
     fn from(c: Chain) -> Self {
         match c {
-            Chain::Mainnet => UsedChain::Mainnet,
-            Chain::Testnet => UsedChain::Goerli,
-            Chain::Testnet2 => UsedChain::Goerli,
-            Chain::Integration => UsedChain::Goerli,
+            pathfinder_common::Chain::Mainnet => UsedChain::Mainnet,
+            pathfinder_common::Chain::Testnet => UsedChain::Goerli,
+            pathfinder_common::Chain::Testnet2 => UsedChain::Goerli,
+            pathfinder_common::Chain::Integration => UsedChain::Goerli,
+            pathfinder_common::Chain::Custom => UsedChain::Goerli,
         }
     }
 }

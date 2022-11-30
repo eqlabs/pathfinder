@@ -5,6 +5,7 @@ mod file;
 
 use std::{fmt::Display, net::SocketAddr, path::PathBuf, str::FromStr};
 
+use anyhow::Context;
 use enum_iterator::IntoEnumIterator;
 use reqwest::Url;
 
@@ -35,6 +36,12 @@ pub enum ConfigOption {
     Integration,
     /// Chooses Testnet 2 network.
     Testnet2,
+    /// Specify the network.
+    Network,
+    /// Specify the StarkNet gateway URL.
+    GatewayUrl,
+    /// Specify the StarkNet feeder gateway URL.
+    FeederGatewayUrl,
 }
 
 impl Display for ConfigOption {
@@ -53,6 +60,11 @@ impl Display for ConfigOption {
             ConfigOption::MonitorAddress => f.write_str("Pathfinder monitoring address"),
             ConfigOption::Integration => f.write_str("Select integration network"),
             ConfigOption::Testnet2 => f.write_str("Select Testnet 2 network"),
+            ConfigOption::Network => f.write_str("Specify the StarkNet network"),
+            ConfigOption::GatewayUrl => f.write_str("Specify the StarkNet gateway URL"),
+            ConfigOption::FeederGatewayUrl => {
+                f.write_str("Specify the StarkNet feeder gateway URL")
+            }
         }
     }
 }
@@ -89,6 +101,10 @@ pub struct Configuration {
     pub integration: bool,
     /// Select testnet 2 network.
     pub testnet2: bool,
+    /// The StarkNet network.
+    pub network: Option<String>,
+    /// Custom StarkNet gateway URLs. TODO: replace with struct.
+    pub custom_gateway: Option<(Url, Url)>,
 }
 
 impl Configuration {
@@ -106,17 +122,19 @@ impl Configuration {
     ///
     /// Note: This will terminate the program if invalid command-line arguments are supplied.
     ///       This is intended, as [clap] will show the program usage / help.
-    pub fn parse_cmd_line_and_cfg_file() -> std::io::Result<Self> {
+    pub fn parse_cmd_line_and_cfg_file() -> anyhow::Result<Self> {
         // Parse command-line arguments. This must be first in order to use
         // users config filepath (if supplied).
         let (cfg_filepath, cli_cfg) = cli::parse_cmd_line();
 
+        if cfg_filepath.is_some() {
+            tracing::warn!("'--config' is deprecated. Consider using environment variables in .env files to retain the same functionality.");
+        }
+
         // Parse configuration file if specified.
         let file_cfg = match cfg_filepath {
             Some(filepath) => {
-                let filepath = PathBuf::from_str(&filepath).map_err(|err| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidInput, err.to_string())
-                })?;
+                let filepath = PathBuf::from_str(&filepath).context("Parsig config filepath")?;
                 Some(file::config_from_filepath(&filepath)?)
             }
             None => None,
@@ -128,6 +146,23 @@ impl Configuration {
         };
 
         let cfg = cfg.try_build()?;
+
+        match (&cfg.custom_gateway, cfg.integration, cfg.testnet2) {
+            (_, true, true) => anyhow::bail!("Cannot use both integration and testnet 2 at the same time."),
+            (Some(_), true, false) => anyhow::bail!("Cannot specify both network and integration options at the same time. Please use network only."),
+            (Some(_), false, true) => anyhow::bail!("Cannot specify both network and testnet2 options at the same time. Please use network only."),
+            (None, true, false) => tracing::warn!("'--integration' is deprecated, please use '--network integration' instead"),
+            (None, false, true) => tracing::warn!("'--testnet2' is deprecated, please use '--network testnet2' instead"),
+            _ => {},
+        }
+
+        match (&cfg.custom_gateway, &cfg.sequencer_url) {
+            (None, Some(_)) => tracing::warn!(
+                "'--sequencer-url' is deprecated, please use '--network custom' instead. Note that you'll need to rename your database to 'custom.sqlite' for this."
+            ),
+            (Some(_), Some(_)) => anyhow::bail!("Cannot use both custom gateway and sequencer-url at the same time. Please use gateway only."),
+            _ => {},
+        }
 
         Ok(cfg)
     }

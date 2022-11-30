@@ -92,13 +92,51 @@ Hint: Register your own account or run your own Ethereum node and put the real U
         let integration = self.take(ConfigOption::Integration).is_some();
         let testnet2: bool = self.take(ConfigOption::Testnet2).is_some();
 
-        if integration && testnet2 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Cannot use both integration and testnet 2 at the same time. Please choose one."
-                    .to_string(),
-            ));
-        }
+        let network = self.take(ConfigOption::Network);
+
+        let gateway = match self.take(ConfigOption::GatewayUrl) {
+            Some(url) => {
+                let url = url.parse::<Url>().map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Invalid StarkNet gateway URL ({}): {}", url, err),
+                    )
+                })?;
+
+                Some(url)
+            }
+            None => None,
+        };
+        let feeder = match self.take(ConfigOption::FeederGatewayUrl) {
+            Some(url) => {
+                let url = url.parse::<Url>().map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Invalid StarkNet feeder gateway URL ({}): {}", url, err),
+                    )
+                })?;
+
+                Some(url)
+            }
+            None => None,
+        };
+
+        let custom_gateway = match (gateway, feeder) {
+            (None, None) => None,
+            (Some(gateway), Some(feeder)) => Some((gateway, feeder)),
+            (None, Some(_)) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Missing gateway URL configuration",
+                ))
+            }
+            (Some(_), None) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Missing feeder gateway URL configuration",
+                ))
+            }
+        };
 
         // Optional parameters with defaults.
         let data_directory = self
@@ -186,6 +224,8 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             monitoring_addr,
             integration,
             testnet2,
+            network,
+            custom_gateway,
         })
     }
 

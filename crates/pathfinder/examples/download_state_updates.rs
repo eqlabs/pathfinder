@@ -1,5 +1,7 @@
 //! Simple tool for downloading missing state updates of a given pathfinder db.
 
+use pathfinder_common::Chain;
+
 #[tokio::main]
 async fn main() {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -52,7 +54,13 @@ async fn main() {
         use pathfinder_common::BlockId;
         use pathfinder_lib::sequencer::{Client, ClientApi};
 
-        let client = Client::new(chain)?;
+        let client = match chain {
+            Chain::Mainnet => Client::mainnet(),
+            Chain::Testnet => Client::testnet(),
+            Chain::Testnet2 => Client::testnet2(),
+            Chain::Integration => Client::integration(),
+            Chain::Custom => panic!("Not supported for custom networks"),
+        };
 
         let mut con = storage.connection()?;
         let tx = con.transaction()?;

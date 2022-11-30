@@ -1,5 +1,7 @@
-use crate::log::{LogFetcher, StateUpdateLog};
 use pathfinder_common::{Chain, EthereumBlockNumber};
+use web3::types::H160;
+
+use crate::log::{LogFetcher, StateUpdateLog};
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
 #[derive(Clone)]
@@ -15,16 +17,24 @@ const TESTNET2_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_854_324);
 const INTEGRATION_GENESIS: EthereumBlockNumber = EthereumBlockNumber(5_986_835);
 
 impl StateRootFetcher {
-    pub fn new(head: Option<StateUpdateLog>, chain: Chain) -> Self {
+    pub fn new(head: Option<StateUpdateLog>, chain: Chain, contract_address: H160) -> Self {
         let genesis = match chain {
             Chain::Mainnet => MAINNET_GENESIS,
             Chain::Testnet => TESTNET_GENESIS,
             Chain::Testnet2 => TESTNET2_GENESIS,
             Chain::Integration => INTEGRATION_GENESIS,
+            Chain::Custom => EthereumBlockNumber(0),
         };
 
-        let inner = LogFetcher::<StateUpdateLog>::new(head, chain, genesis);
+        let inner = LogFetcher::<StateUpdateLog>::new(head, contract_address, genesis);
         Self(inner)
+    }
+
+    #[cfg(test)]
+    fn testnet(head: Option<StateUpdateLog>) -> Self {
+        let contract_address = crate::contract::TESTNET_ADDRESSES.core;
+
+        Self::new(head, Chain::Testnet, contract_address)
     }
 }
 
@@ -44,10 +54,12 @@ impl std::ops::DerefMut for StateRootFetcher {
 
 #[cfg(test)]
 mod tests {
-    use crate::transport::HttpTransport;
     use assert_matches::assert_matches;
-    use pathfinder_common::{Chain, StarknetBlockNumber};
     use pretty_assertions::assert_eq;
+
+    use pathfinder_common::{Chain, StarknetBlockNumber};
+
+    use crate::transport::HttpTransport;
 
     use super::*;
 
@@ -58,7 +70,7 @@ mod tests {
         let chain = Chain::Testnet;
         let transport = HttpTransport::test_transport(chain);
 
-        let mut uut = StateRootFetcher::new(None, chain);
+        let mut uut = StateRootFetcher::testnet(None);
         let first_fetch = uut.fetch(transport).await.unwrap();
         let first = first_fetch.first().expect("Should be at least one log");
 
@@ -66,13 +78,16 @@ mod tests {
     }
 
     mod genesis {
-        use super::*;
-        use crate::{log::MetaLog, transport::EthereumTransport};
         use pretty_assertions::assert_eq;
         use web3::types::{BlockNumber, FilterBuilder};
 
+        use crate::{log::MetaLog, transport::EthereumTransport};
+
+        use super::*;
+
         #[tokio::test]
         async fn mainnet() {
+            use crate::contract::MAINNET_ADDRESSES;
             // Checks `MAINNET_GENESIS` contains the actual Starknet genesis StateUpdateLog
             let chain = Chain::Mainnet;
             let transport = HttpTransport::test_transport(chain);
@@ -80,7 +95,7 @@ mod tests {
             let block_number = BlockNumber::Number(MAINNET_GENESIS.0.into());
 
             let filter = FilterBuilder::default()
-                .address(vec![StateUpdateLog::contract_address(chain)])
+                .address(vec![MAINNET_ADDRESSES.core])
                 .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
                 .from_block(block_number)
                 .to_block(block_number)
@@ -101,6 +116,7 @@ mod tests {
 
         #[tokio::test]
         async fn testnet() {
+            use crate::contract::TESTNET_ADDRESSES;
             // Checks `TESTNET_GENESIS` contains the actual Starknet genesis StateUpdateLog
             let chain = Chain::Testnet;
             let transport = HttpTransport::test_transport(chain);
@@ -108,7 +124,7 @@ mod tests {
             let block_number = BlockNumber::Number(TESTNET_GENESIS.0.into());
 
             let filter = FilterBuilder::default()
-                .address(vec![StateUpdateLog::contract_address(chain)])
+                .address(vec![TESTNET_ADDRESSES.core])
                 .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
                 .from_block(block_number)
                 .to_block(block_number)
@@ -129,13 +145,14 @@ mod tests {
 
         #[tokio::test]
         async fn integration() {
+            use crate::contract::INTEGRATION_ADDRESSES;
             let chain = Chain::Integration;
             let transport = HttpTransport::test_transport(chain);
 
             let block_number = BlockNumber::Number(INTEGRATION_GENESIS.0.into());
 
             let filter = FilterBuilder::default()
-                .address(vec![StateUpdateLog::contract_address(chain)])
+                .address(vec![INTEGRATION_ADDRESSES.core])
                 .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
                 .from_block(block_number)
                 .to_block(block_number)
@@ -156,16 +173,19 @@ mod tests {
     }
 
     mod reorg {
-        use super::*;
-        use crate::{
-            log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
-            TransactionOrigin,
-        };
+        use web3::types::H256;
+
         use pathfinder_common::{
             starkhash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
             EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
         };
-        use web3::types::H256;
+
+        use crate::{
+            log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
+            TransactionOrigin,
+        };
+
+        use super::*;
 
         #[tokio::test]
         async fn block_replaced() {
@@ -194,7 +214,7 @@ mod tests {
                 block_number: StarknetBlockNumber::new_or_panic(3),
             };
 
-            let mut uut = StateRootFetcher::new(Some(not_genesis), chain);
+            let mut uut = StateRootFetcher::testnet(Some(not_genesis));
             assert_matches!(uut.fetch(transport).await, Err(FetchError::Reorg));
         }
 
@@ -224,7 +244,7 @@ mod tests {
                 block_number: StarknetBlockNumber::new_or_panic(3),
             };
 
-            let mut uut = StateRootFetcher::new(Some(not_genesis), chain);
+            let mut uut = StateRootFetcher::testnet(Some(not_genesis));
             assert_matches!(uut.fetch(transport).await, Err(FetchError::Reorg));
         }
     }
