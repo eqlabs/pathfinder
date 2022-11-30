@@ -8,7 +8,7 @@ use pathfinder_common::{
 use pathfinder_ethereum::provider::{EthereumTransport, HttpProvider};
 use pathfinder_lib::{
     monitoring::{self},
-    state,
+    p2p_network, state,
 };
 use pathfinder_rpc::{cairo, metrics::middleware::RpcMetricsMiddleware, SyncState};
 use pathfinder_storage::{JournalMode, Storage};
@@ -282,9 +282,14 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         }
     };
 
-    let api = pathfinder_rpc::v01::api::RpcApi::new(storage, gateway_client, chain_id, sync_state)
-        .with_call_handling(call_handle)
-        .with_eth_gas_price(shared);
+    let api = pathfinder_rpc::v01::api::RpcApi::new(
+        storage.clone(),
+        gateway_client,
+        chain_id,
+        sync_state.clone(),
+    )
+    .with_call_handling(call_handle)
+    .with_eth_gas_price(shared);
     let api = match config.poll_pending {
         true => api.with_pending_data(pending_state),
         false => api,
@@ -297,6 +302,20 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         .context("Starting the RPC server")?;
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
+
+    let listen_on: p2p::libp2p::Multiaddr = "/ip4/0.0.0.0/tcp/4001".parse()?;
+    let bootstrap_addresses = [
+        "/ip4/34.66.185.143/tcp/4000/p2p/12D3KooWNup3zfYf4GeYn31bXbH995JCmjtPyMTKGNmjqVam3HJa"
+            .parse::<p2p::libp2p::Multiaddr>()?,
+    ];
+    let (_p2p_peers, _p2p_client, p2p_handle) = p2p_network::start(
+        chain_id,
+        storage,
+        sync_state,
+        listen_on,
+        &bootstrap_addresses,
+    )
+    .await?;
 
     let update_handle = tokio::spawn(update::poll_github_for_releases());
 
@@ -324,6 +343,12 @@ If you are trying to setup a custom StarkNet please use '--network custom',
             tracing::error!("RPC server process ended unexpected");
         }
         result = update_handle => {
+            match result {
+                Ok(_) => tracing::error!("Release monitoring process ended unexpectedly"),
+                Err(err) => tracing::error!(error=%err, "Release monitoring process ended unexpectedly"),
+            }
+        }
+        result = p2p_handle => {
             match result {
                 Ok(_) => tracing::error!("Release monitoring process ended unexpectedly"),
                 Err(err) => tracing::error!(error=%err, "Release monitoring process ended unexpectedly"),

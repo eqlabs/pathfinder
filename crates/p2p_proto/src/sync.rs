@@ -87,7 +87,7 @@ impl From<Request> for proto::sync::Request {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Forward,
     Backward,

@@ -25,11 +25,13 @@ mod transport;
 
 pub use peers::Peers;
 
+pub use libp2p;
+
 pub fn new(
     keypair: Keypair,
     peers: Arc<RwLock<peers::Peers>>,
     periodic_status_interval: Duration,
-) -> (Client, mpsc::Receiver<Event>, MainLoop) {
+) -> (Client, EventReceiver, MainLoop) {
     let peer_id = keypair.public().to_peer_id();
 
     let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair);
@@ -224,6 +226,8 @@ pub enum Event {
     },
     BlockPropagation(p2p_proto::propagation::Message),
 }
+
+pub type EventReceiver = mpsc::Receiver<Event>;
 
 pub struct MainLoop {
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,

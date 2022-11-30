@@ -4291,6 +4291,8 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",
+ "p2p",
+ "p2p_proto",
  "pathfinder-common",
  "pathfinder-ethereum",
  "pathfinder-merkle-tree",
