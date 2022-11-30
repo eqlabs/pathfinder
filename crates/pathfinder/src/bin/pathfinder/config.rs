@@ -38,7 +38,9 @@ pub enum ConfigOption {
     /// Specify the network.
     Network,
     /// Specify the StarkNet gateway URL.
-    Gateway,
+    GatewayUrl,
+    /// Specify the StarkNet feeder gateway URL.
+    FeederGatewayUrl,
 }
 
 impl Display for ConfigOption {
@@ -58,7 +60,8 @@ impl Display for ConfigOption {
             ConfigOption::Integration => f.write_str("Select integration network"),
             ConfigOption::Testnet2 => f.write_str("Select Testnet 2 network"),
             ConfigOption::Network => f.write_str("Specify the StarkNet network"),
-            ConfigOption::Gateway => f.write_str("Specify the StarkNet gateway URL"),
+            ConfigOption::GatewayUrl => f.write_str("Specify the StarkNet gateway URL"),
+            ConfigOption::FeederGatewayUrl => f.write_str("Specify the StarkNet feeder gateway URL"),
         }
     }
 }
@@ -97,8 +100,8 @@ pub struct Configuration {
     pub testnet2: bool,
     /// The StarkNet network.
     pub network: Option<String>,
-    /// The StarkNet gateway.
-    pub gateway: Option<Url>,
+    /// Custom StarkNet gateway URLs. TODO: replace with struct.
+    pub custom_gateway: Option<(Url, Url)>,
 }
 
 impl Configuration {
@@ -122,7 +125,7 @@ impl Configuration {
         let (cfg_filepath, cli_cfg) = cli::parse_cmd_line();
 
         if cfg_filepath.is_some() {
-            tracing::warn!("'--config' is deprecated. Consider using script files to retain the same functionality.");
+            tracing::warn!("'--config' is deprecated. Consider using environment variables in .env files to retain the same functionality.");
         }
 
         // Parse configuration file if specified.
@@ -151,10 +154,10 @@ impl Configuration {
             ));
         }
 
-        if cfg.gateway.is_some() && cfg.sequencer_url.is_some() {
+        if cfg.custom_gateway.is_some() && cfg.sequencer_url.is_some() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "Cannot use both gateway and sequencer-url at the same time. Please use gateway only."
+                "Cannot use both custom gateway and sequencer-url at the same time. Please use gateway only."
                     .to_string(),
             ));
         }

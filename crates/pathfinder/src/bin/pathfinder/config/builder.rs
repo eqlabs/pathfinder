@@ -94,7 +94,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
 
         let network = self.take(ConfigOption::Network);
 
-        let gateway = match self.take(ConfigOption::Gateway) {
+        let gateway = match self.take(ConfigOption::GatewayUrl) {
             Some(url) => {
                 let url = url.parse::<Url>().map_err(|err| {
                     std::io::Error::new(
@@ -106,6 +106,32 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                 Some(url)
             }
             None => None,
+        };
+        let feeder = match self.take(ConfigOption::FeederGatewayUrl) {
+            Some(url) => {
+                let url = url.parse::<Url>().map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Invalid StarkNet feeder gateway URL ({}): {}", url, err),
+                    )
+                })?;
+
+                Some(url)
+            }
+            None => None,
+        };
+
+        let custom_gateway = match (gateway, feeder) {
+            (None, None) => None,
+            (Some(gateway), Some(feeder)) => Some((gateway, feeder)),
+            (None, Some(_)) => return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Missing gateway URL configuration"),
+            )),
+            (Some(_), None) => return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Missing feeder gateway URL configuration"),
+            )),
         };
 
         // Optional parameters with defaults.
@@ -195,7 +221,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             integration,
             testnet2,
             network,
-            gateway,
+            custom_gateway,
         })
     }
 

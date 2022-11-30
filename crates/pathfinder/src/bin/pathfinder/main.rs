@@ -64,7 +64,7 @@ async fn main() -> anyhow::Result<()> {
             };
 
             // Gateway check
-            let gateway_client = match config.sequencer_url.or(config.gateway) {
+            let gateway_client = match config.sequencer_url.or(config.custom_gateway.map(|g| g.0)) {
                 Some(url) => sequencer::Client::with_url(url).unwrap(),
                 None => match network {
                     Chain::Mainnet => sequencer::Client::mainnet(),
@@ -385,7 +385,11 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     info!(location=?database_path, "Database migrated.");
     verify_database_chain(&storage, starknet_chain).context("Verifying database")?;
 
-    let sequencer = match config.sequencer_url.as_ref().or(config.gateway.as_ref()) {
+    let sequencer = match config
+        .sequencer_url
+        .as_ref()
+        .or(config.custom_gateway.as_ref().map(|g| &g.0))
+    {
         Some(url) => {
             info!(?url, "Using custom Sequencer address");
             let client = sequencer::Client::with_url(url.clone()).unwrap();

@@ -19,7 +19,8 @@ const MONITOR_ADDRESS: &str = "monitor-address";
 const INTEGRATION: &str = "integration";
 const TESTNET2: &str = "testnet2";
 const NETWORK: &str = "network";
-const GATEWAY: &str = "gateway";
+const GATEWAY: &str = "gateway_url";
+const FEEDER_GATEWAY: &str = "feeder_gateway_url";
 
 /// Parses the cmd line arguments and returns the optional
 /// configuration file's path and the specified configuration options.
@@ -56,6 +57,7 @@ where
     let monitor_address = args.value_of(MONITOR_ADDRESS).map(|s| s.to_owned());
     let network = args.value_of(NETWORK).map(|s| s.to_owned());
     let gateway = args.value_of(GATEWAY).map(|s| s.to_owned());
+    let feeder_gateway = args.value_of(FEEDER_GATEWAY).map(|s| s.to_owned());
     // Hack around our builder requiring Strings, but these args just needs to be present.
     let integration = args.is_present(INTEGRATION).then_some(String::new());
     let testnet2: Option<String> = args.is_present(TESTNET2).then_some(String::new());
@@ -73,7 +75,8 @@ where
         .with(ConfigOption::Integration, integration)
         .with(ConfigOption::Testnet2, testnet2)
         .with(ConfigOption::Network, network)
-        .with(ConfigOption::Gateway, gateway);
+        .with(ConfigOption::GatewayUrl, gateway)
+        .with(ConfigOption::FeederGatewayUrl, feeder_gateway);
 
     Ok((config_filepath, cfg))
 }
@@ -195,8 +198,9 @@ Examples:
             .help("Specify the StarkNet network")
             .long_help(
                 r"Specify the StarkNet network for pathfinder to operate on.
-                Note that 'custom' requires also setting the --gateway option."
+                Note that 'custom' requires also setting the --gateway_url and --feeder_gateway_url options."
             )
+            .value_names(&["mainnet", "testnet", "testnet2", "integration", "custom"])
             .takes_value(true)
             .env("PATHFINDER_NETWORK")
         )
@@ -207,10 +211,22 @@ Examples:
             .long_help(
                 r"Specify a custom StarkNet gateway url.
                 Can be used to run pathfinder on a custom StarkNet network, or to
-                use a gateway proxy."
+                use a gateway proxy. Requires '--network custom'."
             )
             .takes_value(true)
             .env("PATHFINDER_GATEWAY")
+        )
+        .arg(
+            Arg::new(FEEDER_GATEWAY)
+            .long(FEEDER_GATEWAY)
+            .help("Set a custom StarkNet gateway url")
+            .long_help(
+                r"Specify a custom StarkNet feeder gateway url.
+                Can be used to run pathfinder on a custom StarkNet network, or to
+                use a gateway proxy. Requires '--network custom'."
+            )
+            .takes_value(true)
+            .env("PATHFINDER_FEEDER_GATEWAY")
         )
 }
 
@@ -484,12 +500,27 @@ mod tests {
 
         let value = "value".to_owned();
         let (_, mut cfg) = parse_args(vec!["bin name", "--gateway", &value]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::Gateway), Some(value));
+        assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_GATEWAY", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::Gateway), Some(value));
+        assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
+    }
+
+    #[test]
+    fn feeder_gateway() {
+        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        clear_environment();
+
+        let value = "value".to_owned();
+        let (_, mut cfg) = parse_args(vec!["bin name", "--feeder_gateway", &value]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
+
+        let value = "value".to_owned();
+        env::set_var("PATHFINDER_FEEDER_GATEWAY", &value);
+        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
     }
 
     #[test]
