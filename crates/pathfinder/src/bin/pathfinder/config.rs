@@ -5,6 +5,7 @@ mod file;
 
 use std::{fmt::Display, net::SocketAddr, path::PathBuf, str::FromStr};
 
+use anyhow::Context;
 use enum_iterator::IntoEnumIterator;
 use reqwest::Url;
 
@@ -61,7 +62,9 @@ impl Display for ConfigOption {
             ConfigOption::Testnet2 => f.write_str("Select Testnet 2 network"),
             ConfigOption::Network => f.write_str("Specify the StarkNet network"),
             ConfigOption::GatewayUrl => f.write_str("Specify the StarkNet gateway URL"),
-            ConfigOption::FeederGatewayUrl => f.write_str("Specify the StarkNet feeder gateway URL"),
+            ConfigOption::FeederGatewayUrl => {
+                f.write_str("Specify the StarkNet feeder gateway URL")
+            }
         }
     }
 }
@@ -119,7 +122,7 @@ impl Configuration {
     ///
     /// Note: This will terminate the program if invalid command-line arguments are supplied.
     ///       This is intended, as [clap] will show the program usage / help.
-    pub fn parse_cmd_line_and_cfg_file() -> std::io::Result<Self> {
+    pub fn parse_cmd_line_and_cfg_file() -> anyhow::Result<Self> {
         // Parse command-line arguments. This must be first in order to use
         // users config filepath (if supplied).
         let (cfg_filepath, cli_cfg) = cli::parse_cmd_line();
@@ -131,9 +134,7 @@ impl Configuration {
         // Parse configuration file if specified.
         let file_cfg = match cfg_filepath {
             Some(filepath) => {
-                let filepath = PathBuf::from_str(&filepath).map_err(|err| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidInput, err.to_string())
-                })?;
+                let filepath = PathBuf::from_str(&filepath).context("Parsig config filepath")?;
                 Some(file::config_from_filepath(&filepath)?)
             }
             None => None,
@@ -146,52 +147,21 @@ impl Configuration {
 
         let cfg = cfg.try_build()?;
 
-        if cfg.integration && cfg.testnet2 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Cannot use both integration and testnet 2 at the same time. Please choose one."
-                    .to_string(),
-            ));
+        match (&cfg.custom_gateway, cfg.integration, cfg.testnet2) {
+            (_, true, true) => anyhow::bail!("Cannot use both integration and testnet 2 at the same time."),
+            (Some(_), true, false) => anyhow::bail!("Cannot specify both network and integration options at the same time. Please use network only."),
+            (Some(_), false, true) => anyhow::bail!("Cannot specify both network and testnet2 options at the same time. Please use network only."),
+            (None, true, false) => tracing::warn!("'--integration' is deprecated, please use '--network integration' instead"),
+            (None, false, true) => tracing::warn!("'--testnet2' is deprecated, please use '--network testnet2' instead"),
+            _ => {},
         }
 
-        if cfg.custom_gateway.is_some() && cfg.sequencer_url.is_some() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Cannot use both custom gateway and sequencer-url at the same time. Please use gateway only."
-                    .to_string(),
-            ));
-        }
-
-        if cfg.network.is_some() && cfg.integration {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Cannot specify both network and integration options at the same time. Please use network only."
-                    .to_string(),
-            ));
-        }
-
-        if cfg.network.is_some() && cfg.testnet2 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Cannot specify both network and testnet2 options at the same time. Please use network only."
-                    .to_string(),
-            ));
-        }
-
-        // Emit warning logs for deprecated configuration options.
-        // TODO: remove warnings and the options in next major release.
-        if cfg.sequencer_url.is_some() {
-            tracing::warn!("'--sequencer-url' is deprecated, please use '--gateway' instead");
-        }
-
-        if cfg.integration {
-            tracing::warn!(
-                "'--integration' is deprecated, please use '--network integration' instead"
-            );
-        }
-
-        if cfg.testnet2 {
-            tracing::warn!("'--testnet2' is deprecated, please use '--network testnet2' instead");
+        match (&cfg.custom_gateway, &cfg.sequencer_url) {
+            (None, Some(_)) => tracing::warn!(
+                "'--sequencer-url' is deprecated, please use '--network custom' instead"
+            ),
+            (Some(_), Some(_)) => anyhow::bail!("Cannot use both custom gateway and sequencer-url at the same time. Please use gateway only."),
+            _ => {},
         }
 
         Ok(cfg)
