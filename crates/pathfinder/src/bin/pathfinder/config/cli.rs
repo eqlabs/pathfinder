@@ -214,7 +214,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
                 use a gateway proxy. Requires '--network custom'."
             )
             .takes_value(true)
-            .env("PATHFINDER_GATEWAY")
+            .env("PATHFINDER_GATEWAY_URL")
         )
         .arg(
             Arg::new(FEEDER_GATEWAY)
@@ -226,7 +226,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
                 use a gateway proxy. Requires '--network custom'."
             )
             .takes_value(true)
-            .env("PATHFINDER_FEEDER_GATEWAY")
+            .env("PATHFINDER_FEEDER_GATEWAY_URL")
         )
 }
 
