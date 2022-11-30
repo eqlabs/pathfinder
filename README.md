@@ -197,8 +197,7 @@ This means things like the database will be created and searched for within the 
 
 ### Configuration
 
-The `pathfinder` node options can be configured via the command line as well as a configuration file or environment variables.
-The command line configuration overrides the options from the file.
+The `pathfinder` node options can be configured via the command line as well as environment variables.
 
 The command line options are passed in after the after the `cargo run` options, as follows:
 
@@ -214,37 +213,6 @@ cargo run --release --bin pathfinder -- --help
 
 # with docker images (0.2.0 onwards)
 docker run --rm eqlabs/pathfinder
-```
-
-The configuration file uses the `toml` format:
-
-```toml
-# The address we will host the RPC API at. Defaults to "127.0.0.1:9545"
-http-rpc = "127.0.0.1:1235"
-# The directory the node will use to store its data. Defaults to the current directory.
-data-directory = "..."
-# Override the Sequencer gateway address with your own. This is can be useful if you
-# have a caching proxy in front of the actual Sequencer gateway. If you're unsure
-# of what this does, then you don't need it.
-sequencer-url = "https://..."
-# Set the number of Python subprocesses pathfinder starts. These processes are used
-# to service the `starknet_call` JSON-RPC method and their number limits the maximal
-# number of call requests that can be processed in parallel. Defaults to 2.
-python-subprocesses = 2
-# Whether to enable SQLite write-ahead logging. Defaults to true.
-sqlite-wal = true
-# Whether to enable pending support.
-poll-pending = true
-# The address to host the monitoring API at. Defaults to disabled.
-monitor-address = "127.0.0.1:54321"
-# Use Goerli Testnet 2 instead of Goerli Testnet. Defaults to false.
-testnet2 = true
-
-[ethereum]
-# This is required and must be an HTTP(s) URL pointing to your Ethereum node's endpoint.
-url      = "https://goerli.infura.io/v3/..." #
-# The optional password for your Ethereum endpoint.
-password = "..."
 ```
 
 ### Pending Support
@@ -281,9 +249,18 @@ RUST_LOG=pathfinder=<log level> cargo run --release --bin pathfinder ...
 
 ### Network Selection
 
-The StarkNet network is based on the provided Ethereum endpoint.
-If the Ethereum endpoint is on the Goerli network, then the it will be the StarkNet testnet on Goerli.
-If the Ethereum endpoint is on mainnet, then it will be StarkNet Mainnet.
+The StarkNet network can be selecting with the `--network` configuration option.
+
+If `--network` is not specified, network selection will default to match your Ethereum endpoint:
+
+- StarKNet mainnet for Ethereum mainnet,
+- StarkNet testnet for Ethereum Goerli
+
+#### Custom networks & gateway proxies
+
+You can specify a custom network with `--network custom` and specifying the `--gateway_url` and `feeder_gateway_url` options.
+
+This can be used to interact with a custom StarkNet gateway, or to use a gateway proxy.
 
 ## Running with Docker
 
