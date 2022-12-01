@@ -73,6 +73,7 @@ jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_
 ] }
 mockall = "0.11.0"
 pathfinder-common = { path = "../common", features = ["full-serde"] }
+pathfinder-storage = { path = "../storage", features = ["tests"] }
 pretty_assertions = "1.0.0"
 rand = "0.8"
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
