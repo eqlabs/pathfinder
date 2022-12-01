@@ -9,18 +9,12 @@ use jsonrpsee::types::error::CallError;
 use jsonrpsee::types::{ErrorResponse, Id, ParamsSer, RequestSer, Response};
 use serde::de::DeserializeOwned;
 
-/// Create an RPC [`TestClient`] with a timeout of 120 seconds.
-pub fn client(addr: SocketAddr) -> TestClient {
-    TestClientBuilder::default()
-        .request_timeout(Duration::from_secs(120))
-        .build(addr)
-        .expect("Failed to create test HTTP-RPC client")
-}
-
 /// Test Http Client Builder.
 #[derive(Debug)]
 pub struct TestClientBuilder {
     request_timeout: Duration,
+    address: SocketAddr,
+    endpoint: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -31,16 +25,31 @@ impl TestClientBuilder {
         self
     }
 
+    pub fn address(mut self, address: SocketAddr) -> Self {
+        self.address = address;
+        self
+    }
+
+    pub fn endpoint(mut self, endpoint: String) -> Self {
+        self.endpoint = Some(endpoint);
+        self
+    }
+
     /// Build the HTTP client with target to connect to.
-    pub fn build(self, target: std::net::SocketAddr) -> Result<TestClient, Error> {
+    pub fn build(self) -> anyhow::Result<TestClient> {
         let transport = reqwest::Client::builder()
             .timeout(self.request_timeout)
             .build()
             .map_err(|e| Error::Transport(e.into()))?;
 
+        let target = match self.endpoint {
+            Some(endpoint) => format!("http://{}/{endpoint}", self.address),
+            None => format!("http://{}/", self.address),
+        };
+
         Ok(TestClient {
             transport,
-            target: reqwest::Url::parse(&format!("http://{target}")).unwrap(),
+            target: reqwest::Url::parse(&target).unwrap(),
             current_id: AtomicU64::new(0),
         })
     }
@@ -50,6 +59,8 @@ impl Default for TestClientBuilder {
     fn default() -> Self {
         Self {
             request_timeout: Duration::from_secs(120),
+            address: *super::tests::LOCALHOST,
+            endpoint: None,
         }
     }
 }
@@ -66,6 +77,16 @@ pub struct TestClient {
 }
 
 impl TestClient {
+    #[cfg(test)]
+    pub fn v01(address: SocketAddr) -> Self {
+        TestClientBuilder::default()
+            .request_timeout(Duration::from_secs(120))
+            .address(address)
+            .endpoint("rpc/v0.1".into())
+            .build()
+            .expect("Create v0.1 RPC client")
+    }
+
     /// Perform a request towards the server.
     ///
     /// The difference from [`jsonrpsee::http_client::HttpClient::request`] is that

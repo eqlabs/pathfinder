@@ -1,10 +1,9 @@
-use anyhow::Context;
-
 use crate::{
-    core::{ContractAddress, StarknetTransactionHash},
     rpc::v02::{types::request::BroadcastedDeployAccountTransaction, RpcContext},
     sequencer::ClientApi,
 };
+use anyhow::Context;
+use pathfinder_common::{ContractAddress, StarknetTransactionHash};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -54,12 +53,9 @@ pub async fn add_deploy_account_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        core::{
-            CallParam, Chain, ClassHash, ContractAddressSalt, Fee, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
-        starkhash,
+    use pathfinder_common::{
+        starkhash, CallParam, Chain, ClassHash, ContractAddressSalt, Fee, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
 
     const INPUT_JSON: &str = r#"{
@@ -131,6 +127,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "gateway 429"]
     async fn test_add_deploy_account_transaction() {
         // FIXME(0.10.1) Return to `RpcContext::for_tests()` once 0.10.1 hits TestNet.
         let context = RpcContext::for_tests_on(Chain::Integration);

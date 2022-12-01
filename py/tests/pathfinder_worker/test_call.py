@@ -38,6 +38,7 @@ def test_command_parsing_estimate_fee():
             }
         ],
         "pending_nonces":{"0x123":"0x1"},
+        "pending_timestamp": 0,
         "transaction":{
             "type":"INVOKE_FUNCTION",
             "version":"0x100000000000000000000000000000000",
@@ -65,6 +66,7 @@ def test_command_parsing_estimate_fee():
             )
         ],
         pending_nonces={0x123: 1},
+        pending_timestamp=0,
         transaction=InvokeFunction(
             version=0x100000000000000000000000000000000,
             contract_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
@@ -90,6 +92,7 @@ def test_command_parsing_call():
         },
         "pending_deployed":[],
         "pending_nonces":{},
+        "pending_timestamp": 0,
         "contract_address":"0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
         "calldata":["0x84"],
         "entry_point_selector":"0x26813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0"
@@ -105,6 +108,7 @@ def test_command_parsing_call():
         },
         pending_deployed=[],
         pending_nonces={},
+        pending_timestamp=0,
         contract_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
         calldata=[0x84],
         entry_point_selector=0x26813D396FDB198E9EAD934E4F7A592A8B88A059E45AB0EB6EE53494E8D45B0,
@@ -230,7 +234,7 @@ def populate_test_contract_with_132_on_3(con):
     cur = con.execute("BEGIN")
 
     path = test_relative_path(
-        "../../../crates/pathfinder/fixtures/contract_definition.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contract_definition.json.zst"
     )
 
     with open(path, "rb") as file:
@@ -340,7 +344,7 @@ def test_success():
     contract_address = hex(populate_test_contract_with_132_on_3(con))
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
+    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
 
     output = default_132_on_3_scenario(
         con,
@@ -374,6 +378,7 @@ def test_positive_directly():
         pending_updates={},
         pending_deployed=[],
         pending_nonces={},
+        pending_timestamp=0,
     )
 
     con.execute("BEGIN")
@@ -388,7 +393,7 @@ def test_called_contract_not_found():
     contract_address = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
+    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
 
     output = default_132_on_3_scenario(
         con,
@@ -405,7 +410,7 @@ def test_nested_called_contract_not_found():
     contract_address = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("call_increase_value"))
 
-    common_command_data = '"gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}'
+    common_command_data = '"gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}, "pending_timestamp": 0'
 
     output = default_132_on_3_scenario(
         con,
@@ -424,7 +429,7 @@ def test_invalid_entry_point():
     contract_address = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("call_increase_value2"))
 
-    common_command_data = '"gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}'
+    common_command_data = '"gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}, "pending_timestamp": 0'
     output = default_132_on_3_scenario(
         con,
         [
@@ -444,7 +449,7 @@ def test_invalid_schema_version():
     contract_address = hex(populate_test_contract_with_132_on_3(con))
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
+    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
 
     con.execute("pragma user_version = 0")
     con.commit()
@@ -464,7 +469,7 @@ def test_no_such_block():
     contract_address = hex(populate_test_contract_with_132_on_3(con))
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}'
+    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
 
     con.execute("delete from starknet_blocks")
     con.commit()
@@ -508,6 +513,7 @@ def test_fee_estimate_on_positive_directly():
         pending_updates={},
         pending_deployed=[],
         pending_nonces={},
+        pending_timestamp=0,
         transaction=InvokeFunction(
             version=0x100000000000000000000000000000000,
             contract_address=contract_address,
@@ -533,7 +539,7 @@ def test_fee_estimate_for_declare_transaction_directly():
     contract_address = populate_test_contract_with_132_on_3(con)
 
     path = test_relative_path(
-        "../../../crates/pathfinder/fixtures/contract_definition.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contract_definition.json.zst"
     )
 
     with open(path, "rb") as file:
@@ -551,6 +557,7 @@ def test_fee_estimate_for_declare_transaction_directly():
         pending_updates={},
         pending_deployed=[],
         pending_nonces={},
+        pending_timestamp=0,
         transaction=Declare(
             version=0x100000000000000000000000000000000,
             max_fee=0,
@@ -583,6 +590,7 @@ def test_fee_estimate_on_positive():
         "pending_updates":{{}},
         "pending_deployed":[],
         "pending_nonces":{{}},
+        "pending_timestamp":0,
         "transaction":{{
             "type":"INVOKE_FUNCTION",
             "version":"0x100000000000000000000000000000000",
@@ -669,6 +677,7 @@ def test_call_on_pending_updated():
         pending_updates={contract_address: [call.StorageDiff(key=0x84, value=0x99)]},
         pending_deployed=[],
         pending_nonces={},
+        pending_timestamp=0,
     )
 
     (verb, output, _timings) = loop_inner(con, command)
@@ -698,6 +707,7 @@ def test_call_on_pending_deployed():
             call.DeployedContract(address=contract_address, contract_hash=contract_hash)
         ],
         pending_nonces={},
+        pending_timestamp=0,
     )
 
     (verb, output, _timings) = loop_inner(con, command)
@@ -734,6 +744,7 @@ def test_call_on_pending_deployed_through_existing():
             call.DeployedContract(address=contract_address, contract_hash=contract_hash)
         ],
         pending_nonces={},
+        pending_timestamp=0,
     )
 
     # the call_increase_value doesn't return anything, which is a bit unfortunate.
@@ -779,6 +790,7 @@ def test_call_on_reorgged_pending_block():
                 },
                 pending_deployed=[],
                 pending_nonces={},
+                pending_timestamp=0,
             ),
             [5],
         ),
@@ -796,6 +808,7 @@ def test_call_on_reorgged_pending_block():
                 },
                 pending_deployed=[],
                 pending_nonces={},
+                pending_timestamp=0,
             ),
             [3],
         ),
@@ -815,6 +828,7 @@ def test_call_on_reorgged_pending_block():
                     )
                 ],
                 pending_nonces={},
+                pending_timestamp=0,
             ),
             [5],
         ),
@@ -835,6 +849,7 @@ def test_call_on_reorgged_pending_block():
                     )
                 ],
                 pending_nonces={},
+                pending_timestamp=0,
             ),
             "StarknetErrorCode.UNINITIALIZED_CONTRACT",
         ),
@@ -877,7 +892,7 @@ def test_nonce_with_dummy():
     test_contract = populate_test_contract_with_132_on_3(con)
 
     path = test_relative_path(
-        "../../../crates/pathfinder/fixtures/dummy_account.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/dummy_account.json.zst"
     )
 
     cur = con.execute("BEGIN")
@@ -1033,6 +1048,7 @@ def test_nonce_with_dummy():
         pending_updates={},
         pending_deployed=[],
         pending_nonces={},
+        pending_timestamp=0,
         transaction=base_transaction,
     )
 
@@ -1135,7 +1151,7 @@ def test_nonce_with_dummy():
 
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
 def test_failing_mainnet_tx2():
-    con = sqlite3.connect(test_relative_path("../../mainnet.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../mainnet.sqlite"))
     con.execute("BEGIN")
 
     # this is running fee estimation on existing transaction from mainnet, on the block before
@@ -1151,6 +1167,7 @@ def test_failing_mainnet_tx2():
         pending_updates={},
         pending_deployed=[],
         pending_nonces={},
+        pending_timestamp=0,
         transaction=InvokeFunction(
             version=0,
             contract_address=45915111574649954983606422480229741823594314537836586888051448850027079668,
@@ -1176,9 +1193,9 @@ def test_failing_mainnet_tx2():
         ),
     )
 
-    (verb, output, _timings) = loop_inner(con, command)
+    (_verb, output, timings) = loop_inner(con, command)
 
-    print(_timings)
+    print(timings)
 
     # this is correct in 0.10, not in 0.9.1
     assert output == {
@@ -1190,7 +1207,7 @@ def test_failing_mainnet_tx2():
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_without_deployed():
-    con = sqlite3.connect(test_relative_path("../../goerli.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../goerli.sqlite"))
     con.execute("BEGIN")
 
     with_updates = Call(
@@ -1222,6 +1239,7 @@ def test_positive_streamed_on_early_goerli_block_without_deployed():
         },
         pending_deployed=[],
         pending_nonces={},
+        pending_timestamp=0,
     )
 
     without_updates = dataclasses.replace(with_updates, pending_updates={})
@@ -1233,9 +1251,56 @@ def test_positive_streamed_on_early_goerli_block_without_deployed():
     assert output == [0x22B]
 
 
+@pytest.mark.skip(reason="this requires a mainnet database with block 11486")
+def test_timestamp_dependent_pending_call():
+    con = sqlite3.connect(test_relative_path("../../../mainnet.sqlite"))
+    con.execute("BEGIN")
+
+    # This call fails if we are just using the timestamp from the block specified
+    # by `at_block`. Execution succeeds only with the correct timestamp from the pending
+    # block.
+    c = Call(
+        at_block="0x74cc50f4b8083835682bbe1489a4b1474053e4f6a35c66b8bb25b2e700630f9",
+        chain=call.Chain.MAINNET,
+        pending_updates={
+            0x3D39F7248FB2BFB960275746470F7FB470317350AD8656249EC66067559E892: [
+                call.StorageDiff(
+                    key=0x57E3AC4C831E9CE78DE8142D212350256E7263262456048615D1800F91A021,
+                    value=0xDE21C10E8E2457F,
+                ),
+                call.StorageDiff(
+                    key=0x41FB32DAA5E26566D482776D5F8ABFF389DA500038A86A288F5ADB39276AD55,
+                    value=0x27FC7A436ABEEE,
+                ),
+                call.StorageDiff(
+                    key=0x5A827682859FAFF64442160965F441FC4344F998E6818244814B04A830749EA,
+                    value=0x6380C4AD,
+                ),
+                call.StorageDiff(
+                    key=0x69010E0D78ABB0652354B78994622E24A9E47A8D30D5C4C0C9FB2DF3DBC04CF,
+                    value=0xDE2B4696C7152F6,
+                ),
+                call.StorageDiff(
+                    key=0x747A639BB6DBAE6D3A00A22E5E976EB21F6A8C0D87B25A9E77C50759D7066CB,
+                    value=0x9737843489E05,
+                ),
+            ],
+        },
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=1669383496,
+        contract_address=3193647238523375300127598243000966435117811015280340811133237455989949224134,
+        calldata=[],
+        entry_point_selector=227334030968744315992796982100494617316223563777432855541120004521101595501,
+        gas_price=0,
+    )
+
+    (verb, output, _timings) = loop_inner(con, c)
+
+
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_with_deployed():
-    con = sqlite3.connect(test_relative_path("../../goerli.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../goerli.sqlite"))
     con.execute("BEGIN")
 
     # this is from the corresponding state update for block 6
@@ -1275,6 +1340,7 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
         pending_updates=pending_updates,
         pending_deployed=pending_deployed,
         pending_nonces={},
+        pending_timestamp=0,
     )
 
     without_updates = dataclasses.replace(
@@ -1304,6 +1370,7 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
         pending_updates=pending_updates,
         pending_deployed=pending_deployed,
         pending_nonces={},
+        pending_timestamp=0,
     )
 
     (verb, output, _timings) = loop_inner(con, on_newly_deployed)

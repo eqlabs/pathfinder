@@ -2,6 +2,7 @@
 
 use super::{sub_process::launch_python, Command, Handle, SharedReceiver, SubProcessEvent};
 use anyhow::Context;
+use pathfinder_common::Chain;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};
@@ -25,7 +26,7 @@ pub async fn start(
     database_path: PathBuf,
     count: std::num::NonZeroUsize,
     stop_flag: impl std::future::Future<Output = ()> + Send + 'static,
-    chain: crate::core::Chain,
+    chain: Chain,
 ) -> anyhow::Result<(Handle, tokio::task::JoinHandle<()>)> {
     use futures::stream::StreamExt;
 

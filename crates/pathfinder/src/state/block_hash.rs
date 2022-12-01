@@ -1,16 +1,15 @@
+use crate::state::merkle_tree::MerkleTree;
 use anyhow::{Context, Error, Result};
 use bitvec::prelude::BitView;
-use stark_hash::{stark_hash, HashChain, StarkHash};
-
-use crate::core::{
+use pathfinder_common::{
     Chain, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
     StarknetBlockTimestamp,
 };
-use crate::sequencer::reply::{
+use stark_hash::{stark_hash, HashChain, StarkHash};
+use starknet_gateway_types::reply::{
     transaction::{Event, Receipt, Transaction},
     Block,
 };
-use crate::state::merkle_tree::MerkleTree;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
@@ -49,13 +48,24 @@ pub fn verify_block_hash(
     let transaction_commitment = calculate_transaction_commitment(&block.transactions)?;
 
     let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
+        use pathfinder_common::ChainId;
+        let chain_id = match chain {
+            Chain::Mainnet => ChainId::MAINNET,
+            Chain::Testnet => ChainId::TESTNET,
+            Chain::Integration => ChainId::INTEGRATION,
+            Chain::Testnet2 => ChainId::TESTNET2,
+            Chain::Custom => {
+                anyhow::bail!("Chain::Custom should not have any pre 0.7 block hashes")
+            }
+        };
+
         let block_hash = compute_final_hash_pre_0_7(
             block.block_number,
             block.state_root,
             num_transactions,
             transaction_commitment,
             block.parent_block_hash,
-            chain.starknet_chain_id(),
+            chain_id,
         );
         block_hash == expected_block_hash
     } else {
@@ -67,24 +77,22 @@ pub fn verify_block_hash(
             .sequencer_address
             .unwrap_or(SequencerAddress(StarkHash::ZERO));
 
-        let sequencer_addresses_to_try = &[
-            &block_sequencer_address,
-            &meta_info.fallback_sequencer_address,
-        ];
-        sequencer_addresses_to_try.iter().any(|address| {
-            let block_hash = compute_final_hash(
-                block.block_number,
-                block.state_root,
-                address,
-                block.timestamp,
-                num_transactions,
-                transaction_commitment,
-                num_events,
-                event_commitment,
-                block.parent_block_hash,
-            );
-            block_hash == expected_block_hash
-        })
+        std::iter::once(&block_sequencer_address)
+            .chain(meta_info.fallback_sequencer_address.iter())
+            .any(|address| {
+                let block_hash = compute_final_hash(
+                    block.block_number,
+                    block.state_root,
+                    address,
+                    block.timestamp,
+                    num_transactions,
+                    transaction_commitment,
+                    num_events,
+                    event_commitment,
+                    block.parent_block_hash,
+                );
+                block_hash == expected_block_hash
+            })
     };
 
     Ok(match verified {
@@ -94,10 +102,8 @@ pub fn verify_block_hash(
 }
 
 mod meta {
+    use pathfinder_common::{starkhash, Chain, SequencerAddress, StarknetBlockNumber};
     use std::ops::Range;
-
-    use crate::core::{Chain, SequencerAddress, StarknetBlockNumber};
-    use crate::starkhash;
 
     /// Metadata about Starknet chains we use for block hash calculation
     ///
@@ -126,7 +132,7 @@ mod meta {
         /// The range of block numbers that can't be verified because of an unknown sequencer address.
         pub not_verifiable_range: Option<Range<StarknetBlockNumber>>,
         /// Fallback sequencer address to use for blocks that don't include the address.
-        pub fallback_sequencer_address: SequencerAddress,
+        pub fallback_sequencer_address: Option<SequencerAddress>,
     }
 
     impl BlockHashMetaInfo {
@@ -147,25 +153,25 @@ mod meta {
         not_verifiable_range: Some(
             StarknetBlockNumber::new_or_panic(119802)..StarknetBlockNumber::new_or_panic(148428),
         ),
-        fallback_sequencer_address: SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        )),
+        ))),
     };
 
     const TESTNET2_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: StarknetBlockNumber::new_or_panic(0),
         not_verifiable_range: None,
-        fallback_sequencer_address: SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        )),
+        ))),
     };
 
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: StarknetBlockNumber::new_or_panic(833),
         not_verifiable_range: None,
-        fallback_sequencer_address: SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
-        )),
+        ))),
     };
 
     const INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
@@ -173,9 +179,15 @@ mod meta {
         not_verifiable_range: Some(
             StarknetBlockNumber::new_or_panic(0)..StarknetBlockNumber::new_or_panic(110511),
         ),
-        fallback_sequencer_address: SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        )),
+        ))),
+    };
+
+    const CUSTOM_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
+        first_0_7_block: StarknetBlockNumber::new_or_panic(0),
+        not_verifiable_range: None,
+        fallback_sequencer_address: None,
     };
 
     pub fn for_chain(chain: Chain) -> &'static BlockHashMetaInfo {
@@ -184,6 +196,7 @@ mod meta {
             Chain::Testnet => &TESTNET_METAINFO,
             Chain::Testnet2 => &TESTNET2_METAINFO,
             Chain::Integration => &INTEGRATION_METAINFO,
+            Chain::Custom => &CUSTOM_METAINFO,
         }
     }
 }
@@ -203,7 +216,7 @@ fn compute_final_hash_pre_0_7(
     num_transactions: u64,
     transaction_commitment: StarkHash,
     parent_block_hash: StarknetBlockHash,
-    chain_id: StarkHash,
+    chain_id: pathfinder_common::ChainId,
 ) -> StarknetBlockHash {
     let mut chain = HashChain::default();
 
@@ -228,7 +241,7 @@ fn compute_final_hash_pre_0_7(
     // reserved: extra data
     chain.update(StarkHash::ZERO);
     // EXTRA FIELD: chain id
-    chain.update(chain_id);
+    chain.update(chain_id.0);
     // parent block hash
     chain.update(parent_block_hash.0);
 
@@ -422,17 +435,16 @@ fn number_of_events_in_block(block: &Block) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        core::{EntryPoint, Fee},
-        sequencer::reply::transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
-        starkhash,
-    };
-
     use super::*;
+    use pathfinder_common::{starkhash, EntryPoint, Fee};
+    use starknet_gateway_types::reply::{
+        transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
+        Block,
+    };
 
     #[test]
     fn test_event_hash() {
-        use crate::core::{ContractAddress, EventData, EventKey};
+        use pathfinder_common::{ContractAddress, EventData, EventKey};
 
         let event = Event {
             from_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
@@ -461,7 +473,9 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        use crate::core::{ContractAddress, StarknetTransactionHash, TransactionSignatureElem};
+        use pathfinder_common::{
+            ContractAddress, StarknetTransactionHash, TransactionSignatureElem,
+        };
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
@@ -507,10 +521,8 @@ mod tests {
 
     #[test]
     fn test_number_of_events_in_block() {
-        use crate::sequencer::reply::Block;
-
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/156000.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         // this expected value comes from processing the raw JSON and counting the number of events
         const EXPECTED_NUMBER_OF_EVENTS: usize = 55;
@@ -519,11 +531,9 @@ mod tests {
 
     #[test]
     fn test_block_hash_without_sequencer_address() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a post-0.7, pre-0.8.0 block where zero is used as the sequencer address.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/90000.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_90000;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
@@ -533,12 +543,10 @@ mod tests {
 
     #[test]
     fn test_block_hash_with_sequencer_address() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a post-0.8.2 block where we have correct sequencer address
         // information in the block itself.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/231579.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_231579;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
@@ -548,13 +556,11 @@ mod tests {
 
     #[test]
     fn test_block_hash_with_sequencer_address_unavailable_but_not_zero() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a post-0.8.0 pre-0.8.2 block where we don't have the sequencer
         // address in the JSON but the block hash was calculated with the magic value below
         // instead of zero.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/156000.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash,).unwrap(),
@@ -564,12 +570,10 @@ mod tests {
 
     #[test]
     fn test_block_hash_0() {
-        use crate::sequencer::reply::Block;
-
         // This tests with a pre-0.7 block where the chain ID was hashed into
         // the block hash.
-        let json = include_bytes!("../../fixtures/sequencer/0.9.0/block/genesis.json");
-        let block: Block = serde_json::from_slice(json).unwrap();
+        let json = starknet_gateway_test_fixtures::v0_9_0::block::GENESIS;
+        let block: Block = serde_json::from_str(json).unwrap();
 
         assert_eq!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),

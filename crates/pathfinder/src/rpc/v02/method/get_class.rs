@@ -1,8 +1,7 @@
-use crate::core::{BlockId, ClassHash};
 use crate::rpc::v02::types::ContractClass;
 use crate::rpc::v02::RpcContext;
-
 use anyhow::Context;
+use pathfinder_common::{BlockId, ClassHash};
 use rusqlite::OptionalExtension;
 
 crate::rpc::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
@@ -96,7 +95,7 @@ fn read_latest(tx: &rusqlite::Transaction<'_>, class: ClassHash) -> Result<Vec<u
 fn read_at_hash(
     tx: &rusqlite::Transaction<'_>,
     class: ClassHash,
-    block: crate::core::StarknetBlockHash,
+    block: pathfinder_common::StarknetBlockHash,
 ) -> Result<Vec<u8>, GetClassError> {
     let number = tx
         .query_row(
@@ -129,7 +128,7 @@ fn read_at_hash(
 fn read_at_number(
     tx: &rusqlite::Transaction<'_>,
     class: ClassHash,
-    block: crate::core::StarknetBlockNumber,
+    block: pathfinder_common::StarknetBlockNumber,
 ) -> Result<Vec<u8>, GetClassError> {
     // Check that the block number exists. This has to happen first as the <= check
     // in the class selection query will work even if the block number exceeds what
@@ -181,16 +180,14 @@ async fn is_pending_class(pending: &Option<crate::state::PendingData>, hash: Cla
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::starkhash_bytes;
     use assert_matches::assert_matches;
+    use pathfinder_common::starkhash_bytes;
 
     mod parsing {
-        use crate::core::StarknetBlockHash;
-        use crate::starkhash;
-
         use super::*;
-
         use jsonrpsee::types::Params;
+        use pathfinder_common::starkhash;
+        use pathfinder_common::StarknetBlockHash;
 
         #[test]
         fn positional_args() {
@@ -260,7 +257,7 @@ mod tests {
 
     #[test]
     fn read_at_number() {
-        use crate::core::StarknetBlockNumber;
+        use pathfinder_common::StarknetBlockNumber;
 
         let context = RpcContext::for_tests();
         let mut conn = context.storage.connection().unwrap();
@@ -292,7 +289,7 @@ mod tests {
 
     #[test]
     fn read_at_hash() {
-        use crate::core::StarknetBlockHash;
+        use pathfinder_common::StarknetBlockHash;
 
         let context = RpcContext::for_tests();
         let mut conn = context.storage.connection().unwrap();

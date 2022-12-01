@@ -1,7 +1,7 @@
 //! StarkNet node JSON-RPC related modules.
 mod error;
 pub mod gas_price;
-pub mod serde;
+mod pathfinder;
 #[cfg(test)]
 pub mod test_client;
 #[cfg(test)]
@@ -77,10 +77,15 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         v02::register_all_methods(&mut module_v02)?;
         let module_v02 = module_v02.into();
 
+        let mut pathfinder_module = RpcModule::new(());
+        pathfinder::register_all_methods(&mut pathfinder_module)?;
+        let pathfinder_module = pathfinder_module.into();
+
         Ok(server
             .start_with_paths([
-                (vec!["/", "/rpc/v0.1"], module_v01),
-                (vec!["/rpc/v0.2"], module_v02),
+                (vec!["/rpc/v0.1"], module_v01),
+                (vec!["/", "/rpc/v0.2"], module_v02),
+                (vec!["/rpc/pathfinder/v0.1"], pathfinder_module),
             ])
             .map(|handle| (handle, local_addr))?)
     }
@@ -89,22 +94,7 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
 #[cfg(test)]
 mod tests {
     use crate::{
-        core::{
-            ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey,
-            GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex,
-            StorageAddress, TransactionVersion,
-        },
         rpc::RpcServer,
-        sequencer::reply::{
-            state_update::StorageDiff,
-            transaction::{
-                execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                EntryPointType, Event, ExecutionResources, InvokeTransaction, InvokeTransactionV0,
-                Receipt,
-            },
-        },
-        starkhash, starkhash_bytes,
         state::{state_tree::GlobalStateTree, PendingData},
         storage::{
             CanonicalBlocksTable, ContractCodeTable, ContractsTable, StarknetBlock,
@@ -112,8 +102,21 @@ mod tests {
         },
     };
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
-
+    use pathfinder_common::{
+        starkhash, starkhash_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
+        EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        StarknetTransactionIndex, StorageAddress, TransactionVersion,
+    };
     use stark_hash::StarkHash;
+    use starknet_gateway_types::reply::{
+        state_update::StorageDiff,
+        transaction::{
+            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+            DeployTransaction, EntryPointType, Event, ExecutionResources, InvokeTransaction,
+            InvokeTransactionV0, Receipt, Transaction,
+        },
+    };
     use std::{
         collections::BTreeMap,
         net::{Ipv4Addr, SocketAddr, SocketAddrV4},
@@ -142,11 +145,8 @@ mod tests {
 
     // Local test helper
     pub fn setup_storage() -> Storage {
-        use crate::sequencer::reply::transaction::Transaction;
-        use crate::{
-            core::{ContractNonce, StorageValue},
-            state::{update_contract_state, CompressedContract},
-        };
+        use crate::state::{update_contract_state, CompressedContract};
+        use pathfinder_common::{ContractNonce, StorageValue};
         use web3::types::H128;
 
         let storage = Storage::in_memory().unwrap();
@@ -179,7 +179,7 @@ mod tests {
         // contract definition, as this is asserted for internally
         let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
         let contract_definition =
-            include_bytes!("../fixtures/contract_definition.json.zst").to_vec();
+            starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION.to_vec();
         let contract0_code = CompressedContract {
             abi: zstd_magic.clone(),
             bytecode: zstd_magic,
@@ -292,7 +292,7 @@ mod tests {
             contract_address: contract0_addr,
             entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(StarkHash::ZERO),
-            max_fee: crate::core::Fee(H128::zero()),
+            max_fee: pathfinder_common::Fee(H128::zero()),
             signature: vec![],
             transaction_hash: txn0_hash,
         };
@@ -371,9 +371,7 @@ mod tests {
     /// i.e. the pending block's parent hash will be the latest block's hash from storage,
     /// and similarly for the pending state diffs state root.
     pub async fn create_pending_data(storage: Storage) -> PendingData {
-        use crate::core::StorageValue;
-        use crate::sequencer::reply::transaction::DeployTransaction;
-        use crate::sequencer::reply::transaction::Transaction;
+        use pathfinder_common::StorageValue;
 
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {
@@ -461,18 +459,18 @@ mod tests {
             },
         ];
 
-        let block = crate::sequencer::reply::PendingBlock {
+        let block = starknet_gateway_types::reply::PendingBlock {
             gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
             parent_hash: latest.hash,
             sequencer_address: SequencerAddress(starkhash_bytes!(b"pending sequencer address")),
-            status: crate::sequencer::reply::Status::Pending,
+            status: starknet_gateway_types::reply::Status::Pending,
             timestamp: StarknetBlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
             transactions,
             starknet_version: Some("pending version".to_owned()),
         };
 
-        use crate::sequencer::reply as seq_reply;
+        use starknet_gateway_types::reply as seq_reply;
         let deployed_contracts = vec![
             seq_reply::state_update::DeployedContract {
                 address: ContractAddress::new_or_panic(starkhash_bytes!(
@@ -503,7 +501,7 @@ mod tests {
         .into_iter()
         .collect();
 
-        let state_diff = crate::sequencer::reply::state_update::StateDiff {
+        let state_diff = starknet_gateway_types::reply::state_update::StateDiff {
             storage_diffs,
             deployed_contracts,
             declared_contracts: Vec::new(),
@@ -516,7 +514,8 @@ mod tests {
         tokio::task::spawn_blocking(move || {
             let mut db = deploy_storage.connection().unwrap();
             let tx = db.transaction().unwrap();
-            let compressed_definition = include_bytes!("../fixtures/contract_definition.json.zst");
+            let compressed_definition =
+                starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION.to_vec();
             for deployed in deployed_contracts {
                 // The abi, bytecode, definition are expected to be zstd compressed, and are
                 // checked for the magic bytes.
@@ -566,7 +565,7 @@ mod tests {
         .await
         .unwrap();
 
-        let state_update = crate::sequencer::reply::StateUpdate {
+        let state_update = starknet_gateway_types::reply::StateUpdate {
             // This must be `None` for a pending state update.
             block_hash: None,
             new_root: pending_root,

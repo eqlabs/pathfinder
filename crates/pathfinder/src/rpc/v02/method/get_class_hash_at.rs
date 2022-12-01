@@ -1,9 +1,8 @@
-use anyhow::Context;
-
-use crate::core::{BlockId, ClassHash, ContractAddress, ContractStateHash};
 use crate::rpc::v02::RpcContext;
 use crate::state::state_tree::GlobalStateTree;
 use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+use anyhow::Context;
+use pathfinder_common::{BlockId, ClassHash, ContractAddress, ContractStateHash};
 
 crate::rpc::error::generate_rpc_error_subset!(GetClassHashAtError: BlockNotFound, ContractNotFound);
 
@@ -100,15 +99,13 @@ fn read_class_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{starkhash, starkhash_bytes};
     use assert_matches::assert_matches;
+    use pathfinder_common::{starkhash, starkhash_bytes};
 
     mod parsing {
-        use crate::core::StarknetBlockHash;
-
         use super::*;
-
         use jsonrpsee::types::Params;
+        use pathfinder_common::StarknetBlockHash;
 
         #[test]
         fn positional_args() {
@@ -160,7 +157,7 @@ mod tests {
 
         #[tokio::test]
         async fn block_not_found() {
-            use crate::core::StarknetBlockHash;
+            use pathfinder_common::StarknetBlockHash;
 
             let context = RpcContext::for_tests();
 
@@ -189,7 +186,7 @@ mod tests {
 
     #[tokio::test]
     async fn at_block() {
-        use crate::core::StarknetBlockNumber;
+        use pathfinder_common::StarknetBlockNumber;
         let context = RpcContext::for_tests();
 
         // This contract is deployed in block 1.

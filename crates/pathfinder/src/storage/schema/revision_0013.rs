@@ -1,6 +1,7 @@
-use crate::{core::ClassHash, state::CompressedContract};
+use crate::state::CompressedContract;
 #[allow(unused)]
 use anyhow::Context;
+use pathfinder_common::{Chain, ClassHash};
 use rusqlite::{OptionalExtension, Transaction};
 use stark_hash::{OverflowError, StarkHash};
 
@@ -14,11 +15,11 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
         .optional()?;
 
     let (minimum_block, chain) = match genesis {
-        Some(Ok(x)) if x == crate::consts::TESTNET_GENESIS_HASH.0 => {
-            (231_579, crate::core::Chain::Testnet)
+        Some(Ok(x)) if x == pathfinder_common::consts::TESTNET_GENESIS_HASH.0 => {
+            (231_579, Chain::Testnet)
         }
-        Some(Ok(x)) if x == crate::consts::MAINNET_GENESIS_HASH.0 => {
-            (2700, crate::core::Chain::Mainnet)
+        Some(Ok(x)) if x == pathfinder_common::consts::MAINNET_GENESIS_HASH.0 => {
+            (2700, Chain::Mainnet)
         }
         Some(Ok(y)) => anyhow::bail!("Unknown genesis block hash: {}", y),
         Some(Err(err @ OverflowError)) => {
@@ -40,14 +41,23 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     let handle = tokio::runtime::Handle::current();
 
     let downloader = std::thread::spawn(move || {
+        use crate::sequencer::Client;
         use crate::sequencer::ClientApi;
 
-        let client = crate::sequencer::Client::new(chain).unwrap();
+        let client = match chain {
+            Chain::Mainnet => Client::mainnet(),
+            Chain::Testnet => Client::testnet(),
+            Chain::Testnet2 => Client::testnet2(),
+            Chain::Integration => Client::integration(),
+            Chain::Custom => anyhow::bail!("Migration is not applicable for custom networks"),
+        };
 
         for class_hash in work_rx.iter() {
             let class = handle.block_on(client.class_by_hash(class_hash)).unwrap();
             downloaded_tx.send(class).unwrap();
         }
+
+        Ok(())
     });
 
     let extract_compress = std::thread::spawn(move || {
@@ -121,7 +131,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
             _ => continue,
         };
 
-        if class_query.exists(&[class_hash.0.as_be_bytes()])? {
+        if class_query.exists([class_hash.0.as_be_bytes()])? {
             continue;
         }
 
@@ -145,7 +155,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
             .with_context(|| format!("Failed to save class {}", cc.hash.0))?;
     }
 
-    downloader.join().unwrap();
+    downloader.join().unwrap()?;
     extract_compress.join().unwrap();
 
     Ok(())

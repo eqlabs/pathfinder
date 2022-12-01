@@ -1,36 +1,30 @@
+use pathfinder_common::ChainId;
+
 use crate::rpc::v02::RpcContext;
 
 crate::rpc::error::generate_rpc_error_subset!(ChainIdError);
 
 #[allow(dead_code)]
-pub async fn chain_id(context: RpcContext) -> Result<String, ChainIdError> {
-    Ok(context.chain.starknet_chain_id().to_hex_str().into_owned())
+pub async fn chain_id(context: RpcContext) -> Result<ChainId, ChainIdError> {
+    Ok(context.chain_id)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::core::Chain;
-    use crate::rpc::v02::RpcContext;
-
-    use super::chain_id;
+    use pathfinder_common::ChainId;
+    use stark_hash::StarkHash;
 
     #[tokio::test]
-    async fn mainnet() {
-        let mut context = RpcContext::for_tests();
-        context.chain = Chain::Mainnet;
+    async fn encoding() {
+        let value = "example ID";
+        let chain_id = StarkHash::from_be_slice(value.as_bytes()).unwrap();
+        let chain_id = ChainId(chain_id);
 
-        let result = chain_id(context).await.unwrap();
-        let expected = format!("0x{}", hex::encode("SN_MAIN"));
-        assert_eq!(result, expected);
-    }
+        let encoded = serde_json::to_string(&chain_id).unwrap();
 
-    #[tokio::test]
-    async fn testnet() {
-        let mut context = RpcContext::for_tests();
-        context.chain = Chain::Testnet;
+        let expected = hex::encode(value);
+        let expected = format!(r#""0x{expected}""#);
 
-        let result = chain_id(context).await.unwrap();
-        let expected = format!("0x{}", hex::encode("SN_GOERLI"));
-        assert_eq!(result, expected);
+        assert_eq!(encoded, expected);
     }
 }

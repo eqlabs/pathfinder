@@ -146,7 +146,7 @@ rpc_call '{
     "jsonrpc": "2.0",
     "method": "starknet_getEvents",
     "params": [
-        {"from_block": 800, "to_block": 1701, "page_size": 1000, "page_number": 0}
+        {"from_block": {"block_number": 800}, "to_block": {"block_number": 1701}, "page_size": 1000, "page_number": 0}
     ],
     "id": 0
 }'
@@ -233,7 +233,6 @@ rpc_call '{
     "id": 0
 }'
 
-# TODO not implemented yet
-# rpc_call '{"jsonrpc":"2.0","id":"37","method":"starknet_chainId"}'
-# rpc_call '{"jsonrpc":"2.0","id":"38","method":"starknet_pendingTransactions"}'
-# rpc_call '{"jsonrpc":"2.0","id":"40","method":"starknet_syncing"}'
+rpc_call '{"jsonrpc":"2.0","id":0,"method":"starknet_chainId"}'
+rpc_call '{"jsonrpc":"2.0","id":0,"method":"starknet_pendingTransactions"}'
+rpc_call '{"jsonrpc":"2.0","id":0,"method":"starknet_syncing"}'

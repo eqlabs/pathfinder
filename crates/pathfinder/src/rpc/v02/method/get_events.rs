@@ -1,9 +1,9 @@
-use crate::core::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use crate::rpc::v02::RpcContext;
 use crate::state::PendingData;
 use crate::storage::EventFilterError;
 use crate::storage::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
+use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use serde::Deserialize;
 use tokio::task::JoinHandle;
 
@@ -336,7 +336,7 @@ fn next_continuation_token(
 }
 
 mod types {
-    use crate::core::{
+    use pathfinder_common::{
         ContractAddress, EventData, EventKey, StarknetBlockHash, StarknetBlockNumber,
         StarknetTransactionHash,
     };
@@ -386,9 +386,9 @@ mod tests {
         types::{EmittedEvent, GetEventsResult},
         *,
     };
-    use crate::starkhash;
     use crate::storage::test_utils;
     use jsonrpsee::types::Params;
+    use pathfinder_common::starkhash;
     use pretty_assertions::assert_eq;
 
     #[test]

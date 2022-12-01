@@ -5,13 +5,11 @@ pub use class::*;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
-    use crate::{
-        core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
-        },
-        rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
+    use pathfinder_common::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
     use serde::Deserialize;
     use serde_with::serde_as;
 
@@ -195,10 +193,8 @@ pub mod request {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use crate::{
-                rpc::v02::types::{ContractClass, ContractEntryPoints},
-                starkhash,
-            };
+            use crate::rpc::v02::types::{ContractClass, ContractEntryPoints};
+            use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]
@@ -277,15 +273,12 @@ pub mod request {
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
-    use crate::{
-        core::{
-            CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-            EntryPoint, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
-            TransactionVersion,
-        },
-        rpc::serde::{FeeAsHexStr, TransactionVersionAsHexStr},
-        sequencer,
+    use pathfinder_common::{
+        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+        Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
+        TransactionVersion,
     };
+    use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
     use serde::Serialize;
     use serde_with::serde_as;
     use std::convert::From;
@@ -482,10 +475,10 @@ pub mod reply {
         pub calldata: Vec<CallParam>,
     }
 
-    impl TryFrom<sequencer::reply::Transaction> for Transaction {
+    impl TryFrom<starknet_gateway_types::reply::Transaction> for Transaction {
         type Error = anyhow::Error;
 
-        fn try_from(txn: sequencer::reply::Transaction) -> Result<Self, Self::Error> {
+        fn try_from(txn: starknet_gateway_types::reply::Transaction) -> Result<Self, Self::Error> {
             let txn = txn
                 .transaction
                 .ok_or_else(|| anyhow::anyhow!("Transaction not found."))?;
@@ -494,18 +487,18 @@ pub mod reply {
         }
     }
 
-    impl From<sequencer::reply::transaction::Transaction> for Transaction {
-        fn from(txn: sequencer::reply::transaction::Transaction) -> Self {
+    impl From<starknet_gateway_types::reply::transaction::Transaction> for Transaction {
+        fn from(txn: starknet_gateway_types::reply::transaction::Transaction) -> Self {
             Self::from(&txn)
         }
     }
 
-    impl From<&sequencer::reply::transaction::Transaction> for Transaction {
-        fn from(txn: &sequencer::reply::transaction::Transaction) -> Self {
+    impl From<&starknet_gateway_types::reply::transaction::Transaction> for Transaction {
+        fn from(txn: &starknet_gateway_types::reply::transaction::Transaction) -> Self {
             match txn {
-                sequencer::reply::transaction::Transaction::Invoke(txn) => {
+                starknet_gateway_types::reply::transaction::Transaction::Invoke(txn) => {
                     match txn {
-                        sequencer::reply::transaction::InvokeTransaction::V0(txn) => {
+                        starknet_gateway_types::reply::transaction::InvokeTransaction::V0(txn) => {
                             Self::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                                 common: CommonInvokeTransactionProperties {
                                     hash: txn.transaction_hash,
@@ -519,7 +512,7 @@ pub mod reply {
                                 calldata: txn.calldata.clone(),
                             }))
                         }
-                        sequencer::reply::transaction::InvokeTransaction::V1(txn) => {
+                        starknet_gateway_types::reply::transaction::InvokeTransaction::V1(txn) => {
                             Self::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
                                 common: CommonInvokeTransactionProperties {
                                     hash: txn.transaction_hash,
@@ -527,13 +520,13 @@ pub mod reply {
                                     signature: txn.signature.clone(),
                                     nonce: txn.nonce,
                                 },
-                                sender_address: txn.contract_address,
+                                sender_address: txn.sender_address,
                                 calldata: txn.calldata.clone(),
                             }))
                         }
                     }
                 }
-                sequencer::reply::transaction::Transaction::Declare(txn) => {
+                starknet_gateway_types::reply::transaction::Transaction::Declare(txn) => {
                     Self::Declare(DeclareTransaction {
                         common: CommonTransactionProperties {
                             hash: txn.transaction_hash,
@@ -546,7 +539,7 @@ pub mod reply {
                         sender_address: txn.sender_address,
                     })
                 }
-                sequencer::reply::transaction::Transaction::Deploy(txn) => {
+                starknet_gateway_types::reply::transaction::Transaction::Deploy(txn) => {
                     Self::Deploy(DeployTransaction {
                         hash: txn.transaction_hash,
                         class_hash: txn.class_hash,
@@ -555,7 +548,7 @@ pub mod reply {
                         constructor_calldata: txn.constructor_calldata.clone(),
                     })
                 }
-                sequencer::reply::transaction::Transaction::DeployAccount(txn) => {
+                starknet_gateway_types::reply::transaction::Transaction::DeployAccount(txn) => {
                     Self::DeployAccount(DeployAccountTransaction {
                         common: CommonTransactionProperties {
                             hash: txn.transaction_hash,
@@ -569,7 +562,7 @@ pub mod reply {
                         class_hash: txn.class_hash,
                     })
                 }
-                sequencer::reply::transaction::Transaction::L1Handler(txn) => {
+                starknet_gateway_types::reply::transaction::Transaction::L1Handler(txn) => {
                     Self::L1Handler(L1HandlerTransaction {
                         hash: txn.transaction_hash,
                         version: txn.version,
@@ -598,18 +591,20 @@ pub mod reply {
         Rejected,
     }
 
-    impl From<sequencer::reply::Status> for BlockStatus {
-        fn from(status: sequencer::reply::Status) -> Self {
+    impl From<starknet_gateway_types::reply::Status> for BlockStatus {
+        fn from(status: starknet_gateway_types::reply::Status) -> Self {
+            use starknet_gateway_types::reply::Status::*;
+
             match status {
                 // TODO verify this mapping with Starkware
-                sequencer::reply::Status::AcceptedOnL1 => BlockStatus::AcceptedOnL1,
-                sequencer::reply::Status::AcceptedOnL2 => BlockStatus::AcceptedOnL2,
-                sequencer::reply::Status::NotReceived => BlockStatus::Rejected,
-                sequencer::reply::Status::Pending => BlockStatus::Pending,
-                sequencer::reply::Status::Received => BlockStatus::Pending,
-                sequencer::reply::Status::Rejected => BlockStatus::Rejected,
-                sequencer::reply::Status::Reverted => BlockStatus::Rejected,
-                sequencer::reply::Status::Aborted => BlockStatus::Rejected,
+                AcceptedOnL1 => BlockStatus::AcceptedOnL1,
+                AcceptedOnL2 => BlockStatus::AcceptedOnL2,
+                NotReceived => BlockStatus::Rejected,
+                Pending => BlockStatus::Pending,
+                Received => BlockStatus::Pending,
+                Rejected => BlockStatus::Rejected,
+                Reverted => BlockStatus::Rejected,
+                Aborted => BlockStatus::Rejected,
             }
         }
     }
@@ -634,7 +629,7 @@ pub mod reply {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use crate::starkhash;
+            use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
             #[test]

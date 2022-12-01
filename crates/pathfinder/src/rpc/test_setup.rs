@@ -1,4 +1,5 @@
-///! Utilities for easier construction of RPC tests.
+//! Utilities for easier construction of RPC tests.
+use crate::rpc::test_client::TestClient;
 use crate::storage::Storage;
 use rusqlite::Transaction;
 
@@ -278,22 +279,19 @@ where
     where
         <ParamsIter as Iterator>::Item: ::serde::Serialize,
     {
-        use crate::core::Chain;
-        use crate::rpc::{
-            test_client::client,
-            {RpcApi, RpcServer},
-        };
+        use crate::rpc::{RpcApi, RpcServer};
         use crate::sequencer::Client;
         use crate::state::SyncState;
         use futures::stream::StreamExt;
         use jsonrpsee::rpc_params;
+        use pathfinder_common::{Chain, ChainId};
         use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
         use std::sync::Arc;
 
         let storage = self.storage;
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+        let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
         let (__handle, addr) = RpcServer::new(
             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
             api,
@@ -305,7 +303,7 @@ where
         let params_iter = self.params;
         let expected_iter = self.expected;
 
-        let client = client(addr);
+        let client = TestClient::v01(addr);
 
         let actual_results = params_iter
             .map(|params| {

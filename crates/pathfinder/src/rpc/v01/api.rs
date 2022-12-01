@@ -2,8 +2,10 @@
 use crate::rpc::{
     v01::types::{
         reply::{
-            Block, BlockHashAndNumber, BlockStatus, EmittedEvent, ErrorCode, FeeEstimate,
-            GetEventsResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
+            Block, BlockHashAndNumber, BlockStatus, DeclareTransactionResult,
+            DeployTransactionResult, EmittedEvent, ErrorCode, FeeEstimate, GetEventsResult,
+            InvokeTransactionResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
+            Transactions,
         },
         request::{Call, ContractCall, EventFilter},
     },
@@ -14,15 +16,8 @@ use crate::rpc::{
 };
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
-    core::{
-        BlockId, CallResultValue, Chain, ClassHash, ConstructorParam, ContractAddress,
-        ContractAddressSalt, ContractClass, ContractNonce, Fee, GasPrice, GlobalRoot,
-        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
-    },
     rpc::gas_price,
-    sequencer::{self, request::add_transaction::ContractDefinition, ClientApi},
+    sequencer::{self, ClientApi},
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
     storage::{
         ContractsTable, EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
@@ -34,19 +29,23 @@ use jsonrpsee::{
     core::{error::Error, RpcResult},
     types::{error::CallError, ErrorObject},
 };
+use pathfinder_common::{
+    BlockId, CallResultValue, ChainId, ClassHash, ConstructorParam, ContractAddress,
+    ContractAddressSalt, ContractClass, ContractNonce, EventKey, Fee, GasPrice, GlobalRoot,
+    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
+    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+};
 use stark_hash::StarkHash;
+use starknet_gateway_types::request::add_transaction::ContractDefinition;
 use std::convert::TryInto;
 use std::sync::Arc;
-
-use crate::rpc::v01::types::reply::{
-    DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult, Transactions,
-};
 
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
     pub storage: Storage,
     pub sequencer: sequencer::Client,
-    pub chain: Chain,
+    pub chain_id: ChainId,
     pub call_handle: Option<ext_py::Handle>,
     pub shared_gas_price: Option<gas_price::Cached>,
     pub sync_state: Arc<SyncState>,
@@ -78,13 +77,13 @@ impl RpcApi {
     pub fn new(
         storage: Storage,
         sequencer: sequencer::Client,
-        chain: Chain,
+        chain_id: ChainId,
         sync_state: Arc<SyncState>,
     ) -> Self {
         Self {
             storage,
             sequencer,
-            chain,
+            chain_id,
             call_handle: None,
             shared_gas_price: None,
             sync_state,
@@ -895,9 +894,12 @@ impl RpcApi {
             .as_ref()
             .ok_or_else(|| internal_server_error("Unsupported configuration"))?;
 
-        let (when, pending_update) = self.base_block_and_pending_for_call(block_id).await?;
+        let (when, pending_timestamp, pending_update) =
+            self.base_block_and_pending_for_call(block_id).await?;
 
-        Ok(handle.call(request, when, pending_update).await?)
+        Ok(handle
+            .call(request, when, pending_update, pending_timestamp)
+            .await?)
     }
 
     /// Get the latest local block's number.
@@ -959,8 +961,8 @@ impl RpcApi {
     }
 
     /// Return the currently configured StarkNet chain id.
-    pub async fn chain_id(&self) -> RpcResult<String> {
-        Ok(self.chain.starknet_chain_id().to_hex_str().into_owned())
+    pub async fn chain_id(&self) -> RpcResult<ChainId> {
+        Ok(self.chain_id)
     }
 
     /// Returns the current pending transactions.
@@ -1063,7 +1065,7 @@ impl RpcApi {
         skip: usize,
         amount: usize,
         address: Option<ContractAddress>,
-        keys: std::collections::HashSet<crate::core::EventKey>,
+        keys: std::collections::HashSet<EventKey>,
     ) -> bool {
         let pending_block = match self.pending_data.as_ref() {
             Some(data) => match data.block().await {
@@ -1313,7 +1315,8 @@ impl RpcApi {
                 call.entry_point_selector,
                 call.calldata,
             )
-            .await?;
+            .await
+            .map_err(into_rpc_error)?;
         Ok(InvokeTransactionResult {
             transaction_hash: result.transaction_hash,
         })
@@ -1350,7 +1353,8 @@ impl RpcApi {
                 sender_address,
                 token,
             )
-            .await?;
+            .await
+            .map_err(into_rpc_error)?;
         Ok(DeclareTransactionResult {
             transaction_hash: result.transaction_hash,
             class_hash: result.class_hash,
@@ -1378,7 +1382,8 @@ impl RpcApi {
                 contract_definition,
                 token,
             )
-            .await?;
+            .await
+            .map_err(into_rpc_error)?;
         Ok(DeployTransactionResult {
             transaction_hash: result.transaction_hash,
             contract_address: result.address,
@@ -1444,10 +1449,17 @@ impl RpcApi {
             GasPriceSource::PastBlock
         };
 
-        let (when, pending_update) = self.base_block_and_pending_for_call(block_id).await?;
+        let (when, pending_timestamp, pending_update) =
+            self.base_block_and_pending_for_call(block_id).await?;
 
         Ok(handle
-            .estimate_fee(transaction, when, gas_price, pending_update)
+            .estimate_fee(
+                transaction,
+                when,
+                gas_price,
+                pending_update,
+                pending_timestamp,
+            )
             .await?)
     }
 
@@ -1461,14 +1473,15 @@ impl RpcApi {
     ) -> Result<
         (
             BlockHashNumberOrLatest,
-            Option<Arc<sequencer::reply::StateUpdate>>,
+            Option<StarknetBlockTimestamp>,
+            Option<Arc<starknet_gateway_types::reply::StateUpdate>>,
         ),
         anyhow::Error,
     > {
         use crate::cairo::ext_py::Pending;
 
         match BlockHashNumberOrLatest::try_from(at_block) {
-            Ok(when) => Ok((when, None)),
+            Ok(when) => Ok((when, None, None)),
             Err(Pending) => {
                 // we must have pending_data configured for pending requests, otherwise we fail
                 // fast.
@@ -1476,16 +1489,21 @@ impl RpcApi {
 
                 // call on this particular parent block hash; if it's not found at query time over
                 // at python, it should fall back to latest and **disregard** the pending data.
-                let pending_on_top_of_a_block = pending
-                    .state_update_on_parent_block()
-                    .await
-                    .map(|(parent_block, data)| (parent_block.into(), Some(data)));
+                let pending_on_top_of_a_block = pending.state_update_on_parent_block().await.map(
+                    |(parent_block, timestamp, data)| {
+                        (parent_block.into(), Some(timestamp), Some(data))
+                    },
+                );
 
                 // if there is no pending data available, just execute on whatever latest. this is
                 // the "intent" of the pending functinality other rpc methods should follow as
                 // well, that "pending" is just an emphemeral view of the latest, when it's not
                 // available one is supposed to use latest (for example: testnet).
-                Ok(pending_on_top_of_a_block.unwrap_or((BlockHashNumberOrLatest::Latest, None)))
+                Ok(pending_on_top_of_a_block.unwrap_or((
+                    BlockHashNumberOrLatest::Latest,
+                    None,
+                    None,
+                )))
             }
         }
     }
@@ -1539,4 +1557,37 @@ fn static_internal_server_error() -> jsonrpsee::core::Error {
     Error::Call(CallError::Custom(ErrorObject::from(
         jsonrpsee::types::error::ErrorCode::InternalError,
     )))
+}
+
+/// Helper to avoid circular dependency between [`starknet_gateway_types`] and v01 rpc types
+fn into_rpc_error(e: starknet_gateway_types::error::SequencerError) -> Error {
+    use starknet_gateway_types::error::{SequencerError::*, StarknetErrorCode::*};
+
+    match e {
+        ReqwestError(e) => Error::Call(CallError::Failed(e.into())),
+        InvalidStarknetErrorVariant => Error::Call(CallError::Failed(e.into())),
+        StarknetError(e) => match e.code {
+            OutOfRangeBlockHash | BlockNotFound if e.message.contains("Block hash") => {
+                ErrorCode::InvalidBlockId.into()
+            }
+            OutOfRangeContractAddress | UninitializedContract => ErrorCode::ContractNotFound.into(),
+            OutOfRangeTransactionHash => ErrorCode::InvalidTransactionHash.into(),
+            TransactionFailed => ErrorCode::InvalidCallData.into(),
+            TransactionLimitExceeded => Error::Call(CallError::Failed(e.into())),
+            EntryPointNotFound => ErrorCode::InvalidMessageSelector.into(),
+            BlockNotFound if e.message.contains("Block number") => ErrorCode::InvalidBlockId.into(),
+            InvalidContractDefinition => ErrorCode::ContractError.into(),
+            BlockNotFound
+            | SchemaValidationError
+            | MalformedRequest
+            | UnsupportedSelectorForFee
+            | OutOfRangeBlockHash
+            | NotPermittedContract
+            | InvalidTransactionNonce
+            | OutOfRangeFee
+            | InvalidTransactionVersion
+            | InvalidProgram => Error::Call(CallError::Failed(e.into())),
+            UndeclaredClass => ErrorCode::InvalidContractClassHash.into(),
+        },
+    }
 }

@@ -1,10 +1,9 @@
 use anyhow::{Context, Error, Result};
+use pathfinder_common::ClassHash;
 use serde::Serialize;
 use sha3::Digest;
 use stark_hash::{HashChain, StarkHash};
-
-use crate::core::ClassHash;
-use crate::sequencer::request::contract::EntryPointType;
+use starknet_gateway_types::request::contract::EntryPointType;
 
 /// Computes the starknet class hash for given class definition json blob.
 ///
@@ -215,6 +214,14 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         })
         .for_each(|x| outer.update(x.finalize()));
 
+    fn update_hash_chain(
+        mut hc: HashChain,
+        next: Result<StarkHash, Error>,
+    ) -> Result<HashChain, Error> {
+        hc.update(next?);
+        Result::<_, Error>::Ok(hc)
+    }
+
     let builtins = contract_definition
         .program
         .builtins
@@ -224,10 +231,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         .map(|(i, s)| {
             StarkHash::from_be_slice(s).with_context(|| format!("Invalid builtin at index {i}"))
         })
-        .try_fold(HashChain::default(), |mut hc, next| {
-            hc.update(next?);
-            Result::<_, Error>::Ok(hc)
-        })
+        .try_fold(HashChain::default(), update_hash_chain)
         .context("Failed to process contract_definition.program.builtins")?;
 
     outer.update(builtins.finalize());
@@ -242,10 +246,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         .map(|(i, s)| {
             StarkHash::from_hex_str(s).with_context(|| format!("Invalid bytecode at index {i}"))
         })
-        .try_fold(HashChain::default(), |mut hc, next| {
-            hc.update(next?);
-            Result::<_, Error>::Ok(hc)
-        })
+        .try_fold(HashChain::default(), update_hash_chain)
         .context("Failed to process contract_definition.program.data")?;
 
     outer.update(bytecodes.finalize());
@@ -318,10 +319,9 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
 }
 
 mod json {
+    use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
-
-    use crate::sequencer::request::contract::{EntryPointType, SelectorAndOffset};
 
     /// Our version of the cairo contract definition used to deserialize and re-serialize a
     /// modified version for a hash of the contract definition.
@@ -415,13 +415,14 @@ mod json {
 
     #[cfg(test)]
     mod test_vectors {
+        use pathfinder_common::starkhash;
+
         #[tokio::test]
         async fn first() {
             // this test is a bit on the slow side because of the download and because of the long
             // processing time in dev builds. expected --release speed is 9 contracts/s.
-            let expected = crate::starkhash!(
-                "0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576"
-            );
+            let expected =
+                starkhash!("0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576");
 
             // this is quite big payload, ~500kB
             let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc")
@@ -443,7 +444,7 @@ mod json {
         fn second() {
             let contract_definition = zstd::decode_all(
                 // opening up a file requires a path relative to the test running
-                &include_bytes!("../../fixtures/contract_definition.json.zst")[..],
+                starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
             )
             .unwrap();
 
@@ -451,22 +452,20 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                crate::starkhash!(
-                    "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
-                )
+                starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
             );
         }
 
         #[tokio::test]
         async fn genesis_contract() {
             use crate::sequencer::ClientApi;
+            use pathfinder_common::{Chain, ContractAddress};
 
-            let contract = crate::starkhash!(
-                "0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3"
-            );
-            let contract = crate::core::ContractAddress::new_or_panic(contract);
+            let contract =
+                starkhash!("0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3");
+            let contract = ContractAddress::new_or_panic(contract);
 
-            let chain = crate::core::Chain::Testnet;
+            let chain = Chain::Testnet;
             let sequencer = crate::sequencer::Client::new(chain).unwrap();
             let contract_definition = sequencer
                 .full_contract(contract)
@@ -482,9 +481,9 @@ mod json {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
             // we now need to ignore if empty).
             use super::super::extract_abi_code_hash;
-            use crate::core::{ClassHash, ContractAddress};
             use crate::sequencer::{self, ClientApi};
-            use crate::starkhash;
+            use pathfinder_common::{Chain, ClassHash, ContractAddress};
+            use starkhash;
 
             // Known contract which triggered a hash mismatch failure.
             let address = ContractAddress::new_or_panic(starkhash!(
@@ -494,7 +493,7 @@ mod json {
             let expected = ClassHash(starkhash!(
                 "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
             ));
-            let sequencer = sequencer::Client::new(crate::core::Chain::Testnet).unwrap();
+            let sequencer = sequencer::Client::new(Chain::Testnet).unwrap();
 
             let contract_definition = sequencer.full_contract(address).await.unwrap();
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
@@ -509,7 +508,7 @@ mod json {
         #[tokio::test]
         async fn cairo_0_10() {
             let expected =
-                crate::starkhash!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6");
+                starkhash!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6");
 
             // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
             let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x444453070729bf2db6a1f36541483c2952674e5de4bd05fcf538726b286bfa2")
@@ -525,9 +524,8 @@ mod json {
 
         #[tokio::test]
         async fn cairo_0_10_part_2() {
-            let expected = crate::starkhash!(
-                "0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f"
-            );
+            let expected =
+                starkhash!("0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f");
 
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
@@ -544,9 +542,8 @@ mod json {
 
         #[tokio::test]
         async fn cairo_0_10_part_3() {
-            let expected = crate::starkhash!(
-                "066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157"
-            );
+            let expected =
+                starkhash!("066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157");
 
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
@@ -621,7 +618,7 @@ mod tests {
     #[test]
     fn truncated_keccak_matches_pythonic() {
         use super::truncated_keccak;
-        use crate::starkhash;
+        use pathfinder_common::starkhash;
         use sha3::{Digest, Keccak256};
         let all_set = Keccak256::digest(&[0xffu8; 32]);
         assert!(all_set[0] > 0xf);

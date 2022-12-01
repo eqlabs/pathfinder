@@ -1,7 +1,18 @@
+[profile.stripdebuginfo]
+# Used by CI to lower binary size for test artifacts.
+inherits = "test"
+strip = "debuginfo"
+
 [workspace]
 members = [
+    "crates/common",
+    "crates/ethereum",
+    "crates/gateway-test-fixtures",
+    "crates/gateway-types",
     "crates/load-test",
     "crates/pathfinder",
+    "crates/retry",
+    "crates/serde",
     "crates/stark_curve",
     "crates/stark_hash",
 ]

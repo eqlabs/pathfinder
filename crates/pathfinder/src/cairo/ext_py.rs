@@ -15,11 +15,10 @@
 //! global_state, and after that, calls can be made to it's `block_hash` for which we probably need
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
-use crate::core::CallResultValue;
 use crate::rpc::v01::types::{reply::FeeEstimate, request::Call};
 use crate::rpc::v02::types::request::{BroadcastedInvokeTransaction, BroadcastedTransaction};
-use crate::sequencer::reply::StateUpdate;
-use crate::sequencer::request::add_transaction;
+use pathfinder_common::{CallResultValue, StarknetBlockTimestamp};
+use starknet_gateway_types::{reply::StateUpdate, request::add_transaction};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -52,6 +51,7 @@ impl Handle {
         call: Call,
         at_block: BlockHashNumberOrLatest,
         diffs: Option<Arc<StateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -65,6 +65,7 @@ impl Handle {
                     at_block,
                     chain: self.chain,
                     diffs,
+                    block_timestamp,
                     response,
                 },
                 continued_span,
@@ -87,6 +88,7 @@ impl Handle {
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
         diffs: Option<Arc<StateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
     ) -> Result<FeeEstimate, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -157,6 +159,7 @@ impl Handle {
                     gas_price,
                     chain: self.chain,
                     diffs,
+                    block_timestamp,
                     response,
                 },
                 continued_span,
@@ -242,6 +245,7 @@ enum Command {
         at_block: BlockHashNumberOrLatest,
         chain: UsedChain,
         diffs: Option<Arc<StateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
@@ -251,6 +255,7 @@ enum Command {
         gas_price: GasPriceSource,
         chain: UsedChain,
         diffs: Option<Arc<StateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
         response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
     },
 }
@@ -340,17 +345,17 @@ type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExit
 mod tests {
     use super::sub_process::launch_python;
     use crate::{
-        core::{
-            ClassHash, ContractAddress, ContractAddressSalt, ContractNonce, ContractStateHash,
-            GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-            StarknetBlockTimestamp, StorageAddress, StorageValue,
-        },
         rpc::v02::types::request::{
             BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction,
             BroadcastedInvokeTransactionV0, BroadcastedTransaction,
         },
-        starkhash, starkhash_bytes,
         storage::StarknetBlock,
+    };
+    use pathfinder_common::{
+        starkhash, starkhash_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
+        ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
+        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StorageAddress, StorageValue, TransactionVersion,
     };
     use stark_hash::StarkHash;
     use std::path::PathBuf;
@@ -416,7 +421,7 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
-            crate::core::Chain::Testnet,
+            Chain::Testnet,
         )
         .await
         .unwrap();
@@ -430,23 +435,24 @@ mod tests {
                     async move {
                         handle.call(
                             super::Call {
-                                contract_address: crate::core::ContractAddress::new_or_panic(
+                                contract_address: ContractAddress::new_or_panic(
                                     starkhash!(
                                         "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                                     )
                                 ),
-                                calldata: vec![crate::core::CallParam(
+                                calldata: vec![CallParam(
                                     starkhash!("84"),
                                 )],
-                                entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
+                                entry_point_selector: Some(EntryPoint::hashed(&b"get_value"[..])),
                                 signature: Default::default(),
                                 max_fee: super::Call::DEFAULT_MAX_FEE,
                                 version: super::Call::DEFAULT_VERSION,
                                 nonce: super::Call::DEFAULT_NONCE,
                             },
-                            crate::core::StarknetBlockHash(
+                            StarknetBlockHash(
                                 StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                             ).into(),
+                            None,
                             None,
                         ).await.unwrap();
                     }
@@ -492,30 +498,31 @@ mod tests {
                 let _ = shutdown_rx.await;
             },
             // chain doesn't matter here because we are not estimating any real transaction
-            crate::core::Chain::Testnet,
+            Chain::Testnet,
         )
         .await
         .unwrap();
 
         let transaction = BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
             BroadcastedInvokeTransactionV0 {
-                version: crate::core::TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                 max_fee: super::Call::DEFAULT_MAX_FEE,
                 signature: Default::default(),
                 nonce: None,
-                contract_address: crate::core::ContractAddress::new_or_panic(starkhash!(
+                contract_address: ContractAddress::new_or_panic(starkhash!(
                     "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                 )),
-                entry_point_selector: crate::core::EntryPoint::hashed(&b"get_value"[..]),
-                calldata: vec![crate::core::CallParam(starkhash!("84"))],
+                entry_point_selector: EntryPoint::hashed(&b"get_value"[..]),
+                calldata: vec![CallParam(starkhash!("84"))],
             },
         ));
 
         let at_block_fee = handle
             .estimate_fee(
                 transaction.clone(),
-                crate::core::StarknetBlockNumber::new_or_panic(1).into(),
+                StarknetBlockNumber::new_or_panic(1).into(),
                 super::GasPriceSource::PastBlock,
+                None,
                 None,
             )
             .await
@@ -535,11 +542,12 @@ mod tests {
         let current_fee = handle
             .estimate_fee(
                 transaction,
-                crate::core::StarknetBlockHash(
+                StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                 )
                 .into(),
                 super::GasPriceSource::Current(H256::from_low_u64_be(10)),
+                None,
                 None,
             )
             .await
@@ -588,14 +596,14 @@ mod tests {
                 let _ = shutdown_rx.await;
             },
             // chain doesn't matter here because we are not estimating any real transaction
-            crate::core::Chain::Testnet,
+            Chain::Testnet,
         )
         .await
         .unwrap();
 
         let transaction =
             BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction {
-                version: crate::core::TransactionVersion::ONE_WITH_QUERY_VERSION,
+                version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                 max_fee: super::Call::DEFAULT_MAX_FEE,
                 signature: Default::default(),
                 nonce: super::Call::DEFAULT_NONCE,
@@ -607,8 +615,9 @@ mod tests {
         let at_block_fee = handle
             .estimate_fee(
                 transaction.clone(),
-                crate::core::StarknetBlockNumber::new_or_panic(1).into(),
+                StarknetBlockNumber::new_or_panic(1).into(),
                 super::GasPriceSource::PastBlock,
+                None,
                 None,
             )
             .await
@@ -657,18 +666,18 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
-            crate::core::Chain::Testnet,
+            Chain::Testnet,
         )
         .await
         .unwrap();
 
         let call = super::Call {
-            contract_address: crate::core::ContractAddress::new_or_panic(starkhash!(
+            contract_address: ContractAddress::new_or_panic(starkhash!(
                 // this is one bit off from other examples
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375"
             )),
-            calldata: vec![crate::core::CallParam(starkhash!("84"))],
-            entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
+            calldata: vec![CallParam(starkhash!("84"))],
+            entry_point_selector: Some(EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
@@ -678,10 +687,11 @@ mod tests {
         let result = handle
             .call(
                 call,
-                crate::core::StarknetBlockHash(
+                StarknetBlockHash(
                     StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                 )
                 .into(),
+                None,
                 None,
             )
             .await
@@ -695,7 +705,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn call_with_pending_updates() {
-        use crate::sequencer::reply::StateUpdate;
+        use starknet_gateway_types::{reply::StateUpdate, request::Tag};
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -722,12 +732,12 @@ mod tests {
             async move {
                 let _ = shutdown_rx.await;
             },
-            crate::core::Chain::Testnet,
+            Chain::Testnet,
         )
         .await
         .unwrap();
 
-        let target_contract = crate::core::ContractAddress::new_or_panic(starkhash!(
+        let target_contract = ContractAddress::new_or_panic(starkhash!(
             "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
         ));
 
@@ -735,8 +745,8 @@ mod tests {
 
         let call = super::Call {
             contract_address: target_contract,
-            calldata: vec![crate::core::CallParam(storage_address)],
-            entry_point_selector: Some(crate::core::EntryPoint::hashed(&b"get_value"[..])),
+            calldata: vec![CallParam(storage_address)],
+            entry_point_selector: Some(EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
             version: super::Call::DEFAULT_VERSION,
@@ -744,28 +754,24 @@ mod tests {
         };
 
         let res = handle
-            .call(
-                call.clone(),
-                crate::rpc::v01::types::Tag::Latest.try_into().unwrap(),
-                None,
-            )
+            .call(call.clone(), Tag::Latest.try_into().unwrap(), None, None)
             .await
             .unwrap();
 
-        assert_eq!(res, &[crate::core::CallResultValue(StarkHash::from(3u64))]);
+        assert_eq!(res, &[CallResultValue(StarkHash::from(3u64))]);
 
         let update = std::sync::Arc::new(StateUpdate {
             block_hash: None,
-            old_root: crate::core::GlobalRoot(StarkHash::ZERO),
-            new_root: crate::core::GlobalRoot(StarkHash::ZERO),
-            state_diff: crate::sequencer::reply::state_update::StateDiff {
+            old_root: GlobalRoot(StarkHash::ZERO),
+            new_root: GlobalRoot(StarkHash::ZERO),
+            state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: {
                     let mut map = std::collections::HashMap::new();
                     map.insert(
                         target_contract,
-                        vec![crate::sequencer::reply::state_update::StorageDiff {
-                            key: crate::core::StorageAddress::new_or_panic(storage_address),
-                            value: crate::core::StorageValue(starkhash!("04")),
+                        vec![starknet_gateway_types::reply::state_update::StorageDiff {
+                            key: StorageAddress::new_or_panic(storage_address),
+                            value: StorageValue(starkhash!("04")),
                         }],
                     );
                     map
@@ -777,15 +783,11 @@ mod tests {
         });
 
         let res = handle
-            .call(
-                call,
-                crate::rpc::v01::types::Tag::Latest.try_into().unwrap(),
-                Some(update),
-            )
+            .call(call, Tag::Latest.try_into().unwrap(), Some(update), None)
             .await
             .unwrap();
 
-        assert_eq!(res, &[crate::core::CallResultValue(StarkHash::from(4u64))]);
+        assert_eq!(res, &[CallResultValue(StarkHash::from(4u64))]);
 
         shutdown_tx.send(()).unwrap();
 
@@ -793,9 +795,9 @@ mod tests {
     }
 
     fn deploy_test_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
-        let test_contract_definition = zstd::decode_all(std::io::Cursor::new(include_bytes!(
-            "../../fixtures/contract_definition.json.zst"
-        )))
+        let test_contract_definition = zstd::decode_all(std::io::Cursor::new(
+            starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
+        ))
         .unwrap();
 
         let test_contract_address = ContractAddress::new_or_panic(starkhash!(
@@ -813,11 +815,9 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree = crate::state::state_tree::GlobalStateTree::load(
-            tx,
-            crate::core::GlobalRoot(StarkHash::ZERO),
-        )
-        .unwrap();
+        let mut global_tree =
+            crate::state::state_tree::GlobalStateTree::load(tx, GlobalRoot(StarkHash::ZERO))
+                .unwrap();
 
         global_tree
             .set(test_contract_address, test_contract_state_hash)
@@ -858,9 +858,9 @@ mod tests {
     }
 
     fn deploy_account_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
-        let account_contract_definition = zstd::decode_all(std::io::Cursor::new(include_bytes!(
-            "../../fixtures/dummy_account.json.zst"
-        )))
+        let account_contract_definition = zstd::decode_all(std::io::Cursor::new(
+            starknet_gateway_test_fixtures::zstd_compressed::DUMMY_ACCOUNT,
+        ))
         .unwrap();
 
         let account_contract_address = ContractAddress::new_or_panic(starkhash!("0123"));
@@ -873,11 +873,9 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree = crate::state::state_tree::GlobalStateTree::load(
-            tx,
-            crate::core::GlobalRoot(StarkHash::ZERO),
-        )
-        .unwrap();
+        let mut global_tree =
+            crate::state::state_tree::GlobalStateTree::load(tx, GlobalRoot(StarkHash::ZERO))
+                .unwrap();
 
         global_tree
             .set(account_contract_address, account_contract_state_hash)
@@ -940,11 +938,9 @@ mod tests {
         crate::storage::ContractsTable::upsert(tx, contract_address, class_hash).unwrap();
 
         // set up contract state tree
-        let mut contract_state = crate::state::state_tree::ContractsStateTree::load(
-            tx,
-            crate::core::ContractRoot(StarkHash::ZERO),
-        )
-        .unwrap();
+        let mut contract_state =
+            crate::state::state_tree::ContractsStateTree::load(tx, ContractRoot(StarkHash::ZERO))
+                .unwrap();
         for (storage_address, storage_value) in storage_updates {
             contract_state
                 .set(*storage_address, *storage_value)

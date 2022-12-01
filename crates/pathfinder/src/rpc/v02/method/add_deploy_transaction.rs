@@ -1,15 +1,15 @@
-use crate::core::{ContractAddress, StarknetTransactionHash};
 use crate::rpc::v02::types::request::BroadcastedDeployTransaction;
 use crate::rpc::v02::RpcContext;
-use crate::sequencer::error::SequencerError;
-use crate::sequencer::request::add_transaction::ContractDefinition;
 use crate::sequencer::ClientApi;
+use pathfinder_common::{ContractAddress, StarknetTransactionHash};
+use starknet_gateway_types::error::SequencerError;
+use starknet_gateway_types::request::add_transaction::ContractDefinition;
 
 crate::rpc::error::generate_rpc_error_subset!(AddDeployTransactionError: InvalidContractClass);
 
 impl From<SequencerError> for AddDeployTransactionError {
     fn from(e: SequencerError) -> Self {
-        use crate::sequencer::error::StarknetErrorCode::InvalidProgram;
+        use starknet_gateway_types::error::StarknetErrorCode::InvalidProgram;
         match e {
             SequencerError::StarknetError(e) if e.code == InvalidProgram => {
                 Self::InvalidContractClass
@@ -70,20 +70,17 @@ pub async fn add_deploy_transaction(
 
 #[cfg(test)]
 mod tests {
-    use crate::core::{ContractAddressSalt, TransactionVersion};
-    use crate::rpc::v02::types::ContractClass;
-    use crate::starkhash;
-
     use super::*;
+    use crate::rpc::v02::types::ContractClass;
+    use pathfinder_common::{starkhash, ContractAddressSalt, TransactionVersion};
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {
-            let compressed_json = include_bytes!("../../../../fixtures/contract_definition.json.zst");
-            zstd::decode_all(std::io::Cursor::new(compressed_json)).unwrap()
+            zstd::decode_all(std::io::Cursor::new(starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION)).unwrap()
         };
 
         pub static ref CONTRACT_CLASS: ContractClass = {
-            ContractClass::from_definition_bytes(&*CONTRACT_DEFINITION_JSON).unwrap()
+            ContractClass::from_definition_bytes(&CONTRACT_DEFINITION_JSON).unwrap()
         };
 
         pub static ref CONTRACT_CLASS_JSON: String = {
@@ -158,6 +155,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[ignore = "gateway 429"]
     async fn invalid_contract_definition() {
         let context = RpcContext::for_tests();
 
@@ -182,6 +180,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[ignore = "gateway 429"]
     async fn successful_deploy() {
         let context = RpcContext::for_tests();
 

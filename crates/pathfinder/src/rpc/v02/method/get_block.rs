@@ -1,11 +1,10 @@
-use anyhow::{anyhow, Context};
-use serde::Deserialize;
-use stark_hash::StarkHash;
-
-use crate::core::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use crate::rpc::v02::common::get_block_status;
 use crate::rpc::v02::RpcContext;
 use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
+use anyhow::{anyhow, Context};
+use pathfinder_common::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use serde::Deserialize;
+use stark_hash::StarkHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Copy, Clone))]
@@ -160,12 +159,11 @@ fn get_block_transactions(
 }
 
 mod types {
-    use crate::core::{
+    use crate::rpc::v02::types::reply::{BlockStatus, Transaction};
+    use pathfinder_common::{
         GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash,
     };
-    use crate::rpc::v02::types::reply::{BlockStatus, Transaction};
-    use crate::sequencer;
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
     use stark_hash::StarkHash;
@@ -232,9 +230,9 @@ mod types {
             }
         }
 
-        /// Constructs [Block] from [sequencer's block representation](crate::sequencer::reply::Block)
+        /// Constructs [Block] from [sequencer's block representation](starknet_gateway_types::reply::Block)
         pub fn from_sequencer_scoped(
-            block: sequencer::reply::MaybePendingBlock,
+            block: starknet_gateway_types::reply::MaybePendingBlock,
             scope: BlockResponseScope,
         ) -> Self {
             let transactions = match scope {
@@ -249,7 +247,7 @@ mod types {
                 }
             };
 
-            use sequencer::reply::MaybePendingBlock;
+            use starknet_gateway_types::reply::MaybePendingBlock;
             match block {
                 MaybePendingBlock::Block(block) => Self {
                     status: block.status.into(),
@@ -282,10 +280,9 @@ mod types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{StarknetBlockHash, StarknetBlockNumber};
-    use crate::starkhash;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
+    use pathfinder_common::{starkhash, StarknetBlockHash, StarknetBlockNumber};
 
     #[test]
     fn parsing() {
@@ -347,7 +344,7 @@ mod tests {
         Box::new(|i: usize, result| {
             assert_matches!(result, Ok(block) => assert_eq!(
                 block.block_hash,
-                Some(StarknetBlockHash(crate::starkhash_bytes!(expected))),
+                Some(StarknetBlockHash(pathfinder_common::starkhash_bytes!(expected))),
                 "test case {i}"
             ));
         })
@@ -384,7 +381,7 @@ mod tests {
                 Box::new(|i, result| {
                     assert_matches!(result, Ok(block) => assert_eq!(
                         block.parent_hash,
-                        StarknetBlockHash(crate::starkhash_bytes!(b"latest")),
+                        StarknetBlockHash(pathfinder_common::starkhash_bytes!(b"latest")),
                         "test case {i}"
                     ), "test case {i}")
                 }),
@@ -410,7 +407,9 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"genesis"))),
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash_bytes!(
+                    b"genesis"
+                ))),
                 assert_hash(b"genesis"),
             ),
             (
@@ -420,7 +419,9 @@ mod tests {
             ),
             (
                 ctx,
-                BlockId::Hash(StarknetBlockHash(crate::starkhash_bytes!(b"non-existent"))),
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash_bytes!(
+                    b"non-existent"
+                ))),
                 assert_error(GetBlockError::BlockNotFound),
             ),
         ];

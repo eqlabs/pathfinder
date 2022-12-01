@@ -270,8 +270,8 @@ mod tests {
 
     mod binary {
         use super::*;
-        use crate::starkhash;
         use bitvec::bitvec;
+        use pathfinder_common::starkhash;
 
         #[test]
         fn direction() {
@@ -343,8 +343,8 @@ mod tests {
 
     mod edge {
         use super::*;
-        use crate::starkhash;
         use bitvec::bitvec;
+        use pathfinder_common::starkhash;
 
         #[test]
         fn hash() {
@@ -375,7 +375,7 @@ mod tests {
 
         mod path_matches {
             use super::*;
-            use crate::starkhash;
+            use pathfinder_common::starkhash;
 
             #[test]
             fn full() {

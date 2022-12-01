@@ -1,15 +1,15 @@
 use anyhow::{anyhow, Context};
 use serde::Deserialize;
 
-use crate::core::{
-    BlockId, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
-    StorageAddress,
-};
 use crate::rpc::v02::RpcContext;
 use crate::state::merkle_tree::ProofNode;
 use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use crate::storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use bitvec::{prelude::Msb0, slice::BitSlice};
+use pathfinder_common::{
+    BlockId, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
+    StorageAddress,
+};
 use serde::Serialize;
 use stark_hash::StarkHash;
 
@@ -181,9 +181,8 @@ fn read_class_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{ContractAddress, StarknetBlockHash, StorageAddress};
-    use crate::starkhash_bytes;
     use assert_matches::assert_matches;
+    use pathfinder_common::{starkhash_bytes, ContractAddress, StarknetBlockHash, StorageAddress};
 
     type TestCaseHandler = Box<dyn Fn(usize, &Result<GetStorageProofOutput, GetStorageProofError>)>;
 

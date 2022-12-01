@@ -1,11 +1,7 @@
-use crate::core::StarknetBlockHash;
-use crate::{
-    core::{ClassHash, ContractAddress, ContractClass},
-    state::{class_hash::extract_program_and_entry_points_by_type, CompressedContract},
-};
-
+use crate::state::{class_hash::extract_program_and_entry_points_by_type, CompressedContract};
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
+use pathfinder_common::{ClassHash, ContractAddress, ContractClass, StarknetBlockHash};
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
 /// Stores StarkNet contract information, specifically a contract's
@@ -139,7 +135,7 @@ impl ContractCodeTable {
 
         Ok(classes
             .iter()
-            .map(|hash| stmt.exists(&[&hash.0.to_be_bytes()[..]]))
+            .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
             .collect::<Result<Vec<_>, _>>()?)
     }
 }
@@ -193,10 +189,9 @@ impl ContractsTable {
 
 #[cfg(test)]
 mod tests {
-    use crate::starkhash;
-    use crate::storage::Storage;
-
     use super::*;
+    use crate::storage::Storage;
+    use pathfinder_common::starkhash;
 
     #[test]
     fn fails_if_class_hash_missing() {

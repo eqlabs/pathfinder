@@ -56,21 +56,18 @@ impl<Context: Send + Sync + 'static> RpcModuleWrapper<Context> {
 pub fn register_all_methods(
     module: &mut RpcModuleWrapper<RpcApi>,
 ) -> Result<(), jsonrpsee::core::Error> {
-    use crate::{
-        core::{
-            BlockId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
-            StarknetTransactionHash, StarknetTransactionIndex, TransactionNonce,
-            TransactionSignatureElem, TransactionVersion,
-        },
-        rpc::serde::{
-            FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-        },
-        sequencer::request::add_transaction::ContractDefinition,
-    };
-    use ::serde::Deserialize;
-    use stark_hash::StarkHash;
-
     use api::BlockResponseScope;
+    use pathfinder_common::{
+        BlockId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, Fee,
+        StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
+    };
+    use pathfinder_serde::{
+        FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+    };
+    use serde::Deserialize;
+    use stark_hash::StarkHash;
+    use starknet_gateway_types::request::add_transaction::ContractDefinition;
     use types::request::{Call, ContractCall, EventFilter};
 
     module.register_async_method(
@@ -108,7 +105,7 @@ pub fn register_all_methods(
         #[derive(Debug, Deserialize)]
         struct NamedArgs {
             contract_address: ContractAddress,
-            key: crate::core::StorageAddress,
+            key: StorageAddress,
             block_id: BlockId,
         }
         let params = params.parse::<NamedArgs>()?;
@@ -296,7 +293,7 @@ pub fn register_all_methods(
             const NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
             // actual address dumped from a `starknet declare` call
             const SENDER_ADDRESS: ContractAddress =
-                ContractAddress::new_or_panic(crate::starkhash!("01"));
+                ContractAddress::new_or_panic(pathfinder_common::starkhash!("01"));
 
             context
                 .add_declare_transaction(
@@ -345,35 +342,32 @@ pub fn register_all_methods(
 
 #[cfg(test)]
 mod tests {
+    use crate::rpc::test_client::TestClient;
     use crate::rpc::v01::types::reply::BlockHashAndNumber;
     use crate::rpc::{tests::by_name, RpcServer};
-    use crate::sequencer::reply::PendingBlock;
-    use crate::{
-        core::BlockId,
-        rpc::{
-            test_client::client,
-            tests::{create_pending_data, run_server, setup_storage, LOCALHOST},
-            v01::{
-                api::RpcApi,
-                types::reply::{Block, Transactions},
-            },
+    use crate::rpc::{
+        tests::{create_pending_data, run_server, setup_storage, LOCALHOST},
+        v01::{
+            api::RpcApi,
+            types::reply::{Block, Transactions},
         },
     };
     use crate::{
-        core::{
-            Chain, ClassHash, ContractAddress, EventKey, GasPrice, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-            StarknetTransactionHash, StorageAddress,
-        },
         sequencer::{test_utils::*, Client},
-        starkhash, starkhash_bytes,
         state::{state_tree::GlobalStateTree, PendingData, SyncState},
         storage::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage},
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};
+    use pathfinder_common::{
+        starkhash, starkhash_bytes, BlockId, Chain, ChainId, ClassHash, ContractAddress,
+        ContractClass, ContractNonce, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
+        TransactionNonce,
+    };
     use serde_json::json;
     use stark_hash::StarkHash;
+    use starknet_gateway_types::reply::PendingBlock;
     use std::sync::Arc;
 
     mod get_block {
@@ -393,7 +387,7 @@ mod tests {
 
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-            let result = client(addr)
+            let result = TestClient::v01(addr)
                 .request::<Block>("starknet_getBlockWithTxHashes", params.clone())
                 .await;
             check_fn(&result, pending_block);
@@ -401,7 +395,7 @@ mod tests {
                 |block| assert_matches!(block.transactions, Transactions::HashesOnly(_) => {}),
             );
 
-            let result = client(addr)
+            let result = TestClient::v01(addr)
                 .request::<Block>("starknet_getBlockWithTxs", params)
                 .await;
             check_fn(&result, pending_block);
@@ -417,7 +411,7 @@ mod tests {
             let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                 .with_pending_data(pending_data.clone());
             check_result_with_api(api, params, check_fn).await
         }
@@ -522,7 +516,7 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                     .with_pending_data(PendingData::default());
                 let params = rpc_params!(BlockId::Pending);
                 check_result_with_api(api, params, |result, _| {
@@ -543,7 +537,7 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let params = rpc_params!(BlockId::Pending);
                 check_result_with_api(api, params, |result, _| {
                     assert_matches!(result, Err(Error::Call(CallError::Custom(_))));
@@ -610,23 +604,23 @@ mod tests {
 
     mod get_storage_at {
         use super::*;
-        use crate::core::StorageValue;
-        use crate::rpc::v01::types::{BlockHashOrTag, Tag};
+        use pathfinder_common::StorageValue;
         use pretty_assertions::assert_eq;
+        use starknet_gateway_types::request::{BlockHashOrTag, Tag};
 
         #[tokio::test]
         async fn non_existent_contract_address() {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress::new_or_panic(starkhash_bytes!(b"nonexistent")),
                 StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                 BlockId::Latest
             );
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
@@ -641,14 +635,14 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
                 StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                 BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"genesis")))
             );
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
@@ -663,14 +657,14 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
                 StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                 BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"nonexistent")))
             );
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap_err();
@@ -685,14 +679,14 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
                 StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                 BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"block 1")))
             );
-            let value = client(addr)
+            let value = TestClient::v01(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
@@ -708,14 +702,14 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(
                     ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
                     StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
                     BlockId::Latest
                 );
-                let value = client(addr)
+                let value = TestClient::v01(addr)
                     .request::<StorageValue>("starknet_getStorageAt", params)
                     .await
                     .unwrap();
@@ -727,14 +721,14 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([
                     ("contract_address", json! {starkhash_bytes!(b"contract 1")}),
                     ("key", json! {starkhash_bytes!(b"storage addr 0")}),
                     ("block_id", json! {"latest"}),
                 ]);
-                let value = client(addr)
+                let value = TestClient::v01(addr)
                     .request::<StorageValue>("starknet_getStorageAt", params)
                     .await
                     .unwrap();
@@ -748,7 +742,7 @@ mod tests {
             let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                 .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             // Pick an arbitrary pending storage update to query.
@@ -758,7 +752,7 @@ mod tests {
             let storage_val = updates[0].value;
 
             let params = rpc_params!(contract, storage_key, BlockHashOrTag::Tag(Tag::Pending));
-            let result = client(addr)
+            let result = TestClient::v01(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
@@ -772,7 +766,7 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         mod accepted {
-            use crate::core::StarknetTransactionHash;
+            use pathfinder_common::StarknetTransactionHash;
 
             use super::*;
             use pretty_assertions::assert_eq;
@@ -783,10 +777,10 @@ mod tests {
                 let hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(hash);
-                let transaction = client(addr)
+                let transaction = TestClient::v01(addr)
                     .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
@@ -799,10 +793,10 @@ mod tests {
                 let hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("transaction_hash", json!(hash))]);
-                let transaction = client(addr)
+                let transaction = TestClient::v01(addr)
                     .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
@@ -815,7 +809,7 @@ mod tests {
                 let pending_data = create_pending_data(storage.clone()).await;
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                     .with_pending_data(pending_data.clone());
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 // Select an arbitrary pending transaction to query.
@@ -823,7 +817,7 @@ mod tests {
                 let expected: Transaction = expected.transactions.first().unwrap().into();
 
                 let params = rpc_params!(expected.hash());
-                let transaction = client(addr)
+                let transaction = TestClient::v01(addr)
                     .request::<Transaction>("starknet_getTransactionByHash", params)
                     .await
                     .unwrap();
@@ -836,10 +830,10 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(INVALID_TX_HASH);
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<Transaction>("starknet_getTransactionByHash", params)
                 .await
                 .unwrap_err();
@@ -852,17 +846,18 @@ mod tests {
 
     mod get_transaction_by_block_id_and_index {
         use super::*;
-        use crate::{core::StarknetTransactionHash, rpc::v01::types::reply::Transaction};
+        use crate::rpc::v01::types::reply::Transaction;
+        use pathfinder_common::StarknetTransactionHash;
         use pretty_assertions::assert_eq;
 
         async fn check_result<F: Fn(&Transaction)>(params: Option<ParamsSer<'_>>, check_fn: F) {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-            let txn = client(addr)
+            let txn = TestClient::v01(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
                 .await
                 .unwrap();
@@ -932,7 +927,7 @@ mod tests {
             let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                 .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -942,7 +937,7 @@ mod tests {
             let expected: Transaction = expected.transactions.get(TX_IDX).unwrap().into();
 
             let params = rpc_params!(BlockId::Pending, TX_IDX);
-            let transaction = client(addr)
+            let transaction = TestClient::v01(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
                 .await
                 .unwrap();
@@ -955,10 +950,10 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)), 0);
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
                 .await
                 .unwrap_err();
@@ -973,12 +968,12 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
             let genesis_id = BlockId::Hash(genesis_hash);
             let params = rpc_params!(genesis_id, 123);
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
                 .await
                 .unwrap_err();
@@ -1003,11 +998,11 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let txn_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
                 let params = rpc_params!(txn_hash);
-                let receipt = client(addr)
+                let receipt = TestClient::v01(addr)
                     .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                     .await
                     .unwrap();
@@ -1026,11 +1021,11 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let txn_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
                 let params = by_name([("transaction_hash", json!(txn_hash))]);
-                let receipt = client(addr)
+                let receipt = TestClient::v01(addr)
                     .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                     .await
                     .unwrap();
@@ -1050,7 +1045,7 @@ mod tests {
                 let pending_data = create_pending_data(storage.clone()).await;
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                     .with_pending_data(pending_data.clone());
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 // Select an arbitrary pending transaction to query.
@@ -1058,7 +1053,7 @@ mod tests {
                 let expected = expected.transaction_receipts.first().unwrap();
 
                 let params = rpc_params!(expected.transaction_hash);
-                let receipt = client(addr)
+                let receipt = TestClient::v01(addr)
                     .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                     .await
                     .unwrap();
@@ -1067,7 +1062,7 @@ mod tests {
                 assert_matches!(
                     receipt,
                     TransactionReceipt::PendingInvoke(invoke) => {
-                        assert_eq!(invoke.common.actual_fee, crate::core::Fee(Default::default()));
+                        assert_eq!(invoke.common.actual_fee, pathfinder_common::Fee(Default::default()));
                         assert_eq!(invoke.events.len(), 3);
                     }
                 );
@@ -1079,11 +1074,11 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let txn_hash = StarknetTransactionHash(starkhash_bytes!(b"not found"));
             let params = rpc_params!(txn_hash);
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
                 .await
                 .unwrap_err();
@@ -1097,7 +1092,6 @@ mod tests {
     mod get_class {
         use super::contract_setup::setup_class_and_contract;
         use super::*;
-        use crate::core::ContractClass;
         use crate::rpc::v01::types::reply::ErrorCode;
 
         mod positional_args {
@@ -1109,10 +1103,10 @@ mod tests {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(INVALID_CLASS_HASH);
-                let error = client(addr)
+                let error = TestClient::v01(addr)
                     .request::<ContractClass>("starknet_getClass", params)
                     .await
                     .unwrap_err();
@@ -1131,11 +1125,11 @@ mod tests {
 
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = rpc_params!(class_hash);
-                let class = client(addr)
+                let class = TestClient::v01(addr)
                     .request::<ContractClass>("starknet_getClass", params)
                     .await
                     .unwrap();
@@ -1161,11 +1155,11 @@ mod tests {
 
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([("class_hash", json!(class_hash))]);
-                let class = client(addr)
+                let class = TestClient::v01(addr)
                     .request::<ContractClass>("starknet_getClass", params)
                     .await
                     .unwrap();
@@ -1189,10 +1183,10 @@ mod tests {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockId::Latest, INVALID_CONTRACT_ADDR);
-                let error = client(addr)
+                let error = TestClient::v01(addr)
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap_err();
@@ -1204,13 +1198,13 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let contract_address =
                     ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
                 let params = rpc_params!(BlockId::Latest, contract_address);
-                let class_hash = client(addr)
+                let class_hash = TestClient::v01(addr)
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap();
@@ -1223,7 +1217,7 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let contract_address =
@@ -1232,7 +1226,7 @@ mod tests {
                     BlockId::Number(StarknetBlockNumber::GENESIS),
                     contract_address
                 );
-                let error = client(addr)
+                let error = TestClient::v01(addr)
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap_err();
@@ -1245,7 +1239,7 @@ mod tests {
                 let pending_data = create_pending_data(storage.clone()).await;
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                     .with_pending_data(pending_data.clone());
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -1253,7 +1247,7 @@ mod tests {
                 let contract = contract.state_diff.deployed_contracts.first().unwrap();
 
                 let params = rpc_params!(BlockId::Pending, contract.address);
-                let class_hash = client(addr)
+                let class_hash = TestClient::v01(addr)
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap();
@@ -1270,7 +1264,7 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let contract_address =
@@ -1279,7 +1273,7 @@ mod tests {
                     ("block_id", json!("latest")),
                     ("contract_address", json!(contract_address)),
                 ]);
-                let class_hash = client(addr)
+                let class_hash = TestClient::v01(addr)
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap();
@@ -1292,7 +1286,6 @@ mod tests {
     mod get_class_at {
         use super::contract_setup::setup_class_and_contract;
         use super::*;
-        use crate::core::ContractClass;
         use crate::rpc::v01::types::reply::ErrorCode;
         use pretty_assertions::assert_eq;
 
@@ -1301,10 +1294,10 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockId::Latest, INVALID_CONTRACT_ADDR);
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<ContractClass>("starknet_getClassAt", params)
                 .await
                 .unwrap_err();
@@ -1316,10 +1309,10 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-            let not_found = client(addr)
+            let not_found = TestClient::v01(addr)
                 .request::<ContractClass>(
                     "starknet_getClassAt",
                     rpc_params!(
@@ -1335,7 +1328,6 @@ mod tests {
 
         #[tokio::test]
         async fn returns_program_and_entry_points_for_known_class() {
-            use crate::core::ContractClass;
             use futures::stream::TryStreamExt;
 
             let storage = setup_storage();
@@ -1347,10 +1339,10 @@ mod tests {
 
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-            let client = client(addr);
+            let client = TestClient::v01(addr);
 
             // both parameters, these used to be separate tests
             let rets = [
@@ -1376,8 +1368,6 @@ mod tests {
 
         #[tokio::test]
         async fn returns_not_found_for_existing_contract_that_is_not_yet_deployed() {
-            use crate::core::ContractClass;
-
             let storage = setup_storage();
             let mut conn = storage.connection().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -1387,10 +1377,10 @@ mod tests {
 
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-            let not_found = client(addr)
+            let not_found = TestClient::v01(addr)
                 .request::<ContractClass>(
                     "starknet_getClassAt",
                     rpc_params!(
@@ -1410,7 +1400,7 @@ mod tests {
             let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                 .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -1418,7 +1408,7 @@ mod tests {
             let contract = contract.state_diff.deployed_contracts.first().unwrap();
 
             let params = rpc_params!(BlockId::Pending, contract.address);
-            client(addr)
+            TestClient::v01(addr)
                 .request::<ContractClass>("starknet_getClassAt", params)
                 .await
                 .unwrap();
@@ -1426,22 +1416,21 @@ mod tests {
     }
 
     mod contract_setup {
-        use crate::{
-            core::StorageValue, sequencer::reply::state_update::StorageDiff, starkhash,
-            state::update_contract_state, storage::StarknetBlocksBlockId,
-        };
-
         use super::*;
+        use crate::{state::update_contract_state, storage::StarknetBlocksBlockId};
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
+        use pathfinder_common::{starkhash, StorageValue};
         use pretty_assertions::assert_eq;
+        use starknet_gateway_types::reply::state_update::StorageDiff;
 
         pub fn setup_class_and_contract(
             transaction: &rusqlite::Transaction<'_>,
         ) -> anyhow::Result<(ContractAddress, ClassHash, String, serde_json::Value)> {
-            let contract_definition = include_bytes!("../../fixtures/contract_definition.json.zst");
-            let buffer = zstd::decode_all(std::io::Cursor::new(contract_definition))?;
+            let buffer = zstd::decode_all(std::io::Cursor::new(
+                starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
+            ))?;
             let contract_definition = Bytes::from(buffer);
 
             let contract_address = ContractAddress::new_or_panic(starkhash!(
@@ -1451,13 +1440,13 @@ mod tests {
                 starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
 
             let (abi, bytecode, hash) =
-                crate::state::class_hash::extract_abi_code_hash(&*contract_definition)?;
+                crate::state::class_hash::extract_abi_code_hash(&contract_definition)?;
 
             assert_eq!(hash.0, expected_hash);
 
             let (program, entry_points) =
                 crate::state::class_hash::extract_program_and_entry_points_by_type(
-                    &*contract_definition,
+                    &contract_definition,
                 )?;
 
             crate::storage::ContractCodeTable::insert(
@@ -1526,12 +1515,12 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockId::Hash(StarknetBlockHash(starkhash_bytes!(
                 b"genesis"
             ))));
-            let count = client(addr)
+            let count = TestClient::v01(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap();
@@ -1547,10 +1536,10 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(BlockId::Latest);
-                let count = client(addr)
+                let count = TestClient::v01(addr)
                     .request::<u64>("starknet_getBlockTransactionCount", params)
                     .await
                     .unwrap();
@@ -1562,10 +1551,10 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([("block_id", json!("latest"))]);
-                let count = client(addr)
+                let count = TestClient::v01(addr)
                     .request::<u64>("starknet_getBlockTransactionCount", params)
                     .await
                     .unwrap();
@@ -1579,12 +1568,12 @@ mod tests {
             let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                 .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let expected = pending_data.block().await.unwrap().transactions.len();
             let params = rpc_params!(BlockId::Pending);
-            let count = client(addr)
+            let count = TestClient::v01(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap();
@@ -1596,10 +1585,10 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)));
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap_err();
@@ -1614,10 +1603,10 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(BlockId::Number(StarknetBlockNumber::new_or_panic(123)));
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
                 .unwrap_err();
@@ -1639,7 +1628,7 @@ mod tests {
             let pending_data = create_pending_data(storage.clone()).await;
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                 .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -1653,7 +1642,7 @@ mod tests {
                 .map(Transaction::from)
                 .collect::<Vec<_>>();
 
-            let transactions = client(addr)
+            let transactions = TestClient::v01(addr)
                 .request::<Vec<Transaction>>("starknet_pendingTransactions", rpc_params![])
                 .await
                 .unwrap();
@@ -1669,7 +1658,7 @@ mod tests {
             let pending_data = PendingData::default();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage.clone(), sequencer, Chain::Testnet, sync_state)
+            let api = RpcApi::new(storage.clone(), sequencer, ChainId::TESTNET, sync_state)
                 .with_pending_data(pending_data.clone());
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -1681,7 +1670,7 @@ mod tests {
                 .map(Transaction::from)
                 .collect::<Vec<_>>();
 
-            let transactions = client(addr)
+            let transactions = TestClient::v01(addr)
                 .request::<Vec<Transaction>>("starknet_pendingTransactions", rpc_params![])
                 .await
                 .unwrap();
@@ -1692,17 +1681,15 @@ mod tests {
 
     #[tokio::test]
     async fn get_nonce() {
-        use crate::core::ContractNonce;
-
         let storage = setup_storage();
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state.clone());
+        let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state.clone());
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
         // This contract is created in `setup_storage` and has a nonce set to 0x1.
         let valid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
-        let nonce = client(addr)
+        let nonce = TestClient::v01(addr)
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
             .await
             .unwrap();
@@ -1710,7 +1697,7 @@ mod tests {
 
         // Invalid contract should error.
         let invalid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
-        let error = client(addr)
+        let error = TestClient::v01(addr)
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(invalid_contract))
             .await
             .expect_err("invalid contract should error");
@@ -1723,10 +1710,7 @@ mod tests {
     mod call {
         use super::*;
         use crate::rpc::v01::types::request::Call;
-        use crate::{
-            core::{CallParam, CallResultValue},
-            starkhash,
-        };
+        use pathfinder_common::{starkhash, CallParam, CallResultValue};
         use pretty_assertions::assert_eq;
 
         const INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
@@ -1746,7 +1730,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -1760,7 +1744,7 @@ mod tests {
                 },
                 INVOKE_CONTRACT_BLOCK_ID
             );
-            client(addr)
+            TestClient::v01(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap();
@@ -1775,7 +1759,7 @@ mod tests {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(
                     Call {
@@ -1789,7 +1773,7 @@ mod tests {
                     },
                     BlockId::Latest
                 );
-                client(addr)
+                TestClient::v01(addr)
                     .request::<Vec<CallResultValue>>("starknet_call", params)
                     .await
                     .unwrap();
@@ -1801,7 +1785,7 @@ mod tests {
                 let storage = Storage::in_memory().unwrap();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([
                     (
@@ -1814,7 +1798,7 @@ mod tests {
                     ),
                     ("block_id", json!("latest")),
                 ]);
-                client(addr)
+                TestClient::v01(addr)
                     .request::<Vec<CallResultValue>>("starknet_call", params)
                     .await
                     .unwrap();
@@ -1827,7 +1811,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -1841,7 +1825,7 @@ mod tests {
                 },
                 BlockId::Pending
             );
-            client(addr)
+            TestClient::v01(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap();
@@ -1853,7 +1837,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -1867,7 +1851,7 @@ mod tests {
                 },
                 BlockId::Latest
             );
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
@@ -1883,7 +1867,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -1897,7 +1881,7 @@ mod tests {
                 },
                 BlockId::Latest
             );
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
@@ -1913,7 +1897,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -1927,7 +1911,7 @@ mod tests {
                 },
                 BlockId::Latest
             );
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
@@ -1943,7 +1927,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -1957,7 +1941,7 @@ mod tests {
                 },
                 PRE_DEPLOY_CONTRACT_BLOCK_ID
             );
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
@@ -1973,7 +1957,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
                 Call {
@@ -1987,7 +1971,7 @@ mod tests {
                 },
                 INVALID_BLOCK_ID
             );
-            let error = client(addr)
+            let error = TestClient::v01(addr)
                 .request::<Vec<CallResultValue>>("starknet_call", params)
                 .await
                 .unwrap_err();
@@ -2003,9 +1987,9 @@ mod tests {
         let storage = setup_storage();
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+        let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-        let number = client(addr)
+        let number = TestClient::v01(addr)
             .request::<u64>("starknet_blockNumber", rpc_params!())
             .await
             .unwrap();
@@ -2017,9 +2001,9 @@ mod tests {
         let storage = setup_storage();
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+        let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-        let latest = client(addr)
+        let latest = TestClient::v01(addr)
             .request::<BlockHashAndNumber>("starknet_blockHashAndNumber", rpc_params!())
             .await
             .unwrap();
@@ -2036,28 +2020,31 @@ mod tests {
         use futures::stream::StreamExt;
 
         assert_eq!(
-            [Chain::Testnet, Chain::Mainnet]
-                .iter()
-                .map(|set_chain| async {
-                    let storage = Storage::in_memory().unwrap();
-                    let sequencer = Client::new(*set_chain).unwrap();
-                    let sync_state = Arc::new(SyncState::default());
-                    let api = RpcApi::new(storage, sequencer, *set_chain, sync_state);
+            [
+                (Chain::Testnet, ChainId::TESTNET),
+                (Chain::Mainnet, ChainId::MAINNET)
+            ]
+            .iter()
+            .map(|set_chain| async {
+                let storage = Storage::in_memory().unwrap();
+                let sequencer = Client::new(set_chain.0).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, set_chain.1, sync_state);
 
-                    let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
-                        .with_middleware(RpcMetricsMiddleware)
-                        .run()
-                        .await
-                        .unwrap();
-                    let params = rpc_params!();
-                    client(addr)
-                        .request::<String>("starknet_chainId", params)
-                        .await
-                        .unwrap()
-                })
-                .collect::<futures::stream::FuturesOrdered<_>>()
-                .collect::<Vec<_>>()
-                .await,
+                let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
+                    .with_middleware(RpcMetricsMiddleware)
+                    .run()
+                    .await
+                    .unwrap();
+                let params = rpc_params!();
+                TestClient::v01(addr)
+                    .request::<String>("starknet_chainId", params)
+                    .await
+                    .unwrap()
+            })
+            .collect::<futures::stream::FuturesOrdered<_>>()
+            .collect::<Vec<_>>()
+            .await,
             vec![
                 format!("0x{}", hex::encode("SN_GOERLI")),
                 format!("0x{}", hex::encode("SN_MAIN")),
@@ -2076,9 +2063,9 @@ mod tests {
             let storage = setup_storage();
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let syncing = client(addr)
+            let syncing = TestClient::v01(addr)
                 .request::<Syncing>("starknet_syncing", rpc_params!())
                 .await
                 .unwrap();
@@ -2099,9 +2086,9 @@ mod tests {
             let sequencer = Client::new(Chain::Testnet).unwrap();
             let sync_state = Arc::new(SyncState::default());
             *sync_state.status.write().await = expected.clone();
-            let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+            let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let syncing = client(addr)
+            let syncing = TestClient::v01(addr)
                 .request::<Syncing>("starknet_syncing", rpc_params!())
                 .await
                 .unwrap();
@@ -2124,8 +2111,8 @@ mod tests {
 
         mod positional_args {
             use super::*;
-            use crate::{rpc::v01::types::request::EventFilter, starkhash};
-
+            use crate::rpc::v01::types::request::EventFilter;
+            use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -2133,7 +2120,7 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = rpc_params!(EventFilter {
@@ -2144,7 +2131,7 @@ mod tests {
                     page_size: test_utils::NUM_EVENTS,
                     page_number: 0,
                 });
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2164,7 +2151,7 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let expected_event = &events[1];
@@ -2177,7 +2164,7 @@ mod tests {
                     page_size: test_utils::NUM_EVENTS,
                     page_number: 0,
                 });
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2197,7 +2184,7 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 const BLOCK_NUMBER: usize = 2;
@@ -2209,7 +2196,7 @@ mod tests {
                     page_size: test_utils::NUM_EVENTS,
                     page_number: 0,
                 });
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2231,7 +2218,7 @@ mod tests {
                 let (storage, _events) = setup();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = rpc_params!(EventFilter {
@@ -2242,7 +2229,7 @@ mod tests {
                     page_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
                     page_number: 0,
                 });
-                let error = client(addr)
+                let error = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap_err();
@@ -2258,7 +2245,7 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let expected_events = &events[27..32];
@@ -2273,7 +2260,7 @@ mod tests {
                     page_size: 2,
                     page_number: 0,
                 });
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2294,7 +2281,7 @@ mod tests {
                     page_size: 2,
                     page_number: 1,
                 });
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2315,7 +2302,7 @@ mod tests {
                     page_size: 2,
                     page_number: 2,
                 });
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2337,7 +2324,7 @@ mod tests {
                     page_size: 2,
                     page_number: 3,
                 });
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2362,14 +2349,14 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([(
                     "filter",
                     json!({"page_size": test_utils::NUM_EVENTS, "page_number": 0}),
                 )]);
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2389,7 +2376,7 @@ mod tests {
                 let (storage, events) = setup();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let expected_event = &events[1];
@@ -2409,7 +2396,7 @@ mod tests {
                     }),
                 )]);
 
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2438,7 +2425,7 @@ mod tests {
                 let pending_data = create_pending_data(storage.clone()).await;
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                     .with_pending_data(pending_data);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -2450,7 +2437,7 @@ mod tests {
                     page_size: 100,
                     page_number: 0,
                 });
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", params)
                     .await
                     .unwrap();
@@ -2463,7 +2450,7 @@ mod tests {
                 let pending_data = create_pending_data(storage.clone()).await;
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                     .with_pending_data(pending_data);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -2476,20 +2463,20 @@ mod tests {
                     page_number: 0,
                 };
 
-                let events = client(addr)
+                let events = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter.clone()))
                     .await
                     .unwrap();
 
                 filter.from_block = Some(BlockId::Pending);
                 filter.to_block = Some(BlockId::Pending);
-                let pending_events = client(addr)
+                let pending_events = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter.clone()))
                     .await
                     .unwrap();
 
                 filter.from_block = None;
-                let all_events = client(addr)
+                let all_events = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter))
                     .await
                     .unwrap();
@@ -2510,7 +2497,7 @@ mod tests {
                 let pending_data = create_pending_data(storage.clone()).await;
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state)
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state)
                     .with_pending_data(pending_data);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
@@ -2523,7 +2510,7 @@ mod tests {
                     page_number: 0,
                 };
 
-                let all = client(addr)
+                let all = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter.clone()))
                     .await
                     .unwrap()
@@ -2535,7 +2522,7 @@ mod tests {
                 let num_chunks = chunks.len();
                 for (idx, chunk) in chunks.enumerate() {
                     filter.page_number = idx;
-                    let result = client(addr)
+                    let result = TestClient::v01(addr)
                         .request::<GetEventsResult>(
                             "starknet_getEvents",
                             rpc_params!(filter.clone()),
@@ -2554,7 +2541,7 @@ mod tests {
 
                 // nonexistent page
                 filter.page_number = num_chunks;
-                let result = client(addr)
+                let result = TestClient::v01(addr)
                     .request::<GetEventsResult>("starknet_getEvents", rpc_params!(filter))
                     .await
                     .unwrap();
@@ -2578,30 +2565,25 @@ mod tests {
 
         lazy_static::lazy_static! {
             pub static ref CONTRACT_DEFINITION_JSON: serde_json::Value = {
-                let json = include_bytes!("../../resources/deploy_transaction.json");
-                let mut json: serde_json::Value = serde_json::from_slice(json).unwrap();
+                let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
+                let mut json: serde_json::Value = serde_json::from_str(json).unwrap();
                 json["contract_definition"].take()
             };
         }
 
         mod positional_args {
-            use std::collections::HashMap;
-
             use super::*;
-            use crate::{
-                core::{
-                    ByteCodeOffset, CallParam, ClassHash, ConstructorParam, ContractAddressSalt,
-                    EntryPoint, Fee, TransactionSignatureElem, TransactionVersion,
-                },
-                rpc::v01::types::request::ContractCall,
-                sequencer::request::{
-                    add_transaction::ContractDefinition,
-                    contract::{EntryPointType, SelectorAndOffset},
-                },
-                starkhash,
+            use crate::rpc::v01::types::request::ContractCall;
+            use pathfinder_common::{
+                starkhash, ByteCodeOffset, CallParam, ClassHash, ConstructorParam,
+                ContractAddressSalt, EntryPoint, Fee, TransactionSignatureElem, TransactionVersion,
             };
-
             use pretty_assertions::assert_eq;
+            use starknet_gateway_types::request::{
+                add_transaction::ContractDefinition,
+                contract::{EntryPointType, SelectorAndOffset},
+            };
+            use std::collections::HashMap;
             use web3::types::H256;
 
             lazy_static::lazy_static! {
@@ -2662,7 +2644,7 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = rpc_params!(
@@ -2671,7 +2653,7 @@ mod tests {
                     *MAX_FEE,
                     *TRANSACTION_VERSION
                 );
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
                     .await
                     .unwrap();
@@ -2688,12 +2670,10 @@ mod tests {
 
             #[tokio::test]
             async fn invoke_transaction_v1() {
-                use crate::core::TransactionNonce;
-
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let call = ContractCall {
@@ -2727,7 +2707,7 @@ mod tests {
                 let nonce = TransactionNonce(starkhash!("02"));
 
                 let params = rpc_params!(call, signature, max_fee, TransactionVersion::ONE, nonce);
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
                     .await
                     .unwrap();
@@ -2747,14 +2727,14 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Integration).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let contract_class = CONTRACT_DEFINITION.clone();
 
                 let params = rpc_params!(contract_class, *TRANSACTION_VERSION);
 
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<DeclareTransactionResult>("starknet_addDeclareTransaction", params)
                     .await
                     .unwrap();
@@ -2777,7 +2757,7 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let contract_definition = CONTRACT_DEFINITION.clone();
@@ -2792,7 +2772,7 @@ mod tests {
                     contract_definition
                 );
 
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<DeployTransactionResult>("starknet_addDeployTransaction", params)
                     .await
                     .unwrap();
@@ -2812,10 +2792,8 @@ mod tests {
         }
 
         mod named_args {
-            use crate::{core::ClassHash, starkhash};
-
             use super::*;
-
+            use pathfinder_common::{starkhash, ClassHash};
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -2823,7 +2801,7 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([
@@ -2855,7 +2833,7 @@ mod tests {
                     ("version", json!("0x0")),
                 ]);
 
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<InvokeTransactionResult>("starknet_addInvokeTransaction", params)
                     .await
                     .unwrap();
@@ -2875,7 +2853,7 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Integration).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([
@@ -2883,7 +2861,7 @@ mod tests {
                     ("version", json!("0x0")),
                 ]);
 
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<DeclareTransactionResult>("starknet_addDeclareTransaction", params)
                     .await
                     .unwrap();
@@ -2906,7 +2884,7 @@ mod tests {
                 let storage = setup_storage();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let params = by_name([
@@ -2918,7 +2896,7 @@ mod tests {
                     ("contract_definition", CONTRACT_DEFINITION_JSON.clone()),
                 ]);
 
-                let rpc_result = client(addr)
+                let rpc_result = TestClient::v01(addr)
                     .request::<DeployTransactionResult>("starknet_addDeployTransaction", params)
                     .await
                     .unwrap();
@@ -2963,7 +2941,7 @@ mod tests {
         let storage = setup_storage();
         let sequencer = Client::new(Chain::Testnet).unwrap();
         let sync_state = Arc::new(SyncState::default());
-        let api = RpcApi::new(storage, sequencer, Chain::Testnet, sync_state);
+        let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
         let (__handle, addr) = RpcServer::new(*LOCALHOST, api)
             .with_middleware(RpcMetricsMiddleware)
             .run()
@@ -2981,7 +2959,7 @@ mod tests {
         ]
         .into_iter()
         .map(|block_number| async move {
-            let _ = client(addr)
+            let _ = TestClient::v01(addr)
                 .request::<Block>(
                     "starknet_getBlockWithTxHashes",
                     rpc_params!(BlockId::Number(block_number)),

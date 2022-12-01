@@ -1,7 +1,5 @@
-use crate::{
-    core::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint},
-    rpc::v02::RpcContext,
-};
+use crate::rpc::v02::RpcContext;
+use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 
 crate::rpc::error::generate_rpc_error_subset!(
     CallError: BlockNotFound,
@@ -64,12 +62,17 @@ pub async fn call(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
 
-    let (when, pending_update) =
+    let (when, pending_timestamp, pending_update) =
         super::estimate_fee::base_block_and_pending_for_call(input.block_id, &context.pending_data)
             .await?;
 
     let result = handle
-        .call(input.request.into(), when, pending_update)
+        .call(
+            input.request.into(),
+            when,
+            pending_update,
+            pending_timestamp,
+        )
         .await?;
 
     Ok(result)
@@ -78,14 +81,12 @@ pub async fn call(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::starkhash;
+    use pathfinder_common::starkhash;
 
     mod parsing {
-        use crate::core::StarknetBlockHash;
-
         use super::*;
-
         use jsonrpsee::types::Params;
+        use pathfinder_common::StarknetBlockHash;
 
         #[test]
         fn positional_args() {
@@ -129,14 +130,11 @@ mod tests {
     }
 
     mod ext_py {
+        use super::*;
+        use crate::storage::JournalMode;
+        use pathfinder_common::{starkhash_bytes, Chain, StarknetBlockHash};
         use std::path::PathBuf;
         use std::sync::Arc;
-
-        use crate::core::{Chain, StarknetBlockHash};
-        use crate::starkhash_bytes;
-        use crate::storage::JournalMode;
-
-        use super::*;
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
@@ -164,6 +162,8 @@ mod tests {
         }
 
         async fn test_context_with_call_handling() -> (RpcContext, tokio::task::JoinHandle<()>) {
+            use pathfinder_common::ChainId;
+
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             database_path.push("fixtures/mainnet.sqlite");
             let storage =
@@ -178,10 +178,9 @@ mod tests {
             .await
             .unwrap();
 
-            let chain = Chain::Mainnet;
-            let sequencer = crate::sequencer::Client::new(chain).unwrap();
+            let sequencer = crate::sequencer::Client::new(Chain::Mainnet).unwrap();
 
-            let context = RpcContext::new(storage, sync_state, chain, sequencer);
+            let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (context.with_call_handling(call_handle), cairo_handle)
         }
 

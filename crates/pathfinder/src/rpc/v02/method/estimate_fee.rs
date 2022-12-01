@@ -1,15 +1,13 @@
-use std::sync::Arc;
-
-use serde::Serialize;
-use serde_with::serde_as;
-
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
-    core::BlockId,
     rpc::v02::types::request::BroadcastedTransaction,
     rpc::v02::RpcContext,
     state::PendingData,
 };
+use pathfinder_common::{BlockId, StarknetBlockTimestamp};
+use serde::Serialize;
+use serde_with::serde_as;
+use std::sync::Arc;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct EstimateFeeInput {
@@ -69,11 +67,17 @@ pub async fn estimate_fee(
         GasPriceSource::PastBlock
     };
 
-    let (when, pending_update) =
+    let (when, pending_timestamp, pending_update) =
         base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
     let result = handle
-        .estimate_fee(input.request, when, gas_price, pending_update)
+        .estimate_fee(
+            input.request,
+            when,
+            gas_price,
+            pending_update,
+            pending_timestamp,
+        )
         .await?;
 
     Ok(result.into())
@@ -87,14 +91,15 @@ pub(super) async fn base_block_and_pending_for_call(
 ) -> Result<
     (
         BlockHashNumberOrLatest,
-        Option<Arc<crate::sequencer::reply::StateUpdate>>,
+        Option<StarknetBlockTimestamp>,
+        Option<Arc<starknet_gateway_types::reply::StateUpdate>>,
     ),
     anyhow::Error,
 > {
     use crate::cairo::ext_py::Pending;
 
     match BlockHashNumberOrLatest::try_from(at_block) {
-        Ok(when) => Ok((when, None)),
+        Ok(when) => Ok((when, None, None)),
         Err(Pending) => {
             // we must have pending_data configured for pending requests, otherwise we fail
             // fast.
@@ -105,13 +110,16 @@ pub(super) async fn base_block_and_pending_for_call(
                     let pending_on_top_of_a_block = pending
                         .state_update_on_parent_block()
                         .await
-                        .map(|(parent_block, data)| (parent_block.into(), Some(data)));
+                        .map(|(parent_block, timestamp, data)| {
+                            (parent_block.into(), Some(timestamp), Some(data))
+                        });
 
                     // if there is no pending data available, just execute on whatever latest.
-                    Ok(
-                        pending_on_top_of_a_block
-                            .unwrap_or((BlockHashNumberOrLatest::Latest, None)),
-                    )
+                    Ok(pending_on_top_of_a_block.unwrap_or((
+                        BlockHashNumberOrLatest::Latest,
+                        None,
+                        None,
+                    )))
                 }
                 None => Err(anyhow::anyhow!(
                     "Pending data not supported in this configuration"
@@ -127,13 +135,13 @@ pub(super) async fn base_block_and_pending_for_call(
 #[serde(deny_unknown_fields)]
 pub struct FeeEstimate {
     /// The Ethereum gas cost of the transaction
-    #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
     pub gas_consumed: web3::types::H256,
     /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
-    #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
     pub gas_price: web3::types::H256,
     /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
-    #[serde_as(as = "crate::rpc::serde::H256AsHexStr")]
+    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
     pub overall_fee: web3::types::H256,
 }
 
@@ -149,19 +157,13 @@ impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use crate::starkhash;
-    use crate::{
-        core::{
-            CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
-            TransactionNonce, TransactionSignatureElem, TransactionVersion,
-        },
-        rpc::v02::types::request::BroadcastedInvokeTransaction,
-        storage::JournalMode,
-    };
-
     use super::*;
+    use crate::{rpc::v02::types::request::BroadcastedInvokeTransaction, storage::JournalMode};
+    use pathfinder_common::{
+        starkhash, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    };
+    use std::path::PathBuf;
 
     mod parsing {
         use super::*;
@@ -245,15 +247,13 @@ mod tests {
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
     mod ext_py {
-        use crate::core::ContractAddressSalt;
+        use super::*;
         use crate::rpc::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeployTransaction,
             BroadcastedInvokeTransactionV0,
         };
         use crate::rpc::v02::types::ContractClass;
-        use crate::starkhash_bytes;
-
-        use super::*;
+        use pathfinder_common::{starkhash_bytes, ContractAddressSalt};
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
@@ -291,6 +291,8 @@ mod tests {
         }
 
         async fn test_context_with_call_handling() -> (RpcContext, tokio::task::JoinHandle<()>) {
+            use pathfinder_common::ChainId;
+
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             database_path.push("fixtures/mainnet.sqlite");
             let storage =
@@ -305,10 +307,8 @@ mod tests {
             .await
             .unwrap();
 
-            let chain = Chain::Mainnet;
-            let sequencer = crate::sequencer::Client::new(chain).unwrap();
-
-            let context = RpcContext::new(storage, sync_state, chain, sequencer);
+            let sequencer = crate::sequencer::Client::new(Chain::Mainnet).unwrap();
+            let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (context.with_call_handling(call_handle), cairo_handle)
         }
 
@@ -381,7 +381,7 @@ mod tests {
 
         lazy_static::lazy_static! {
             pub static ref CONTRACT_CLASS: ContractClass = {
-                let compressed_json = include_bytes!("../../../../fixtures/contract_definition.json.zst");
+                let compressed_json = starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION;
                 let json = zstd::decode_all(std::io::Cursor::new(compressed_json)).unwrap();
                 ContractClass::from_definition_bytes(&json).unwrap()
             };

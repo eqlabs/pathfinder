@@ -1,21 +1,17 @@
-use std::time::Duration;
-use std::{collections::HashSet, sync::Arc};
-
-use anyhow::{anyhow, Context};
-use tokio::sync::{mpsc, oneshot};
-
-use crate::core::GlobalRoot;
 use crate::sequencer;
-use crate::sequencer::error::SequencerError;
-use crate::sequencer::reply::state_update::{DeployedContract, StateDiff};
-use crate::sequencer::reply::{Block, Status};
 use crate::state::block_hash::verify_block_hash;
 use crate::state::class_hash::extract_abi_code_hash;
 use crate::state::CompressedContract;
-use crate::{
-    core::{Chain, ClassHash, StarknetBlockHash, StarknetBlockNumber},
-    sequencer::reply::{PendingBlock, StateUpdate},
+use anyhow::{anyhow, Context};
+use pathfinder_common::{Chain, ClassHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use starknet_gateway_types::error::SequencerError;
+use starknet_gateway_types::reply::{
+    state_update::{DeployedContract, StateDiff},
+    Block, PendingBlock, StateUpdate, Status,
 };
+use std::time::Duration;
+use std::{collections::HashSet, sync::Arc};
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Timings {
@@ -49,7 +45,7 @@ pub enum Event {
     /// for each contract using the [oneshot::channel].
     QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
     /// A new L2 pending update was polled.
-    Pending(Arc<PendingBlock>, Arc<sequencer::reply::StateUpdate>),
+    Pending(Arc<PendingBlock>, Arc<StateUpdate>),
 }
 
 pub async fn sync(
@@ -177,7 +173,7 @@ async fn declare_classes(
         .transactions
         .iter()
         .filter_map(|tx| {
-            use crate::sequencer::reply::transaction::Transaction::*;
+            use starknet_gateway_types::reply::transaction::Transaction::*;
             match tx {
                 Declare(tx) => Some(tx.class_hash),
                 Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
@@ -247,9 +243,10 @@ async fn download_block(
     prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl sequencer::ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
-    use crate::core::BlockId;
-    use sequencer::error::StarknetErrorCode::BlockNotFound;
-    use sequencer::reply::MaybePendingBlock;
+    use pathfinder_common::BlockId;
+    use starknet_gateway_types::{
+        error::StarknetErrorCode::BlockNotFound, reply::MaybePendingBlock,
+    };
 
     let result = sequencer.block(block_number.into()).await;
 
@@ -467,7 +464,7 @@ async fn download_and_compress_class(
             .compress(&bytecode)
             .context("Compress bytecode")?;
         let definition = compressor
-            .compress(&*definition)
+            .compress(&definition)
             .context("Compress definition")?;
 
         Ok((abi, bytecode, definition))
@@ -516,7 +513,7 @@ async fn download_and_compress_contract(
             .compress(&bytecode)
             .context("Compress bytecode")?;
         let definition = compressor
-            .compress(&*contract_definition)
+            .compress(&contract_definition)
             .context("Compress definition")?;
 
         Ok((abi, bytecode, definition))
@@ -535,19 +532,18 @@ async fn download_and_compress_contract(
 mod tests {
     mod sync {
         use super::super::{sync, Event};
-        use crate::{
-            core::{
-                BlockId, ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
-                StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
-                StorageValue,
-            },
-            sequencer::{
-                error::{SequencerError, StarknetError, StarknetErrorCode},
-                reply, MockClientApi,
-            },
-        };
+        use crate::sequencer::MockClientApi;
         use assert_matches::assert_matches;
+        use pathfinder_common::{
+            BlockId, ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
+            StorageValue,
+        };
         use stark_hash::StarkHash;
+        use starknet_gateway_types::{
+            error::{SequencerError, StarknetError, StarknetErrorCode},
+            reply,
+        };
         use std::collections::HashMap;
 
         const DEF0: &str = r#"{
@@ -841,7 +837,7 @@ mod tests {
 
         mod happy_path {
             use super::*;
-            use crate::core::Chain;
+            use pathfinder_common::Chain;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -1013,8 +1009,8 @@ mod tests {
 
         mod errors {
             use super::*;
-            use crate::core::Chain;
-            use crate::sequencer::reply::Status;
+            use pathfinder_common::Chain;
+            use starknet_gateway_types::reply::Status;
 
             #[tokio::test]
             async fn invalid_block_status() {
@@ -1038,7 +1034,7 @@ mod tests {
 
         mod reorg {
             use super::*;
-            use crate::core::Chain;
+            use pathfinder_common::Chain;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
