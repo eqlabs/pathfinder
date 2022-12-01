@@ -1,4 +1,4 @@
-use crate::storage::{StarknetBlocksTable, StarknetEventsTable};
+use crate::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
 use pathfinder_common::{
     starkhash, ContractAddress, EventData, EventKey, StarknetBlockNumber, StarknetTransactionHash,

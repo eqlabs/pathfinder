@@ -15,5 +15,6 @@ members = [
     "crates/serde",
     "crates/stark_curve",
     "crates/stark_hash",
+    "crates/storage",
 ]
 resolver = "2"

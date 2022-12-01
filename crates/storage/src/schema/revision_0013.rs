@@ -151,7 +151,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     drop(already_processing);
 
     for cc in ready_rx.iter() {
-        crate::storage::ContractCodeTable::insert_compressed(transaction, &cc)
+        crate::ContractCodeTable::insert_compressed(transaction, &cc)
             .with_context(|| format!("Failed to save class {}", cc.hash.0))?;
     }
 

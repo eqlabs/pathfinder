@@ -5,4 +5,3 @@ pub mod monitoring;
 pub mod rpc;
 pub mod sequencer;
 pub mod state;
-pub mod storage;

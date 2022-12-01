@@ -106,7 +106,7 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
                 }
                 duplicates += 1;
             } else {
-                crate::storage::ContractCodeTable::insert(tx, hash, &abi, &code, &raw_definition)?;
+                crate::ContractCodeTable::insert(tx, hash, &abi, &code, &raw_definition)?;
                 uniq_contracts += 1;
             }
 

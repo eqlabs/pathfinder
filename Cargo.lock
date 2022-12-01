@@ -2384,6 +2384,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "base64",
+ "bitvec",
+ "flate2",
+ "hex",
+ "hex-literal",
+ "lazy_static",
+ "pathfinder-common",
+ "pathfinder-ethereum",
+ "pathfinder-serde",
+ "r2d2",
+ "r2d2_sqlite",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sha3",
+ "stark_hash",
+ "starknet-gateway-types",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "web3",
+ "zstd",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
