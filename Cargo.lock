@@ -2291,7 +2291,6 @@ dependencies = [
  "metrics-exporter-prometheus",
  "mockall",
  "num-bigint 0.4.3",
- "pathfinder-build",
  "pathfinder-common",
  "pathfinder-ethereum",
  "pathfinder-retry",
@@ -2324,25 +2323,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "pathfinder-build"
-version = "0.1.0"
-dependencies = [
- "vergen",
-]
-
-[[package]]
 name = "pathfinder-common"
 version = "0.1.0"
 dependencies = [
  "bitvec",
  "hex-literal",
- "pathfinder-build",
  "rusqlite",
  "serde",
  "serde_json",
  "sha3",
  "stark_hash",
  "thiserror",
+ "vergen",
  "web3",
 ]
 

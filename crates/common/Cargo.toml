@@ -19,4 +19,4 @@ thiserror = "1.0.30"
 web3 = "0.18.0"
 
 [build-dependencies]
-pathfinder-build = { path = "../build" }
+vergen = { version = "7", default-features = false, features = ["git"] }

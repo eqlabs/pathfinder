@@ -2,6 +2,9 @@
 
 use crate::{starkhash, StarknetBlockHash};
 
+/// Vergen string
+pub const VERGEN_GIT_SEMVER_LIGHTWEIGHT: &str = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT");
+
 /// User agent used in http clients
 pub const USER_AGENT: &str = concat!(
     "starknet-pathfinder/",

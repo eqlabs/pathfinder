@@ -696,7 +696,7 @@ mod tests {
     async fn client_user_agent() {
         use crate::monitoring::metrics::test::RecorderGuard;
         use crate::sequencer::reply::{Block, Status};
-        use pathfinder_common::StarknetBlockTimestamp;
+        use pathfinder_common::{consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, StarknetBlockTimestamp};
         use std::convert::Infallible;
         use warp::Filter;
 
@@ -707,7 +707,7 @@ mod tests {
                 let (name, version) = user_agent.split_once('/').unwrap();
 
                 assert_eq!(name, "starknet-pathfinder");
-                assert_eq!(version, env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"));
+                assert_eq!(version, VERGEN_GIT_SEMVER_LIGHTWEIGHT);
 
                 Ok::<_, Infallible>(warp::reply::json(&Block {
                     block_hash: StarknetBlockHash(StarkHash::ZERO),

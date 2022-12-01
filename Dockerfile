@@ -40,7 +40,6 @@ COPY crates/stark_curve/Cargo.toml crates/stark_curve/Cargo.toml
 COPY crates/stark_hash/Cargo.toml crates/stark_hash/
 COPY crates/stark_hash/benches crates/stark_hash/benches
 
-COPY crates/build/ crates/build/
 COPY crates/common/Cargo.toml crates/common/build.rs crates/common/
 COPY crates/ethereum/Cargo.toml crates/ethereum/Cargo.toml
 COPY crates/gateway-test-fixtures/Cargo.toml crates/gateway-test-fixtures/Cargo.toml
@@ -48,7 +47,6 @@ COPY crates/gateway-types/Cargo.toml crates/gateway-types/Cargo.toml
 COPY crates/retry/Cargo.toml crates/retry/Cargo.toml
 COPY crates/serde/Cargo.toml crates/serde/Cargo.toml
 
-COPY crates/pathfinder/Cargo.toml crates/pathfinder/build.rs crates/pathfinder/
 COPY crates/pathfinder/benches crates/pathfinder/benches
 
 # refresh indices, do it with cli git for much better ram usage

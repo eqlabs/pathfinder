@@ -6,7 +6,7 @@
 /// has a better chance of spotting it.
 pub async fn poll_github_for_releases() -> anyhow::Result<()> {
     use anyhow::Context;
-    let current_version = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT");
+    let current_version = pathfinder_common::consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT;
     let current_version = current_version.strip_prefix('v').unwrap_or(current_version);
     let local_version = semver::Version::parse(current_version)
         .context("Semver parsing of local version failed")?;

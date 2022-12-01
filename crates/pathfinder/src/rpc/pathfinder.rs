@@ -3,7 +3,7 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<()>) -> anyhow::Re
 
     module
         .register_method("pathfinder_version", |_, _| {
-            Ok(env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT"))
+            Ok(pathfinder_common::consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT)
         })
         .with_context(|| "Registering pathfinder_version".to_string())?;
 
