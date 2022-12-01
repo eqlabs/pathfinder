@@ -44,42 +44,16 @@
 //!
 //! The in-memory tree is built using a graph of `Rc<RefCell<Node>>` which is a bit painful.
 
+use crate::state::merkle_node::{BinaryNode, Direction, EdgeNode, Node};
 use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
+use pathfinder_storage::merkle_tree::{
+    NodeStorage, PersistedBinaryNode, PersistedEdgeNode, PersistedNode, RcNodeStorage,
+};
 use rusqlite::Transaction;
+use stark_hash::StarkHash;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
-
-use crate::state::merkle_node::{BinaryNode, Direction, EdgeNode, Node};
-
-use crate::storage::merkle_tree::{
-    PersistedBinaryNode, PersistedEdgeNode, PersistedNode, RcNodeStorage,
-};
-
-use stark_hash::StarkHash;
-
-/// Backing storage for [`MerkleTree`].
-///
-/// Default implementation and persistent implementation is the `RcNodeStorage`. Testing/future
-/// implementations include [`HashMap`](std::collections::HashMap) and `()` based implementations
-/// where the backing storage is not persistent, or doesn't exist at all. The nodes will still be
-/// visitable in-memory.
-pub trait NodeStorage {
-    /// Find a persistent node during a traversal from the storage.
-    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>>;
-
-    /// Insert or ignore if already exists `node` to storage under the given `key`.
-    ///
-    /// This does not imply incrementing the nodes ref count.
-    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()>;
-
-    /// Decrement previously stored `key`'s reference count. This shouldn't fail for key not found.
-    #[cfg(test)]
-    fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
-
-    /// Increment previously stored `key`'s reference count. This shouldn't fail for key not found.
-    fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
-}
 
 /// A Starknet binary Merkle-Patricia tree with a specific root entry-point and storage.
 ///
@@ -692,61 +666,6 @@ pub enum Visit {
     /// of the node for the rest of the iteration. This is useful because two trees often share a
     /// number of subtrees with earlier blocks. Returning this for [`Node::Leaf`] is a no-op.
     StopSubtree,
-}
-
-impl NodeStorage for () {
-    fn get(&self, _key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
-        // the rc<refcell> impl will do just fine by without any backing for transaction tree
-        // building
-        Ok(None)
-    }
-
-    fn upsert(&self, _key: StarkHash, _node: PersistedNode) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn increment_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
-        Ok(())
-    }
-}
-
-impl NodeStorage for std::cell::RefCell<std::collections::HashMap<StarkHash, PersistedNode>> {
-    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
-        Ok(self.borrow().get(&key).cloned())
-    }
-
-    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
-        use std::collections::hash_map::Entry::*;
-        if !matches!(node, PersistedNode::Leaf) {
-            match self.borrow_mut().entry(key) {
-                Vacant(ve) => {
-                    ve.insert(node);
-                }
-                Occupied(oe) => {
-                    let existing = oe.get();
-                    anyhow::ensure!(
-                        existing == &node,
-                        "trying to upsert a different node over existing? {existing:?} != {node:?}"
-                    );
-                }
-            }
-        }
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn increment_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
-        Ok(())
-    }
 }
 
 #[cfg(test)]

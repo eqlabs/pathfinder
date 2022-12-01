@@ -191,7 +191,7 @@ impl ContractsTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::Storage;
+    use crate::Storage;
     use pathfinder_common::starkhash;
 
     #[test]
