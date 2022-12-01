@@ -6,6 +6,11 @@ use rusqlite::{OptionalExtension, Transaction};
 use stark_hash::{OverflowError, StarkHash};
 
 pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[cfg(fixme)]
+pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     let genesis = transaction
         .query_row(
             "SELECT hash FROM starknet_blocks WHERE number = 0",
