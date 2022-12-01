@@ -172,8 +172,8 @@ If you are trying to setup a custom StarkNet please use '--network custom',
     let core_address = match network {
         Chain::Mainnet => pathfinder_ethereum::contract::MAINNET_ADDRESSES.core,
         Chain::Testnet => pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-        Chain::Integration => pathfinder_ethereum::contract::TESTNET2_ADDRESSES.core,
-        Chain::Testnet2 => pathfinder_ethereum::contract::INTEGRATION_ADDRESSES.core,
+        Chain::Integration => pathfinder_ethereum::contract::INTEGRATION_ADDRESSES.core,
+        Chain::Testnet2 => pathfinder_ethereum::contract::TESTNET2_ADDRESSES.core,
         Chain::Custom => {
             let addresses = gateway_client
                 .eth_contract_addresses()
