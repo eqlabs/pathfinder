@@ -509,9 +509,9 @@ impl<T: NodeStorage> MerkleTree<T> {
         Ok(result)
     }
 
-    /// Generates a merkle-proof for every `key` in `keys`.
+    /// Generates a merkle-proof a given `key`.
     ///
-    /// Returns a vector of vectors of [`ProofNode`] which form a chain from the root to the key,
+    /// Returns vector of [`ProofNode`] which form a chain from the root to the key,
     /// if it exists, or upto the node which proves that the key does not exist.
     ///
     /// The nodes are returned in order, root first.
@@ -520,35 +520,28 @@ impl<T: NodeStorage> MerkleTree<T> {
     ///   1. the chain follows the path of `key`, and
     ///   2. the hashes are correct, and
     ///   3. the root hash matches the known root
-    pub fn get_proofs<'a>(
-        &self,
-        keys: &'a [&BitSlice<Msb0, u8>],
-    ) -> anyhow::Result<Vec<Vec<ProofNode>>> {
-        keys.iter()
-            .map(|key| {
-                let mut nodes = self.traverse(key)?;
+    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
+        let mut nodes = self.traverse(key)?;
 
-                // Return an empty list if tree is empty.
-                let node = match nodes.last() {
-                    Some(node) => node,
-                    None => return Ok(Vec::new()),
-                };
+        // Return an empty list if tree is empty.
+        let node = match nodes.last() {
+            Some(node) => node,
+            None => return Ok(Vec::new()),
+        };
 
-                // A leaf node is redudant data as the information for it is already contained in the previous node.
-                if matches!(&*node.borrow(), Node::Leaf(_)) {
-                    nodes.pop();
-                }
+        // A leaf node is redudant data as the information for it is already contained in the previous node.
+        if matches!(&*node.borrow(), Node::Leaf(_)) {
+            nodes.pop();
+        }
 
-                Ok(nodes
-                    .iter()
-                    .map(|node| match &*node.borrow() {
-                        Node::Binary(bin) => ProofNode::from(bin),
-                        Node::Edge(edge) => ProofNode::from(edge),
-                        _ => unreachable!(),
-                    })
-                    .collect())
+        Ok(nodes
+            .iter()
+            .map(|node| match &*node.borrow() {
+                Node::Binary(bin) => ProofNode::from(bin),
+                Node::Edge(edge) => ProofNode::from(edge),
+                _ => unreachable!(),
             })
-            .collect::<anyhow::Result<Vec<Vec<ProofNode>>>>()
+            .collect())
     }
 
     /// Traverses from the current root towards the destination [Leaf](Node::Leaf) node.
@@ -1906,7 +1899,7 @@ mod tests {
             fn verify(&self) {
                 let keys_bits: Vec<&BitSlice<Msb0, u8>> =
                     self.keys.iter().map(|k| k.view_bits()).collect();
-                let proofs = self.tree.get_proofs(&keys_bits).unwrap();
+                let proofs = get_proofs(&keys_bits, &self.tree).unwrap();
                 keys_bits
                     .iter()
                     .zip(self.values.iter())
@@ -1916,6 +1909,14 @@ mod tests {
                         assert_eq!(verified, Membership::Member, "Failed to prove key");
                     });
             }
+        }
+
+        /// Generates a storage proof for each `key` in `keys` and returns the result in the form of an array.
+        fn get_proofs<'a, 'tx>(
+            keys: &'a [&BitSlice<Msb0, u8>],
+            tree: &MerkleTree<RcNodeStorage<'tx, '_>>,
+        ) -> anyhow::Result<Vec<Vec<ProofNode>>> {
+            keys.iter().map(|k| tree.get_proof(k)).collect()
         }
 
         #[test]
@@ -1946,7 +1947,7 @@ mod tests {
 
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proofs(&keys).unwrap();
+            let proofs = get_proofs(&keys, &uut).unwrap();
 
             let verified_key1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
 
@@ -1987,7 +1988,7 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proofs(&keys).unwrap();
+            let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
@@ -2021,7 +2022,7 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proofs(&keys).unwrap();
+            let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
@@ -2049,7 +2050,7 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proofs(&keys).unwrap();
+            let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
@@ -2078,7 +2079,7 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proofs(&keys).unwrap();
+            let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
@@ -2112,7 +2113,7 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let proofs = uut.get_proofs(&keys).unwrap();
+            let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
@@ -2164,7 +2165,7 @@ mod tests {
 
             let keys_bits: Vec<&BitSlice<Msb0, u8>> =
                 inexistent_keys.iter().map(|k| k.view_bits()).collect();
-            let proofs = random_tree.tree.get_proofs(&keys_bits).unwrap();
+            let proofs = get_proofs(&keys_bits, &random_tree.tree).unwrap();
             keys_bits
                 .iter()
                 .zip(random_tree.values.iter())
@@ -2194,7 +2195,7 @@ mod tests {
 
             let keys_bits: Vec<&BitSlice<Msb0, u8>> =
                 random_tree.keys.iter().map(|k| k.view_bits()).collect();
-            let proofs = random_tree.tree.get_proofs(&keys_bits[..]).unwrap();
+            let proofs = get_proofs(&keys_bits[..], &random_tree.tree).unwrap();
 
             keys_bits
                 .iter()
@@ -2235,7 +2236,7 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let mut proofs = uut.get_proofs(&keys).unwrap();
+            let mut proofs = get_proofs(&keys, &uut).unwrap();
 
             // Modify the left hash
             let to_change = proofs[0].get_mut(0).unwrap();
@@ -2277,7 +2278,7 @@ mod tests {
             let root = uut.commit().unwrap();
             let uut = MerkleTree::load("test", &transaction, root).unwrap();
 
-            let mut proofs = uut.get_proofs(&keys).unwrap();
+            let mut proofs = get_proofs(&keys, &uut).unwrap();
 
             // Modify the child hash
             let to_change = proofs[0].get_mut(1).unwrap();

@@ -137,10 +137,11 @@ pub async fn get_storage_proofs(
                 anyhow::anyhow!("State table missing row for state_hash={}", contract_state_hash).into()
             })?;
 
-        let keys_bits: Vec<&BitSlice<Msb0, u8>> =
-            input.keys.iter().map(|k| k.view_bits()).collect();
-        let storage_proofs = contract_state_tree
-            .get_proofs(&keys_bits[..])
+        let storage_proofs = input
+            .keys
+            .iter()
+            .map(|k| contract_state_tree.get_proof(k.view_bits()))
+            .collect::<anyhow::Result<Vec<Vec<ProofNode>>>>()
             .context("Get proof from contract state treee")?;
 
         let contract_data = ContractData {
