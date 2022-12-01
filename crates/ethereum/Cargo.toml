@@ -9,6 +9,7 @@ rust-version = "1.62"
 [dependencies]
 anyhow = "1.0.44"
 async-trait = "0.1.52"
+ethers = "1.0.0"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
