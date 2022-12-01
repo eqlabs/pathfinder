@@ -55,26 +55,6 @@ pub fn extract_abi_code_hash(
     Ok((abi, code, hash))
 }
 
-/// Extract JSON representation of program and entry points from the contract definition.
-pub(crate) fn extract_program_and_entry_points_by_type(
-    contract_definition_dump: &[u8],
-) -> Result<(serde_json::Value, serde_json::Value)> {
-    #[derive(serde::Deserialize)]
-    struct ContractDefinition {
-        pub program: serde_json::Value,
-        pub entry_points_by_type: serde_json::Value,
-    }
-
-    let contract_definition =
-        serde_json::from_slice::<ContractDefinition>(contract_definition_dump)
-            .context("Failed to parse contract_definition")?;
-
-    Ok((
-        contract_definition.program,
-        contract_definition.entry_points_by_type,
-    ))
-}
-
 fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) -> Result<ClassHash> {
     use EntryPointType::*;
 

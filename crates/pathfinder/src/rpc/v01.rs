@@ -1445,9 +1445,7 @@ mod tests {
             assert_eq!(hash.0, expected_hash);
 
             let (program, entry_points) =
-                crate::state::class_hash::extract_program_and_entry_points_by_type(
-                    &contract_definition,
-                )?;
+                pathfinder_serde::extract_program_and_entry_points_by_type(&contract_definition)?;
 
             crate::storage::ContractCodeTable::insert(
                 transaction,

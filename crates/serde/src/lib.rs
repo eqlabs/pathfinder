@@ -432,6 +432,28 @@ fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     String::from_utf8(buf).unwrap().into()
 }
 
+/// Extract JSON representation of program and entry points from the contract definition.
+pub fn extract_program_and_entry_points_by_type(
+    contract_definition_dump: &[u8],
+) -> anyhow::Result<(serde_json::Value, serde_json::Value)> {
+    use anyhow::Context;
+
+    #[derive(serde::Deserialize)]
+    struct ContractDefinition {
+        pub program: serde_json::Value,
+        pub entry_points_by_type: serde_json::Value,
+    }
+
+    let contract_definition =
+        serde_json::from_slice::<ContractDefinition>(contract_definition_dump)
+            .context("Failed to parse contract_definition")?;
+
+    Ok((
+        contract_definition.program,
+        contract_definition.entry_points_by_type,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
