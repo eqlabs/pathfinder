@@ -14,13 +14,13 @@ use serde::Serialize;
 use stark_hash::StarkHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
-pub struct GetStorageProofInput {
+pub struct GetProofInput {
     pub contract_address: ContractAddress,
     pub keys: Vec<StorageAddress>,
     pub block_id: BlockId,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(GetStorageProofError: BlockNotFound);
+crate::rpc::error::generate_rpc_error_subset!(GetProofError: BlockNotFound);
 
 /// Holds the data and proofs for a specific contract.
 #[derive(Debug, Serialize)]
@@ -42,7 +42,7 @@ pub struct ContractData {
 
 /// Holds the membership/non-membership of a contract and its associated contract contract if the contract exists.
 #[derive(Debug, Serialize)]
-pub struct GetStorageProofOutput {
+pub struct GetProofOutput {
     // Membership / Non-membership proof for the queried contract
     contract_proof: Vec<ProofNode>,
 
@@ -51,10 +51,10 @@ pub struct GetStorageProofOutput {
 }
 
 /// Returns all the necessary data to trustlessly verify storage slots for a particular contract.
-pub async fn get_storage_proofs(
+pub async fn get_proof(
     context: RpcContext,
-    input: GetStorageProofInput,
-) -> Result<GetStorageProofOutput, GetStorageProofError> {
+    input: GetProofInput,
+) -> Result<GetProofOutput, GetProofError> {
     let block_id = match input.block_id {
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
@@ -68,7 +68,7 @@ pub async fn get_storage_proofs(
             {
                 Some(_) => {
                     // TODO: add support for pending blocks
-                    return Err(GetStorageProofError::Internal(anyhow!(
+                    return Err(GetProofError::Internal(anyhow!(
                         "'pending' is not currently supported by this method!"
                     )));
                 }
@@ -94,7 +94,7 @@ pub async fn get_storage_proofs(
             .context("Get global root for block")?
             // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
             // by using a dedicated error code from the RPC API spec
-            .ok_or(GetStorageProofError::BlockNotFound)?;
+            .ok_or(GetProofError::BlockNotFound)?;
 
         let global_state_tree =
             GlobalStateTree::load(&tx, global_root).context("Global state tree")?;
@@ -107,7 +107,7 @@ pub async fn get_storage_proofs(
             Some(contract_state_hash) => contract_state_hash,
             None => {
                 // Contract not found: return the proof of non membership that we generated earlier.
-                return Ok(GetStorageProofOutput {
+                return Ok(GetProofOutput {
                     contract_proof,
                     contract_data: None,
                 });
@@ -118,7 +118,7 @@ pub async fn get_storage_proofs(
             ContractsStateTable::get_root_and_nonce(&tx, contract_state_hash)
                 .context("Get contract state root and nonce")?
                 // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
-                .ok_or_else(|| -> GetStorageProofError {
+                .ok_or_else(|| -> GetProofError {
                     anyhow::anyhow!(
                         "Root or nonce missing for state_hash={}",
                         contract_state_hash
@@ -132,7 +132,7 @@ pub async fn get_storage_proofs(
         let class_hash = read_class_hash(&tx, contract_state_hash)
             .context("Reading class hash from state table")?
             // Class hash should not be None at this stage since we have a valid block and non-zero contract state_hash.
-            .ok_or_else(|| -> GetStorageProofError {
+            .ok_or_else(|| -> GetProofError {
                 tracing::error!(%contract_state_hash, "Class hash is missing in `contract_states` table");
                 anyhow::anyhow!("State table missing row for state_hash={}", contract_state_hash).into()
             })?;
@@ -152,7 +152,7 @@ pub async fn get_storage_proofs(
             storage_proofs,
         };
 
-        Ok(GetStorageProofOutput {
+        Ok(GetProofOutput {
             contract_proof,
             contract_data: Some(contract_data),
         })
@@ -184,7 +184,7 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::{starkhash_bytes, ContractAddress, StarknetBlockHash, StorageAddress};
 
-    type TestCaseHandler = Box<dyn Fn(usize, &Result<GetStorageProofOutput, GetStorageProofError>)>;
+    type TestCaseHandler = Box<dyn Fn(usize, &Result<GetProofOutput, GetProofError>)>;
 
     /// Execute a single test case and check its outcome for `get_storage_at`
     async fn check(
@@ -198,9 +198,9 @@ mod tests {
         ),
     ) {
         let (context, contract_address, key, block_id, f) = test_case;
-        let result = get_storage_proofs(
+        let result = get_proof(
             context.clone(),
-            GetStorageProofInput {
+            GetProofInput {
                 contract_address: *contract_address,
                 keys: vec![*key],
                 block_id: *block_id,
@@ -210,7 +210,7 @@ mod tests {
         f(test_case_idx, &result);
     }
 
-    impl PartialEq for GetStorageProofError {
+    impl PartialEq for GetProofError {
         fn eq(&self, other: &Self) -> bool {
             match (self, other) {
                 (Self::Internal(l), Self::Internal(r)) => l.to_string() == r.to_string(),
@@ -220,7 +220,7 @@ mod tests {
     }
 
     /// Common assertion type for most of the error paths
-    // fn assert_error(expected: GetStorageProofError) -> TestCaseHandler {
+    // fn assert_error(expected: GetProofError) -> TestCaseHandler {
     //     Box::new(move |i: usize, result| {
     //         assert_matches!(result, Err(error) => assert_eq!(*error, expected, "test case {i}"), "test case {i}");
     //     })
@@ -312,28 +312,28 @@ mod tests {
     //     non_existent_contract,
     //     key0,
     //     BlockId::Latest,
-    //     assert_error(GetStorageProofError::ContractNotFound),
+    //     assert_error(GetProofError::ContractNotFound),
     // ),
     // (
     //     ctx.clone(),
     //     contract1,
     //     key0,
     //     non_existent_block,
-    //     assert_error(GetStorageProofError::BlockNotFound),
+    //     assert_error(GetProofError::BlockNotFound),
     // ),
     // (
     //     ctx.clone(),
     //     contract1,
     //     key0,
     //     pre_deploy_block,
-    //     assert_error(GetStorageProofError::ContractNotFound),
+    //     assert_error(GetProofError::ContractNotFound),
     // ),
     // (
     //     ctx_with_pending_disabled,
     //     pending_contract0,
     //     pending_key0,
     //     BlockId::Pending,
-    //     assert_error(GetStorageProofError::Internal(anyhow!(
+    //     assert_error(GetProofError::Internal(anyhow!(
     //         "Pending data not supported in this configuration"
     //     ))),
     // ),

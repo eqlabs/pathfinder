@@ -235,11 +235,7 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
         method::estimate_fee::estimate_fee,
     )?;
     register_method(module, "starknet_getNonce", method::get_nonce::get_nonce)?;
-    register_method(
-        module,
-        "pathfinder_getProof",
-        method::get_storage_proofs::get_storage_proofs,
-    )?;
+    register_method(module, "pathfinder_getProof", method::get_proof::get_proof)?;
     register_method_with_no_input(
         module,
         "starknet_pendingTransactions",
