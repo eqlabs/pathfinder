@@ -1,7 +1,7 @@
 //! Basic test fixtures for storage.
 
 use crate::{
-    rpc::v01::types::reply::{
+    types::{
         state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
         StateUpdate,
     },

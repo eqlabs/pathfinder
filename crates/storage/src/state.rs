@@ -1,4 +1,4 @@
-use crate::rpc::v01::types::reply::StateUpdate;
+use crate::types::StateUpdate;
 use anyhow::Context;
 use pathfinder_common::{
     consts::{
