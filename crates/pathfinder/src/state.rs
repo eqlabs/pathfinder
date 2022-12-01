@@ -20,25 +20,6 @@ mod sync;
 pub use class_hash::compute_class_hash;
 pub use sync::{l1, l2, sync, PendingData, State as SyncState};
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct CompressedContract {
-    pub abi: Vec<u8>,
-    pub bytecode: Vec<u8>,
-    pub definition: Vec<u8>,
-    pub hash: ClassHash,
-}
-
-impl std::fmt::Debug for CompressedContract {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "CompressedContract {{ sizes: {:?}, hash: {} }}",
-            (self.abi.len(), self.bytecode.len(), self.definition.len()),
-            self.hash.0
-        )
-    }
-}
-
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the
 /// [ContractStateHash] of the new state.
 ///

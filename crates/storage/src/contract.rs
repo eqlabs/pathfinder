@@ -1,4 +1,5 @@
-use crate::state::{class_hash::extract_program_and_entry_points_by_type, CompressedContract};
+use crate::state::class_hash::extract_program_and_entry_points_by_type;
+use crate::types::CompressedContract;
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
 use pathfinder_common::{ClassHash, ContractAddress, ContractClass, StarknetBlockHash};

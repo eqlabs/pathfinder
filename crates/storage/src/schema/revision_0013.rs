@@ -1,4 +1,4 @@
-use crate::state::CompressedContract;
+use crate::types::CompressedContract;
 #[allow(unused)]
 use anyhow::Context;
 use pathfinder_common::{Chain, ClassHash};
