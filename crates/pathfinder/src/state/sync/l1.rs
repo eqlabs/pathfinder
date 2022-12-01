@@ -3,7 +3,7 @@ use futures::Future;
 use pathfinder_common::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber};
 use pathfinder_ethereum::{
     log::{FetchError, StateUpdateLog},
-    state_update::state_root::StateRootFetcher,
+    state_update::StateRootFetcher,
     transport::EthereumTransport,
 };
 use pathfinder_retry::Retry;
