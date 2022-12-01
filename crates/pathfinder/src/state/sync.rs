@@ -6,11 +6,6 @@ use crate::{
     rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
     sequencer,
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
-    storage::{
-        ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
-        RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
-        StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
-    },
 };
 use anyhow::Context;
 use pathfinder_common::{
@@ -18,6 +13,11 @@ use pathfinder_common::{
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, transport::EthereumTransport};
+use pathfinder_storage::{
+    ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
+    RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
+    StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
+};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::StarkHash;
 use starknet_gateway_types::reply::{
@@ -600,7 +600,7 @@ async fn l2_update(
     block: Block,
     state_update: StateUpdate,
 ) -> anyhow::Result<()> {
-    use crate::storage::CanonicalBlocksTable;
+    use pathfinder_storage::CanonicalBlocksTable;
 
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -701,7 +701,7 @@ async fn l2_reorg(
     connection: &mut Connection,
     reorg_tail: StarknetBlockNumber,
 ) -> anyhow::Result<()> {
-    use crate::storage::CanonicalBlocksTable;
+    use pathfinder_storage::CanonicalBlocksTable;
 
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -892,7 +892,7 @@ async fn download_verify_and_insert_missing_classes<
             Ok((abi, bytecode, definition))
         });
         let (abi, bytecode, definition) = compress.await.context("Compress class")??;
-        let compressed = crate::state::CompressedContract {
+        let compressed = pathfinder_storage::types::CompressedContract {
             abi,
             bytecode,
             definition,
@@ -938,7 +938,6 @@ mod tests {
     use crate::{
         sequencer,
         state::{self, sync::PendingData},
-        storage::{self, L1StateTable, RefsTable, StarknetBlocksTable, Storage},
     };
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
@@ -948,6 +947,10 @@ mod tests {
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    };
+    use pathfinder_storage::{
+        types::CompressedContract, ContractCodeTable, L1StateTable, L1TableBlockId, RefsTable,
+        StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, Storage,
     };
     use stark_hash::StarkHash;
     use starknet_gateway_types::{
@@ -1185,7 +1188,7 @@ mod tests {
             transactions: vec![],
             starknet_version: None,
         };
-        pub static ref STORAGE_BLOCK0: storage::StarknetBlock = storage::StarknetBlock {
+        pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: StarknetBlockHash(*A),
             root: GlobalRoot(StarkHash::ZERO),
@@ -1193,7 +1196,7 @@ mod tests {
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(StarkHash::ZERO),
         };
-        pub static ref STORAGE_BLOCK1: storage::StarknetBlock = storage::StarknetBlock {
+        pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: StarknetBlockHash(*B),
             root: GlobalRoot(*B),
@@ -1355,7 +1358,7 @@ mod tests {
 
             let tx = connection.transaction().unwrap();
 
-            let latest_block_number = L1StateTable::get(&tx, storage::L1TableBlockId::Latest)
+            let latest_block_number = L1StateTable::get(&tx, L1TableBlockId::Latest)
                 .unwrap()
                 .map(|s| s.block_number);
             let head = RefsTable::get_l1_l2_head(&tx).unwrap();
@@ -1604,10 +1607,9 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             let tx = connection.transaction().unwrap();
-            let latest_block_number =
-                StarknetBlocksTable::get(&tx, storage::StarknetBlocksBlockId::Latest)
-                    .unwrap()
-                    .map(|s| s.number);
+            let latest_block_number = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+                .unwrap()
+                .map(|s| s.number);
             let head = RefsTable::get_l1_l2_head(&tx).unwrap();
             (head, latest_block_number)
         })
@@ -1637,7 +1639,7 @@ mod tests {
         // A simple L2 sync task
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-            tx.send(l2::Event::NewContract(state::CompressedContract {
+            tx.send(l2::Event::NewContract(CompressedContract {
                 abi: zstd_magic.clone(),
                 bytecode: zstd_magic.clone(),
                 definition: zstd_magic,
@@ -1668,7 +1670,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         assert_eq!(
-            storage::ContractCodeTable::exists(&connection, &[ClassHash(*A)]).unwrap(),
+            ContractCodeTable::exists(&connection, &[ClassHash(*A)]).unwrap(),
             vec![true]
         );
     }
@@ -1720,9 +1722,9 @@ mod tests {
         let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
         // This is what we're asking for
-        storage::ContractCodeTable::insert_compressed(
+        ContractCodeTable::insert_compressed(
             &connection,
-            &state::CompressedContract {
+            &CompressedContract {
                 abi: zstd_magic.clone(),
                 bytecode: zstd_magic.clone(),
                 definition: zstd_magic,

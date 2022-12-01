@@ -344,18 +344,19 @@ type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExit
 #[cfg(test)]
 mod tests {
     use super::sub_process::launch_python;
-    use crate::{
-        rpc::v02::types::request::{
-            BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction,
-            BroadcastedInvokeTransactionV0, BroadcastedTransaction,
-        },
-        storage::StarknetBlock,
+    use crate::rpc::v02::types::request::{
+        BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction,
+        BroadcastedInvokeTransactionV0, BroadcastedTransaction,
     };
     use pathfinder_common::{
         starkhash, starkhash_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
         ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StorageAddress, StorageValue, TransactionVersion,
+    };
+    use pathfinder_storage::{
+        ContractCodeTable, ContractsStateTable, ContractsTable, JournalMode, StarknetBlock,
+        StarknetBlocksTable, Storage,
     };
     use stark_hash::StarkHash;
     use std::path::PathBuf;
@@ -365,11 +366,7 @@ mod tests {
     async fn start_with_wrong_database_schema_fails() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         {
             let conn = s.connection().unwrap();
@@ -398,11 +395,7 @@ mod tests {
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -474,11 +467,7 @@ mod tests {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -572,11 +561,7 @@ mod tests {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -643,11 +628,7 @@ mod tests {
     async fn call_with_unknown_contract() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -709,11 +690,7 @@ mod tests {
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -825,7 +802,7 @@ mod tests {
         let global_root = global_tree.apply().unwrap();
 
         // create a block with the global root
-        crate::storage::StarknetBlocksTable::insert(
+        StarknetBlocksTable::insert(
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
@@ -883,7 +860,7 @@ mod tests {
         let global_root = global_tree.apply().unwrap();
 
         // create a block with the global root
-        crate::storage::StarknetBlocksTable::insert(
+        StarknetBlocksTable::insert(
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
@@ -925,17 +902,10 @@ mod tests {
             crate::state::class_hash::extract_abi_code_hash(contract_definition).unwrap();
 
         // create class
-        crate::storage::ContractCodeTable::insert(
-            tx,
-            class_hash,
-            &abi,
-            &bytecode,
-            contract_definition,
-        )
-        .unwrap();
+        ContractCodeTable::insert(tx, class_hash, &abi, &bytecode, contract_definition).unwrap();
 
         // create contract
-        crate::storage::ContractsTable::upsert(tx, contract_address, class_hash).unwrap();
+        ContractsTable::upsert(tx, contract_address, class_hash).unwrap();
 
         // set up contract state tree
         let mut contract_state =
@@ -957,7 +927,7 @@ mod tests {
         );
 
         // set up contract state table
-        crate::storage::ContractsStateTable::upsert(
+        ContractsStateTable::upsert(
             tx,
             contract_state_hash,
             class_hash,

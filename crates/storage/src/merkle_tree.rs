@@ -63,7 +63,6 @@ pub trait NodeStorage {
     fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()>;
 
     /// Decrement previously stored `key`'s reference count. This shouldn't fail for key not found.
-    #[cfg(test)]
     fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
 
     /// Increment previously stored `key`'s reference count. This shouldn't fail for key not found.
@@ -81,7 +80,6 @@ impl NodeStorage for () {
         Ok(())
     }
 
-    #[cfg(test)]
     fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
         Ok(())
     }
@@ -115,7 +113,6 @@ impl NodeStorage for std::cell::RefCell<std::collections::HashMap<StarkHash, Per
         Ok(())
     }
 
-    #[cfg(test)]
     fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
         Ok(())
     }
@@ -245,7 +242,6 @@ impl<'a, 'queries> NodeStorage for RcNodeStorage<'a, 'queries> {
         self.upsert(key, node)
     }
 
-    #[cfg(test)]
     fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         RcNodeStorage::decrement_ref_count(self, key)
     }

@@ -11,8 +11,8 @@ use pathfinder_lib::{
     cairo,
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
     rpc, sequencer, state,
-    storage::{JournalMode, Storage},
 };
+use pathfinder_storage::{JournalMode, Storage};
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
@@ -336,7 +336,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
 async fn database_genesis_hash(
     storage: &Storage,
 ) -> anyhow::Result<Option<pathfinder_common::StarknetBlockHash>> {
-    use pathfinder_lib::storage::StarknetBlocksTable;
+    use pathfinder_storage::StarknetBlocksTable;
 
     let storage = storage.clone();
     tokio::task::spawn_blocking(move || {

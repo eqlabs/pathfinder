@@ -1,6 +1,6 @@
 //! Utilities for easier construction of RPC tests.
 use crate::rpc::test_client::TestClient;
-use crate::storage::Storage;
+use pathfinder_storage::Storage;
 use rusqlite::Transaction;
 
 pub struct Test<'a> {

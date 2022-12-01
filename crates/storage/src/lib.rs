@@ -11,7 +11,7 @@ mod schema;
 mod state;
 #[cfg(test)]
 pub(crate) mod test_utils;
-mod types;
+pub mod types;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

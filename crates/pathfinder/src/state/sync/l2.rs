@@ -1,9 +1,9 @@
 use crate::sequencer;
 use crate::state::block_hash::verify_block_hash;
 use crate::state::class_hash::extract_abi_code_hash;
-use crate::state::CompressedContract;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{Chain, ClassHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_storage::types::CompressedContract;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::{
     state_update::{DeployedContract, StateDiff},

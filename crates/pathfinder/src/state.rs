@@ -1,11 +1,9 @@
-use crate::{
-    state::state_tree::{ContractsStateTree, GlobalStateTree},
-    storage::{ContractsStateTable, ContractsTable},
-};
+use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use anyhow::Context;
 use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
 };
+use pathfinder_storage::{ContractsStateTable, ContractsTable};
 use rusqlite::Transaction;
 use stark_hash::{stark_hash, StarkHash};
 use starknet_gateway_types::reply::state_update::StorageDiff;
@@ -456,9 +454,9 @@ mod tests {
     async fn go_sync() {
         use std::sync::Arc;
 
-        let storage = crate::storage::Storage::migrate(
+        let storage = pathfinder_storage::Storage::migrate(
             std::path::PathBuf::from("testing.sqlite"),
-            crate::storage::JournalMode::WAL,
+            pathfinder_storage::JournalMode::WAL,
         )
         .unwrap();
         let chain = pathfinder_common::Chain::Testnet;

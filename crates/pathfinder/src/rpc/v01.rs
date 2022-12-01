@@ -355,7 +355,6 @@ mod tests {
     use crate::{
         sequencer::{test_utils::*, Client},
         state::{state_tree::GlobalStateTree, PendingData, SyncState},
-        storage::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage},
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};
@@ -364,6 +363,9 @@ mod tests {
         ContractClass, ContractNonce, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
         TransactionNonce,
+    };
+    use pathfinder_storage::{
+        StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
     use serde_json::json;
     use stark_hash::StarkHash;
@@ -1417,11 +1419,12 @@ mod tests {
 
     mod contract_setup {
         use super::*;
-        use crate::{state::update_contract_state, storage::StarknetBlocksBlockId};
+        use crate::state::update_contract_state;
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
         use pathfinder_common::{starkhash, StorageValue};
+        use pathfinder_storage::{ContractCodeTable, ContractsTable, StarknetBlocksBlockId};
         use pretty_assertions::assert_eq;
         use starknet_gateway_types::reply::state_update::StorageDiff;
 
@@ -1447,16 +1450,10 @@ mod tests {
             let (program, entry_points) =
                 pathfinder_serde::extract_program_and_entry_points_by_type(&contract_definition)?;
 
-            crate::storage::ContractCodeTable::insert(
-                transaction,
-                hash,
-                &abi,
-                &bytecode,
-                &contract_definition,
-            )
-            .context("Deploy testing contract")?;
+            ContractCodeTable::insert(transaction, hash, &abi, &bytecode, &contract_definition)
+                .context("Deploy testing contract")?;
 
-            crate::storage::ContractsTable::upsert(transaction, contract_address, hash)?;
+            ContractsTable::upsert(transaction, contract_address, hash)?;
 
             let mut compressor = GzEncoder::new(Vec::new(), Compression::fast());
             serde_json::to_writer(&mut compressor, &program)?;
@@ -2097,9 +2094,8 @@ mod tests {
 
     mod events {
         use super::*;
-
         use crate::rpc::v01::types::reply::{EmittedEvent, GetEventsResult};
-        use crate::storage::test_utils;
+        use pathfinder_storage::test_utils;
 
         fn setup() -> (Storage, Vec<EmittedEvent>) {
             let (storage, events) = test_utils::setup_test_storage();

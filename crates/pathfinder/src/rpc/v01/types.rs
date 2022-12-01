@@ -1004,8 +1004,8 @@ pub mod reply {
         pub transaction_hash: StarknetTransactionHash,
     }
 
-    impl From<crate::storage::StarknetEmittedEvent> for EmittedEvent {
-        fn from(event: crate::storage::StarknetEmittedEvent) -> Self {
+    impl From<pathfinder_storage::StarknetEmittedEvent> for EmittedEvent {
+        fn from(event: pathfinder_storage::StarknetEmittedEvent) -> Self {
             Self {
                 data: event.data,
                 keys: event.keys,

@@ -158,11 +158,12 @@ impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{rpc::v02::types::request::BroadcastedInvokeTransaction, storage::JournalMode};
+    use crate::rpc::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
         starkhash, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_storage::JournalMode;
     use std::path::PathBuf;
 
     mod parsing {
@@ -296,7 +297,8 @@ mod tests {
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             database_path.push("fixtures/mainnet.sqlite");
             let storage =
-                crate::storage::Storage::migrate(database_path.clone(), JournalMode::WAL).unwrap();
+                pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
+                    .unwrap();
             let sync_state = Arc::new(crate::state::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
                 storage.path().into(),

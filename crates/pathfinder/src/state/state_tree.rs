@@ -4,14 +4,12 @@
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 
 use super::merkle_node::Node;
-use crate::{
-    state::merkle_tree::{MerkleTree, Visit},
-    storage::merkle_tree::RcNodeStorage,
-};
+use crate::state::merkle_tree::{MerkleTree, Visit};
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
     ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
 };
+use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
 use std::ops::ControlFlow;
 
