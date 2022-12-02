@@ -3255,6 +3255,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "starknet-gateway-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "async-trait",
+ "bytes",
+ "futures",
+ "http",
+ "lazy_static",
+ "metrics",
+ "mockall",
+ "pathfinder-common",
+ "pathfinder-retry",
+ "pathfinder-serde",
+ "pretty_assertions",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "stark_hash",
+ "starknet-gateway-test-fixtures",
+ "starknet-gateway-types",
+ "test-log",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "warp",
+]
+
+[[package]]
 name = "starknet-gateway-test-fixtures"
 version = "0.1.0"
 

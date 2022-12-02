@@ -1,0 +1,36 @@
+[package]
+name = "starknet-gateway-client"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.62"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.44"
+async-trait = "0.1.52"
+bytes = "1.1.0"
+futures = { version = "0.3", default-features = false, features = ["std"] }
+metrics = "0.20.1"
+pathfinder-common = { path = "../common" }
+pathfinder-retry = { path = "../retry" }
+pathfinder-serde = { path = "../serde" }
+reqwest = { version = "0.11.4", features = ["json"] }
+starknet-gateway-types = { path = "../gateway-types" }
+serde = { version = "1.0.130", features = ["derive"] }
+tracing = "0.1.31"
+
+[dev-dependencies]
+assert_matches = "1.5.0"
+http = "0.2.6"
+lazy_static = "1.4.0"
+mockall = "0.11.0"
+pathfinder-serde = { path = "../serde" }
+pretty_assertions = "1.0.0"
+serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
+starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
+stark_hash = { path = "../stark_hash" }
+test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
+tokio = { version = "1.11.0", features = ["test-util"] }
+tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
+warp = "0.3.2"
