@@ -41,13 +41,6 @@ jobs:
             | jq -r 'select(.reason=="compiler-artifact" and .target.test==true and .executable) | .executable' \
             | xargs -I '{}' bash -c 'file={}; mv ${file} $(basename ${file::(-17)})'
 
-      - name: Archive test binary pathfinder
-        uses: actions/upload-artifact@v3
-        with:
-          name: test-binary-pathfinder
-          path: pathfinder
-          if-no-files-found: error
-
       - name: Archive test binary pathfinder_ethereum
         uses: actions/upload-artifact@v3
         with:
@@ -120,8 +113,7 @@ jobs:
 
       # We want to strip the debug info as some of these test binaries are 100MB+ and pathfinder_lib is 1GB+
       - name: Execute tests
-        run: cargo test --all-targets --workspace --locked --profile stripdebuginfo \
-          --exclude pathfinder-ethereum
+        run: cargo test --all-targets --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
 
   clippy:
     runs-on: ubuntu-latest
