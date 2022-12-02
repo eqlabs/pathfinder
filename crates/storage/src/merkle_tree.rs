@@ -159,12 +159,12 @@ struct Queries<'a> {
     insert: Cow<'a, str>,
     update: Cow<'a, str>,
     get: Cow<'a, str>,
-    #[cfg(test)]
+    #[cfg(feature = "tests")]
     delete_node: Cow<'a, str>,
-    #[cfg(test)]
+    #[cfg(feature = "tests")]
     set_ref_count: Cow<'a, str>,
     increment_ref_count: Cow<'a, str>,
-    #[cfg(test)]
+    #[cfg(feature = "tests")]
     get_ref_count: Cow<'a, str>,
 }
 
@@ -192,16 +192,16 @@ impl Queries<'static> {
             .into(),
             update: format!("UPDATE {} SET data=?, ref_count=? WHERE hash=?", table).into(),
             get: format!("SELECT data FROM {} WHERE hash = ?", table).into(),
-            #[cfg(test)]
+            #[cfg(feature = "tests")]
             delete_node: format!("DELETE FROM {} WHERE hash = ?", table).into(),
-            #[cfg(test)]
+            #[cfg(feature = "tests")]
             set_ref_count: format!("UPDATE {} SET ref_count = ? WHERE hash = ?", table).into(),
             increment_ref_count: format!(
                 "UPDATE {} SET ref_count = ref_count + 1 WHERE hash = ?",
                 table
             )
             .into(),
-            #[cfg(test)]
+            #[cfg(feature = "tests")]
             get_ref_count: format!("SELECT ref_count FROM {} WHERE hash = ?", table).into(),
         }
     }
@@ -225,12 +225,12 @@ impl Queries<'static> {
             insert: borrow_cow!(self.insert),
             update: borrow_cow!(self.update),
             get: borrow_cow!(self.get),
-            #[cfg(test)]
+            #[cfg(feature = "tests")]
             delete_node: borrow_cow!(self.delete_node),
-            #[cfg(test)]
+            #[cfg(feature = "tests")]
             set_ref_count: borrow_cow!(self.set_ref_count),
             increment_ref_count: borrow_cow!(self.increment_ref_count),
-            #[cfg(test)]
+            #[cfg(feature = "tests")]
             get_ref_count: borrow_cow!(self.get_ref_count),
         }
     }
@@ -494,7 +494,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     ///
     /// Does not perform rollback on failure. This implies that you should rollback the [RcNodeStorage's](RcNodeStorage) transaction
     /// if this call returns an error to prevent database corruption.
-    #[cfg(test)]
+    #[cfg(feature = "tests")]
     fn delete_node(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
@@ -521,7 +521,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
 
     /// Decrements the reference count of the node and automatically deletes it
     /// if the count becomes zero.
-    #[cfg(test)]
+    #[cfg(feature = "tests")]
     pub fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
