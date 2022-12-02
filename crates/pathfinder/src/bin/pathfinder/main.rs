@@ -62,8 +62,10 @@ async fn main() -> anyhow::Result<()> {
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     )?;
 
-    let network = match config.network {
-        Some(network) => match network.as_str() {
+    // Note that network testnet2 integration are mutually exclusive, which is already
+    // checked in the config builder.
+    let network = match (config.network, config.testnet2, config.integration) {
+        (Some(network), _, _) => match network.as_str() {
             "mainnet" => Chain::Mainnet,
             "testnet" => Chain::Testnet,
             "testnet2" => Chain::Testnet2,
@@ -73,8 +75,10 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                 anyhow::bail!("{other} is not a valid network selection. Please specify one of: mainnet, testnet, testnet2, integration or custom.")
             }
         },
-        // Defaults if --network is not specified
-        None => match ethereum_chain {
+        (None, true, _) => Chain::Testnet2,
+        (None, _, true) => Chain::Integration,
+        // Defaults if not specified
+        (None, _, _) => match ethereum_chain {
             EthereumChain::Mainnet => Chain::Mainnet,
             EthereumChain::Goerli => Chain::Testnet,
             EthereumChain::Other(id) => anyhow::bail!(
