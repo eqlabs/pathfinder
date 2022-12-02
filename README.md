@@ -258,7 +258,8 @@ If `--network` is not specified, network selection will default to match your Et
 
 #### Custom networks & gateway proxies
 
-You can specify a custom network with `--network custom` and specifying the `--gateway-url`, `feeder-gateway-url` and `chain-id` options.
+You can specify a custom network with `--network custom` and specifying the `--gateway-url`, `feeder-gateway-url` and `chain-id` options. 
+Note that `chain-id` should be specified as text e.g. `SN_GOERLI`.
 
 This can be used to interact with a custom StarkNet gateway, or to use a gateway proxy.
 
