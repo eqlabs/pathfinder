@@ -8,8 +8,8 @@ on:
     branches: [ main ]
 
 jobs:
-  compile_tests:
-    name: Compile pathfinder tests
+  compile_pathfinder_ethereum_tests:
+    name: Compile pathfinder-ethereum tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -34,12 +34,10 @@ jobs:
 
       - name: Compile tests
         id: compile-tests
-        # Note:
-        # - profile changed because otherwise some test binaries are 100MB+ in size with pathfinder_lib over 1GB
-        # - package pathfinder produces two test binaries: pathfinder & pathfinder_lib
+        # Note: profile changed because otherwise the test binary is 100MB+
         run: |
           cargo test --no-run --locked --profile stripdebuginfo --message-format=json \
-            -p pathfinder -p pathfinder-ethereum -p pathfinder-serde -p starknet-gateway-types \
+            -p pathfinder-ethereum \
             | jq -r 'select(.reason=="compiler-artifact" and .target.test==true and .executable) | .executable' \
             | xargs -I '{}' bash -c 'file={}; mv ${file} $(basename ${file::(-17)})'
 
@@ -57,47 +55,9 @@ jobs:
           path: pathfinder_ethereum
           if-no-files-found: error
 
-      - name: Archive test binary pathfinder_lib
-        uses: actions/upload-artifact@v3
-        with:
-          name: test-binary-pathfinder-lib
-          path: pathfinder_lib
-          if-no-files-found: error
-
-      - name: Archive test binary pathfinder_serde
-        uses: actions/upload-artifact@v3
-        with:
-          name: test-binary-pathfinder-serde
-          path: pathfinder_serde
-          if-no-files-found: error
-
-      - name: Archive test binary starknet_gateway_types
-        uses: actions/upload-artifact@v3
-        with:
-          name: test-binary-starknet-gateway-types
-          path: starknet_gateway_types
-          if-no-files-found: error
-
-  # Tests with stripped test binaries
-  test_pathfinder:
-    name: pathfinder (binary) tests
-    needs: compile_tests
-    runs-on: ubuntu-latest
-    steps:       
-      # Fetch the test binary artifact
-      - uses: actions/download-artifact@v3
-        with:
-          name: test-binary-pathfinder
-      # Archiving removes the file permissions
-      - name: Fix file permissions
-        run: chmod +x pathfinder
-
-      - name: Execute tests
-        run: ./pathfinder
-
   test_pathfinder_ethereum_alchemy:
     name: pathfinder-ethereum tests (alchemy)
-    needs: compile_tests
+    needs: compile_pathfinder_ethereum_tests
     runs-on: ubuntu-latest
     steps:       
       # Fetch the test binary artifact
@@ -118,7 +78,7 @@ jobs:
 
   test_pathfinder_ethereum_infura:
     name: pathfinder-ethereum tests (infura)
-    needs: compile_tests
+    needs: compile_pathfinder_ethereum_tests
     runs-on: ubuntu-latest
     steps:       
       # Fetch the test binary artifact
@@ -137,21 +97,12 @@ jobs:
             PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.INFURA_MAINNET_PASSWORD }} \
             timeout 3m ./pathfinder_ethereum
 
-  test_pathfinder_lib:
-    name: pathfinder_lib tests
-    needs: compile_tests
+  test_all_except_pathfinder_ethereum:
+    name: all tests w/o pathfinder-ethereum
     runs-on: ubuntu-latest
     steps:
       # Required for the python environment
       - uses: actions/checkout@v3
-
-      # Fetch the test binary artifact
-      - uses: actions/download-artifact@v3
-        with:
-          name: test-binary-pathfinder-lib
-      # Archiving removes the file permissions
-      - name: Fix file permissions
-        run: chmod +x pathfinder_lib
 
       - uses: actions/setup-python@v4
         id: setup_python
@@ -167,81 +118,10 @@ jobs:
           key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}
       - run: pip install -e py/.
 
+      # We want to strip the debug info as some of these test binaries are 100MB+ and pathfinder_lib is 1GB+
       - name: Execute tests
-        run: ./pathfinder_lib
-
-  test_pathfinder_serde:
-    name: pathfinder-serde tests
-    needs: compile_tests
-    runs-on: ubuntu-latest
-    steps:       
-      # Fetch the test binary artifact
-      - uses: actions/download-artifact@v3
-        with:
-          name: test-binary-pathfinder-serde
-      # Archiving removes the file permissions
-      - name: Fix file permissions
-        run: chmod +x pathfinder_serde
-
-      - name: Execute tests
-        run: ./pathfinder_serde
-
-  test_starknet_gateway_types:
-    name: starknet-gateway-types tests
-    needs: compile_tests
-    runs-on: ubuntu-latest
-    steps:       
-      # Fetch the test binary artifact
-      - uses: actions/download-artifact@v3
-        with:
-          name: test-binary-starknet-gateway-types
-      # Archiving removes the file permissions
-      - name: Fix file permissions
-        run: chmod +x starknet_gateway_types
-
-      - name: Execute tests
-        run: ./starknet_gateway_types
-
-  # Tests with unstripped test binaries
-  test_pathfinder_common:
-    name: pathfinder-common tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: tests
-        run: cargo test -p pathfinder-common --all-targets --locked
-
-  test_pathfinder_retry:
-    name: pathfinder-retry tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: tests
-        run: cargo test -p pathfinder-retry --all-targets --locked
-
-  test_stark_curve:
-    name: stark_curve tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: tests
-        run: cargo test -p stark_curve --all-targets --locked
-
-  test_stark_hash:
-    name: stark_hash tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: tests
-        run: cargo test -p stark_hash --all-targets --locked
+        run: cargo test --all-targets --workspace --locked --profile stripdebuginfo \
+          --exclude pathfinder-ethereum
 
   clippy:
     runs-on: ubuntu-latest
