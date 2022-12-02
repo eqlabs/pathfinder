@@ -27,6 +27,13 @@ struct PathWrapper {
     len: usize,
 }
 
+/// Utility struct used for serializing.
+#[derive(Debug, Serialize)]
+struct EdgeWrapper {
+    path: PathWrapper,
+    child_hash: StarkHash,
+}
+
 impl Serialize for ProofNode {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -36,11 +43,15 @@ impl Serialize for ProofNode {
             ProofNode::Binary(bin) => bin.serialize(serializer),
             ProofNode::Edge(edge) => {
                 let value = StarkHash::from_bits(&edge.path.as_bitslice()).unwrap();
-                let path_wrapper = PathWrapper {
+                let path = PathWrapper {
                     value,
                     len: edge.path.len(),
                 };
-                path_wrapper.serialize(serializer)
+                let edge_wrapper = EdgeWrapper {
+                    path,
+                    child_hash: edge.child_hash,
+                };
+                edge_wrapper.serialize(serializer)
             }
         }
     }
