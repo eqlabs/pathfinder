@@ -34,27 +34,85 @@ jobs:
 
       - name: Compile tests
         id: compile-tests
-        # Note: profile changed because otherwise test binary is 1GB+ in size..
+        # Note:
+        # - profile changed because otherwise some test binaries are 100MB+ in size with pathfinder_lib over 1GB
+        # - package pathfinder produces two test binaries: pathfinder & pathfinder_lib
         run: |
-          cargo test --no-run --lib pathfinder -p pathfinder --locked --profile stripdebuginfo --message-format=json > /tmp/cargo-output.json
-          echo -n "TEST_EXECUTABLE=" >> $GITHUB_OUTPUT
-          jq -r 'select(.reason=="compiler-artifact" and .target.name=="pathfinder_lib") | .executable' /tmp/cargo-output.json >> $GITHUB_OUTPUT
+          cargo test --no-run --locked --profile stripdebuginfo --message-format=json \
+            -p pathfinder -p pathfinder-ethereum -p pathfinder-serde -p starknet-gateway-types \
+            | jq -r 'select(.reason=="compiler-artifact" and .target.test==true and .executable) | .executable' \
+            | xargs -I '{}' bash -c 'file={}; mv ${file} $(basename ${file::(-17)})'
 
-      # Finds the pathfinder_lib- test binary, and renames it and the .d file to something simpler to use.
-      # Essentially removing the hash to make running the file simpler (as it is used in other jobs).
-      - name: Rename test binary
-        run: mv ${{ steps.compile-tests.outputs.TEST_EXECUTABLE}} pathfinder_test
-
-      - name: Archive test binary
+      - name: Archive test binary pathfinder
         uses: actions/upload-artifact@v3
         with:
-          name: test-binary
-          path: |
-            pathfinder_test
+          name: test-binary-pathfinder
+          path: pathfinder
           if-no-files-found: error
 
+      - name: Archive test binary pathfinder_ethereum
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-binary-pathfinder-ethereum
+          path: pathfinder_ethereum
+          if-no-files-found: error
+
+      - name: Archive test binary pathfinder_lib
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-binary-pathfinder-lib
+          path: pathfinder_lib
+          if-no-files-found: error
+
+      - name: Archive test binary pathfinder_serde
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-binary-pathfinder-serde
+          path: pathfinder_serde
+          if-no-files-found: error
+
+      - name: Archive test binary starknet_gateway_types
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-binary-starknet-gateway-types
+          path: starknet_gateway_types
+          if-no-files-found: error
+
+  # Tests with stripped test binaries
   test_pathfinder:
-    name: pathfinder tests (excludes L1)
+    name: pathfinder (binary) tests
+    needs: compile_tests
+    runs-on: ubuntu-latest
+    steps:       
+      # Fetch the test binary artifact
+      - uses: actions/download-artifact@v3
+        with:
+          name: test-binary-pathfinder
+      # Archiving removes the file permissions
+      - name: Fix file permissions
+        run: chmod +x pathfinder
+
+      - name: Execute tests
+        run: ./pathfinder
+
+  test_pathfinder_ethereum:
+    name: pathfinder-ethereum tests
+    needs: compile_tests
+    runs-on: ubuntu-latest
+    steps:       
+      # Fetch the test binary artifact
+      - uses: actions/download-artifact@v3
+        with:
+          name: test-binary-pathfinder-ethereum
+      # Archiving removes the file permissions
+      - name: Fix file permissions
+        run: chmod +x pathfinder_ethereum
+
+      - name: Execute tests
+        run: ./pathfinder_ethereum
+
+  test_pathfinder_lib:
+    name: pathfinder_lib tests (excludes L1)
     needs: compile_tests
     runs-on: ubuntu-latest
     steps:
@@ -64,10 +122,10 @@ jobs:
       # Fetch the test binary artifact
       - uses: actions/download-artifact@v3
         with:
-          name: test-binary
+          name: test-binary-pathfinder-lib
       # Archiving removes the file permissions
       - name: Fix file permissions
-        run: chmod +x pathfinder_test
+        run: chmod +x pathfinder_lib
 
       - uses: actions/setup-python@v4
         id: setup_python
@@ -84,20 +142,20 @@ jobs:
       - run: pip install -e py/.
 
       - name: Execute tests
-        run: "./pathfinder_test --skip ethereum::"
+        run: "./pathfinder_lib --skip ethereum::"
 
   test_alchemy:
-    name: pathfinder tests (alchemy)
+    name: pathfinder_lib tests (alchemy)
     needs: compile_tests
     runs-on: ubuntu-latest
     steps:       
       # Fetch the test binary artifact
       - uses: actions/download-artifact@v3
         with:
-          name: test-binary
+          name: test-binary-pathfinder-lib
       # Archiving removes the file permissions
       - name: Fix file permissions
-        run: chmod +x pathfinder_test
+        run: chmod +x pathfinder_lib
 
       - name: Execute tests
         run: |
@@ -105,20 +163,20 @@ jobs:
             PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.ALCHEMY_GOERLI_PASSWORD }} \
             PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.ALCHEMY_MAINNET_URL }} \
             PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.ALCHEMY_MAINNET_PASSWORD }} \
-            timeout 3m ./pathfinder_test ethereum::
+            timeout 3m ./pathfinder_lib ethereum::
 
   test_infura:
-    name: pathfinder tests (infura)
+    name: pathfinder_lib tests (infura)
     needs: compile_tests
     runs-on: ubuntu-latest
     steps:       
       # Fetch the test binary artifact
       - uses: actions/download-artifact@v3
         with:
-          name: test-binary
+          name: test-binary-pathfinder-lib
       # Archiving removes the file permissions
       - name: Fix file permissions
-        run: chmod +x pathfinder_test
+        run: chmod +x pathfinder_lib
 
       - name: Execute tests
         run: |
@@ -126,7 +184,60 @@ jobs:
             PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.INFURA_GOERLI_PASSWORD }} \
             PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.INFURA_MAINNET_URL }} \
             PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.INFURA_MAINNET_PASSWORD }} \
-            timeout 3m ./pathfinder_test ethereum::
+            timeout 3m ./pathfinder_lib ethereum::
+
+  test_pathfinder_serde:
+    name: pathfinder-serde tests
+    needs: compile_tests
+    runs-on: ubuntu-latest
+    steps:       
+      # Fetch the test binary artifact
+      - uses: actions/download-artifact@v3
+        with:
+          name: test-binary-pathfinder-serde
+      # Archiving removes the file permissions
+      - name: Fix file permissions
+        run: chmod +x pathfinder_serde
+
+      - name: Execute tests
+        run: ./pathfinder_serde
+
+  test_starknet_gateway_types:
+    name: starknet-gateway-types tests
+    needs: compile_tests
+    runs-on: ubuntu-latest
+    steps:       
+      # Fetch the test binary artifact
+      - uses: actions/download-artifact@v3
+        with:
+          name: test-binary-starknet-gateway-types
+      # Archiving removes the file permissions
+      - name: Fix file permissions
+        run: chmod +x starknet_gateway_types
+
+      - name: Execute tests
+        run: ./starknet_gateway_types
+
+  # Tests with unstripped test binaries
+  test_pathfinder_common:
+    name: pathfinder-common tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: tests
+        run: cargo test -p pathfinder-common --all-targets --locked
+
+  test_pathfinder_retry:
+    name: pathfinder-retry tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: tests
+        run: cargo test -p pathfinder-retry --all-targets --locked
 
   test_stark_curve:
     name: stark_curve tests
