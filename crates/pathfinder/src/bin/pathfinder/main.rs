@@ -115,7 +115,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         }
     };
 
-    // Setup and verify database
+    // Get database path before we mutate network.
     let database_path = config.data_directory.join(match network {
         Chain::Mainnet => "mainnet.sqlite",
         Chain::Testnet => "goerli.sqlite",
@@ -123,6 +123,47 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         Chain::Integration => "integration.sqlite",
         Chain::Custom => "custom.sqlite",
     });
+
+    // Check for known proxy network
+    let network = match network {
+        Chain::Custom => {
+            use pathfinder_common::consts::{
+                INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
+                TESTNET_GENESIS_HASH,
+            };
+
+            let genesis = gateway_client
+                .block(StarknetBlockNumber::GENESIS.into())
+                .await
+                .context("Downloading genesis block from gateway for proxy check")?
+                .as_block()
+                .context("Genesis block should not be pending")?
+                .block_hash;
+
+            match genesis {
+                MAINNET_GENESIS_HASH => {
+                    tracing::info!("Proxy for mainnet detected");
+                    Chain::Mainnet
+                }
+                TESTNET_GENESIS_HASH => {
+                    tracing::info!("Proxy for testnet detected");
+                    Chain::Testnet
+                }
+                TESTNET2_GENESIS_HASH => {
+                    tracing::info!("Proxy for testnet2 detected");
+                    Chain::Testnet2
+                }
+                INTEGRATION_GENESIS_HASH => {
+                    tracing::info!("Proxy for integration detected");
+                    Chain::Integration
+                }
+                _other => Chain::Custom,
+            }
+        }
+        other => other,
+    };
+
+    // Setup and verify database
     let journal_mode = match config.sqlite_wal {
         false => JournalMode::Rollback,
         true => JournalMode::WAL,
@@ -149,7 +190,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
                 let gateway_block = gateway_client
                     .block(StarknetBlockNumber::GENESIS.into())
                     .await
-                    .context("Downloading genesis block from gateway")?
+                    .context("Downloading genesis block from gateway for database verification")?
                     .as_block()
                     .context("Genesis block should not be pending")?;
 
