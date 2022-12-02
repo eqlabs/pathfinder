@@ -95,8 +95,8 @@ jobs:
       - name: Execute tests
         run: ./pathfinder
 
-  test_pathfinder_ethereum:
-    name: pathfinder-ethereum tests
+  test_pathfinder_ethereum_alchemy:
+    name: pathfinder-ethereum tests (alchemy)
     needs: compile_tests
     runs-on: ubuntu-latest
     steps:       
@@ -109,7 +109,33 @@ jobs:
         run: chmod +x pathfinder_ethereum
 
       - name: Execute tests
-        run: ./pathfinder_ethereum
+        run: |
+          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.ALCHEMY_GOERLI_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.ALCHEMY_GOERLI_PASSWORD }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.ALCHEMY_MAINNET_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.ALCHEMY_MAINNET_PASSWORD }} \
+            timeout 3m ./pathfinder_ethereum
+
+  test_pathfinder_ethereum_infura:
+    name: pathfinder-ethereum tests (infura)
+    needs: compile_tests
+    runs-on: ubuntu-latest
+    steps:       
+      # Fetch the test binary artifact
+      - uses: actions/download-artifact@v3
+        with:
+          name: test-binary-pathfinder-ethereum
+      # Archiving removes the file permissions
+      - name: Fix file permissions
+        run: chmod +x pathfinder_ethereum
+
+      - name: Execute tests
+        run: |
+          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.INFURA_GOERLI_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.INFURA_GOERLI_PASSWORD }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.INFURA_MAINNET_URL }} \
+            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.INFURA_MAINNET_PASSWORD }} \
+            timeout 3m ./pathfinder_ethereum
 
   test_pathfinder_lib:
     name: pathfinder_lib tests (excludes L1)
@@ -142,49 +168,7 @@ jobs:
       - run: pip install -e py/.
 
       - name: Execute tests
-        run: "./pathfinder_lib --skip ethereum::"
-
-  test_alchemy:
-    name: pathfinder_lib tests (alchemy)
-    needs: compile_tests
-    runs-on: ubuntu-latest
-    steps:       
-      # Fetch the test binary artifact
-      - uses: actions/download-artifact@v3
-        with:
-          name: test-binary-pathfinder-lib
-      # Archiving removes the file permissions
-      - name: Fix file permissions
-        run: chmod +x pathfinder_lib
-
-      - name: Execute tests
-        run: |
-          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.ALCHEMY_GOERLI_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.ALCHEMY_GOERLI_PASSWORD }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.ALCHEMY_MAINNET_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.ALCHEMY_MAINNET_PASSWORD }} \
-            timeout 3m ./pathfinder_lib ethereum::
-
-  test_infura:
-    name: pathfinder_lib tests (infura)
-    needs: compile_tests
-    runs-on: ubuntu-latest
-    steps:       
-      # Fetch the test binary artifact
-      - uses: actions/download-artifact@v3
-        with:
-          name: test-binary-pathfinder-lib
-      # Archiving removes the file permissions
-      - name: Fix file permissions
-        run: chmod +x pathfinder_lib
-
-      - name: Execute tests
-        run: |
-          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.INFURA_GOERLI_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.INFURA_GOERLI_PASSWORD }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.INFURA_MAINNET_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.INFURA_MAINNET_PASSWORD }} \
-            timeout 3m ./pathfinder_lib ethereum::
+        run: ./pathfinder_lib
 
   test_pathfinder_serde:
     name: pathfinder-serde tests
