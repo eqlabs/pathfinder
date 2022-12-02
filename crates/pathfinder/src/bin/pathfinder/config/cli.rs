@@ -234,7 +234,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
         .arg(
             Arg::new(CHAIN_ID)
             .long(CHAIN_ID)
-            .help("Set a custom StarkNet chain ID")
+            .help("Set a custom StarkNet chain ID (e.g. SN_GOERLI)")
             .takes_value(true)
             .env("PATHFINDER_CHAIN_ID")
         )
