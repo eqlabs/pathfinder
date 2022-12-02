@@ -47,7 +47,7 @@
 use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use rusqlite::Transaction;
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 

@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context};
 use serde::{Deserialize, Serialize};
 
 use crate::rpc::v02::RpcContext;
-use crate::state::merkle_tree::{EdgeProofNode, ProofNode};
+use crate::state::merkle_tree::ProofNode;
 use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use crate::storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use pathfinder_common::{
@@ -217,7 +217,7 @@ fn read_class_hash(
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::{starkhash_bytes, ContractAddress, StarknetBlockHash, StorageAddress};
+    use pathfinder_common::{ContractAddress, StorageAddress};
 
     type TestCaseHandler = Box<dyn Fn(usize, &Result<GetProofOutput, GetProofError>)>;
 
