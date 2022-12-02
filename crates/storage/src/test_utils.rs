@@ -14,16 +14,15 @@ use starknet_gateway_types::reply::transaction::{
 };
 use web3::types::{H128, H256};
 
-pub(crate) const NUM_BLOCKS: usize = 4;
-pub(crate) const TRANSACTIONS_PER_BLOCK: usize = 15;
+pub const NUM_BLOCKS: usize = 4;
+pub const TRANSACTIONS_PER_BLOCK: usize = 15;
 const INVOKE_TRANSACTIONS_PER_BLOCK: usize = 5;
 const DEPLOY_TRANSACTIONS_PER_BLOCK: usize = 5;
 const DECLARE_TRANSACTIONS_PER_BLOCK: usize =
     TRANSACTIONS_PER_BLOCK - (INVOKE_TRANSACTIONS_PER_BLOCK + DEPLOY_TRANSACTIONS_PER_BLOCK);
-pub(crate) const EVENTS_PER_BLOCK: usize =
-    INVOKE_TRANSACTIONS_PER_BLOCK + DECLARE_TRANSACTIONS_PER_BLOCK;
-pub(crate) const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
-pub(crate) const NUM_EVENTS: usize = NUM_BLOCKS * EVENTS_PER_BLOCK;
+pub const EVENTS_PER_BLOCK: usize = INVOKE_TRANSACTIONS_PER_BLOCK + DECLARE_TRANSACTIONS_PER_BLOCK;
+pub const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
+pub const NUM_EVENTS: usize = NUM_BLOCKS * EVENTS_PER_BLOCK;
 
 /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
 /// with arbitrary other values.
@@ -177,7 +176,7 @@ pub(crate) fn extract_events(
 }
 
 /// Creates a storage instance in memory with a set of expected emitted events
-pub(crate) fn setup_test_storage() -> (Storage, Vec<StarknetEmittedEvent>) {
+pub fn setup_test_storage() -> (Storage, Vec<StarknetEmittedEvent>) {
     use crate::CanonicalBlocksTable;
 
     let storage = Storage::in_memory().unwrap();

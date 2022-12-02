@@ -4,13 +4,13 @@
 
 mod contract;
 mod ethereum;
-#[cfg(test)]
-pub(crate) mod fixtures;
 pub mod merkle_tree;
 mod schema;
 mod state;
-#[cfg(test)]
-pub(crate) mod test_utils;
+#[cfg(feature = "tests")]
+pub mod test_fixtures;
+#[cfg(feature = "tests")]
+pub mod test_utils;
 pub mod types;
 
 use std::path::{Path, PathBuf};

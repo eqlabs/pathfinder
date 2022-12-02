@@ -564,7 +564,7 @@ mod tests {
     mod get_state_update {
         use crate::rpc::test_setup::Test;
         use crate::rpc::v01::types::reply::ErrorCode;
-        use crate::storage::fixtures::init::with_n_state_updates;
+        use pathfinder_storage::test_fixtures::init::with_n_state_updates;
         use serde_json::json;
 
         #[tokio::test]
@@ -2220,7 +2220,7 @@ mod tests {
                     to_block: None,
                     address: None,
                     keys: vec![],
-                    page_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                    page_size: pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
                     page_number: 0,
                 });
                 let error = TestClient::v01(addr)

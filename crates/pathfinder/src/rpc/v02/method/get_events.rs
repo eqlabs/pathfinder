@@ -388,9 +388,9 @@ mod tests {
         types::{EmittedEvent, GetEventsResult},
         *,
     };
-    use crate::storage::test_utils;
     use jsonrpsee::types::Params;
     use pathfinder_common::starkhash;
+    use pathfinder_storage::test_utils;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -548,7 +548,7 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: vec![],
-                chunk_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
                 continuation_token: None,
             },
         };

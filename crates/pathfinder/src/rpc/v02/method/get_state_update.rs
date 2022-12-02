@@ -378,7 +378,7 @@ mod tests {
         let storage = pathfinder_storage::Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
-        let state_updates = pathfinder_storage::fixtures::init::with_n_state_updates(&tx, 3);
+        let state_updates = pathfinder_storage::test_fixtures::init::with_n_state_updates(&tx, 3);
         tx.commit().unwrap();
 
         let sync_state = std::sync::Arc::new(crate::state::SyncState::default());

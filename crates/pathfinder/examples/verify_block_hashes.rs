@@ -1,10 +1,8 @@
 use anyhow::Context;
 use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
-use pathfinder_lib::{
-    state::block_hash::{verify_block_hash, VerifyResult},
-    storage::{
-        JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
-    },
+use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
+use pathfinder_storage::{
+    JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
 use stark_hash::StarkHash;
 use starknet_gateway_types::reply::{Block, Status};

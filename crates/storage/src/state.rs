@@ -846,7 +846,7 @@ impl StarknetEventsTable {
         Ok(())
     }
 
-    pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
+    pub const PAGE_SIZE_LIMIT: usize = 1024;
 
     fn event_query<'query, 'arg>(
         base: &'query str,
@@ -2647,7 +2647,7 @@ mod tests {
 
     mod starknet_updates {
         use super::*;
-        use crate::fixtures::with_n_state_updates;
+        use crate::test_fixtures::with_n_state_updates;
 
         mod get {
             use super::*;

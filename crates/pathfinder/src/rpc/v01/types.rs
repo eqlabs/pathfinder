@@ -270,7 +270,7 @@ pub mod reply {
     impl PartialEq<jsonrpsee::core::error::Error> for ErrorCode {
         fn eq(&self, other: &jsonrpsee::core::error::Error) -> bool {
             use jsonrpsee::core::error::Error;
-            use jsonrpsee::types::error::CallError;
+            use jsonrpsee::types::error::{CallError, ErrorObject};
 
             if let Error::Call(CallError::Custom(custom)) = other {
                 // this is quite ackward dance to go back to error level then come back to the
@@ -278,9 +278,34 @@ pub mod reply {
                 // places, and leaning on ErrorObject partialeq impl.
                 let repr = match self {
                     ErrorCode::PageSizeTooBig => {
-                        Error::from(crate::storage::EventFilterError::PageSizeTooBig(
-                            crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT,
-                        ))
+                        // let page = StarknetEventsTable::get_events(&transaction, &filter).map_err(|e| {
+                        //     if let Some(e) = e.downcast_ref::<EventFilterError>() {
+                        //         match e {
+                        //             EventFilterError::PageSizeTooBig(max_size) => {
+                        //                 Error::Call(CallError::Custom(ErrorObject::owned(
+                        //                     ErrorCode::PageSizeTooBig as i32,
+                        //                     ErrorCode::PageSizeTooBig.to_string(),
+                        //                     Some(serde_json::json!({ "max_page_size": max_size })),
+                        //                 )))
+                        //             }
+                        //         }
+                        //     } else {
+                        //         internal_server_error(e)
+                        //     }
+                        // })?;
+
+                        Error::Call(CallError::Custom(ErrorObject::owned(
+                            ErrorCode::PageSizeTooBig as i32,
+                            ErrorCode::PageSizeTooBig.to_string(),
+                            Some(serde_json::json!({
+                                "max_page_size":
+                                    pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT
+                            })),
+                        )))
+
+                        // Error::from(pathfinder_storage::EventFilterError::PageSizeTooBig(
+                        //     pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT,
+                        // ))
                     }
                     other => Error::from(*other),
                 };

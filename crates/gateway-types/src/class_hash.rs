@@ -436,6 +436,7 @@ mod json {
             );
         }
 
+        #[cfg(fixme)]
         #[tokio::test]
         async fn genesis_contract() {
             use crate::sequencer::ClientApi;
@@ -456,6 +457,7 @@ mod json {
                 .expect("Extract and compute  hash");
         }
 
+        #[cfg(fixme)]
         #[tokio::test]
         async fn cairo_0_8() {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
