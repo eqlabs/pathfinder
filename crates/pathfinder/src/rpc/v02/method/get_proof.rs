@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context};
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
 use crate::rpc::v02::RpcContext;
@@ -27,31 +28,29 @@ struct PathWrapper {
     len: usize,
 }
 
-/// Utility struct used for serializing.
-#[derive(Debug, Serialize)]
-struct EdgeWrapper {
-    path: PathWrapper,
-    child_hash: StarkHash,
-}
-
 impl Serialize for ProofNode {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         match &self {
-            ProofNode::Binary(bin) => bin.serialize(serializer),
+            ProofNode::Binary(bin) => {
+                let mut state = serializer.serialize_struct("Binary", 2)?;
+                state.serialize_field("left", &bin.left_hash)?;
+                state.serialize_field("right", &bin.right_hash)?;
+                state.end()
+            }
             ProofNode::Edge(edge) => {
                 let value = StarkHash::from_bits(&edge.path.as_bitslice()).unwrap();
-                let path = PathWrapper {
+                let path_wrapper = PathWrapper {
                     value,
                     len: edge.path.len(),
                 };
-                let edge_wrapper = EdgeWrapper {
-                    path,
-                    child_hash: edge.child_hash,
-                };
-                edge_wrapper.serialize(serializer)
+
+                let mut state = serializer.serialize_struct("Edge", 2)?;
+                state.serialize_field("path", &path_wrapper)?;
+                state.serialize_field("child", &edge.child_hash)?;
+                state.end()
             }
         }
     }
