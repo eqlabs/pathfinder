@@ -1,16 +1,14 @@
 use anyhow::{anyhow, Context};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::rpc::v02::RpcContext;
-use crate::state::merkle_tree::ProofNode;
+use crate::state::merkle_tree::{EdgeProofNode, ProofNode};
 use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use crate::storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
-use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
     BlockId, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     StorageAddress,
 };
-use serde::Serialize;
 use stark_hash::StarkHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -21,6 +19,32 @@ pub struct GetProofInput {
 }
 
 crate::rpc::error::generate_rpc_error_subset!(GetProofError: BlockNotFound);
+
+/// Utility struct used for serializing.
+#[derive(Debug, Serialize)]
+struct PathWrapper {
+    value: StarkHash,
+    len: usize,
+}
+
+impl Serialize for ProofNode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match &self {
+            ProofNode::Binary(bin) => bin.serialize(serializer),
+            ProofNode::Edge(edge) => {
+                let value = StarkHash::from_bits(&edge.path.as_bitslice()).unwrap();
+                let path_wrapper = PathWrapper {
+                    value,
+                    len: edge.path.len(),
+                };
+                path_wrapper.serialize(serializer)
+            }
+        }
+    }
+}
 
 /// Holds the data and proofs for a specific contract.
 #[derive(Debug, Serialize)]
