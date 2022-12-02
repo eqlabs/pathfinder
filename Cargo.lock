@@ -2297,8 +2297,6 @@ dependencies = [
  "pathfinder-serde",
  "pathfinder-storage",
  "pretty_assertions",
- "r2d2",
- "r2d2_sqlite",
  "rand",
  "reqwest",
  "rusqlite",
