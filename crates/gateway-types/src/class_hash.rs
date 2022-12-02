@@ -1,9 +1,9 @@
+use crate::request::contract::EntryPointType;
 use anyhow::{Context, Error, Result};
 use pathfinder_common::ClassHash;
 use serde::Serialize;
 use sha3::Digest;
 use stark_hash::{HashChain, StarkHash};
-use starknet_gateway_types::request::contract::EntryPointType;
 
 /// Computes the starknet class hash for given class definition json blob.
 ///
@@ -299,7 +299,7 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
 }
 
 mod json {
-    use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
+    use crate::request::contract::{EntryPointType, SelectorAndOffset};
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
 

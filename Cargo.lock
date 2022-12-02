@@ -3264,6 +3264,7 @@ version = "0.1.0"
 name = "starknet-gateway-types"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "hex-literal",
  "pathfinder-common",
  "pathfinder-serde",
@@ -3271,10 +3272,13 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "sha3",
  "stark_hash",
  "starknet-gateway-test-fixtures",
  "thiserror",
+ "tokio",
  "web3",
+ "zstd",
 ]
 
 [[package]]

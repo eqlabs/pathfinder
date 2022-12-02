@@ -1443,7 +1443,7 @@ mod tests {
                 starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
 
             let (abi, bytecode, hash) =
-                crate::state::class_hash::extract_abi_code_hash(&contract_definition)?;
+                starknet_gateway_types::class_hash::extract_abi_code_hash(&contract_definition)?;
 
             assert_eq!(hash.0, expected_hash);
 

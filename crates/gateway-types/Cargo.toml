@@ -7,12 +7,14 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.44"
 pathfinder-common = { path = "../common" }
 pathfinder-serde = { path = "../serde" }
 reqwest = "0.11.4"
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
 serde_with = "1.9.4"
+sha3 = "0.9"
 stark_hash = { path = "../stark_hash" }
 thiserror = "1.0.30"
 web3 = "0.18.0"
@@ -21,3 +23,5 @@ web3 = "0.18.0"
 # Due to pathfinder_common::starkhash!() usage
 hex-literal = "0.3"
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
+tokio = { version = "1.11.0", features = ["test-util"] }
+zstd = "0.10"

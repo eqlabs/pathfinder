@@ -3,11 +3,6 @@ use rusqlite::Transaction;
 use sha3::{Digest, Keccak256};
 
 pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
-    Ok(())
-}
-
-#[cfg(fixme)]
-pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
     // we had a mishap of forking the schema at version 1 so to really support all combinations of
     // schema at version 1 we need to make sure that contracts table still looks like:
     // CREATE TABLE contracts (
@@ -90,9 +85,10 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
             let definition = r.get_ref_unwrap(0).as_blob()?;
             let raw_definition = zstd::decode_all(definition)?;
             let (abi, code, hash) =
-                crate::state::class_hash::extract_abi_code_hash(&raw_definition).with_context(
-                    || format!("Failed to process {} bytes of definition", definition.len()),
-                )?;
+                starknet_gateway_types::class_hash::extract_abi_code_hash(&raw_definition)
+                    .with_context(|| {
+                        format!("Failed to process {} bytes of definition", definition.len())
+                    })?;
 
             if exists.exists([&hash.0.to_be_bytes()[..]])? {
                 if dump_duplicate_contracts {

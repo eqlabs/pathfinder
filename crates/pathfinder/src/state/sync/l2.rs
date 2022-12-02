@@ -1,13 +1,15 @@
 use crate::sequencer;
 use crate::state::block_hash::verify_block_hash;
-use crate::state::class_hash::extract_abi_code_hash;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{Chain, ClassHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_storage::types::CompressedContract;
-use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::reply::{
-    state_update::{DeployedContract, StateDiff},
-    Block, PendingBlock, StateUpdate, Status,
+use starknet_gateway_types::{
+    class_hash::extract_abi_code_hash,
+    error::SequencerError,
+    reply::{
+        state_update::{DeployedContract, StateDiff},
+        Block, PendingBlock, StateUpdate, Status,
+    },
 };
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};

@@ -827,7 +827,7 @@ async fn download_verify_and_insert_missing_classes<
     connection: &mut Connection,
     classes: ClassIter,
 ) -> anyhow::Result<()> {
-    use crate::state::class_hash::extract_abi_code_hash;
+    use starknet_gateway_types::class_hash::extract_abi_code_hash;
 
     // Make list unique.
     let classes = classes

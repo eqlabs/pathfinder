@@ -46,20 +46,22 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     let handle = tokio::runtime::Handle::current();
 
     let downloader = std::thread::spawn(move || {
-        use crate::sequencer::Client;
-        use crate::sequencer::ClientApi;
+        {
+            use crate::sequencer::Client;
+            use crate::sequencer::ClientApi;
 
-        let client = match chain {
-            Chain::Mainnet => Client::mainnet(),
-            Chain::Testnet => Client::testnet(),
-            Chain::Testnet2 => Client::testnet2(),
-            Chain::Integration => Client::integration(),
-            Chain::Custom => anyhow::bail!("Migration is not applicable for custom networks"),
-        };
+            let client = match chain {
+                Chain::Mainnet => Client::mainnet(),
+                Chain::Testnet => Client::testnet(),
+                Chain::Testnet2 => Client::testnet2(),
+                Chain::Integration => Client::integration(),
+                Chain::Custom => anyhow::bail!("Migration is not applicable for custom networks"),
+            };
 
-        for class_hash in work_rx.iter() {
-            let class = handle.block_on(client.class_by_hash(class_hash)).unwrap();
-            downloaded_tx.send(class).unwrap();
+            for class_hash in work_rx.iter() {
+                let class = handle.block_on(client.class_by_hash(class_hash)).unwrap();
+                downloaded_tx.send(class).unwrap();
+            }
         }
 
         Ok(())
@@ -70,7 +72,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
 
         for class in downloaded_rx.iter() {
             let (abi, code, hash) =
-                crate::state::class_hash::extract_abi_code_hash(&class).unwrap();
+                starknet_gateway_types::class_hash::extract_abi_code_hash(&class).unwrap();
 
             let definition = compressor.compress(&class).unwrap();
             let abi = compressor.compress(&abi).unwrap();

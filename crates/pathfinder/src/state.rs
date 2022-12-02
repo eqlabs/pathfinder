@@ -9,13 +9,11 @@ use stark_hash::{stark_hash, StarkHash};
 use starknet_gateway_types::reply::state_update::StorageDiff;
 
 pub mod block_hash;
-pub(crate) mod class_hash;
 pub mod merkle_node;
 pub mod merkle_tree;
 pub mod state_tree;
 mod sync;
 
-pub use class_hash::compute_class_hash;
 pub use sync::{l1, l2, sync, PendingData, State as SyncState};
 
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the

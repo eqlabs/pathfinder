@@ -899,7 +899,7 @@ mod tests {
         storage_updates: &[(StorageAddress, StorageValue)],
     ) -> (ContractStateHash, ClassHash) {
         let (abi, bytecode, class_hash) =
-            crate::state::class_hash::extract_abi_code_hash(contract_definition).unwrap();
+            starknet_gateway_types::class_hash::extract_abi_code_hash(contract_definition).unwrap();
 
         // create class
         ContractCodeTable::insert(tx, class_hash, &abi, &bytecode, contract_definition).unwrap();
