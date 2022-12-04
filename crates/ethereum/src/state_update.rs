@@ -1,11 +1,35 @@
 use pathfinder_common::{Chain, EthereumBlockNumber};
 use web3::types::H160;
 
-use crate::log::{LogFetcher, StateUpdateLog};
+use crate::log::StateUpdateLog;
+
+use anyhow::Context;
+use web3::types::{BlockNumber, FilterBuilder};
+
+use crate::transport::{EthereumTransport, LogsError};
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
 #[derive(Clone)]
-pub struct StateRootFetcher(LogFetcher);
+pub struct StateRootFetcher {
+    head: Option<StateUpdateLog>,
+    genesis: EthereumBlockNumber,
+    stride: u64,
+    base_filter: FilterBuilder,
+}
+
+#[derive(Debug)]
+pub enum FetchError {
+    /// An L1 chain reorganisation occurred. At the very least, the lastest log
+    /// returned previously is now invalid.
+    Reorg,
+    Other(anyhow::Error),
+}
+
+impl From<anyhow::Error> for FetchError {
+    fn from(err: anyhow::Error) -> Self {
+        FetchError::Other(err)
+    }
+}
 
 /// The Mainnet Ethereum block containing the Starknet genesis [StateUpdateLog].
 const MAINNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(13_627_224);
@@ -26,8 +50,16 @@ impl StateRootFetcher {
             Chain::Custom => EthereumBlockNumber(0),
         };
 
-        let inner = LogFetcher::new(head, contract_address, genesis);
-        Self(inner)
+        let base_filter = FilterBuilder::default()
+            .address(vec![contract_address])
+            .topics(Some(vec![StateUpdateLog::signature()]), None, None, None);
+
+        Self {
+            head,
+            stride: 10_000,
+            base_filter,
+            genesis,
+        }
     }
 
     #[cfg(test)]
@@ -36,19 +68,143 @@ impl StateRootFetcher {
 
         Self::new(head, Chain::Testnet, contract_address)
     }
-}
 
-impl std::ops::Deref for StateRootFetcher {
-    type Target = LogFetcher;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub fn set_head(&mut self, head: Option<StateUpdateLog>) {
+        self.head = head;
     }
-}
 
-impl std::ops::DerefMut for StateRootFetcher {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    pub fn head(&self) -> &Option<StateUpdateLog> {
+        &self.head
+    }
+
+    /// Fetches the next set of logs from L1. This set may be empty, in which
+    /// case we have reached the current end of the L1 chain.
+    // pub async fn fetch(&mut self, transport: &impl EthereumTransport) -> Result<Vec<T>, FetchError> {
+    pub async fn fetch(
+        &mut self,
+        transport: impl EthereumTransport,
+    ) -> Result<Vec<StateUpdateLog>, FetchError> {
+        // Algorithm overview.
+        //
+        // There are two key difficulties this algorithm needs to handle.
+        //
+        //  1. L1 chain reorgs
+        //  2. Infura query result limit
+        //
+        // We handle (1) by always including the last known log in our query,
+        // which lets us check for continuity across queries.
+        //
+        // We handle (2) by using a dynamic query range. We basically perform a
+        // binary-search of the query range until we find a range that returns
+        // data.
+
+        let from_block = self
+            .head
+            .as_ref()
+            .map(|update| update.origin.block.number.0)
+            .unwrap_or(self.genesis.0);
+        let base_filter = self
+            .base_filter
+            .clone()
+            .from_block(BlockNumber::Number(from_block.into()));
+
+        // The largest stride we are allowed to take. This gets
+        // set if we encounter the Infura result cap error.
+        //
+        // Allows us to perform a binary search of the query range space.
+        //
+        // This is required to avoid cycles of:
+        //   1. Find no new logs, increase search range
+        //   2. Hit result limit error, decrease search range
+        let mut stride_cap = None;
+
+        loop {
+            let to_block = from_block.saturating_add(self.stride);
+            let filter = base_filter
+                .clone()
+                .to_block(BlockNumber::Number(to_block.into()))
+                .build();
+
+            let logs = match transport.logs(filter).await {
+                Ok(logs) => logs,
+                Err(LogsError::QueryLimit) => {
+                    stride_cap = Some(self.stride);
+                    self.stride = (self.stride / 2).max(1);
+
+                    continue;
+                }
+                Err(LogsError::UnknownBlock) => {
+                    // This implies either:
+                    //  - the `to_block` exceeds the current chain state, or
+                    //  - both `from_block` and `to_block` exceed the current chain state which indicates a reorg occurred.
+                    // so lets check this by querying for the `to_block`.
+                    let chain_head = transport
+                        .block_number()
+                        .await
+                        .context("Get latest block number from L1")?;
+
+                    if from_block <= chain_head {
+                        self.stride = (chain_head - from_block).max(1);
+                        continue;
+                    } else {
+                        return Err(FetchError::Reorg);
+                    }
+                }
+                Err(LogsError::Other(other)) => {
+                    return Err(FetchError::Other(anyhow::Error::new(other)))
+                }
+            };
+
+            let mut logs = logs.into_iter();
+
+            // Check for reorgs. Only required if there was a head to validate.
+            //
+            // We queried for logs starting from the same block as head. We need to account
+            // for logs that occurred in the same block and transaction, but with a smaller log index.
+            //
+            // If the head log is not in the set then we have a reorg event.
+            if let Some(head) = self.head.as_ref() {
+                loop {
+                    match logs.next().map(StateUpdateLog::try_from) {
+                        Some(Ok(log))
+                            if log.origin.block == head.origin.block
+                                && log.origin.log_index.0 < head.origin.log_index.0 =>
+                        {
+                            continue
+                        }
+                        Some(Ok(log)) if &log == head => break,
+                        _ => return Err(FetchError::Reorg),
+                    }
+                }
+            }
+
+            let logs = logs
+                .map(StateUpdateLog::try_from)
+                .collect::<Result<Vec<StateUpdateLog>, _>>()?;
+
+            // If there are no new logs, then either we have reached the end of L1,
+            // or we need to increase our query range.
+            if logs.is_empty() {
+                let chain_head = transport
+                    .block_number()
+                    .await
+                    .context("Get latest block number from L1")?;
+
+                if to_block < chain_head {
+                    match stride_cap {
+                        Some(max) => self.stride = (self.stride.saturating_add(max + 1)) / 2,
+                        None => self.stride = self.stride.saturating_mul(2),
+                    }
+                    continue;
+                }
+            }
+
+            if let Some(head) = logs.last() {
+                self.head = Some(head.clone());
+            }
+
+            return Ok(logs);
+        }
     }
 }
 
@@ -181,7 +337,7 @@ mod tests {
         };
 
         use crate::{
-            log::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
+            state_update::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
             TransactionOrigin,
         };
 

@@ -4,10 +4,6 @@ use pathfinder_common::{GlobalRoot, StarknetBlockNumber};
 use stark_hash::StarkHash;
 use web3::ethabi::{LogParam, RawLog};
 
-mod fetch;
-
-pub use fetch::*;
-
 /// Describes a state update log event.
 ///
 /// This is emitted by the Starknet core contract.

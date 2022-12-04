@@ -2,8 +2,8 @@ use anyhow::Context;
 use futures::Future;
 use pathfinder_common::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber};
 use pathfinder_ethereum::{
-    log::{FetchError, StateUpdateLog},
-    state_update::StateRootFetcher,
+    log::StateUpdateLog,
+    state_update::{FetchError, StateRootFetcher},
     transport::EthereumTransport,
 };
 use pathfinder_retry::Retry;
