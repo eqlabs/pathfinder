@@ -5,7 +5,7 @@ use crate::log::{LogFetcher, StateUpdateLog};
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
 #[derive(Clone)]
-pub struct StateRootFetcher(LogFetcher<StateUpdateLog>);
+pub struct StateRootFetcher(LogFetcher);
 
 /// The Mainnet Ethereum block containing the Starknet genesis [StateUpdateLog].
 const MAINNET_GENESIS: EthereumBlockNumber = EthereumBlockNumber(13_627_224);
@@ -26,7 +26,7 @@ impl StateRootFetcher {
             Chain::Custom => EthereumBlockNumber(0),
         };
 
-        let inner = LogFetcher::<StateUpdateLog>::new(head, contract_address, genesis);
+        let inner = LogFetcher::new(head, contract_address, genesis);
         Self(inner)
     }
 
@@ -39,7 +39,7 @@ impl StateRootFetcher {
 }
 
 impl std::ops::Deref for StateRootFetcher {
-    type Target = LogFetcher<StateUpdateLog>;
+    type Target = LogFetcher;
 
     fn deref(&self) -> &Self::Target {
         &self.0

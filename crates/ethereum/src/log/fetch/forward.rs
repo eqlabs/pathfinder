@@ -3,6 +3,7 @@ use web3::types::{BlockNumber, FilterBuilder, H160};
 
 use pathfinder_common::EthereumBlockNumber;
 
+use crate::log::StateUpdateLog;
 use crate::{
     log::fetch::MetaLog,
     transport::{EthereumTransport, LogsError},
@@ -11,11 +12,8 @@ use crate::{
 /// Fetches consecutive logs of type T from L1, accounting for chain
 /// reorganisations.
 #[derive(Clone)]
-pub struct LogFetcher<T>
-where
-    T: MetaLog + PartialEq + std::fmt::Debug + Clone,
-{
-    head: Option<T>,
+pub struct LogFetcher {
+    head: Option<StateUpdateLog>,
     genesis: EthereumBlockNumber,
     stride: u64,
     base_filter: FilterBuilder,
@@ -35,18 +33,19 @@ impl From<anyhow::Error> for FetchError {
     }
 }
 
-impl<T> LogFetcher<T>
-where
-    T: MetaLog + PartialEq + std::fmt::Debug + Clone,
-{
+impl LogFetcher {
     /// Creates a [LogFetcher] which fetches logs starting from `head`'s origin on L1.
     /// If `head` is [None] then the starting point is genesis.
     ///
     /// In other words, the first log returned will be the one after `head`.
-    pub fn new(head: Option<T>, contract_address: H160, genesis: EthereumBlockNumber) -> Self {
+    pub fn new(
+        head: Option<StateUpdateLog>,
+        contract_address: H160,
+        genesis: EthereumBlockNumber,
+    ) -> Self {
         let base_filter = FilterBuilder::default()
             .address(vec![contract_address])
-            .topics(Some(vec![T::signature()]), None, None, None);
+            .topics(Some(vec![StateUpdateLog::signature()]), None, None, None);
 
         Self {
             head,
@@ -56,18 +55,21 @@ where
         }
     }
 
-    pub fn set_head(&mut self, head: Option<T>) {
+    pub fn set_head(&mut self, head: Option<StateUpdateLog>) {
         self.head = head;
     }
 
-    pub fn head(&self) -> &Option<T> {
+    pub fn head(&self) -> &Option<StateUpdateLog> {
         &self.head
     }
 
     /// Fetches the next set of logs from L1. This set may be empty, in which
     /// case we have reached the current end of the L1 chain.
     // pub async fn fetch(&mut self, transport: &impl EthereumTransport) -> Result<Vec<T>, FetchError> {
-    pub async fn fetch(&mut self, transport: impl EthereumTransport) -> Result<Vec<T>, FetchError> {
+    pub async fn fetch(
+        &mut self,
+        transport: impl EthereumTransport,
+    ) -> Result<Vec<StateUpdateLog>, FetchError> {
         // Algorithm overview.
         //
         // There are two key difficulties this algorithm needs to handle.
@@ -149,7 +151,7 @@ where
             // If the head log is not in the set then we have a reorg event.
             if let Some(head) = self.head.as_ref() {
                 loop {
-                    match logs.next().map(T::try_from) {
+                    match logs.next().map(StateUpdateLog::try_from) {
                         Some(Ok(log))
                             if log.origin().block == head.origin().block
                                 && log.origin().log_index.0 < head.origin().log_index.0 =>
@@ -162,7 +164,9 @@ where
                 }
             }
 
-            let logs = logs.map(T::try_from).collect::<Result<Vec<T>, _>>()?;
+            let logs = logs
+                .map(StateUpdateLog::try_from)
+                .collect::<Result<Vec<StateUpdateLog>, _>>()?;
 
             // If there are no new logs, then either we have reached the end of L1,
             // or we need to increase our query range.
@@ -247,8 +251,7 @@ mod tests {
 
         let chain = pathfinder_common::Chain::Testnet;
         let address = crate::contract::TESTNET_ADDRESSES.core;
-        let mut root_fetcher =
-            LogFetcher::<StateUpdateLog>::new(Some(starknet_genesis_log), address, genesis_block);
+        let mut root_fetcher = LogFetcher::new(Some(starknet_genesis_log), address, genesis_block);
         let transport = HttpTransport::test_transport(chain);
         let mut block_number = 1;
 
