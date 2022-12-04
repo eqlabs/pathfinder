@@ -18,6 +18,12 @@ pub struct StateUpdateLog {
     pub block_number: StarknetBlockNumber,
 }
 
+impl StateUpdateLog {
+    pub fn signature() -> web3::types::H256 {
+        STATE_UPDATE_EVENT.signature()
+    }
+}
+
 impl TryFrom<web3::types::Log> for StateUpdateLog {
     type Error = anyhow::Error;
 

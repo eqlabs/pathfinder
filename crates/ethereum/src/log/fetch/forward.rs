@@ -4,10 +4,7 @@ use web3::types::{BlockNumber, FilterBuilder, H160};
 use pathfinder_common::EthereumBlockNumber;
 
 use crate::log::StateUpdateLog;
-use crate::{
-    log::fetch::MetaLog,
-    transport::{EthereumTransport, LogsError},
-};
+use crate::transport::{EthereumTransport, LogsError};
 
 /// Fetches consecutive logs of type T from L1, accounting for chain
 /// reorganisations.
@@ -87,7 +84,7 @@ impl LogFetcher {
         let from_block = self
             .head
             .as_ref()
-            .map(|update| update.origin().block.number.0)
+            .map(|update| update.origin.block.number.0)
             .unwrap_or(self.genesis.0);
         let base_filter = self
             .base_filter
@@ -153,8 +150,8 @@ impl LogFetcher {
                 loop {
                     match logs.next().map(StateUpdateLog::try_from) {
                         Some(Ok(log))
-                            if log.origin().block == head.origin().block
-                                && log.origin().log_index.0 < head.origin().log_index.0 =>
+                            if log.origin.block == head.origin.block
+                                && log.origin.log_index.0 < head.origin.log_index.0 =>
                         {
                             continue
                         }

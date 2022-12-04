@@ -81,7 +81,7 @@ mod tests {
         use pretty_assertions::assert_eq;
         use web3::types::{BlockNumber, FilterBuilder};
 
-        use crate::{log::MetaLog, transport::EthereumTransport};
+        use crate::transport::EthereumTransport;
 
         use super::*;
 
