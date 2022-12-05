@@ -3267,6 +3267,7 @@ dependencies = [
  "bytes",
  "flate2",
  "futures",
+ "hex-literal",
  "http",
  "lazy_static",
  "metrics",
