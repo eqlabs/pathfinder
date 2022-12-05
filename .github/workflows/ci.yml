@@ -9,7 +9,7 @@ on:
 
 jobs:
   compile_pathfinder_ethereum_tests:
-    name: Compile pathfinder-ethereum tests
+    name: Compile l1 tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -49,7 +49,7 @@ jobs:
           if-no-files-found: error
 
   test_pathfinder_ethereum_alchemy:
-    name: pathfinder-ethereum tests (alchemy)
+    name: l1 tests (alchemy)
     needs: compile_pathfinder_ethereum_tests
     runs-on: ubuntu-latest
     steps:       
@@ -70,7 +70,7 @@ jobs:
             timeout 3m ./pathfinder_ethereum
 
   test_pathfinder_ethereum_infura:
-    name: pathfinder-ethereum tests (infura)
+    name: l1 tests (infura)
     needs: compile_pathfinder_ethereum_tests
     runs-on: ubuntu-latest
     steps:       
@@ -91,7 +91,7 @@ jobs:
             timeout 3m ./pathfinder_ethereum
 
   test_all_except_pathfinder_ethereum:
-    name: all tests w/o pathfinder-ethereum
+    name: all tests w/o l1
     runs-on: ubuntu-latest
     steps:
       # Required for the python environment
