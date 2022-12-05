@@ -1586,7 +1586,8 @@ fn into_rpc_error(e: starknet_gateway_types::error::SequencerError) -> Error {
             | InvalidTransactionNonce
             | OutOfRangeFee
             | InvalidTransactionVersion
-            | InvalidProgram => Error::Call(CallError::Failed(e.into())),
+            | InvalidProgram
+            | DeprecatedTransaction => Error::Call(CallError::Failed(e.into())),
             UndeclaredClass => ErrorCode::InvalidContractClassHash.into(),
         },
     }
