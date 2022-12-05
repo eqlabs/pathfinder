@@ -353,7 +353,7 @@ mod tests {
         },
     };
     use crate::{
-        sequencer::{test_utils::*, Client},
+        sequencer::test_utils::*,
         state::{state_tree::GlobalStateTree, PendingData, SyncState},
     };
     use assert_matches::assert_matches;
@@ -369,6 +369,7 @@ mod tests {
     };
     use serde_json::json;
     use stark_hash::StarkHash;
+    use starknet_gateway_client::Client;
     use starknet_gateway_types::reply::PendingBlock;
     use std::sync::Arc;
 

@@ -74,7 +74,6 @@ pub async fn poll_pending(
 #[cfg(test)]
 mod tests {
     use super::poll_pending;
-    use crate::sequencer;
     use assert_matches::assert_matches;
     use pathfinder_common::{
         starkhash, starkhash_bytes, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,

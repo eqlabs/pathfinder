@@ -695,8 +695,8 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
         use crate::monitoring::metrics::test::RecorderGuard;
-        use crate::sequencer::reply::{Block, Status};
         use pathfinder_common::{consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, StarknetBlockTimestamp};
+        use starknet_gateway_types::reply::{Block, Status};
         use std::convert::Infallible;
         use warp::Filter;
 
@@ -869,7 +869,7 @@ mod tests {
         #[tokio::test]
         async fn with_starknet_version_added_in_0_9_1() {
             let _guard = RecorderGuard::lock_as_noop();
-            use crate::sequencer::reply::MaybePendingBlock;
+            use starknet_gateway_types::reply::MaybePendingBlock;
             let (_jh, client) = setup([
                 // TODO move these fixtures to v0_9_1
                 (
@@ -1783,7 +1783,7 @@ mod tests {
     }
 
     mod chain {
-        use crate::sequencer;
+        use crate::Client;
         use pathfinder_common::Chain;
 
         #[derive(Copy, Clone, PartialEq, Eq)]
@@ -1794,15 +1794,13 @@ mod tests {
             Invalid,
         }
 
-        /// Creates a [sequencer::Client] whose Sequencer gateway is either the real Sequencer,
+        /// Creates a [starknet_gateway_client::Client] where the endpoint is either the real feeder gateway,
         /// or a local warp server. A local server is created if:
         /// - SEQUENCER_TESTS_LIVE_API is not set, __or__
         /// - `target == TargetChain::Invalid`
         ///
         /// The local server only supports the `feeder_gateway/get_block?blockNumber=0` queries.
-        fn setup_server(
-            target: TargetChain,
-        ) -> (Option<tokio::task::JoinHandle<()>>, sequencer::Client) {
+        fn setup_server(target: TargetChain) -> (Option<tokio::task::JoinHandle<()>>, Client) {
             use warp::http::{Response, StatusCode};
             use warp::Filter;
 
@@ -1812,8 +1810,8 @@ mod tests {
                 && target != TargetChain::Invalid
             {
                 match target {
-                    TargetChain::Mainnet => (None, sequencer::Client::new(Chain::Mainnet).unwrap()),
-                    TargetChain::Testnet => (None, sequencer::Client::new(Chain::Testnet).unwrap()),
+                    TargetChain::Mainnet => (None, Client::new(Chain::Mainnet).unwrap()),
+                    TargetChain::Testnet => (None, Client::new(Chain::Testnet).unwrap()),
                     // Escaped above already
                     TargetChain::Invalid => unreachable!(),
                 }
@@ -1856,7 +1854,7 @@ mod tests {
 
                 let (addr, serve_fut) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
                 let server_handle = tokio::spawn(serve_fut);
-                let client = sequencer::Client::with_base_url(
+                let client = Client::with_base_url(
                     reqwest::Url::parse(&format!("http://{}", addr)).unwrap(),
                 )
                 .unwrap();

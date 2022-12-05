@@ -22,6 +22,8 @@ tracing = "0.1.31"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
+base64 = "0.13.0"
+flate2 = "1.0.23"
 http = "0.2.6"
 lazy_static = "1.4.0"
 mockall = "0.11.0"
