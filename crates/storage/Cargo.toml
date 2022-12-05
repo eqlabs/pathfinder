@@ -7,7 +7,7 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-tests = []
+test-utils = []
 
 [dependencies]
 anyhow = "1.0.44"

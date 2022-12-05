@@ -63,7 +63,7 @@ pub trait NodeStorage {
     fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()>;
 
     /// Decrement previously stored `key`'s reference count. This shouldn't fail for key not found.
-    #[cfg(feature = "tests")]
+    #[cfg(feature = "test-utils")]
     fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
 
     /// Increment previously stored `key`'s reference count. This shouldn't fail for key not found.
@@ -81,7 +81,7 @@ impl NodeStorage for () {
         Ok(())
     }
 
-    #[cfg(feature = "tests")]
+    #[cfg(feature = "test-utils")]
     fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
         Ok(())
     }
@@ -115,7 +115,7 @@ impl NodeStorage for std::cell::RefCell<std::collections::HashMap<StarkHash, Per
         Ok(())
     }
 
-    #[cfg(feature = "tests")]
+    #[cfg(feature = "test-utils")]
     fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
         Ok(())
     }
@@ -159,12 +159,12 @@ struct Queries<'a> {
     insert: Cow<'a, str>,
     update: Cow<'a, str>,
     get: Cow<'a, str>,
-    #[cfg(feature = "tests")]
+    #[cfg(feature = "test-utils")]
     delete_node: Cow<'a, str>,
-    #[cfg(feature = "tests")]
+    #[cfg(feature = "test-utils")]
     set_ref_count: Cow<'a, str>,
     increment_ref_count: Cow<'a, str>,
-    #[cfg(feature = "tests")]
+    #[cfg(feature = "test-utils")]
     get_ref_count: Cow<'a, str>,
 }
 
@@ -192,16 +192,16 @@ impl Queries<'static> {
             .into(),
             update: format!("UPDATE {} SET data=?, ref_count=? WHERE hash=?", table).into(),
             get: format!("SELECT data FROM {} WHERE hash = ?", table).into(),
-            #[cfg(feature = "tests")]
+            #[cfg(feature = "test-utils")]
             delete_node: format!("DELETE FROM {} WHERE hash = ?", table).into(),
-            #[cfg(feature = "tests")]
+            #[cfg(feature = "test-utils")]
             set_ref_count: format!("UPDATE {} SET ref_count = ? WHERE hash = ?", table).into(),
             increment_ref_count: format!(
                 "UPDATE {} SET ref_count = ref_count + 1 WHERE hash = ?",
                 table
             )
             .into(),
-            #[cfg(feature = "tests")]
+            #[cfg(feature = "test-utils")]
             get_ref_count: format!("SELECT ref_count FROM {} WHERE hash = ?", table).into(),
         }
     }
@@ -225,12 +225,12 @@ impl Queries<'static> {
             insert: borrow_cow!(self.insert),
             update: borrow_cow!(self.update),
             get: borrow_cow!(self.get),
-            #[cfg(feature = "tests")]
+            #[cfg(feature = "test-utils")]
             delete_node: borrow_cow!(self.delete_node),
-            #[cfg(feature = "tests")]
+            #[cfg(feature = "test-utils")]
             set_ref_count: borrow_cow!(self.set_ref_count),
             increment_ref_count: borrow_cow!(self.increment_ref_count),
-            #[cfg(feature = "tests")]
+            #[cfg(feature = "test-utils")]
             get_ref_count: borrow_cow!(self.get_ref_count),
         }
     }
@@ -245,7 +245,7 @@ impl<'a, 'queries> NodeStorage for RcNodeStorage<'a, 'queries> {
         self.upsert(key, node)
     }
 
-    #[cfg(feature = "tests")]
+    #[cfg(feature = "test-utils")]
     fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         RcNodeStorage::decrement_ref_count(self, key)
     }
@@ -494,7 +494,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     ///
     /// Does not perform rollback on failure. This implies that you should rollback the [RcNodeStorage's](RcNodeStorage) transaction
     /// if this call returns an error to prevent database corruption.
-    #[cfg(feature = "tests")]
+    #[cfg(feature = "test-utils")]
     fn delete_node(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
@@ -521,7 +521,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
 
     /// Decrements the reference count of the node and automatically deletes it
     /// if the count becomes zero.
-    #[cfg(feature = "tests")]
+    #[cfg(feature = "test-utils")]
     pub fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
