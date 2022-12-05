@@ -169,7 +169,7 @@ mod tests {
             let storage =
                 pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
                     .unwrap();
-            let sync_state = Arc::new(crate::state::SyncState::default());
+            let sync_state = Arc::new(crate::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
                 storage.path().into(),
                 std::num::NonZeroUsize::try_from(2).unwrap(),

@@ -10,6 +10,7 @@ use pathfinder_lib::{
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
     state,
 };
+use pathfinder_rpc::SyncState;
 use pathfinder_storage::{JournalMode, Storage};
 use starknet_gateway_client::ClientApi;
 use std::sync::{atomic::AtomicBool, Arc};
@@ -230,7 +231,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
 
     // TODO: verify Ethereum core contract matches if we are on a custom network.
 
-    let sync_state = Arc::new(state::SyncState::default());
+    let sync_state = Arc::new(SyncState::default());
     let pending_state = state::PendingData::default();
     let pending_interval = match config.poll_pending {
         true => Some(std::time::Duration::from_secs(5)),

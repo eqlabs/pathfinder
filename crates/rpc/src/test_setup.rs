@@ -278,8 +278,7 @@ where
     where
         <ParamsIter as Iterator>::Item: ::serde::Serialize,
     {
-        use crate::state::SyncState;
-        use crate::{RpcApi, RpcServer};
+        use crate::{RpcApi, RpcServer, SyncState};
         use futures::stream::StreamExt;
         use jsonrpsee::rpc_params;
         use pathfinder_common::{Chain, ChainId};

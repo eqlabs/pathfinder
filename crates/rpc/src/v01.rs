@@ -342,16 +342,15 @@ pub fn register_all_methods(
 
 #[cfg(test)]
 mod tests {
-    use crate::state::{state_tree::GlobalStateTree, SyncState};
-    use crate::test_client::TestClient;
-    use crate::v01::types::reply::BlockHashAndNumber;
-    use crate::{tests::by_name, RpcServer};
+    use crate::state::state_tree::GlobalStateTree;
     use crate::{
-        tests::{create_pending_data, run_server, setup_storage, LOCALHOST},
+        test_client::TestClient,
+        tests::{by_name, create_pending_data, run_server, setup_storage, LOCALHOST},
         v01::{
             api::RpcApi,
-            types::reply::{Block, Transactions},
+            types::reply::{Block, BlockHashAndNumber, Transactions},
         },
+        RpcServer, SyncState,
     };
     use assert_matches::assert_matches;
     use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};

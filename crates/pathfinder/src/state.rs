@@ -14,7 +14,7 @@ pub mod merkle_tree;
 pub mod state_tree;
 mod sync;
 
-pub use sync::{l1, l2, sync, PendingData, State as SyncState};
+pub use sync::{l1, l2, sync, PendingData};
 
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the
 /// [ContractStateHash] of the new state.

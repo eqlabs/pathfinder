@@ -2,7 +2,8 @@
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
     gas_price,
-    state::{state_tree::GlobalStateTree, SyncState},
+    state::state_tree::GlobalStateTree,
+    SyncState,
 };
 use crate::{
     v01::types::{

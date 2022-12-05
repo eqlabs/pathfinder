@@ -28,18 +28,6 @@ use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 
-pub struct State {
-    pub status: RwLock<SyncStatus>,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            status: RwLock::new(SyncStatus::False(false)),
-        }
-    }
-}
-
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 #[allow(clippy::too_many_arguments)]
 pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
@@ -894,6 +882,7 @@ mod tests {
         StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
         types::CompressedContract, ContractCodeTable, L1StateTable, L1TableBlockId, RefsTable,
         StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, Storage,
@@ -1167,7 +1156,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_update() {
         let chain = Chain::Testnet;
-        let sync_state = Arc::new(state::SyncState::default());
+        let sync_state = Arc::new(SyncState::default());
         let core_address = pathfinder_ethereum::contract::TESTNET_ADDRESSES.core;
 
         lazy_static::lazy_static! {
@@ -1292,7 +1281,7 @@ mod tests {
                 Chain::Testnet,
                 pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
                 FakeSequencer,
-                Arc::new(state::SyncState::default()),
+                Arc::new(SyncState::default()),
                 l1,
                 l2_noop,
                 PendingData::default(),
@@ -1362,7 +1351,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1,
             l2_noop,
             PendingData::default(),
@@ -1398,7 +1387,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1,
             l2_noop,
             PendingData::default(),
@@ -1423,7 +1412,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
         let chain = Chain::Testnet;
-        let sync_state = Arc::new(state::SyncState::default());
+        let sync_state = Arc::new(SyncState::default());
 
         // Incoming L2 update
         let block = || BLOCK0.clone();
@@ -1542,7 +1531,7 @@ mod tests {
                 Chain::Testnet,
                 pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
                 FakeSequencer,
-                Arc::new(state::SyncState::default()),
+                Arc::new(SyncState::default()),
                 l1_noop,
                 l2,
                 PendingData::default(),
@@ -1605,7 +1594,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1_noop,
             l2,
             PendingData::default(),
@@ -1653,7 +1642,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1_noop,
             l2,
             PendingData::default(),
@@ -1701,7 +1690,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1_noop,
             l2,
             PendingData::default(),
@@ -1730,7 +1719,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1_noop,
             l2,
             PendingData::default(),

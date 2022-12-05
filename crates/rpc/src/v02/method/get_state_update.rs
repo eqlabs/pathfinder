@@ -382,7 +382,7 @@ mod tests {
         let state_updates = pathfinder_storage::test_fixtures::init::with_n_state_updates(&tx, 3);
         tx.commit().unwrap();
 
-        let sync_state = std::sync::Arc::new(crate::state::SyncState::default());
+        let sync_state = std::sync::Arc::new(crate::SyncState::default());
         let sequencer = starknet_gateway_client::Client::new(Chain::Testnet).unwrap();
         let context = RpcContext::new(storage, sync_state, ChainId::TESTNET, sequencer);
         let state_updates = state_updates.into_iter().map(Into::into).collect();

@@ -1,7 +1,7 @@
 use super::error::RpcError;
 use crate::cairo::ext_py;
 use crate::gas_price;
-use crate::state::SyncState;
+use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
 use starknet_gateway_types::pending::PendingData;

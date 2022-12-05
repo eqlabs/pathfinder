@@ -16,9 +16,9 @@ use jsonrpsee::{
     core::server::rpc_module::Methods,
     http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
 };
-
 use std::{net::SocketAddr, result::Result};
-use v01::api::RpcApi;
+use tokio::sync::RwLock;
+use v01::{api::RpcApi, types::reply::Syncing};
 
 pub struct RpcServer {
     addr: SocketAddr,
@@ -93,12 +93,21 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     }
 }
 
+pub struct SyncState {
+    pub status: RwLock<Syncing>,
+}
+
+impl Default for SyncState {
+    fn default() -> Self {
+        Self {
+            status: RwLock::new(Syncing::False(false)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{
-        state::{state_tree::GlobalStateTree, PendingData},
-        RpcServer,
-    };
+    use crate::{state::state_tree::GlobalStateTree, RpcServer};
     use ethers::types::H256;
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
     use pathfinder_common::{
@@ -112,12 +121,15 @@ mod tests {
         StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
     use stark_hash::StarkHash;
-    use starknet_gateway_types::reply::{
-        state_update::StorageDiff,
-        transaction::{
-            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-            DeployTransaction, EntryPointType, Event, ExecutionResources, InvokeTransaction,
-            InvokeTransactionV0, Receipt, Transaction,
+    use starknet_gateway_types::{
+        pending::PendingData,
+        reply::{
+            state_update::StorageDiff,
+            transaction::{
+                execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+                DeployTransaction, EntryPointType, Event, ExecutionResources, InvokeTransaction,
+                InvokeTransactionV0, Receipt, Transaction,
+            },
         },
     };
     use std::{
