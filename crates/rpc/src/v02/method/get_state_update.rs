@@ -1,4 +1,4 @@
-use crate::rpc::v02::RpcContext;
+use crate::v02::RpcContext;
 use anyhow::{anyhow, Context};
 use pathfinder_common::BlockId;
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable};
@@ -8,7 +8,7 @@ pub struct GetStateUpdateInput {
     block_id: BlockId,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(GetStateUpdateError: BlockNotFound);
+crate::error::generate_rpc_error_subset!(GetStateUpdateError: BlockNotFound);
 
 pub async fn get_state_update(
     context: RpcContext,
@@ -315,8 +315,8 @@ mod types {
                 },
             ];
 
-            let fixture = include_str!("../../../../fixtures/rpc/0.44.0/state_update.json")
-                .replace([' ', '\n'], "");
+            let fixture =
+                include_str!("../../../fixtures/0.44.0/state_update.json").replace([' ', '\n'], "");
 
             assert_eq!(serde_json::to_string(&data).unwrap(), fixture);
             assert_eq!(

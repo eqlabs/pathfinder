@@ -1,5 +1,5 @@
-use crate::rpc::v02::RpcContext;
 use crate::state::PendingData;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use pathfinder_storage::{
@@ -8,7 +8,7 @@ use pathfinder_storage::{
 use serde::Deserialize;
 use tokio::task::JoinHandle;
 
-crate::rpc::error::generate_rpc_error_subset!(
+crate::error::generate_rpc_error_subset!(
     GetEventsError: BlockNotFound,
     PageSizeTooBig,
     InvalidContinuationToken

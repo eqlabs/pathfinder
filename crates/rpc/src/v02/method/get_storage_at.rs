@@ -1,5 +1,5 @@
-use crate::rpc::v02::RpcContext;
 use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
+use crate::v02::RpcContext;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
@@ -13,7 +13,7 @@ pub struct GetStorageAtInput {
     pub block_id: BlockId,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(GetStorageAtError: ContractNotFound, BlockNotFound);
+crate::error::generate_rpc_error_subset!(GetStorageAtError: ContractNotFound, BlockNotFound);
 
 /// Get the value of the storage at the given address and key.
 pub async fn get_storage_at(

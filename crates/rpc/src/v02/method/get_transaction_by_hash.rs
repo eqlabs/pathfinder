@@ -1,5 +1,5 @@
-use crate::rpc::v02::types::reply::Transaction;
-use crate::rpc::v02::RpcContext;
+use crate::v02::types::reply::Transaction;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
 use pathfinder_storage::StarknetTransactionsTable;
@@ -9,7 +9,7 @@ pub struct GetTransactionByHashInput {
     transaction_hash: StarknetTransactionHash,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFound);
+crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFound);
 
 #[allow(dead_code)]
 pub async fn get_transaction_by_hash(
@@ -125,7 +125,7 @@ mod tests {
         };
 
         let result = get_transaction_by_hash(context, input).await.unwrap();
-        use crate::rpc::v02::types::reply;
+        use crate::v02::types::reply;
         assert_eq!(
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
@@ -151,7 +151,7 @@ mod tests {
         };
 
         let result = get_transaction_by_hash(context, input).await.unwrap();
-        use crate::rpc::v02::types::reply;
+        use crate::v02::types::reply;
         assert_eq!(
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {

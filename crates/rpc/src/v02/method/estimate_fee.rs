@@ -1,8 +1,7 @@
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
-    rpc::v02::types::request::BroadcastedTransaction,
-    rpc::v02::RpcContext,
     state::PendingData,
+    v02::{types::request::BroadcastedTransaction, RpcContext},
 };
 use pathfinder_common::{BlockId, StarknetBlockTimestamp};
 use serde::Serialize;
@@ -15,7 +14,7 @@ pub struct EstimateFeeInput {
     block_id: BlockId,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(
+crate::error::generate_rpc_error_subset!(
     EstimateFeeError: BlockNotFound,
     ContractNotFound,
     ContractError,
@@ -145,8 +144,8 @@ pub struct FeeEstimate {
     pub overall_fee: ethers::types::H256,
 }
 
-impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
-    fn from(v01: crate::rpc::v01::types::reply::FeeEstimate) -> Self {
+impl From<crate::v01::types::reply::FeeEstimate> for FeeEstimate {
+    fn from(v01: crate::v01::types::reply::FeeEstimate) -> Self {
         Self {
             gas_consumed: v01.consumed,
             gas_price: v01.gas_price,
@@ -158,7 +157,7 @@ impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rpc::v02::types::request::BroadcastedInvokeTransaction;
+    use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
         starkhash, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
@@ -171,7 +170,7 @@ mod tests {
 
         fn test_invoke_txn() -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                crate::rpc::v02::types::request::BroadcastedInvokeTransactionV0 {
+                crate::v02::types::request::BroadcastedInvokeTransactionV0 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
                     signature: vec![TransactionSignatureElem(starkhash!("07"))],
@@ -249,11 +248,11 @@ mod tests {
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
     mod ext_py {
         use super::*;
-        use crate::rpc::v02::types::request::{
+        use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeployTransaction,
             BroadcastedInvokeTransactionV0,
         };
-        use crate::rpc::v02::types::ContractClass;
+        use crate::v02::types::ContractClass;
         use pathfinder_common::{starkhash_bytes, ContractAddressSalt};
 
         // Mainnet block number 5

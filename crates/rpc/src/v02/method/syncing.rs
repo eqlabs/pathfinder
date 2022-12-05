@@ -1,16 +1,15 @@
-use crate::rpc::v02::RpcContext;
+use crate::v02::RpcContext;
 use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_serde::StarknetBlockNumberAsHexStr;
 use serde::Serialize;
 
-crate::rpc::error::generate_rpc_error_subset!(SyncingError);
+crate::error::generate_rpc_error_subset!(SyncingError);
 
-#[allow(dead_code)]
 pub async fn syncing(context: RpcContext) -> Result<SyncingOuput, SyncingError> {
     // Scoped so I don't have to think too hard about mutex guard drop semantics.
     let value = { context.sync_status.status.read().await.clone() };
 
-    use crate::rpc::v01::types::reply::Syncing;
+    use crate::v01::types::reply::Syncing;
     let value = match value {
         Syncing::False(_) => SyncingOuput::False,
         Syncing::Status(status) => {
@@ -66,7 +65,7 @@ pub struct SyncingStatus {
 #[cfg(test)]
 mod tests {
     use super::SyncingOuput;
-    use crate::rpc::v02::RpcContext;
+    use crate::v02::RpcContext;
     mod serde {
         use super::super::{SyncingOuput, SyncingStatus};
 
@@ -106,9 +105,9 @@ mod tests {
 
     #[tokio::test]
     async fn syncing() {
-        use crate::rpc::v01::types::reply::syncing::NumberedBlock;
-        use crate::rpc::v01::types::reply::syncing::Status as V1Status;
-        use crate::rpc::v01::types::reply::Syncing as V1Syncing;
+        use crate::v01::types::reply::syncing::NumberedBlock;
+        use crate::v01::types::reply::syncing::Status as V1Status;
+        use crate::v01::types::reply::Syncing as V1Syncing;
         use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 
         let status = V1Syncing::Status(V1Status {
@@ -137,7 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn not_syncing() {
-        let status = crate::rpc::v01::types::reply::Syncing::False(false);
+        let status = crate::v01::types::reply::Syncing::False(false);
 
         let context = RpcContext::for_tests();
         *context.sync_status.status.write().await = status;

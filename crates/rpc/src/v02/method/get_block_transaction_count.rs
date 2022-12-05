@@ -1,4 +1,4 @@
-use crate::rpc::v02::RpcContext;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::BlockId;
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
@@ -10,7 +10,7 @@ pub struct GetBlockTransactionCountInput {
 
 type BlockTransactionCount = u64;
 
-crate::rpc::error::generate_rpc_error_subset!(GetBlockTransactionCountError: BlockNotFound);
+crate::error::generate_rpc_error_subset!(GetBlockTransactionCountError: BlockNotFound);
 
 pub async fn get_block_transaction_count(
     context: RpcContext,

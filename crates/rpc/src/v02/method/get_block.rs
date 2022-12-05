@@ -1,5 +1,5 @@
-use crate::rpc::v02::common::get_block_status;
-use crate::rpc::v02::RpcContext;
+use crate::v02::common::get_block_status;
+use crate::v02::RpcContext;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
@@ -12,7 +12,7 @@ pub struct GetBlockInput {
     block_id: BlockId,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(GetBlockError: BlockNotFound);
+crate::error::generate_rpc_error_subset!(GetBlockError: BlockNotFound);
 
 /// Get block information with transaction hashes given the block id
 pub async fn get_block_with_tx_hashes(
@@ -159,7 +159,7 @@ fn get_block_transactions(
 }
 
 mod types {
-    use crate::rpc::v02::types::reply::{BlockStatus, Transaction};
+    use crate::v02::types::reply::{BlockStatus, Transaction};
     use pathfinder_common::{
         GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash,

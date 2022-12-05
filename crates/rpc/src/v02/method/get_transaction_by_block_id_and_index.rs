@@ -1,5 +1,5 @@
-use crate::rpc::v02::types::reply::Transaction;
-use crate::rpc::v02::RpcContext;
+use crate::v02::types::reply::Transaction;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, StarknetTransactionIndex};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
@@ -10,7 +10,7 @@ pub struct GetTransactionByBlockIdAndIndexInput {
     index: StarknetTransactionIndex,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(
+crate::error::generate_rpc_error_subset!(
     GetTransactionByBlockIdAndIndexError: BlockNotFound,
     InvalidTxnIndex
 );

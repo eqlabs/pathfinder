@@ -1,10 +1,10 @@
-use crate::rpc::v02::RpcContext;
 use crate::state::state_tree::GlobalStateTree;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress, ContractStateHash};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 
-crate::rpc::error::generate_rpc_error_subset!(GetClassHashAtError: BlockNotFound, ContractNotFound);
+crate::error::generate_rpc_error_subset!(GetClassHashAtError: BlockNotFound, ContractNotFound);
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetClassHashAtInput {

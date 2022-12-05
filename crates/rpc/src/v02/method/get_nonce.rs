@@ -1,4 +1,4 @@
-use crate::rpc::v02::RpcContext;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
 
@@ -8,7 +8,7 @@ pub struct GetNonceInput {
     contract_address: ContractAddress,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(GetNonceError: BlockNotFound, ContractNotFound);
+crate::error::generate_rpc_error_subset!(GetNonceError: BlockNotFound, ContractNotFound);
 
 pub async fn get_nonce(
     context: RpcContext,
@@ -78,7 +78,7 @@ async fn get_pending_nonce(
 #[cfg(test)]
 mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
-    use crate::rpc::v02::RpcContext;
+    use crate::v02::RpcContext;
     use pathfinder_common::{starkhash, starkhash_bytes};
     use pathfinder_common::{
         BlockId, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,

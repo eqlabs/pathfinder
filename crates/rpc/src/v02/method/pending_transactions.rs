@@ -1,7 +1,7 @@
-use crate::rpc::v02::types::reply::Transaction;
-use crate::rpc::v02::RpcContext;
+use crate::v02::types::reply::Transaction;
+use crate::v02::RpcContext;
 
-crate::rpc::error::generate_rpc_error_subset!(GetNonceError:);
+crate::error::generate_rpc_error_subset!(GetNonceError:);
 
 pub async fn pending_transactions(context: RpcContext) -> Result<Vec<Transaction>, GetNonceError> {
     let transactions = match context.pending_data {
@@ -18,7 +18,7 @@ pub async fn pending_transactions(context: RpcContext) -> Result<Vec<Transaction
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rpc::v02::types::reply::{
+    use crate::v02::types::reply::{
         CommonInvokeTransactionProperties, DeployTransaction, InvokeTransaction,
         InvokeTransactionV0,
     };
@@ -33,7 +33,7 @@ mod tests {
         let tx0 = InvokeTransactionV0 {
             common: CommonInvokeTransactionProperties {
                 hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 0")),
-                max_fee: crate::rpc::v01::types::request::Call::DEFAULT_MAX_FEE,
+                max_fee: crate::v01::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
                 nonce: TransactionNonce::ZERO,
             },

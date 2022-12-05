@@ -1,10 +1,10 @@
-use crate::rpc::v02::types::ContractClass;
-use crate::rpc::v02::RpcContext;
+use crate::v02::types::ContractClass;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash};
 use rusqlite::OptionalExtension;
 
-crate::rpc::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
+crate::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetClassInput {

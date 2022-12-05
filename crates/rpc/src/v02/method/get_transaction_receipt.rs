@@ -1,5 +1,5 @@
-use crate::rpc::v02::common::get_block_status;
-use crate::rpc::v02::RpcContext;
+use crate::v02::common::get_block_status;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
 use pathfinder_storage::{StarknetBlocksTable, StarknetTransactionsTable};
@@ -9,7 +9,7 @@ pub struct GetTransactionReceiptInput {
     transaction_hash: StarknetTransactionHash,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFound);
+crate::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFound);
 
 #[allow(dead_code)]
 pub async fn get_transaction_receipt(
@@ -78,7 +78,7 @@ pub async fn get_transaction_receipt(
 }
 
 mod types {
-    use crate::rpc::v02::types::reply::BlockStatus;
+    use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
         ContractAddress, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
@@ -515,8 +515,8 @@ mod types {
                 )),
             ];
 
-            let fixture = include_str!("../../../../fixtures/rpc/0.44.0/receipt.json")
-                .replace([' ', '\n'], "");
+            let fixture =
+                include_str!("../../../fixtures/0.44.0/receipt.json").replace([' ', '\n'], "");
 
             assert_eq!(serde_json::to_string(&data).unwrap(), fixture);
             assert_eq!(
