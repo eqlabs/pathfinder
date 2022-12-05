@@ -1,6 +1,6 @@
 use super::error::RpcError;
 use crate::cairo::ext_py;
-use crate::rpc::gas_price;
+use crate::gas_price;
 use crate::state::PendingData;
 use crate::state::SyncState;
 use pathfinder_common::ChainId;

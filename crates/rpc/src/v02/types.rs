@@ -177,7 +177,7 @@ pub mod request {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../../fixtures/rpc/0.44.0/", $file_name))
+                include_str!(concat!("../../fixtures/0.44.0/", $file_name))
                     .replace(&[' ', '\n'], "")
             };
         }
@@ -193,7 +193,7 @@ pub mod request {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use crate::rpc::v02::types::{ContractClass, ContractEntryPoints};
+            use crate::v02::types::{ContractClass, ContractEntryPoints};
             use pathfinder_common::starkhash;
             use pretty_assertions::assert_eq;
 
@@ -613,7 +613,7 @@ pub mod reply {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../../fixtures/rpc/0.44.0/", $file_name))
+                include_str!(concat!("../../fixtures/0.44.0/", $file_name))
                     .replace(&[' ', '\n'], "")
             };
         }

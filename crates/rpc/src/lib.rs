@@ -1,4 +1,5 @@
 //! StarkNet node JSON-RPC related modules.
+pub mod cairo;
 mod error;
 pub mod gas_price;
 mod metrics;

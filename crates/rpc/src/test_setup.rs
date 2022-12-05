@@ -1,5 +1,5 @@
 //! Utilities for easier construction of RPC tests.
-use crate::rpc::test_client::TestClient;
+use crate::test_client::TestClient;
 use pathfinder_storage::Storage;
 use rusqlite::Transaction;
 
@@ -158,12 +158,11 @@ impl<'a, StorageInitIter, ParamsIter> TestWithParams<'a, StorageInitIter, Params
         'a,
         StorageInitIter,
         ParamsIter,
-        impl Copy
-            + FnOnce(jsonrpsee::core::Error, u32, usize) -> crate::rpc::v01::types::reply::ErrorCode,
+        impl Copy + FnOnce(jsonrpsee::core::Error, u32, usize) -> crate::v01::types::reply::ErrorCode,
     > {
         self.map_err(|error, line, test_case| match &error {
             jsonrpsee::core::Error::Call(jsonrpsee::types::error::CallError::Custom(custom)) => {
-                match crate::rpc::v01::types::reply::ErrorCode::try_from(custom.code()) {
+                match crate::v01::types::reply::ErrorCode::try_from(custom.code()) {
                     Ok(error_code) => error_code,
                     Err(_) => panic!("line {line}, test case {test_case}: {error}"),
                 }
@@ -279,8 +278,8 @@ where
     where
         <ParamsIter as Iterator>::Item: ::serde::Serialize,
     {
-        use crate::rpc::{RpcApi, RpcServer};
         use crate::state::SyncState;
+        use crate::{RpcApi, RpcServer};
         use futures::stream::StreamExt;
         use jsonrpsee::rpc_params;
         use pathfinder_common::{Chain, ChainId};

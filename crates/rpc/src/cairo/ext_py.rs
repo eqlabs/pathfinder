@@ -15,8 +15,8 @@
 //! global_state, and after that, calls can be made to it's `block_hash` for which we probably need
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
-use crate::rpc::v01::types::{reply::FeeEstimate, request::Call};
-use crate::rpc::v02::types::request::{BroadcastedInvokeTransaction, BroadcastedTransaction};
+use crate::v01::types::{reply::FeeEstimate, request::Call};
+use crate::v02::types::request::{BroadcastedInvokeTransaction, BroadcastedTransaction};
 use pathfinder_common::{CallResultValue, StarknetBlockTimestamp};
 use starknet_gateway_types::{reply::StateUpdate, request::add_transaction};
 use std::sync::Arc;
@@ -344,7 +344,7 @@ type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExit
 #[cfg(test)]
 mod tests {
     use super::sub_process::launch_python;
-    use crate::rpc::v02::types::request::{
+    use crate::v02::types::request::{
         BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction,
         BroadcastedInvokeTransactionV0, BroadcastedTransaction,
     };

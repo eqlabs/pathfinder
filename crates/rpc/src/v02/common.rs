@@ -1,5 +1,5 @@
 //! Common utilities shared among [`v02`](super) methods.
-use crate::rpc::v02::types::reply::BlockStatus;
+use crate::v02::types::reply::BlockStatus;
 use anyhow::Context;
 use pathfinder_common::StarknetBlockNumber;
 use pathfinder_storage::RefsTable;
