@@ -694,8 +694,10 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
-        use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_common::{consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, StarknetBlockTimestamp};
+        use pathfinder_common::{
+            consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, test_utils::metrics::RecorderGuard,
+            StarknetBlockTimestamp,
+        };
         use starknet_gateway_types::reply::{Block, Status};
         use std::convert::Infallible;
         use warp::Filter;
@@ -743,8 +745,7 @@ mod tests {
 
     mod block_matches_by_hash_on {
         use super::*;
-        use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::{starkhash, test_utils::metrics::RecorderGuard};
 
         #[tokio::test]
         async fn genesis() {
@@ -805,8 +806,7 @@ mod tests {
 
     mod block {
         use super::*;
-        use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_common::BlockId;
+        use pathfinder_common::{test_utils::metrics::RecorderGuard, BlockId};
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1268,8 +1268,9 @@ mod tests {
             },
             *,
         };
-        use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_common::{starkhash, ContractAddress, GlobalRoot};
+        use pathfinder_common::{
+            starkhash, test_utils::metrics::RecorderGuard, ContractAddress, GlobalRoot,
+        };
         use pretty_assertions::assert_eq;
         use std::collections::{BTreeSet, HashMap};
 
@@ -1369,7 +1370,7 @@ mod tests {
 
     mod state_update {
         use super::*;
-        use crate::monitoring::metrics::test::RecorderGuard;
+        use pathfinder_common::test_utils::metrics::RecorderGuard;
 
         #[test_log::test(tokio::test)]
         async fn invalid_number() {
@@ -1918,7 +1919,7 @@ mod tests {
             F: Fn(Client, BlockId) -> Fut,
             Fut: Future<Output = T>,
         {
-            use crate::monitoring::metrics::test::{FakeRecorder, RecorderGuard};
+            use pathfinder_common::test_utils::metrics::{FakeRecorder, RecorderGuard};
 
             let recorder = FakeRecorder::new(&["get_block", "get_state_update"]);
             let handle = recorder.handle();

@@ -91,7 +91,7 @@ mod tests {
 
     #[tokio::test]
     async fn metrics() {
-        use super::metrics::test::RecorderGuard;
+        use pathfinder_common::test_utils::metrics::RecorderGuard;
 
         let recorder = PrometheusBuilder::new().build_recorder();
         let handle = recorder.handle();

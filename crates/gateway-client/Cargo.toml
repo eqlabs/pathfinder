@@ -27,6 +27,7 @@ flate2 = "1.0.23"
 http = "0.2.6"
 lazy_static = "1.4.0"
 mockall = "0.11.0"
+pathfinder-common = { path = "../common", features = ["test-utils"] }
 pathfinder-serde = { path = "../serde" }
 pretty_assertions = "1.0.0"
 serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }

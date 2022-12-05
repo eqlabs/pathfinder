@@ -2328,6 +2328,7 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "hex-literal",
+ "metrics",
  "rusqlite",
  "serde",
  "serde_json",

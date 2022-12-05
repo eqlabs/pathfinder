@@ -2838,10 +2838,10 @@ mod tests {
 
     #[tokio::test]
     async fn per_method_metrics() {
-        use crate::monitoring::metrics::test::FakeRecorder;
-        use crate::monitoring::metrics::{middleware::RpcMetricsMiddleware, test::RecorderGuard};
+        use crate::monitoring::metrics::middleware::RpcMetricsMiddleware;
         use crate::rpc::v01::types::reply::Block;
         use futures::stream::StreamExt;
+        use pathfinder_common::test_utils::metrics::{FakeRecorder, RecorderGuard};
 
         let recorder = FakeRecorder::new(&["starknet_getBlockWithTxHashes"]);
         let handle = recorder.handle();
