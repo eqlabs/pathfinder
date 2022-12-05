@@ -31,6 +31,7 @@ serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value
 serde_with = "1.9.4"
 sha3 = "0.9"
 stark_hash = { path = "../stark_hash" }
+starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 web3 = "0.18.0"
 zstd = "0.10"

@@ -2407,6 +2407,7 @@ dependencies = [
  "serde_with",
  "sha3",
  "stark_hash",
+ "starknet-gateway-client",
  "starknet-gateway-types",
  "thiserror",
  "tokio",
