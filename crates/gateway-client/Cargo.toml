@@ -20,8 +20,8 @@ pathfinder-common = { path = "../common" }
 pathfinder-retry = { path = "../retry" }
 pathfinder-serde = { path = "../serde" }
 reqwest = { version = "0.11.4", features = ["json"] }
-starknet-gateway-types = { path = "../gateway-types" }
 serde = { version = "1.0.130", features = ["derive"] }
+starknet-gateway-types = { path = "../gateway-types" }
 tracing = "0.1.31"
 
 [dev-dependencies]
@@ -36,8 +36,8 @@ pathfinder-serde = { path = "../serde" }
 pretty_assertions = "1.0.0"
 reqwest = { version = "0.11.4", features = ["json"] }
 serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
-starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 stark_hash = { path = "../stark_hash" }
+starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tokio = { version = "1.11.0", features = ["test-util"] }
 tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
