@@ -1,0 +1,50 @@
+[package]
+name = "pathfinder-rpc"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.62"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.44"
+jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_paths", default-features = false, features = [
+    "server",
+] }
+metrics = "0.20.1"
+pathfinder-common = { path = "../common" }
+pathfinder-ethereum = { path = "../ethereum" }
+pathfinder-serde = { path = "../serde" }
+pathfinder-storage = { path = "../storage" }
+rusqlite = { version = "0.27.0", features = ["bundled"] }
+serde = { version = "1.0.130", features = ["derive"] }
+serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
+serde_with = "1.9.4"
+stark_hash = { path = "../stark_hash" }
+starknet-gateway-client = { path = "../gateway-client" }
+starknet-gateway-types = { path = "../gateway-types" }
+tokio = "1.11.0"
+tracing = "0.1.31"
+thiserror = "1.0.30"
+web3 = "0.18.0"
+
+[dev-dependencies]
+assert_matches = "1.5.0"
+base64 = "0.13.0"
+bytes = "1.1.0"
+flate2 = "1.0.23"
+hex = "0.4.3"
+jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_paths", default-features = false, features = [
+    "server",
+    "async-client",
+] }
+futures = { version = "0.3", default-features = false, features = ["std"] }
+lazy_static = "1.4.0"
+pretty_assertions = "1.0.0"
+rusqlite = { version = "0.27.0", features = ["bundled"] }
+serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
+stark_hash = { path = "../stark_hash" }
+starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
+starknet-gateway-types = { path = "../gateway-types" }
+tokio = { version = "1.11.0", features = ["test-util"] }
+zstd = "0.10"

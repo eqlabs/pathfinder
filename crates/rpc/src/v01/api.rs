@@ -1,5 +1,10 @@
 //! Implementation of JSON-RPC endpoints.
-use crate::rpc::{
+use crate::{
+    cairo::ext_py::{self, BlockHashNumberOrLatest},
+    gas_price,
+    state::{state_tree::GlobalStateTree, PendingData, SyncState},
+};
+use crate::{
     v01::types::{
         reply::{
             Block, BlockHashAndNumber, BlockStatus, DeclareTransactionResult,
@@ -12,11 +17,6 @@ use crate::rpc::{
         BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV0,
         BroadcastedInvokeTransactionV1, BroadcastedTransaction,
     },
-};
-use crate::{
-    cairo::ext_py::{self, BlockHashNumberOrLatest},
-    rpc::gas_price,
-    state::{state_tree::GlobalStateTree, PendingData, SyncState},
 };
 use anyhow::Context;
 use jsonrpsee::{
@@ -200,7 +200,7 @@ impl RpcApi {
                 .context("Reading transactions from database")
                 .map_err(internal_server_error)?;
 
-        use crate::rpc::v01::types::reply;
+        use crate::v01::types::reply;
         match scope {
             BlockResponseScope::TransactionHashes => Ok(reply::Transactions::HashesOnly(
                 transactions_receipts
@@ -1102,16 +1102,14 @@ impl RpcApi {
             .skip(skip)
             // We need to take an extra event to determine is_last_page.
             .take(amount + 1)
-            .map(
-                |(event, tx_hash)| crate::rpc::v01::types::reply::EmittedEvent {
-                    data: event.data.clone(),
-                    keys: event.keys.clone(),
-                    from_address: event.from_address,
-                    block_hash: None,
-                    block_number: None,
-                    transaction_hash: tx_hash,
-                },
-            );
+            .map(|(event, tx_hash)| crate::v01::types::reply::EmittedEvent {
+                data: event.data.clone(),
+                keys: event.keys.clone(),
+                from_address: event.from_address,
+                block_hash: None,
+                block_number: None,
+                transaction_hash: tx_hash,
+            });
 
         dst.extend(pending_events);
         let is_last_page = dst.len() <= (original_len + amount);

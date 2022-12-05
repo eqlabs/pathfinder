@@ -2,5 +2,4 @@
 
 pub mod cairo;
 pub mod monitoring;
-pub mod rpc;
 pub mod state;

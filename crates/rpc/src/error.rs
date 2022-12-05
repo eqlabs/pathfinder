@@ -178,7 +178,7 @@ macro_rules! generate_rpc_error_subset {
     // By pushing the arms from this level downwards, and creating the match statement at the lowest
     // level, we guarantee that only valid valid Rust will bubble back up.
     (@from_def, $enum_name:ident, $($variants:ident),*) => {
-        impl From<$enum_name> for crate::rpc::error::RpcError {
+        impl From<$enum_name> for crate::error::RpcError {
             fn from(x: $enum_name) -> Self {
                 generate_rpc_error_subset!(@parse, x, $enum_name, {}, $($variants),*)
             }

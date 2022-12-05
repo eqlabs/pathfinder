@@ -110,7 +110,7 @@ pub mod reply {
     use stark_hash::StarkHash;
     use std::convert::From;
     // At the moment both reply types are the same for get_code, hence the re-export
-    use crate::rpc::v01::api::{BlockResponseScope, RawBlock};
+    use crate::v01::api::{BlockResponseScope, RawBlock};
 
     /// L2 Block status as returned by the RPC API.
     #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
@@ -1080,7 +1080,7 @@ pub mod reply {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../../fixtures/rpc/0.31.0/", $file_name))
+                include_str!(concat!("../../fixtures/0.31.0/", $file_name))
                     .replace(&[' ', '\n'], "")
             };
         }

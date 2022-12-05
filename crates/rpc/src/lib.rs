@@ -1,6 +1,7 @@
 //! StarkNet node JSON-RPC related modules.
 mod error;
 pub mod gas_price;
+mod metrics;
 mod pathfinder;
 #[cfg(test)]
 pub mod test_client;
@@ -9,7 +10,7 @@ pub mod test_setup;
 pub mod v01;
 pub mod v02;
 
-use crate::monitoring::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware};
+use crate::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware};
 use jsonrpsee::{
     core::server::rpc_module::Methods,
     http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
@@ -94,8 +95,8 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
 #[cfg(test)]
 mod tests {
     use crate::{
-        rpc::RpcServer,
         state::{state_tree::GlobalStateTree, PendingData},
+        RpcServer,
     };
     use ethers::types::H256;
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
@@ -394,7 +395,7 @@ mod tests {
                 )),
                 entry_point_selector: EntryPoint(starkhash_bytes!(b"entry point 0")),
                 entry_point_type: Some(EntryPointType::External),
-                max_fee: crate::rpc::v01::types::request::Call::DEFAULT_MAX_FEE,
+                max_fee: crate::v01::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
                 transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 0")),
             })

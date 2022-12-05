@@ -12,6 +12,7 @@ members = [
     "crates/gateway-types",
     "crates/pathfinder",
     "crates/retry",
+    "crates/rpc",
     "crates/serde",
     "crates/stark_curve",
     "crates/stark_hash",

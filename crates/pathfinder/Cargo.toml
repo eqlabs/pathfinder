@@ -29,9 +29,9 @@ flate2 = "1.0.23"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 hex = "0.4.3"
 hex-literal = "0.3"
-jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_paths", default-features = false, features = [
-    "server",
-] }
+# jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_paths", default-features = false, features = [
+#     "server",
+# ] }
 lazy_static = "1.4.0"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
@@ -39,6 +39,7 @@ num-bigint = { version = "0.4.3", features = ["serde"] }
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-retry = { path = "../retry" }
+pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
 reqwest = { version = "0.11.4", features = ["json"] }
@@ -66,10 +67,10 @@ assert_matches = "1.5.0"
 criterion = "0.3"
 flate2 = "1.0.23"
 http = "0.2.6"
-jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_paths", default-features = false, features = [
-    "server",
-    "async-client",
-] }
+# jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_paths", default-features = false, features = [
+#     "server",
+#     "async-client",
+# ] }
 mockall = "0.11.0"
 pathfinder-common = { path = "../common", features = ["full-serde", "test-utils"] }
 pathfinder-storage = { path = "../storage", features = ["test-utils"] }

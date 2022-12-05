@@ -310,8 +310,8 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<RpcContext>) -> an
 #[cfg(test)]
 mod tests {
     use super::RpcContext;
-    use crate::rpc::test_client::TestClientBuilder;
-    use crate::rpc::{RpcApi, RpcServer};
+    use crate::test_client::TestClientBuilder;
+    use crate::{RpcApi, RpcServer};
     use jsonrpsee::rpc_params;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
