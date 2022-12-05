@@ -457,27 +457,29 @@ mod json {
                 .expect("Extract and compute  hash");
         }
 
-        #[cfg(fixme)]
         #[tokio::test]
         async fn cairo_0_8() {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
             // we now need to ignore if empty).
             use super::super::extract_abi_code_hash;
-            use crate::sequencer::{self, ClientApi};
-            use pathfinder_common::{Chain, ClassHash, ContractAddress};
+            use pathfinder_common::ClassHash;
             use starkhash;
-
-            // Known contract which triggered a hash mismatch failure.
-            let address = ContractAddress::new_or_panic(starkhash!(
-                "0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC"
-            ));
 
             let expected = ClassHash(starkhash!(
                 "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
             ));
-            let sequencer = sequencer::Client::new(Chain::Testnet).unwrap();
 
-            let contract_definition = sequencer.full_contract(address).await.unwrap();
+            // Known contract which triggered a hash mismatch failure.
+            let contract_definition = reqwest::get(
+                "https://alpha4.starknet.io/feeder_gateway/get_full_contract?\
+                contractAddress=0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC",
+            )
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let (abi, bytecode, hash) = extract_abi_code_hash(&contract_definition)?;
                 Ok((contract_definition, abi, bytecode, hash))
