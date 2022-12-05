@@ -2,7 +2,7 @@
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
     gas_price,
-    state::{state_tree::GlobalStateTree, PendingData, SyncState},
+    state::{state_tree::GlobalStateTree, SyncState},
 };
 use crate::{
     v01::types::{
@@ -37,7 +37,7 @@ use pathfinder_storage::{
 };
 use stark_hash::StarkHash;
 use starknet_gateway_client::{Client, ClientApi};
-use starknet_gateway_types::request::add_transaction::ContractDefinition;
+use starknet_gateway_types::{pending::PendingData, request::add_transaction::ContractDefinition};
 use std::convert::TryInto;
 use std::sync::Arc;
 

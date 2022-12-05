@@ -70,7 +70,7 @@ pub async fn get_transaction_by_block_id_and_index(
 }
 
 async fn get_transaction_from_pending(
-    pending: &Option<crate::state::PendingData>,
+    pending: &Option<starknet_gateway_types::pending::PendingData>,
     index: usize,
 ) -> Result<Transaction, GetTransactionByBlockIdAndIndexError> {
     // We return InvalidTxnIndex even if the pending block is technically missing.

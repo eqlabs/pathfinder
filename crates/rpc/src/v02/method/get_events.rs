@@ -1,4 +1,3 @@
-use crate::state::PendingData;
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
@@ -6,6 +5,7 @@ use pathfinder_storage::{
     EventFilterError, StarknetBlocksTable, StarknetEventFilter, StarknetEventsTable,
 };
 use serde::Deserialize;
+use starknet_gateway_types::pending::PendingData;
 use tokio::task::JoinHandle;
 
 crate::error::generate_rpc_error_subset!(

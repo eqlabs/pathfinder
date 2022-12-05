@@ -283,6 +283,7 @@ mod tests {
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
     use pathfinder_common::{starkhash, StarknetBlockHash, StarknetBlockNumber};
+    use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
@@ -370,7 +371,7 @@ mod tests {
     async fn happy_paths_and_major_errors() {
         let ctx = RpcContext::for_tests_with_pending().await;
         let ctx_with_pending_empty =
-            RpcContext::for_tests().with_pending_data(crate::state::PendingData::default());
+            RpcContext::for_tests().with_pending_data(PendingData::default());
         let ctx_with_pending_disabled = RpcContext::for_tests();
 
         let cases: &[(RpcContext, BlockId, TestCaseHandler)] = &[

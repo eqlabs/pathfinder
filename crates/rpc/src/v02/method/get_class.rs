@@ -3,6 +3,7 @@ use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash};
 use rusqlite::OptionalExtension;
+use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
 
@@ -158,7 +159,7 @@ fn read_at_number(
 }
 
 /// Returns true if the class is declared or deployed in the pending state.
-async fn is_pending_class(pending: &Option<crate::state::PendingData>, hash: ClassHash) -> bool {
+async fn is_pending_class(pending: &Option<PendingData>, hash: ClassHash) -> bool {
     let state_diff = match pending {
         Some(pending) => match pending.state_update().await {
             Some(pending) => pending,

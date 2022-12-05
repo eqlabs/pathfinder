@@ -1,6 +1,7 @@
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
+use starknet_gateway_types::pending::PendingData;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetNonceInput {
@@ -63,7 +64,7 @@ pub async fn get_nonce(
 
 /// Returns the contract's pending nonce.
 async fn get_pending_nonce(
-    pending: &Option<crate::state::PendingData>,
+    pending: &Option<PendingData>,
     contract_address: ContractAddress,
 ) -> Option<ContractNonce> {
     match pending {
@@ -256,7 +257,7 @@ mod tests {
         };
         let state_update = Arc::new(state_update);
 
-        let pending_data = crate::state::PendingData::default();
+        let pending_data = starknet_gateway_types::pending::PendingData::default();
         pending_data.set(block, state_update).await;
         let pending_data = Some(pending_data);
 

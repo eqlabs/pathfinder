@@ -1,11 +1,11 @@
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
-    state::PendingData,
     v02::{types::request::BroadcastedTransaction, RpcContext},
 };
 use pathfinder_common::{BlockId, StarknetBlockTimestamp};
 use serde::Serialize;
 use serde_with::serde_as;
+use starknet_gateway_types::pending::PendingData;
 use std::sync::Arc;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]

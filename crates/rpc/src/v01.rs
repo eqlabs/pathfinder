@@ -342,7 +342,7 @@ pub fn register_all_methods(
 
 #[cfg(test)]
 mod tests {
-    use crate::state::{state_tree::GlobalStateTree, PendingData, SyncState};
+    use crate::state::{state_tree::GlobalStateTree, SyncState};
     use crate::test_client::TestClient;
     use crate::v01::types::reply::BlockHashAndNumber;
     use crate::{tests::by_name, RpcServer};
@@ -368,7 +368,7 @@ mod tests {
     use stark_hash::StarkHash;
     use starknet_gateway_client::Client;
     use starknet_gateway_test_fixtures::testnet::*;
-    use starknet_gateway_types::reply::PendingBlock;
+    use starknet_gateway_types::{pending::PendingData, reply::PendingBlock};
     use std::sync::Arc;
 
     mod get_block {

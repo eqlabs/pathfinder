@@ -5,6 +5,7 @@ use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 use rusqlite::OptionalExtension;
+use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(GetClassAtError: BlockNotFound, ContractNotFound);
 
@@ -131,7 +132,7 @@ fn get_definition_at(
 
 /// Returns the [ClassHash] of the given [ContractAddress] if any is defined in the pending data.
 async fn get_pending_class_hash(
-    pending: Option<crate::state::PendingData>,
+    pending: Option<PendingData>,
     address: ContractAddress,
 ) -> Option<ClassHash> {
     pending?.state_update().await.and_then(|state_update| {

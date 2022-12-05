@@ -339,6 +339,7 @@ mod tests {
         StorageAddress, StorageValue,
     };
     use stark_hash::StarkHash;
+    use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
@@ -432,9 +433,7 @@ mod tests {
     #[tokio::test]
     async fn happy_paths_and_major_errors() {
         let (in_storage, ctx) = context_with_state_updates();
-        let ctx_with_pending_empty = ctx
-            .clone()
-            .with_pending_data(crate::state::PendingData::default());
+        let ctx_with_pending_empty = ctx.clone().with_pending_data(PendingData::default());
 
         let cases: &[(RpcContext, BlockId, TestCaseHandler)] = &[
             // Successful
