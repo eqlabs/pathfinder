@@ -436,22 +436,17 @@ mod json {
             );
         }
 
-        #[cfg(fixme)]
         #[tokio::test]
         async fn genesis_contract() {
-            use crate::sequencer::ClientApi;
-            use pathfinder_common::{Chain, ContractAddress};
-
-            let contract =
-                starkhash!("0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3");
-            let contract = ContractAddress::new_or_panic(contract);
-
-            let chain = Chain::Testnet;
-            let sequencer = crate::sequencer::Client::new(chain).unwrap();
-            let contract_definition = sequencer
-                .full_contract(contract)
+            let contract_definition = reqwest::get(
+                    "https://alpha4.starknet.io/feeder_gateway/get_full_contract?\
+                    contractAddress=0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3",
+                )
                 .await
-                .expect("Download contract from sequencer");
+                .unwrap()
+                .bytes()
+                .await
+                .unwrap();
 
             let _ = super::super::compute_class_hash(&contract_definition)
                 .expect("Extract and compute  hash");
