@@ -2559,9 +2559,7 @@ mod tests {
 
     mod add_transaction {
         use super::*;
-        use crate::rpc::v01::types::reply::{
-            DeclareTransactionResult, DeployTransactionResult, InvokeTransactionResult,
-        };
+        use crate::rpc::v01::types::reply::{DeclareTransactionResult, InvokeTransactionResult};
 
         lazy_static::lazy_static! {
             pub static ref CONTRACT_DEFINITION_JSON: serde_json::Value = {
@@ -2575,8 +2573,8 @@ mod tests {
             use super::*;
             use crate::rpc::v01::types::request::ContractCall;
             use pathfinder_common::{
-                starkhash, ByteCodeOffset, CallParam, ClassHash, ConstructorParam,
-                ContractAddressSalt, EntryPoint, Fee, TransactionSignatureElem, TransactionVersion,
+                starkhash, ByteCodeOffset, CallParam, ClassHash, EntryPoint, Fee,
+                TransactionSignatureElem, TransactionVersion,
             };
             use pretty_assertions::assert_eq;
             use starknet_gateway_types::request::{
@@ -2751,44 +2749,6 @@ mod tests {
                     }
                 );
             }
-
-            #[tokio::test]
-            async fn deploy_transaction() {
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                let contract_definition = CONTRACT_DEFINITION.clone();
-                let contract_address_salt = ContractAddressSalt(starkhash!(
-                    "05864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"
-                ));
-                let constructor_calldata: Vec<ConstructorParam> = vec![];
-
-                let params = rpc_params!(
-                    contract_address_salt,
-                    constructor_calldata,
-                    contract_definition
-                );
-
-                let rpc_result = TestClient::v01(addr)
-                    .request::<DeployTransactionResult>("starknet_addDeployTransaction", params)
-                    .await
-                    .unwrap();
-
-                assert_eq!(
-                    rpc_result,
-                    DeployTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
-                            "057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
-                        )),
-                        contract_address: ContractAddress::new_or_panic(starkhash!(
-                            "03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
-                        )),
-                    }
-                );
-            }
         }
 
         mod named_args {
@@ -2874,41 +2834,6 @@ mod tests {
                         )),
                         class_hash: ClassHash(starkhash!(
                             "0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
-                        )),
-                    }
-                );
-            }
-
-            #[tokio::test]
-            async fn deploy_transaction() {
-                let storage = setup_storage();
-                let sequencer = Client::new(Chain::Testnet).unwrap();
-                let sync_state = Arc::new(SyncState::default());
-                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
-                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-
-                let params = by_name([
-                    (
-                        "contract_address_salt",
-                        json!("0x5864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"),
-                    ),
-                    ("constructor_calldata", json!([])),
-                    ("contract_definition", CONTRACT_DEFINITION_JSON.clone()),
-                ]);
-
-                let rpc_result = TestClient::v01(addr)
-                    .request::<DeployTransactionResult>("starknet_addDeployTransaction", params)
-                    .await
-                    .unwrap();
-
-                assert_eq!(
-                    rpc_result,
-                    DeployTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
-                            "057ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d"
-                        )),
-                        contract_address: ContractAddress::new_or_panic(starkhash!(
-                            "03926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
                         )),
                     }
                 );

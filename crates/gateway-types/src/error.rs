@@ -74,4 +74,6 @@ pub enum StarknetErrorCode {
     InvalidTransactionVersion,
     #[serde(rename = "StarknetErrorCode.INVALID_PROGRAM")]
     InvalidProgram,
+    #[serde(rename = "StarknetErrorCode.DEPRECATED_TRANSACTION")]
+    DeprecatedTransaction,
 }
