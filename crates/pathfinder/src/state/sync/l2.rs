@@ -2,7 +2,7 @@ use crate::state::block_hash::verify_block_hash;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{Chain, ClassHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_storage::types::CompressedContract;
-use starknet_gateway_client::{Client, ClientApi};
+use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::{
     class_hash::extract_abi_code_hash,
     error::SequencerError,

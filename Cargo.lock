@@ -3292,6 +3292,12 @@ dependencies = [
 [[package]]
 name = "starknet-gateway-test-fixtures"
 version = "0.1.0"
+dependencies = [
+ "hex-literal",
+ "pathfinder-common",
+ "stark_hash",
+ "starknet-gateway-types",
+]
 
 [[package]]
 name = "starknet-gateway-types"

@@ -352,10 +352,7 @@ mod tests {
             types::reply::{Block, Transactions},
         },
     };
-    use crate::{
-        sequencer::test_utils::*,
-        state::{state_tree::GlobalStateTree, PendingData, SyncState},
-    };
+    use crate::state::{state_tree::GlobalStateTree, PendingData, SyncState};
     use assert_matches::assert_matches;
     use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};
     use pathfinder_common::{
@@ -370,6 +367,7 @@ mod tests {
     use serde_json::json;
     use stark_hash::StarkHash;
     use starknet_gateway_client::Client;
+    use starknet_gateway_test_fixtures::testnet::*;
     use starknet_gateway_types::reply::PendingBlock;
     use std::sync::Arc;
 

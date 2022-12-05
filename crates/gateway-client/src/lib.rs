@@ -466,70 +466,12 @@ impl ClientApi for Client {
 }
 
 #[cfg(test)]
-pub mod test_utils {
-    use pathfinder_common::{
-        starkhash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
-        StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
-    };
-    use stark_hash::StarkHash;
-    use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
-
-    pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
-        BlockNumberOrTag::Number(StarknetBlockNumber::GENESIS);
-    pub const INVALID_BLOCK_NUMBER: BlockNumberOrTag =
-        BlockNumberOrTag::Number(StarknetBlockNumber::MAX);
-    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        starkhash!("07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"),
-    ));
-    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        starkhash!("06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"),
-    ));
-    pub const PRE_DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag =
-        BlockHashOrTag::Hash(StarknetBlockHash(starkhash!(
-            "05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"
-        )));
-    pub const INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        starkhash!("03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"),
-    ));
-    pub const VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(starkhash!(
-        "0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
-    ));
-    pub const INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(starkhash!(
-        "0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
-    ));
-    pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(starkhash!(
-        "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
-    ));
-    pub const INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(starkhash!(
-        "05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
-    ));
-    pub const VALID_ENTRY_POINT: EntryPoint = EntryPoint(starkhash!(
-        "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-    ));
-    pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
-    pub const VALID_KEY: StorageAddress = StorageAddress::new_or_panic(starkhash!(
-        "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
-    ));
-    lazy_static::lazy_static! {
-        pub static ref VALID_KEY_DEC: String = pathfinder_serde::starkhash_to_dec_str(VALID_KEY.get());
-    }
-    pub const VALID_CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("04d2"))];
-    /// Class hash for VALID_CONTRACT_ADDR
-    pub const VALID_CLASS_HASH: ClassHash = ClassHash(starkhash!(
-        "021a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
-    ));
-    pub const INVALID_CLASS_HASH: ClassHash = ClassHash(starkhash!(
-        "031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
-    ));
-}
-
-#[cfg(test)]
 mod tests {
-    use super::{test_utils::*, *};
+    use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
     use stark_hash::StarkHash;
-    use starknet_gateway_test_fixtures::*;
+    use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::StarknetErrorCode;
     use starknet_gateway_types::request::Tag;
     use std::collections::VecDeque;
@@ -1019,6 +961,7 @@ mod tests {
         use super::*;
         use pathfinder_common::starkhash;
         use pretty_assertions::assert_eq;
+        use starknet_gateway_test_fixtures::testnet::VALID_KEY_DEC;
 
         #[test_log::test(tokio::test)]
         async fn invalid_contract_address() {
@@ -1026,7 +969,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
                     INVALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC
+                    VALID_KEY_DEC
                 ),
                 (r#""0x0""#, 200),
             )]);
@@ -1067,7 +1010,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
                     VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC,
+                    VALID_KEY_DEC,
                     INVALID_BLOCK_HASH
                 ),
                 response_from(StarknetErrorCode::BlockNotFound),
@@ -1088,7 +1031,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
                     VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC,
+                    VALID_KEY_DEC,
                     INVOKE_CONTRACT_BLOCK_HASH
                 ),
                 (r#""0x1e240""#, 200),
@@ -1106,7 +1049,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
                     VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC,
+                    VALID_KEY_DEC,
                 ),
                 (r#""0x1e240""#, 200),
             )]);
@@ -1127,7 +1070,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=pending",
                     VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC
+                    VALID_KEY_DEC
                 ),
                 (r#""0x1e240""#, 200),
             )]);
