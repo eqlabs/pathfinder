@@ -309,7 +309,7 @@ mod tests {
             .await
             .unwrap();
 
-            let sequencer = crate::sequencer::Client::new(Chain::Mainnet).unwrap();
+            let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (context.with_call_handling(call_handle), cairo_handle)
         }

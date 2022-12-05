@@ -1,7 +1,7 @@
 use crate::rpc::v02::types::request::BroadcastedDeployTransaction;
 use crate::rpc::v02::RpcContext;
-use crate::sequencer::ClientApi;
 use pathfinder_common::{ContractAddress, StarknetTransactionHash};
+use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
 

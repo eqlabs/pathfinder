@@ -2306,6 +2306,7 @@ dependencies = [
  "serde_with",
  "sha3",
  "stark_hash",
+ "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
  "tempfile",

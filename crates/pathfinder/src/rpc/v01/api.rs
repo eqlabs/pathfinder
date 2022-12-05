@@ -16,7 +16,6 @@ use crate::rpc::{
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
     rpc::gas_price,
-    sequencer::{self, ClientApi},
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
 };
 use anyhow::Context;
@@ -37,6 +36,7 @@ use pathfinder_storage::{
     StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
 };
 use stark_hash::StarkHash;
+use starknet_gateway_client::{Client, ClientApi};
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -44,7 +44,7 @@ use std::sync::Arc;
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
     pub storage: Storage,
-    pub sequencer: sequencer::Client,
+    pub sequencer: Client,
     pub chain_id: ChainId,
     pub call_handle: Option<ext_py::Handle>,
     pub shared_gas_price: Option<gas_price::Cached>,
@@ -76,7 +76,7 @@ pub enum BlockResponseScope {
 impl RpcApi {
     pub fn new(
         storage: Storage,
-        sequencer: sequencer::Client,
+        sequencer: Client,
         chain_id: ChainId,
         sync_state: Arc<SyncState>,
     ) -> Self {

@@ -1,8 +1,8 @@
 use crate::rpc::v02::types::request::BroadcastedInvokeTransaction;
 use crate::rpc::v02::RpcContext;
-use crate::sequencer::ClientApi;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
+use starknet_gateway_client::ClientApi;
 
 crate::rpc::error::generate_rpc_error_subset!(AddInvokeTransactionError);
 

@@ -1,9 +1,7 @@
-use crate::{
-    rpc::v02::{types::request::BroadcastedDeployAccountTransaction, RpcContext},
-    sequencer::ClientApi,
-};
+use crate::rpc::v02::{types::request::BroadcastedDeployAccountTransaction, RpcContext};
 use anyhow::Context;
 use pathfinder_common::{ContractAddress, StarknetTransactionHash};
+use starknet_gateway_client::ClientApi;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]

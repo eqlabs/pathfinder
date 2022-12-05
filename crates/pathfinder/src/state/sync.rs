@@ -4,7 +4,6 @@ mod pending;
 
 use crate::{
     rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
-    sequencer,
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
 };
 use anyhow::Context;
@@ -20,6 +19,7 @@ use pathfinder_storage::{
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::StarkHash;
+use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::reply::{
     state_update::DeployedContract, Block, MaybePendingBlock, PendingBlock, StateUpdate,
 };
@@ -108,7 +108,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
 ) -> anyhow::Result<()>
 where
     Transport: EthereumTransport + Clone,
-    SequencerClient: sequencer::ClientApi + Clone + Send + Sync + 'static,
+    SequencerClient: ClientApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
     L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, H160, Option<StateUpdateLog>) -> F1,
@@ -464,7 +464,7 @@ where
 /// Periodically updates sync state with the latest block height.
 async fn update_sync_status_latest(
     state: Arc<State>,
-    sequencer: impl sequencer::ClientApi,
+    sequencer: impl ClientApi,
     starting_block_hash: StarknetBlockHash,
     starting_block_num: StarknetBlockNumber,
     chain: Chain,
@@ -820,7 +820,7 @@ fn deploy_contract(
 /// Downloads and inserts class definitions for any classes in the
 /// list which are not already present in the database.
 async fn download_verify_and_insert_missing_classes<
-    SequencerClient: sequencer::ClientApi,
+    SequencerClient: ClientApi,
     ClassIter: Iterator<Item = ClassHash>,
 >(
     sequencer: SequencerClient,

@@ -6,13 +6,13 @@ use pathfinder_common::{
     consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, Chain, ChainId, EthereumChain, StarknetBlockNumber,
 };
 use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
-use pathfinder_lib::sequencer::ClientApi;
 use pathfinder_lib::{
     cairo,
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
-    rpc, sequencer, state,
+    rpc, state,
 };
 use pathfinder_storage::{JournalMode, Storage};
+use starknet_gateway_client::ClientApi;
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
@@ -103,18 +103,18 @@ If you are trying to setup a custom StarkNet please use '--network custom',
             );
         }
         (Chain::Custom, Some((gateway, feeder)), _) => {
-            pathfinder_lib::sequencer::Client::with_urls(gateway, feeder)
+            starknet_gateway_client::Client::with_urls(gateway, feeder)
                 .context("Creating gateway client")?
         }
         (_, Some(_), _) => anyhow::bail!(
             "'--gateway-url' and '--feeder-gateway-url' are only valid with '--network custom'"
         ),
-        (Chain::Mainnet, None, None) => sequencer::Client::mainnet(),
-        (Chain::Testnet, None, None) => sequencer::Client::testnet(),
-        (Chain::Testnet2, None, None) => sequencer::Client::testnet2(),
-        (Chain::Integration, None, None) => sequencer::Client::integration(),
+        (Chain::Mainnet, None, None) => starknet_gateway_client::Client::mainnet(),
+        (Chain::Testnet, None, None) => starknet_gateway_client::Client::testnet(),
+        (Chain::Testnet2, None, None) => starknet_gateway_client::Client::testnet2(),
+        (Chain::Integration, None, None) => starknet_gateway_client::Client::integration(),
         (_, _, Some(sequencer_url)) => {
-            pathfinder_lib::sequencer::Client::with_base_url(sequencer_url)
+            starknet_gateway_client::Client::with_base_url(sequencer_url)
                 .context("Creating gateway client")?
         }
     };

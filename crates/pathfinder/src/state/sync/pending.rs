@@ -7,7 +7,7 @@
 /// - the state update parent root does not match head.
 pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
-    sequencer: &impl crate::sequencer::ClientApi,
+    sequencer: &impl starknet_gateway_client::ClientApi,
     head: (
         pathfinder_common::StarknetBlockHash,
         pathfinder_common::GlobalRoot,
