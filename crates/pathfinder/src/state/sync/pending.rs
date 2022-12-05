@@ -79,6 +79,7 @@ mod tests {
         starkhash, starkhash_bytes, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp,
     };
+    use starknet_gateway_client::MockClientApi;
     use starknet_gateway_types::reply::{
         state_update::StateDiff, Block, MaybePendingBlock, PendingBlock, StateUpdate, Status,
     };
@@ -132,7 +133,7 @@ mod tests {
     #[tokio::test]
     async fn exits_on_full_block() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = sequencer::MockClientApi::new();
+        let mut sequencer = MockClientApi::new();
 
         // Give a pending state update and full block.
         sequencer
@@ -162,7 +163,7 @@ mod tests {
     #[tokio::test]
     async fn exits_on_full_state_diff() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = sequencer::MockClientApi::new();
+        let mut sequencer = MockClientApi::new();
 
         // A full diff has the block hash set.
         let mut full_diff = PENDING_DIFF.clone();
@@ -195,7 +196,7 @@ mod tests {
     #[tokio::test]
     async fn exits_on_block_discontinuity() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = sequencer::MockClientApi::new();
+        let mut sequencer = MockClientApi::new();
 
         let mut pending_block = PENDING_BLOCK.clone();
         pending_block.parent_hash = StarknetBlockHash(starkhash!("FFFFFF"));
@@ -226,7 +227,7 @@ mod tests {
     #[tokio::test]
     async fn exits_on_state_diff_discontinuity() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = sequencer::MockClientApi::new();
+        let mut sequencer = MockClientApi::new();
 
         sequencer
             .expect_block()
@@ -258,7 +259,7 @@ mod tests {
     #[tokio::test]
     async fn success() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = sequencer::MockClientApi::new();
+        let mut sequencer = MockClientApi::new();
 
         sequencer
             .expect_block()

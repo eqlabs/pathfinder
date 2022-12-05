@@ -935,10 +935,7 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 #[cfg(test)]
 mod tests {
     use super::{l1, l2};
-    use crate::{
-        sequencer,
-        state::{self, sync::PendingData},
-    };
+    use crate::state::{self, sync::PendingData};
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
         BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
@@ -953,6 +950,7 @@ mod tests {
         StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, Storage,
     };
     use stark_hash::StarkHash;
+    use starknet_gateway_client::ClientApi;
     use starknet_gateway_types::{
         error::SequencerError,
         reply,
@@ -1009,7 +1007,7 @@ mod tests {
     struct FakeSequencer;
 
     #[async_trait::async_trait]
-    impl sequencer::ClientApi for FakeSequencer {
+    impl ClientApi for FakeSequencer {
         async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
             match block {
                 BlockId::Number(_) => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
@@ -1127,7 +1125,7 @@ mod tests {
 
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
-        _: impl sequencer::ClientApi,
+        _: impl ClientApi,
         _: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
         _: Chain,
         _: Option<std::time::Duration>,

@@ -75,6 +75,7 @@ pathfinder-common = { path = "../common", features = ["full-serde", "test-utils"
 pathfinder-storage = { path = "../storage", features = ["tests"] }
 pretty_assertions = "1.0.0"
 rand = "0.8"
+starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tokio = { version = "1.11.0", features = ["test-util"] }

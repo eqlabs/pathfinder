@@ -20,7 +20,7 @@ use std::{fmt::Debug, result::Result, time::Duration};
 mod builder;
 mod metrics;
 
-#[cfg_attr(test, mockall::automock)]
+#[cfg_attr(feature = "test-utils", mockall::automock)]
 #[async_trait::async_trait]
 pub trait ClientApi {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError>;
@@ -131,7 +131,7 @@ impl Client {
     const RETRY: builder::Retry = builder::Retry::Disabled;
 
     /// Creates a new Sequencer client for the given chain.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn new(chain: Chain) -> anyhow::Result<Self> {
         match chain {
             Chain::Mainnet => Ok(Self::mainnet()),

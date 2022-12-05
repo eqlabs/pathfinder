@@ -534,7 +534,6 @@ async fn download_and_compress_contract(
 mod tests {
     mod sync {
         use super::super::{sync, Event};
-        use crate::sequencer::MockClientApi;
         use assert_matches::assert_matches;
         use pathfinder_common::{
             BlockId, ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
@@ -542,6 +541,7 @@ mod tests {
             StorageValue,
         };
         use stark_hash::StarkHash;
+        use starknet_gateway_client::MockClientApi;
         use starknet_gateway_types::{
             error::{SequencerError, StarknetError, StarknetErrorCode},
             reply,
