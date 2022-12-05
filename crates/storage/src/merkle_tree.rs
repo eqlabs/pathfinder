@@ -1,8 +1,5 @@
 //! Contains the Sqlite persistent storage abstraction for a Starknet Binary Merkle Patricia Tree.
 //!
-//! For more information on the structure of the tree, see
-//! [`MerkleTree`](crate::state::merkle_tree::MerkleTree).
-//!
 //! ## Overview
 //!
 //! This storage functions similarly to a key-value store with the addition of automatic
@@ -47,7 +44,7 @@ use rusqlite::{params, OptionalExtension, Transaction};
 
 use stark_hash::StarkHash;
 
-/// Backing storage for [`MerkleTree`].
+/// Backing storage for Starknet Binary Merkle Patricia Tree.
 ///
 /// Default implementation and persistent implementation is the `RcNodeStorage`. Testing/future
 /// implementations include [`HashMap`](std::collections::HashMap) and `()` based implementations
