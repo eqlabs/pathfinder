@@ -2989,9 +2989,12 @@ dependencies = [
  "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
+ "tempfile",
+ "test-log",
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "web3",
  "zstd",
 ]

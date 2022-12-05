@@ -1,4 +1,4 @@
-use crate::rpc::v02::{types::request::BroadcastedDeployAccountTransaction, RpcContext};
+use crate::v02::{types::request::BroadcastedDeployAccountTransaction, RpcContext};
 use anyhow::Context;
 use pathfinder_common::{ContractAddress, StarknetTransactionHash};
 use starknet_gateway_client::ClientApi;
@@ -21,7 +21,7 @@ pub struct AddDeployAccountTransactionOutput {
     contract_address: ContractAddress,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(AddDeployAccountTransactionError: ClassHashNotFound);
+crate::error::generate_rpc_error_subset!(AddDeployAccountTransactionError: ClassHashNotFound);
 
 pub async fn add_deploy_account_transaction(
     context: RpcContext,

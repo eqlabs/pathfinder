@@ -49,5 +49,8 @@ serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet-gateway-types = { path = "../gateway-types" }
+tempfile = "3"
+test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tokio = { version = "1.11.0", features = ["test-util"] }
+tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
 zstd = "0.10"

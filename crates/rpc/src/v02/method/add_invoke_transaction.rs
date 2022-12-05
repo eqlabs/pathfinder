@@ -1,10 +1,10 @@
-use crate::rpc::v02::types::request::BroadcastedInvokeTransaction;
-use crate::rpc::v02::RpcContext;
+use crate::v02::types::request::BroadcastedInvokeTransaction;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
 use starknet_gateway_client::ClientApi;
 
-crate::rpc::error::generate_rpc_error_subset!(AddInvokeTransactionError);
+crate::error::generate_rpc_error_subset!(AddInvokeTransactionError);
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -68,7 +68,7 @@ pub async fn add_invoke_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rpc::v02::types::request::BroadcastedInvokeTransactionV0;
+    use crate::v02::types::request::BroadcastedInvokeTransactionV0;
     use pathfinder_common::{
         starkhash, CallParam, ContractAddress, EntryPoint, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
@@ -210,7 +210,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "gateway 429"]
     async fn invoke_v1() {
-        use crate::rpc::v02::types::request::BroadcastedInvokeTransactionV1;
+        use crate::v02::types::request::BroadcastedInvokeTransactionV1;
 
         let context = RpcContext::for_tests();
         let input = BroadcastedInvokeTransactionV1 {

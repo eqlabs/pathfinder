@@ -1,4 +1,4 @@
-use crate::rpc::v02::RpcContext;
+use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_storage::StarknetBlocksTable;
@@ -9,7 +9,7 @@ pub struct BlockHashAndNumber {
     pub block_number: StarknetBlockNumber,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(BlockNumberError: NoBlocks);
+crate::error::generate_rpc_error_subset!(BlockNumberError: NoBlocks);
 
 pub async fn block_hash_and_number(
     context: RpcContext,

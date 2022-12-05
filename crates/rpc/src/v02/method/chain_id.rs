@@ -1,8 +1,8 @@
 use pathfinder_common::ChainId;
 
-use crate::rpc::v02::RpcContext;
+use crate::v02::RpcContext;
 
-crate::rpc::error::generate_rpc_error_subset!(ChainIdError);
+crate::error::generate_rpc_error_subset!(ChainIdError);
 
 #[allow(dead_code)]
 pub async fn chain_id(context: RpcContext) -> Result<ChainId, ChainIdError> {

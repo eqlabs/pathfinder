@@ -1,11 +1,11 @@
-use crate::rpc::v02::types::request::BroadcastedDeployTransaction;
-use crate::rpc::v02::RpcContext;
+use crate::v02::types::request::BroadcastedDeployTransaction;
+use crate::v02::RpcContext;
 use pathfinder_common::{ContractAddress, StarknetTransactionHash};
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
 
-crate::rpc::error::generate_rpc_error_subset!(AddDeployTransactionError: InvalidContractClass);
+crate::error::generate_rpc_error_subset!(AddDeployTransactionError: InvalidContractClass);
 
 impl From<SequencerError> for AddDeployTransactionError {
     fn from(e: SequencerError) -> Self {
@@ -71,7 +71,7 @@ pub async fn add_deploy_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rpc::v02::types::ContractClass;
+    use crate::v02::types::ContractClass;
     use pathfinder_common::{starkhash, ContractAddressSalt, TransactionVersion};
 
     lazy_static::lazy_static! {

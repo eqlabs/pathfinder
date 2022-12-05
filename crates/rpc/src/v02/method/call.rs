@@ -1,7 +1,7 @@
-use crate::rpc::v02::RpcContext;
+use crate::v02::RpcContext;
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 
-crate::rpc::error::generate_rpc_error_subset!(
+crate::error::generate_rpc_error_subset!(
     CallError: BlockNotFound,
     ContractNotFound,
     InvalidMessageSelector,
@@ -36,7 +36,7 @@ pub struct FunctionCall {
     pub calldata: Vec<CallParam>,
 }
 
-impl From<FunctionCall> for crate::rpc::v01::types::request::Call {
+impl From<FunctionCall> for crate::v01::types::request::Call {
     fn from(call: FunctionCall) -> Self {
         Self {
             contract_address: call.contract_address,
