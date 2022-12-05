@@ -7,9 +7,8 @@ use pathfinder_common::{
 };
 use pathfinder_ethereum::provider::{EthereumTransport, HttpProvider};
 use pathfinder_lib::{
-    cairo,
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
-    rpc, state,
+    state,
 };
 use pathfinder_storage::{JournalMode, Storage};
 use starknet_gateway_client::ClientApi;
@@ -264,7 +263,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         pending_interval,
     ));
 
-    let shared = rpc::gas_price::Cached::new(Arc::new(eth_transport));
+    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(eth_transport));
 
     let chain_id = match network {
         Chain::Mainnet => ChainId::MAINNET,
@@ -281,7 +280,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         }
     };
 
-    let api = rpc::v01::api::RpcApi::new(storage, gateway_client, chain_id, sync_state)
+    let api = pathfinder_rpc::v01::api::RpcApi::new(storage, gateway_client, chain_id, sync_state)
         .with_call_handling(call_handle)
         .with_eth_gas_price(shared);
     let api = match config.poll_pending {
@@ -289,7 +288,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         false => api,
     };
 
-    let (rpc_handle, local_addr) = rpc::RpcServer::new(config.http_rpc_addr, api)
+    let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.http_rpc_addr, api)
         .with_middleware(RpcMetricsMiddleware)
         .run()
         .await

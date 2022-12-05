@@ -193,8 +193,8 @@ mod tests {
     #[tokio::test]
     async fn happy_paths_and_major_errors() {
         let ctx = RpcContext::for_tests_with_pending().await;
-        let ctx_with_pending_empty =
-            RpcContext::for_tests().with_pending_data(crate::state::PendingData::default());
+        let ctx_with_pending_empty = RpcContext::for_tests()
+            .with_pending_data(starknet_gateway_types::pending::PendingData::default());
         let ctx_with_pending_disabled = RpcContext::for_tests();
 
         let pending_contract0 =

@@ -2,9 +2,8 @@ pub mod l1;
 pub mod l2;
 mod pending;
 
-use crate::{
-    rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
-    state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
+use crate::state::{
+    calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state,
 };
 use anyhow::Context;
 use ethers::types::H160;
@@ -13,6 +12,7 @@ use pathfinder_common::{
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
+use pathfinder_rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus};
 use pathfinder_storage::{
     ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,

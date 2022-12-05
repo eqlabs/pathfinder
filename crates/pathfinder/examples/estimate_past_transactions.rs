@@ -66,7 +66,7 @@ fn main() -> Result<(), anyhow::Error> {
 
 #[derive(Debug)]
 struct Work {
-    transaction: pathfinder_lib::rpc::v02::types::request::BroadcastedTransaction,
+    transaction: pathfinder_rpc::v02::types::request::BroadcastedTransaction,
     at_block: pathfinder_common::StarknetBlockHash,
     gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource,
     actual_fee: ethers::types::H256,
@@ -77,8 +77,8 @@ struct Work {
 struct ReadyResult {
     actual_fee: ethers::types::H256,
     result: Result<
-        pathfinder_lib::rpc::v01::types::reply::FeeEstimate,
-        pathfinder_lib::cairo::ext_py::CallFailure,
+        pathfinder_rpc::v01::types::reply::FeeEstimate,
+        pathfinder_rpc::cairo::ext_py::CallFailure,
     >,
     span: tracing::Span,
 }
@@ -388,12 +388,12 @@ struct SimpleInvoke {
 }
 
 fn default_transaction_nonce() -> pathfinder_common::TransactionNonce {
-    pathfinder_lib::rpc::v01::types::request::Call::DEFAULT_NONCE
+    pathfinder_rpc::v01::types::request::Call::DEFAULT_NONCE
 }
 
-impl From<SimpleInvoke> for pathfinder_lib::rpc::v02::types::request::BroadcastedTransaction {
+impl From<SimpleInvoke> for pathfinder_rpc::v02::types::request::BroadcastedTransaction {
     fn from(tx: SimpleInvoke) -> Self {
-        use pathfinder_lib::rpc::v02::types::request::*;
+        use pathfinder_rpc::v02::types::request::*;
 
         match tx.version {
             Some(version) => match version.without_query_version() {
@@ -442,11 +442,9 @@ impl From<SimpleInvoke> for pathfinder_lib::rpc::v02::types::request::Broadcaste
     }
 }
 
-impl From<SimpleDeployAccount>
-    for pathfinder_lib::rpc::v02::types::request::BroadcastedTransaction
-{
+impl From<SimpleDeployAccount> for pathfinder_rpc::v02::types::request::BroadcastedTransaction {
     fn from(tx: SimpleDeployAccount) -> Self {
-        use pathfinder_lib::rpc::v02::types::request::*;
+        use pathfinder_rpc::v02::types::request::*;
 
         BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction {
             version: tx.version,
