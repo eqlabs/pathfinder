@@ -443,35 +443,4 @@ mod tests {
         // assert_eq!(state.eth_tx_index, genesis.origin.transaction.index);
         // assert_eq!(state.eth_log_index, genesis.origin.log_index);
     }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    #[ignore = "this is manual testing only, but we should really use the binary for this"]
-    async fn go_sync() {
-        use std::sync::Arc;
-
-        let storage = pathfinder_storage::Storage::migrate(
-            std::path::PathBuf::from("testing.sqlite"),
-            pathfinder_storage::JournalMode::WAL,
-        )
-        .unwrap();
-        let chain = pathfinder_common::Chain::Testnet;
-        let transport = pathfinder_ethereum::provider::HttpProvider::test_provider(chain);
-        let sequencer = starknet_gateway_client::Client::new(chain).unwrap();
-        let state = Arc::new(sync::State::default());
-
-        sync::sync(
-            storage,
-            transport,
-            chain,
-            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-            sequencer,
-            state,
-            sync::l1::sync,
-            sync::l2::sync,
-            sync::PendingData::default(),
-            None,
-        )
-        .await
-        .unwrap();
-    }
 }
