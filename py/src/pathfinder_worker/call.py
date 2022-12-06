@@ -65,7 +65,8 @@ class Verb(Enum):
 
 class Chain(Enum):
     MAINNET = StarknetChainId.MAINNET
-    GOERLI = StarknetChainId.TESTNET
+    TESTNET = StarknetChainId.TESTNET
+    TESTNET2 = StarknetChainId.TESTNET2
 
 
 felt_metadata = dict(

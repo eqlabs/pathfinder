@@ -28,7 +28,7 @@ def test_command_parsing_estimate_fee():
     input = """{
         "verb":"ESTIMATE_FEE",
         "at_block":"0x736f6d6520626c6f636b6861736820736f6d657768657265",
-        "chain":"GOERLI",
+        "chain":"TESTNET",
         "gas_price":"0xa",
         "pending_updates":{"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0x0"}]},
         "pending_deployed":[
@@ -52,7 +52,7 @@ def test_command_parsing_estimate_fee():
     command = Command.Schema().loads(input)
     assert command == EstimateFee(
         at_block="0x736f6d6520626c6f636b6861736820736f6d657768657265",
-        chain=call.Chain.GOERLI,
+        chain=call.Chain.TESTNET,
         gas_price=10,
         pending_updates={
             0x7C38021EB1F890C5D572125302FE4A0D2F79D38B018D68A9FCD102145D4E451: [
@@ -84,7 +84,7 @@ def test_command_parsing_call():
     input = """{
         "verb":"CALL",
         "at_block":"latest",
-        "chain":"GOERLI",
+        "chain":"TESTNET2",
         "pending_updates":{
             "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374":[
                 {"key":"0x84","value":"0x4"}
@@ -100,7 +100,7 @@ def test_command_parsing_call():
     command = Command.Schema().loads(input)
     assert command == Call(
         at_block="latest",
-        chain=call.Chain.GOERLI,
+        chain=call.Chain.TESTNET2,
         pending_updates={
             0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374: [
                 call.StorageDiff(key=0x84, value=4)
@@ -344,7 +344,7 @@ def test_success():
     contract_address = hex(populate_test_contract_with_132_on_3(con))
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
+    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "TESTNET", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
 
     output = default_132_on_3_scenario(
         con,
@@ -371,7 +371,7 @@ def test_positive_directly():
 
     command = Call(
         at_block="1",
-        chain=call.Chain.GOERLI,
+        chain=call.Chain.TESTNET,
         contract_address=contract_address,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[132],
@@ -393,7 +393,7 @@ def test_called_contract_not_found():
     contract_address = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
+    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "TESTNET", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
 
     output = default_132_on_3_scenario(
         con,
@@ -410,7 +410,7 @@ def test_nested_called_contract_not_found():
     contract_address = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("call_increase_value"))
 
-    common_command_data = '"gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}, "pending_timestamp": 0'
+    common_command_data = '"gas_price": 0, "chain": "TESTNET", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}, "pending_timestamp": 0'
 
     output = default_132_on_3_scenario(
         con,
@@ -429,7 +429,7 @@ def test_invalid_entry_point():
     contract_address = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("call_increase_value2"))
 
-    common_command_data = '"gas_price": 0, "chain": "GOERLI", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}, "pending_timestamp": 0'
+    common_command_data = '"gas_price": 0, "chain": "TESTNET", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}, "pending_timestamp": 0'
     output = default_132_on_3_scenario(
         con,
         [
@@ -449,7 +449,7 @@ def test_invalid_schema_version():
     contract_address = hex(populate_test_contract_with_132_on_3(con))
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
+    common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "TESTNET", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
 
     con.execute("pragma user_version = 0")
     con.commit()
@@ -469,7 +469,7 @@ def test_no_such_block():
     contract_address = hex(populate_test_contract_with_132_on_3(con))
     entry_point = hex(get_selector_from_name("get_value"))
 
-    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "GOERLI", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
+    common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "TESTNET", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
 
     con.execute("delete from starknet_blocks")
     con.commit()
@@ -508,7 +508,7 @@ def test_fee_estimate_on_positive_directly():
 
     command = EstimateFee(
         at_block="latest",
-        chain=call.Chain.GOERLI,
+        chain=call.Chain.TESTNET,
         gas_price=0,
         pending_updates={},
         pending_deployed=[],
@@ -552,7 +552,7 @@ def test_fee_estimate_for_declare_transaction_directly():
 
     command = EstimateFee(
         at_block="latest",
-        chain=call.Chain.GOERLI,
+        chain=call.Chain.TESTNET,
         gas_price=1,
         pending_updates={},
         pending_deployed=[],
@@ -585,7 +585,7 @@ def test_fee_estimate_on_positive():
     command = """{{
         "verb":"ESTIMATE_FEE",
         "at_block":"latest",
-        "chain":"GOERLI",
+        "chain":"TESTNET",
         "gas_price":"{gas_price}",
         "pending_updates":{{}},
         "pending_deployed":[],
@@ -1146,7 +1146,7 @@ def test_nonce_with_dummy():
             assert expected == str(exc.code), f"{nth + 1}th example"
 
 
-# Rest of the test cases require a mainnet or goerli database in some path.
+# Rest of the test cases require a mainnet or testnet database in some path.
 
 
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
@@ -1212,7 +1212,7 @@ def test_positive_streamed_on_early_goerli_block_without_deployed():
 
     with_updates = Call(
         at_block="6",
-        chain=call.Chain.GOERLI,
+        chain=call.Chain.TESTNET,
         contract_address=0x543E54F26AE33686F57DA2CEEBED98B340C3A78E9390931BD84FB711D5CAABC,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[5],
@@ -1333,7 +1333,7 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
 
     with_updates = Call(
         at_block="6",
-        chain=call.Chain.GOERLI,
+        chain=call.Chain.TESTNET,
         contract_address=0x543E54F26AE33686F57DA2CEEBED98B340C3A78E9390931BD84FB711D5CAABC,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[5],
@@ -1363,7 +1363,7 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
     # it.
     on_newly_deployed = Call(
         at_block="6",
-        chain=call.Chain.GOERLI,
+        chain=call.Chain.TESTNET,
         contract_address=pending_deployed[0].address,
         entry_point_selector=get_selector_from_name("get_value"),
         calldata=[5],
