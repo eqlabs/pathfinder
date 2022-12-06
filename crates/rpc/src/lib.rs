@@ -2,7 +2,7 @@
 pub mod cairo;
 mod error;
 pub mod gas_price;
-mod metrics;
+pub mod metrics;
 mod pathfinder;
 #[cfg(test)]
 pub mod test_client;
@@ -107,7 +107,7 @@ impl Default for SyncState {
 
 #[cfg(test)]
 mod tests {
-    use crate::{state::state_tree::GlobalStateTree, RpcServer};
+    use crate::RpcServer;
     use ethers::types::H256;
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
     use pathfinder_common::{
@@ -116,6 +116,7 @@ mod tests {
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
         StarknetTransactionIndex, StorageAddress, TransactionVersion,
     };
+    use pathfinder_merkle_tree::state_tree::GlobalStateTree;
     use pathfinder_storage::{
         types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, ContractsTable,
         StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,

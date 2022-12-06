@@ -1,8 +1,8 @@
-use crate::state::state_tree::GlobalStateTree;
 use crate::v02::types::ContractClass;
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
+use pathfinder_merkle_tree::state_tree::GlobalStateTree;
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;

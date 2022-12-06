@@ -2,17 +2,19 @@ pub mod l1;
 pub mod l2;
 mod pending;
 
-use crate::state::{
-    calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state,
-};
+use crate::state::{calculate_contract_state_hash, update_contract_state};
 use anyhow::Context;
 use ethers::types::H160;
 use pathfinder_common::{
     Chain, ClassHash, ContractNonce, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    StarknetBlockHash, StarknetBlockNumber,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
-use pathfinder_rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus};
+use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+use pathfinder_rpc::{
+    v01::types::reply::{syncing, syncing::NumberedBlock, Syncing},
+    SyncState,
+};
 use pathfinder_storage::{
     ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
@@ -21,12 +23,13 @@ use pathfinder_storage::{
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::StarkHash;
 use starknet_gateway_client::ClientApi;
-use starknet_gateway_types::reply::{
-    state_update::DeployedContract, Block, MaybePendingBlock, PendingBlock, StateUpdate,
+use starknet_gateway_types::{
+    pending::PendingData,
+    reply::{state_update::DeployedContract, Block, MaybePendingBlock, StateUpdate},
 };
 use std::future::Future;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::mpsc;
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 #[allow(clippy::too_many_arguments)]
@@ -36,7 +39,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     chain: Chain,
     core_address: H160,
     sequencer: SequencerClient,
-    state: Arc<State>,
+    state: Arc<SyncState>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
     pending_data: PendingData,
@@ -219,8 +222,8 @@ where
 
                     // Update sync status
                     match &mut *state.status.write().await {
-                        SyncStatus::False(_) => {}
-                        SyncStatus::Status(status) => {
+                        Syncing::False(_) => {}
+                        Syncing::Status(status) => {
                             status.current = NumberedBlock::from((block_hash, block_number));
 
                             if status.highest.number <= block_number {
@@ -399,7 +402,7 @@ where
 
 /// Periodically updates sync state with the latest block height.
 async fn update_sync_status_latest(
-    state: Arc<State>,
+    state: Arc<SyncState>,
     sequencer: impl ClientApi,
     starting_block_hash: StarknetBlockHash,
     starting_block_num: StarknetBlockNumber,
@@ -421,8 +424,8 @@ async fn update_sync_status_latest(
                 };
                 // Update the sync status.
                 match &mut *state.status.write().await {
-                    sync_status @ SyncStatus::False(_) => {
-                        *sync_status = SyncStatus::Status(syncing::Status {
+                    sync_status @ Syncing::False(_) => {
+                        *sync_status = Syncing::Status(syncing::Status {
                             starting,
                             current: starting,
                             highest: latest,
@@ -433,7 +436,7 @@ async fn update_sync_status_latest(
                             "Updated sync status",
                         );
                     }
-                    SyncStatus::Status(status) => {
+                    Syncing::Status(status) => {
                         if status.highest.hash != latest.hash {
                             status.highest = latest;
 
@@ -871,7 +874,7 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 #[cfg(test)]
 mod tests {
     use super::{l1, l2};
-    use crate::state::{self, sync::PendingData};
+    use crate::state;
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
@@ -891,6 +894,7 @@ mod tests {
     use starknet_gateway_client::ClientApi;
     use starknet_gateway_types::{
         error::SequencerError,
+        pending::PendingData,
         reply,
         request::{add_transaction::ContractDefinition, BlockHashOrTag},
     };

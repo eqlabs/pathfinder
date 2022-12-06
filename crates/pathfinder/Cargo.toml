@@ -38,6 +38,7 @@ metrics-exporter-prometheus = "0.11.0"
 num-bigint = { version = "0.4.3", features = ["serde"] }
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
+pathfinder-merkle-tree = { path = "../merkle-tree" }
 pathfinder-retry = { path = "../retry" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
@@ -52,7 +53,7 @@ sha3 = "0.9"
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
-# tempfile = "3"
+tempfile = "3"
 thiserror = "1.0.30"
 tokio = { version = "1.11.0", features = ["process"] }
 tokio-retry = "0.3.0"

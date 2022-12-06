@@ -1,10 +1,10 @@
-use crate::state::merkle_tree::MerkleTree;
 use anyhow::{Context, Error, Result};
 use bitvec::prelude::BitView;
 use pathfinder_common::{
     Chain, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
     StarknetBlockTimestamp,
 };
+use pathfinder_merkle_tree::merkle_tree::MerkleTree;
 use stark_hash::{stark_hash, HashChain, StarkHash};
 use starknet_gateway_types::reply::{
     transaction::{Event, Receipt, Transaction},

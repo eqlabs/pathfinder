@@ -15,7 +15,7 @@ pub async fn get_nonce(
     context: RpcContext,
     input: GetNonceInput,
 ) -> Result<ContractNonce, GetNonceError> {
-    use crate::state::state_tree::GlobalStateTree;
+    use pathfinder_merkle_tree::state_tree::GlobalStateTree;
     use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 
     // We can potentially read the nonce from pending without having to reach out to the database.

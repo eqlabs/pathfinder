@@ -342,7 +342,6 @@ pub fn register_all_methods(
 
 #[cfg(test)]
 mod tests {
-    use crate::state::state_tree::GlobalStateTree;
     use crate::{
         test_client::TestClient,
         tests::{by_name, create_pending_data, run_server, setup_storage, LOCALHOST},
@@ -360,6 +359,7 @@ mod tests {
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
         TransactionNonce,
     };
+    use pathfinder_merkle_tree::state_tree::GlobalStateTree;
     use pathfinder_storage::{
         StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };

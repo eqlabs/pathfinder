@@ -792,9 +792,11 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree =
-            crate::state::state_tree::GlobalStateTree::load(tx, GlobalRoot(StarkHash::ZERO))
-                .unwrap();
+        let mut global_tree = pathfinder_merkle_tree::state_tree::GlobalStateTree::load(
+            tx,
+            GlobalRoot(StarkHash::ZERO),
+        )
+        .unwrap();
 
         global_tree
             .set(test_contract_address, test_contract_state_hash)
@@ -850,9 +852,11 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree =
-            crate::state::state_tree::GlobalStateTree::load(tx, GlobalRoot(StarkHash::ZERO))
-                .unwrap();
+        let mut global_tree = pathfinder_merkle_tree::state_tree::GlobalStateTree::load(
+            tx,
+            GlobalRoot(StarkHash::ZERO),
+        )
+        .unwrap();
 
         global_tree
             .set(account_contract_address, account_contract_state_hash)
@@ -908,9 +912,11 @@ mod tests {
         ContractsTable::upsert(tx, contract_address, class_hash).unwrap();
 
         // set up contract state tree
-        let mut contract_state =
-            crate::state::state_tree::ContractsStateTree::load(tx, ContractRoot(StarkHash::ZERO))
-                .unwrap();
+        let mut contract_state = pathfinder_merkle_tree::state_tree::ContractsStateTree::load(
+            tx,
+            ContractRoot(StarkHash::ZERO),
+        )
+        .unwrap();
         for (storage_address, storage_value) in storage_updates {
             contract_state
                 .set(*storage_address, *storage_value)

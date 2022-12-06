@@ -1,8 +1,8 @@
-use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use anyhow::Context;
 use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
 };
+use pathfinder_merkle_tree::state_tree::{ContractsStateTree, GlobalStateTree};
 use pathfinder_storage::{ContractsStateTable, ContractsTable};
 use rusqlite::Transaction;
 use stark_hash::{stark_hash, StarkHash};
@@ -11,7 +11,7 @@ use starknet_gateway_types::reply::state_update::StorageDiff;
 pub mod block_hash;
 mod sync;
 
-pub use sync::{l1, l2, sync, PendingData};
+pub use sync::{l1, l2, sync};
 
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the
 /// [ContractStateHash] of the new state.

@@ -1,9 +1,7 @@
 //! Implementation of JSON-RPC endpoints.
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
-    gas_price,
-    state::state_tree::GlobalStateTree,
-    SyncState,
+    gas_price, SyncState,
 };
 use crate::{
     v01::types::{
@@ -31,6 +29,7 @@ use pathfinder_common::{
     StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
     TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
+use pathfinder_merkle_tree::state_tree::GlobalStateTree;
 use pathfinder_storage::{
     types::StateUpdate, ContractCodeTable, ContractsStateTable, ContractsTable, EventFilterError,
     RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEventFilter,
@@ -324,7 +323,7 @@ impl RpcApi {
         key: StorageAddress,
         block_id: BlockId,
     ) -> RpcResult<StorageValue> {
-        use crate::state::state_tree::ContractsStateTree;
+        use pathfinder_merkle_tree::state_tree::ContractsStateTree;
 
         let block_id = match block_id {
             BlockId::Hash(hash) => hash.into(),
